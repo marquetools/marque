@@ -1,7 +1,0 @@
-# UNCLASSIFIED
-default namespace = "urn:us:gov:ic:cvenum:ism:exemptfrom"
-CVEnumISMExemptFrom.cve = list { 
-# (U) 
-"IC_710_MANDATORY_FDR"?, 
-# (U) 
-"DOD_DISTRO_STATEMENT"? } 

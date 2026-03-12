@@ -1,4 +1,9 @@
 [tools]
+"cargo:cargo-audit" = "latest"
+"cargo:cargo-deny" = "latest"
+"cargo:cargo-nextest" = "latest"
+"cargo:cargo-smart-release" = "latest"
+
 git-cliff = "latest"
 typos = "latest"
 tombi = "latest"
