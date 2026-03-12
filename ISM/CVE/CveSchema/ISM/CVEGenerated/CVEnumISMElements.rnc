@@ -1,0 +1,13 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:elements"
+CVEnumISMElements.cve = 
+# (U) 
+"Notice" | 
+# (U) 
+"NoticeText" | 
+# (U) 
+"NoticeList" | 
+# (U) 
+"NoticeExternal" | 
+# (U) 
+"NoticeExternalList"

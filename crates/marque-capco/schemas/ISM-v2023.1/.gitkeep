@@ -1,0 +1,9 @@
+# Place ODNI ISM specification files here:
+#   CVEValues.xml     — controlled vocabulary enumerations
+#   ISM-XML.xsd       — attribute structure and constraints
+#   ISM-XML.sch       — Schematron cross-attribute validation rules
+#   ISM-XML.rng       — RelaxNG schema
+#
+# Download from: https://www.odni.gov/index.php/who-we-are/organizations/ic-cio/ic-technical-specifications
+# These files are NOT committed — they are official government publications.
+# Pin the version in marque-capco/Cargo.toml [package.metadata.marque].

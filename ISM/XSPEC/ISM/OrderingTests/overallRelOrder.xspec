@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="Overall-REL-NATO-AUS-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo=" AUS NATO USA"/>
+      </x:context>
+      <x:scenario label="Overall-REL-NATO-AUS-Checkorder:portionmark">
+         <x:call template="get.portionmark">
+            <x:param name="overalldissem" select="'REL'"/>
+            <x:param name="overallreleaseto" select="'AUS NATO USA'"/>
+         </x:call>
+         <x:expect label="The portion should be (S//REL) " test=".='(S//REL) '"/>
+      </x:scenario>
+      <x:scenario label="Overall-REL-NATO-AUS-Checkorder:banner">
+         <x:context mode="ism:banner">
+            <x:param name="overallreleaseto" select="'AUS NATO USA'"/>
+         </x:context>
+         <x:expect label="The banner should be SECRET//REL TO USA, AUS, NATO"
+            test=".='SECRET//REL TO USA, AUS, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

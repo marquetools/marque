@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:notice">
+   <define name="CVEnumISMNotice.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>FISA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RAWFISA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CNWDI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LES</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LES-NF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DSEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-A</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-B</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-C</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-D</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-E</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-F</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>US-Person</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>pre13526ORCON</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>POC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COMSEC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RSEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMCON_RSEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GEOCAP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RC_Dissemination_Control_Required</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ITAR-EAR</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

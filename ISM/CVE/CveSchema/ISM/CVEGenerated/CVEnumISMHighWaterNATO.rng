@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:HighWaterNATO">
+   <define name="CVEnumISMHighWaterNATO.cve">
+      <choice>
+         <value>NATO-U</value>
+         <value>NATO-R</value>
+         <value>NATO-C</value>
+         <value>NATO-S</value>
+         <value>NATO-TS</value>
+      </choice>
+   </define>
+</grammar>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:nonuscontrols">
+   <define name="CVEnumISMNonUSControls.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>NATO-ATOMAL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO-BOHEMIA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO-BALK</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

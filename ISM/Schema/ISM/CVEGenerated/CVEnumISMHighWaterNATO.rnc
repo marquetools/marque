@@ -1,0 +1,13 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:HighWaterNATO"
+CVEnumISMHighWaterNATO.cve = 
+# (U) 
+"NATO-U" | 
+# (U) 
+"NATO-R" | 
+# (U) 
+"NATO-C" | 
+# (U) 
+"NATO-S" | 
+# (U) 
+"NATO-TS"

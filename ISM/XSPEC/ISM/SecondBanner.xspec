@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="./ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="SecondBannerLine">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:secondBannerLine="ACPI AWP"/>
+      </x:context>
+   <x:scenario label="SecondBannerLine-ism:banner">
+      <x:context mode="ism:banner"/>
+      <x:expect
+         label="The banner should be SECRET|ATTORNEY-CLIENT PRIVILEGED INFO/ATTORNEY WORK PRODUCT"
+         test=".='SECRET|ATTORNEY-CLIENT PRIVILEGED INFO/ATTORNEY WORK PRODUCT'"/>
+   </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SecondBannerLine-HVCO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USIC" ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211"
+            ism:resourceElement="true" ism:createDate="2009-06-01" ism:classification="S"
+            ism:ownerProducer="USA" ism:disseminationControls="NF" ism:secondBannerLine="ACPI HVCO"
+            ism:handleViaChannels="TALENT KEYHOLE" ism:derivativelyClassifiedBy="John Smith"
+            ism:derivedFrom="something" ism:declassDate="2034-12-31"/>
+      </x:context>
+      <x:scenario label="SecondBannerLine-HVCO-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//NOFORN|ATTORNEY-CLIENT PRIVILEGED INFO/HANDLE VIA TALENT KEYHOLE CHANNELS ONLY"
+            test=".='SECRET//NOFORN|ATTORNEY-CLIENT PRIVILEGED INFO/HANDLE VIA TALENT KEYHOLE CHANNELS ONLY'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SecondBannerLine-2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:secondBannerLine="CUSPI DPPD SSS"/>
+      </x:context>
+      <x:scenario label="SecondBannerLine-2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET|CONTENTS INCLUDE US PERSON INFORMATION/DELIBERATIVE PROCESS PRIVILEGED DOCUMENT/SOURCE SELECTION SENSITIVE"
+            test=".='SECRET|CONTENTS INCLUDE US PERSON INFORMATION/DELIBERATIVE PROCESS PRIVILEGED DOCUMENT/SOURCE SELECTION SENSITIVE'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

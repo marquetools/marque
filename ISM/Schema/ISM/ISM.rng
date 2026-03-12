@@ -1,0 +1,716 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar ns="urn:us:gov:ic:ism" xmlns:ism="urn:us:gov:ic:ism" xmlns="http://relaxng.org/ns/structure/1.0"
+  datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes" ism:resourceElement="true" ism:compliesWith="USGov" ism:createDate="2011-12-01"
+  ism:DESVersion="202111" ism:classification="U" ism:ownerProducer="USA">
+  
+  <!-- ISM CVES -->
+  <include href="CVEGenerated/CVEnumISM25X.rng"/>
+  <include href="CVEGenerated/CVEnumISMAtomicEnergyMarkings.rng"/>
+  <include href="CVEGenerated/CVEnumISMClassificationAll.rng"/>
+  <include href="CVEGenerated/CVEnumISMCompliesWith.rng"/>
+  <include href="CVEGenerated/CVEnumISMDissem.rng"/>
+  <include href="CVEGenerated/CVEnumISMExemptFrom.rng"/>
+  <include href="CVEGenerated/CVEnumISMNonIC.rng"/>
+  <include href="CVEGenerated/CVEnumISMNonUSControls.rng"/>
+  <include href="CVEGenerated/CVEnumISMNotice.rng"/>
+  <include href="CVEGenerated/CVEnumISMPocType.rng"/>
+  <include href="CVEGenerated/CVEnumISMSAR.rng"/>
+  <include href="CVEGenerated/CVEnumISMSCIControls.rng"/>
+  <include href="CVEGenerated/CVEnumISMCUIBasic.rng"/>
+  <include href="CVEGenerated/CVEnumISMCUISpecified.rng"/>
+  
+  <!-- ISMCAT CVES -->
+  <include href="../ISMCAT/CVEGenerated/CVEnumISMCATOwnerProducer.rng"/>
+  <include href="../ISMCAT/CVEGenerated/CVEnumISMCATRelTo.rng"/>
+  <include href="../ISMCAT/CVEGenerated/CVEnumISMCATFGIOpen.rng"/>
+  <include href="../ISMCAT/CVEGenerated/CVEnumISMCATFGIProtected.rng"/>
+  
+  <define name="atomicEnergyMarkings.att" combine="interleave">
+    <attribute name="atomicEnergyMarkings">
+      <ref name="CVEnumISMatomicEnergyMarkings.cve"/>
+    </attribute>
+  </define>
+  
+  
+  <define name="cuiControlledBy.att" combine="interleave">
+    <attribute name="ism:cuiControlledBy">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="cuiControlledByOffice.att" combine="interleave">
+    <attribute name="ism:cuiControlledByOffice">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="cuiBasic.att" combine="interleave">
+    <attribute name="ism:cuiBasic">
+      <ref name="CVEnumISMCUIBasic.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="cuiSpecified.att" combine="interleave">
+    <attribute name="ism:cuiSpecified">
+      <ref name="CVEnumISMCUISpecified.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="cuiDecontrolDate.att" combine="interleave">
+    <attribute name="ism:cuiDecontrolDate">
+      <data type="date"/>
+    </attribute>
+  </define>
+  
+  <define name="cuiDecontrolEvent.att" combine="interleave">
+    <attribute name="ism:cuiDecontrolEvent">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="cuiPOC.att" combine="interleave">
+    <attribute name="ism:cuiPOC">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="secondBannerLine.att" combine="interleave">
+    <attribute name="ism:secondBannerLine">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="handleViaChannels.att" combine="interleave">
+    <attribute name="ism:handleViaChannels">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="classification.att" combine="interleave">
+    <attribute name="ism:classification">
+      <ref name="CVEnumISMClassificationAll.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="classificationReason.att" combine="interleave">
+    <attribute name="ism:classificationReason">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="classifiedBy.att" combine="interleave">
+    <attribute name="ism:classifiedBy">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="compilationReason.att" combine="interleave">
+    <attribute name="ism:compilationReason">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="compliesWith.att" combine="interleave">
+    <attribute name="ism:compliesWith">
+      <ref name="CVEnumISMCompliesWith.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="createDate.att" combine="interleave">
+    <attribute name="ism:createDate">
+      <data type="date"/>
+    </attribute>
+  </define>
+  
+  <define name="declassDate.att" combine="interleave">
+    <attribute name="ism:declassDate">
+      <data type="date"/>
+    </attribute>
+  </define>
+  
+  <define name="declassEvent.att" combine="interleave">
+    <attribute name="ism:declassEvent">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="declassException.att" combine="interleave">
+    <attribute name="ism:declassException">
+      <ref name="CVEnumISM25X.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="derivativelyClassifiedBy.att" combine="interleave">
+    <attribute name="ism:derivativelyClassifiedBy">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="derivedFrom.att" combine="interleave">
+    <attribute name="ism:derivedFrom">
+      <data type="string">
+        <param name="maxLength">1024</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="DESVersion.att" combine="interleave">
+    <attribute name="ism:DESVersion">
+      <data type="string">
+        <param name="pattern">[0-9]{6}(\.[0-9]{6})?(\-.{1,23})?</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="displayOnlyTo.att" combine="interleave">
+    <attribute name="ism:displayOnlyTo">
+      <ref name="CVEnumISMCATRelTo.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="disseminationControls.att" combine="interleave">
+    <attribute name="ism:disseminationControls">
+      <ref name="CVEnumISMDissem.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="excludeFromRollup.att" combine="interleave">
+    <attribute name="ism:excludeFromRollup">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <define name="exemptFrom.att" combine="interleave">
+    <attribute name="ism:exemptFrom">
+      <ref name="CVEnumISMExemptFrom.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="FGIsourceOpen.att" combine="interleave">
+    <attribute name="ism:FGIsourceOpen">
+      <ref name="CVEnumISMCATFGIOpen.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="FGIsourceProtected.att" combine="interleave">
+    <attribute name="ism:FGIsourceProtected">
+      <ref name="CVEnumISMCATFGIProtected.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="hasApproximateMarkings.att" combine="interleave">
+    <attribute name="ism:hasApproximateMarkings">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <define name="ISMCATCESVersion.att" combine="interleave">
+    <attribute name="ism:ISMCATCESVersion">
+      <data type="string">
+        <param name="maxLength">100</param>
+      </data>
+    </attribute>
+  </define>
+  
+  <define name="ISMNoticeBaseAttributeGroup.att" combine="interleave">
+    <optional>
+      <ref name="noticeType.att"/>
+    </optional>
+    <optional>
+      <ref name="noticeReason.att"/>
+    </optional>
+    <optional>
+      <ref name="noticeDate.att"/>
+    </optional>
+    <optional>
+      <ref name="unregisteredNoticeType.att"/>
+    </optional>
+  </define>
+  
+  <define name="ISMNoticeAttributeGroup.att" combine="interleave">
+    <ref name="ISMNoticeBaseAttributeGroup.att"/>
+    <optional>
+      <ref name="externalNotice.att"/>
+    </optional>
+  </define>
+  
+  <define name="ISMNoticeExternalAttributeGroup.att" combine="interleave">
+    <ref name="ISMNoticeBaseAttributeGroup.att"/>
+    <ref name="externalNotice.att"/>
+  </define>
+  
+  <define name="ISMResourceAttributeGroup.att" combine="interleave">
+    <ref name="resourceElement.att"/>
+    <ref name="compliesWith.att"/>
+    <ref name="createDate.att"/>
+    <optional>
+      <ref name="exemptFrom.att"/>
+    </optional>
+    <optional>
+      <ref name="noAggregation.att"/>
+    </optional>
+  </define>
+  
+  <define name="ISMResourceAttributeOptionGroup.att" combine="interleave">
+    <optional>
+      <ref name="resourceElement.att"/>
+    </optional>
+    <optional>
+      <ref name="compliesWith.att"/>
+    </optional>
+    <optional>
+      <ref name="createDate.att"/>
+    </optional>
+    <optional>
+      <ref name="exemptFrom.att"/>
+    </optional>
+    <optional>
+      <ref name="noAggregation.att"/>
+    </optional>
+  </define>
+  
+  <define name="ISMRootNodeAttributeGroup.att" combine="interleave">
+    <ref name="DESVersion.att"/>
+    <ref name="ISMCATCESVersion.att"/>
+  </define>
+  
+  <define name="ISMRootNodeAttributeOptionGroup.att" combine="interleave">
+    <optional>
+      <ref name="DESVersion.att"/>
+    </optional>
+    <optional>
+      <ref name="ISMCATCESVersion.att"/>
+    </optional>
+  </define>
+  
+  <define name="LongStringType.class" combine="interleave">
+    <data type="string">
+      <param name="maxLength">32000</param>
+    </data>
+  </define>
+  
+  <define name="LongStringWithSecurityType.class" combine="interleave">
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="LongStringType.class"/>
+  </define>
+  
+  <define name="noAggregation.att" combine="interleave">
+    <attribute name="ism:noAggregation">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <define name="nonICmarkings.att" combine="interleave">
+    <attribute name="ism:nonICmarkings">
+      <ref name="CVEnumISMNonIC.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="nonUSControls.att" combine="interleave">
+    <attribute name="ism:nonUSControls">
+      <ref name="CVEnumISMNonUSControls.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="NoticeBaseType.class" combine="interleave">
+    <oneOrMore>
+      <ref name="NoticeText.ele"/>
+    </oneOrMore>
+  </define>
+  
+  <define name="NoticeType.class" combine="interleave">
+    <ref name="NoticeAttributesOptionGroup.att"/>
+    <ref name="NoticeBaseType.class"/>
+  </define>
+  
+  <define name="Notice.ele" combine="interleave">
+    <element name="Notice">
+      <ref name="NoticeType.class"/>
+    </element>
+  </define>
+  
+  <define name="NoticeExternalType.class" combine="interleave">
+    <ref name="NoticeExternalAttributesGroup.att"/>
+    <oneOrMore>
+      <ref name="NoticeText.ele"/>
+    </oneOrMore>
+  </define>
+  
+  <define name="NoticeExternal.ele" combine="interleave">
+    <element name="NoticeExternal">
+      <ref name="NoticeExternalType.class"/>
+    </element>
+  </define>
+  
+  <define name="NoticeAttributesGroup.att" combine="interleave">
+    <ref name="ISMNoticeAttributeGroup.att"/>
+    <ref name="SecurityAttributesGroup.att"/>
+  </define>
+  
+  <define name="NoticeAttributesOptionGroup.att" combine="interleave">
+    <ref name="ISMNoticeAttributeGroup.att"/>
+    <ref name="SecurityAttributesOptionGroup.att"/>
+  </define>
+  
+  <define name="NoticeExternalAttributesGroup.att" combine="interleave">
+    <ref name="ISMNoticeExternalAttributeGroup.att"/>
+    <ref name="SecurityAttributesGroup.att"/>
+  </define>
+  
+  <define name="NoticeExternalAttributesOptionGroup" combine="interleave">
+    <ref name="ISMNoticeExternalAttributeGroup.att"/>
+    <ref name="SecurityAttributesOptionGroup.att"/>
+  </define>
+  
+  <define name="noticeDate.att" combine="interleave">
+    <attribute name="ism:noticeDate">
+      <data type="date"/>
+    </attribute>
+  </define>
+  
+  <define name="NoticeList.ele" combine="interleave">
+    <element name="NoticeList">
+      <ref name="NoticeListType.class"/>
+    </element>
+  </define>
+  
+  <define name="NoticeListType.class" combine="interleave">
+    <ref name="SecurityAttributesGroup.att"/>
+    <oneOrMore>
+      <ref name="Notice.ele"/>
+    </oneOrMore>
+  </define>
+  
+  <define name="NoticeExternalList.ele" combine="interleave">
+    <element name="NoticeExternalList">
+      <ref name="NoticeExternalListType.class"/>
+    </element>
+  </define>
+  
+  <define name="NoticeExternalListType.class" combine="interleave">
+    <ref name="SecurityAttributesGroup.att"/>
+    <oneOrMore>
+      <ref name="NoticeExternal.ele"/>
+    </oneOrMore>
+  </define>
+  
+  <define name="noticeReason.att" combine="interleave">
+    <attribute name="ism.noticeReason">
+     <data type="string">
+       <param name="maxLength">1024</param>
+     </data>
+    </attribute>
+  </define>
+  
+  <define name="NoticeText.ele" combine="interleave">
+    <element name="NoticeText">
+     <data type="string">
+       <param name="maxLength">1024</param>
+     </data>
+    </element>
+  </define>
+  
+  <define name="noticeType.att" combine="interleave">
+    <attribute name="ism.noticeType">
+      <ref name="CVEnumISMNotice.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="externalNotice.att" combine="interleave">
+    <attribute name="ism:externalNotice">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <define name="ownerProducer.att" combine="interleave">
+    <attribute name="ism:ownerProducer">
+      <ref name="CVEnumISMCATOwnerProducer.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="joint.att" combine="interleave">
+    <attribute name="ism:joint">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <define name="POCAttributeGroup.att" combine="interleave">
+    <optional>
+      <ref name="pocType.att"/>
+    </optional>
+  </define>
+  
+  <define name="pocType.att" combine="interleave">
+    <attribute name="ism:pocType">
+      <ref name="CVEnumISMPocType.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="releasableTo.att" combine="interleave">
+    <attribute name="ism:releasableTo">
+      <ref name="CVEnumISMCATRelTo.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="resourceElement.att" combine="interleave">
+    <attribute name="ism:resourceElement">
+      <data type="boolean"/>
+    </attribute>
+  </define>
+  
+  <!-- TEM: duplicate ResourceNodeAttributeGroup.att has another definition in ARH-ISM-NTK.rng which gives
+        the duplicate attribute error when validating ARH-ISM-NTK.rng -->
+  <!--define name="ResourceNodeAttributeGroup.att" combine="interleave">
+    <ref name="ISMResourceAttributeGroup.att"/>
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="ISMNoticeAttributeGroup.att"/>
+  </define-->
+  
+  <define name="ResourceNodeAttributeOptionGroup.att" combine="interleave">
+    <ref name="ISMResourceAttributeOptionGroup.att"/>
+    <ref name="SecurityAttributesOptionGroup.att"/>
+    <ref name="ISMNoticeAttributeGroup.att"/>
+  </define>
+  
+  <define name="SARIdentifier.att" combine="interleave">
+    <attribute name="ism:SARIdentifier">
+      <ref name="CVEnumISMSAR.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="SCIcontrols.att" combine="interleave">
+    <attribute name="ism:SCIcontrols">
+      <ref name="CVEnumISMSCIControls.cve"/>
+    </attribute>
+  </define>
+  
+  <define name="SecurityAttributesGroup.att" combine="interleave">
+    <ref name="classification.att"/>
+    <ref name="ownerProducer.att"/>
+    <optional>
+      <ref name="cuiBasic.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiSpecified.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiDecontrolDate.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiDecontrolEvent.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiControlledBy.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiControlledByOffice.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiPOC.att"/>
+    </optional>
+    <optional>
+      <ref name="joint.att"/>
+    </optional>
+    <optional>
+      <ref name="SCIcontrols.att"/>
+    </optional>
+    <optional>
+      <ref name="SARIdentifier.att"/>
+    </optional>
+    <optional>
+      <ref name="atomicEnergyMarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="disseminationControls.att"/>
+    </optional>
+    <optional>
+      <ref name="displayOnlyTo.att"/>
+    </optional>
+    <optional>
+      <ref name="FGIsourceOpen.att"/>
+    </optional>
+    <optional>
+      <ref name="FGIsourceProtected.att"/>
+    </optional>
+    <optional>
+      <ref name="releasableTo.att"/>
+    </optional>
+    <optional>
+      <ref name="nonICmarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="classifiedBy.att"/>
+    </optional>
+    <optional>
+      <ref name="compilationReason.att"/>
+    </optional>
+    <optional>
+      <ref name="derivativelyClassifiedBy.att"/>
+    </optional>
+    <optional>
+      <ref name="classificationReason.att"/>
+    </optional>
+    <optional>
+      <ref name="nonUSControls.att"/>
+    </optional>
+    <optional>
+      <ref name="derivedFrom.att"/>
+    </optional>
+    <optional>
+      <ref name="declassDate.att"/>
+    </optional>
+    <optional>
+      <ref name="declassEvent.att"/>
+    </optional>
+    <optional>
+      <ref name="declassException.att"/>
+    </optional>
+    <optional>
+      <ref name="hasApproximateMarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="secondBannerLine.att"/>
+    </optional>
+    <optional>
+      <ref name="handleViaChannels.att"/>
+    </optional>
+  </define>
+
+  <define name="SecurityAttributesOptionGroup.att" combine="interleave">
+    <optional>
+      <ref name="cuiBasic.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiSpecified.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiDecontrolDate.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiDecontrolEvent.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiControlledBy.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiControlledByOffice.att"/>
+    </optional>
+    <optional>
+      <ref name="cuiPOC.att"/>
+    </optional>
+    <optional>
+      <ref name="classification.att"/>
+    </optional>
+    <optional>
+      <ref name="ownerProducer.att"/>
+    </optional>
+    <optional>
+      <ref name="joint.att"/>
+    </optional>
+    <optional>
+      <ref name="SCIcontrols.att"/>
+    </optional>
+    <optional>
+      <ref name="SARIdentifier.att"/>
+    </optional>
+    <optional>
+      <ref name="atomicEnergyMarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="disseminationControls.att"/>
+    </optional>
+    <optional>
+      <ref name="displayOnlyTo.att"/>
+    </optional>
+    <optional>
+      <ref name="FGIsourceOpen.att"/>
+    </optional>
+    <optional>
+      <ref name="FGIsourceProtected.att"/>
+    </optional>
+    <optional>
+      <ref name="releasableTo.att"/>
+    </optional>
+    <optional>
+      <ref name="nonICmarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="classifiedBy.att"/>
+    </optional>
+    <optional>
+      <ref name="compilationReason.att"/>
+    </optional>
+    <optional>
+      <ref name="derivativelyClassifiedBy.att"/>
+    </optional>
+    <optional>
+      <ref name="classificationReason.att"/>
+    </optional>
+    <optional>
+      <ref name="nonUSControls.att"/>
+    </optional>
+    <optional>
+      <ref name="derivedFrom.att"/>
+    </optional>
+    <optional>
+      <ref name="declassDate.att"/>
+    </optional>
+    <optional>
+      <ref name="declassEvent.att"/>
+    </optional>
+    <optional>
+      <ref name="declassException.att"/>
+    </optional>
+    <optional>
+      <ref name="hasApproximateMarkings.att"/>
+    </optional>
+    <optional>
+      <ref name="secondBannerLine.att"/>
+    </optional>
+    <optional>
+      <ref name="handleViaChannels.att"/>
+    </optional>
+  </define>
+  
+  <define name="ShortStringType.class" combine="interleave">
+    <data type="string">
+      <param name="maxLength">256</param>
+    </data>
+  </define>
+  
+  <define name="ShortStringWithSecurityType.class" combine="interleave">
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="ShortStringType.class"/>
+  </define>
+  
+  <define name="unregisteredNoticeType.att" combine="interleave">
+    <attribute name="ism:unregisteredNoticeType">
+      <data type="string">
+        <param name="maxLength">2048</param>
+      </data>
+    </attribute>
+  </define>
+  
+</grammar>

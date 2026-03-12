@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<cve:CVE xmlns:cve="urn:us:gov:ic:cve" xmlns:ism="urn:us:gov:ic:ism"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ism:compliesWith="USGov USIC"
+	ism:ownerProducer="USA" ism:classification="U" ism:DESVersion="202111"
+	ism:ISMCATCESVersion="202205" ism:resourceElement="true" CVEVersion="2.1"
+	specVersion="202111.202211" ism:createDate="2012-01-04"
+	xsi:schemaLocation="urn:us:gov:ic:cve ../CveSchema/CVEXml.xsd">
+
+	<cve:IRM>
+		<URN xmlns="urn:us:gov:ic:cve">urn:us:gov:ic:cvenum:ism:secondbannerline</URN>
+		<Title xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">CVEnumISMSecondBannerLine</Title>
+		<Description xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">All currently valid markings that can appear in the second banner line. 
+			This CVE is used by @ism:secondBannerLine.</Description>
+
+		<cve:Created>2019-12-23T18:44:00-04:00</cve:Created>
+
+		<Source ism:classification="U" ism:ownerProducer="USA" xmlns="urn:us:gov:ic:cve">Classification Management Tools (CMT)</Source>
+		<PointOfContact ism:classification="U" ism:ownerProducer="USA" xmlns="urn:us:gov:ic:cve">
+			<Name>Office IC CIO</Name>
+			<Email>ic-standards-support@odni.gov</Email>
+		</PointOfContact>
+	</cve:IRM>
+
+	<cve:Enumeration multivalue="true" ism:ownerProducer="USA" ism:classification="U">
+		
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">ACPI</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">ATTORNEY-CLIENT PRIVILEGED INFO</Description>
+		</Term>
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">AWP</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">ATTORNEY WORK PRODUCT</Description>
+		</Term>
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">CUSPI</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">CONTENTS INCLUDE US PERSON INFORMATION</Description>
+		</Term>
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">DPPD</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">DELIBERATIVE PROCESS PRIVILEGED DOCUMENT</Description>
+		</Term>
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">HVCO</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">HANDLE VIA CHANNELS ONLY</Description>
+		</Term>
+		<Term xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+			<Value ism:classification="U" ism:ownerProducer="USA">SSS</Value>
+			<Description ism:classification="U" ism:ownerProducer="USA">SOURCE SELECTION SENSITIVE</Description>
+		</Term>
+	</cve:Enumeration>
+</cve:CVE>

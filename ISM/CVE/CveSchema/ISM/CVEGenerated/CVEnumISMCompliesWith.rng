@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:complieswith">
+   <define name="CVEnumISMCompliesWith.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>USGov</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>USIC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>USDOD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OtherAuthority</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>USA-CUI-ONLY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>USA-CUI</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

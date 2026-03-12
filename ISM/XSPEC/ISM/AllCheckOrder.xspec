@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+               xmlns:ism="urn:us:gov:ic:ism"
+               stylesheet="./ISMAllTogetherForXSPEC.xsl">
+   
+  
+   <x:import href="./OrderingTests/SCIOrder.xspec"/>
+   <x:import href="./OrderingTests/SarOrder.xspec"/>
+   <x:import href="./OrderingTests/RELOrder.xspec"/>
+   <x:import href="./OrderingTests/FGIOrder.xspec"/>
+   <x:import href="./OrderingTests/DissemOrder.xspec"/>
+   <x:import href="./OrderingTests/DisplayOnlyOrder.xspec"/>
+   <x:import href="./OrderingTests/AEAOrder.xspec"/>
+   <x:import href="./OrderingTests/nonICmarkingsOrder.xspec"/>
+   <x:import href="./OrderingTests/OwnerProducerOrder.xspec"/>
+   <x:import href="./OrderingTests/overallRelOrder.xspec"/>
+   
+</x:description>

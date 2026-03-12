@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismsecondbannerline="urn:us:gov:ic:cvenum:ism:secondbannerline"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:secondbannerline"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMSecondBannerLine Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMSecondBannerLine.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMSecondBannerLineValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) All currently valid markings that can appear in the second banner line. 
+			This CVE is used by @ism:secondBannerLine.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMSecondBannerLine.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="ACPI">
+            <xsd:annotation>
+               <xsd:documentation>ATTORNEY-CLIENT PRIVILEGED INFO</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="AWP">
+            <xsd:annotation>
+               <xsd:documentation>ATTORNEY WORK PRODUCT</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CUSPI">
+            <xsd:annotation>
+               <xsd:documentation>CONTENTS INCLUDE US PERSON INFORMATION</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DPPD">
+            <xsd:annotation>
+               <xsd:documentation>DELIBERATIVE PROCESS PRIVILEGED DOCUMENT</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HVCO">
+            <xsd:annotation>
+               <xsd:documentation>HANDLE VIA CHANNELS ONLY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SSS">
+            <xsd:annotation>
+               <xsd:documentation>SOURCE SELECTION SENSITIVE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMSecondBannerLine">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismsecondbannerline:CVEnumISMSecondBannerLine definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismsecondbannerline:CVEnumISMSecondBannerLineValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismsecondbannerline:CVEnumISMSecondBannerLineValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="6"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

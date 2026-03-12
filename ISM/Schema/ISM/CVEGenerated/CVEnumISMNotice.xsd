@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismnotice="urn:us:gov:ic:cvenum:ism:notice"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:notice"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMNotice Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMNotice.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMNoticeValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) All currently authorized Notice values. This CVE is used by @ism:noticeType.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMNotice.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="FISA">
+            <xsd:annotation>
+               <xsd:documentation>FISA Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RAWFISA">
+            <xsd:annotation>
+               <xsd:documentation>RAWFISA Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="IMC">
+            <xsd:annotation>
+               <xsd:documentation>IMCON Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CNWDI">
+            <xsd:annotation>
+               <xsd:documentation>Controled Nuclear Weapon Design Information Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RD">
+            <xsd:annotation>
+               <xsd:documentation>RD Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FRD">
+            <xsd:annotation>
+               <xsd:documentation>FRD Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DS">
+            <xsd:annotation>
+               <xsd:documentation>LIMDIS caveat</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="LES">
+            <xsd:annotation>
+               <xsd:documentation>LES Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="LES-NF">
+            <xsd:annotation>
+               <xsd:documentation>LES-NF Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DSEN">
+            <xsd:annotation>
+               <xsd:documentation>DSEN Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-A">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement A from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-B">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement B from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-C">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement C from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-D">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement D from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-E">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement E from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-F">
+            <xsd:annotation>
+               <xsd:documentation>DoD Distribution statement F from DoD Directive 5230.24</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="US-Person">
+            <xsd:annotation>
+               <xsd:documentation>US Person info Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="pre13526ORCON">
+            <xsd:annotation>
+               <xsd:documentation>Indicates that an instance document must abide by rules pertaining to ORIGINATOR CONTROLLED data issued prior to Executive Order 13526.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="POC">
+            <xsd:annotation>
+               <xsd:documentation>Indicates that the contents of this notice specify the contact information for a required point-of-contact.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="COMSEC">
+            <xsd:annotation>
+               <xsd:documentation>COMSEC Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SSI">
+            <xsd:annotation>
+               <xsd:documentation>Indicates that this is the notice for Sensitive Security Information</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RSEN">
+            <xsd:annotation>
+               <xsd:documentation>Risk Sensitive Notice</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="IMCON_RSEN">
+            <xsd:annotation>
+               <xsd:documentation>Indicates SAT warning statements include IMCON and RSEN markings</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="GEOCAP">
+            <xsd:annotation>
+               <xsd:documentation>GEOCAP Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO">
+            <xsd:annotation>
+               <xsd:documentation>NATO Warning statement</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RC_Dissemination_Control_Required">
+            <xsd:annotation>
+               <xsd:documentation>This product was collected in a restricted collection mode. Redaction, chipping and release determination shall not result in more permissive release than NOFORN regardless of the Security Indicator Codes (SIC) associated with the product</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="ITAR-EAR">
+            <xsd:annotation>
+               <xsd:documentation>Warning statement for International Traffic in Arms Regulations (ITAR) and
+				Export Administration Regulations (EAR) in accordance with DoD 5230.24, Distribution Statements on Technical Documents.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMNotice">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismnotice:CVEnumISMNotice definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismnotice:CVEnumISMNoticeValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismnotice:CVEnumISMNoticeValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="27"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

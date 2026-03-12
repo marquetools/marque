@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:pocType">
+   <define name="CVEnumISMPocType.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>ICD-710</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-B</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-C</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-D</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-E</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-F</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

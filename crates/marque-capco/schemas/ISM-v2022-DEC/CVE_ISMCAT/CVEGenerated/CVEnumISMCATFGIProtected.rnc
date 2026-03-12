@@ -1,0 +1,685 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ismcat:fgiprotected"
+CVEnumISMCATFGIProtected.cve = list { 
+# (U) 
+"FGI"?, 
+# (U) 
+"ABW"?, 
+# (U) 
+"AFG"?, 
+# (U) 
+"AGO"?, 
+# (U) 
+"AIA"?, 
+# (U) 
+"ALB"?, 
+# (U) 
+"AND"?, 
+# (U) 
+"ARE"?, 
+# (U) 
+"ARG"?, 
+# (U) 
+"ARM"?, 
+# (U) 
+"ASM"?, 
+# (U) 
+"ATA"?, 
+# (U) 
+"ATF"?, 
+# (U) 
+"ATG"?, 
+# (U) 
+"AUS"?, 
+# (U) 
+"AUT"?, 
+# (U) 
+"AX2"?, 
+# (U) 
+"AX3"?, 
+# (U) 
+"AZE"?, 
+# (U) 
+"BDI"?, 
+# (U) 
+"BEL"?, 
+# (U) 
+"BEN"?, 
+# (U) 
+"BES"?, 
+# (U) 
+"BFA"?, 
+# (U) 
+"BGD"?, 
+# (U) 
+"BGR"?, 
+# (U) 
+"BHR"?, 
+# (U) 
+"BHS"?, 
+# (U) 
+"BIH"?, 
+# (U) 
+"BLM"?, 
+# (U) 
+"BLR"?, 
+# (U) 
+"BLZ"?, 
+# (U) 
+"BMU"?, 
+# (U) 
+"BOL"?, 
+# (U) 
+"BRA"?, 
+# (U) 
+"BRB"?, 
+# (U) 
+"BRN"?, 
+# (U) 
+"BTN"?, 
+# (U) 
+"BVT"?, 
+# (U) 
+"BWA"?, 
+# (U) 
+"CAF"?, 
+# (U) 
+"CAN"?, 
+# (U) 
+"CCK"?, 
+# (U) 
+"CHE"?, 
+# (U) 
+"CHL"?, 
+# (U) 
+"CHN"?, 
+# (U) 
+"CIV"?, 
+# (U) 
+"CMR"?, 
+# (U) 
+"COD"?, 
+# (U) 
+"COG"?, 
+# (U) 
+"COK"?, 
+# (U) 
+"COL"?, 
+# (U) 
+"COM"?, 
+# (U) 
+"CPT"?, 
+# (U) 
+"CPV"?, 
+# (U) 
+"CRI"?, 
+# (U) 
+"CUB"?, 
+# (U) 
+"CUW"?, 
+# (U) 
+"CXR"?, 
+# (U) 
+"CYM"?, 
+# (U) 
+"CYP"?, 
+# (U) 
+"CZE"?, 
+# (U) 
+"DEU"?, 
+# (U) 
+"DGA"?, 
+# (U) 
+"DJI"?, 
+# (U) 
+"DMA"?, 
+# (U) 
+"DNK"?, 
+# (U) 
+"DOM"?, 
+# (U) 
+"DZA"?, 
+# (U) 
+"ECU"?, 
+# (U) 
+"EGY"?, 
+# (U) 
+"ERI"?, 
+# (U) 
+"ESH"?, 
+# (U) 
+"ESP"?, 
+# (U) 
+"EST"?, 
+# (U) 
+"ETH"?, 
+# (U) 
+"FIN"?, 
+# (U) 
+"FJI"?, 
+# (U) 
+"FLK"?, 
+# (U) 
+"FRA"?, 
+# (U) 
+"FRO"?, 
+# (U) 
+"FSM"?, 
+# (U) 
+"GAB"?, 
+# (U) 
+"GBR"?, 
+# (U) 
+"GEO"?, 
+# (U) 
+"GGY"?, 
+# (U) 
+"GHA"?, 
+# (U) 
+"GIB"?, 
+# (U) 
+"GIN"?, 
+# (U) 
+"GLP"?, 
+# (U) 
+"GMB"?, 
+# (U) 
+"GNB"?, 
+# (U) 
+"GNQ"?, 
+# (U) 
+"GRC"?, 
+# (U) 
+"GRD"?, 
+# (U) 
+"GRL"?, 
+# (U) 
+"GTM"?, 
+# (U) 
+"GUF"?, 
+# (U) 
+"GUM"?, 
+# (U) 
+"GUY"?, 
+# (U) 
+"HKG"?, 
+# (U) 
+"HMD"?, 
+# (U) 
+"HND"?, 
+# (U) 
+"HRV"?, 
+# (U) 
+"HTI"?, 
+# (U) 
+"HUN"?, 
+# (U) 
+"IDN"?, 
+# (U) 
+"IMN"?, 
+# (U) 
+"IND"?, 
+# (U) 
+"IOT"?, 
+# (U) 
+"IRL"?, 
+# (U) 
+"IRN"?, 
+# (U) 
+"IRQ"?, 
+# (U) 
+"ISL"?, 
+# (U) 
+"ISR"?, 
+# (U) 
+"ITA"?, 
+# (U) 
+"JAM"?, 
+# (U) 
+"JEY"?, 
+# (U) 
+"JOR"?, 
+# (U) 
+"JPN"?, 
+# (U) 
+"KAZ"?, 
+# (U) 
+"KEN"?, 
+# (U) 
+"KGZ"?, 
+# (U) 
+"KHM"?, 
+# (U) 
+"KIR"?, 
+# (U) 
+"KNA"?, 
+# (U) 
+"KOR"?, 
+# (U) 
+"KWT"?, 
+# (U) 
+"LAO"?, 
+# (U) 
+"LBN"?, 
+# (U) 
+"LBR"?, 
+# (U) 
+"LBY"?, 
+# (U) 
+"LCA"?, 
+# (U) 
+"LIE"?, 
+# (U) 
+"LKA"?, 
+# (U) 
+"LSO"?, 
+# (U) 
+"LTU"?, 
+# (U) 
+"LUX"?, 
+# (U) 
+"LVA"?, 
+# (U) 
+"MAC"?, 
+# (U) 
+"MAF"?, 
+# (U) 
+"MAR"?, 
+# (U) 
+"MCO"?, 
+# (U) 
+"MDA"?, 
+# (U) 
+"MDG"?, 
+# (U) 
+"MDV"?, 
+# (U) 
+"MEX"?, 
+# (U) 
+"MHL"?, 
+# (U) 
+"MKD"?, 
+# (U) 
+"MLI"?, 
+# (U) 
+"MLT"?, 
+# (U) 
+"MMR"?, 
+# (U) 
+"MNE"?, 
+# (U) 
+"MNG"?, 
+# (U) 
+"MNP"?, 
+# (U) 
+"MOZ"?, 
+# (U) 
+"MRT"?, 
+# (U) 
+"MSR"?, 
+# (U) 
+"MTQ"?, 
+# (U) 
+"MUS"?, 
+# (U) 
+"MWI"?, 
+# (U) 
+"MYS"?, 
+# (U) 
+"MYT"?, 
+# (U) 
+"NAM"?, 
+# (U) 
+"NCL"?, 
+# (U) 
+"NER"?, 
+# (U) 
+"NFK"?, 
+# (U) 
+"NGA"?, 
+# (U) 
+"NIC"?, 
+# (U) 
+"NIU"?, 
+# (U) 
+"NLD"?, 
+# (U) 
+"NOR"?, 
+# (U) 
+"NPL"?, 
+# (U) 
+"NRU"?, 
+# (U) 
+"NZL"?, 
+# (U) 
+"OMN"?, 
+# (U) 
+"PAK"?, 
+# (U) 
+"PAN"?, 
+# (U) 
+"PCN"?, 
+# (U) 
+"PER"?, 
+# (U) 
+"PHL"?, 
+# (U) 
+"PLW"?, 
+# (U) 
+"PNG"?, 
+# (U) 
+"POL"?, 
+# (U) 
+"PRI"?, 
+# (U) 
+"PRK"?, 
+# (U) 
+"PRT"?, 
+# (U) 
+"PRY"?, 
+# (U) 
+"PYF"?, 
+# (U) 
+"QAT"?, 
+# (U) 
+"REU"?, 
+# (U) 
+"ROU"?, 
+# (U) 
+"RUS"?, 
+# (U) 
+"RWA"?, 
+# (U) 
+"SAU"?, 
+# (U) 
+"SDN"?, 
+# (U) 
+"SEN"?, 
+# (U) 
+"SGP"?, 
+# (U) 
+"SGS"?, 
+# (U) 
+"SHN"?, 
+# (U) 
+"SLB"?, 
+# (U) 
+"SLE"?, 
+# (U) 
+"SLV"?, 
+# (U) 
+"SMR"?, 
+# (U) 
+"SOM"?, 
+# (U) 
+"SPM"?, 
+# (U) 
+"SRB"?, 
+# (U) 
+"SSD"?, 
+# (U) 
+"STP"?, 
+# (U) 
+"SUR"?, 
+# (U) 
+"SVK"?, 
+# (U) 
+"SVN"?, 
+# (U) 
+"SWE"?, 
+# (U) 
+"SWZ"?, 
+# (U) 
+"SXM"?, 
+# (U) 
+"SYC"?, 
+# (U) 
+"SYR"?, 
+# (U) 
+"TCA"?, 
+# (U) 
+"TCD"?, 
+# (U) 
+"TGO"?, 
+# (U) 
+"THA"?, 
+# (U) 
+"TJK"?, 
+# (U) 
+"TKL"?, 
+# (U) 
+"TKM"?, 
+# (U) 
+"TLS"?, 
+# (U) 
+"TON"?, 
+# (U) 
+"TTO"?, 
+# (U) 
+"TUN"?, 
+# (U) 
+"TUR"?, 
+# (U) 
+"TUV"?, 
+# (U) 
+"TWN"?, 
+# (U) 
+"TZA"?, 
+# (U) 
+"UGA"?, 
+# (U) 
+"UKR"?, 
+# (U) 
+"URY"?, 
+# (U) 
+"UZB"?, 
+# (U) 
+"VAT"?, 
+# (U) 
+"VCT"?, 
+# (U) 
+"VEN"?, 
+# (U) 
+"VGB"?, 
+# (U) 
+"VIR"?, 
+# (U) 
+"VNM"?, 
+# (U) 
+"VUT"?, 
+# (U) 
+"WLF"?, 
+# (U) 
+"WSM"?, 
+# (U) 
+"XAC"?, 
+# (U) 
+"XAZ"?, 
+# (U) 
+"XBI"?, 
+# (U) 
+"XBK"?, 
+# (U) 
+"XCR"?, 
+# (U) 
+"XCS"?, 
+# (U) 
+"XCY"?, 
+# (U) 
+"XEU"?, 
+# (U) 
+"XGL"?, 
+# (U) 
+"XGZ"?, 
+# (U) 
+"XHO"?, 
+# (U) 
+"XJA"?, 
+# (U) 
+"XJM"?, 
+# (U) 
+"XJN"?, 
+# (U) 
+"XJV"?, 
+# (U) 
+"XKM"?, 
+# (U) 
+"XKN"?, 
+# (U) 
+"XKR"?, 
+# (U) 
+"XKS"?, 
+# (U) 
+"XMW"?, 
+# (U) 
+"XNV"?, 
+# (U) 
+"XPL"?, 
+# (U) 
+"XPR"?, 
+# (U) 
+"XQZ"?, 
+# (U) 
+"XSP"?, 
+# (U) 
+"XSV"?, 
+# (U) 
+"XTR"?, 
+# (U) 
+"XWB"?, 
+# (U) 
+"XWK"?, 
+# (U) 
+"XXD"?, 
+# (U) 
+"YEM"?, 
+# (U) 
+"ZAF"?, 
+# (U) 
+"ZMB"?, 
+# (U) 
+"ZWE"?, 
+# (U) 
+"ACGU"?, 
+# (U) 
+"AMSP"?, 
+# (U) 
+"AOSC"?, 
+# (U) 
+"APFS"?, 
+# (U) 
+"ASEA"?, 
+# (U) 
+"AUSTRALIA_GROUP"?, 
+# (U) 
+"BHTF"?, 
+# (U) 
+"BWCS"?, 
+# (U) 
+"CFCK"?, 
+# (U) 
+"CFOD"?, 
+# (U) 
+"CFUP"?, 
+# (U) 
+"CLFC"?, 
+# (U) 
+"CMFC"?, 
+# (U) 
+"CMFP"?, 
+# (U) 
+"CPMT"?, 
+# (U) 
+"CTOC"?, 
+# (U) 
+"CWCS"?, 
+# (U) 
+"ECTF"?, 
+# (U) 
+"EFOR"?, 
+# (U) 
+"EU"?, 
+# (U) 
+"EUDA"?, 
+# (U) 
+"FRME"?, 
+# (U) 
+"FVEY"?, 
+# (U) 
+"GCCH"?, 
+# (U) 
+"GCTF"?, 
+# (U) 
+"GFNX"?, 
+# (U) 
+"GMIF"?, 
+# (U) 
+"IESC"?, 
+# (U) 
+"IMSC"?, 
+# (U) 
+"IMSP"?, 
+# (U) 
+"IPMC"?, 
+# (U) 
+"IRKS"?, 
+# (U) 
+"ISAF"?, 
+# (U) 
+"ISSG"?, 
+# (U) 
+"KFOR"?, 
+# (U) 
+"MCFI"?, 
+# (U) 
+"MESF"?, 
+# (U) 
+"MGEU"?, 
+# (U) 
+"MIFH"?, 
+# (U) 
+"MLEC"?, 
+# (U) 
+"MNTF"?, 
+# (U) 
+"MPFL"?, 
+# (U) 
+"NACT"?, 
+# (U) 
+"NATO"?, 
+# (U) 
+"NATO:[a-zA-Z\-_]{1,256}"?, 
+# (U) 
+"NCFE"?, 
+# (U) 
+"NKIC"?, 
+# (U) 
+"NRDC"?, 
+# (U) 
+"NSG"?, 
+# (U) 
+"OSAG"?, 
+# (U) 
+"OSTY"?, 
+# (U) 
+"PAWA"?, 
+# (U) 
+"PGMF"?, 
+# (U) 
+"PSMX"?, 
+# (U) 
+"RISC"?, 
+# (U) 
+"RSMA"?, 
+# (U) 
+"SFOR"?, 
+# (U) 
+"SOFP"?, 
+# (U) 
+"SPAA"?, 
+# (U) 
+"TEYE"?, 
+# (U) 
+"TFTC"?, 
+# (U) 
+"UNCK"? } 

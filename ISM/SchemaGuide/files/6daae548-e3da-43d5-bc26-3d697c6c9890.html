@@ -1,0 +1,659 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></meta>
+      <title>Schema documentation for component ISMNoticeAttributeGroup</title>
+      <link rel="stylesheet" href="docHtml.css" type="text/css"></link>
+      <script type="text/javascript" xml:space="preserve"><!--
+
+        var usedByBoxes= new Array('usedBy_ISMNoticeAttributeGroup');
+var sourceBoxes= new Array('source_ISMNoticeAttributeGroup');
+var diagramBoxes= new Array('diagram_ISMNoticeAttributeGroup');
+var annotationBoxes= new Array('annotations_ISMNoticeAttributeGroup');
+var attributesBoxes= new Array('attributes_ISMNoticeAttributeGroup');
+
+      
+        var button_prefix = 'button_';
+        
+        /**
+        * Returns an element in the current HTML document.
+        *
+        * @param elementID Identifier of HTML element
+        * @return               HTML element object
+        */
+        function getElementObject(elementID) {
+            var elemObj = null;
+            if (document.getElementById) {
+                elemObj = document.getElementById(elementID);
+            }
+            return elemObj;
+        }
+        
+        /**
+        * Switches the state of a collapseable box, e.g.
+        * if it's opened, it'll be closed, and vice versa.
+        *
+        * @param boxID Identifier of box
+        */
+        function switchState(boxID) {
+            var boxObj = getElementObject(boxID);
+            var buttonObj = getElementObject(button_prefix + boxID);
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else if (boxObj.style.display == "none") {
+                // Box is closed, so open it
+                openBox(boxObj, buttonObj);
+            } else if (boxObj.style.display == "block") {
+                // Box is opened, so close it
+                closeBox(boxObj, buttonObj);
+            }
+        }
+        
+        /**
+        * Opens a collapseable box.
+        *
+        * @param boxObj       Collapseable box
+        * @param buttonObj Button controlling box
+        */
+        function openBox(boxObj, buttonObj) {
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else {
+                // Change 'display' CSS property of box
+                boxObj.style.display = "block";
+                
+                // Change text of button
+                if (boxObj.style.display == "block") {
+                    buttonObj.src = "img/btM.gif";
+                }
+            }
+        }
+        
+        /**
+        * Closes a collapseable box.
+        *
+        * @param boxObj       Collapseable box
+        * @param buttonObj Button controlling box
+        */
+        function closeBox(boxObj, buttonObj) {
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else {
+                // Change 'display' CSS property of box
+                boxObj.style.display = "none";
+                
+                // Change text of button
+                if (boxObj.style.display == "none") {
+                    buttonObj.src = "img/btP.gif";
+                }
+            }
+        }
+    
+       function switchStateForAll(buttonObj, boxList) {
+            if (buttonObj == null) {
+                // button not found
+            } else if (buttonObj.value == "+") {
+                // Expand all
+                expandAll(boxList);
+                buttonObj.value = "-";
+            } else if (buttonObj.value == "-") {
+                // Collapse all
+                collapseAll(boxList);
+                buttonObj.value = "+";
+            }
+        }
+        
+        /**
+        * Closes all boxes in a given list.
+        *
+        * @param boxList Array of box IDs
+        */
+        function collapseAll(boxList) {
+            var idx;
+            for (idx = 0; idx < boxList.length; idx++) {
+                var boxObj = getElementObject(boxList[idx]);
+                var buttonObj = getElementObject(button_prefix + boxList[idx]);
+                closeBox(boxObj, buttonObj);
+            }
+        }
+            
+        /**
+        * Open all boxes in a given list.
+        *
+        * @param boxList Array of box IDs
+        */
+        function expandAll(boxList) {
+            var idx;
+            for (idx = 0; idx < boxList.length; idx++) {
+                var boxObj = getElementObject(boxList[idx]);
+                var buttonObj = getElementObject(button_prefix + boxList[idx]);
+                openBox(boxObj, buttonObj);
+            }
+        }
+        
+        /**
+         * Update the message presented in the title of the html page.
+         * - If the documentation was splited by namespace we present something like: "Documentation for namespace 'ns'"
+         * - If the documentation was splited by location we present somehing like: "Documentation for 'Schema.xsd'"
+         * - If no split we always present: "Documentation for 'MainSchema.xsd'"
+         */
+        function updatePageTitle(message) {
+            top.document.title = message;
+        }
+        
+          
+                    
+         /**
+          * Finds an HTML element by its ID and makes it floatable over the normal content.
+          *
+          * @param x_displacement The difference in pixels to the right side of the window from 
+          *           the left side of the element.
+          * @param y_displacement The difference in pixels to the right side of the window from 
+          *           the top of the element.          
+          */
+         function findAndFloat(id, x_displacement, y_displacement){
+
+            var element = getElementObject(id);            
+            
+            window[id + "_obj"] = element;
+            
+            if(document.layers) {
+               element.style = element;
+            }
+            
+            element.current_y = y_displacement;      
+            element.first_time = true;
+         
+            element.floatElement = function(){
+               // It may be closed by an user action.
+                
+               // Target X and Y coordinates.
+               var x, y;
+               
+               var myWidth = 0, myHeight = 0;
+               if( typeof( window.innerWidth ) == 'number' ) {
+                  //Non-IE
+                  myWidth = window.innerWidth;
+                  myHeight = window.innerHeight;
+               } else if( document.documentElement && ( document.documentElement.clientWidth || document.documentElement.clientHeight ) ) {
+                  //IE 6+ in 'standards compliant mode'
+                  myWidth = document.documentElement.clientWidth;
+                  myHeight = document.documentElement.clientHeight;
+               } else if( document.body && ( document.body.clientWidth || document.body.clientHeight ) ) {
+                  //IE 4 compatible
+                  myWidth = document.body.clientWidth;
+                  myHeight = document.body.clientHeight;
+               }
+               
+               
+               x = myWidth - x_displacement;
+               
+               var ns = (navigator.appName.indexOf("Netscape") != -1);               
+               y = ns ? pageYOffset : document.documentElement && document.documentElement.scrollTop ? 
+                  document.documentElement.scrollTop : document.body.scrollTop;               
+               y = y + y_displacement;               
+               
+               // The current y is the current coordinate of the floating element.
+               // This should be at the limit the y target coordinate.
+               this.current_y += (y - this.current_y)/1.25;
+               
+               // Add the pixels constant after the values
+               // and move the element.
+               var px = document.layers ? "" : "px";
+               this.style.left =  x + px;
+               this.style.top =  this.current_y + px;
+                              
+               setTimeout(this.id + "_obj.floatElement()", 100);
+            }
+            
+            element.floatElement();
+            return element;
+          }
+
+         /**
+          * Finds an HTML element by its ID and makes it floatable over the normal content.
+          *
+          * @param x_displacement The difference in pixels to the right side of the window from 
+          *           the left side of the element.
+          * @param y_displacement The difference in pixels to the right side of the window from 
+          *           the top of the element.          
+          */
+         function selectTOCGroupBy(id, isChunked, indexFileLocation, indexFileNamespace, indexFileComponent){
+
+            if (!isChunked) {
+             var selectIds = new Array('toc_group_by_namespace', 'toc_group_by_location', 'toc_group_by_component_type');
+             // Make all the tabs invisible.
+               for (i = 0; i < 3; i++){
+                  var tab = getElementObject(selectIds[i]);
+                  tab.style.display = 'none';
+               }
+               var selTab = getElementObject(id);
+               selTab.style.display = 'block';
+            } else {
+             if (id == 'toc_group_by_namespace') {
+               parent.indexFrame.location = indexFileNamespace;
+             } else  if (id == 'toc_group_by_location') {
+               parent.indexFrame.location = indexFileLocation;
+             } else  if (id == 'toc_group_by_component_type') {
+              parent.indexFrame.location = indexFileComponent;
+             }
+            }
+         }
+          
+
+    
+                    //
+--></script>
+   </head>
+   <body>
+      <div id="global_controls" class="globalControls" style="position:absolute;right:0;">
+         <table class="rt">
+            <tr>
+               <td class="rt_cornerTopLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_lineTop" rowspan="1" colspan="1"></td>
+               <td class="rt_cornerTopRight" rowspan="1" colspan="1"></td>
+            </tr>
+            <tr>
+               <td class="rt_lineLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_content" rowspan="1" colspan="1">
+                  <h3>Showing:</h3>
+                  <table>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, annotationBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Annotations</span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, attributesBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Attributes </span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, diagramBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Diagrams</span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, sourceBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Source</span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, usedByBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Used by </span>
+                        </td>
+                     </tr>
+                  </table>
+                  <div align="right">
+                     <span>
+                        <input type="button" onclick="getElementObject('global_controls').style.display = 'none';" value="Close"></input>
+                     </span>
+                  </div>
+               </td>
+               <td class="rt_lineRight" rowspan="1" colspan="1"></td>
+            </tr>
+            <tr>
+               <td class="rt_cornerBottomLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_lineBottom" rowspan="1" colspan="1"></td>
+               <td class="rt_cornerBottomRight" rowspan="1" colspan="1"></td>
+            </tr>
+         </table>
+      </div>
+      <a id="ISMNoticeAttributeGroup" shape="rect"><!--
+
+--></a>
+      <div class="componentTitle">Attribute Group <span class="qname">ISMNoticeAttributeGroup</span>
+      </div>
+      <table class="rt">
+         <tr>
+            <td class="rt_cornerTopLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_lineTop" rowspan="1" colspan="1"></td>
+            <td class="rt_cornerTopRight" rowspan="1" colspan="1"></td>
+         </tr>
+         <tr>
+            <td class="rt_lineLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_content" rowspan="1" colspan="1">
+               <table class="component">
+                  <tbody>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <b>Namespace</b>
+                        </td>
+                        <td rowspan="1" colspan="1">urn:us:gov:ic:ism</td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Annotations</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_annotations_ISMNoticeAttributeGroup" type="image" src="img/btM.gif" value="-" onclick="switchState('annotations_ISMNoticeAttributeGroup');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="annotations_ISMNoticeAttributeGroup" style="display:block">
+                              <div class="annotation">
+                                 				        
+                                 <p>The group of Information
+                                    					Security Marking attributes for use on a notice element adding optional
+                                    					externalNotice</p>
+                                 			      </div>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Diagram</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_diagram_ISMNoticeAttributeGroup" type="image" src="img/btM.gif" value="-" onclick="switchState('diagram_ISMNoticeAttributeGroup');" class="control"></input>
+                           </div>
+                        </td>
+                        <td class="diagram" rowspan="1" colspan="1">
+                           <div id="diagram_ISMNoticeAttributeGroup" style="display:block">
+                              <img alt="Diagram" border="0" src="img/b53a28a1-5d43-47fc-ae50-dcf133bc1010.png" usemap="#IC-ISM_xsd_Attribute_Group_ISMNoticeAttributeGroup"></img>
+                              <map name="IC-ISM_xsd_Attribute_Group_ISMNoticeAttributeGroup" id="IC-ISM_xsd_Attribute_Group_ISMNoticeAttributeGroup">
+                                 <area alt="IC-ISM_xsd_Attribute_noticeType.tmp#urn_us_gov_ic_ism_noticeType" href="IC-ISM_xsd_Attribute_noticeType.html#urn_us_gov_ic_ism_noticeType" coords="255,44,367,68" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_noticeProseID.tmp#noticeProseID" href="IC-ISM_xsd_Attribute_noticeProseID.html#noticeProseID" coords="255,134,384,158" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_noticeReason.tmp#noticeReason" href="IC-ISM_xsd_Attribute_noticeReason.html#noticeReason" coords="255,211,382,235" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_noticeDate.tmp#noticeDate" href="IC-ISM_xsd_Attribute_noticeDate.html#noticeDate" coords="255,288,366,312" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_unregisteredNoticeType.tmp#unregisteredNoticeType" href="fbf76e0d-e50b-4dbd-bf2b-addec9eb9a98.html#unregisteredNoticeType" coords="255,365,441,389" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_Group_ISMNoticeBaseAttributeGroup.tmp#ISMNoticeBaseAttributeGroup" href="6d3b9f58-b0ef-4dbf-b938-008a7db7e6af.html#ISMNoticeBaseAttributeGroup" coords="244,3,466,29" shape="rect"></area>
+                                 <area alt="IC-ISM_xsd_Attribute_externalNotice.tmp#externalNotice" href="IC-ISM_xsd_Attribute_externalNotice.html#externalNotice" coords="241,492,373,516" shape="rect"></area>
+                              </map>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Used by</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_usedBy_ISMNoticeAttributeGroup" type="image" src="img/btM.gif" value="-" onclick="switchState('usedBy_ISMNoticeAttributeGroup');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="usedBy_ISMNoticeAttributeGroup" style="display:block">
+                              <table class="usedByTable">
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">Attribute Groups </td>
+                                    <td rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="d4af8433-ea52-4557-9fbf-435a9dc053ed.html#NoticeAttributesGroup" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component NoticeAttributesGroup')" shape="rect">NoticeAttributesGroup</a>
+                                       </b>, <b>
+                                          <a href="b7f2f790-47c8-4604-b193-07d6a9996e7a.html#NoticeAttributesOptionGroup" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component NoticeAttributesOptionGroup')" shape="rect">NoticeAttributesOptionGroup</a>
+                                       </b>, <b>
+                                          <a href="de26735f-6426-4d3f-a52f-1ffdd816ed25.html#urn_us_gov_ic_ism_ResourceNodeAttributeGroup" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component ResourceNodeAttributeGroup')" shape="rect">ResourceNodeAttributeGroup</a>
+                                       </b>, <b>
+                                          <a href="2960e8b4-5c84-4905-b426-65f2eeac2eb0.html#ResourceNodeAttributeOptionGroup" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component ResourceNodeAttributeOptionGroup')" shape="rect">ResourceNodeAttributeOptionGroup</a>
+                                       </b>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Attributes</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_attributes_ISMNoticeAttributeGroup" type="image" src="img/btM.gif" value="-" onclick="switchState('attributes_ISMNoticeAttributeGroup');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="attributes_ISMNoticeAttributeGroup" style="display:block">
+                              <table class="attributesTable">
+                                 <thead>
+                                    <tr>
+                                       <th rowspan="1" colspan="1">QName</th>
+                                       <th width="10%" rowspan="1" colspan="1">Type</th>
+                                       <th width="5%" rowspan="1" colspan="1">Use</th>
+                                       <th width="100%" rowspan="1" colspan="1">Annotation</th>
+                                    </tr>
+                                 </thead>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="IC-ISM_xsd_Attribute_externalNotice.html#externalNotice" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component externalNotice')" shape="rect">externalNotice</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <b>xsd:boolean</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>An indicator that an element
+                                             					contains a security-related notice for information NOT contained in
+                                             					document</p>
+                                          				        
+                                          <p>This flag allows for a
+                                             					notice to exist in a document without the data that would normally require the
+                                             					notice. For example, a document could contain a FISA notice without FISA data
+                                             					present. Source citations are a common use case for this attribute.</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="IC-ISM_xsd_Attribute_noticeDate.html#noticeDate" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component noticeDate')" shape="rect">noticeDate</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <b>xsd:date</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>A date associated with a
+                                             					notice (for example, the DoD Distribution notice date)</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="IC-ISM_xsd_Attribute_noticeProseID.html#noticeProseID" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component noticeProseID')" shape="rect">noticeProseID</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="4a5b18f0-d236-4ca9-b37b-88bf8fab3605.html#CVEnumISMNoticeProse" target="mainFrame" title="urn:us:gov:ic:cvenum:ism:noticeprose" onclick="updatePageTitle('Schema documentation for component ismnoticeprose:CVEnumISMNoticeProse')" shape="rect">ismnoticeprose:CVEnumISMNoticeProse</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>An indicator that can be
+                                             					used to identify a security-related notice in an out-of-band fashion without
+                                             					actually having the notice text in the record but rather a notice text prose
+                                             					identifier. This prose identifier maps to the notice text which is stored in
+                                             a
+                                             					CVE. The permissible values for this attribute are defined in the ISM Notice
+                                             					Prose CVE: CVEnumISMNoticeProse.xml</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="IC-ISM_xsd_Attribute_noticeReason.html#noticeReason" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component noticeReason')" shape="rect">noticeReason</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">restriction of <b>xsd:string</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>A reason associated with a
+                                             					notice (for example, the DoD Distribution reason)</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="IC-ISM_xsd_Attribute_noticeType.html#urn_us_gov_ic_ism_noticeType" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component noticeType')" shape="rect">noticeType</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="b41d0f0b-8bde-42ed-a55f-7592bb49045a.html#CVEnumISMNotice" target="mainFrame" title="urn:us:gov:ic:cvenum:ism:notice" onclick="updatePageTitle('Schema documentation for component ismnotice:CVEnumISMNotice')" shape="rect">ismnotice:CVEnumISMNotice</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>An indicator that the
+                                             					containing element contains a security-related notice. This attribute is used
+                                             to
+                                             					categorize which of the required notices is specified in the element. These
+                                             					categories include those described in the Intelligence Community Markings System
+                                             					Register and Manual, as well as additional well-defined and formally recognized
+                                             					security notice types described in other directives, such as US-Person and DoD
+                                             					Distribution. The element could contain any structure that the implementing
+                                             					schema defines, and rendering details are relegated to the implementing schema.
+                                             					The permissible values for this attribute are defined in the ISM Notice CVE:
+                                             					CVEnumISMNotice.xml</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">
+                                       <b>
+                                          <a href="fbf76e0d-e50b-4dbd-bf2b-addec9eb9a98.html#unregisteredNoticeType" target="mainFrame" title="urn:us:gov:ic:ism" onclick="updatePageTitle('Schema documentation for component unregisteredNoticeType')" shape="rect">unregisteredNoticeType</a>
+                                       </b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">restriction of <b>xsd:string</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">optional</td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">
+                                          				        
+                                          <p>A notice that is of a
+                                             					category that is not described in the Intelligence Community Markings System
+                                             					Register and Manual and/or is not sufficiently defined to be represented in the
+                                             					Controlled Value Enumeration CVEnumISMNotice.xml. This attribute can be used
+                                             by
+                                             					specifications that import ISM to represent a wider variety of security-related
+                                             					notices.</p>
+                                          			      </div>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Source</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_source_ISMNoticeAttributeGroup" type="image" src="img/btM.gif" value="-" onclick="switchState('source_ISMNoticeAttributeGroup');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="source_ISMNoticeAttributeGroup" style="display:block">
+                              <table style="table-layout:fixed;white-space:pre-wrap;white-space:-moz-pre-wrap;white-space:-pre-wrap;white-space: -o-pre-wrap;word-wrap: break-word;_white-space:pre;" class="preWrapContainer">
+                                 <tr>
+                                    <td width="100%" rowspan="1" colspan="1">
+                                       <pre xml:space="preserve"><span class="tEl">&lt;xsd:attributeGroup</span><span class="tAN"> name=</span><span class="tAV">"ISMNoticeAttributeGroup"</span><span class="tEl">&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;p</span><span class="tAN"> xmlns=</span><span class="tAV">"http://www.w3.org/1999/xhtml"</span><span class="tAN"> ism:ownerProducer=</span><span class="tAV">"USA"</span><span class="tAN"> ism:classification=</span><span class="tAV">"U"</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">The group of Information Security Marking attributes for use on a notice element adding optional externalNotice</span><span class="tEl">&lt;/p&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;xsd:attributeGroup</span><span class="tAN"> ref=</span><span class="tAV">"ISMNoticeBaseAttributeGroup"</span><span class="tEl">/&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;xsd:attribute</span><span class="tAN"> ref=</span><span class="tAV">"externalNotice"</span><span class="tAN"> use=</span><span class="tAV">"optional"</span><span class="tEl">/&gt;</span><span class="tI">
+</span><span class="tEl">&lt;/xsd:attributeGroup&gt;</span></pre>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <b>Schema location</b>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <a href="../../Schema/ISM/IC-ISM.xsd">IC-ISM.xsd</a> Copy and paste this link to your file browser, clicking the link MAY open in the browser. Opening in an XML aware editor is best. 
+    </td>
+                     </tr>
+                  </tbody>
+               </table>
+            </td>
+            <td class="rt_lineRight" rowspan="1" colspan="1"></td>
+         </tr>
+         <tr>
+            <td class="rt_cornerBottomLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_lineBottom" rowspan="1" colspan="1"></td>
+            <td class="rt_cornerBottomRight" rowspan="1" colspan="1"></td>
+         </tr>
+      </table>
+      <h2 style=" font:italic bold 12px Georgia,serif;color:gray;font-size:14px;text-align:center;  width : 95%;">
+           This document has been approved for Public Release by the Office of the Director of National Intelligence. See Distribution Notice for details.
+       <a href="../index.html" target="_top">
+                Click Here
+            </a>
+      </h2>
+      <div class="footer"></div>
+      <script type="text/javascript" xml:space="preserve"><!--
+
+                     // The namespace is the selected option in the TOC combo.
+                    
+                     // Floats the toolbar.
+                     var globalControls = getElementObject("global_controls"); 
+                     
+                     if(globalControls != null){
+	                     var browser=navigator.appName;
+						 var version = parseFloat(navigator.appVersion.split('MSIE')[1]);
+						 
+						 var IE6 = false;
+						 if ((browser=="Microsoft Internet Explorer") && (version < 7)){
+						 	IE6 = true;
+						 }
+	
+	                     //alert (IE6 + " |V| " + version);
+	                     
+	                     if(IE6){
+	                     	// On IE 6 the 'fixed' property is not supported. We must use javascript. 
+	                         globalControls.style.position='absolute';                         
+	                         // The global controls will do not exist in the TOC frame, when chunking.
+	                         findAndFloat("global_controls", 225, 30);    
+	                     } else {
+	                      	  globalControls.style.position='fixed';                     	
+	                     }
+	                     
+	                     globalControls.style.right='0';                       
+                     }
+                //
+--></script>
+   </body>
+</html>

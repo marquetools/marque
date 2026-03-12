@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismcomplies="urn:us:gov:ic:cvenum:ism:complieswith"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:complieswith"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMCompliesWith Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMCompliesWith.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMCompliesWithValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) ISM rule sets documents may comply
+			with. This CVE is used by @ism:compliesWith.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMCompliesWith.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="USGov">
+            <xsd:annotation>
+               <xsd:documentation>Document claims compliance with all rules encoded in ISM for
+			      	documents produced by the US Federal Government. This is the minimum set of rules
+			      	for US documents to adhere to, and all US documents should claim compliance with
+			      	USGov. For example, a US Intelligence Community document should claim
+			      	ism:compliesWith="USGov USIC".</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="USIC">
+            <xsd:annotation>
+               <xsd:documentation>Document claims compliance with all rules encoded in ISM for
+			      	documents produced by the US Intelligence Community. Documents that claim compliance
+			      	with USIC MUST also claim compliance with USGov.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="USDOD">
+            <xsd:annotation>
+               <xsd:documentation>Document claims compliance with all rules encoded in ISM for
+			      	documents produced by the US Department of Defense. Documents that claim compliance
+			      	with USDOD MUST also claim compliance with USGov.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="OtherAuthority">
+            <xsd:annotation>
+               <xsd:documentation>Document claims compliance with an authority other than the
+			      	USGov, USIC, or USDOD. This token is not allowed if the ism:ownerProducer contains
+			      	USA.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="USA-CUI-ONLY">
+            <xsd:annotation>
+               <xsd:documentation>Document is UNCLASSIFIED and was created in an UNCLASSIFIED 
+				environment.  Document claims compliance with CUI rules but with no USGOV rules for classified environments.  
+				Special transforms are required to move the document into a classified environment or to commingle content from 
+				this document with any content created in a classified environment.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="USA-CUI">
+            <xsd:annotation>
+               <xsd:documentation>Document contains both NSI (National Security Information) and CUI 
+				according to DoD rules for CUI.  Document claims compliance with 1. CUI rules according to DoD, and 2. USGOV and/or USDOD rules for 
+				classified environments.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMCompliesWith">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismcomplies:CVEnumISMCompliesWith definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismcomplies:CVEnumISMCompliesWithValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismcomplies:CVEnumISMCompliesWithValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="6"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

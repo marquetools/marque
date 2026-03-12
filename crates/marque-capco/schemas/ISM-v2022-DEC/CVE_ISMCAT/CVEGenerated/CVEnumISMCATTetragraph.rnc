@@ -1,0 +1,127 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ismcat:tetragraph"
+CVEnumISMCATTetragraph.cve = list { 
+# (U) 
+"ACGU"?, 
+# (U) 
+"AMSP"?, 
+# (U) 
+"AOSC"?, 
+# (U) 
+"APFS"?, 
+# (U) 
+"ASEA"?, 
+# (U) 
+"AUSTRALIA_GROUP"?, 
+# (U) 
+"BHTF"?, 
+# (U) 
+"BWCS"?, 
+# (U) 
+"CFCK"?, 
+# (U) 
+"CFOD"?, 
+# (U) 
+"CFUP"?, 
+# (U) 
+"CLFC"?, 
+# (U) 
+"CMFC"?, 
+# (U) 
+"CMFP"?, 
+# (U) 
+"CPMT"?, 
+# (U) 
+"CTOC"?, 
+# (U) 
+"CWCS"?, 
+# (U) 
+"ECTF"?, 
+# (U) 
+"EFOR"?, 
+# (U) 
+"EU"?, 
+# (U) 
+"EUDA"?, 
+# (U) 
+"FRME"?, 
+# (U) 
+"FVEY"?, 
+# (U) 
+"GCCH"?, 
+# (U) 
+"GCTF"?, 
+# (U) 
+"GFNX"?, 
+# (U) 
+"GMIF"?, 
+# (U) 
+"IESC"?, 
+# (U) 
+"IMSC"?, 
+# (U) 
+"IMSP"?, 
+# (U) 
+"IPMC"?, 
+# (U) 
+"IRKS"?, 
+# (U) 
+"ISAF"?, 
+# (U) 
+"ISSG"?, 
+# (U) 
+"KFOR"?, 
+# (U) 
+"MCFI"?, 
+# (U) 
+"MESF"?, 
+# (U) 
+"MGEU"?, 
+# (U) 
+"MIFH"?, 
+# (U) 
+"MLEC"?, 
+# (U) 
+"MNTF"?, 
+# (U) 
+"MPFL"?, 
+# (U) 
+"NACT"?, 
+# (U) 
+"NATO"?, 
+# (U) 
+"NATO:[a-zA-Z\-_]{1,256}"?, 
+# (U) 
+"NCFE"?, 
+# (U) 
+"NKIC"?, 
+# (U) 
+"NRDC"?, 
+# (U) 
+"NSG"?, 
+# (U) 
+"OSAG"?, 
+# (U) 
+"OSTY"?, 
+# (U) 
+"PAWA"?, 
+# (U) 
+"PGMF"?, 
+# (U) 
+"PSMX"?, 
+# (U) 
+"RISC"?, 
+# (U) 
+"RSMA"?, 
+# (U) 
+"SFOR"?, 
+# (U) 
+"SOFP"?, 
+# (U) 
+"SPAA"?, 
+# (U) 
+"TEYE"?, 
+# (U) 
+"TFTC"?, 
+# (U) 
+"UNCK"? } 

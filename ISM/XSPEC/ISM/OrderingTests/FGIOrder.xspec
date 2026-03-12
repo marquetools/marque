@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="FGI-Open-OrderTest-USA-NAC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="AFG NATO:Operation_Unified_Protector"
+            ism:FGIsourceOpen="NATO:ISAF AGO"/>
+      </x:context>
+      <x:scenario label="FGI-Open-OrderTest-USA-NAC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (S//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) "
+            test=".='(S//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="FGI-Open-OrderTest-USA-NAC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector"
+            test=".='SECRET//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+
+   <x:scenario label="FGI-Protected-OrderTest-USA-NAC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="AFG NATO:Operation_Unified_Protector"
+            ism:FGIsourceProtected="NATO:ISAF AGO"/>
+      </x:context>
+      <x:scenario label="FGI-Protected-OrderTest-USA-NAC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (S//FGI//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) "
+            test=".='(S//FGI//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="FGI-Protected-OrderTest-USA-NAC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//FGI//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector"
+            test=".='SECRET//FGI//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

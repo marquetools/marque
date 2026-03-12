@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar ism:resourceElement="true" ism:compliesWith="USGov" ism:createDate="2011-12-01" ism:DESVersion="202111" ism:classification="U" ism:ownerProducer="USA" ns="http://relaxng.org/ns/structure/1.0" xmlns:ism="urn:us:gov:ic:ism" xmlns:ntk="urn:us:gov:ic:ntk" xmlns:arh="urn:us:gov:ic:arh" xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <include href="./NTK.rng" ns="urn:us:gov:ic:ntk"/>
+  <start>
+    <choice>
+      <ref name="Security.ele"/>
+      <ref name="ExternalSecurity.ele"/>
+    </choice>
+  </start>
+  <define name="Security.ele">
+    <element>
+      <name ns="urn:us:gov:ic:arh">Security</name>
+      <ref name="SecurityType.class"/>
+    </element>
+  </define>
+  <define name="ExternalSecurity.ele">
+    <element>
+      <name ns="urn:us:gov:ic:arh">ExternalSecurity</name>
+      <ref name="ExternalSecurityType.class"/>
+    </element>
+  </define>
+  <define name="DESVersion.att">
+    <attribute name="arh:DESVersion">
+      <data type="string">
+        <param name="pattern">[0-9]{6}(\.[0-9]{6})?(\-.{1,23})?</param>
+      </data>
+    </attribute>
+  </define>
+  <define name="SecurityType.class">
+    <optional>
+      <ref name="Access.ele"/>
+    </optional>
+    <optional>
+      <!-- ISM's NoticeList -->
+      <ref name="NoticeList.ele"/>
+    </optional>
+    <ref name="ARHResourceNodeAttributeGroup.att"/>
+  </define>
+  <define name="ExternalSecurityType.class">
+    <optional>
+      <!-- NTK's NoticeList -->
+      <ref name="ExternalAccess.ele"/>
+    </optional>
+    <optional>
+      <ref name="NoticeExternalList.ele"/>
+    </optional>
+    <ref name="ARHExternalResourceNodeAttributeGroup.att"/>
+  </define>
+  <define name="ARHExternalResourceNodeAttributeGroup.att">
+    <!-- ISM's SecurityAttributesGroup -->
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="DESVersion.att"/>
+    <ref name="ISMCATCESVersion.att"/>
+    <ref name="noticeType.att"/>
+    <ref name="noticeDate.att"/>
+    <ref name="noticeReason.att"/>
+    <ref name="unregisteredNoticeType.att"/>
+    <ref name="excludeFromRollup.att"/>
+    <ref name="ISMResourceAttributeOptionGroup.att"/>
+  </define>
+  <define name="ARHResourceNodeAttributeGroup.att">
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="DESVersion.att"/>
+    <ref name="ISMCATCESVersion.att"/>
+    <ref name="noticeType.att"/>
+    <ref name="noticeDate.att"/>
+    <ref name="noticeReason.att"/>
+    <ref name="unregisteredNoticeType.att"/>
+    <ref name="ISMResourceAttributeOptionGroup.att"/>
+  </define>
+</grammar>

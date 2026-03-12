@@ -1,0 +1,17 @@
+﻿"ValueClassification","Value","DescriptionClassification","Description","DeprecationDate"
+"(U) ","urn:us:gov:ic:aces:ntk:xd","(U) ","Exclusive Distibution",
+"(U) ","urn:us:gov:ic:aces:ntk:enterprise:role:permissive","(U) ","Enterprise Role Permissive",
+"(U) ","urn:us:gov:ic:aces:ntk:enterprise:role:restrictive","(U) ","Enterprise Role Restrictive",
+"(U) ","urn:us:gov:ic:aces:ntk:ico","(U) ","Intelligence Community Only",
+"(U) ","urn:us:gov:ic:aces:ntk:license","(U) ","License",
+"(U) ","urn:us:gov:ic:aces:ntk:mn","(U) ","Mission Need Profile",
+"(U) ","urn:us:gov:ic:aces:ntk:nd","(U) ","No Distribution",
+"(U) ","urn:us:gov:ic:aces:ntk:oc","(U) ","Originator Controlled",
+"(U) ","urn:us:gov:ic:aces:ntk:permissive","(U) ","Permissive group/individual access",
+"(U) ","urn:us:gov:ic:aces:ntk:propin:1","(U) ","PROPIN for US Government Employees",
+"(U) ","urn:us:gov:ic:aces:ntk:propin:2","(U) ","Explicit PROPIN",
+"(U) ","urn:us:gov:ic:aces:ntk:propin:([A-Za-z][A-Za-z0-9\-_.;,():+]{1,64})","(U) ","Regex for extension of PROPIN with non-IC CIO
+				access policy URN.",
+"(U) ","urn:us:gov:ic:aces:ntk:rac","(U) ","Restricted activities under the authority category",
+"(U) ","urn:us:gov:ic:aces:ntk:restrictive","(U) ","Restrictive group access",
+

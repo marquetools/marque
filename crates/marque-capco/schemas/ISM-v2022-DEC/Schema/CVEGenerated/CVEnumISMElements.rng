@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:elements">
+   <define name="CVEnumISMElements.cve">
+      <choice>
+         <value>Notice</value>
+         <value>NoticeText</value>
+         <value>NoticeList</value>
+         <value>NoticeExternal</value>
+         <value>NoticeExternalList</value>
+      </choice>
+   </define>
+</grammar>

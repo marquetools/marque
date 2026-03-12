@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismcuispecified="urn:us:gov:ic:cvenum:ism:cuispecified"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:cuispecified"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMCUISpecified Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMCUISpecified.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMCUISpecifiedValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) All currently valid CUI Specified markings from 
+         the National Archives. This CVE is used by @ism:cuiSpecified.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMCUISpecified.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="AIV">
+            <xsd:annotation>
+               <xsd:documentation>Accident Investigation. Related to information obtained during the course of 
+            an accident or incident investigation.  Including but not limited to information related to wreckage, records, mail, or cargo. </xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="ADPO">
+            <xsd:annotation>
+               <xsd:documentation>Administrative Proceedings. Adjudication of agency-related matters including,
+            but not limited to, dispute resolution, settlements, and issuances of orders.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CRITAN">
+            <xsd:annotation>
+               <xsd:documentation>Ammonium Nitrate. Related to registration information of those who own and 
+            operate ammonium nitrate facilities, purchasers of ammonium nitrate, and the regulation of sales and transfers of ammonium nitrate.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="ARCHR">
+            <xsd:annotation>
+               <xsd:documentation>Archaelogical Resources. Related to information about the nature and location
+            of any archaeological resource for which the excavation or removal requires a permit or other permission.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FSEC">
+            <xsd:annotation>
+               <xsd:documentation>Bank Secrecy. Information that is provided to the government pursuant to the 
+            Bank Secrecy Act, including but not limited to, suspicious activity reports (SAR), currency transaction reports (CTR), reports of 
+            international transportation of currency or monetary instruments (CMIR), reports of cash payment over $10,000 received in trade or 
+            business, and reports of foreign bank and financial accounts (FBAR). Reports filed under the Bank Secrecy Act (BSA), codified in 
+            relevant part at 31 U.S.C. § 5311 et seq, are specifically exempt from disclosure under the Freedom of Information Act, codified at 
+            5 U.S.C. § 552, and also may not be disclosed under any State, local, tribal, or territorial “freedom of information,” 
+            “open government,” or similar law.  See 31 U.S.C. § 5319; 5 U.S.C. § 552(b)(3).  These reports (BSA Reports), are maintained in a 
+            system of records containing information compiled for law enforcement investigative purposes that has been exempted from the access 
+            provisions of the Privacy Act in accordance with 5 U.S.C. §§ 552a(j)(2) and (k)(2). BSA Reports may only be re-disseminated in strict 
+            accordance with guidelines established by the Financial Crimes Enforcement Network (FinCEN), the Treasury bureau that administers the 
+            BSA.  Suspicious Activity Reports, one of the types of required reports filed under the BSA, are required to be kept confidential in 
+            accordance with 31 U.S.C. § 5318(g)(2) and implementing regulations. To the extent information falling under the purview of the BSA 
+            is collected, accessed, or used for any Federal tax administration purpose, it is also subject to the confidentiality provisions of 
+            the Internal Revenue Code, codified at 26 U.S.C. § 6103.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="BUDG">
+            <xsd:annotation>
+               <xsd:documentation>Budget. Related to information concerning the federal budget, including 
+            authorizations and estimates of income and expenditures.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FUND">
+            <xsd:annotation>
+               <xsd:documentation>Campaign Funds. Related to information obtained in connection to an 
+            investigation into campaign finance and disclosure laws. Usage may include but is not limited to notification or investigation 
+            pertaining to financial support of a candidate for election.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CVI">
+            <xsd:annotation>
+               <xsd:documentation>Chemical-terrorism Vulnerability Information. In accordance with Section 
+            550(c) of the Department of Homeland Security Appropriations Act of 2007, the following information, whether transmitted verbally, 
+            electronically, or in written form, shall constitute CVI, see (1) - (9).</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CHLD">
+            <xsd:annotation>
+               <xsd:documentation>Child Pornography. From 18 USC 2256(8) "child pornography" means any visual 
+            depiction, including any photograph, film, video, picture, or computer or computer-generated image or picture, whether made or 
+            produced by electronic, mechanical, or other means, of sexually explicit conduct, where— (A) the production of such visual depiction 
+            involves the use of a minor engaging in sexually explicit conduct; (B) such visual depiction is a digital image, computer image, or 
+            computer-generated image that is, or is indistinguishable from, that of a minor engaging in sexually explicit conduct; or (C) such 
+            visual depiction has been created, adapted, or modified to appear that an identifiable minor is engaging in sexually explicit conduct</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CCI">
+            <xsd:annotation>
+               <xsd:documentation>Consumer Complaint Information. Related to information concerning consumer 
+            complaints or inquiries concerning financial institutions or consumer financial products and services, and responses to them.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CONTRACT">
+            <xsd:annotation>
+               <xsd:documentation>Contract Use. Stipulations for a contractor to meet before material may be 
+            used in performance of certain contracts.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SUB">
+            <xsd:annotation>
+               <xsd:documentation>Controlled Substances. Information obtained by the Drug Enforcement 
+            Administration (DEA) or in DEA investigative reports related to controlled substances.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CTI">
+            <xsd:annotation>
+               <xsd:documentation>Controlled Technical Information. 	
+            Controlled Technical Information means technical information with military or space application that is subject to controls on the 
+            access, use, reproduction, modification, performance, display, release, disclosure, or dissemination. Controlled technical information
+            is to be marked with one of the distribution statements B through F, in accordance with Department of Defense Instruction 5230.24, 
+            "Distribution Statements of Technical Documents." The term does not include information that is lawfully publicly available without
+            restrictions. "Technical Information" means technical data or computer software, as those terms are defined in Defense Federal 
+            Acquisition Regulation Supplement clause 252.227-7013, "Rights in Technical Data - Noncommercial Items" (48 CFR 252.227-7013). 
+            Examples of technical information include research and engineering data, engineering drawings, and associated lists, specifications, 
+            standards, process sheets, manuals, technical reports, technical orders, catalog-item identifications, data sets, studies and 
+            analyses and related information, and computer software executable code and source code.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CHRI">
+            <xsd:annotation>
+               <xsd:documentation>Criminal History Records Information. Related to information collected by 
+            criminal justice agencies on individuals consisting of identifiable descriptions and notations of arrests, detentions, indictments, 
+            informations, or other formal criminal charges, and any disposition arising therefrom, including acquittal, sentencing, correctional 
+            supervision, and release.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CEII">
+            <xsd:annotation>
+               <xsd:documentation>Critical Energy Infrastructure Information. Critical energy infrastructure 
+            information means specific engineering, vulnerability, or detailed design information about proposed or existing critical 
+            infrastructure that: (i) Relates details about the production, generation, transportation, transmission, or distribution of energy; 
+            (ii) Could be useful to a person in planning an attack on critical infrastructure;... and (iii) Does not simply give the general 
+            location of the critical infrastructure.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="LDNA">
+            <xsd:annotation>
+               <xsd:documentation>DNA. Related to hereditary material in humans that is used for law enforcement 
+            purposes.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="EXPT">
+            <xsd:annotation>
+               <xsd:documentation>Export Controlled. Unclassified information concerning certain items, 
+            commodities, technology, software, or other information whose export could reasonably be expected to adversely affect the United 
+            States national security and nonproliferation objectives. To include dual use items; items identified in export administration 
+            regulations, international traffic in arms regulations and the munitions list; license applications; and sensitive nuclear technology 
+            information.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="JURY">
+            <xsd:annotation>
+               <xsd:documentation>Federal Grand Jury. Material obtained pursuant to a federal grand jury 
+            subpoena, which includes (1) any reference to a specific sitting grand jury; (2) any documentation or data obtained by a grand jury 
+            subpoena if disclosure of such material tends to reveal what transpired before or at the direction of the federal grand jury; 
+            (3) documentation prepared specifically for the federal grand jury; and (4) transcripts or other recordings of testimony presented 
+            to the federal grand jury.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TAX">
+            <xsd:annotation>
+               <xsd:documentation>Federal Taxpayer Information. Related to returns and return information 
+            which are submitted, gathered or generated in conjunction with taxpayers’ responsibilities to comply with federal tax provisions 
+            in the United States Code. 
+            
+            “Returns” includes information that is provided to the government pursuant to Title 26, including tax or information returns, 
+            declarations of estimated tax or claims for refund.  “Return information” includes a taxpayer’s identity, the nature, source or 
+            amount of income or any information received by, recorded by, prepared by or furnished to Internal Revenue Service relevant to the 
+            determination of tax liability including whether the taxpayer is the subject of investigation.  This protection extends to such items 
+            as medical, financial and other personal information submitted to the IRS by taxpayers.  Standards (typically tolerances, audit
+            criteria and law enforcement techniques) related to the selection of returns for examination should only be disclosed to the extent
+            their disclosure would not impair assessment, collection or enforcement under the internal revenue laws.  Tax data originating with
+            the IRS generally retains its confidential status even when it resides with agencies other than the IRS.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FISA">
+            <xsd:annotation>
+               <xsd:documentation>Foreign Intelligence Surveillance Act. Related to unclassified and 
+            declassified information that is collected from unconsenting individuals under the authority of the Foreign Intelligence 
+            Surveillance Act (FISA).</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FISAB">
+            <xsd:annotation>
+               <xsd:documentation>Foreign Intelligence Surveillance Act Business Records. Related to books, 
+            records, papers, documents, and other items produced for an investigation to obtain foreign intelligence information.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FNC">
+            <xsd:annotation>
+               <xsd:documentation>General Financial Information. Related to the duties, transactions, or 
+            otherwise falling under the purview of financial institutions or United States Government fiscal functions. Uses may include, but 
+            are not limited to, customer information held by a financial institution.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="INTEL">
+            <xsd:annotation>
+               <xsd:documentation>General Intelligence. Related to intelligence activities, sources, or methods.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NUC">
+            <xsd:annotation>
+               <xsd:documentation>General Nuclear. Related to protection of information concerning nuclear 
+            reactors, materials, or security.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PRVCY">
+            <xsd:annotation>
+               <xsd:documentation>General Privacy. Refers to personal information, or, in some cases, 
+            "personally identifiable information," as defined in OMB M-17-12, or "means of identification" as defined in 18 USC 1028(d)(7).</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PROCURE">
+            <xsd:annotation>
+               <xsd:documentation>General Procurement and Acquisition. Material and information relating to, 
+            or associated with, the acquisition and procurement of goods and services, including but not limited to, cost or pricing data, 
+            contract information, indirect costs and direct labor rates.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PROPIN">
+            <xsd:annotation>
+               <xsd:documentation>General Proprietary Business Information. Material and information relating 
+            to, or associated with, a company's products, business, or activities, including but not limited to financial information; data or 
+            statements; trade secrets; product research and development; existing and future product designs and performance specifications.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="GENETIC">
+            <xsd:annotation>
+               <xsd:documentation>Genetic Information. The term "genetic information" means, with respect to 
+            any individual, information about-- (i) such individual's genetic tests, (ii) the genetic tests of family members of such individual, 
+            and (iii) the manifestation of a disease or disorder in family members of such individual.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="GEO">
+            <xsd:annotation>
+               <xsd:documentation>Geodetic Product Information. Related to imagery, imagery intelligence, or 
+            geospatial information.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HLTH">
+            <xsd:annotation>
+               <xsd:documentation>Health Information. As per 42 USC 1320d(4), "health information" means any 
+            information, whether oral or recorded in any form or medium, that (A) is created or received by a health care provider, health plan, 
+            public health authority, employer, life insurer, school or university, or health care clearinghouse; and (B) relates to the past, 
+            present, or future physical or mental health or condition of an individual, the provision of health care to an individual, or the 
+            past, present, or future payment for the provision of health care to an individual.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HISTP">
+            <xsd:annotation>
+               <xsd:documentation>Historic Properties. 	Related to the location, character, or ownership of 
+            historic property.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="INF">
+            <xsd:annotation>
+               <xsd:documentation>Informant. Related to the identity of a human source.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PRIIG">
+            <xsd:annotation>
+               <xsd:documentation>Inspector General Protected. Related to the identity of a person making a 
+            report to the Inspector General of any Executive agency.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="IFNC">
+            <xsd:annotation>
+               <xsd:documentation>Intelligence Financial Records. 	Related to financial records obtained for 
+            intelligence or counterintelligence activity, investigation, or analysis.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="ID">
+            <xsd:annotation>
+               <xsd:documentation>Internal Data. Refers to a category of information that is not intended to 
+            be disseminated beyond CIA channels that involves intelligence activities, sources, or methods. This information may also relate to 
+            the CIA's organization, functions, names, official titles, salaries, or numbers of personnel.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="INTL">
+            <xsd:annotation>
+               <xsd:documentation>International Agreement Information. Information provided by, otherwise made 
+            available by, or produced in cooperation with, a foreign government or international organization that requires protection pursuant 
+            to an existing treaty, agreement, bilateral exchange or other obligation under the requirements stipulated in 10 USC 130c(b), when 
+            not subject to classification under Executive Order 13526. Title 10 USC 130c(b) may exempt this class of foreign government 
+            information from the safeguard provisions otherwise required by Executive Order 13526. Per Title 10 USC 130c(h) the following 
+            national security officials are the only ones defined by statute as able to determine such information requires control: 
+            (A) The Secretary of Defense, with respect to information of concern to the Department of Defense. 
+            (B) The Secretary of Homeland Security, with respect to information of concern to the Coast Guard, as determined by the Secretary, 
+            but only while the Coast Guard is not operating as a service in the Navy. 
+            (C) The Secretary of Energy, with respect to information concerning the national security programs of the Department of Energy, 
+            as determined by the Secretary.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="INV">
+            <xsd:annotation>
+               <xsd:documentation>Investigation. 	Related to information obtained during the course of a 
+            law enforcement investigation or action, civil or criminal.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="LFNC">
+            <xsd:annotation>
+               <xsd:documentation>Law Enforcement Financial Records. 	Related to financial records obtained 
+            for law enforcement purposes.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NPSR">
+            <xsd:annotation>
+               <xsd:documentation>National Park System Resources. Related to information concerning the nature 
+            and specific location of a National Park System resource that is endangered, threatened, rare, or commercially valuable, of mineral 
+            or paleontological objects within System units, or of objects of cultural patrimony within System units.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NNPI">
+            <xsd:annotation>
+               <xsd:documentation>Naval Nuclear Propulsion Information. Related to the safety of reactors and 
+            associated naval nuclear propulsion plants, and control of radiation and radioactivity associated with naval nuclear propulsion 
+            activities, including prescribing and enforcing standards and regulations for these areas as they affect the environment and the 
+            safety and health of workers, operators, and the general public.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SRI">
+            <xsd:annotation>
+               <xsd:documentation>Nuclear Security-Related Information. Related to information that could be 
+            useful, or could reasonably be expected to be useful, to a terrorist in a potential attack that does not qualify as Safeguards or 
+            classified information, including the exact location and quantities of radioactive material, certain detailed design drawings, 
+            information on nearby facilities, emergency planning information, and certain assessments of vulnerability and safety analyses.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PERS">
+            <xsd:annotation>
+               <xsd:documentation>Personnel Records. Related to the employees of federal agencies.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="MFC">
+            <xsd:annotation>
+               <xsd:documentation>Proprietary Manufacturer. Relating to the production of a consumer product 
+            to include that of a private labeler.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PCII">
+            <xsd:annotation>
+               <xsd:documentation>Protected Critical Infrastructure Information. As defined by 6 USC 131-134, 
+            and 6 CFR 29, PCII relates to threats, vulnerabilities, or operational experience related to the national infrastructure. 
+            PCII offers protection to private sector infrastructure information voluntarily shared with government entities for purposes of 
+            homeland security.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="LPROT">
+            <xsd:annotation>
+               <xsd:documentation>Protective Order. 	Stipulation that certain information that would 
+            normally fall under discovery rules will not be disclosed for specifically stated reason.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SGI">
+            <xsd:annotation>
+               <xsd:documentation>Safeguards Information. 	Pursuant to 42 USC 2011, et seq., and as 
+            defined in 10 CFR 73.2, SGI relates to security related information concerning the physical protection of source, byproduct or 
+            special nuclear material and the detailed security measures for facilities and information contained within security plans.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SSI">
+            <xsd:annotation>
+               <xsd:documentation>Sensitive Security Information. As defined in 49 C.F.R. Part 15.5, 
+            Sensitive Security Information is information obtained or developed in the conduct of security activities, including research and 
+            development, the disclosure of which DOT has determined would constitute an unwarranted invasion of privacy, reveal trade secrets 
+            or privileged or confidential information, or be detrimental to transportation safety. As defined in 49 C.F.R. Part 1520.5, 
+            Sensitive Security Information is information obtained or developed in the conduct of security activities, including research 
+            and development, the disclosure of which DHS/TSA has determined would, among other things, be detrimental to the security of 
+            transportation.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SSEL">
+            <xsd:annotation>
+               <xsd:documentation>Source Selection. Per FAR 2.101: any of the following information that is 
+            prepared for use by an agency for the purpose of evaluating a bid or proposal to enter into an agency procurement contract, if that 
+            information has not been previously made available to the public or disclosed publicly: (Items 1-10).</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="STAT">
+            <xsd:annotation>
+               <xsd:documentation>Statistical Information. Refers to information collected by a Federal 
+            statistical agency, unit, or program for statistical purposes or used for statistical activities; under law, regulation, or 
+            Government-wide policy such 'Statistical' CUI requires: (1) protection from unauthorized disclosure; (2) special handling 
+            safeguards; and/or (3) prescribed limits on access or dissemination.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="STUD">
+            <xsd:annotation>
+               <xsd:documentation>Student Records. As per 20 USC 1232g, the Family Educational Rights and 
+            Privacy Act of 1974, an education record which is comprised of those records which are directly related to a student.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TSCA">
+            <xsd:annotation>
+               <xsd:documentation>Toxic Substances. Health, safety, and exposure information related to 
+            chemical substances, chemical mixtures, and articles as defined under the Toxic Substances Control Act (TSCA).</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DCNI">
+            <xsd:annotation>
+               <xsd:documentation>Unclassified Controlled Nuclear Information - Defense. 	Relating to 
+            Department of Defense special nuclear material (SNM), equipment, and facilities, as defined by 32 CFR 223.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="UCNI">
+            <xsd:annotation>
+               <xsd:documentation>Unclassified Controlled Nuclear Information - Energy. Relating to certain 
+            design and security information concerning nuclear facilities, materials, and weapons, specific to the Department of Energy.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CENS">
+            <xsd:annotation>
+               <xsd:documentation>US Census. Related to information gathered by the Bureau of the Census 
+            during the process of collecting, compiling, evaluating, analyzing of demographic, economic, and social data pertaining at a 
+            specified time to any or all persons in the United States and dissemination is limited to those with special sworn status, who may 
+            only use the data for statistical purposes and only for those statistical purposes for which the data was supplied. </xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="WHSTL">
+            <xsd:annotation>
+               <xsd:documentation>Whistleblower Identity. Identity of anyone providing information relating 
+            to a legal violation or illicit or unsafe activity, including information provided by a whistleblower which could reasonably be 
+            expected to reveal the identity of a whistleblower.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="WIT">
+            <xsd:annotation>
+               <xsd:documentation>Witness Protection. Information related to the secretive details associated 
+            with one who has testified or may testify under circumstances that require secrecy of that individual and details pertaining to that 
+            person.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="WDT">
+            <xsd:annotation>
+               <xsd:documentation>Written Determinations. 	
+            Rulings, determination letters, technical advice memoranda or Chief Counsel Advice, as those terms are defined in Treasury 
+            Regulation 301.6110-2, which are made available for public inspection subject to the withholding of certain types of data as 
+            enumerated in Treasury Regulation 301-6110.</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMCUISpecified">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismcuispecified:CVEnumISMCUISpecified definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismcuispecified:CVEnumISMCUISpecifiedValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismcuispecified:CVEnumISMCUISpecifiedValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="57"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

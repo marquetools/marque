@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:attributes">
+   <define name="CVEnumISMAttributes.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>compliesWith</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>classification</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ownerProducer</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SCIcontrols</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SARIdentifier</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>atomicEnergyMarkings</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>disseminationControls</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FGIsourceOpen</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FGIsourceProtected</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>hasApproximateMarkings</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>releasableTo</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>displayOnlyTo</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>nonICmarkings</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>classifiedBy</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>derivativelyClassifiedBy</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>classificationReason</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>nonUSControls</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>derivedFrom</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>declassDate</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>declassEvent</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>declassException</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>resourceElement</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>highWaterNATO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>excludeFromRollup</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>createDate</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>compilationReason</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>noAggregation</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>noticeType</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>noticeProseID</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>externalNotice</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DESVersion</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISMCATCESVersion</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>noticeDate</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>noticeReason</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>exemptFrom</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>unregisteredNoticeType</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>pocType</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>joint</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiBasic</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiSpecified</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiDecontrolDate</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiDecontrolEvent</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiControlledBy</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiControlledByOffice</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>cuiPOC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>secondBannerLine</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>handleViaChannels</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

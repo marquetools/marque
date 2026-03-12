@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismhighwaternato="urn:us:gov:ic:cvenum:ism:HighWaterNATO"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:HighWaterNATO"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMHighWaterNATO Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMHighWaterNATO.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMHighWaterNATO">
+      <xsd:annotation>
+         <xsd:documentation>(U) The highest classification of any portion that has either @ism:ownerProducer contains NATO or @FGIsourceOpen contains NATO.  The @ism:highWaterNATO attribute will be compared against an entity's fineAccessControls NATO value.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMHighWaterNATO.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="NATO-U">
+            <xsd:annotation>
+               <xsd:documentation>NATO UNCLASSIFIED</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO-R">
+            <xsd:annotation>
+               <xsd:documentation>NATO RESTRICTED</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO-C">
+            <xsd:annotation>
+               <xsd:documentation>NATO CONFIDENTIAL</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO-S">
+            <xsd:annotation>
+               <xsd:documentation>NATO SECRET</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO-TS">
+            <xsd:annotation>
+               <xsd:documentation>NATO TOP SECRET</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

@@ -1,0 +1,25 @@
+[package]
+name        = "marque-extract"
+description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+marque-core = { workspace = true }
+tokio       = { workspace = true }
+futures     = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+serde       = { workspace = true }
+
+# Kreuzberg: polyglot document intelligence — text extraction, metadata, OCR.
+# https://github.com/kreuzberg-dev/kreuzberg
+# TODO: confirm crate name / availability on crates.io; may require path/git dep
+# kreuzberg = "0.1"
+
+[features]
+default = []
+ocr     = []   # enables OCR backends via Kreuzberg when available

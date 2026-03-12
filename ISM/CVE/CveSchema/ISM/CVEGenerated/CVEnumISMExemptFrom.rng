@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:exemptfrom">
+   <define name="CVEnumISMExemptFrom.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>IC_710_MANDATORY_FDR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DOD_DISTRO_STATEMENT</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

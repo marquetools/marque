@@ -1,0 +1,1520 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></meta>
+      <title>Schema documentation for component ismcuispecified:CVEnumISMCUISpecifiedValues</title>
+      <link rel="stylesheet" href="docHtml.css" type="text/css"></link>
+      <script type="text/javascript" xml:space="preserve"><!--
+
+        var facetsBoxes= new Array('facets_CVEnumISMCUISpecifiedValues');
+var sourceBoxes= new Array('source_CVEnumISMCUISpecifiedValues');
+var diagramBoxes= new Array('diagram_CVEnumISMCUISpecifiedValues');
+var annotationBoxes= new Array('annotations_CVEnumISMCUISpecifiedValues');
+
+      
+        var button_prefix = 'button_';
+        
+        /**
+        * Returns an element in the current HTML document.
+        *
+        * @param elementID Identifier of HTML element
+        * @return               HTML element object
+        */
+        function getElementObject(elementID) {
+            var elemObj = null;
+            if (document.getElementById) {
+                elemObj = document.getElementById(elementID);
+            }
+            return elemObj;
+        }
+        
+        /**
+        * Switches the state of a collapseable box, e.g.
+        * if it's opened, it'll be closed, and vice versa.
+        *
+        * @param boxID Identifier of box
+        */
+        function switchState(boxID) {
+            var boxObj = getElementObject(boxID);
+            var buttonObj = getElementObject(button_prefix + boxID);
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else if (boxObj.style.display == "none") {
+                // Box is closed, so open it
+                openBox(boxObj, buttonObj);
+            } else if (boxObj.style.display == "block") {
+                // Box is opened, so close it
+                closeBox(boxObj, buttonObj);
+            }
+        }
+        
+        /**
+        * Opens a collapseable box.
+        *
+        * @param boxObj       Collapseable box
+        * @param buttonObj Button controlling box
+        */
+        function openBox(boxObj, buttonObj) {
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else {
+                // Change 'display' CSS property of box
+                boxObj.style.display = "block";
+                
+                // Change text of button
+                if (boxObj.style.display == "block") {
+                    buttonObj.src = "img/btM.gif";
+                }
+            }
+        }
+        
+        /**
+        * Closes a collapseable box.
+        *
+        * @param boxObj       Collapseable box
+        * @param buttonObj Button controlling box
+        */
+        function closeBox(boxObj, buttonObj) {
+            if (boxObj == null || buttonObj == null) {
+                // Box or button not found
+            } else {
+                // Change 'display' CSS property of box
+                boxObj.style.display = "none";
+                
+                // Change text of button
+                if (boxObj.style.display == "none") {
+                    buttonObj.src = "img/btP.gif";
+                }
+            }
+        }
+    
+       function switchStateForAll(buttonObj, boxList) {
+            if (buttonObj == null) {
+                // button not found
+            } else if (buttonObj.value == "+") {
+                // Expand all
+                expandAll(boxList);
+                buttonObj.value = "-";
+            } else if (buttonObj.value == "-") {
+                // Collapse all
+                collapseAll(boxList);
+                buttonObj.value = "+";
+            }
+        }
+        
+        /**
+        * Closes all boxes in a given list.
+        *
+        * @param boxList Array of box IDs
+        */
+        function collapseAll(boxList) {
+            var idx;
+            for (idx = 0; idx < boxList.length; idx++) {
+                var boxObj = getElementObject(boxList[idx]);
+                var buttonObj = getElementObject(button_prefix + boxList[idx]);
+                closeBox(boxObj, buttonObj);
+            }
+        }
+            
+        /**
+        * Open all boxes in a given list.
+        *
+        * @param boxList Array of box IDs
+        */
+        function expandAll(boxList) {
+            var idx;
+            for (idx = 0; idx < boxList.length; idx++) {
+                var boxObj = getElementObject(boxList[idx]);
+                var buttonObj = getElementObject(button_prefix + boxList[idx]);
+                openBox(boxObj, buttonObj);
+            }
+        }
+        
+        /**
+         * Update the message presented in the title of the html page.
+         * - If the documentation was splited by namespace we present something like: "Documentation for namespace 'ns'"
+         * - If the documentation was splited by location we present somehing like: "Documentation for 'Schema.xsd'"
+         * - If no split we always present: "Documentation for 'MainSchema.xsd'"
+         */
+        function updatePageTitle(message) {
+            top.document.title = message;
+        }
+        
+          
+                    
+         /**
+          * Finds an HTML element by its ID and makes it floatable over the normal content.
+          *
+          * @param x_displacement The difference in pixels to the right side of the window from 
+          *           the left side of the element.
+          * @param y_displacement The difference in pixels to the right side of the window from 
+          *           the top of the element.          
+          */
+         function findAndFloat(id, x_displacement, y_displacement){
+
+            var element = getElementObject(id);            
+            
+            window[id + "_obj"] = element;
+            
+            if(document.layers) {
+               element.style = element;
+            }
+            
+            element.current_y = y_displacement;      
+            element.first_time = true;
+         
+            element.floatElement = function(){
+               // It may be closed by an user action.
+                
+               // Target X and Y coordinates.
+               var x, y;
+               
+               var myWidth = 0, myHeight = 0;
+               if( typeof( window.innerWidth ) == 'number' ) {
+                  //Non-IE
+                  myWidth = window.innerWidth;
+                  myHeight = window.innerHeight;
+               } else if( document.documentElement && ( document.documentElement.clientWidth || document.documentElement.clientHeight ) ) {
+                  //IE 6+ in 'standards compliant mode'
+                  myWidth = document.documentElement.clientWidth;
+                  myHeight = document.documentElement.clientHeight;
+               } else if( document.body && ( document.body.clientWidth || document.body.clientHeight ) ) {
+                  //IE 4 compatible
+                  myWidth = document.body.clientWidth;
+                  myHeight = document.body.clientHeight;
+               }
+               
+               
+               x = myWidth - x_displacement;
+               
+               var ns = (navigator.appName.indexOf("Netscape") != -1);               
+               y = ns ? pageYOffset : document.documentElement && document.documentElement.scrollTop ? 
+                  document.documentElement.scrollTop : document.body.scrollTop;               
+               y = y + y_displacement;               
+               
+               // The current y is the current coordinate of the floating element.
+               // This should be at the limit the y target coordinate.
+               this.current_y += (y - this.current_y)/1.25;
+               
+               // Add the pixels constant after the values
+               // and move the element.
+               var px = document.layers ? "" : "px";
+               this.style.left =  x + px;
+               this.style.top =  this.current_y + px;
+                              
+               setTimeout(this.id + "_obj.floatElement()", 100);
+            }
+            
+            element.floatElement();
+            return element;
+          }
+
+         /**
+          * Finds an HTML element by its ID and makes it floatable over the normal content.
+          *
+          * @param x_displacement The difference in pixels to the right side of the window from 
+          *           the left side of the element.
+          * @param y_displacement The difference in pixels to the right side of the window from 
+          *           the top of the element.          
+          */
+         function selectTOCGroupBy(id, isChunked, indexFileLocation, indexFileNamespace, indexFileComponent){
+
+            if (!isChunked) {
+             var selectIds = new Array('toc_group_by_namespace', 'toc_group_by_location', 'toc_group_by_component_type');
+             // Make all the tabs invisible.
+               for (i = 0; i < 3; i++){
+                  var tab = getElementObject(selectIds[i]);
+                  tab.style.display = 'none';
+               }
+               var selTab = getElementObject(id);
+               selTab.style.display = 'block';
+            } else {
+             if (id == 'toc_group_by_namespace') {
+               parent.indexFrame.location = indexFileNamespace;
+             } else  if (id == 'toc_group_by_location') {
+               parent.indexFrame.location = indexFileLocation;
+             } else  if (id == 'toc_group_by_component_type') {
+              parent.indexFrame.location = indexFileComponent;
+             }
+            }
+         }
+          
+
+    
+                    //
+--></script>
+   </head>
+   <body>
+      <div id="global_controls" class="globalControls" style="position:absolute;right:0;">
+         <table class="rt">
+            <tr>
+               <td class="rt_cornerTopLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_lineTop" rowspan="1" colspan="1"></td>
+               <td class="rt_cornerTopRight" rowspan="1" colspan="1"></td>
+            </tr>
+            <tr>
+               <td class="rt_lineLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_content" rowspan="1" colspan="1">
+                  <h3>Showing:</h3>
+                  <table>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, annotationBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Annotations</span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, diagramBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Diagrams</span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, facetsBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Facets </span>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td rowspan="1" colspan="1">
+                           <span>
+                              <input type="checkbox" value="-" checked="checked" onclick="switchStateForAll(this, sourceBoxes);" class="control"></input>
+                           </span>
+                           <span class="globalControlName">Source</span>
+                        </td>
+                     </tr>
+                  </table>
+                  <div align="right">
+                     <span>
+                        <input type="button" onclick="getElementObject('global_controls').style.display = 'none';" value="Close"></input>
+                     </span>
+                  </div>
+               </td>
+               <td class="rt_lineRight" rowspan="1" colspan="1"></td>
+            </tr>
+            <tr>
+               <td class="rt_cornerBottomLeft" rowspan="1" colspan="1"></td>
+               <td class="rt_lineBottom" rowspan="1" colspan="1"></td>
+               <td class="rt_cornerBottomRight" rowspan="1" colspan="1"></td>
+            </tr>
+         </table>
+      </div>
+      <a id="CVEnumISMCUISpecifiedValues" shape="rect"><!--
+
+--></a>
+      <div class="componentTitle">Simple Type <span class="qname">ismcuispecified:CVEnumISMCUISpecifiedValues</span>
+      </div>
+      <table class="rt">
+         <tr>
+            <td class="rt_cornerTopLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_lineTop" rowspan="1" colspan="1"></td>
+            <td class="rt_cornerTopRight" rowspan="1" colspan="1"></td>
+         </tr>
+         <tr>
+            <td class="rt_lineLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_content" rowspan="1" colspan="1">
+               <table class="component">
+                  <tbody>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <b>Namespace</b>
+                        </td>
+                        <td rowspan="1" colspan="1">urn:us:gov:ic:cvenum:ism:cuispecified</td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Annotations</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_annotations_CVEnumISMCUISpecifiedValues" type="image" src="img/btM.gif" value="-" onclick="switchState('annotations_CVEnumISMCUISpecifiedValues');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="annotations_CVEnumISMCUISpecifiedValues" style="display:block">
+                              <div class="annotation">(U) All currently valid CUI Specified markings from 
+                                 the National Archives. This CVE is used by @ism:cuiSpecified.
+                                 PERMISSIBLE VALUES
+                                 
+                                 The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                                 
+                                 CVEnumISMCUISpecified.xml
+                                 
+                                 </div>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Diagram</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_diagram_CVEnumISMCUISpecifiedValues" type="image" src="img/btM.gif" value="-" onclick="switchState('diagram_CVEnumISMCUISpecifiedValues');" class="control"></input>
+                           </div>
+                        </td>
+                        <td class="diagram" rowspan="1" colspan="1">
+                           <div id="diagram_CVEnumISMCUISpecifiedValues" style="display:block">
+                              <img alt="Diagram" border="0" src="img/8b12f165-bfd5-46a4-a9ea-e2bdda29510a.png"></img>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <b>Type</b>
+                        </td>
+                        <td rowspan="1" colspan="1">restriction of <b>xsd:token</b>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Facets</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_facets_CVEnumISMCUISpecifiedValues" type="image" src="img/btM.gif" value="-" onclick="switchState('facets_CVEnumISMCUISpecifiedValues');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="facets_CVEnumISMCUISpecifiedValues" style="display:block">
+                              <table class="facetsTable">
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>AIV</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Accident Investigation. Related to information obtained during the course of 
+                                          an accident or incident investigation.  Including but not limited to information related
+                                          to wreckage, records, mail, or cargo. </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>ADPO</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Administrative Proceedings. Adjudication of agency-related matters including,
+                                          but not limited to, dispute resolution, settlements, and issuances of orders.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CRITAN</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Ammonium Nitrate. Related to registration information of those who own and 
+                                          operate ammonium nitrate facilities, purchasers of ammonium nitrate, and the regulation
+                                          of sales and transfers of ammonium nitrate.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>ARCHR</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Archaelogical Resources. Related to information about the nature and location
+                                          of any archaeological resource for which the excavation or removal requires a permit
+                                          or other permission.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>FSEC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Bank Secrecy. Information that is provided to the government pursuant to the 
+                                          Bank Secrecy Act, including but not limited to, suspicious activity reports (SAR),
+                                          currency transaction reports (CTR), reports of 
+                                          international transportation of currency or monetary instruments (CMIR), reports of
+                                          cash payment over $10,000 received in trade or 
+                                          business, and reports of foreign bank and financial accounts (FBAR). Reports filed
+                                          under the Bank Secrecy Act (BSA), codified in 
+                                          relevant part at 31 U.S.C. ? 5311 et seq, are specifically exempt from disclosure
+                                          under the Freedom of Information Act, codified at 
+                                          5 U.S.C. ? 552, and also may not be disclosed under any State, local, tribal, or territorial
+                                          ?freedom of information,? 
+                                          ?open government,? or similar law.  See 31 U.S.C. ? 5319; 5 U.S.C. ? 552(b)(3).  These
+                                          reports (BSA Reports), are maintained in a 
+                                          system of records containing information compiled for law enforcement investigative
+                                          purposes that has been exempted from the access 
+                                          provisions of the Privacy Act in accordance with 5 U.S.C. ?? 552a(j)(2) and (k)(2).
+                                          BSA Reports may only be re-disseminated in strict 
+                                          accordance with guidelines established by the Financial Crimes Enforcement Network
+                                          (FinCEN), the Treasury bureau that administers the 
+                                          BSA.  Suspicious Activity Reports, one of the types of required reports filed under
+                                          the BSA, are required to be kept confidential in 
+                                          accordance with 31 U.S.C. ? 5318(g)(2) and implementing regulations. To the extent
+                                          information falling under the purview of the BSA 
+                                          is collected, accessed, or used for any Federal tax administration purpose, it is
+                                          also subject to the confidentiality provisions of 
+                                          the Internal Revenue Code, codified at 26 U.S.C. ? 6103.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>BUDG</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Budget. Related to information concerning the federal budget, including 
+                                          authorizations and estimates of income and expenditures.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>FUND</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Campaign Funds. Related to information obtained in connection to an 
+                                          investigation into campaign finance and disclosure laws. Usage may include but is
+                                          not limited to notification or investigation 
+                                          pertaining to financial support of a candidate for election.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CVI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Chemical-terrorism Vulnerability Information. In accordance with Section 
+                                          550(c) of the Department of Homeland Security Appropriations Act of 2007, the following
+                                          information, whether transmitted verbally, 
+                                          electronically, or in written form, shall constitute CVI, see (1) - (9).</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CHLD</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Child Pornography. From 18 USC 2256(8) "child pornography" means any visual 
+                                          depiction, including any photograph, film, video, picture, or computer or computer-generated
+                                          image or picture, whether made or 
+                                          produced by electronic, mechanical, or other means, of sexually explicit conduct,
+                                          where? (A) the production of such visual depiction 
+                                          involves the use of a minor engaging in sexually explicit conduct; (B) such visual
+                                          depiction is a digital image, computer image, or 
+                                          computer-generated image that is, or is indistinguishable from, that of a minor engaging
+                                          in sexually explicit conduct; or (C) such 
+                                          visual depiction has been created, adapted, or modified to appear that an identifiable
+                                          minor is engaging in sexually explicit conduct</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CCI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Consumer Complaint Information. Related to information concerning consumer 
+                                          complaints or inquiries concerning financial institutions or consumer financial products
+                                          and services, and responses to them.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CONTRACT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Contract Use. Stipulations for a contractor to meet before material may be 
+                                          used in performance of certain contracts.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>SUB</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Controlled Substances. Information obtained by the Drug Enforcement 
+                                          Administration (DEA) or in DEA investigative reports related to controlled substances.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CTI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Controlled Technical Information. 	
+                                          Controlled Technical Information means technical information with military or space
+                                          application that is subject to controls on the 
+                                          access, use, reproduction, modification, performance, display, release, disclosure,
+                                          or dissemination. Controlled technical information
+                                          is to be marked with one of the distribution statements B through F, in accordance
+                                          with Department of Defense Instruction 5230.24, 
+                                          "Distribution Statements of Technical Documents." The term does not include information
+                                          that is lawfully publicly available without
+                                          restrictions. "Technical Information" means technical data or computer software, as
+                                          those terms are defined in Defense Federal 
+                                          Acquisition Regulation Supplement clause 252.227-7013, "Rights in Technical Data -
+                                          Noncommercial Items" (48 CFR 252.227-7013). 
+                                          Examples of technical information include research and engineering data, engineering
+                                          drawings, and associated lists, specifications, 
+                                          standards, process sheets, manuals, technical reports, technical orders, catalog-item
+                                          identifications, data sets, studies and 
+                                          analyses and related information, and computer software executable code and source
+                                          code.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CHRI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Criminal History Records Information. Related to information collected by 
+                                          criminal justice agencies on individuals consisting of identifiable descriptions and
+                                          notations of arrests, detentions, indictments, 
+                                          informations, or other formal criminal charges, and any disposition arising therefrom,
+                                          including acquittal, sentencing, correctional 
+                                          supervision, and release.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CEII</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Critical Energy Infrastructure Information. Critical energy infrastructure 
+                                          information means specific engineering, vulnerability, or detailed design information
+                                          about proposed or existing critical 
+                                          infrastructure that: (i) Relates details about the production, generation, transportation,
+                                          transmission, or distribution of energy; 
+                                          (ii) Could be useful to a person in planning an attack on critical infrastructure;...
+                                          and (iii) Does not simply give the general 
+                                          location of the critical infrastructure.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>LDNA</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">DNA. Related to hereditary material in humans that is used for law enforcement 
+                                          purposes.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>EXPT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Export Controlled. Unclassified information concerning certain items, 
+                                          commodities, technology, software, or other information whose export could reasonably
+                                          be expected to adversely affect the United 
+                                          States national security and nonproliferation objectives. To include dual use items;
+                                          items identified in export administration 
+                                          regulations, international traffic in arms regulations and the munitions list; license
+                                          applications; and sensitive nuclear technology 
+                                          information.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>JURY</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Federal Grand Jury. Material obtained pursuant to a federal grand jury 
+                                          subpoena, which includes (1) any reference to a specific sitting grand jury; (2) any
+                                          documentation or data obtained by a grand jury 
+                                          subpoena if disclosure of such material tends to reveal what transpired before or
+                                          at the direction of the federal grand jury; 
+                                          (3) documentation prepared specifically for the federal grand jury; and (4) transcripts
+                                          or other recordings of testimony presented 
+                                          to the federal grand jury.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>TAX</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Federal Taxpayer Information. Related to returns and return information 
+                                          which are submitted, gathered or generated in conjunction with taxpayers? responsibilities
+                                          to comply with federal tax provisions 
+                                          in the United States Code. 
+                                          
+                                          ?Returns? includes information that is provided to the government pursuant to Title
+                                          26, including tax or information returns, 
+                                          declarations of estimated tax or claims for refund.  ?Return information? includes
+                                          a taxpayer?s identity, the nature, source or 
+                                          amount of income or any information received by, recorded by, prepared by or furnished
+                                          to Internal Revenue Service relevant to the 
+                                          determination of tax liability including whether the taxpayer is the subject of investigation.
+                                          This protection extends to such items 
+                                          as medical, financial and other personal information submitted to the IRS by taxpayers.
+                                          Standards (typically tolerances, audit
+                                          criteria and law enforcement techniques) related to the selection of returns for examination
+                                          should only be disclosed to the extent
+                                          their disclosure would not impair assessment, collection or enforcement under the
+                                          internal revenue laws.  Tax data originating with
+                                          the IRS generally retains its confidential status even when it resides with agencies
+                                          other than the IRS.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>FISA</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Foreign Intelligence Surveillance Act. Related to unclassified and 
+                                          declassified information that is collected from unconsenting individuals under the
+                                          authority of the Foreign Intelligence 
+                                          Surveillance Act (FISA).</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>FISAB</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Foreign Intelligence Surveillance Act Business Records. Related to books, 
+                                          records, papers, documents, and other items produced for an investigation to obtain
+                                          foreign intelligence information.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>FNC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Financial Information. Related to the duties, transactions, or 
+                                          otherwise falling under the purview of financial institutions or United States Government
+                                          fiscal functions. Uses may include, but 
+                                          are not limited to, customer information held by a financial institution.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>INTEL</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Intelligence. Related to intelligence activities, sources, or methods.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>NUC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Nuclear. Related to protection of information concerning nuclear 
+                                          reactors, materials, or security.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PRVCY</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Privacy. Refers to personal information, or, in some cases, 
+                                          "personally identifiable information," as defined in OMB M-17-12, or "means of identification"
+                                          as defined in 18 USC 1028(d)(7).</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PROCURE</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Procurement and Acquisition. Material and information relating to, 
+                                          or associated with, the acquisition and procurement of goods and services, including
+                                          but not limited to, cost or pricing data, 
+                                          contract information, indirect costs and direct labor rates.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PROPIN</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">General Proprietary Business Information. Material and information relating 
+                                          to, or associated with, a company's products, business, or activities, including but
+                                          not limited to financial information; data or 
+                                          statements; trade secrets; product research and development; existing and future product
+                                          designs and performance specifications.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>GENETIC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Genetic Information. The term "genetic information" means, with respect to 
+                                          any individual, information about-- (i) such individual's genetic tests, (ii) the
+                                          genetic tests of family members of such individual, 
+                                          and (iii) the manifestation of a disease or disorder in family members of such individual.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>GEO</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Geodetic Product Information. Related to imagery, imagery intelligence, or 
+                                          geospatial information.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>HLTH</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Health Information. As per 42 USC 1320d(4), "health information" means any 
+                                          information, whether oral or recorded in any form or medium, that (A) is created or
+                                          received by a health care provider, health plan, 
+                                          public health authority, employer, life insurer, school or university, or health care
+                                          clearinghouse; and (B) relates to the past, 
+                                          present, or future physical or mental health or condition of an individual, the provision
+                                          of health care to an individual, or the 
+                                          past, present, or future payment for the provision of health care to an individual.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>HISTP</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Historic Properties. 	Related to the location, character, or ownership of 
+                                          historic property.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>INF</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Informant. Related to the identity of a human source.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PRIIG</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Inspector General Protected. Related to the identity of a person making a 
+                                          report to the Inspector General of any Executive agency.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>IFNC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Intelligence Financial Records. 	Related to financial records obtained for 
+                                          intelligence or counterintelligence activity, investigation, or analysis.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>ID</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Internal Data. Refers to a category of information that is not intended to 
+                                          be disseminated beyond CIA channels that involves intelligence activities, sources,
+                                          or methods. This information may also relate to 
+                                          the CIA's organization, functions, names, official titles, salaries, or numbers of
+                                          personnel.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>INTL</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">International Agreement Information. Information provided by, otherwise made 
+                                          available by, or produced in cooperation with, a foreign government or international
+                                          organization that requires protection pursuant 
+                                          to an existing treaty, agreement, bilateral exchange or other obligation under the
+                                          requirements stipulated in 10 USC 130c(b), when 
+                                          not subject to classification under Executive Order 13526. Title 10 USC 130c(b) may
+                                          exempt this class of foreign government 
+                                          information from the safeguard provisions otherwise required by Executive Order 13526.
+                                          Per Title 10 USC 130c(h) the following 
+                                          national security officials are the only ones defined by statute as able to determine
+                                          such information requires control: 
+                                          (A) The Secretary of Defense, with respect to information of concern to the Department
+                                          of Defense. 
+                                          (B) The Secretary of Homeland Security, with respect to information of concern to
+                                          the Coast Guard, as determined by the Secretary, 
+                                          but only while the Coast Guard is not operating as a service in the Navy. 
+                                          (C) The Secretary of Energy, with respect to information concerning the national security
+                                          programs of the Department of Energy, 
+                                          as determined by the Secretary.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>INV</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Investigation. 	Related to information obtained during the course of a 
+                                          law enforcement investigation or action, civil or criminal.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>LFNC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Law Enforcement Financial Records. 	Related to financial records obtained 
+                                          for law enforcement purposes.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>NPSR</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">National Park System Resources. Related to information concerning the nature 
+                                          and specific location of a National Park System resource that is endangered, threatened,
+                                          rare, or commercially valuable, of mineral 
+                                          or paleontological objects within System units, or of objects of cultural patrimony
+                                          within System units.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>NNPI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Naval Nuclear Propulsion Information. Related to the safety of reactors and 
+                                          associated naval nuclear propulsion plants, and control of radiation and radioactivity
+                                          associated with naval nuclear propulsion 
+                                          activities, including prescribing and enforcing standards and regulations for these
+                                          areas as they affect the environment and the 
+                                          safety and health of workers, operators, and the general public.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>SRI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Nuclear Security-Related Information. Related to information that could be 
+                                          useful, or could reasonably be expected to be useful, to a terrorist in a potential
+                                          attack that does not qualify as Safeguards or 
+                                          classified information, including the exact location and quantities of radioactive
+                                          material, certain detailed design drawings, 
+                                          information on nearby facilities, emergency planning information, and certain assessments
+                                          of vulnerability and safety analyses.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PERS</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Personnel Records. Related to the employees of federal agencies.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>MFC</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Proprietary Manufacturer. Relating to the production of a consumer product 
+                                          to include that of a private labeler.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>PCII</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Protected Critical Infrastructure Information. As defined by 6 USC 131-134, 
+                                          and 6 CFR 29, PCII relates to threats, vulnerabilities, or operational experience
+                                          related to the national infrastructure. 
+                                          PCII offers protection to private sector infrastructure information voluntarily shared
+                                          with government entities for purposes of 
+                                          homeland security.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>LPROT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Protective Order. 	Stipulation that certain information that would 
+                                          normally fall under discovery rules will not be disclosed for specifically stated
+                                          reason.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>SGI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Safeguards Information. 	Pursuant to 42 USC 2011, et seq., and as 
+                                          defined in 10 CFR 73.2, SGI relates to security related information concerning the
+                                          physical protection of source, byproduct or 
+                                          special nuclear material and the detailed security measures for facilities and information
+                                          contained within security plans.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>SSI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Sensitive Security Information. As defined in 49 C.F.R. Part 15.5, 
+                                          Sensitive Security Information is information obtained or developed in the conduct
+                                          of security activities, including research and 
+                                          development, the disclosure of which DOT has determined would constitute an unwarranted
+                                          invasion of privacy, reveal trade secrets 
+                                          or privileged or confidential information, or be detrimental to transportation safety.
+                                          As defined in 49 C.F.R. Part 1520.5, 
+                                          Sensitive Security Information is information obtained or developed in the conduct
+                                          of security activities, including research 
+                                          and development, the disclosure of which DHS/TSA has determined would, among other
+                                          things, be detrimental to the security of 
+                                          transportation.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>SSEL</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Source Selection. Per FAR 2.101: any of the following information that is 
+                                          prepared for use by an agency for the purpose of evaluating a bid or proposal to enter
+                                          into an agency procurement contract, if that 
+                                          information has not been previously made available to the public or disclosed publicly:
+                                          (Items 1-10).</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>STAT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Statistical Information. Refers to information collected by a Federal 
+                                          statistical agency, unit, or program for statistical purposes or used for statistical
+                                          activities; under law, regulation, or 
+                                          Government-wide policy such 'Statistical' CUI requires: (1) protection from unauthorized
+                                          disclosure; (2) special handling 
+                                          safeguards; and/or (3) prescribed limits on access or dissemination.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>STUD</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Student Records. As per 20 USC 1232g, the Family Educational Rights and 
+                                          Privacy Act of 1974, an education record which is comprised of those records which
+                                          are directly related to a student.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>TSCA</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Toxic Substances. Health, safety, and exposure information related to 
+                                          chemical substances, chemical mixtures, and articles as defined under the Toxic Substances
+                                          Control Act (TSCA).</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>DCNI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Unclassified Controlled Nuclear Information - Defense. 	Relating to 
+                                          Department of Defense special nuclear material (SNM), equipment, and facilities, as
+                                          defined by 32 CFR 223.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>UCNI</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Unclassified Controlled Nuclear Information - Energy. Relating to certain 
+                                          design and security information concerning nuclear facilities, materials, and weapons,
+                                          specific to the Department of Energy.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>CENS</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">US Census. Related to information gathered by the Bureau of the Census 
+                                          during the process of collecting, compiling, evaluating, analyzing of demographic,
+                                          economic, and social data pertaining at a 
+                                          specified time to any or all persons in the United States and dissemination is limited
+                                          to those with special sworn status, who may 
+                                          only use the data for statistical purposes and only for those statistical purposes
+                                          for which the data was supplied. </div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>WHSTL</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Whistleblower Identity. Identity of anyone providing information relating 
+                                          to a legal violation or illicit or unsafe activity, including information provided
+                                          by a whistleblower which could reasonably be 
+                                          expected to reveal the identity of a whistleblower.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>WIT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Witness Protection. Information related to the secretive details associated 
+                                          with one who has testified or may testify under circumstances that require secrecy
+                                          of that individual and details pertaining to that 
+                                          person.</div>
+                                    </td>
+                                 </tr>
+                                 <tr>
+                                    <td class="firstColumn" rowspan="1" colspan="1">enumeration</td>
+                                    <td width="30%" rowspan="1" colspan="1">
+                                       <b>WDT</b>
+                                    </td>
+                                    <td rowspan="1" colspan="1">
+                                       <div class="annotation">Written Determinations. 	
+                                          Rulings, determination letters, technical advice memoranda or Chief Counsel Advice,
+                                          as those terms are defined in Treasury 
+                                          Regulation 301.6110-2, which are made available for public inspection subject to the
+                                          withholding of certain types of data as 
+                                          enumerated in Treasury Regulation 301-6110.</div>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <div class="floatLeft">
+                              <b>Source</b>
+                           </div>
+                           <div class="floatRight">
+                              <input id="button_source_CVEnumISMCUISpecifiedValues" type="image" src="img/btM.gif" value="-" onclick="switchState('source_CVEnumISMCUISpecifiedValues');" class="control"></input>
+                           </div>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <div id="source_CVEnumISMCUISpecifiedValues" style="display:block">
+                              <table style="table-layout:fixed;white-space:pre-wrap;white-space:-moz-pre-wrap;white-space:-pre-wrap;white-space: -o-pre-wrap;word-wrap: break-word;_white-space:pre;" class="preWrapContainer">
+                                 <tr>
+                                    <td width="100%" rowspan="1" colspan="1">
+                                       <pre xml:space="preserve"><span class="tEl">&lt;xsd:simpleType</span><span class="tAN"> name=</span><span class="tAV">"CVEnumISMCUISpecifiedValues"</span><span class="tEl">&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">(U) All currently valid CUI Specified markings from the National Archives. This CVE is used by @ism:cuiSpecified. PERMISSIBLE VALUES The permissible values for this simple type are defined in the Controlled Value Enumeration: CVEnumISMCUISpecified.xml</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;xsd:restriction</span><span class="tAN"> base=</span><span class="tAV">"xsd:token"</span><span class="tEl">&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"AIV"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Accident Investigation. Related to information obtained during the course of an accident or incident investigation. Including but not limited to information related to wreckage, records, mail, or cargo.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"ADPO"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Administrative Proceedings. Adjudication of agency-related matters including, but not limited to, dispute resolution, settlements, and issuances of orders.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CRITAN"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Ammonium Nitrate. Related to registration information of those who own and operate ammonium nitrate facilities, purchasers of ammonium nitrate, and the regulation of sales and transfers of ammonium nitrate.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"ARCHR"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Archaelogical Resources. Related to information about the nature and location of any archaeological resource for which the excavation or removal requires a permit or other permission.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"FSEC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Bank Secrecy. Information that is provided to the government pursuant to the Bank Secrecy Act, including but not limited to, suspicious activity reports (SAR), currency transaction reports (CTR), reports of international transportation of currency or monetary instruments (CMIR), reports of cash payment over $10,000 received in trade or business, and reports of foreign bank and financial accounts (FBAR). Reports filed under the Bank Secrecy Act (BSA), codified in relevant part at 31 U.S.C. ? 5311 et seq, are specifically exempt from disclosure under the Freedom of Information Act, codified at 5 U.S.C. ? 552, and also may not be disclosed under any State, local, tribal, or territorial ?freedom of information,? ?open government,? or similar law. See 31 U.S.C. ? 5319; 5 U.S.C. ? 552(b)(3). These reports (BSA Reports), are maintained in a system of records containing information compiled for law enforcement investigative purposes that has been exempted from the access provisions of the Privacy Act in accordance with 5 U.S.C. ?? 552a(j)(2) and (k)(2). BSA Reports may only be re-disseminated in strict accordance with guidelines established by the Financial Crimes Enforcement Network (FinCEN), the Treasury bureau that administers the BSA. Suspicious Activity Reports, one of the types of required reports filed under the BSA, are required to be kept confidential in accordance with 31 U.S.C. ? 5318(g)(2) and implementing regulations. To the extent information falling under the purview of the BSA is collected, accessed, or used for any Federal tax administration purpose, it is also subject to the confidentiality provisions of the Internal Revenue Code, codified at 26 U.S.C. ? 6103.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"BUDG"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Budget. Related to information concerning the federal budget, including authorizations and estimates of income and expenditures.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"FUND"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Campaign Funds. Related to information obtained in connection to an investigation into campaign finance and disclosure laws. Usage may include but is not limited to notification or investigation pertaining to financial support of a candidate for election.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CVI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Chemical-terrorism Vulnerability Information. In accordance with Section 550(c) of the Department of Homeland Security Appropriations Act of 2007, the following information, whether transmitted verbally, electronically, or in written form, shall constitute CVI, see (1) - (9).</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CHLD"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Child Pornography. From 18 USC 2256(8) "child pornography" means any visual depiction, including any photograph, film, video, picture, or computer or computer-generated image or picture, whether made or produced by electronic, mechanical, or other means, of sexually explicit conduct, where? (A) the production of such visual depiction involves the use of a minor engaging in sexually explicit conduct; (B) such visual depiction is a digital image, computer image, or computer-generated image that is, or is indistinguishable from, that of a minor engaging in sexually explicit conduct; or (C) such visual depiction has been created, adapted, or modified to appear that an identifiable minor is engaging in sexually explicit conduct</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CCI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Consumer Complaint Information. Related to information concerning consumer complaints or inquiries concerning financial institutions or consumer financial products and services, and responses to them.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CONTRACT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Contract Use. Stipulations for a contractor to meet before material may be used in performance of certain contracts.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"SUB"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Controlled Substances. Information obtained by the Drug Enforcement Administration (DEA) or in DEA investigative reports related to controlled substances.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CTI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Controlled Technical Information. Controlled Technical Information means technical information with military or space application that is subject to controls on the access, use, reproduction, modification, performance, display, release, disclosure, or dissemination. Controlled technical information is to be marked with one of the distribution statements B through F, in accordance with Department of Defense Instruction 5230.24, "Distribution Statements of Technical Documents." The term does not include information that is lawfully publicly available without restrictions. "Technical Information" means technical data or computer software, as those terms are defined in Defense Federal Acquisition Regulation Supplement clause 252.227-7013, "Rights in Technical Data - Noncommercial Items" (48 CFR 252.227-7013). Examples of technical information include research and engineering data, engineering drawings, and associated lists, specifications, standards, process sheets, manuals, technical reports, technical orders, catalog-item identifications, data sets, studies and analyses and related information, and computer software executable code and source code.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CHRI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Criminal History Records Information. Related to information collected by criminal justice agencies on individuals consisting of identifiable descriptions and notations of arrests, detentions, indictments, informations, or other formal criminal charges, and any disposition arising therefrom, including acquittal, sentencing, correctional supervision, and release.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CEII"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Critical Energy Infrastructure Information. Critical energy infrastructure information means specific engineering, vulnerability, or detailed design information about proposed or existing critical infrastructure that: (i) Relates details about the production, generation, transportation, transmission, or distribution of energy; (ii) Could be useful to a person in planning an attack on critical infrastructure;... and (iii) Does not simply give the general location of the critical infrastructure.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"LDNA"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">DNA. Related to hereditary material in humans that is used for law enforcement purposes.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"EXPT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Export Controlled. Unclassified information concerning certain items, commodities, technology, software, or other information whose export could reasonably be expected to adversely affect the United States national security and nonproliferation objectives. To include dual use items; items identified in export administration regulations, international traffic in arms regulations and the munitions list; license applications; and sensitive nuclear technology information.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"JURY"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Federal Grand Jury. Material obtained pursuant to a federal grand jury subpoena, which includes (1) any reference to a specific sitting grand jury; (2) any documentation or data obtained by a grand jury subpoena if disclosure of such material tends to reveal what transpired before or at the direction of the federal grand jury; (3) documentation prepared specifically for the federal grand jury; and (4) transcripts or other recordings of testimony presented to the federal grand jury.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"TAX"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Federal Taxpayer Information. Related to returns and return information which are submitted, gathered or generated in conjunction with taxpayers? responsibilities to comply with federal tax provisions in the United States Code. ?Returns? includes information that is provided to the government pursuant to Title 26, including tax or information returns, declarations of estimated tax or claims for refund. ?Return information? includes a taxpayer?s identity, the nature, source or amount of income or any information received by, recorded by, prepared by or furnished to Internal Revenue Service relevant to the determination of tax liability including whether the taxpayer is the subject of investigation. This protection extends to such items as medical, financial and other personal information submitted to the IRS by taxpayers. Standards (typically tolerances, audit criteria and law enforcement techniques) related to the selection of returns for examination should only be disclosed to the extent their disclosure would not impair assessment, collection or enforcement under the internal revenue laws. Tax data originating with the IRS generally retains its confidential status even when it resides with agencies other than the IRS.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"FISA"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Foreign Intelligence Surveillance Act. Related to unclassified and declassified information that is collected from unconsenting individuals under the authority of the Foreign Intelligence Surveillance Act (FISA).</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"FISAB"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Foreign Intelligence Surveillance Act Business Records. Related to books, records, papers, documents, and other items produced for an investigation to obtain foreign intelligence information.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"FNC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Financial Information. Related to the duties, transactions, or otherwise falling under the purview of financial institutions or United States Government fiscal functions. Uses may include, but are not limited to, customer information held by a financial institution.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"INTEL"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Intelligence. Related to intelligence activities, sources, or methods.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"NUC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Nuclear. Related to protection of information concerning nuclear reactors, materials, or security.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PRVCY"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Privacy. Refers to personal information, or, in some cases, "personally identifiable information," as defined in OMB M-17-12, or "means of identification" as defined in 18 USC 1028(d)(7).</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PROCURE"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Procurement and Acquisition. Material and information relating to, or associated with, the acquisition and procurement of goods and services, including but not limited to, cost or pricing data, contract information, indirect costs and direct labor rates.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PROPIN"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">General Proprietary Business Information. Material and information relating to, or associated with, a company's products, business, or activities, including but not limited to financial information; data or statements; trade secrets; product research and development; existing and future product designs and performance specifications.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"GENETIC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Genetic Information. The term "genetic information" means, with respect to any individual, information about-- (i) such individual's genetic tests, (ii) the genetic tests of family members of such individual, and (iii) the manifestation of a disease or disorder in family members of such individual.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"GEO"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Geodetic Product Information. Related to imagery, imagery intelligence, or geospatial information.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"HLTH"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Health Information. As per 42 USC 1320d(4), "health information" means any information, whether oral or recorded in any form or medium, that (A) is created or received by a health care provider, health plan, public health authority, employer, life insurer, school or university, or health care clearinghouse; and (B) relates to the past, present, or future physical or mental health or condition of an individual, the provision of health care to an individual, or the past, present, or future payment for the provision of health care to an individual.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"HISTP"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Historic Properties. Related to the location, character, or ownership of historic property.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"INF"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Informant. Related to the identity of a human source.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PRIIG"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Inspector General Protected. Related to the identity of a person making a report to the Inspector General of any Executive agency.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"IFNC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Intelligence Financial Records. Related to financial records obtained for intelligence or counterintelligence activity, investigation, or analysis.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"ID"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Internal Data. Refers to a category of information that is not intended to be disseminated beyond CIA channels that involves intelligence activities, sources, or methods. This information may also relate to the CIA's organization, functions, names, official titles, salaries, or numbers of personnel.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"INTL"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">International Agreement Information. Information provided by, otherwise made available by, or produced in cooperation with, a foreign government or international organization that requires protection pursuant to an existing treaty, agreement, bilateral exchange or other obligation under the requirements stipulated in 10 USC 130c(b), when not subject to classification under Executive Order 13526. Title 10 USC 130c(b) may exempt this class of foreign government information from the safeguard provisions otherwise required by Executive Order 13526. Per Title 10 USC 130c(h) the following national security officials are the only ones defined by statute as able to determine such information requires control: (A) The Secretary of Defense, with respect to information of concern to the Department of Defense. (B) The Secretary of Homeland Security, with respect to information of concern to the Coast Guard, as determined by the Secretary, but only while the Coast Guard is not operating as a service in the Navy. (C) The Secretary of Energy, with respect to information concerning the national security programs of the Department of Energy, as determined by the Secretary.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"INV"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Investigation. Related to information obtained during the course of a law enforcement investigation or action, civil or criminal.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"LFNC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Law Enforcement Financial Records. Related to financial records obtained for law enforcement purposes.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"NPSR"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">National Park System Resources. Related to information concerning the nature and specific location of a National Park System resource that is endangered, threatened, rare, or commercially valuable, of mineral or paleontological objects within System units, or of objects of cultural patrimony within System units.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"NNPI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Naval Nuclear Propulsion Information. Related to the safety of reactors and associated naval nuclear propulsion plants, and control of radiation and radioactivity associated with naval nuclear propulsion activities, including prescribing and enforcing standards and regulations for these areas as they affect the environment and the safety and health of workers, operators, and the general public.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"SRI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Nuclear Security-Related Information. Related to information that could be useful, or could reasonably be expected to be useful, to a terrorist in a potential attack that does not qualify as Safeguards or classified information, including the exact location and quantities of radioactive material, certain detailed design drawings, information on nearby facilities, emergency planning information, and certain assessments of vulnerability and safety analyses.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PERS"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Personnel Records. Related to the employees of federal agencies.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"MFC"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Proprietary Manufacturer. Relating to the production of a consumer product to include that of a private labeler.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"PCII"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Protected Critical Infrastructure Information. As defined by 6 USC 131-134, and 6 CFR 29, PCII relates to threats, vulnerabilities, or operational experience related to the national infrastructure. PCII offers protection to private sector infrastructure information voluntarily shared with government entities for purposes of homeland security.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"LPROT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Protective Order. Stipulation that certain information that would normally fall under discovery rules will not be disclosed for specifically stated reason.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"SGI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Safeguards Information. Pursuant to 42 USC 2011, et seq., and as defined in 10 CFR 73.2, SGI relates to security related information concerning the physical protection of source, byproduct or special nuclear material and the detailed security measures for facilities and information contained within security plans.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"SSI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Sensitive Security Information. As defined in 49 C.F.R. Part 15.5, Sensitive Security Information is information obtained or developed in the conduct of security activities, including research and development, the disclosure of which DOT has determined would constitute an unwarranted invasion of privacy, reveal trade secrets or privileged or confidential information, or be detrimental to transportation safety. As defined in 49 C.F.R. Part 1520.5, Sensitive Security Information is information obtained or developed in the conduct of security activities, including research and development, the disclosure of which DHS/TSA has determined would, among other things, be detrimental to the security of transportation.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"SSEL"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Source Selection. Per FAR 2.101: any of the following information that is prepared for use by an agency for the purpose of evaluating a bid or proposal to enter into an agency procurement contract, if that information has not been previously made available to the public or disclosed publicly: (Items 1-10).</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"STAT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Statistical Information. Refers to information collected by a Federal statistical agency, unit, or program for statistical purposes or used for statistical activities; under law, regulation, or Government-wide policy such 'Statistical' CUI requires: (1) protection from unauthorized disclosure; (2) special handling safeguards; and/or (3) prescribed limits on access or dissemination.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"STUD"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Student Records. As per 20 USC 1232g, the Family Educational Rights and Privacy Act of 1974, an education record which is comprised of those records which are directly related to a student.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"TSCA"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Toxic Substances. Health, safety, and exposure information related to chemical substances, chemical mixtures, and articles as defined under the Toxic Substances Control Act (TSCA).</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"DCNI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Unclassified Controlled Nuclear Information - Defense. Relating to Department of Defense special nuclear material (SNM), equipment, and facilities, as defined by 32 CFR 223.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"UCNI"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Unclassified Controlled Nuclear Information - Energy. Relating to certain design and security information concerning nuclear facilities, materials, and weapons, specific to the Department of Energy.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"CENS"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">US Census. Related to information gathered by the Bureau of the Census during the process of collecting, compiling, evaluating, analyzing of demographic, economic, and social data pertaining at a specified time to any or all persons in the United States and dissemination is limited to those with special sworn status, who may only use the data for statistical purposes and only for those statistical purposes for which the data was supplied.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"WHSTL"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Whistleblower Identity. Identity of anyone providing information relating to a legal violation or illicit or unsafe activity, including information provided by a whistleblower which could reasonably be expected to reveal the identity of a whistleblower.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"WIT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Witness Protection. Information related to the secretive details associated with one who has testified or may testify under circumstances that require secrecy of that individual and details pertaining to that person.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;xsd:enumeration</span><span class="tAN"> value=</span><span class="tAV">"WDT"</span><span class="tEl">&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;xsd:annotation</span><span class="tEl">&gt;</span><span class="tI">
+        </span><span class="tEl">&lt;xsd:documentation</span><span class="tEl">&gt;</span><span class="tT" style="white-space:normal">Written Determinations. Rulings, determination letters, technical advice memoranda or Chief Counsel Advice, as those terms are defined in Treasury Regulation 301.6110-2, which are made available for public inspection subject to the withholding of certain types of data as enumerated in Treasury Regulation 301-6110.</span><span class="tEl">&lt;/xsd:documentation&gt;</span><span class="tI">
+      </span><span class="tEl">&lt;/xsd:annotation&gt;</span><span class="tI">
+    </span><span class="tEl">&lt;/xsd:enumeration&gt;</span><span class="tI">
+  </span><span class="tEl">&lt;/xsd:restriction&gt;</span><span class="tI">
+</span><span class="tEl">&lt;/xsd:simpleType&gt;</span></pre>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </td>
+                     </tr>
+                     <tr>
+                        <td class="firstColumn" rowspan="1" colspan="1">
+                           <b>Schema location</b>
+                        </td>
+                        <td rowspan="1" colspan="1">
+                           <a href="../../Schema/ISM/CVEGenerated/CVEnumISMCUISpecified.xsd">CVEnumISMCUISpecified.xsd</a> Copy and paste this link to your file browser, clicking the link MAY open in the browser. Opening in an XML aware editor is best. 
+    </td>
+                     </tr>
+                  </tbody>
+               </table>
+            </td>
+            <td class="rt_lineRight" rowspan="1" colspan="1"></td>
+         </tr>
+         <tr>
+            <td class="rt_cornerBottomLeft" rowspan="1" colspan="1"></td>
+            <td class="rt_lineBottom" rowspan="1" colspan="1"></td>
+            <td class="rt_cornerBottomRight" rowspan="1" colspan="1"></td>
+         </tr>
+      </table>
+      <h2 style=" font:italic bold 12px Georgia,serif;color:gray;font-size:14px;text-align:center;  width : 95%;">
+           This document has been approved for Public Release by the Office of the Director of National Intelligence. See Distribution Notice for details.
+       <a href="../index.html" target="_top">
+                Click Here
+            </a>
+      </h2>
+      <div class="footer"></div>
+      <script type="text/javascript" xml:space="preserve"><!--
+
+                     // The namespace is the selected option in the TOC combo.
+                    
+                     // Floats the toolbar.
+                     var globalControls = getElementObject("global_controls"); 
+                     
+                     if(globalControls != null){
+	                     var browser=navigator.appName;
+						 var version = parseFloat(navigator.appVersion.split('MSIE')[1]);
+						 
+						 var IE6 = false;
+						 if ((browser=="Microsoft Internet Explorer") && (version < 7)){
+						 	IE6 = true;
+						 }
+	
+	                     //alert (IE6 + " |V| " + version);
+	                     
+	                     if(IE6){
+	                     	// On IE 6 the 'fixed' property is not supported. We must use javascript. 
+	                         globalControls.style.position='absolute';                         
+	                         // The global controls will do not exist in the TOC frame, when chunking.
+	                         findAndFloat("global_controls", 225, 30);    
+	                     } else {
+	                      	  globalControls.style.position='fixed';                     	
+	                     }
+	                     
+	                     globalControls.style.right='0';                       
+                     }
+                //
+--></script>
+   </body>
+</html>

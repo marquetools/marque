@@ -1,0 +1,15 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:pocType"
+CVEnumISMPocType.cve = list { 
+# (U) 
+"ICD-710"?, 
+# (U) 
+"DoD-Dist-B"?, 
+# (U) 
+"DoD-Dist-C"?, 
+# (U) 
+"DoD-Dist-D"?, 
+# (U) 
+"DoD-Dist-E"?, 
+# (U) 
+"DoD-Dist-F"? } 

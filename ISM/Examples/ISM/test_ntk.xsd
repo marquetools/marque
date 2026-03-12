@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="test:ntk" 
+           xmlns:ntk="urn:us:gov:ic:ntk"
+           xmlns:ism="urn:us:gov:ic:ism" 
+           xmlns:arh="urn:us:gov:ic:arh" 
+           xmlns:test="test:ntk">
+   <xs:import namespace="urn:us:gov:ic:ntk"
+              schemaLocation="../../Schema/ISM/IC-NTK.xsd"/>
+   <xs:import namespace="urn:us:gov:ic:ism"
+              schemaLocation="../../Schema/ISM/IC-ISM.xsd"/>
+   <xs:import namespace="urn:us:gov:ic:arh"
+              schemaLocation="../../Schema/ISM/IC-ARH.xsd"/>
+   <xs:element name="root">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:choice minOccurs="0">
+               <xs:element ref="arh:Security" minOccurs="1" maxOccurs="1"/>
+               <xs:element ref="arh:ExternalSecurity" minOccurs="1" maxOccurs="1"/>
+            </xs:choice>
+            <xs:element ref="test:portion" minOccurs="0" maxOccurs="unbounded"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="ism:ISMRootNodeAttributeGroup"/>
+         <xs:attributeGroup ref="ism:ResourceNodeAttributeOptionGroup"/>
+         <xs:attribute ref="ntk:DESVersion" use="optional"/>
+         <xs:attribute ref="arh:DESVersion" use="optional"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="portion">
+      <xs:complexType>
+         <xs:simpleContent>
+            <xs:extension base="xs:string">
+               <xs:attributeGroup ref="ism:SecurityAttributesGroup"/>
+            </xs:extension>
+         </xs:simpleContent>
+      </xs:complexType>
+   </xs:element>
+</xs:schema>

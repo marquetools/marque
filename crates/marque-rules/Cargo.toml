@@ -1,0 +1,17 @@
+[package]
+name        = "marque-rules"
+description = "Rule trait definitions for marque — the contract every rule crate implements"
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+marque-core = { workspace = true }
+thiserror   = { workspace = true }
+serde       = { workspace = true, optional = true }
+
+[features]
+default = []
+serde   = ["dep:serde", "marque-core/serde"]

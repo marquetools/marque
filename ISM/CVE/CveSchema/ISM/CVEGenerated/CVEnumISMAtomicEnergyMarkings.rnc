@@ -1,0 +1,31 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:atomicEnergyMarkings"
+CVEnumISMatomicEnergyMarkings.cve = list { 
+# (U) 
+"RD"?, 
+# (U) 
+"RD-CNWDI"?, 
+# (U) 
+"RD-SG-14"?, 
+# (U) 
+"RD-SG-15"?, 
+# (U) 
+"RD-SG-18"?, 
+# (U) 
+"RD-SG-20"?, 
+# (U) 
+"FRD"?, 
+# (U) 
+"FRD-SG-14"?, 
+# (U) 
+"FRD-SG-15"?, 
+# (U) 
+"FRD-SG-18"?, 
+# (U) 
+"FRD-SG-20"?, 
+# (U) 
+"DCNI"?, 
+# (U) 
+"UCNI"?, 
+# (U) 
+"TFNI"? } 

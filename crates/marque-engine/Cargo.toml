@@ -1,0 +1,19 @@
+[package]
+name        = "marque-engine"
+description = "Pipeline orchestration: core + rules → diagnostics + fixes"
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+marque-core   = { workspace = true }
+marque-rules  = { workspace = true }
+marque-capco  = { path = "../marque-capco" }
+marque-config = { workspace = true }
+tokio         = { workspace = true }
+futures       = { workspace = true }
+thiserror     = { workspace = true }
+tracing       = { workspace = true }
+recoco-utils  = { workspace = true }

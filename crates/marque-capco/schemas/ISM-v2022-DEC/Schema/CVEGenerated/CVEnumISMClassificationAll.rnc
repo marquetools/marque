@@ -1,0 +1,13 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:classification:all"
+CVEnumISMClassificationAll.cve = 
+# (U) 
+"R" | 
+# (U) 
+"C" | 
+# (U) 
+"S" | 
+# (U) 
+"TS" | 
+# (U) 
+"U"

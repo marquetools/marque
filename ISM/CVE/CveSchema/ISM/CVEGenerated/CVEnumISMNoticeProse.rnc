@@ -1,0 +1,45 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:noticeprose"
+CVEnumISMNoticeProse.cve = list { 
+# (U) 
+"FISA_00001"?, 
+# (U) 
+"FISA_00002"?, 
+# (U) 
+"FISA_00003"?, 
+# (U) 
+"RAWFISA_00001"?, 
+# (U) 
+"CNWDI_00001"?, 
+# (U) 
+"RD_00001"?, 
+# (U) 
+"FRD_00001"?, 
+# (U) 
+"DS_00001"?, 
+# (U) 
+"DSEN_00001"?, 
+# (U) 
+"DoD-Dist-A_00001"?, 
+# (U) 
+"COMSEC_00001"?, 
+# (U) 
+"SSI_00001"?, 
+# (U) 
+"GEOCAP_00001"?, 
+# (U) 
+"NATO_00001"?, 
+# (U) 
+"NATO_00002"?, 
+# (U) 
+"NATO_00003"?, 
+# (U) 
+"NATO_00004"?, 
+# (U) 
+"NATO_00005"?, 
+# (U) 
+"RC_Dissemination_Control_Required_00001"?, 
+# (U) 
+"ITAR-EAR_00001"?, 
+# (U) 
+"DISPLAYONLY_00001"? } 

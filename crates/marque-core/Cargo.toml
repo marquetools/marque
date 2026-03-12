@@ -1,0 +1,18 @@
+[package]
+name        = "marque-core"
+description = "Format-agnostic scanner and parser for IC classification markings"
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror    = { workspace = true }
+memchr       = { workspace = true }
+aho-corasick = { workspace = true }
+serde        = { workspace = true, optional = true }
+
+[features]
+default  = []
+serde    = ["dep:serde"]

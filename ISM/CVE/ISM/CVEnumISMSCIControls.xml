@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!--This is a generated file. DO NOT EDIT!--><cve:CVE xmlns:cve="urn:us:gov:ic:cve" xmlns="urn:us:gov:ic:cve" xmlns:ism="urn:us:gov:ic:ism" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ism:compliesWith="USGov USIC" ism:ownerProducer="USA" ism:classification="U" ism:DESVersion="202111" ism:ISMCATCESVersion="202205" ism:resourceElement="true" CVEVersion="2.1" specVersion="202111.202211" ism:createDate="2023-06-09" xsi:schemaLocation="urn:us:gov:ic:cve ../CveSchema/CVEXml.xsd">
+
+    <cve:IRM>
+        <URN>urn:us:gov:ic:cvenum:ism:scicontrols</URN>
+        <Title ism:ownerProducer="USA" ism:classification="U">CVEnumISMSCIControls</Title>
+        <Description ism:ownerProducer="USA" ism:classification="U">All currently valid SCI controls
+            from the published register. This CVE is used by @ism:SCIcontrols.</Description>
+
+        <Created>2023-06-09T19:40:43.113Z</Created>
+
+        <Source ism:classification="U" ism:ownerProducer="USA">IC Systems Register and
+            Manual</Source>
+        <PointOfContact ism:classification="U" ism:ownerProducer="USA">
+            <Name>Office IC CIO</Name>
+            <Email>ic-standards-support@odni.gov</Email>
+        </PointOfContact>
+    </cve:IRM>
+
+    <cve:Enumeration multivalue="true" ism:ownerProducer="USA" ism:classification="U">
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">BUR</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">BUR</Description>
+        </Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">BUR-BLG</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">BUR-BLG</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">BUR-DTP</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">BUR-DTP</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">BUR-WRG</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">BUR-WRG</cve:Description>
+        </cve:Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">HCS</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">HCS</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">HCS-O</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">HCS-O</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">HCS-P</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">HCS-P</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">HCS-X</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">HCS-X</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">KLM</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">KLAMATH</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">KLM-R</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">KLAMATH-R</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">MVL</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">MARVEL</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">RSV</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">RESERVE</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">SI</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">SPECIAL
+                INTELLIGENCE</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">SI-EU</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">ECRU</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">SI-G</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">SI-GAMMA</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">SI-NK</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">NONBOOK</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">TK</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">TALENT KEYHOLE</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">TK-BLFH</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">BLUEFISH</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">TK-IDIT</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">IDITAROD</Description>
+        </Term>
+        <Term ism:classification="U" ism:ownerProducer="USA">
+            <Value ism:classification="U" ism:ownerProducer="USA">TK-KAND</Value>
+            <Description ism:classification="U" ism:ownerProducer="USA">KANDIK</Description>
+        </Term>
+    </cve:Enumeration>
+
+</cve:CVE>

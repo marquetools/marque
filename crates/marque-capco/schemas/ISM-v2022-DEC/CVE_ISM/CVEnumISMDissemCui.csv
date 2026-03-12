@@ -1,0 +1,13 @@
+﻿"ValueClassification","Value","DescriptionClassification","Description","DeprecationDate"
+"(U) ","AC","(U) ","Attorney-Client",
+"(U) ","AWP","(U) ","Attorney-WP",
+"(U) ","DISPLAYONLY","(U) ","AUTHORIZED FOR DISPLAY BUT NOT RELEASE TO",
+"(U) ","DL_ONLY","(U) ","DL ONLY",
+"(U) ","EXEMPT_FROM_ICD501_DISCOVERY","(U) ","EXEMPT FROM ICD501 DISCOVERY",
+"(U) ","FED_ONLY","(U) ","FED ONLY",
+"(U) ","FEDCON","(U) ","FEDCON",
+"(U) ","NF","(U) ","NOT RELEASABLE TO FOREIGN NATIONALS",
+"(U) ","NOCON","(U) ","NOCON",
+"(U) ","REL","(U) ","AUTHORIZED FOR RELEASE TO",
+"(U) ","RELIDO","(U) ","RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
+

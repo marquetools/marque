@@ -1,0 +1,32 @@
+[package]
+name        = "marque-wasm"
+description = "WASM target for marque — web worker and browser integration"
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+marque-engine = { workspace = true }
+marque-config = { workspace = true }
+marque-capco  = { path = "../marque-capco" }
+wasm-bindgen       = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+js-sys             = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+thiserror          = { workspace = true }
+
+[features]
+default                   = []
+console_error_panic_hook  = []
+
+# marque-extract intentionally excluded — format extraction is caller's
+# responsibility in WASM context; core operates on pre-extracted text.
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-simd"]

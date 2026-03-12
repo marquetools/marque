@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar ism:resourceElement="true" ism:compliesWith="USGov" ism:createDate="2011-12-01" ism:DESVersion="202111" ism:classification="U" ism:ownerProducer="USA" ns="http://relaxng.org/ns/structure/1.0" xmlns:ism="urn:us:gov:ic:ism" xmlns:ntk="urn:us:gov:ic:ntk" xmlns:ap="urn:us:gov:ic:cvenum:ntk:accesspolicy" xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <!-- *************************************************** -->
+  <!-- Start Import Statements -->
+  <!-- *************************************************** -->
+  <include href="./ISM.rng" ns="urn:us:gov:ic:ism"/>
+  <!-- *************************************************** -->
+  <!-- End Import Statements -->
+  <!-- *************************************************** -->
+  <!-- *************************************************** -->
+  <!-- Start All case-insensitive alphabetically -->
+  <!-- *************************************************** -->
+  <define name="Access.ele" combine="interleave">
+    <element name="ntk:Access">
+      <ref name="RequiresType.class"/>
+    </element>
+  </define>
+  <define name="ExternalAccess.ele">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">ExternalAccess</name>
+      <ref name="RequiresType.class"/>
+    </element>
+  </define>
+  <define name="AccessProfile">
+    <element name="ntk:AccessProfile">
+      <ref name="AccessProfileType"/>
+    </element>
+  </define>
+  <define name="AccessProfileList">
+    <element name="ntk:AccessProfileList">
+      <ref name="AccessProfileListType"/>
+    </element>
+  </define>
+  <define name="AccessProfileListType">
+    <ref name="AccessProfile"/>
+  </define>
+  <define name="AccessProfileType">
+    <ref name="AccessPolicy"/>
+    <optional>
+      <ref name="ProfileDes"/>
+    </optional>
+    <zeroOrMore>
+      <ref name="VocabularyType.ele"/>
+    </zeroOrMore>
+    <zeroOrMore>
+      <ref name="AccessProfileValue.ele"/>
+    </zeroOrMore>
+    <!-- ISM's SecurityAttributesGroup -->
+    <ref name="SecurityAttributesGroup.att"/>
+  </define>
+  <define name="AccessProfileValue.ele" combine="interleave">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">AccessProfileValue</name>
+      <ref name="AccessProfileValueType.class"/>
+    </element>
+  </define>
+  <define name="AccessProfileValueType.class" combine="interleave">
+    <attribute name="vocabulary">
+      <data type="anyURI"/>
+    </attribute>
+  </define>
+  <define name="AccessPolicy" combine="interleave">
+    <element name="ntk:AccessPolicy">
+      <ref name="URICommonType.class"/>
+    </element>
+  </define>
+  <define name="AccessType.class" combine="interleave">
+    <interleave>
+      <optional>
+        <ref name="AccessProfileList"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="CommonAttributesGroup.att" combine="interleave">
+    <ref name="id.att"/>
+    <ref name="IDReference.att"/>
+    <ref name="qualifier.att"/>
+  </define>
+  <define name="DESVersion.att" combine="interleave">
+    <attribute name="ntk:DESVersion">
+      <data type="string">
+        <param name="pattern">[0-9]{6}(\.[0-9]{6})?(\-.{1,23})?</param>
+      </data>
+    </attribute>
+  </define>
+  <define name="id.att" combine="interleave">
+    <attribute name="id">
+      <data type="ID"/>
+    </attribute>
+  </define>
+  <define name="IDReference.att" combine="interleave">
+    <attribute name="IDReference.att">
+      <data type="IDREFS"/>
+    </attribute>
+  </define>
+  <define name="ProfileDes" combine="interleave">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">ProfileDes</name>
+      <ref name="ProfileDesType.class"/>
+    </element>
+  </define>
+  <define name="ProfileDesType.class" combine="interleave">
+    <ref name="URICommonType.class"/>
+  </define>
+  <define name="qualifier.att" combine="interleave">
+    <attribute name="qualifier">
+      <data type="string"/>
+    </attribute>
+  </define>
+  <define name="RequiresAllOf.ele" combine="interleave">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">RequiresAllOf</name>
+      <ref name="RequiresAllType.class"/>
+    </element>
+  </define>
+  <define name="RequiresAllType.class" combine="interleave">
+    <interleave>
+      <optional>
+        <ref name="AccessProfileList"/>
+      </optional>
+      <optional>
+        <optional>
+          <ref name="RequiresAnyOf.ele"/>
+        </optional>
+      </optional>
+    </interleave>
+  </define>
+  <define name="RequiresAnyOf.ele" combine="interleave">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">RequiresAnyOf</name>
+      <ref name="AccessType.class"/>
+    </element>
+  </define>
+  <define name="RequiresType.class" combine="interleave">
+    <choice>
+      <ref name="RequiresAllOf.ele"/>
+      <ref name="RequiresAnyOf.ele"/>
+    </choice>
+    <ref name="SecurityAttributesGroup.att"/>
+    <optional>
+      <attribute name="externalReference">
+        <data type="boolean"/>
+      </attribute>
+    </optional>
+  </define>
+  <define name="StringWithSecurityType.class" combine="interleave">
+    <ref name="CommonAttributesGroup.att"/>
+  </define>
+  <define name="URICommonType.class" combine="interleave">
+    <ref name="CommonAttributesGroup.att"/>
+  </define>
+  <define name="TokenWithSecurityType.class" combine="interleave">
+    <ref name="SecurityAttributesGroup.att"/>
+    <ref name="CommonAttributesGroup.att"/>
+  </define>
+  <define name="VocabularyType.ele" combine="interleave">
+    <element>
+      <name ns="urn:us:gov:ic:ntk">VocabularyType</name>
+      <ref name="VocabularyTypeType.class"/>
+    </element>
+  </define>
+  <define name="VocabularyTypeType.class" combine="interleave">
+    <attribute name="name">
+      <data type="anyURI"/>
+    </attribute>
+    <optional>
+      <attribute name="source">
+        <data type="anyURI"/>
+      </attribute>
+    </optional>
+    <optional>
+      <attribute name="sourceVersion">
+        <data type="string">
+          <param name="maxLength">30</param>
+        </data>
+      </attribute>
+    </optional>
+  </define>
+  <!-- *************************************************** -->
+  <!-- End All case-insensitive alphabetically -->
+  <!-- *************************************************** -->
+</grammar>

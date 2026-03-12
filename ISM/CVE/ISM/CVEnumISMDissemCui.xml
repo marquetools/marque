@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--This is a generated file. DO NOT EDIT!-->
+<cve:CVE xmlns:cve="urn:us:gov:ic:cve"
+         xmlns:ism="urn:us:gov:ic:ism"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         ism:compliesWith="USGov USIC"
+         ism:ownerProducer="USA"
+         ism:classification="U"
+         ism:DESVersion="202111"
+         ism:ISMCATCESVersion="202205"
+         ism:resourceElement="true"
+         CVEVersion="2.1"
+         specVersion="202111.202211"
+         ism:createDate="2023-06-09"
+         xsi:schemaLocation="urn:us:gov:ic:cve ../CveSchema/CVEXml.xsd">
+
+
+   <cve:IRM>
+      <URN xmlns="urn:us:gov:ic:cve">urn:us:gov:ic:cvenum:ism:dissem:cui</URN>
+      <Title xmlns="urn:us:gov:ic:cve"
+             ism:ownerProducer="USA"
+             ism:classification="U">CVEnumISMDissemCui</Title>
+      <Description xmlns="urn:us:gov:ic:cve"
+                   ism:ownerProducer="USA"
+                   ism:classification="U">Currently valid Dissemination controls 
+         for use with Controlled Unclassified Information (CUI), from the ISOO limited set of CUI dissemination controls. 
+         The CVE template CVEnumISMDissemCui_Template is used to create a Dissem CVE used for  pure Controlled Unclassified Information (CUI).  
+         This is CVEnumISMDissemCui.  It contains only dissemination controls published in the ISOO CUI Register.  This template supports a straight copy 
+         to create CVEnumISMDissemCui.
+      </Description>
+      <Created xmlns="urn:us:gov:ic:cve">2023-06-09T19:40:40.773Z</Created>
+      <Source xmlns="urn:us:gov:ic:cve"
+              ism:classification="U"
+              ism:ownerProducer="USA">1) IC Systems Register and Manual; 2) ISOO CUI Register</Source>
+      <PointOfContact xmlns="urn:us:gov:ic:cve"
+                      ism:classification="U"
+                      ism:ownerProducer="USA">
+         <Name>Office IC CIO</Name>
+         <Email>ic-standards-support@odni.gov</Email>
+      </PointOfContact>
+   </cve:IRM>
+
+   <cve:Enumeration multivalue="true" ism:ownerProducer="USA" ism:classification="U">
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">AC</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">Attorney-Client</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">AWP</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">Attorney-WP</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">DISPLAYONLY</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">AUTHORIZED FOR DISPLAY BUT NOT RELEASE TO</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">DL_ONLY</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">DL ONLY</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">EXEMPT_FROM_ICD501_DISCOVERY</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">EXEMPT FROM ICD501 DISCOVERY</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">FED_ONLY</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">FED ONLY</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">FEDCON</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">FEDCON</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">NF</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">NOT RELEASABLE TO FOREIGN NATIONALS</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">NOCON</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">NOCON</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">REL</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">AUTHORIZED FOR RELEASE TO</Description>
+      </Term>
+      <Term xmlns="urn:us:gov:ic:cve"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+         <Value ism:classification="U" ism:ownerProducer="USA">RELIDO</Value>
+         <Description ism:classification="U" ism:ownerProducer="USA">RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL</Description>
+      </Term>
+   </cve:Enumeration>
+</cve:CVE>

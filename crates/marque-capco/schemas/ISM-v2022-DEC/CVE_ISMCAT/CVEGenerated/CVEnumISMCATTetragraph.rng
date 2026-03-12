@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ismcat:tetragraph">
+   <define name="CVEnumISMCATTetragraph.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>ACGU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AMSP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AOSC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>APFS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ASEA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AUSTRALIA_GROUP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BHTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BWCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFCK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFOD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFUP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CLFC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CMFC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CMFP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CPMT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CTOC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CWCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ECTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EUDA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRME</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FVEY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GCCH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GCTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GFNX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GMIF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IESC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMSC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMSP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IPMC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IRKS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISAF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISSG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MCFI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MESF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MGEU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MIFH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MLEC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MNTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MPFL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NACT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO:[a-zA-Z\-_]{1,256}</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NCFE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NKIC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NRDC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NSG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OSAG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OSTY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PAWA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PGMF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PSMX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RISC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RSMA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SOFP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SPAA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TEYE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TFTC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UNCK</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

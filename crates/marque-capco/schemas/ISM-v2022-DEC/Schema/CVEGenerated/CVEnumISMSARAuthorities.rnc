@@ -1,0 +1,15 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:sar"
+CVEnumISMSARAuthorities.cve = 
+# (U) 
+"STATE" | 
+# (U) 
+"DOD" | 
+# (U) 
+"DOE" | 
+# (U) 
+"DHS" | 
+# (U) 
+"AG" | 
+# (U) 
+"DNI"

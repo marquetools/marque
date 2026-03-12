@@ -1,0 +1,25 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:dissem:cui"
+CVEnumISMDissemCui.cve = list { 
+# (U) 
+"AC"?, 
+# (U) 
+"AWP"?, 
+# (U) 
+"DISPLAYONLY"?, 
+# (U) 
+"DL_ONLY"?, 
+# (U) 
+"EXEMPT_FROM_ICD501_DISCOVERY"?, 
+# (U) 
+"FED_ONLY"?, 
+# (U) 
+"FEDCON"?, 
+# (U) 
+"NF"?, 
+# (U) 
+"NOCON"?, 
+# (U) 
+"REL"?, 
+# (U) 
+"RELIDO"? } 

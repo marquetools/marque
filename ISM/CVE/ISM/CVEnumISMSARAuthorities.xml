@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<cve:CVE xmlns:cve="urn:us:gov:ic:cve" xmlns:ism="urn:us:gov:ic:ism"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ism:compliesWith="USGov USIC"
+    ism:ownerProducer="USA" ism:classification="U" ism:DESVersion="202111"
+    ism:ISMCATCESVersion="202205" ism:resourceElement="true" CVEVersion="2.1"
+    specVersion="202111.202211" ism:createDate="2021-06-28"
+    xsi:schemaLocation="urn:us:gov:ic:cve ../CveSchema/CVEXml.xsd">
+
+    <cve:IRM>
+        <URN xmlns="urn:us:gov:ic:cve">urn:us:gov:ic:cvenum:ism:sar</URN>
+        <Title xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">CVEnumISMSARAuthorities</Title>
+        <Description xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">E.O. 13526 Sec. 4.3. Special Access Programs
+            states that only the Secretaries of State, Defense, Energy, and Homeland Security, the Attorney
+            General, and the Director of National Intelligence, or the principal deputy of each, may create
+            a special access program.  This CVE lists the agencies that are authorized to establish SAPs, which 
+            we are calling the Special Access Required (SAR) Authorities.  The ISM encoding of SAP values uses the SAR Authorities values as 
+            part of a SAP value in @ism:SARIdentifier, because there is no central registry or requirement to deconflict
+            names.
+        </Description>
+        <cve:Created>2021-06-28T11:29:00-04:00</cve:Created>
+
+        <Source ism:classification="U" ism:ownerProducer="USA" xmlns="urn:us:gov:ic:cve">E.O. 13526 Section 4.3</Source>
+        <PointOfContact ism:classification="U" ism:ownerProducer="USA" xmlns="urn:us:gov:ic:cve">
+            <Name>Office IC CIO</Name>
+            <Email>ic-standards-support@odni.gov</Email>
+        </PointOfContact>
+    </cve:IRM>
+
+    <cve:Enumeration multivalue="false" ism:ownerProducer="USA" ism:classification="U">
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">STATE</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">STATE</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">DOD</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">DOD</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">DOE</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">DOE</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">DHS</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">DHS</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">AG</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">AG</cve:Description>
+        </cve:Term>
+        <cve:Term ism:classification="U" ism:ownerProducer="USA">
+            <cve:Value ism:classification="U" ism:ownerProducer="USA">DNI</cve:Value>
+            <cve:Description ism:classification="U" ism:ownerProducer="USA">DNI</cve:Description>
+        </cve:Term>
+    </cve:Enumeration>
+
+</cve:CVE>

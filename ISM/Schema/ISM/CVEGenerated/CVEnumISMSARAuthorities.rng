@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:sar">
+   <define name="CVEnumISMSARAuthorities.cve">
+      <choice>
+         <value>STATE</value>
+         <value>DOD</value>
+         <value>DOE</value>
+         <value>DHS</value>
+         <value>AG</value>
+         <value>DNI</value>
+      </choice>
+   </define>
+</grammar>

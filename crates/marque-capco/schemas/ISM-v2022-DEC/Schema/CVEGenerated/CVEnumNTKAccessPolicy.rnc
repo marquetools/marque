@@ -1,0 +1,31 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ntk:accesspolicy"
+CVEnumNTKAccessPolicy.cve = 
+# (U) 
+"urn:us:gov:ic:aces:ntk:xd" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:enterprise:role:permissive" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:enterprise:role:restrictive" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:ico" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:license" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:mn" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:nd" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:oc" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:permissive" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:propin:1" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:propin:2" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:propin:([A-Za-z][A-Za-z0-9\-_.;,():+]{1,64})" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:rac" | 
+# (U) 
+"urn:us:gov:ic:aces:ntk:restrictive"

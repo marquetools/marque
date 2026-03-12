@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="./ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="SAR-DNI-SARwithTwoDashes">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMO SAR-DNI:DEMO-SAP99 SAR-DNI:DEMO-SAP99-ABCD"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-SARwithTwoDashes-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMO-SAP99 ABCD) "
+            test=".='(S//SAR-DEMO-SAP99 ABCD) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-SARwithTwoDashes-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMO-SAP99 ABCD"
+            test=".='SECRET//SAR-DEMO-SAP99 ABCD'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-THREE-SARs">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:JUNIOR_PROM SAR-DNI:SOPHOMORE_DANCE SAR-DNI:DEMOSAP11"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-THREE-SARs-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE) "
+            test=".='(S//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-THREE-SARs-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE"
+            test=".='SECRET//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SAR-DNI-FOUR-SARs">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:JUNIOR_PROM SAR-DNI:SOPHOMORE_DANCE SAR-DNI:SOPHOMORE_DANCE-A1 SAR-DNI:DEMOSAP11"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-FOUR-SARs-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE-A1) "
+            test=".='(S//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE-A1) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-FOUR-SARs-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE-A1"
+            test=".='SECRET//SAR-DEMOSAP11/JUNIOR PROM/SOPHOMORE DANCE-A1'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-TWO-SARs">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMOSAP22 SAR-DNI:DEMOSAP11"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-TWO-SARs-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMOSAP11/DEMOSAP22) "
+            test=".='(S//SAR-DEMOSAP11/DEMOSAP22) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-TWO-SARs-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMOSAP11/DEMOSAP22"
+            test=".='SECRET//SAR-DEMOSAP11/DEMOSAP22'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-SARwithDash">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMO SAR-DNI:DEMO-SAP99"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-SARwithDash-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMO-SAP99) "
+            test=".='(S//SAR-DEMO-SAP99) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-SARwithDash-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMO-SAP99"
+            test=".='SECRET//SAR-DEMO-SAP99'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-SARwithunderscore1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMO_SAP200"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-SARwithunderscore1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMO SAP200) "
+            test=".='(S//SAR-DEMO SAP200) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-SARwithunderscore1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMO SAP200"
+            test=".='SECRET//SAR-DEMO SAP200'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-SARwithunderscore2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMO__SAP100"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-SARwithunderscore2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DEMO_SAP100) "
+            test=".='(S//SAR-DEMO_SAP100) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-SARwithunderscore2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DEMO_SAP100"
+            test=".='SECRET//SAR-DEMO_SAP100'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-DNI-SARwithunderscore3">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:DEMO_SAP200 SAR-DNI:DEMO__SAP100"/>
+      </x:context>
+      <x:scenario label="SAR-DNI-SARwithunderscore3-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-DNI:DEMO SAP200/DNI:DEMO_SAP100) "
+            test=".='(S//SAR-DEMO SAP200/DEMO_SAP100) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-DNI-SARwithunderscore3-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-DNI:DEMO SAP200/DNI:DEMO_SAP100"
+            test=".='SECRET//SAR-DEMO SAP200/DEMO_SAP100'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-ABC-DEF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:SARIdentifier="SAR-DNI:S:ABC SAR-DNI:S:DEF"/>
+      </x:context>
+      <x:scenario label="SAR-ABC-DEF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-ABC/DEF) " test=".='(S//SAR-ABC/DEF) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-ABC-DEF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-ABC/DEF" test=".='SECRET//SAR-ABC/DEF'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1 try2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:ProgramID SAR-DNI:ProgramID-Compartment1 SAR-DNI:ProgramID-Compartment1-SubComp1 SAR-DNI:ProgramID-Compartment1-SubComp2 SAR-DNI:ProgramID2 SAR-DNI:ProgramID2-P2Comp1 SAR-DNI:ProgramID2-P2Comp1-P2SComp1"
+         />
+      </x:context>
+      <x:scenario
+         label="SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1 try2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (S//SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1) "
+            test=".='(S//SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1) '"
+         />
+      </x:scenario>      
+      <x:scenario
+         label="SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1 try2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1"
+            test=".='SECRET//SAR-ProgramID-Compartment1 SubComp1 SubComp2/ProgramID2-P2Comp1 P2SComp1'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-JP_SD-A1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:JUNIOR_PROM SAR-DNI:SOPHOMORE_DANCE SAR-DNI:SOPHOMORE_DANCE-A1"/>
+      </x:context>
+      <x:scenario label="SAR-JP_SD-A1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1) "
+            test=".='(S//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-JP_SD-A1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1"
+            test=".='SECRET//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1'"/>
+      </x:scenario>
+      <x:scenario label="SAR-JP_SD-A1-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be ( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )"
+            test=".='( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-JP_S__D-A1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:JUNIOR_PROM SAR-DNI:SOPHOMORE__DANCE SAR-DNI:SOPHOMORE__DANCE-A1"/>
+      </x:context>
+      <x:scenario label="SAR-JP__D-A1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-JUNIOR PROM/SOPHOMORE_DANCE-A1) "
+            test=".='(S//SAR-JUNIOR PROM/SOPHOMORE_DANCE-A1) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-JP__D-A1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-JUNIOR PROM/SOPHOMORE_DANCE-A1"
+            test=".='SECRET//SAR-JUNIOR PROM/SOPHOMORE_DANCE-A1'"/>
+      </x:scenario>
+      <x:scenario label="SAR-JP__SD-A1-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be ( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )"
+            test=".='( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SAR-HD_P-A1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:HOMECOMING_DANCE SAR-DNI:PROM_TUX SAR-DNI:PROM_TUX-JR SAR-DNI:PROM_TUX-JR-A16 SAR-DNI:PROM_TUX-JR-A17 SAR-DNI:PROM_TUX-SR 
+            SAR-DNI:PROM_TUX-SR-A17 SAR-DNI:PROM_TUX-SR-A18"
+         />
+      </x:context>
+      <x:scenario label="SAR-HD_P-A1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (S//SAR-HOMECOMING DANCE/PROM TUX-JR A16 A17-SR A17 A18) "
+            test=".='(S//SAR-HOMECOMING DANCE/PROM TUX-JR A16 A17-SR A17 A18) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-HD_P-A1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//SAR-HOMECOMING DANCE/PROM TUX-JR A16 A17-SR A17 A18"
+            test=".='SECRET//SAR-HOMECOMING DANCE/PROM TUX-JR A16 A17-SR A17 A18'"/>
+      </x:scenario>
+      <x:scenario label="SAR-HD_P-A1-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be ( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )"
+            test=".='( WARNING! This document does not contain required markings for either an originally or derivatively classified document. )|( WARNING! This document does not contain required declassification instructions or markings. )'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SI-G-ABCD-TK-SAP-ACCM">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:SCIcontrols="SI SI-G SI-G-ABCD SI-G-ACDE TK" ism:SARIdentifier="SAR-DNI:ABC SAR-DNI:DEF"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTITIOUS_EFFORT" ism:disseminationControls="OC"
+         />
+      </x:context>
+      <x:scenario label="SI-G-ABCD-TK-SAP-ACCM-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (TS//SI-G ABCD ACDE/TK//SAR-ABC/DEF//OC//ACCM-FICTITIOUS EFFORT/TEA LEAF) "
+            test=".='(TS//SI-G ABCD ACDE/TK//SAR-ABC/DEF//OC//ACCM-FICTITIOUS EFFORT/TEA LEAF) '"/>
+      </x:scenario>
+      <x:scenario label="SI-G-ABCD-TK-SAP-ACCM-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be TOP SECRET//SI-G ABCD ACDE/TK//SAR-ABC/DEF//ORCON//ACCM-FICTITIOUS EFFORT/TEA LEAF"
+            test=".='TOP SECRET//SI-G ABCD ACDE/TK//SAR-ABC/DEF//ORCON//ACCM-FICTITIOUS EFFORT/TEA LEAF'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SCI-SAP-AEM-ACCM-DISSEM">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:SCIcontrols="SI SI-G SI-G-ABCD SI-G-ACDE TK" ism:SARIdentifier="SAR-DNI:ABC SAR-DNI:DEF"
+            ism:atomicEnergyMarkings="RD" ism:declassException="AEA"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTITIOUS_EFFORT" ism:disseminationControls="OC"
+         />
+      </x:context>
+      <x:scenario label="SCI-SAP-AEM-ACCM-DISSEM-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (TS//SI-G ABCD ACDE/TK//SAR-ABC/DEF//RD//OC//ACCM-FICTITIOUS EFFORT/TEA LEAF) "
+            test=".='(TS//SI-G ABCD ACDE/TK//SAR-ABC/DEF//RD//OC//ACCM-FICTITIOUS EFFORT/TEA LEAF) '"
+         />
+      </x:scenario>
+      <x:scenario label="SCI-SAP-AEM-ACCM-DISSEM-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be TOP SECRET//SI-G ABCD ACDE/TK//SAR-ABC/DEF//RD//ORCON//ACCM-FICTITIOUS EFFORT/TEA LEAF"
+            test=".='TOP SECRET//SI-G ABCD ACDE/TK//SAR-ABC/DEF//RD//ORCON//ACCM-FICTITIOUS EFFORT/TEA LEAF'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

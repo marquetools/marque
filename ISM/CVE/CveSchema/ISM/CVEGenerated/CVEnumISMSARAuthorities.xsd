@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns="urn:us:gov:ic:cvenum:ism:sar"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:sar"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMSARAuthorities Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMSARAuthorities.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMSARAuthorities">
+      <xsd:annotation>
+         <xsd:documentation>(U) E.O. 13526 Sec. 4.3. Special Access Programs
+            states that only the Secretaries of State, Defense, Energy, and Homeland Security, the Attorney
+            General, and the Director of National Intelligence, or the principal deputy of each, may create
+            a special access program.  This CVE lists the agencies that are authorized to establish SAPs, which 
+            we are calling the Special Access Required (SAR) Authorities.  The ISM encoding of SAP values uses the SAR Authorities values as 
+            part of a SAP value in @ism:SARIdentifier, because there is no central registry or requirement to deconflict
+            names.
+        
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMSARAuthorities.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="STATE">
+            <xsd:annotation>
+               <xsd:documentation>STATE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DOD">
+            <xsd:annotation>
+               <xsd:documentation>DOD</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DOE">
+            <xsd:annotation>
+               <xsd:documentation>DOE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DHS">
+            <xsd:annotation>
+               <xsd:documentation>DHS</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="AG">
+            <xsd:annotation>
+               <xsd:documentation>AG</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DNI">
+            <xsd:annotation>
+               <xsd:documentation>DNI</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="CUI-Commingled-U-FISA-dissem">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI USGov" ism:cuiControlledBy="John Smith" ism:classification="U"
+            ism:disseminationControls="NF FISA" ism:ownerProducer="USA" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiSpecified="AIV"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-FISA-dissem-ISM:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//CUI//SP-AIV//NOFORN/FISA"
+            test=".='UNCLASSIFIED//CUI//SP-AIV//NOFORN/FISA'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-FISA-dissem-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//CUI//SP-AIV//NF/FISA) "
+            test=".='(U//CUI//SP-AIV//NF/FISA) '"/>
+      </x:scenario>
+   </x:scenario>
+
+
+   <x:scenario label="CUI-Commingled-S-FISA-dissem-classified">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI USGov" ism:cuiControlledBy="John Smith" ism:classification="S"
+            ism:disseminationControls="NF FISA" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Smith" ism:derivedFrom="My Guide"
+            ism:declassDate="2024-12-31" ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211"
+            ism:resourceElement="true" ism:createDate="2009-06-01" ism:cuiSpecified="AIV"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-S-FISA-dissem-classified-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//CUI//SP-AIV//NOFORN/FISA"
+            test=".='SECRET//CUI//SP-AIV//NOFORN/FISA'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-S-FISA-dissem-classified-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//CUI//SP-AIV//NF/FISA) "
+            test=".='(S//CUI//SP-AIV//NF/FISA) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-FISA-cuiSpecified">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI USGov" ism:cuiControlledBy="John Smith" ism:classification="U"
+            ism:disseminationControls="NF" ism:ownerProducer="USA" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiSpecified="AIV FISA"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-FISA-cuiSpecified:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//SP-AIV/SP-FISA//NOFORN"
+            test=".='CUI//SP-AIV/SP-FISA//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-FISA-cuiSpecified-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//SP-AIV/SP-FISA//NF) "
+            test=".='(CUI//SP-AIV/SP-FISA//NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-S-PROPIN-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="S" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:derivativelyClassifiedBy="John Doe"
+            ism:derivedFrom="My Guide" ism:declassDate="2024-12-31" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="NF PR"
+            ism:cuiBasic="PROPIN"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-S-PROPIN-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//CUI//PROPIN//NOFORN/PROPIN"
+            test=".='SECRET//CUI//PROPIN//NOFORN/PROPIN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-S-PROPIN-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//CUI//PROPIN//NF/PR) "
+            test=".='(S//CUI//PROPIN//NF/PR) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic-and-dissem">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="U" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="NF PR"
+            ism:cuiBasic="PROPIN"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic-and-dissem-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//CUI//PROPIN//NOFORN/PROPIN"
+            test=".='UNCLASSIFIED//CUI//PROPIN//NOFORN/PROPIN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic-and-dissem-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//CUI//PROPIN//NF/PR) "
+            test=".='(U//CUI//PROPIN//NF/PR) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="U" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="NF" ism:cuiBasic="PROPIN"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//PROPIN//NOFORN" test=".='CUI//PROPIN//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-PROPIN-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//PROPIN//NF) " test=".='(CUI//PROPIN//NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+
+   <x:scenario label="Commingled-U-DL_ONLY">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:compliesWith="USA-CUI USGov"
+            ism:cuiControlledBy="John Smith" ism:disseminationControls="NF DL_ONLY"
+            ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2009-06-01" ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="Commingled-U-DL_ONLY-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="Commingled-U-DL_ONLY-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Commingled-U-NF-DL_ONLY-FEDCON">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:compliesWith="USA-CUI USGov"
+            ism:cuiControlledBy="John Smith" ism:disseminationControls="NF DL_ONLY FEDCON"
+            ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2009-06-01" ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="Commingled-U-NF-DL_ONLY-FEDCON-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/FEDCON/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/FEDCON/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="Commingled-U-NF-DL_ONLY-FEDCON-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/FEDCON/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/FEDCON/NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Commingled-TS-All-Types">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:compliesWith="USA-CUI USGov"
+            ism:cuiControlledBy="John Smith" ism:derivativelyClassifiedBy="John Smith"
+            ism:derivedFrom="My Guide" ism:declassDate="2024-12-31"
+            ism:SCIcontrols="HCS HCS-P SI SI-G TK" ism:atomicEnergyMarkings="RD FRD"
+            ism:FGIsourceOpen="GBR" ism:disseminationControls="OC REL DL_ONLY FEDCON"
+            ism:nonICmarkings="DS" ism:releasableTo="USA GBR" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY" ism:cuiSpecified="AIV PRIIG"/>
+      </x:context>
+      <x:scenario label="Commingled-TS-All-Types-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be TOP SECRET//HCS-P/SI-G/TK//RD/FRD//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//ORCON/REL TO USA, GBR/DL_ONLY/FEDCON//LIMDIS"
+            test=".='TOP SECRET//HCS-P/SI-G/TK//RD/FRD//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//ORCON/REL TO USA, GBR/DL_ONLY/FEDCON//LIMDIS'"
+         />
+      </x:scenario>
+      <x:scenario label="Commingled-TS-All-Types-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (TS//HCS-P/SI-G/TK//RD/FRD//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//OC/REL TO USA, GBR/DL_ONLY/FEDCON//DS) "
+            test=".='(TS//HCS-P/SI-G/TK//RD/FRD//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//OC/REL TO USA, GBR/DL_ONLY/FEDCON//DS) '"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Commingled-TS-SCI">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:compliesWith="USA-CUI USGov"
+            ism:cuiControlledBy="John Smith" ism:derivativelyClassifiedBy="John Smith"
+            ism:derivedFrom="My Guide" ism:declassDate="2024-12-31"
+            ism:SCIcontrols="HCS HCS-P SI SI-G TK" ism:disseminationControls="OC REL DL_ONLY FEDCON"
+            ism:releasableTo="USA GBR" ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211"
+            ism:resourceElement="true" ism:createDate="2009-06-01" ism:cuiBasic="CMPRS JURY"
+            ism:cuiSpecified="AIV PRIIG"/>
+      </x:context>
+      <x:scenario label="Commingled-TS-SCI-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be TOP SECRET//HCS-P/SI-G/TK//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//ORCON/REL TO USA, GBR/DL_ONLY/FEDCON"
+            test=".='TOP SECRET//HCS-P/SI-G/TK//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//ORCON/REL TO USA, GBR/DL_ONLY/FEDCON'"
+         />
+      </x:scenario>
+      <x:scenario label="Commingled-TS-SCI-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (TS//HCS-P/SI-G/TK//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//OC/REL TO USA, GBR/DL_ONLY/FEDCON) "
+            test=".='(TS//HCS-P/SI-G/TK//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//OC/REL TO USA, GBR/DL_ONLY/FEDCON) '"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Commingled-Unclassified-All-Types">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:compliesWith="USA-CUI USGov"
+            ism:cuiControlledBy="John Smith" ism:derivativelyClassifiedBy="John Smith"
+            ism:derivedFrom="My Guide" ism:declassDate="2024-12-31" ism:atomicEnergyMarkings="UCNI"
+            ism:FGIsourceOpen="GBR" ism:disseminationControls="REL DL_ONLY FEDCON"
+            ism:nonICmarkings="DS" ism:releasableTo="USA GBR" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY" ism:cuiSpecified="AIV PRIIG"/>
+      </x:context>
+      <x:scenario label="Commingled-Unclassified-All-Types-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be UNCLASSIFIED//DOE UCNI//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//REL TO USA, GBR/DL_ONLY/FEDCON//LIMDIS"
+            test=".='UNCLASSIFIED//DOE UCNI//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//REL TO USA, GBR/DL_ONLY/FEDCON//LIMDIS'"
+         />
+      </x:scenario>
+      <x:scenario label="Commingled-Unclassified-All-Types-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (U//UCNI//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//REL TO USA, GBR/DL_ONLY/FEDCON//DS) "
+            test=".='(U//UCNI//FGI GBR//CUI//SP-AIV/SP-PRIIG/CMPRS/JURY//REL TO USA, GBR/DL_ONLY/FEDCON//DS) '"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-DSEN-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="U" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="NF DSEN" ism:cuiBasic="LEI"
+         />
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-DSEN-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//CUI//LEI//NOFORN/DEA SENSITIVE"
+            test=".='UNCLASSIFIED//CUI//LEI//NOFORN/DEA SENSITIVE'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-DSEN-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//CUI//LEI//NF/DSEN) "
+            test=".='(U//CUI//LEI//NF/DSEN) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-RELIDO-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="U" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="NF RELIDO"
+            ism:cuiBasic="LEI"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-RELIDO-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//LEI//NOFORN/RELIDO"
+            test=".='CUI//LEI//NOFORN/RELIDO'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-RELIDO-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//LEI//NF/RELIDO) "
+            test=".='(CUI//LEI//NF/RELIDO) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-Commingled-U-FOUO-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USGov USA-CUI" ism:DESVersion="202111.202211" ism:ownerProducer="USA"
+            ism:classification="U" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2008-10-01" ism:cuiControlledBy="John Doe"
+            ism:cuiDecontrolDate="2020-02-02" ism:disseminationControls="FOUO" ism:cuiBasic="LEI"/>
+      </x:context>
+      <x:scenario label="CUI-Commingled-U-FOUO-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//CUI//LEI//FOUO"
+            test=".='UNCLASSIFIED//CUI//LEI//FOUO'"/>
+      </x:scenario>
+      <x:scenario label="CUI-Commingled-U-FOUO-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//CUI//LEI//FOUO) "
+            test=".='(U//CUI//LEI//FOUO) '"/>
+      </x:scenario>
+   </x:scenario>
+
+
+</x:description>

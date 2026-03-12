@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="DisplayOrder-NATO/NAC-ISAF-complex-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="R" ism:ownerProducer="NATO:ISAF"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="NATO:Operation_Unified_Protector AFG"/>
+      </x:context>
+      <x:scenario label="NATO/NAC-ISAF-complex-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) "
+            test=".='(//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="NATO/NAC-ISAF-complex-Checkorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be //NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector"
+            test=".='//NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="DisplayOrder-NATO/NAC-ISAF-complex2-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="R" ism:ownerProducer="NATO:ISAF"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="NATO:Operation_Unified_Protector NATO:ABC AFG"/>
+      </x:context>
+      <x:scenario label="NATO/NAC-ISAF-complex2-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO ABC, NATO Operation Unified Protector) "
+            test=".='(//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO ABC, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="NATO/NAC-ISAF-complex-Checkorder2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be //NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO ABC, NATO Operation Unified Protector"
+            test=".='//NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO ABC, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+
+   <x:scenario label="DisplayOrder-DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="USA NATO AUS"
+            ism:displayOnlyTo="IRQ AFG "/>
+      </x:context>
+      <x:scenario label="DisplayOrder-DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ) "
+            test=".='(S//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ) '"/>
+      </x:scenario>
+      <x:scenario label="DisplayOrder-DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS-Checkorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ"
+            test=".='SECRET//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ'"/>
+      </x:scenario>
+   </x:scenario>
+
+
+
+</x:description>

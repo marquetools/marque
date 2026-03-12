@@ -1,0 +1,11 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ntk:profiledes"
+CVEnumNTKProfileDes.cve = 
+# (U) 
+"urn:us:gov:ic:ntk:profile:agencydissem" | 
+# (U) 
+"urn:us:gov:ic:ntk:profile:datasphere" | 
+# (U) 
+"urn:us:gov:ic:ntk:profile:grp-ind" | 
+# (U) 
+"urn:us:gov:ic:ntk:profile:role"

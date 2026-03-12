@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:25x">
+   <define name="CVEnumISM25X.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>AEA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO-AEA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X1</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X1-EO-12951</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X2</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X3</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X4</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X5</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X6</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X7</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X8</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>25X9</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X1</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X1-HUM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X2</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X2-WMD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X3</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X4</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X5</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X6</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X7</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X8</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>50X9</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>75X</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

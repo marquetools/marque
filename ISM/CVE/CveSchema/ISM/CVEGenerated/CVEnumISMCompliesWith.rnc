@@ -1,0 +1,15 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:complieswith"
+CVEnumISMCompliesWith.cve = list { 
+# (U) 
+"USGov"?, 
+# (U) 
+"USIC"?, 
+# (U) 
+"USDOD"?, 
+# (U) 
+"OtherAuthority"?, 
+# (U) 
+"USA-CUI-ONLY"?, 
+# (U) 
+"USA-CUI"? } 

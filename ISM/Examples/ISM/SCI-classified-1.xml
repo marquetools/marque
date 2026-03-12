@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<test:root xmlns:test="test:ism"
+           xmlns:ism="urn:us:gov:ic:ism"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           ism:compliesWith="USGov USIC"
+           ism:DESVersion="202111.202211"
+           ism:ISMCATCESVersion="202211"
+           ism:resourceElement="true"
+           ism:createDate="2009-06-01"
+           ism:classification="S"
+           ism:ownerProducer="USA"
+           ism:disseminationControls="NF"
+           ism:SCIcontrols="HCS HCS-P"
+           ism:derivativelyClassifiedBy="John Smith"
+           ism:derivedFrom="something"
+           ism:declassDate="2034-12-31"
+           xsi:schemaLocation="test:ism test_ism.xsd">
+  <arh:Security xmlns="test:ism"
+                xmlns:arh="urn:us:gov:ic:arh"
+                ism:classification="S"
+                ism:ownerProducer="USA"
+                ism:SCIcontrols="HCS HCS-P"
+                ism:disseminationControls="NF"
+                ism:resourceElement="true"
+                ism:compliesWith="USGov USIC"
+                ism:createDate="2019-12-19"
+                ism:derivativelyClassifiedBy="someone"
+                ism:derivedFrom="something"
+                ism:declassDate="2020-12-31" />
+  <test:parentElement ism:classification="S"
+                      ism:ownerProducer="USA"
+                      ism:SCIcontrols="HCS HCS-P"
+                      ism:disseminationControls="NF">Executive Summary: From 1754 to 1763 Europe and the Americas were caught up in a
+                      conflict between England, under King George II, and France, under King Louis XV. In Europe this period was known as
+                      the Seven Years' War; in North America it came to be called the French and Indian War. It was a conflict over trade
+                      and land. 
+  <test:childElement ism:classification="S"
+                     ism:ownerProducer="USA"
+                     ism:SCIcontrols="HCS HCS-P"
+                     ism:disseminationControls="NF">
+    <test:grandchildElement ism:classification="S"
+                            ism:ownerProducer="USA"
+                            ism:SCIcontrols="HCS HCS-P"
+                            ism:disseminationControls="NF">Paragraph: The English sent Crown forces from England to fortify the colonies
+                            and fight the French and Indian invaders, but it was also necessary to recruit soldiers from the colonial
+                            population. The English army found that fighting an enemy in the near-wilderness of North America was too much
+                            for their massed regiments. The dense forests and mountainous terrain required fighting men who knew the habits
+                            of the enemy and could serve effectively as scouts and skirmishers.</test:grandchildElement>
+    <test:grandchildElement ism:classification="S"
+                            ism:ownerProducer="USA"
+                            ism:disseminationControls="NF">Paragraph: Men from local communities and nearby states were recruited to join
+                            ranger companies in the Hudson Valley campaign. The New Hampshireman Robert Rogers formed the most notable of
+                            these ranger companies.</test:grandchildElement>
+  </test:childElement>
+  <test:childElement ism:classification="S"
+                     ism:ownerProducer="USA"
+                     ism:SCIcontrols="HCS HCS-P"
+                     ism:disseminationControls="NF">Paragraph: Rogers grew up in southern New Hampshire, in an area which had known years
+                     of murderous Indian raids. He had the knowledge and the spirit to make a good ranger commander, and both he and his
+                     brother James joined the war in the King's service as rangers. Soon his own company, Rogers' Rangers, was in service
+                     in the upper Hudson River area where they became known for their successful but unorthodox
+                     tactics.</test:childElement></test:parentElement>
+</test:root>

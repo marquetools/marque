@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:secondbannerline">
+   <define name="CVEnumISMSecondBannerLine.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>ACPI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AWP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CUSPI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DPPD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HVCO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSS</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

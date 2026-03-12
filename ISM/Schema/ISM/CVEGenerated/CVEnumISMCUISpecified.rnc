@@ -1,0 +1,117 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:cuispecified"
+CVEnumISMCUISpecified.cve = list { 
+# (U) 
+"AIV"?, 
+# (U) 
+"ADPO"?, 
+# (U) 
+"CRITAN"?, 
+# (U) 
+"ARCHR"?, 
+# (U) 
+"FSEC"?, 
+# (U) 
+"BUDG"?, 
+# (U) 
+"FUND"?, 
+# (U) 
+"CVI"?, 
+# (U) 
+"CHLD"?, 
+# (U) 
+"CCI"?, 
+# (U) 
+"CONTRACT"?, 
+# (U) 
+"SUB"?, 
+# (U) 
+"CTI"?, 
+# (U) 
+"CHRI"?, 
+# (U) 
+"CEII"?, 
+# (U) 
+"LDNA"?, 
+# (U) 
+"EXPT"?, 
+# (U) 
+"JURY"?, 
+# (U) 
+"TAX"?, 
+# (U) 
+"FISA"?, 
+# (U) 
+"FISAB"?, 
+# (U) 
+"FNC"?, 
+# (U) 
+"INTEL"?, 
+# (U) 
+"NUC"?, 
+# (U) 
+"PRVCY"?, 
+# (U) 
+"PROCURE"?, 
+# (U) 
+"PROPIN"?, 
+# (U) 
+"GENETIC"?, 
+# (U) 
+"GEO"?, 
+# (U) 
+"HLTH"?, 
+# (U) 
+"HISTP"?, 
+# (U) 
+"INF"?, 
+# (U) 
+"PRIIG"?, 
+# (U) 
+"IFNC"?, 
+# (U) 
+"ID"?, 
+# (U) 
+"INTL"?, 
+# (U) 
+"INV"?, 
+# (U) 
+"LFNC"?, 
+# (U) 
+"NPSR"?, 
+# (U) 
+"NNPI"?, 
+# (U) 
+"SRI"?, 
+# (U) 
+"PERS"?, 
+# (U) 
+"MFC"?, 
+# (U) 
+"PCII"?, 
+# (U) 
+"LPROT"?, 
+# (U) 
+"SGI"?, 
+# (U) 
+"SSI"?, 
+# (U) 
+"SSEL"?, 
+# (U) 
+"STAT"?, 
+# (U) 
+"STUD"?, 
+# (U) 
+"TSCA"?, 
+# (U) 
+"DCNI"?, 
+# (U) 
+"UCNI"?, 
+# (U) 
+"CENS"?, 
+# (U) 
+"WHSTL"?, 
+# (U) 
+"WIT"?, 
+# (U) 
+"WDT"? } 

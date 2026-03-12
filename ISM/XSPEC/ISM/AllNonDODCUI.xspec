@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+               xmlns:ism="urn:us:gov:ic:ism"
+               stylesheet="./ISMAllTogetherForXSPEC.xsl">
+   
+  
+   <x:import href="./CUITests/Commingled.xspec"/>
+   <x:import href="./CUITests/CUI-ISOO-Style.xspec"/>
+   <x:import href="./CUITests/CUI-Only.xspec"/>
+   
+</x:description>

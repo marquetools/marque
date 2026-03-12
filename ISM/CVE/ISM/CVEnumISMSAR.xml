@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><!--This is a generated file. DO NOT EDIT!--><cve:CVE xmlns:cve="urn:us:gov:ic:cve" xmlns:ism="urn:us:gov:ic:ism" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ism:compliesWith="USGov USIC" ism:ownerProducer="USA" ism:classification="U" ism:DESVersion="202111" ism:ISMCATCESVersion="202205" ism:resourceElement="true" CVEVersion="2.1" specVersion="202111.202211" ism:createDate="2023-06-09" xsi:schemaLocation="urn:us:gov:ic:cve ../CveSchema/CVEXml.xsd">
+
+
+   <cve:IRM>
+      <URN xmlns="urn:us:gov:ic:cve">urn:us:gov:ic:cvenum:ism:sar</URN>
+      <Title xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">CVEnumISMSAR</Title>
+      <Description xmlns="urn:us:gov:ic:cve" ism:ownerProducer="USA" ism:classification="U">All currently valid SAR markings
+         from the published register and DoD SAPCO. This CVE is used by @ism:SARIdentifier.
+      </Description>
+      <Created xmlns="urn:us:gov:ic:cve">2023-06-09T19:40:42.513Z</Created>
+      <Source xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">1) IC Systems Register and Manual; 2) DoD SAPCO</Source>
+      <PointOfContact xmlns="urn:us:gov:ic:cve" ism:classification="U" ism:ownerProducer="USA">
+         <Name>Office IC CIO</Name>
+         <Email>ic-standards-support@odni.gov</Email>
+      </PointOfContact>
+   </cve:IRM>
+   <cve:Enumeration multivalue="true" ism:ownerProducer="USA" ism:classification="U">
+
+
+
+   </cve:Enumeration>
+</cve:CVE>

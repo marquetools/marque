@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismdissemcui="urn:us:gov:ic:cvenum:ism:dissem:cui"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:dissem:cui"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMDissemCui Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMDissemCui.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMDissemCuiValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) Currently valid Dissemination controls 
+         for use with Controlled Unclassified Information (CUI), from the ISOO limited set of CUI dissemination controls. 
+         The CVE template CVEnumISMDissemCui_Template is used to create a Dissem CVE used for  pure Controlled Unclassified Information (CUI).  
+         This is CVEnumISMDissemCui.  It contains only dissemination controls published in the ISOO CUI Register.  This template supports a straight copy 
+         to create CVEnumISMDissemCui.
+      
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMDissemCui.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="AC">
+            <xsd:annotation>
+               <xsd:documentation>Attorney-Client</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="AWP">
+            <xsd:annotation>
+               <xsd:documentation>Attorney-WP</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DISPLAYONLY">
+            <xsd:annotation>
+               <xsd:documentation>AUTHORIZED FOR DISPLAY BUT NOT RELEASE TO</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DL_ONLY">
+            <xsd:annotation>
+               <xsd:documentation>DL ONLY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="EXEMPT_FROM_ICD501_DISCOVERY">
+            <xsd:annotation>
+               <xsd:documentation>EXEMPT FROM ICD501 DISCOVERY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FED_ONLY">
+            <xsd:annotation>
+               <xsd:documentation>FED ONLY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FEDCON">
+            <xsd:annotation>
+               <xsd:documentation>FEDCON</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NF">
+            <xsd:annotation>
+               <xsd:documentation>NOT RELEASABLE TO FOREIGN NATIONALS</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NOCON">
+            <xsd:annotation>
+               <xsd:documentation>NOCON</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="REL">
+            <xsd:annotation>
+               <xsd:documentation>AUTHORIZED FOR RELEASE TO</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RELIDO">
+            <xsd:annotation>
+               <xsd:documentation>RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMDissemCui">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismdissemcui:CVEnumISMDissemCui definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismdissemcui:CVEnumISMDissemCuiValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismdissemcui:CVEnumISMDissemCuiValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="11"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

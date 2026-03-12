@@ -1,0 +1,1480 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="./ISMAllTogetherForXSPEC.xsl">
+<!-- All tests other than tests for DoD CUI rendering.  -->
+
+
+   <x:import href="./AllCheckOrder.xspec"/>
+   <x:import href="./Misc-MarkingsTests.xspec"/>
+   <x:import href="./SecondBanner.xspec"/>
+   <x:import href="./AllNonDODCUI.xspec"/>
+   
+   <x:scenario label="NatoCTS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO"/>
+      </x:context>
+      <x:scenario label="NatoCTS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS) " test=".='(//CTS) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET" test=".='//COSMIC TOP SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCTSA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO" ism:nonUSControls="ATOMAL"/>
+      </x:context>
+      <x:scenario label="NatoCTSA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS//ATOMAL) " test=".='(//CTS//ATOMAL) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTSA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET//ATOMAL"
+            test=".='//COSMIC TOP SECRET//ATOMAL'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCTSAOC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO" ism:disseminationControls="OC"
+            ism:nonUSControls="ATOMAL"/>
+      </x:context>
+      <x:scenario label="NatoCTSAOC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS//ATOMAL//OC) "
+            test=".='(//CTS//ATOMAL//OC) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTSAOC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET//ATOMAL//ORCON"
+            test=".='//COSMIC TOP SECRET//ATOMAL//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCTSAB">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO" ism:nonUSControls="ATOMAL BOHEMIA"/>
+      </x:context>
+      <x:scenario label="NatoCTSAB-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS//ATOMAL/BOHEMIA) "
+            test=".='(//CTS//ATOMAL/BOHEMIA) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTSAB-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET//ATOMAL/BOHEMIA"
+            test=".='//COSMIC TOP SECRET//ATOMAL/BOHEMIA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCTSB">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO" ism:nonUSControls="BOHEMIA"/>
+      </x:context>
+      <x:scenario label="NatoCTSB-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS//BOHEMIA) " test=".='(//CTS//BOHEMIA) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTSB-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET//BOHEMIA"
+            test=".='//COSMIC TOP SECRET//BOHEMIA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCTSBALK">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="NATO" ism:nonUSControls="BALK"/>
+      </x:context>
+      <x:scenario label="NatoCTSBALK-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//CTS//BALK) " test=".='(//CTS//BALK) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCTSBALK-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //COSMIC TOP SECRET//BALK"
+            test=".='//COSMIC TOP SECRET//BALK'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="NATO"/>
+      </x:context>
+      <x:scenario label="NatoS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NS) " test=".='(//NS) '"/>
+      </x:scenario>
+      <x:scenario label="NatoS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO SECRET" test=".='//NATO SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+   
+     <x:scenario label="NatoS-NAC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="NATO:Partnership_For_Peace"/>
+      </x:context>
+      <x:scenario label="NatoS-NAC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NPfPS) " test=".='(//NPfPS) '"/>
+      </x:scenario>
+      <x:scenario label="NatoS-NAC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO Partnership For Peace SECRET" test=".='//NATO Partnership For Peace SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoSAT">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="NATO" ism:nonUSControls="ATOMAL"/>
+      </x:context>
+      <x:scenario label="NatoSAT-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NS//ATOMAL) " test=".='(//NS//ATOMAL) '"/>
+      </x:scenario>
+      <x:scenario label="NatoSAT-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO SECRET//ATOMAL"
+            test=".='//NATO SECRET//ATOMAL'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="C" ism:ownerProducer="NATO"/>
+      </x:context>
+      <x:scenario label="NatoC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NC) " test=".='(//NC) '"/>
+      </x:scenario>
+      <x:scenario label="NatoC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO CONFIDENTIAL" test=".='//NATO CONFIDENTIAL'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoCA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="C" ism:ownerProducer="NATO" ism:nonUSControls="ATOMAL"/>
+      </x:context>
+      <x:scenario label="NatoCA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NC//ATOMAL) " test=".='(//NC//ATOMAL) '"/>
+      </x:scenario>
+      <x:scenario label="NatoCA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO CONFIDENTIAL//ATOMAL"
+            test=".='//NATO CONFIDENTIAL//ATOMAL'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoR">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="R" ism:ownerProducer="NATO"/>
+      </x:context>
+      <x:scenario label="NatoR-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NR) " test=".='(//NR) '"/>
+      </x:scenario>
+      <x:scenario label="NatoR-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO RESTRICTED" test=".='//NATO RESTRICTED'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NatoU">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="NATO"/>
+      </x:context>
+      <x:scenario label="NatoU-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NU) " test=".='(//NU) '"/>
+      </x:scenario>
+      <x:scenario label="NatoU-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO UNCLASSIFIED" test=".='//NATO UNCLASSIFIED'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="HCS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="HCS" 
+            ism:derivativelyClassifiedBy="John Smith" ism:derivedFrom="My Guide"  ism:declassDate="2045-12-31"
+            ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="HCS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//HCS//NF) " test=".='(TS//HCS//NF) '"/>
+      </x:scenario>
+      <x:scenario label="HCS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//HCS//NOFORN"
+            test=".='TOP SECRET//HCS//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="HCS-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect label="The authority should be Classified by: John Smith|Derived from: My Guide|Declassify on: December 31, 2045"
+            test=".='Classified by: John Smith|Derived from: My Guide|Declassify on: December 31, 2045'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SITK">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI TK"/>
+      </x:context>
+      <x:scenario label="SITK-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI/TK) " test=".='(TS//SI/TK) '"/>
+      </x:scenario>
+      <x:scenario label="SITK-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI/TK" test=".='TOP SECRET//SI/TK'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SITKCheckorder" shared="yes">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="TK SI"/>
+      </x:context>
+      <x:scenario label="SITKCheckorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI/TK) " test=".='(TS//SI/TK) '"/>
+      </x:scenario>
+      <x:scenario label="SITKCheckorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI/TK" test=".='TOP SECRET//SI/TK'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="TS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"/>
+      </x:context>
+      <x:scenario label="TS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="TS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="S">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"/>
+      </x:context>
+      <x:scenario label="S-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S) " test=".='(S) '"/>
+      </x:scenario>
+      <x:scenario label="S-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET" test=".='SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="C">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="C" ism:ownerProducer="USA"/>
+      </x:context>
+      <x:scenario label="C-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (C) " test=".='(C) '"/>
+      </x:scenario>
+      <x:scenario label="C-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CONFIDENTIAL" test=".='CONFIDENTIAL'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SI-G">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI SI-G SI-G-ACDE TK"
+            ism:disseminationControls="OC"/>
+      </x:context>
+      <x:scenario label="SI-G-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI-G ACDE/TK//OC) "
+            test=".='(TS//SI-G ACDE/TK//OC) '"/>
+      </x:scenario>
+      <x:scenario label="SI-G-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI-G ACDE/TK//ORCON"
+            test=".='TOP SECRET//SI-G ACDE/TK//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RSV-ABC-DEF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="RSV RSV-ABC RSV-DEF TK"
+         />
+      </x:context>
+      <x:scenario label="RSV-ABC-DEF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//RSV-ABC-DEF/TK) "
+            test=".='(TS//RSV-ABC-DEF/TK) '"/>
+      </x:scenario>
+      <x:scenario label="RSV-ABC-DEF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//RSV-ABC-DEF/TK"
+            test=".='TOP SECRET//RSV-ABC-DEF/TK'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SI-G-ABCD">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI SI-G SI-G-ABCD"
+            ism:disseminationControls="OC"/>
+      </x:context>
+      <x:scenario label="SI-G-ABCD-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI-G ABCD//OC) "
+            test=".='(TS//SI-G ABCD//OC) '"/>
+      </x:scenario>
+      <x:scenario label="SI-G-ABCD-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI-G ABCD//ORCON"
+            test=".='TOP SECRET//SI-G ABCD//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SI-G-ABCD SI-G-ACDE">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:SCIcontrols="SI SI-G SI-G-ABCD SI-G-ACDE" ism:disseminationControls="OC"/>
+      </x:context>
+      <x:scenario label="SI-G-ABCD SI-G-ACDE-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI-G ABCD ACDE//OC) "
+            test=".='(TS//SI-G ABCD ACDE//OC) '"/>
+      </x:scenario>
+      <x:scenario label="SI-G-ABCD SI-G-ACDE-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI-G ABCD ACDE//ORCON"
+            test=".='TOP SECRET//SI-G ABCD ACDE//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="SI-G-ABCD TK">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:SCIcontrols="SI SI-G SI-G-ABCD SI-G-ACDE TK" ism:disseminationControls="OC"/>
+      </x:context>
+      <x:scenario label="SI-G-ABCD TK-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI-G ABCD ACDE/TK//OC) "
+            test=".='(TS//SI-G ABCD ACDE/TK//OC) '"/>
+      </x:scenario>
+      <x:scenario label="SI-G-ABCD TK-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI-G ABCD ACDE/TK//ORCON"
+            test=".='TOP SECRET//SI-G ABCD ACDE/TK//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="FGI-AUS-SI">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI"
+            ism:FGIsourceOpen="AUS" ism:disseminationControls="OC"/>
+      </x:context>
+      <x:scenario label="FGI-AUS-SI-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI//FGI AUS//OC) "
+            test=".='(TS//SI//FGI AUS//OC) '"/>
+      </x:scenario>
+      <x:scenario label="FGI-AUS-SI-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI//FGI AUS//ORCON"
+            test=".='TOP SECRET//SI//FGI AUS//ORCON'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="OC-OC-USGOV">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI"
+            ism:FGIsourceOpen="AUS" ism:disseminationControls="OC OC-USGOV"/>
+      </x:context>
+      <x:scenario label="OC-OC-USGOV-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI//FGI AUS//OC-USGOV) "
+            test=".='(TS//SI//FGI AUS//OC-USGOV) '"/>
+      </x:scenario>
+      <x:scenario label="OC-OC-USGOV-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI//FGI AUS//ORCON-USGOV"
+            test=".='TOP SECRET//SI//FGI AUS//ORCON-USGOV'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-non-US-controls-BOHEMIA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="TK"
+            ism:nonUSControls="BOHEMIA" ism:FGIsourceOpen="NATO" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="USA-non-US-controls-BOHEMIA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//TK/BOHEMIA//FGI NATO//NF) "
+            test=".='(TS//TK/BOHEMIA//FGI NATO//NF) '"/>
+      </x:scenario>
+      <x:scenario label="USA-non-US-controls-BOHEMIA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//TK/BOHEMIA//FGI NATO//NOFORN"
+            test=".='TOP SECRET//TK/BOHEMIA//FGI NATO//NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-non-US-controls-BALK">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="TK"
+            ism:nonUSControls="BALK" ism:FGIsourceOpen="NATO" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="USA-non-US-controls-BALK-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//TK/BALK//FGI NATO//NF) "
+            test=".='(TS//TK/BALK//FGI NATO//NF) '"/>
+      </x:scenario>
+      <x:scenario label="USA-non-US-controls-BALK-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//TK/BALK//FGI NATO//NOFORN"
+            test=".='TOP SECRET//TK/BALK//FGI NATO//NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-non-US-controls-ATOMAL">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:atomicEnergyMarkings="RD"
+            ism:nonUSControls="ATOMAL" ism:FGIsourceOpen="NATO" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="USA-non-US-controls-ATOMAL-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD/ATOMAL//FGI NATO//NF) "
+            test=".='(S//RD/ATOMAL//FGI NATO//NF) '"/>
+      </x:scenario>
+      <x:scenario label="USA-non-US-controls-ATOMAL-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD/ATOMAL//FGI NATO//NOFORN"
+            test=".='SECRET//RD/ATOMAL//FGI NATO//NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-non-US-controls-mixed-ATOMAL-BOHEMIA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="TK"
+            ism:atomicEnergyMarkings="RD" ism:nonUSControls="ATOMAL BOHEMIA"
+            ism:FGIsourceOpen="NATO" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="USA-non-US-controls-mixed-ATOMAL-BOHEMIA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//TK/BOHEMIA//RD/ATOMAL//FGI NATO//NF) "
+            test=".='(TS//TK/BOHEMIA//RD/ATOMAL//FGI NATO//NF) '"/>
+      </x:scenario>
+      <x:scenario label="USA-non-US-controls-mixed-ATOMAL-BOHEMIA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//TK/BOHEMIA//RD/ATOMAL//FGI NATO//NOFORN"
+            test=".='TOP SECRET//TK/BOHEMIA//RD/ATOMAL//FGI NATO//NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="AUS-SI">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="AUS" ism:SCIcontrols="SI"/>
+      </x:context>
+      <x:scenario label="AUS-SI-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//AUS TS//SI) " test=".='(//AUS TS//SI) '"/>
+      </x:scenario>
+      <x:scenario label="AUS-SI-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //AUS TOP SECRET//SI" test=".='//AUS TOP SECRET//SI'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="RS"/>
+      </x:context>
+      <x:scenario label="RS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RS) " test=".='(S//RS) '"/>
+      </x:scenario>
+      <x:scenario label="RS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RSEN" test=".='SECRET//RSEN'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="UCNI">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="UCNI"/>
+      </x:context>
+      <x:scenario label="UCNI-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//UCNI) " test=".='(U//UCNI) '"/>
+      </x:scenario>
+      <x:scenario label="UCNI-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//DOE UCNI"
+            test=".='UNCLASSIFIED//DOE UCNI'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="DCNI">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="DCNI"/>
+      </x:context>
+      <x:scenario label="DCNI-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//DCNI) " test=".='(U//DCNI) '"/>
+      </x:scenario>
+      <x:scenario label="DCNI-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//DOD UCNI"
+            test=".='UNCLASSIFIED//DOD UCNI'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RD">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:atomicEnergyMarkings="RD"/>
+      </x:context>
+      <x:scenario label="RD-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD) " test=".='(S//RD) '"/>
+      </x:scenario>
+      <x:scenario label="RD-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD" test=".='SECRET//RD'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="FRD">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:atomicEnergyMarkings="FRD"/>
+      </x:context>
+      <x:scenario label="FRD-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//FRD) " test=".='(S//FRD) '"/>
+      </x:scenario>
+      <x:scenario label="FRD-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//FRD" test=".='SECRET//FRD'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="FRD-SIGMA1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:atomicEnergyMarkings="FRD FRD-SG-14"
+         />
+      </x:context>
+      <x:scenario label="FRD-SIGMA1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//FRD-SG 14) " test=".='(S//FRD-SG 14) '"/>
+      </x:scenario>
+      <x:scenario label="FRD-SIGMA1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//FRD-SIGMA 14" test=".='SECRET//FRD-SIGMA 14'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="FRD-SIGMA1-2-RD-CNWDI-SIGMA-5">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:atomicEnergyMarkings="RD RD-CNWDI RD-SG-14 FRD FRD-SG-14 FRD-SG-20"/>
+      </x:context>
+      <x:scenario label="FRD-SIGMA1-2-RD-CNWDI-SIGMA-5-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD-CNWDI-SG 14/FRD-SG 14 20) "
+            test=".='(S//RD-CNWDI-SG 14/FRD-SG 14 20) '"/>
+      </x:scenario>
+      <x:scenario label="FRD-SIGMA1-2-RD-CNWDI-SIGMA-5-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD-CNWDI-SIGMA 14/FRD-SIGMA 14 20"
+            test=".='SECRET//RD-CNWDI-SIGMA 14/FRD-SIGMA 14 20'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RD-SIGMA1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:atomicEnergyMarkings="RD RD-SG-14"/>
+      </x:context>
+      <x:scenario label="RD-SIGMA1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD-SG 14) " test=".='(S//RD-SG 14) '"/>
+      </x:scenario>
+      <x:scenario label="RD-SIGMA1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD-SIGMA 14" test=".='SECRET//RD-SIGMA 14'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RD-SIGMA1-2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:atomicEnergyMarkings="RD RD-SG-14 RD-SG-20"/>
+      </x:context>
+      <x:scenario label="RD-SIGMA1-2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD-SG 14 20) " test=".='(S//RD-SG 14 20) '"/>
+      </x:scenario>
+      <x:scenario label="RD-SIGMA1-2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD-SIGMA 14 20"
+            test=".='SECRET//RD-SIGMA 14 20'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RD-SIGMA1-2-FRD-SIGMA1-2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:atomicEnergyMarkings="RD RD-SG-14 RD-SG-20 FRD FRD-SG-14 FRD-SG-20"/>
+      </x:context>
+      <x:scenario label="RD-SIGMA1-2-FRD-SIGMA1-2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD-SG 14 20/FRD-SG 14 20) "
+            test=".='(S//RD-SG 14 20/FRD-SG 14 20) '"/>
+      </x:scenario>
+      <x:scenario label="RD-SIGMA1-2-FRD-SIGMA1-2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD-SIGMA 14 20/FRD-SIGMA 14 20"
+            test=".='SECRET//RD-SIGMA 14 20/FRD-SIGMA 14 20'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RD-CNWDI-SIGMA1-2-FRD-SIGMA1-2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:atomicEnergyMarkings="RD RD-CNWDI RD-SG-14 RD-SG-20 FRD FRD-SG-14 FRD-SG-20"/>
+      </x:context>
+      <x:scenario label="RD-CNWDI-SIGMA1-2-FRD-SIGMA1-2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RD-CNWDI-SG 14 20/FRD-SG 14 20) "
+            test=".='(S//RD-CNWDI-SG 14 20/FRD-SG 14 20) '"/>
+      </x:scenario>
+      <x:scenario label="RD-CNWDI-SIGMA1-2-FRD-SIGMA1-2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RD-CNWDI-SIGMA 14 20/FRD-SIGMA 14 20"
+            test=".='SECRET//RD-CNWDI-SIGMA 14 20/FRD-SIGMA 14 20'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="DISPLAY-ONLY-AFG">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY"
+            ism:displayOnlyTo="AFG"/>
+      </x:context>
+      <x:scenario label="DISPLAY-ONLY-AFG-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//DISPLAY ONLY AFG) "
+            test=".='(S//DISPLAY ONLY AFG) '"/>
+      </x:scenario>
+      <x:scenario label="DISPLAY-ONLY-AFG-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//DISPLAY ONLY AFG"
+            test=".='SECRET//DISPLAY ONLY AFG'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="USA AUS NATO"
+            ism:displayOnlyTo="AFG IRQ"/>
+      </x:context>
+      <x:scenario label="DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ) "
+            test=".='(S//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ) '"/>
+      </x:scenario>
+      <x:scenario label="DISPLAY-ONLY-AFG-IRQ-REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ"
+            test=".='SECRET//REL TO USA, AUS, NATO/DISPLAY ONLY AFG, IRQ'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="REL-NATO-AUS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA AUS NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, AUS, NATO) "
+            test=".='(S//REL TO USA, AUS, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, AUS, NATO"
+            test=".='SECRET//REL TO USA, AUS, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="REL-USA-DEU-GBR-NATO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA DEU GBR NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, GBR, NATO) "
+            test=".='(S//REL TO USA, DEU, GBR, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, GBR, NATO"
+            test=".='SECRET//REL TO USA, DEU, GBR, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="DEU JPN NZL ZAF FVEY NATO RSMA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA JPN FVEY RSMA DEU NZL ZAF NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA) "
+            test=".='(S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA"
+            test=".='SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="USA FVEY DEU GBR NATO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA FVEY DEU GBR NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, GBR, FVEY, NATO) "
+            test=".='(S//REL TO USA, DEU, GBR, FVEY, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, GBR, FVEY, NATO"
+            test=".='SECRET//REL TO USA, DEU, GBR, FVEY, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="DEU JPN NZL ZAF FVEY NATO RSMA with dupes">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA DEU JPN FVEY RSMA DEU DEU NZL FVEY ZAF NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA) "
+            test=".='(S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA"
+            test=".='SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO, RSMA'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="DEU JPN FVEY NATO:DEF RSMA DEU NATO:ABC DEU NZL FVEY ZAF NATO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA DEU JPN FVEY NATO:DEF RSMA DEU NATO:ABC DEU NZL FVEY ZAF NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO ABC, NATO DEF, RSMA) "
+            test=".='(S//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO ABC, NATO DEF, RSMA) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO ABC, NATO DEF, RSMA"
+            test=".='SECRET//REL TO USA, DEU, JPN, NZL, ZAF, FVEY, NATO ABC, NATO DEF, RSMA'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="DEU FVEY NATO:DEF RSMA DEU NATO:ABC DEU NZL FVEY NATO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA DEU FVEY NATO:DEF RSMA DEU NATO:ABC DEU NZL FVEY NATO"/>
+      </x:context>
+      <x:scenario label="REL-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, DEU, NZL, FVEY, NATO ABC, NATO DEF, RSMA) "
+            test=".='(S//REL TO USA, DEU, NZL, FVEY, NATO ABC, NATO DEF, RSMA) '"/>
+      </x:scenario>
+      <x:scenario label="REL-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, DEU, NZL, FVEY, NATO:ABC, NATO:DEF, RSMA"
+            test=".='SECRET//REL TO USA, DEU, NZL, FVEY, NATO ABC, NATO DEF, RSMA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RELEASABLETO-NATO-AUS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="NATO" ism:disseminationControls="REL"
+            ism:releasableTo="USA AUS NATO"/>
+      </x:context>
+      <x:scenario label="RELEASABLETO-NATO-AUS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NS//REL TO USA, AUS, NATO) "
+            test=".='(//NS//REL TO USA, AUS, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="RELEASABLETO-NATO-AUS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO SECRET//RELEASABLE TO USA, AUS, NATO"
+            test=".='//NATO SECRET//RELEASABLE TO USA, AUS, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-AUS-CAN-NZL-EYES-ONLY">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="EYES"
+            ism:releasableTo="USA AUS CAN NZL"/>
+      </x:context>
+      <x:scenario label="USA-AUS-CAN-NZL-EYES-ONLY-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//USA/AUS/CAN/NZL EYES ONLY) "
+            test=".='(S//USA/AUS/CAN/NZL EYES ONLY) '"/>
+      </x:scenario>
+      <x:scenario label="USA-AUS-CAN-NZL-EYES-ONLY-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//USA/AUS/CAN/NZL EYES ONLY"
+            test=".='SECRET//USA/AUS/CAN/NZL EYES ONLY'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   
+   <x:scenario label="IMCON-REL-USA-FVEY">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="IMC REL"
+            ism:releasableTo="USA FVEY"/>
+      </x:context>
+      <x:scenario label="IMCON-REL-USA-FVEY-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//IMC/REL TO USA, FVEY) "
+            test=".='(S//IMC/REL TO USA, FVEY) '"/>
+      </x:scenario>
+      <x:scenario label="IMCON-REL-USA-FVEY-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//IMCON/REL TO USA, FVEY"
+            test=".='SECRET//IMCON/REL TO USA, FVEY'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="UNCLASSIFIED-LIMDIS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="DS"/>
+      </x:context>
+      <x:scenario label="UNCLASSIFIED-LIMDIS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//DS) "
+            test=".='(U//DS) '"/>
+      </x:scenario>
+      <x:scenario label="UNCLASSIFIED-LIMDIS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//LIMDIS"
+            test=".='UNCLASSIFIED//LIMDIS'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="UNCLASSIFIED-SBU-NF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF"/>
+      </x:context>
+      <x:scenario label="UNCLASSIFIED-SBU-NF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//SBU-NF) "
+            test=".='(U//SBU-NF) '"/>
+      </x:scenario>
+      <x:scenario label="UNCLASSIFIED-SBU-NF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//SBU NOFORN"
+            test=".='UNCLASSIFIED//SBU NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="UNCLASSIFIED-LES-NF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="LES-NF"/>
+      </x:context>
+      <x:scenario label="UNCLASSIFIED-LES-NF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (U//LES-NF) "
+            test=".='(U//LES-NF) '"/>
+      </x:scenario>
+      <x:scenario label="UNCLASSIFIED-LES-NF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be UNCLASSIFIED//LES NOFORN"
+            test=".='UNCLASSIFIED//LES NOFORN'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   <x:scenario label="SECRET-NOFORN-EXDIS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:nonICmarkings="XD" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="SECRET-NOFORN-EXDIS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//NF//XD) "
+            test=".='(S//NF//XD) '"/>
+      </x:scenario>
+      <x:scenario label="SECRET-NOFORN-EXDIS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//NOFORN//EXDIS"
+            test=".='SECRET//NOFORN//EXDIS'"/>
+      </x:scenario>
+   </x:scenario>
+   
+   
+   <x:scenario label="SECRET-NOFORN-NODIS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:nonICmarkings="ND" ism:disseminationControls="NF"/>
+      </x:context>
+      <x:scenario label="SECRET-NOFORN-NODIS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//NF//ND) "
+            test=".='(S//NF//ND) '"/>
+      </x:scenario>
+      <x:scenario label="SECRET-NOFORN-NODIS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//NOFORN//NODIS"
+            test=".='SECRET//NOFORN//NODIS'"/>
+      </x:scenario>
+   </x:scenario>
+
+ 
+
+   <x:scenario label="JOINT">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="DEU USA" ism:joint="true"
+            ism:disseminationControls="REL" ism:releasableTo="USA DEU NATO"/>
+      </x:context>
+      <x:scenario label="JOINT-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//JOINT S DEU USA//REL TO USA, DEU, NATO) "
+            test=".='(//JOINT S DEU USA//REL TO USA, DEU, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="JOINT-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //JOINT SECRET DEU USA//REL TO USA, DEU, NATO"
+            test=".='//JOINT SECRET DEU USA//REL TO USA, DEU, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Non-JOINT">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="DEU GBR" ism:disseminationControls="REL"
+            ism:releasableTo="USA DEU GBR NATO"/>
+      </x:context>
+      <x:scenario label="Non-JOINT-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//DEU GBR S//REL TO USA, DEU, GBR, NATO) "
+            test=".='(//DEU GBR S//REL TO USA, DEU, GBR, NATO) '"/>
+      </x:scenario>
+      <x:scenario label="Non-JOINT-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //DEU GBR SECRET//REL TO USA, DEU, GBR, NATO"
+            test=".='//DEU GBR SECRET//REL TO USA, DEU, GBR, NATO'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-50X1-HUM-OCA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:classifiedBy="John Doe, Director CIA" ism:classificationReason="1.4c"
+            ism:declassException="50X1-HUM"/>
+      </x:context>
+      <x:scenario label="Authority-50X1-HUM-OCA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X1-HUM-OCA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X1-HUM-OCA-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, Director CIA|Reason: 1.4c|Declassify on: 50X1-HUM"
+            test=".='Classified by: John Doe, Director CIA|Reason: 1.4c|Declassify on: 50X1-HUM'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-50X2-WMD">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:classifiedBy="John Doe, Director CIA" ism:classificationReason="1.4c"
+            ism:declassException="50X2-WMD"/>
+      </x:context>
+      <x:scenario label="Authority-50X2-WMD-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X2-WMD-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X2-WMD-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, Director CIA|Reason: 1.4c|Declassify on: 50X2-WMD"
+            test=".='Classified by: John Doe, Director CIA|Reason: 1.4c|Declassify on: 50X2-WMD'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Declass-DerivativelyClassified-MultipleSources">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources" ism:declassDate="2035-09-11"/>
+      </x:context>
+      <x:scenario label="Declass-DerivativelyClassified-MultipleSources-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Declass-DerivativelyClassified-MultipleSources-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Declass-DerivativelyClassified-MultipleSources-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: September 11, 2035"
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: September 11, 2035'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-50X1-HUM">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources" ism:declassException="50X1-HUM"
+            ism:declassDate="2050-01-01"/>
+      </x:context>
+      <x:scenario label="Authority-50X1-HUM-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X1-HUM-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-50X1-HUM-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: 50X1-HUM, January 1, 2050"
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: 50X1-HUM, January 1, 2050'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-AEA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources" ism:declassException="AEA"/>
+      </x:context>
+      <x:scenario label="Authority-AEA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-AEA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-AEA-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to RD/FRD/TFNI portions. See source list for NSI portions."
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to RD/FRD/TFNI portions. See source list for NSI portions.'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-NATO">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources" ism:declassException="NATO"/>
+      </x:context>
+
+      <x:scenario label="Authority-NATO-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-NATO-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-NATO-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to NATO portions. See source list for NSI portions."
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to NATO portions. See source list for NSI portions.'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="Authority-NATO-AEA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources" ism:declassException="NATO-AEA"/>
+      </x:context>
+      <x:scenario label="Authority-NATO-AEA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS) " test=".='(TS) '"/>
+      </x:scenario>
+      <x:scenario label="Authority-NATO-AEA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET" test=".='TOP SECRET'"/>
+      </x:scenario>
+      <x:scenario label="Authority-NATO-AEA-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to RD/FRD/TFNI and NATO portions. See source list for NSI portions."
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: Not Applicable to RD/FRD/TFNI and NATO portions. See source list for NSI portions.'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="ACCM">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTITIOUS_EFFORT" ism:declassDate="2050-01-01"/>
+      </x:context>
+      <x:scenario label="ACCM-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//ACCM-FICTITIOUS EFFORT/TEA LEAF) "
+            test=".='(TS//ACCM-FICTITIOUS EFFORT/TEA LEAF) '"/>
+      </x:scenario>
+      <x:scenario label="ACCM-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//ACCM-FICTITIOUS EFFORT/TEA LEAF"
+            test=".='TOP SECRET//ACCM-FICTITIOUS EFFORT/TEA LEAF'"/>
+      </x:scenario>
+      <x:scenario label="ACCM-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: January 1, 2050"
+            test=".='Classified by: John Doe, JITF-CT DIA|Derived from: Multiple Sources|Reason: NDP-1|Declassify on: January 1, 2050'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NATO/NAC-ISAF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="R" ism:ownerProducer="NATO:ISAF"/>
+      </x:context>
+      <x:scenario label="NATO/NAC-ISAF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//NIR) " test=".='(//NIR) '"/>
+      </x:scenario>
+      <x:scenario label="NATO/NAC-ISAF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //NATO ISAF RESTRICTED"
+            test=".='//NATO ISAF RESTRICTED'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NATO/NAC-ISAF-complex">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="R" ism:ownerProducer="NATO:ISAF"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="AFG NATO:Operation_Unified_Protector"/>
+      </x:context>
+      <x:scenario label="NATO/NAC-ISAF-complex-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) "
+            test=".='(//NIR//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="NATO/NAC-ISAF-complex-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be //NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector"
+            test=".='//NATO ISAF RESTRICTED//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="USA-NAC">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:disseminationControls="REL DISPLAYONLY" ism:releasableTo="GBR NATO:PfP"
+            ism:displayOnlyTo="AFG NATO:Operation_Unified_Protector"
+            ism:FGIsourceOpen="AGO NATO:ISAF"/>
+      </x:context>
+      <x:scenario label="USA-NAC-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect
+            label="The portion should be (S//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) "
+            test=".='(S//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector) '"
+         />
+      </x:scenario>
+      <x:scenario label="USA-NAC-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect
+            label="The banner should be SECRET//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector"
+            test=".='SECRET//FGI AGO NATO ISAF//REL TO GBR, NATO PfP/DISPLAY ONLY AFG, NATO Operation Unified Protector'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="REL-FAKE_TETRA-UNDERSCORE">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL"
+            ism:releasableTo="USA FAKE_TETRA"/>
+      </x:context>
+      <x:scenario label="REL-FAKE_TETRA-UNDERSCORE-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//REL TO USA, FAKE TETRA) "
+            test=".='(S//REL TO USA, FAKE TETRA) '"/>
+      </x:scenario>
+      <x:scenario label="REL-FAKE_TETRA-UNDERSCORE-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//REL TO USA, FAKE TETRA"
+            test=".='SECRET//REL TO USA, FAKE TETRA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="FGI Protected Mixed Portion">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI"/>
+      </x:context>
+      <x:scenario label="FGI Protected Mixed Portion-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//FGI) " test=".='(TS//FGI) '"/>
+      </x:scenario>
+      <x:scenario label="FGI Protected Mixed Portion-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//FGI" test=".='TOP SECRET//FGI'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NGIC_Test_1">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI"
+            ism:disseminationControls="NF FISA" ism:SCIcontrols="SI"/>
+      </x:context>
+      <x:scenario label="NGIC_Test_1-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI//FGI//NF/FISA) "
+            test=".='(TS//SI//FGI//NF/FISA) '"/>
+      </x:scenario>
+      <x:scenario label="NGIC_Test_1-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI//FGI//NOFORN/FISA"
+            test=".='TOP SECRET//SI//FGI//NOFORN/FISA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NGIC_Test_4">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="GBR" ism:FGIsourceOpen="GBR"/>
+      </x:context>
+      <x:scenario label="NGIC_Test_4-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (//GBR S) " test=".='(//GBR S) '"/>
+      </x:scenario>
+      <x:scenario label="NGIC_Test_4-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be //GBR SECRET" test=".='//GBR SECRET'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="NGIC_Test_5">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:FGIsourceOpen="GBR"/>
+      </x:context>
+      <x:scenario label="NGIC_Test_5-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//FGI GBR) " test=".='(S//FGI GBR) '"/>
+      </x:scenario>
+      <x:scenario label="NGIC_Test_5-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//FGI GBR" test=".='SECRET//FGI GBR'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="RAWFISA">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="RAWFISA"/>
+      </x:context>
+      <x:scenario label="RAWFISA-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//RAWFISA) " test=".='(S//RAWFISA) '"/>
+      </x:scenario>
+      <x:scenario label="RAWFISA-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//RAWFISA" test=".='SECRET//RAWFISA'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="MultipleDeclass">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="NF"
+            ism:derivativelyClassifiedBy="John Smith" ism:derivedFrom="derivative"
+            ism:declassException="25X1 25X3" ism:declassDate="2035-12-31"
+            ism:classificationReason="1.4c"/>
+      </x:context>
+      <x:scenario label="MultipleDeclass-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//NF) " test=".='(S//NF) '"/>
+      </x:scenario>
+      <x:scenario label="MultipleDeclass-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//NOFORN" test=".='SECRET//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="MultipleDeclass-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Smith|Derived from: derivative|Reason: 1.4c|Declassify on: 25X1 25X3, December 31, 2035"
+            test=".='Classified by: John Smith|Derived from: derivative|Reason: 1.4c|Declassify on: 25X1 25X3, December 31, 2035'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="MultipleDeclass2">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="NF"
+            ism:derivativelyClassifiedBy="John Smith" ism:derivedFrom="derivative"
+            ism:declassException="25X1 25X3" ism:declassDate="2035-12-31"/>
+      </x:context>
+      <x:scenario label="MultipleDeclass2-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//NF) " test=".='(S//NF) '"/>
+      </x:scenario>
+      <x:scenario label="MultipleDeclass2-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//NOFORN" test=".='SECRET//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="MultipleDeclass2-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Classified by: John Smith|Derived from: derivative|Declassify on: 25X1 25X3, December 31, 2035"
+            test=".='Classified by: John Smith|Derived from: derivative|Declassify on: 25X1 25X3, December 31, 2035'"
+         />
+      </x:scenario>
+   </x:scenario>
+   
+   
+   <x:scenario label="Exempt_from_ICD501_Discovery">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="HCS" 
+            ism:derivativelyClassifiedBy="John Smith" ism:derivedFrom="My Guide"  ism:declassDate="2045-12-31"
+            ism:disseminationControls="NF EXEMPT_FROM_ICD501_DISCOVERY"/>
+      </x:context>
+      <x:scenario label="HCS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//HCS//NF) " test=".='(TS//HCS//NF) '"/>
+      </x:scenario>
+      <x:scenario label="HCS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//HCS//NOFORN"
+            test=".='TOP SECRET//HCS//NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="HCS-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect label="The authority should be Classified by: John Smith|Derived from: My Guide|Declassify on: December 31, 2045"
+            test=".='Classified by: John Smith|Derived from: My Guide|Declassify on: December 31, 2045'"/>
+      </x:scenario>
+   </x:scenario>
+
+
+</x:description>

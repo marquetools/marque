@@ -1,0 +1,189 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:cuibasic"
+CVEnumISMCUIBasic.cve = list { 
+# (U) 
+"ADPO"?, 
+# (U) 
+"AG"?, 
+# (U) 
+"ASYL"?, 
+# (U) 
+"FSEC"?, 
+# (U) 
+"BATT"?, 
+# (U) 
+"CVI"?, 
+# (U) 
+"CVIC"?, 
+# (U) 
+"BARG"?, 
+# (U) 
+"CMPRS"?, 
+# (U) 
+"LCOMM"?, 
+# (U) 
+"COMPT"?, 
+# (U) 
+"DREC"?, 
+# (U) 
+"DCRIT"?, 
+# (U) 
+"XFER"?, 
+# (U) 
+"EMGT"?, 
+# (U) 
+"EXPT"?, 
+# (U) 
+"EXPTR"?, 
+# (U) 
+"JURY"?, 
+# (U) 
+"FHFANPI"?, 
+# (U) 
+"FSI"?, 
+# (U) 
+"CRIT"?, 
+# (U) 
+"FNC"?, 
+# (U) 
+"INTEL"?, 
+# (U) 
+"LEI"?, 
+# (U) 
+"NUC"?, 
+# (U) 
+"PRVCY"?, 
+# (U) 
+"PROPIN"?, 
+# (U) 
+"GENETIC"?, 
+# (U) 
+"HLTH"?, 
+# (U) 
+"CUI-PROVISIONAL-HSAI"?, 
+# (U) 
+"CUI-PROVISIONAL-HSEI"?, 
+# (U) 
+"INF"?, 
+# (U) 
+"ISVI"?, 
+# (U) 
+"CUI-PROVISIONAL-ISVIH"?, 
+# (U) 
+"PRIIG"?, 
+# (U) 
+"ID"?, 
+# (U) 
+"CUI-PROVISIONAL-IAIH"?, 
+# (U) 
+"FINT"?, 
+# (U) 
+"INVENT"?, 
+# (U) 
+"INV"?, 
+# (U) 
+"SURV"?, 
+# (U) 
+"JUV"?, 
+# (U) 
+"PRIVILEGE"?, 
+# (U) 
+"LMI"?, 
+# (U) 
+"MERG"?, 
+# (U) 
+"MIL"?, 
+# (U) 
+"LNSL"?, 
+# (U) 
+"NETW"?, 
+# (U) 
+"NNPI"?, 
+# (U) 
+"OPSEC"?, 
+# (U) 
+"RECCOM"?, 
+# (U) 
+"SRI"?, 
+# (U) 
+"OCCMTO"?, 
+# (U) 
+"SERV"?, 
+# (U) 
+"CUI-PROVISIONAL-OSI"?, 
+# (U) 
+"APP"?, 
+# (U) 
+"TRACE"?, 
+# (U) 
+"RESD"?, 
+# (U) 
+"PERS"?, 
+# (U) 
+"CUI-PROVISIONAL-PSI"?, 
+# (U) 
+"PEST"?, 
+# (U) 
+"PHYS"?, 
+# (U) 
+"CUI-PROVISIONAL-PHYSH"?, 
+# (U) 
+"PRE"?, 
+# (U) 
+"PRIOR"?, 
+# (U) 
+"CUI-PROVISIONAL-PRIVACY"?, 
+# (U) 
+"POST"?, 
+# (U) 
+"LPROT"?, 
+# (U) 
+"RAIL"?, 
+# (U) 
+"RTR"?, 
+# (U) 
+"RWRD"?, 
+# (U) 
+"SAFE"?, 
+# (U) 
+"PSEC"?, 
+# (U) 
+"CUI-PROVISIONAL-PII"?, 
+# (U) 
+"SCV"?, 
+# (U) 
+"SBIZ"?, 
+# (U) 
+"SSEL"?, 
+# (U) 
+"STAT"?, 
+# (U) 
+"ADJ"?, 
+# (U) 
+"STUD"?, 
+# (U) 
+"CONREG"?, 
+# (U) 
+"CONV"?, 
+# (U) 
+"TAI"?, 
+# (U) 
+"PROT"?, 
+# (U) 
+"LSCRN"?, 
+# (U) 
+"DCNI"?, 
+# (U) 
+"UCNI"?, 
+# (U) 
+"LVIC"?, 
+# (U) 
+"IVIC"?, 
+# (U) 
+"VISA"?, 
+# (U) 
+"WATER"?, 
+# (U) 
+"WHSTL"?, 
+# (U) 
+"WIT"? } 

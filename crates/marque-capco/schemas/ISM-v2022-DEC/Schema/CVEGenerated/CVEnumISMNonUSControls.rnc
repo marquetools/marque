@@ -1,0 +1,9 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:nonuscontrols"
+CVEnumISMNonUSControls.cve = list { 
+# (U) 
+"NATO-ATOMAL"?, 
+# (U) 
+"NATO-BOHEMIA"?, 
+# (U) 
+"NATO-BALK"? } 

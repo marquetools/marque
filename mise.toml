@@ -1,0 +1,10 @@
+[tools]
+git-cliff = "latest"
+typos = "latest"
+tombi = "latest"
+rust = "nightly"
+yq = "latest"
+
+[settings]
+auto_install = true
+experimental = true

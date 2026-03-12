@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ntk:accesspolicy">
+   <define name="CVEnumNTKAccessPolicy.cve">
+      <choice>
+         <value>urn:us:gov:ic:aces:ntk:xd</value>
+         <value>urn:us:gov:ic:aces:ntk:enterprise:role:permissive</value>
+         <value>urn:us:gov:ic:aces:ntk:enterprise:role:restrictive</value>
+         <value>urn:us:gov:ic:aces:ntk:ico</value>
+         <value>urn:us:gov:ic:aces:ntk:license</value>
+         <value>urn:us:gov:ic:aces:ntk:mn</value>
+         <value>urn:us:gov:ic:aces:ntk:nd</value>
+         <value>urn:us:gov:ic:aces:ntk:oc</value>
+         <value>urn:us:gov:ic:aces:ntk:permissive</value>
+         <value>urn:us:gov:ic:aces:ntk:propin:1</value>
+         <value>urn:us:gov:ic:aces:ntk:propin:2</value>
+         <value>urn:us:gov:ic:aces:ntk:propin:([A-Za-z][A-Za-z0-9\-_.;,():+]{1,64})</value>
+         <value>urn:us:gov:ic:aces:ntk:rac</value>
+         <value>urn:us:gov:ic:aces:ntk:restrictive</value>
+      </choice>
+   </define>
+</grammar>

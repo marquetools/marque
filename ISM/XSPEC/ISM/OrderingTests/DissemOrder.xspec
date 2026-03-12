@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+
+   <x:scenario label="OC-OC-USGOV-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:SCIcontrols="SI"
+            ism:FGIsourceOpen="AUS" ism:disseminationControls="OC-USGOV OC"/>
+      </x:context>
+      <x:scenario label="OC-OC-USGOV-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//SI//FGI AUS//OC-USGOV) "
+            test=".='(TS//SI//FGI AUS//OC-USGOV) '"/>
+      </x:scenario>
+      <x:scenario label="OC-OC-USGOV-Checkorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//SI//FGI AUS//ORCON-USGOV"
+            test=".='TOP SECRET//SI//FGI AUS//ORCON-USGOV'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="DSEN-NF-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA" ism:disseminationControls="DSEN NF"/>
+      </x:context>
+      <x:scenario label="DSEN-NF-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//NF/DSEN) " test=".='(TS//NF/DSEN) '"/>
+      </x:scenario>
+      <x:scenario label="DSEN-NF-Checkorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//NOFORN/DEA SENSITIVE"
+            test=".='TOP SECRET//NOFORN/DEA SENSITIVE'"/>
+      </x:scenario>
+   </x:scenario>
+</x:description>

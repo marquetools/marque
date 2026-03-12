@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:scicontrols">
+   <define name="CVEnumISMSCIControls.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>BUR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BUR-BLG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BUR-DTP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BUR-WRG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HCS-O</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HCS-P</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HCS-X</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KLM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KLM-R</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MVL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RSV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SI-EU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SI-G</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SI-NK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TK-BLFH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TK-IDIT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TK-KAND</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

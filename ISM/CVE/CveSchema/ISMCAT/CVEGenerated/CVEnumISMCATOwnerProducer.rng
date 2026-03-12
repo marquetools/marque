@@ -1,0 +1,1035 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ismcat:ownerproducer">
+   <define name="CVEnumISMCATOwnerProducer.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>FGI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ABW</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AFG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AGO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AIA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ALB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AND</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ARE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ARG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ARM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ASM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ATA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ATF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ATG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AUS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AUT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AX2</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AX3</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AZE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BDI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BEL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BES</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BFA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BGD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BGR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BHR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BHS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BIH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BLM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BLR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BLZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BMU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BOL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BRA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BRB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BRN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BTN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BVT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BWA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CAF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CAN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CCK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CHE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CHL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CHN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CIV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CMR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CPT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CPV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CRI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CUB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CUW</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CXR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CYM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CYP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CZE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DEU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DGA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DJI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DMA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DNK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DOM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DZA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ECU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EGY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ERI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ESH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ESP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EST</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ETH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FIN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FJI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FLK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FSM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GAB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GBR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GEO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GGY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GHA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GIB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GIN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GLP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GMB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GNB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GNQ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GRC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GRD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GRL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GTM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GUF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GUM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GUY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HKG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HMD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HND</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HRV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HTI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HUN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IDN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IND</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IOT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IRL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IRN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IRQ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ITA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>JAM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>JEY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>JOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>JPN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KAZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KGZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KHM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KIR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KNA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KWT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LAO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LBN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LBR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LBY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LCA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LIE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LKA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LSO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LTU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LUX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LVA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MAC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MAF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MAR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MCO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MDA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MDG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MDV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MEX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MHL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MKD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MLI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MLT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MMR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MNE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MNG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MNP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MOZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MRT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MSR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MTQ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MUS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MWI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MYS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MYT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NAM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NCL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NER</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NFK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NGA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NIC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NIU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NLD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NPL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NRU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NZL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OMN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PAK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PAN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PCN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PER</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PHL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PLW</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PNG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>POL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PYF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>QAT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>REU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ROU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RUS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RWA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SAU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SDN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SGP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SGS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SHN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SLB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SLE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SLV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SMR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SOM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SPM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SRB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>STP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SUR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SVK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SVN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SWE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SWZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SXM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SYC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SYR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TCA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TCD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TGO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>THA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TJK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TKL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TKM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TLS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TON</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TTO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TUN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TUR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TUV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TWN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TZA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UGA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UKR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>URY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>USA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UZB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VAT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VCT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VGB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VIR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VNM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>VUT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WLF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WSM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XAC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XAZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XBI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XBK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XCR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XCY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XEU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XGL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XGZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XHO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XJA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XJM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XJN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XJV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XKM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XKN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XKR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XKS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XMW</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XNV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XPL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XPR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XQZ</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XSP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XSV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XTR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XWB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XWK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XXD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>YEM</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ZAF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ZMB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ZWE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ACGU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AMSP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AOSC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>APFS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ASEA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AUSTRALIA_GROUP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BHTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BWCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFCK</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFOD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CFUP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CLFC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CMFC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CMFP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CPMT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CTOC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CWCS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ECTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EUDA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRME</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FVEY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GCCH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GCTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GFNX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GMIF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IESC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMSC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMSP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IPMC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IRKS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISAF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ISSG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>KFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MCFI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MESF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MGEU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MIFH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MLEC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MNTF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MPFL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NACT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO:[a-zA-Z\-_]{1,256}</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NCFE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NKIC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NRDC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NSG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OSAG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OSTY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PAWA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PGMF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PSMX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RISC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RSMA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SFOR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SOFP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SPAA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TEYE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TFTC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UNCK</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

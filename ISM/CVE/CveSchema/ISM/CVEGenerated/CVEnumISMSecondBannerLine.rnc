@@ -1,0 +1,15 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:secondbannerline"
+CVEnumISMSecondBannerLine.cve = list { 
+# (U) 
+"ACPI"?, 
+# (U) 
+"AWP"?, 
+# (U) 
+"CUSPI"?, 
+# (U) 
+"DPPD"?, 
+# (U) 
+"HVCO"?, 
+# (U) 
+"SSS"? } 

@@ -1,0 +1,97 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:attributes"
+CVEnumISMAttributes.cve = list { 
+# (U) 
+"compliesWith"?, 
+# (U) 
+"classification"?, 
+# (U) 
+"ownerProducer"?, 
+# (U) 
+"SCIcontrols"?, 
+# (U) 
+"SARIdentifier"?, 
+# (U) 
+"atomicEnergyMarkings"?, 
+# (U) 
+"disseminationControls"?, 
+# (U) 
+"FGIsourceOpen"?, 
+# (U) 
+"FGIsourceProtected"?, 
+# (U) 
+"hasApproximateMarkings"?, 
+# (U) 
+"releasableTo"?, 
+# (U) 
+"displayOnlyTo"?, 
+# (U) 
+"nonICmarkings"?, 
+# (U) 
+"classifiedBy"?, 
+# (U) 
+"derivativelyClassifiedBy"?, 
+# (U) 
+"classificationReason"?, 
+# (U) 
+"nonUSControls"?, 
+# (U) 
+"derivedFrom"?, 
+# (U) 
+"declassDate"?, 
+# (U) 
+"declassEvent"?, 
+# (U) 
+"declassException"?, 
+# (U) 
+"resourceElement"?, 
+# (U) 
+"highWaterNATO"?, 
+# (U) 
+"excludeFromRollup"?, 
+# (U) 
+"createDate"?, 
+# (U) 
+"compilationReason"?, 
+# (U) 
+"noAggregation"?, 
+# (U) 
+"noticeType"?, 
+# (U) 
+"noticeProseID"?, 
+# (U) 
+"externalNotice"?, 
+# (U) 
+"DESVersion"?, 
+# (U) 
+"ISMCATCESVersion"?, 
+# (U) 
+"noticeDate"?, 
+# (U) 
+"noticeReason"?, 
+# (U) 
+"exemptFrom"?, 
+# (U) 
+"unregisteredNoticeType"?, 
+# (U) 
+"pocType"?, 
+# (U) 
+"joint"?, 
+# (U) 
+"cuiBasic"?, 
+# (U) 
+"cuiSpecified"?, 
+# (U) 
+"cuiDecontrolDate"?, 
+# (U) 
+"cuiDecontrolEvent"?, 
+# (U) 
+"cuiControlledBy"?, 
+# (U) 
+"cuiControlledByOffice"?, 
+# (U) 
+"cuiPOC"?, 
+# (U) 
+"secondBannerLine"?, 
+# (U) 
+"handleViaChannels"? } 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:classification:all">
+   <define name="CVEnumISMClassificationAll.cve">
+      <choice>
+         <value>R</value>
+         <value>C</value>
+         <value>S</value>
+         <value>TS</value>
+         <value>U</value>
+      </choice>
+   </define>
+</grammar>

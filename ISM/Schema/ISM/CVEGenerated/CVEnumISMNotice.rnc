@@ -1,0 +1,57 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:notice"
+CVEnumISMNotice.cve = list { 
+# (U) 
+"FISA"?, 
+# (U) 
+"RAWFISA"?, 
+# (U) 
+"IMC"?, 
+# (U) 
+"CNWDI"?, 
+# (U) 
+"RD"?, 
+# (U) 
+"FRD"?, 
+# (U) 
+"DS"?, 
+# (U) 
+"LES"?, 
+# (U) 
+"LES-NF"?, 
+# (U) 
+"DSEN"?, 
+# (U) 
+"DoD-Dist-A"?, 
+# (U) 
+"DoD-Dist-B"?, 
+# (U) 
+"DoD-Dist-C"?, 
+# (U) 
+"DoD-Dist-D"?, 
+# (U) 
+"DoD-Dist-E"?, 
+# (U) 
+"DoD-Dist-F"?, 
+# (U) 
+"US-Person"?, 
+# (U) 
+"pre13526ORCON"?, 
+# (U) 
+"POC"?, 
+# (U) 
+"COMSEC"?, 
+# (U) 
+"SSI"?, 
+# (U) 
+"RSEN"?, 
+# (U) 
+"IMCON_RSEN"?, 
+# (U) 
+"GEOCAP"?, 
+# (U) 
+"NATO"?, 
+# (U) 
+"RC_Dissemination_Control_Required"?, 
+# (U) 
+"ITAR-EAR"? } 

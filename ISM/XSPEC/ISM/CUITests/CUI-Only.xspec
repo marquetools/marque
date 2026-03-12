@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="CUI-ONLY-LEI-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="LEI"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-LEI-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//LEI" test=".='CUI//LEI'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-LEI-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//LEI) " test=".='(CUI//LEI) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-CMPRS JURY-cuiBasic">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-CMPRS JURY-cuiBasic-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY" test=".='CUI//CMPRS/JURY'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-CMPRS JURY-cuiBasic-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY) " test=".='(CUI//CMPRS/JURY) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-CONTRACT SUB-cuiSpecified">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:cuiDecontrolDate="2044-12-31" ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211"
+            ism:resourceElement="true" ism:createDate="2009-06-01" ism:cuiSpecified="CONTRACT SUB"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-CONTRACT SUB-cuiSpecified-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//SP-CONTRACT/SP-SUB"
+            test=".='CUI//SP-CONTRACT/SP-SUB'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-CONTRACT SUB-cuiSpecified-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//SP-CONTRACT/SP-SUB) "
+            test=".='(CUI//SP-CONTRACT/SP-SUB) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-DL_ONLY">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:disseminationControls="DL_ONLY NF" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-DL_ONLY-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-DL_ONLY-FEDCON-NF">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:disseminationControls="DL_ONLY FEDCON NF" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-DL_ONLY-FEDCON-NF-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/FEDCON/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/FEDCON/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-FEDCON-NF-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/FEDCON/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/FEDCON/NF) '"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDate">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:cuiDecontrolDate="2034-12-31" ism:disseminationControls="DL_ONLY NF"
+            ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2009-06-01" ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDate-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDate-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/NF) '"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDate-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Controlled By: John Smith|Decontrol On: December 31, 2034"
+            test=".='Controlled By: John Smith|Decontrol On: December 31, 2034'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-DL_ONLY-decontrolEvent">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:cuiDecontrolEvent="The end of this conflict" ism:disseminationControls="DL_ONLY NF"
+            ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211" ism:resourceElement="true"
+            ism:createDate="2009-06-01" ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolEvent-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolEvent-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/NF) '"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolEvent-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Controlled By: John Smith|Decontrol On: The end of this conflict"
+            test=".='Controlled By: John Smith|Decontrol On: The end of this conflict'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDateEvent">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:compliesWith="USA-CUI-ONLY" ism:cuiControlledBy="John Smith"
+            ism:cuiDecontrolDate="2034-12-31" ism:cuiDecontrolEvent="The end of this conflict"
+            ism:disseminationControls="DL_ONLY NF" ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211" ism:resourceElement="true" ism:createDate="2009-06-01"
+            ism:cuiBasic="CMPRS JURY"/>
+      </x:context>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDateEvent-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be CUI//CMPRS/JURY//DL_ONLY/NOFORN"
+            test=".='CUI//CMPRS/JURY//DL_ONLY/NOFORN'"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDateEvent-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (CUI//CMPRS/JURY//DL_ONLY/NF) "
+            test=".='(CUI//CMPRS/JURY//DL_ONLY/NF) '"/>
+      </x:scenario>
+      <x:scenario label="CUI-ONLY-DL_ONLY-decontrolDateEvent-ism:authority">
+         <x:context mode="ism:authority"/>
+         <x:expect
+            label="The authority should be Controlled By: John Smith|Decontrol On: December 31, 2034 or The end of this conflict"
+            test=".='Controlled By: John Smith|Decontrol On: December 31, 2034 or The end of this conflict'"
+         />
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

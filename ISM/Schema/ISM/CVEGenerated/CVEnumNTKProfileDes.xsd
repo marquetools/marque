@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns="urn:us:gov:ic:cvenum:ntk:profiledes"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ntk:profiledes"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumNTKProfileDes Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumNTKProfileDes.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumNTKProfileDes">
+      <xsd:annotation>
+         <xsd:documentation>(U) NTK ProfileDes namespaces identify the type of 
+			NTK. All NTK enterprise profile namespace URNs start with ‘urn:us:gov:ic:ntk:profile’. Values in this CVE correspond to the 
+			terminating portion of NTK profile namespace URNs.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumNTKProfileDes.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="urn:us:gov:ic:ntk:profile:agencydissem">
+            <xsd:annotation>
+               <xsd:documentation>Agency Dissem</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="urn:us:gov:ic:ntk:profile:datasphere">
+            <xsd:annotation>
+               <xsd:documentation>Data Sphere</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="urn:us:gov:ic:ntk:profile:grp-ind">
+            <xsd:annotation>
+               <xsd:documentation>Group and Individual</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="urn:us:gov:ic:ntk:profile:role">
+            <xsd:annotation>
+               <xsd:documentation>ROLE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

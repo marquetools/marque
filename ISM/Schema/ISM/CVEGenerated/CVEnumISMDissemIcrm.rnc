@@ -1,0 +1,35 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:dissem:icrm"
+CVEnumISMDissemIcrm.cve = list { 
+# (U) 
+"RS"?, 
+# (U) 
+"FOUO"?, 
+# (U) 
+"OC"?, 
+# (U) 
+"OC-USGOV"?, 
+# (U) 
+"IMC"?, 
+# (U) 
+"NF"?, 
+# (U) 
+"PR"?, 
+# (U) 
+"REL"?, 
+# (U) 
+"RELIDO"?, 
+# (U) 
+"EYES"?, 
+# (U) 
+"DSEN"?, 
+# (U) 
+"RAWFISA"?, 
+# (U) 
+"FISA"?, 
+# (U) 
+"DISPLAYONLY"?, 
+# (U) 
+"EXEMPT_FROM_ICD501_DISCOVERY"?, 
+# (U) 
+"WAIVED"? } 

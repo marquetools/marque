@@ -1,0 +1,21 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:nonic"
+CVEnumISMNonIC.cve = list { 
+# (U) 
+"DS"?, 
+# (U) 
+"XD"?, 
+# (U) 
+"ND"?, 
+# (U) 
+"SBU"?, 
+# (U) 
+"SBU-NF"?, 
+# (U) 
+"LES"?, 
+# (U) 
+"LES-NF"?, 
+# (U) 
+"SSI"?, 
+# (U) 
+"NNPI"? } 

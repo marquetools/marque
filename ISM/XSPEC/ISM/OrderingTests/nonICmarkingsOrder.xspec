@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+
+   <x:scenario label="nonICmarkingsOrderTest-ACCM">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTICIOUS_EFFORT" ism:declassDate="2050-01-01"/>
+      </x:context>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//ACCM-FICTICIOUS EFFORT/TEA LEAF) "
+            test=".='(TS//ACCM-FICTICIOUS EFFORT/TEA LEAF) '"/>
+      </x:scenario>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//ACCM-FICTICIOUS EFFORT/TEA LEAF"
+            test=".='TOP SECRET//ACCM-FICTICIOUS EFFORT/TEA LEAF'"/>
+      </x:scenario>
+   </x:scenario>
+
+
+   <x:scenario label="nonICmarkingsOrderTest-ACCM-DS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTICIOUS_EFFORT DS" ism:declassDate="2050-01-01"
+         />
+      </x:context>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-DS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//DS/ACCM-FICTICIOUS EFFORT/TEA LEAF) "
+            test=".='(TS//DS/ACCM-FICTICIOUS EFFORT/TEA LEAF) '"/>
+      </x:scenario>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-DS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//LIMDIS/ACCM-FICTICIOUS EFFORT/TEA LEAF"
+            test=".='TOP SECRET//LIMDIS/ACCM-FICTICIOUS EFFORT/TEA LEAF'"/>
+      </x:scenario>
+   </x:scenario>
+
+   <x:scenario label="nonICmarkingsOrderTest-ACCM-SSI-DS">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="TS" ism:ownerProducer="USA"
+            ism:derivativelyClassifiedBy="John Doe, JITF-CT DIA" ism:classificationReason="NDP-1"
+            ism:derivedFrom="Multiple Sources"
+            ism:nonICmarkings="ACCM-TEA_LEAF ACCM-FICTICIOUS_EFFORT DS SSI"
+            ism:declassDate="2050-01-01"/>
+      </x:context>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-SSI-DS-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (TS//DS/ACCM-FICTICIOUS EFFORT/TEA LEAF/SSI) "
+            test=".='(TS//DS/ACCM-FICTICIOUS EFFORT/TEA LEAF/SSI) '"/>
+      </x:scenario>
+      <x:scenario label="nonICmarkingsOrderTest-ACCM-SSI-DS-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be TOP SECRET//LIMDIS/ACCM-FICTICIOUS EFFORT/TEA LEAF/SSI"
+            test=".='TOP SECRET//LIMDIS/ACCM-FICTICIOUS EFFORT/TEA LEAF/SSI'"/>
+      </x:scenario>
+   </x:scenario>
+
+
+</x:description>

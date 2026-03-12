@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismnoticeprose="urn:us:gov:ic:cvenum:ism:noticeprose"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:noticeprose"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMNoticeProse Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMNoticeProse.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMNoticeProseValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) 
+			All currently authorized notice prose values in support of out-of-band notices. This CVE is used by @ism:noticeProseID.
+		
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMNoticeProse.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="FISA_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				CIA Special Procedures FISA: This dissemination includes FBI information from FBI FISA collection. 
+				Such information, and any information derived therefrom, may only be used in a US legal or administrative
+				proceeding with the advance authorization of the Attorney General. Any recipient interested in obtaining
+				authorization for such use in a US legal or administrative proceeding should contact FBI Headquarters. 
+				Any further dissemination outside of intelligence channels and/or for law enforcement purposes must be
+				made through FBI Headquarters. Any reproduction, dissemination, or communication (including, but not 
+				limited to oral briefings) of this information must be accompanied by a statement of these restrictions.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FISA_00002">
+            <xsd:annotation>
+               <xsd:documentation>
+				FBI Minimized FISA: This report includes information from FBI FISA collection. Such information, and any
+				information derived therefrom, may only be used in a US legal or administrative proceeding with the advance
+				authorization of the Attorney General. Any recipient interested in obtaining authorization for such use in a
+				US legal or administrative proceeding should contact FBI Headquarters. Any further dissemination outside of
+				intelligence channels and/or for law enforcement purposes must be made through FBI Headquarters. Any
+				reproduction, dissemination, or communication (including, but not limited to oral briefings) of this
+				information must be accompanied by a statement of these restrictions.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FISA_00003">
+            <xsd:annotation>
+               <xsd:documentation>
+				This report includes information from FISA collection. Such information, and any information derived therefrom, 
+				may NOT be used in a domestic or foreign legal, judicial, or administrative proceeding without the advance 
+				authorization of the Attorney General. Any recipient interested in obtaining authorization for such use should 
+				contact NCTC Operations Center on (571) 280- 6000 (STE III) or 931-6000 secure. Any reproduction, dissemination,
+				or communication (including but not limited to oral briefings) of this information must be accompanied by a
+				statement of these restrictions.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RAWFISA_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				FBI RAWFISA: This report includes information from FBI FISA collection that has not been evaluated 
+				in accordance with minimization procedures (raw FISA-acquired information). FBI personnel with authorized
+				access to raw FISA-acquired information may review, translate, copy, transcribe, analyze, summarize, 
+				and use the information contained herein only in accordance with relevant minimization procedures and
+				internal FBI policies. If the raw FISA-acquired information contained herein is not accompanied by handling
+				instructions, then the recipient, following his/her review of the information, must either return the 
+				information to the sender of the information or destroy the information, unless the recipient determines
+				the information meets the minimization standard. Once raw FISA-acquired information, and any information
+				derived therefrom, has been minimized by FBI personnel, such minimized FISA-acquired information may only
+				be used in a U.S. legal or administrative proceeding with the advance authorization of the Attorney General,
+				and in coordination with FBI Headquarters.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="CNWDI_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				Critical Nuclear Weapons Design Information - DoD Instruction 5210.02 applies.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RD_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				RESTRICTED DATA: This document contains Restricted Data as defined in the Atomic Energy Act of 1954, 
+				as amended. Unauthorized disclosure is subject to Administrative and Criminal Sanctions.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FRD_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				FORMERLY RESTRICTED DATA: Unauthorized disclosure is subject to Administrative and Criminal Sanctions. 
+				Handle as RESTRICTED DATA in foreign dissemination. Section 144b, Atomic Energy Act of 1954.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DS_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				Distribution authorized to DoD, IAW 10 U.S.C. Section 130 and Section 455. Release authorized to U.S. DoD
+				contractors IAW 48 C.F.R. Section 252.245-7000. Refer other requests to: Headquarters, NGA, 
+				ATTN: Release Officer, Mail Stop S82-OIA, 7500 GEOINT Drive, Springfield, VA 22150. Destroy IAW DoDD 5030.59.
+				Removal of this caveat is prohibited.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DSEN_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document is the property of the DEA and may be distributed within the Federal Government 
+				(and its contractors), and to US intelligence, law enforcement, and public safety or protection officials 
+				with a need to know. Distribution beyond these entities without DEA authorization is strictly prohibited. 
+				Precautions should be taken to ensure this information is stored and/or destroyed in a manner that precludes
+				unauthorized access. The use of information in this report is pre-approved for US government Intelligence 
+				Community products, including finished analytic products distributed to US Executive Branch departments/agencies.
+				Cited portions must carry the same classification and controls, and readers of this report must hold all 
+				appropriate clearances. The information in this report may not be used in legal proceedings, for operational
+				or intelligence collection activities, shared with foreign persons or agencies, entered into non-DEA databases
+				for operational purposes or reproduced in additional formats unless express permission is granted by the DEA
+				based on a written request submitted to dea.onsi@dea.ic.gov (Top Secret), dea.onsi@dea.usdoj.sgov.gov (Secret),
+				or dea.onsi-dl@dea.usdoj.gov (Unclassified).
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DoD-Dist-A_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				DISTRIBUTION STATEMENT A. Approved for public release.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="COMSEC_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				COMSEC Material - Access by Contractor Personnel Restricted to U.S. Citizens Holding Final Government Clearance.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SSI_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				Warning: This record contains Sensitive Security Information that is controlled under 49 CFR parts 15 and 1520.
+				No part of this record may be disclosed to persons without a "need-to-know," as defined in 49 CFR parts 15 
+				and 1520, except with the written permission of the Administrator of the Transportation Security Administration
+				or the Secretary of Transportation. Unauthorized release may result in civil penalty or other action. 
+				For U.S. government agencies, public disclosure is governed by 5 USC 552 and 49 CFR parts 15 and 1520.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="GEOCAP_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				WARNING STATEMENT: This document contains Geospatial Intelligence Controlled Access Program (GEOCAP) information
+				and must adhere to established handling instructions. Contact the GEOCAP program office at (S) 579-3848 or
+				TCS_Security@coe.ic.gov for additional guidance.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document contains COSMIC TOP SECRET information.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO_00002">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document contains NATO SECRET information.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO_00003">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document contains NATO CONFIDENTIAL information.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO_00004">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document contains NATO RESTRICTED information.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NATO_00005">
+            <xsd:annotation>
+               <xsd:documentation>
+				This document contains NATO UNCLASSIFIED information.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RC_Dissemination_Control_Required_00001">
+            <xsd:annotation>
+               <xsd:documentation>This product was collected in a restricted collection mode.
+				Redaction, chipping and release determination shall not result in more permissive release than NOFORN regardless 
+				of the Security Indicator Codes (SIC) associated with the product.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="ITAR-EAR_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				WARNING - This document contains technical data whose export is restricted by the
+				Arms Export Control Act (Title 22, U.S.C., Sec 2751, et seq.) or the Export
+				Administration Act of 1979 (Title 50, U.S.C., App. 2401 et seq.), as amended. Violations
+				of these export laws are subject to severe criminal penalties. Disseminate in accordance
+				with provisions of DoD Directive 5230.25. 
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DISPLAYONLY_00001">
+            <xsd:annotation>
+               <xsd:documentation>
+				Derivative use of this DISPLAY ONLY or REL TO in conjunction with DISPLAY ONLY marked information into 
+				other products is prohibited without prior authorization from the originating agency. Disclosure of 
+				DISPLAY ONLY or REL TO in conjunction with DISPLAY ONLY information is not authorized for other purposes or
+				for disclosure or release and disclosure to other countries, international organizations, or coalitions not
+				specified in the banner line or portion marking. Removal of this caveat is required once authorization is
+				received by the originating agency.
+			</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMNoticeProse">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismnoticeprose:CVEnumISMNoticeProse definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismnoticeprose:CVEnumISMNoticeProseValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismnoticeprose:CVEnumISMNoticeProseValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="21"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

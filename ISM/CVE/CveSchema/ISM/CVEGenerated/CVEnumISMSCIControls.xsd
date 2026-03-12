@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismscicon="urn:us:gov:ic:cvenum:ism:scicontrols"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:scicontrols"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMSCIControls Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMSCIControls.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMSCIControlsValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) All currently valid SCI controls
+            from the published register. This CVE is used by @ism:SCIcontrols.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMSCIControls.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="BUR">
+            <xsd:annotation>
+               <xsd:documentation>BUR</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="BUR-BLG">
+            <xsd:annotation>
+               <xsd:documentation>BUR-BLG</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="BUR-DTP">
+            <xsd:annotation>
+               <xsd:documentation>BUR-DTP</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="BUR-WRG">
+            <xsd:annotation>
+               <xsd:documentation>BUR-WRG</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HCS">
+            <xsd:annotation>
+               <xsd:documentation>HCS</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HCS-O">
+            <xsd:annotation>
+               <xsd:documentation>HCS-O</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HCS-P">
+            <xsd:annotation>
+               <xsd:documentation>HCS-P</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="HCS-X">
+            <xsd:annotation>
+               <xsd:documentation>HCS-X</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="KLM">
+            <xsd:annotation>
+               <xsd:documentation>KLAMATH</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="KLM-R">
+            <xsd:annotation>
+               <xsd:documentation>KLAMATH-R</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="MVL">
+            <xsd:annotation>
+               <xsd:documentation>MARVEL</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RSV">
+            <xsd:annotation>
+               <xsd:documentation>RESERVE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SI">
+            <xsd:annotation>
+               <xsd:documentation>SPECIAL
+                INTELLIGENCE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SI-EU">
+            <xsd:annotation>
+               <xsd:documentation>ECRU</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SI-G">
+            <xsd:annotation>
+               <xsd:documentation>SI-GAMMA</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="SI-NK">
+            <xsd:annotation>
+               <xsd:documentation>NONBOOK</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TK">
+            <xsd:annotation>
+               <xsd:documentation>TALENT KEYHOLE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TK-BLFH">
+            <xsd:annotation>
+               <xsd:documentation>BLUEFISH</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TK-IDIT">
+            <xsd:annotation>
+               <xsd:documentation>IDITAROD</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="TK-KAND">
+            <xsd:annotation>
+               <xsd:documentation>KANDIK</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMSCIControls">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismscicon:CVEnumISMSCIControls definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismscicon:CVEnumISMSCIControlsValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismscicon:CVEnumISMSCIControlsValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="20"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

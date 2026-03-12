@@ -1,0 +1,16 @@
+﻿"ValueClassification","Value","DescriptionClassification","Description","DeprecationDate"
+"(U) ","RD","(U) ","RESTRICTED DATA",
+"(U) ","RD-CNWDI","(U) ","RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION",
+"(U) ","RD-SG-14","(U) ","RD-SIGMA-14",
+"(U) ","RD-SG-15","(U) ","RD-SIGMA-15",
+"(U) ","RD-SG-18","(U) ","RD-SIGMA-18",
+"(U) ","RD-SG-20","(U) ","RD-SIGMA-20",
+"(U) ","FRD","(U) ","FORMERLY RESTRICTED DATA",
+"(U) ","FRD-SG-14","(U) ","RD-SIGMA-14",
+"(U) ","FRD-SG-15","(U) ","RD-SIGMA-15",
+"(U) ","FRD-SG-18","(U) ","RD-SIGMA-18",
+"(U) ","FRD-SG-20","(U) ","RD-SIGMA-20",
+"(U) ","DCNI","(U) ","DoD CONTROLLED NUCLEAR INFORMATION",
+"(U) ","UCNI","(U) ","DoE CONTROLLED NUCLEAR INFORMATION",
+"(U) ","TFNI","(U) ","TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
+

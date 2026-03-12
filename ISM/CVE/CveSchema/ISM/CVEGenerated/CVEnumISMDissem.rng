@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:dissem">
+   <define name="CVEnumISMDissem.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>RS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FOUO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>OC-USGOV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IMC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>REL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RELIDO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EYES</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DSEN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RAWFISA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FISA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DISPLAYONLY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EXEMPT_FROM_ICD501_DISCOVERY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WAIVED</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>AWP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DL_ONLY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FED_ONLY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FEDCON</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NOCON</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

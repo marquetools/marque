@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:cuispecified">
+   <define name="CVEnumISMCUISpecified.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>AIV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ADPO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CRITAN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ARCHR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FSEC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>BUDG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FUND</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CVI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CHLD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CCI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CONTRACT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SUB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CTI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CHRI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CEII</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LDNA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>EXPT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>JURY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TAX</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FISA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FISAB</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FNC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>INTEL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NUC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRVCY</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PROCURE</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PROPIN</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GENETIC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GEO</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HLTH</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>HISTP</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>INF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PRIIG</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>IFNC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ID</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>INTL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>INV</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LFNC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NPSR</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NNPI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SRI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PERS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>MFC</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>PCII</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LPROT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SGI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSEL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>STAT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>STUD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TSCA</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DCNI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UCNI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CENS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WHSTL</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WIT</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>WDT</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

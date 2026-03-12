@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../../BuildDependencies/ISM/Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<xsd:schema xmlns:ismdissemicrm="urn:us:gov:ic:cvenum:ism:dissem:icrm"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="qualified"
+            xml:lang="en"
+            targetNamespace="urn:us:gov:ic:cvenum:ism:dissem:icrm"
+            version="202111.202211">
+   <xsd:annotation>
+      <xsd:documentation>
+                    The W3C XML Schema fragment encoding types for CVEnumISMDissemIcrm Version 2.1 controlled vocabulary enumerations. This file is generated, so edits should be made to the CVEnumISMDissemIcrm.xml CVE it is based on, instead of here.
+                </xsd:documentation>
+   </xsd:annotation>
+   <!--*************************************************************-->
+   <!--Generated TYPE DEFINITIONS ..................................-->
+   <!--*************************************************************-->
+   <xsd:simpleType name="CVEnumISMDissemIcrmValues">
+      <xsd:annotation>
+         <xsd:documentation>(U) All currently valid Dissemination controls 
+         from the published IC Markings System Register and Manual (acronym ICRM), followed by the DOD WAIVED dissemination control 
+         from DOD-5205-07-SAP. This CVE template is used to produce CVEnumISMDissemIcrm.xml for @ism:disseminationControls.
+                         PERMISSIBLE VALUES
+                         
+                         The permissible values for this simple type are defined in the Controlled Value Enumeration:
+                         
+                         CVEnumISMDissemIcrm.xml
+                         
+                     </xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction base="xsd:token">
+         <xsd:enumeration value="RS">
+            <xsd:annotation>
+               <xsd:documentation>RISK SENSITIVE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FOUO">
+            <xsd:annotation>
+               <xsd:documentation>FOR OFFICIAL USE ONLY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="OC">
+            <xsd:annotation>
+               <xsd:documentation>ORIGINATOR CONTROLLED</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="OC-USGOV">
+            <xsd:annotation>
+               <xsd:documentation>ORIGINATOR CONTROLLED US GOVERNMENT</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="IMC">
+            <xsd:annotation>
+               <xsd:documentation>CONTROLLED IMAGERY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="NF">
+            <xsd:annotation>
+               <xsd:documentation>NOT RELEASABLE TO FOREIGN NATIONALS</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="PR">
+            <xsd:annotation>
+               <xsd:documentation>CAUTION-PROPRIETARY INFORMATION INVOLVED</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="REL">
+            <xsd:annotation>
+               <xsd:documentation>AUTHORIZED FOR RELEASE TO</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RELIDO">
+            <xsd:annotation>
+               <xsd:documentation>RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="EYES">
+            <xsd:annotation>
+               <xsd:documentation>EYES ONLY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DSEN">
+            <xsd:annotation>
+               <xsd:documentation>DEA SENSITIVE</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="RAWFISA">
+            <xsd:annotation>
+               <xsd:documentation>RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="FISA">
+            <xsd:annotation>
+               <xsd:documentation>FOREIGN INTELLIGENCE SURVEILLANCE ACT</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="DISPLAYONLY">
+            <xsd:annotation>
+               <xsd:documentation>AUTHORIZED FOR DISPLAY BUT NOT RELEASE TO</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="EXEMPT_FROM_ICD501_DISCOVERY">
+            <xsd:annotation>
+               <xsd:documentation>EXEMPT FROM ICD501 DISCOVERY</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+         <xsd:enumeration value="WAIVED">
+            <xsd:annotation>
+               <xsd:documentation>WAIVED</xsd:documentation>
+            </xsd:annotation>
+         </xsd:enumeration>
+      </xsd:restriction>
+   </xsd:simpleType>
+   <xsd:simpleType name="CVEnumISMDissemIcrm">
+      <xsd:annotation>
+         <xsd:documentation>(U) ismdissemicrm:CVEnumISMDissemIcrm definition</xsd:documentation>
+      </xsd:annotation>
+      <xsd:restriction>
+         <xsd:simpleType>
+            <xsd:annotation>
+               <xsd:documentation>(U) A list of ismdissemicrm:CVEnumISMDissemIcrmValues</xsd:documentation>
+            </xsd:annotation>
+            <xsd:list itemType="ismdissemicrm:CVEnumISMDissemIcrmValues"/>
+         </xsd:simpleType>
+         <xsd:maxLength value="16"/>
+      </xsd:restriction>
+   </xsd:simpleType>
+</xsd:schema>

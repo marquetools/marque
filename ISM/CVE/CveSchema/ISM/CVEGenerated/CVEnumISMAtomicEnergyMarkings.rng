@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:atomicEnergyMarkings">
+   <define name="CVEnumISMatomicEnergyMarkings.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>RD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD-CNWDI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD-SG-14</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD-SG-15</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD-SG-18</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD-SG-20</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD-SG-14</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD-SG-15</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD-SG-18</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD-SG-20</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DCNI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>UCNI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>TFNI</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

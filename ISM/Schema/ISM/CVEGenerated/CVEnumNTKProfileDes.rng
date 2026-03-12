@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ntk:profiledes">
+   <define name="CVEnumNTKProfileDes.cve">
+      <choice>
+         <value>urn:us:gov:ic:ntk:profile:agencydissem</value>
+         <value>urn:us:gov:ic:ntk:profile:datasphere</value>
+         <value>urn:us:gov:ic:ntk:profile:grp-ind</value>
+         <value>urn:us:gov:ic:ntk:profile:role</value>
+      </choice>
+   </define>
+</grammar>

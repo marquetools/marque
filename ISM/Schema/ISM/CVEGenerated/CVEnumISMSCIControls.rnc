@@ -1,0 +1,43 @@
+# UNCLASSIFIED
+default namespace = "urn:us:gov:ic:cvenum:ism:scicontrols"
+CVEnumISMSCIControls.cve = list { 
+# (U) 
+"BUR"?, 
+# (U) 
+"BUR-BLG"?, 
+# (U) 
+"BUR-DTP"?, 
+# (U) 
+"BUR-WRG"?, 
+# (U) 
+"HCS"?, 
+# (U) 
+"HCS-O"?, 
+# (U) 
+"HCS-P"?, 
+# (U) 
+"HCS-X"?, 
+# (U) 
+"KLM"?, 
+# (U) 
+"KLM-R"?, 
+# (U) 
+"MVL"?, 
+# (U) 
+"RSV"?, 
+# (U) 
+"SI"?, 
+# (U) 
+"SI-EU"?, 
+# (U) 
+"SI-G"?, 
+# (U) 
+"SI-NK"?, 
+# (U) 
+"TK"?, 
+# (U) 
+"TK-BLFH"?, 
+# (U) 
+"TK-IDIT"?, 
+# (U) 
+"TK-KAND"? } 

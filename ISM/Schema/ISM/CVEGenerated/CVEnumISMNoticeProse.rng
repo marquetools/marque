@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:noticeprose">
+   <define name="CVEnumISMNoticeProse.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>FISA_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FISA_00002</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FISA_00003</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RAWFISA_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>CNWDI_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RD_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>FRD_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DS_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DSEN_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DoD-Dist-A_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>COMSEC_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSI_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>GEOCAP_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO_00002</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO_00003</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO_00004</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NATO_00005</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>RC_Dissemination_Control_Required_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ITAR-EAR_00001</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>DISPLAYONLY_00001</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

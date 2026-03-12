@@ -1,0 +1,84 @@
+[workspace]
+members = [
+    "marque",
+    "crates/marque-core",
+    "crates/marque-rules",
+    "crates/marque-capco",
+    "crates/marque-engine",
+    "crates/marque-extract",
+    "crates/marque-config",
+    "crates/marque-wasm",
+    "crates/marque-server",
+]
+resolver = "2"
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2024"
+license      = "Apache-2.0"
+repository   = "https://github.com/placeholder/marque"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Internal crates
+marque-core    = { path = "crates/marque-core" }
+marque-rules   = { path = "crates/marque-rules" }
+marque-capco   = { path = "crates/marque-capco" }
+marque-engine  = { path = "crates/marque-engine" }
+marque-extract = { path = "crates/marque-extract" }
+marque-config  = { path = "crates/marque-config" }
+
+# Async
+tokio        = { version = "1", features = ["full"] }
+futures      = "0.3"
+async-trait  = "0.1"
+
+# Text processing / scanning
+memchr       = "2"
+aho-corasick = "1"
+
+# Error handling
+thiserror = "2"
+anyhow    = "1"
+
+# Serialization
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml       = "0.8"
+
+# HTTP / server
+axum        = { version = "0.8", features = ["json"] }
+tower       = "0.5"
+tower-http  = { version = "0.6", features = ["trace", "cors"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Compile-time tables
+phf = { version = "0.11", features = ["macros"] }
+
+# Batch processing utilities (concurrency control, fingerprinting)
+recoco-utils = { version = "0.2.1", default-features = false, features = ["concur_control", "fingerprint"] }
+
+# Build-time XML parsing (marque-capco build.rs)
+quick-xml = "0.37"
+
+# WASM
+wasm-bindgen      = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys            = "0.3"
+
+# Observability
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+strip         = "symbols"
+panic         = "abort"
+
+[profile.release-wasm]
+inherits      = "release"
+opt-level     = "s"       # size-optimized for WASM

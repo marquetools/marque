@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--UNCLASSIFIED-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         ns="urn:us:gov:ic:cvenum:ism:nonic">
+   <define name="CVEnumISMNonIC.cve">
+      <list>
+         <optional><!--(U) -->
+            <value>DS</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>XD</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>ND</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SBU</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SBU-NF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LES</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>LES-NF</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>SSI</value>
+         </optional>
+         <optional><!--(U) -->
+            <value>NNPI</value>
+         </optional>
+      </list>
+   </define>
+</grammar>

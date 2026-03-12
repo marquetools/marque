@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" xmlns:ism="urn:us:gov:ic:ism"
+   stylesheet="../ISMAllTogetherForXSPEC.xsl">
+
+
+   <x:scenario label="SAR-JP_SD-A1-Checkorder">
+      <x:context>
+         <sampleAttributes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            ism:classification="S" ism:ownerProducer="USA"
+            ism:SARIdentifier="SAR-DNI:SOPHOMORE_DANCE SAR-DNI:JUNIOR_PROM SAR-DNI:SOPHOMORE_DANCE-A1"/>
+      </x:context>
+      <x:scenario label="SAR-JP_SD-A1-Checkorder-ism:portionmark">
+         <x:context mode="ism:portionmark"/>
+         <x:expect label="The portion should be (S//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1) "
+            test=".='(S//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1) '"/>
+      </x:scenario>
+      <x:scenario label="SAR-JP_SD-A1-Checkorder-ism:banner">
+         <x:context mode="ism:banner"/>
+         <x:expect label="The banner should be SECRET//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1"
+            test=".='SECRET//SAR-JUNIOR PROM/SOPHOMORE DANCE-A1'"/>
+      </x:scenario>
+   </x:scenario>
+
+</x:description>

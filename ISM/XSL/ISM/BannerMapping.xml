@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<!-- **************************************************************** -->
+<!--                        UNCLASSIFIED                              -->
+<!-- **************************************************************** -->
+
+<!-- ****************************************************************
+  INTELLIGENCE COMMUNITY TECHNICAL SPECIFICATION  
+  XML DATA ENCODING SPECIFICATION FOR 
+  INFORMATION SECURITY MARKING METADATA (ISM.XML)
+  ****************************************************************
+  Module:   IC-ISM-SecurityBanner.xsl
+  Date:     2020-10-21
+  Creators: Office of the Director of National Intelligence
+  Intelligence Community Chief Information Officer
+  **************************************************************** -->
+
+<!-- **************************************************************** -->
+<!--                            DESCRIPTION                           -->
+<!--                                                                  -->
+<!-- This configuration file maps from portion marks which are what   -->
+<!-- ISM uses for tokens to the correct full text for a banner mark   -->
+<!-- **************************************************************** -->
+
+<BannerMapping
+    xmlns:ism="urn:us:gov:ic:ism" xml:lang="en" ism:resourceElement="true"
+    ism:DESVersion="202111.202211" ism:ISMCATCESVersion="202211" ism:createDate="2013-03-08"
+    ism:compliesWith="USGov USIC" ism:classification="U" ism:ownerProducer="USA">
+   <DissemControls> 
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='RS'>RSEN</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='OC'>ORCON</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='IMC'>IMCON</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='NF'>NOFORN</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='PR'>PROPIN</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='DSEN'>DEA SENSITIVE</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='AC'>Attorney-Client</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='AWP'>Attorney-WP</BannerMap>
+         <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='DELIB'>Deliberative</BannerMap>       
+   </DissemControls>
+    
+  <NonICControls> 
+      <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='DS'>LIMDIS</BannerMap>
+      <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='XD'>EXDIS</BannerMap>
+      <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='ND'>NODIS</BannerMap>
+      <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='SBU-NF'>SBU NOFORN</BannerMap>
+      <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='LES-NF'>LES NOFORN</BannerMap>
+  </NonICControls>
+    
+    <Classification>
+        <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='TS'>TOP SECRET</BannerMap>
+        <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='S'>SECRET</BannerMap>
+        <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='C'>CONFIDENTIAL</BannerMap>
+        <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='R'>RESTRICTED</BannerMap>
+        <BannerMap  ism:ownerProducer="USA" ism:classification="U" portion='U'>UNCLASSIFIED</BannerMap>
+    </Classification>
+    
+</BannerMapping>
