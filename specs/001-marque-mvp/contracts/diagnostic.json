@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marque.dev/schemas/marque-mvp-1/diagnostic.json",
+  "title": "Marque Diagnostic",
+  "description": "One diagnostic record emitted by `marque check` or `marque fix --format json`. Streamed as NDJSON: one record per line. Contract version: marque-mvp-1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rule", "severity", "span", "message", "citation"],
+  "properties": {
+    "rule": {
+      "type": "string",
+      "pattern": "^[EWC][0-9]{3}$",
+      "description": "Stable rule identifier. E### = error, W### = warning, C### = correction."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["warn", "error", "fix"],
+      "description": "Effective severity after applying the merged configuration. Per FR-008, rules configured to severity `off` never execute and never produce a diagnostic, so `off` is unrepresentable on emitted records."
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "description": "Inclusive byte offset into the original input." },
+        "end":   { "type": "integer", "minimum": 0, "description": "Exclusive byte offset into the original input." }
+      }
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable explanation of the violation. en-US for the MVP."
+    },
+    "citation": {
+      "type": "string",
+      "description": "CAPCO section reference, e.g. 'CAPCO-2023-§3.1'. Stable across MVP-1; consumers may use it for cross-linking."
+    },
+    "fix": {
+      "description": "Optional FixProposal attached to this diagnostic. Pure data — no timestamp, no classifier identity. A proposal is only promoted to an AppliedFix (see audit-record.json) when Engine::fix runs and its confidence >= the configured threshold. Whether a given proposal was actually applied in a run is observable by correlating the diagnostic stream (stdout) with the AppliedFix stream (stderr) by rule + span.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "replacement", "confidence"],
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["BuiltinRule", "CorrectionsMap", "MigrationTable"],
+              "description": "Provenance of this proposal. Mirrors AppliedFix.source when promoted (see audit-record.json)."
+            },
+            "replacement": {
+              "type": "string",
+              "description": "Replacement text to substitute for the bytes covered by the diagnostic span."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Confidence in the proposed replacement, [0.0, 1.0]."
+            },
+            "migration_ref": {
+              "type": ["string", "null"],
+              "description": "Optional reference into the CAPCO migration table or corrections-map that produced this proposal."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

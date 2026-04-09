@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marque.dev/schemas/marque-mvp-1/audit-record.json",
+  "title": "Marque Applied Fix (Audit Record)",
+  "description": "An audit record emitted for every applied fix. Serializes the AppliedFix type from data-model.md. Streamed as NDJSON on stderr. Sub-threshold suggestions (FixProposal without promotion) never appear in this stream — they are carried only in the diagnostic stream. Contract version: marque-mvp-1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "rule", "source", "span", "original", "replacement", "confidence", "timestamp", "dry_run"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "marque-mvp-1",
+      "description": "Contract version of this audit record. Present on every record (including error frames) so downstream consumers can detect version drift without out-of-band metadata. Bumped on any breaking change to the audit record shape."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["BuiltinRule", "CorrectionsMap", "MigrationTable"],
+      "description": "Provenance of the originating FixProposal. `BuiltinRule` = hand-written Layer 2 CAPCO rule; `CorrectionsMap` = user-supplied `[corrections]` entry from .marque.toml (FR-009); `MigrationTable` = deterministic deprecated-marking conversion from the generated migration table (FR-004a). Compliance reviewers use this to classify changes without string-matching on `migration_ref`."
+    },
+    "rule": {
+      "type": "string",
+      "pattern": "^[EWC][0-9]{3}$",
+      "description": "Stable rule identifier of the rule that produced the originating FixProposal."
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end":   { "type": "integer", "minimum": 0 }
+      },
+      "description": "Byte range in the original input buffer that was (or would be) replaced."
+    },
+    "original": {
+      "type": "string",
+      "description": "The exact original text covered by the fix span."
+    },
+    "replacement": {
+      "type": "string",
+      "description": "The text that replaced (or would replace, in dry-run) the original."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "The confidence score of the originating FixProposal. Always >= configuration.confidence_threshold (sub-threshold proposals are never promoted to an AppliedFix)."
+    },
+    "migration_ref": {
+      "type": ["string", "null"],
+      "description": "Optional stable reference to a migration-table entry or corrections-map source (e.g. 'corrections-map', 'ism-2022-dec-deprecated-dissem'). Null if the fix is not sourced from a table."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 timestamp of AppliedFix construction, in UTC. Produced by the Engine's injected Clock — tests use a fixed clock for deterministic snapshots."
+    },
+    "classifier_id": {
+      "type": ["string", "null"],
+      "description": "Classifier identity from MARQUE_CLASSIFIER_ID or .marque.local.toml. NEVER populated from a committed config file. Null if no identity was configured."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "description": "True iff the AppliedFix was produced under --dry-run (no bytes written to disk). The NDJSON stream is otherwise byte-identical between a dry-run and a real run, satisfying FR-006."
+    },
+    "input": {
+      "type": ["string", "null"],
+      "description": "Identifier of the input the fix applies to (file path, '-' for stdin, or null when not applicable). Set by the CLI caller (or embedder) at the engine boundary; not populated by rules. Corresponds to `AppliedFix.input` in data-model.md."
+    }
+  }
+}
