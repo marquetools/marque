@@ -48,7 +48,6 @@ static CVE_TOKENS: &[&str] = &[
     "EYES ONLY",
     // Deprecated (retained for detection → migration rules)
     "NF",
-    "LIMDIS",
     // Country trigraphs (representative subset — full list from CVE)
     "USA",
     "GBR",

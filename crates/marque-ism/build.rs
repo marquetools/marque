@@ -74,7 +74,8 @@ pub static COUNTRY_TRIGRAPHS: &[&str] = &[
 pub const SCHEMA_VERSION: &str = "ISM-v2022-DEC";
 "#;
 
-    fs::write(out.join("values.rs"), content).expect("failed to write values.rs");
+    let path = out.join("values.rs");
+    fs::write(&path, content).unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }
 
 fn generate_validators(out: &Path, schema_dir: &Path) {
@@ -92,7 +93,8 @@ pub fn is_valid_classification(s: &str) -> bool {
 }
 "#;
 
-    fs::write(out.join("validators.rs"), content).expect("failed to write validators.rs");
+    let path = out.join("validators.rs");
+    fs::write(&path, content).unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }
 
 fn generate_migrations(out: &Path, schema_dir: &Path) {
@@ -113,5 +115,6 @@ pub static DEPRECATED_MARKINGS: &[(&str, &str, &str)] = &[
 ];
 "#;
 
-    fs::write(out.join("migrations.rs"), content).expect("failed to write migrations.rs");
+    let path = out.join("migrations.rs");
+    fs::write(&path, content).unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }

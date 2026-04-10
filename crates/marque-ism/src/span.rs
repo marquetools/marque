@@ -30,10 +30,14 @@ impl Span {
         &source[self.start..self.end]
     }
 
+    /// Extract the spanned bytes as a UTF-8 string slice.
+    ///
+    /// Returns `Err` if the span does not cover valid UTF-8.
+    /// Callers that know the source is ASCII can use `.unwrap()` in tests
+    /// or `.expect("...")` with context.
     #[inline]
-    pub fn as_str<'a>(&self, source: &'a [u8]) -> &'a str {
-        // SAFETY: scanner only produces spans over valid UTF-8 ASCII ranges
-        std::str::from_utf8(self.as_slice(source)).expect("span must cover valid UTF-8")
+    pub fn as_str<'a>(&self, source: &'a [u8]) -> Result<&'a str, std::str::Utf8Error> {
+        std::str::from_utf8(self.as_slice(source))
     }
 }
 

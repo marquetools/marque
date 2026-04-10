@@ -2,7 +2,7 @@
 
 use crate::output::{FixResult, LintResult};
 use marque_config::Config;
-use marque_rules::RuleSet;
+use marque_rules::{RuleId, RuleSet};
 
 /// A configured engine instance. Cheap to clone; rule sets are behind `Arc`.
 pub struct Engine {
@@ -60,13 +60,17 @@ impl Engine {
         let lint = self.lint(source);
 
         // Collect fixes above the configured confidence threshold.
-        // Apply in reverse span order to preserve offsets.
+        // Skip placeholder spans (0..0) — rules that haven't wired real spans yet.
+        // Apply in reverse span order to preserve byte offsets.
         let threshold = 0.9_f32; // TODO: read from config
+
+        let mut applied_rules: Vec<RuleId> = Vec::new();
         let mut fixes: Vec<_> = lint
             .diagnostics
             .iter()
             .filter_map(|d| d.fix.as_ref())
             .filter(|f| f.confidence >= threshold)
+            .filter(|f| !f.span.is_empty()) // skip placeholder (0,0) spans
             .collect();
 
         fixes.sort_by_key(|f| std::cmp::Reverse(f.span.start));
@@ -76,13 +80,26 @@ impl Engine {
 
         for fix in fixes {
             output.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+            applied_rules.push(fix.audit.rule.clone());
             applied.push(fix.audit.clone());
         }
+
+        // Remaining diagnostics: those whose fix was not applied (no fix proposed,
+        // below confidence threshold, placeholder span, or diagnostic-only).
+        let remaining_diagnostics = lint
+            .diagnostics
+            .into_iter()
+            .filter(|d| {
+                !d.fix
+                    .as_ref()
+                    .is_some_and(|f| applied_rules.contains(&f.audit.rule))
+            })
+            .collect();
 
         FixResult {
             source: output,
             applied,
-            remaining_diagnostics: lint.diagnostics,
+            remaining_diagnostics,
         }
     }
 }

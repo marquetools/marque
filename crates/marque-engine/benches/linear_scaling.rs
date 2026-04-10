@@ -3,7 +3,7 @@
 //! Sweeps input size across at least one order of magnitude (1KB -> 100KB)
 //! and asserts throughput stays linear with no super-linear growth.
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn linear_scaling_benchmark(_c: &mut Criterion) {
     // TODO: Implement once Engine::lint is wired with real rules.

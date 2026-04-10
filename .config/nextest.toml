@@ -4,7 +4,8 @@
 # Docs:  https://nexte.st/docs/configuration/
 
 [profile.default]
-# Fail fast on first test failure in CI; override with --no-fail-fast for local dev.
+# Stop on first failure during local dev. Use `--no-fail-fast` to see all failures,
+# or the [profile.ci] profile which disables fail-fast by default.
 fail-fast = true
 
 # Show test output on failure.

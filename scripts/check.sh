@@ -9,8 +9,8 @@ set -euo pipefail
 echo "==> cargo fmt --check"
 cargo fmt --check
 
-echo "==> cargo clippy --workspace -- -D warnings"
-cargo clippy --workspace -- -D warnings
+echo "==> cargo clippy --workspace --benches -- -D warnings"
+cargo clippy --workspace --benches -- -D warnings
 
 echo "==> cargo nextest run --workspace (or cargo test)"
 if command -v cargo-nextest &>/dev/null; then

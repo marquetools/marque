@@ -10,7 +10,6 @@ rust-version.workspace = true
 [dependencies]
 marque-ism   = { workspace = true }
 marque-rules = { workspace = true }
-marque-core  = { workspace = true }
 phf          = { workspace = true }
 thiserror    = { workspace = true }
 aho-corasick = { workspace = true }

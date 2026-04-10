@@ -172,6 +172,10 @@ async fn main() {
 
     tracing::info!("marque-server listening on {addr}");
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("failed to bind MARQUE_ADDR — is the port already in use?");
+    axum::serve(listener, app)
+        .await
+        .expect("server exited with error");
 }

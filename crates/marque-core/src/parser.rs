@@ -40,7 +40,10 @@ impl<'t> Parser<'t> {
 
     /// Parse a single scanner candidate into [`IsmAttributes`].
     pub fn parse(&self, candidate: &Candidate, source: &[u8]) -> Result<ParsedMarking, CoreError> {
-        let text = candidate.span.as_str(source);
+        let text = candidate
+            .span
+            .as_str(source)
+            .map_err(|_| CoreError::InvalidUtf8(candidate.span))?;
         match candidate.kind {
             MarkingType::Portion => self.parse_portion(text, candidate),
             MarkingType::Banner => self.parse_banner(text, candidate),
@@ -205,6 +208,7 @@ fn is_known_dissem(s: &str) -> bool {
             | "DSEN"
             | "LIMDIS"
             | "IMC"
+            | "IMCON"
             | "EYES ONLY"
     )
 }

@@ -802,7 +802,6 @@ version = "0.1.0"
 dependencies = [
  "aho-corasick",
  "insta",
- "marque-core",
  "marque-ism",
  "marque-rules",
  "marque-test-utils",

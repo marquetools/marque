@@ -19,7 +19,7 @@ pub struct RuleContext {
 }
 
 /// Unique rule identifier string (e.g., "E001", "capco/banner-abbreviation").
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleId(pub &'static str);
 
 impl std::fmt::Display for RuleId {
