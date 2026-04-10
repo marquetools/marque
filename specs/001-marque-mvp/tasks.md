@@ -19,7 +19,8 @@
 
 **Purpose**: Workspace-level scaffolding shared across every crate touched by the MVP slice.
 
-- [ ] T001 Verify the eight MVP crate directories exist and compile under `cargo check --workspace` (`crates/marque-core`, `crates/marque-rules`, `crates/marque-capco`, `crates/marque-engine`, `crates/marque-config`, `crates/marque-wasm`, `crates/marque`); record any missing `Cargo.toml` and add a stub if absent.
+- [ ] T000 [P] Create `crates/marque-ism/` crate with Cargo.toml (deps: `thiserror`, `memchr`, `phf`, `aho-corasick`; build-deps: `quick-xml`, `anyhow`; `[package.metadata.marque] ism-schema-version = "ISM-v2022-DEC"`). Move `schemas/ISM-v2022-DEC/` from `crates/marque-capco/`, move `src/span.rs` and `src/attrs.rs` from `crates/marque-core/`, move `src/token_set.rs` and `build.rs` from `crates/marque-capco/`, create `src/generated.rs` with `include!()` wrappers. Update all imports across workspace (`marque_core::Span` → `marque_ism::Span`, `marque_core::IsmAttributes` → `marque_ism::IsmAttributes`, etc.). Add `marque-ism` to workspace members in root `Cargo.toml`. Wire `marque-core`, `marque-rules`, and `marque-capco` Cargo.toml deps to depend on `marque-ism`. Verify `cargo check --workspace` passes after the move.
+- [ ] T001 Verify the nine MVP crate directories exist and compile under `cargo check --workspace` (`crates/marque-ism`, `crates/marque-core`, `crates/marque-rules`, `crates/marque-capco`, `crates/marque-engine`, `crates/marque-config`, `crates/marque-wasm`, `crates/marque`); record any missing `Cargo.toml` and add a stub if absent.
 - [ ] T002 [P] Create `tests/corpus/{valid,invalid}/` directory tree at repo root with a placeholder `README.md` describing the fixture format (filename, expected rule IDs, expected spans) per plan §"Source Code".
 - [ ] T002b [P] Author `tests/corpus/CORPUS_PROVENANCE.md` codifying the SC-002a provenance contract: every fixture is synthetic, wrapped in Lorem Ipsum or manifestly fictional prose, and uses only public CAPCO marking syntax from ODNI documentation. The doc names the reviewer who spot-checked the corpus before the `mvp-corpus-v1` tag and records the review date. Blocks the tag; blocks Phase 7.
 - [ ] T002a [P] Author `tests/corpus/CORPUS_CONTRACT.md` codifying SC-002a: the corpus MUST contain ≥3 known-bad fixtures per rule (E001–E008, W001, C001), ≥20 known-good fixtures, and a ≥1000-line clean-prose corpus for SC-003a. Each known-bad fixture has a sibling `.expected.json` pinning rule IDs + byte spans. The corpus is tagged `mvp-corpus-v1` before Phase 7 begins; SC-002/SC-003/SC-008 are measured against exactly that tag. This task produces the contract doc and the empty directory scaffolding referenced by US1 (T025/T026) and SC-003a (new T026a).
@@ -34,19 +35,19 @@
 
 **Purpose**: The shared types, generated code, and pipeline plumbing every user story depends on. ⚠️ No US1–US4 task may begin until this phase is complete.
 
-### Generated Layer 1 (CAPCO build script)
+### Generated Layer 1 (marque-ism build script)
 
-- [ ] T006 Implement `crates/marque-capco/build.rs` CVE XML parser using `quick-xml` to read every `crates/marque-capco/schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml` and emit closed Rust enums into `crates/marque-capco/src/generated/values.rs` (Classification, SciControl, SarIdentifier, DissemControl, DeclassExemption) per research item R-1.
-- [ ] T007 Extend `crates/marque-capco/build.rs` to parse `crates/marque-capco/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` and emit the `Trigraph` enum into `crates/marque-capco/src/generated/values.rs`.
-- [ ] T008 Extend `crates/marque-capco/build.rs` to parse `crates/marque-capco/schemas/ISM-v2022-DEC/Schematron/ISM_XML.sch` and `Schematron/Lib/*.sch` and emit binary predicate functions into `crates/marque-capco/src/generated/validators.rs` per research item R-2.
-- [ ] T009 Extend `crates/marque-capco/build.rs` to emit the deterministic deprecated-marking migration table (including X-shorthand `25X1-`-style date markings) into `crates/marque-capco/src/generated/migrations.rs` with `confidence ≥ 0.95` per FR-004a and research item R-3.
-- [ ] T010 Pin and verify the active schema version: assert in `build.rs` that `[package.metadata.marque] ism-schema-version` in `crates/marque-capco/Cargo.toml` equals `ISM-v2022-DEC` and emit a `SCHEMA_VERSION` `&'static str` into `generated/values.rs` (FR-011).
+- [ ] T006 Implement `crates/marque-ism/build.rs` CVE XML parser using `quick-xml` to read every `crates/marque-ism/schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml` and emit closed Rust enums into `OUT_DIR/values.rs` (Classification, SciControl, SarIdentifier, DissemControl, DeclassExemption) per research item R-1, consumed via `crates/marque-ism/src/generated.rs`.
+- [ ] T007 Extend `crates/marque-ism/build.rs` to parse `crates/marque-ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` and emit the `Trigraph` enum into `OUT_DIR/values.rs`.
+- [ ] T008 Extend `crates/marque-ism/build.rs` to parse `crates/marque-ism/schemas/ISM-v2022-DEC/Schematron/ISM_XML.sch` and `Schematron/Lib/*.sch` and emit binary predicate functions into `OUT_DIR/validators.rs` per research item R-2. Scope: fixed XPath vocabulary only (attribute presence, equality, set membership, cardinality); ~70% of assertions covered; remainder skipped with build-time warning. Layer 2 rules in `marque-capco` import these predicates from `marque-ism` as their authoritative correctness foundation.
+- [ ] T009 Extend `crates/marque-ism/build.rs` to emit the deterministic deprecated-marking migration table (including X-shorthand `25X1-`-style date markings) into `OUT_DIR/migrations.rs` with `confidence ≥ 0.95` per FR-004a and research item R-3.
+- [ ] T010 Pin and verify the active schema version: assert in `build.rs` that `[package.metadata.marque] ism-schema-version` in `crates/marque-ism/Cargo.toml` equals `ISM-v2022-DEC` and emit a `SCHEMA_VERSION` `&'static str` into `OUT_DIR/values.rs` (FR-011).
 
-### Core types (marque-core + marque-rules)
+### Core types (marque-ism + marque-rules)
 
-- [ ] T011 [P] Define `Span`, `MarkingCandidate`, `CandidateKind`, `MarkingType`, `Zone`, `DocumentPosition`, and `RuleContext` in `crates/marque-core/src/span.rs` per `data-model.md` §Span / §RuleContext (all `Copy`, no allocation).
-- [ ] T012 [P] Re-export the generated Layer 1 enums from `crates/marque-capco/src/generated/values.rs` into `crates/marque-core/src/ast.rs` and define `IsmAttributes` exactly as specified in `data-model.md` §IsmAttributes (`Box<[T]>` everywhere, `#[non_exhaustive]`).
-- [ ] T013 Define `Severity`, `RuleId`, `Diagnostic`, `FixSource`, `FixProposal`, and `AppliedFix` in `crates/marque-rules/src/lib.rs` (include the `FixSource` enum `{BuiltinRule, CorrectionsMap, MigrationTable}`; `FixProposal` carries a `source: FixSource` field; `AppliedFix` carries `input: Option<Box<str>>` populated by the CLI at the boundary) per `data-model.md` §Severity..§AppliedFix, including the trait surface: `pub trait Rule { fn id(&self) -> RuleId; fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic>; }`. `Diagnostic.fix` is typed `Option<FixProposal>`; `AppliedFix` wraps a `FixProposal` plus timestamp, classifier_id, and `dry_run: bool` and is constructible only by `marque-engine` (document this — no public constructor from `marque-rules`).
+- [ ] T011 [P] Define `Span`, `MarkingCandidate`, `CandidateKind`, `MarkingType`, `Zone`, `DocumentPosition`, and `RuleContext` in `crates/marque-ism/src/span.rs` per `data-model.md` §Span / §RuleContext (all `Copy`, no allocation).
+- [ ] T012 [P] Define `IsmAttributes` in `crates/marque-ism/src/attrs.rs` using the generated enum types from `crates/marque-ism/src/generated.rs` (SciControl, SarIdentifier, DissemControl, DeclassExemption, Trigraph). Fields use `Box<[T]>` per constitution Principle II. Mark `#[non_exhaustive]`. This is straightforward because both `IsmAttributes` and its field types live in the same crate — no circular dependency.
+- [ ] T013 Define `Severity`, `RuleId`, `Diagnostic`, `FixSource`, `FixProposal`, and `AppliedFix` in `crates/marque-rules/src/lib.rs` (include the `FixSource` enum `{BuiltinRule, CorrectionsMap, MigrationTable}`; `FixProposal` carries a `source: FixSource` field; `AppliedFix` carries `input: Option<Box<str>>` populated by the CLI at the boundary) per `data-model.md` §Severity..§AppliedFix, including the trait surface: `pub trait Rule { fn id(&self) -> RuleId; fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic>; }`. Types `IsmAttributes`, `Span`, `RuleContext` are imported from `marque-ism` (not `marque-core`). `Diagnostic.fix` is typed `Option<FixProposal>`; `AppliedFix` wraps a `FixProposal` plus timestamp, classifier_id, and `dry_run: bool` and is constructible only by `marque-engine` (document this — no public constructor from `marque-rules`).
 - [ ] T014 Add `FixProposal` invariant guards in `crates/marque-rules/src/lib.rs` (`debug_assert!(0.0 <= confidence && confidence <= 1.0 && !confidence.is_nan())`) and document that every `AppliedFix` constructed by the engine — including `confidence == 1.0` fixes — carries a complete audit payload (FR-005, constitution Principle V). Suggestions never produce an `AppliedFix`.
 - [ ] T014a Define a `Clock` trait in `crates/marque-engine/src/clock.rs` with `fn now(&self) -> SystemTime`, a `SystemClock` default implementation, and a `FixedClock(SystemTime)` test implementation. `Engine` holds `Arc<dyn Clock>` (or a generic `<C: Clock>`) and uses it exclusively to stamp `AppliedFix::timestamp` — no direct `SystemTime::now()` calls anywhere in the engine or rule crates. Required by `data-model.md` §AppliedFix "Clock seam" and by the deterministic snapshot tests in T046.
 
@@ -67,7 +68,7 @@
 ### Configuration (marque-config)
 
 - [ ] T022 Implement layered loader in `crates/marque-config/src/lib.rs`: `.marque.toml` → `.marque.local.toml` → env vars (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`, `MARQUE_LOG`) → CLI flag overrides, returning `Configuration` per `data-model.md` §Configuration (FR-007).
-- [ ] T023 Add hard-fail validators in `crates/marque-config/src/lib.rs`: refuse to load any `.marque.toml` containing a `[user]` section (FR-010, SC-006); refuse a `[capco] version` mismatch with `marque-capco::SCHEMA_VERSION` (FR-011); refuse `confidence_threshold` outside `[0.0, 1.0]`. All three exit `65 EX_DATAERR` per `contracts/cli.md`.
+- [ ] T023 Add hard-fail validators in `crates/marque-config/src/lib.rs`: refuse to load any `.marque.toml` containing a `[user]` section (FR-010, SC-006); refuse a `[capco] version` mismatch with `marque_ism::SCHEMA_VERSION` (FR-011); refuse `confidence_threshold` outside `[0.0, 1.0]`. All three exit `65 EX_DATAERR` per `contracts/cli.md`.
 
 ### Rule registration scaffolding
 
@@ -151,7 +152,7 @@
 - [ ] T053 [P] [US3] Add `crates/marque-config/tests/precedence.rs` cases for the three hard-fail scenarios from `contracts/cli.md` §"Hard-fail at config load": `[user]` in `.marque.toml`, schema version mismatch, threshold out of range. Each must return the documented error and exit code.
 - [ ] T054 [P] [US3] Write `crates/marque-capco/tests/corrections_map.rs` exercising FR-009: when both a built-in rule and a user correction match the same span, the user correction wins; the audit record cites `corrections-map` as the source.
 - [ ] T055 [P] [US3] Add a repo-wide automated SC-006 check as `tests/no_classifier_id_in_commits.rs` that scans every file under `tests/corpus/`, `crates/*/tests/`, and `crates/*/examples/` for classifier-id-shaped strings and fails if any are found.
-- [ ] T055a [P] [US3] Add the SC-002a corpus provenance scan as `tests/corpus_provenance.rs`: (a) every file under `tests/corpus/` matches a registered path pattern (`invalid/*.txt`, `invalid/*.expected.json`, `valid/*.txt`, `valid/*.expected.json`, `prose/*.txt`, `CORPUS_CONTRACT.md`, `CORPUS_PROVENANCE.md`, `README.md`); (b) `CORPUS_PROVENANCE.md` exists and contains a reviewer line; (c) no fixture contains any classifier-id-shaped string (reuses T055 scanner); (d) no fixture contains token strings outside the generated CVE enumerations in `marque-capco::generated::values`. Blocks merge on failure. Runs in CI on every PR.
+- [ ] T055a [P] [US3] Add the SC-002a corpus provenance scan as `tests/corpus_provenance.rs`: (a) every file under `tests/corpus/` matches a registered path pattern (`invalid/*.txt`, `invalid/*.expected.json`, `valid/*.txt`, `valid/*.expected.json`, `prose/*.txt`, `CORPUS_CONTRACT.md`, `CORPUS_PROVENANCE.md`, `README.md`); (b) `CORPUS_PROVENANCE.md` exists and contains a reviewer line; (c) no fixture contains any classifier-id-shaped string (reuses T055 scanner); (d) no fixture contains token strings outside the generated CVE enumerations in `marque_ism::generated::values`. Blocks merge on failure. Runs in CI on every PR.
 
 ### Implementation for User Story 3
 
@@ -210,7 +211,7 @@
 
 ### Phase Dependencies
 
-- **Phase 1 (Setup)**: No dependencies.
+- **Phase 1 (Setup)**: T000 (create `marque-ism` crate) has no dependencies and blocks everything else. Remaining Phase 1 tasks have no dependencies beyond T000.
 - **Phase 2 (Foundational)**: Depends on Phase 1. **Blocks every user story phase.**
 - **Phase 3 (US1)**: Depends on Phase 2. Independent of US2/US3/US4.
 - **Phase 4 (US2)**: Depends on Phase 2 + the rule registration scaffolding (T024) + the engine fix path (T020/T021). Independent of US3/US4 once those land.
@@ -220,8 +221,9 @@
 
 ### Within Phase 2 (Foundational)
 
-- T006 → T007 → T008 → T009 → T010 share `build.rs` (sequential, same file).
-- T011, T012, T013 are `[P]` (different files).
+- T000 (create `marque-ism`) blocks all Phase 2 tasks (types and codegen now live there).
+- T006 → T007 → T008 → T009 → T010 share `marque-ism/build.rs` (sequential, same file).
+- T011, T012 are `[P]` (both in `marque-ism`, different files). T013 is in `marque-rules`.
 - T015 depends on T011; T016 depends on T011 + T012; T017 depends on T015 + T016 + corpus stub (T002).
 - T014a (`Clock` trait) depends on T013 and lands in `marque-engine`; T021 depends on T014a (uses the injected clock for every `AppliedFix::timestamp`).
 - T018 depends on T013 + T016; T019, T020, T021 share `marque-engine` and are sequential after T018.

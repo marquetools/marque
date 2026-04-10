@@ -9,9 +9,9 @@ item is recorded as **Decision / Rationale / Alternatives considered**.
 
 ## R-1: ODNI ISM CVE XML → Rust enum generation in `build.rs`
 
-**Decision**: Use `quick-xml` in pull-parser mode inside `marque-capco/build.rs`
+**Decision**: Use `quick-xml` in pull-parser mode inside `marque-ism/build.rs`
 to walk every file under `schemas/ISM-v2022-DEC/CVE_ISM/*.xml` and emit one Rust
-enum per CVE file into `src/generated/values.rs`. Identifiers are derived from
+enum per CVE file into `OUT_DIR/values.rs` (consumed via `marque-ism/src/generated.rs`). Identifiers are derived from
 the CVE element `Term` content with a deterministic sanitizer
 (`UPPER_SNAKE_CASE`, non-alphanumeric → `_`, leading digits prefixed with `_`).
 Each enum derives `Copy, Clone, Eq, PartialEq, Hash, Debug` and gets a
@@ -38,9 +38,9 @@ makes diff review of the generated code possible across schema versions.
   category.
 
 **Schema rollback strategy**: The active schema version is pinned in
-`marque-capco/Cargo.toml [package.metadata.marque] ism-schema-version` and
+`marque-ism/Cargo.toml [package.metadata.marque] ism-schema-version` and
 asserted at build time (T010). A new ODNI schema package lands as a sibling
-directory under `crates/marque-capco/schemas/` (e.g. `ISM-v2024-JUN/`) in a
+directory under `crates/marque-ism/schemas/` (e.g. `ISM-v2024-JUN/`) in a
 dedicated branch; the pin bumps in that same branch, Layer 1 regenerates, and
 the Layer 2 rule set is audited for behavioral drift against the MVP corpus
 before the branch merges. If a schema bump is later found to have regressed
@@ -60,7 +60,7 @@ not control.
 `<sch:assert>` / `<sch:report>` children, normalize the embedded XPath
 expressions to a small fixed vocabulary (attribute presence, attribute equality,
 set membership, set cardinality), and emit one boolean predicate function per
-assertion into `src/generated/validators.rs`. Each generated predicate has the
+assertion into `OUT_DIR/validators.rs` (consumed via `marque-ism/src/generated.rs`). Each generated predicate has the
 shape `fn ${rule_id}_${assertion_idx}(attrs: &IsmAttributes) -> bool` and
 contains *only* the binary check — no message, no remediation, no severity.
 The Layer 2 hand-written rules in `marque-capco/src/rules.rs` import these

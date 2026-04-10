@@ -1,0 +1,19 @@
+# .config/nextest.toml — cargo-nextest configuration for marque workspace.
+#
+# Usage: cargo nextest run --workspace
+# Docs:  https://nexte.st/docs/configuration/
+
+[profile.default]
+# Fail fast on first test failure in CI; override with --no-fail-fast for local dev.
+fail-fast = true
+
+# Show test output on failure.
+failure-output = "immediate-final"
+success-output = "never"
+
+# Timeout per test (most tests should complete in under 10s).
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[profile.ci]
+fail-fast = false
+retries = 0

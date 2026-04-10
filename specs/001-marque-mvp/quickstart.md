@@ -22,11 +22,11 @@ SC-008. Run this after `cargo build` to convince yourself the slice is alive.
 cargo build -p marque
 ```
 
-This compiles `marque-core`, `marque-rules`, `marque-capco`, `marque-engine`,
-`marque-config`, and the `marque` CLI. The `marque-capco` build step runs
-`build.rs`, which parses the ODNI ISM CVE XML under
-`crates/marque-capco/schemas/ISM-v2022-DEC/` and emits `src/generated/`. If
-the schema directory is missing or `build.rs` fails, fix that first — every
+This compiles `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`,
+`marque-engine`, `marque-config`, and the `marque` CLI. The `marque-ism` build
+step runs `build.rs`, which parses the ODNI ISM CVE XML under
+`crates/marque-ism/schemas/ISM-v2022-DEC/` and generates ISM vocabulary types.
+If the schema directory is missing or `build.rs` fails, fix that first — every
 other step depends on it.
 
 ---

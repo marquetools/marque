@@ -15,9 +15,10 @@
 //! Note: the Aho-Corasick automaton is injected via `TokenSet` to keep marque-core
 //! free of a direct dependency on marque-capco's generated data.
 
-use crate::attrs::{Classification, DeclassOn, IsmAttributes, Trigraph};
 use crate::error::CoreError;
-use crate::span::{Candidate, MarkingType, Span};
+use marque_ism::attrs::{Classification, DeclassOn, IsmAttributes, Trigraph};
+use marque_ism::span::{Candidate, MarkingType, Span};
+use marque_ism::token_set::TokenSet;
 
 /// Parse result for a single candidate.
 #[derive(Debug)]
@@ -25,16 +26,6 @@ pub struct ParsedMarking {
     pub attrs: IsmAttributes,
     pub source_span: Span,
     pub kind: MarkingType,
-}
-
-/// Minimal interface the parser needs from the token set.
-/// Implemented by marque-capco's generated automaton; injected at engine init.
-pub trait TokenSet: Send + Sync {
-    /// Returns the canonical token string if `token` is a known CVE value.
-    fn canonicalize<'a>(&self, token: &'a str) -> Option<&'static str>;
-
-    /// Returns true if `token` is a known country trigraph.
-    fn is_trigraph(&self, token: &str) -> bool;
 }
 
 /// Phase 2+3 parser. Stateless; call [`Parser::parse`] per candidate.
@@ -52,8 +43,8 @@ impl<'t> Parser<'t> {
         let text = candidate.span.as_str(source);
         match candidate.kind {
             MarkingType::Portion => self.parse_portion(text, candidate),
-            MarkingType::Banner  => self.parse_banner(text, candidate),
-            MarkingType::Cab     => self.parse_cab(text, candidate),
+            MarkingType::Banner => self.parse_banner(text, candidate),
+            MarkingType::Cab => self.parse_cab(text, candidate),
         }
     }
 
@@ -139,10 +130,10 @@ impl<'t> Parser<'t> {
             }
         }
 
-        attrs.sci_controls   = sci.into_boxed_slice();
+        attrs.sci_controls = sci.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
-        attrs.rel_to          = rel_to.into_boxed_slice();
+        attrs.rel_to = rel_to.into_boxed_slice();
 
         let _ = context; // used for future context-aware validation
 
@@ -152,11 +143,11 @@ impl<'t> Parser<'t> {
 
 fn parse_classification(s: &str) -> Option<Classification> {
     match s {
-        "TS" | "TOP SECRET"    => Some(Classification::TopSecret),
-        "S"  | "SECRET"        => Some(Classification::Secret),
-        "C"  | "CONFIDENTIAL"  => Some(Classification::Confidential),
-        "U"  | "UNCLASSIFIED"  => Some(Classification::Unclassified),
-        _                      => None,
+        "TS" | "TOP SECRET" => Some(Classification::TopSecret),
+        "S" | "SECRET" => Some(Classification::Secret),
+        "C" | "CONFIDENTIAL" => Some(Classification::Confidential),
+        "U" | "UNCLASSIFIED" => Some(Classification::Unclassified),
+        _ => None,
     }
 }
 
@@ -204,8 +195,17 @@ fn is_sar_identifier(s: &str) -> bool {
 fn is_known_dissem(s: &str) -> bool {
     matches!(
         s,
-        "NOFORN" | "NF" | "RELIDO" | "FOUO" | "ORCON" | "PROPIN"
-            | "FISA" | "DSEN" | "LIMDIS" | "IMC" | "EYES ONLY"
+        "NOFORN"
+            | "NF"
+            | "RELIDO"
+            | "FOUO"
+            | "ORCON"
+            | "PROPIN"
+            | "FISA"
+            | "DSEN"
+            | "LIMDIS"
+            | "IMC"
+            | "EYES ONLY"
     )
 }
 
@@ -213,7 +213,12 @@ fn parse_declass_on(s: &str) -> DeclassOn {
     // Exemptions start with X, DN, etc.
     if s.starts_with('X') || s.starts_with("DN") {
         DeclassOn::Exemption(s.to_owned())
-    } else if s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    } else if s
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
         DeclassOn::Date(s.to_owned())
     } else {
         DeclassOn::Event(s.to_owned())

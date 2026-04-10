@@ -10,8 +10,8 @@
 //!   known classification prefix (UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP SECRET).
 //! - CAB candidates: scan for "Classified By:" label, walk to end of block.
 
+use marque_ism::span::{Candidate, MarkingType, Span};
 use memchr::memchr_iter;
-use crate::span::{Candidate, MarkingType, Span};
 
 /// Phase 1 scanner. Stateless; call [`Scanner::scan`] on any byte buffer.
 pub struct Scanner;
@@ -40,7 +40,10 @@ impl Scanner {
                 let span = Span::new(start, end + 1);
                 // Heuristic gate: minimum length `(U)` = 3, max reasonable = 256
                 if span.len() >= 3 && span.len() <= 256 {
-                    out.push(Candidate { span, kind: MarkingType::Portion });
+                    out.push(Candidate {
+                        span,
+                        kind: MarkingType::Portion,
+                    });
                 }
             }
         }
@@ -48,19 +51,15 @@ impl Scanner {
 
     fn scan_banners(source: &[u8], out: &mut Vec<Candidate>) {
         // Classification prefixes that can start a banner line (full-word form only).
-        const BANNER_PREFIXES: &[&[u8]] = &[
-            b"TOP SECRET",
-            b"SECRET",
-            b"CONFIDENTIAL",
-            b"UNCLASSIFIED",
-        ];
+        const BANNER_PREFIXES: &[&[u8]] =
+            &[b"TOP SECRET", b"SECRET", b"CONFIDENTIAL", b"UNCLASSIFIED"];
 
         for line in source.split(|&b| b == b'\n') {
             let trimmed = trim_ascii(line);
             if BANNER_PREFIXES.iter().any(|p| trimmed.starts_with(p)) {
                 // Compute span relative to full source buffer.
                 let start = line.as_ptr() as usize - source.as_ptr() as usize;
-                let end   = start + line.len();
+                let end = start + line.len();
                 out.push(Candidate {
                     span: Span::new(start, end),
                     kind: MarkingType::Banner,
@@ -104,7 +103,9 @@ fn find_cab_end(source: &[u8], start: usize) -> usize {
     let mut prev_newline = false;
     for (i, &b) in source[start..].iter().enumerate() {
         if b == b'\n' {
-            if prev_newline { return start + i; }
+            if prev_newline {
+                return start + i;
+            }
             prev_newline = true;
         } else if b != b'\r' {
             prev_newline = false;

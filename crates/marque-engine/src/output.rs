@@ -15,17 +15,26 @@ impl LintResult {
 
     pub fn error_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Error).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count()
     }
 
     pub fn warn_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Warn).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warn)
+            .count()
     }
 
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Fix).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Fix)
+            .count()
     }
 }
 

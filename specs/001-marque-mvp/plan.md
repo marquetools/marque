@@ -15,12 +15,15 @@ extraction, the REST server, the LMDB cache, Office add-ins, and metadata
 sanitization — those are tracked as future feature slices.
 
 The crate skeleton already exists in the workspace. The principal work for this
-slice is (a) replacing the placeholder ODNI schema code-generation in
-`marque-capco/build.rs` with real CVE/Schematron parsing, (b) implementing the
-hand-written Layer 2 rule set covering the highest-frequency CAPCO violations,
-(c) wiring `Engine` and the CLI/WASM front ends to the configuration model, and
-(d) standing up a representative test corpus and benchmark harness sufficient to
-verify the success criteria.
+slice is (a) introducing a new `marque-ism` crate to own the ISM vocabulary types
+and generated enums (resolving the circular dependency that prevented
+`IsmAttributes` from using strongly-typed CVE fields), (b) replacing the
+placeholder ODNI schema code-generation in `marque-ism/build.rs` with real
+CVE/Schematron parsing, (c) implementing the hand-written Layer 2 rule set
+covering the highest-frequency CAPCO violations, (d) wiring `Engine` and the
+CLI/WASM front ends to the configuration model, and (e) standing up a
+representative test corpus and benchmark harness sufficient to verify the success
+criteria.
 
 ## Technical Context
 
@@ -96,11 +99,13 @@ is checked below.
 | IV — Two-Layer Rule Architecture | **Pass** | Phase 0 research item: replace placeholder `marque-capco/build.rs` with real CVE + Schematron parsing. Layer 2 rules consume only Layer 1 predicates and are stateless. |
 | V — Audit-First Compliance | **Pass** | FR-005 + FR-010 + SC-004 + SC-006 collectively require complete audit records, classifier identity hygiene, and audit-completeness verification. `--dry-run` is FR-006. |
 | VI — Dataflow Pipeline Model | **Pass** | The CLI and WASM front ends share `Engine` as the pipeline core; the configuration of source/sink at the boundary is the only difference. The server slice is deferred. |
-| VII — Crate Discipline and Dependency Hygiene | **Pass** | Touched crates: `marque-core`, `marque-rules`, `marque-capco`, `marque-engine`, `marque-config`, `marque-wasm`, and the `marque` CLI. None of these adds an upward edge. `marque-extract` and `marque-server` are untouched. |
+| VII — Crate Discipline and Dependency Hygiene | **Pass** | Touched crates: `marque-ism` (new — leaf dependency, no upward edges), `marque-core`, `marque-rules`, `marque-capco`, `marque-engine`, `marque-config`, `marque-wasm`, and the `marque` CLI. `marque-ism` extracts ISM vocabulary types and build.rs codegen from `marque-core`/`marque-capco` to resolve a circular dependency; it sits below both in the graph. `marque-extract` and `marque-server` are untouched. |
 
-**Tech-stack constraints check**: The MVP introduces no new locked-tier
-dependencies. All Phase 1 design choices fall inside the constitution's existing
-"Required Choice" table. No constitution amendment required for this slice.
+**Tech-stack constraints check**: The MVP introduces one new crate (`marque-ism`)
+but no new locked-tier dependencies — all deps (`quick-xml`, `phf`,
+`aho-corasick`, `memchr`) are already in the workspace. All Phase 1 design
+choices fall inside the constitution's existing "Required Choice" table. No
+constitution amendment required for this slice.
 
 **Verdict**: Constitution Check **passes** with no violations. Complexity Tracking
 section below remains empty.
@@ -132,27 +137,34 @@ The crate skeleton already exists. The MVP slice touches the crates marked with
 
 ```text
 crates/
-├── marque-core/         (MVP)  scanner, parser, IsmAttributes, Span, zero-copy types
+├── marque-ism/          (MVP)  ISM vocabulary types, generated CVE enums, build.rs codegen
+│   ├── build.rs         (MVP) CVE XML + Schematron → OUT_DIR/{values,validators,migrations}.rs
+│   ├── schemas/ISM-v2022-DEC/ (already in tree; moved from marque-capco)
+│   ├── src/
+│   │   ├── lib.rs       (MVP) pub mod + re-exports
+│   │   ├── span.rs      (MVP) Span, MarkingCandidate, MarkingType, Zone, DocumentPosition
+│   │   ├── attrs.rs     (MVP) IsmAttributes (strongly-typed generated enum fields)
+│   │   ├── generated.rs (MVP) include!() wrappers for OUT_DIR generated code
+│   │   └── token_set.rs (MVP) TokenSet trait + CapcoTokenSet (Aho-Corasick from generated data)
+│   └── tests/
+│
+├── marque-core/         (MVP)  scanner + parser (produces IsmAttributes from byte buffers)
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── scanner/     (MVP) memchr-based candidate detection
-│   │   ├── parser/      (MVP) aho-corasick / daachorse token extraction
-│   │   ├── ast.rs       (MVP) IsmAttributes + helper enums (re-export from capco)
-│   │   └── span.rs      (MVP) Span, RuleContext, MarkingType, Zone
+│   │   ├── parser/      (MVP) aho-corasick token extraction
+│   │   └── error.rs
 │   └── tests/
 │       ├── scanner_smoke.rs
 │       └── parser_smoke.rs
 │
-├── marque-rules/        (MVP)  Rule trait + Diagnostic + Fix + Severity + AuditRecord
+├── marque-rules/        (MVP)  Rule trait + Diagnostic + FixProposal + Severity + AppliedFix
 │   └── src/lib.rs       (MVP) trait definitions only, no implementations
 │
-├── marque-capco/        (MVP)  CAPCO rules, Layer 1 generated + Layer 2 hand-written
-│   ├── build.rs         (MVP) CVE + Schematron → src/generated/{values,validators,migrations}.rs
-│   ├── schemas/ISM-v2022-DEC/ (already in tree)
+├── marque-capco/        (MVP)  CAPCO Layer 2 hand-written rules
 │   ├── src/
 │   │   ├── lib.rs       (MVP) CapcoRuleSet::new() registration
-│   │   ├── rules.rs     (MVP) E001..E008, W001, C001
-│   │   └── generated/   (MVP) replaced from placeholder by build.rs
+│   │   └── rules.rs     (MVP) E001..E008, W001, C001
 │   └── tests/
 │       ├── rules_e001_to_e008.rs
 │       └── corrections_map.rs
@@ -161,6 +173,7 @@ crates/
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── engine.rs    (MVP) Engine::lint, Engine::fix, dry-run mode
+│   │   ├── clock.rs     (MVP) Clock trait, SystemClock, FixedClock
 │   │   ├── overlap.rs   (MVP) deterministic reverse-order span fix application
 │   │   └── audit.rs     (MVP) audit emission
 │   └── tests/
@@ -180,6 +193,7 @@ crates/
 │
 └── marque/              (MVP)  CLI binary
     ├── src/main.rs      (MVP) clap setup, file/stdin input, exit codes
+    ├── src/render.rs    (MVP) human + JSON diagnostic renderers
     └── tests/cli_smoke.rs
 
 tests/corpus/            (MVP)  shared known-bad / known-good fixtures
@@ -191,10 +205,12 @@ benches/                 (MVP)  criterion benchmarks for SC-001 / SC-005
 └── linear_scaling.rs
 ```
 
-**Structure Decision**: Workspace-level Cargo project with the existing crate
-boundaries. The MVP touches eight components (seven crates + the CLI binary) and
+**Structure Decision**: Workspace-level Cargo project. The MVP introduces one new
+crate (`marque-ism`) to own ISM vocabulary types and generated enums, resolving
+the circular dependency that prevented `IsmAttributes` from using strongly-typed
+CVE fields. The MVP touches nine components (eight crates + the CLI binary) and
 adds two new top-level directories (`tests/corpus/` and `benches/`) for shared
-fixtures and benchmarks. No new crates are introduced.
+fixtures and benchmarks.
 
 ## Phase 0: Research
 
@@ -298,9 +314,12 @@ already documented; the script is idempotent).
 
 ### Re-evaluation of Constitution Check post-design
 
-The Phase 1 design adds no new dependencies, no new crates, and no new
-cross-crate edges. The constitution check from §"Constitution Check" remains
-**Pass** with no violations.
+The Phase 1 design introduces one new crate (`marque-ism`) as a leaf dependency
+to resolve the circular dependency between `marque-core` (owns `IsmAttributes`)
+and `marque-capco` (generates the enum types `IsmAttributes` fields need). This
+adds no upward edges — `marque-ism` sits below both in the graph. No new
+locked-tier dependencies are introduced. The constitution check from
+§"Constitution Check" remains **Pass** with no violations.
 
 ## Complexity Tracking
 

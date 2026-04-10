@@ -1,5 +1,63 @@
-/target/
-/crates/marque-capco/src/generated/
+
 *.local.toml
-.env
-Cargo.lock
+*.env
+
+# Caches
+[Cc]ache/
+.[Cc]ache/
+
+# Packages
+node_modules/
+.venv/
+
+# build artifacts
+
+target/
+dist/
+crates/**/generated/
+debug/
+.astro/
+.wrangler/
+
+*.spdx
+
+# General
+nohup.out
+.Trash-*
+.nfs*
+.fuse_hidden*
+[._]*.un~
+*~
+[._]*.sw[a-p][a-p]
+Session.vim
+Sessionx.vim
+*.lnk
+$RECYCLE.BIN/
+Thumbs*
+*.pdb
+**/*.rs.bk
+.cursorignore
+.cursorindexingignore
+.directory
+[Dd]esktop.ini
+*.stackdump
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcons.icns
+.com.apple.timemachine.donotpresent
+._*
+.history
+.history/
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon[*]
+.claude/*.local.*

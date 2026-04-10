@@ -9,17 +9,17 @@
 //!   GET  /v1/schema/version
 
 use axum::{
+    Router,
     extract::State,
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
+use marque_capco::capco_rules;
+use marque_config::Config;
+use marque_engine::Engine;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use marque_engine::Engine;
-use marque_config::Config;
-use marque_capco::capco_rules;
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -38,6 +38,7 @@ struct AppState {
 struct LintRequest {
     text: String,
     /// Calling context hint — affects scanner heuristics.
+    #[allow(dead_code)]
     context: Option<String>,
 }
 
@@ -69,6 +70,7 @@ struct FixJson {
 #[derive(Deserialize)]
 struct FixRequest {
     text: String,
+    #[allow(dead_code)]
     confidence_threshold: Option<f32>,
 }
 
@@ -106,18 +108,22 @@ async fn lint_handler(
 ) -> Result<Json<LintResponse>, StatusCode> {
     let result = state.engine.lint(req.text.as_bytes());
 
-    let diagnostics = result.diagnostics.iter().map(|d| DiagnosticJson {
-        rule_id: d.rule.to_string(),
-        severity: format!("{:?}", d.severity),
-        message: d.message.clone(),
-        start: d.span.start,
-        end: d.span.end,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            replacement: f.replacement.clone(),
-            confidence: f.confidence,
-            migration_ref: f.migration_ref.map(str::to_owned),
-        }),
-    }).collect();
+    let diagnostics = result
+        .diagnostics
+        .iter()
+        .map(|d| DiagnosticJson {
+            rule_id: d.rule.to_string(),
+            severity: format!("{:?}", d.severity),
+            message: d.message.clone(),
+            start: d.span.start,
+            end: d.span.end,
+            fix: d.fix.as_ref().map(|f| FixJson {
+                replacement: f.replacement.clone(),
+                confidence: f.confidence,
+                migration_ref: f.migration_ref.map(str::to_owned),
+            }),
+        })
+        .collect();
 
     Ok(Json(LintResponse {
         error_count: result.error_count(),
@@ -151,7 +157,9 @@ async fn main() {
 
     let config = Config::default();
     let engine = Engine::new(config, vec![Box::new(capco_rules())]);
-    let state = AppState { engine: Arc::new(engine) };
+    let state = AppState {
+        engine: Arc::new(engine),
+    };
 
     let app = Router::new()
         .route("/v1/health", get(health))
@@ -160,8 +168,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = std::env::var("MARQUE_ADDR")
-        .unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 

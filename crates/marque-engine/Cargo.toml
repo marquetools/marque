@@ -8,6 +8,7 @@ repository.workspace  = true
 rust-version.workspace = true
 
 [dependencies]
+marque-ism    = { workspace = true }
 marque-core   = { workspace = true }
 marque-rules  = { workspace = true }
 marque-capco  = { path = "../marque-capco" }
@@ -17,3 +18,16 @@ futures       = { workspace = true }
 thiserror     = { workspace = true }
 tracing       = { workspace = true }
 recoco-utils  = { workspace = true }
+
+[dev-dependencies]
+criterion         = { workspace = true }
+insta             = { workspace = true }
+marque-test-utils = { workspace = true }
+
+[[bench]]
+name = "lint_latency"
+harness = false
+
+[[bench]]
+name = "linear_scaling"
+harness = false

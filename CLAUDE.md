@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-`marque` is a linter, formatter, and auto-fixer for IC (Intelligence Community) classification markings — portion markings, banner markings, and Classification Authority Blocks (CABs) — in the style of `ruff`. It targets CAPCO/ODNI ISM specifications (currently ISM v2023.1). The tool operates on raw text and 75+ document formats (via Kreuzberg), and is designed for perceptual instantaneity at any scale.
+`marque` is a linter, formatter, and auto-fixer for IC (Intelligence Community) classification markings — portion markings, banner markings, and Classification Authority Blocks (CABs) — in the style of `ruff`. It targets CAPCO/ODNI ISM specifications (currently ISM-v2022-DEC). The tool operates on raw text and 75+ document formats (via Kreuzberg), and is designed for perceptual instantaneity at any scale.
 
 ## Build Commands
 
@@ -51,24 +51,25 @@ cargo check --workspace
 ### Crate Dependency Graph
 
 ```
-marque-core  ←  marque-rules  ←  marque-capco
-                     ↓
-              marque-engine  ←  marque-config
-               ↑          ↑
-      marque-extract    marque-wasm
-               ↑
-        marque-server
-               ↑
-            marque (CLI)
+marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
+                                    ↓
+                             marque-engine  ←  marque-config
+                              ↑          ↑
+                     marque-extract    marque-wasm
+                              ↑
+                       marque-server
+                              ↑
+                           marque (CLI)
 ```
 
 ### Crate Responsibilities
 
 | Crate | Role |
 |-------|------|
-| `marque-core` | Scanner + parser + `IsmAttributes` AST. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. |
-| `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `Fix`, `Severity`, `AuditRecord`. No implementations. |
-| `marque-capco` | CAPCO rule implementations. **Code-generated** from ODNI ISM schemas via `build.rs`. |
+| `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. Owns `build.rs` + ODNI schemas. |
+| `marque-core` | Scanner + parser. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. Produces `IsmAttributes` from byte buffers. |
+| `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `Severity`, `AppliedFix`. No implementations. |
+| `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. |
 | `marque-engine` | Pipeline orchestration: `Engine` (single doc) and `BatchEngine` (async concurrent). |
 | `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. **Not in WASM.** |
 | `marque-config` | Layered config loading from `.marque.toml` → `.marque.local.toml` → env vars. |
@@ -89,16 +90,17 @@ Source → [marque-extract] → TextStream → [Scanner] → SpanStream
 
 ### Two-Layer Rule Architecture
 
-- **Layer 1 (generated)**: `marque-capco/build.rs` parses ODNI ISM XML schemas at build time → `src/generated/{values,validators,migrations}.rs`. Outputs binary valid/invalid predicates only.
-- **Layer 2 (hand-written)**: `Rule` implementations in `marque-capco/src/rules.rs` that consume Layer 1 predicates, classify *why* a violation occurred, determine fixes and confidence levels, and cite the CAPCO section.
+- **Layer 1 (generated)**: `marque-ism/build.rs` parses ODNI ISM XML schemas at build time → `OUT_DIR/{values,validators,migrations}.rs`, included via `marque-ism/src/generated.rs`. Outputs binary valid/invalid predicates only.
+- **Layer 2 (hand-written)**: `Rule` implementations in `marque-capco/src/rules.rs` that consume Layer 1 predicates from `marque-ism`, classify *why* a violation occurred, determine fixes and confidence levels, and cite the CAPCO section.
 
 ### Key Types
 
-- `IsmAttributes` (`marque-core`) — the pivot type. Every source format normalizes to this struct before rule validation. Fields use `Box<[T]>` (not `Vec`) to avoid over-allocation.
-- `Span` — byte offset range into the original source buffer. Never copies content; spans reference the original `&[u8]`.
-- `Diagnostic` — a violation with `rule`, `severity`, `span`, `message`, and optional `Fix`.
-- `Fix` — `span` + `replacement` + `confidence` + `AuditRecord`. Audit records are always generated, even for trivial 1.0-confidence fixes.
-- `RuleContext` — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`).
+- `IsmAttributes` (`marque-ism`) — the pivot type. Every source format normalizes to this struct before rule validation. Fields use `Box<[T]>` (not `Vec`) to avoid over-allocation. Field types (`SciControl`, `DissemControl`, etc.) are generated enums from ODNI CVE XML.
+- `Span` (`marque-ism`) — byte offset range into the original source buffer. Never copies content; spans reference the original `&[u8]`.
+- `Diagnostic` (`marque-rules`) — a violation with `rule`, `severity`, `span`, `message`, `citation`, and optional `FixProposal`.
+- `FixProposal` (`marque-rules`) — `span` + `replacement` + `confidence` + `source` + `migration_ref`. Pure data; no timestamp or classifier identity. Suggestions until promoted by `Engine::fix`.
+- `AppliedFix` (`marque-rules`) — a promoted `FixProposal` with `timestamp`, `classifier_id`, `dry_run`, `input`. Constructed only by `Engine::fix`. Serves as the audit record.
+- `RuleContext` (`marque-rules`) — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`).
 
 ### Batch Processing
 
@@ -134,7 +136,7 @@ Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `
 
 ## CAPCO Schema Code Generation
 
-`marque-capco/build.rs` reads ODNI ISM schema files from `crates/marque-capco/schemas/ISM-v2022-DEC/` and generates `src/generated/`. The schemas are present (ODNI package version `2022-DEC`, built June 2023).
+`marque-ism/build.rs` reads ODNI ISM schema files from `crates/marque-ism/schemas/ISM-v2022-DEC/` and generates code into `OUT_DIR/`, consumed via `include!()` in `crates/marque-ism/src/generated.rs`. The schemas are present (ODNI package version `2022-DEC`, built June 2023).
 
 **Actual schema layout** (the ODNI ZIP extracts to an `ISM/` root; subdirs were remapped on copy):
 ```
@@ -157,9 +159,9 @@ Key files for `build.rs` to parse when implementing full code generation:
 - `Schema/IC-ISM.xsd` — attribute structure + deprecation annotations
 - `Schematron/ISM_XML.sch` + `Schematron/Lib/*.sch` — validation predicates
 
-`build.rs` currently emits placeholder `src/generated/` files so the workspace compiles. Full CVE XML and Schematron parsing is the next implementation milestone.
+`build.rs` currently emits placeholder generated files so the workspace compiles. Full CVE XML and Schematron parsing is the next implementation milestone.
 
-The active schema version is pinned in `crates/marque-capco/Cargo.toml` under `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI publishes a new package.
+The active schema version is pinned in `crates/marque-ism/Cargo.toml` under `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI publishes a new package.
 
 ## Adding a New Rule
 
@@ -183,3 +185,10 @@ GET  /v1/schema/version
 ## Current Status
 
 Pre-MVP. Core pipeline (scanner → parser → engine → rules) is functional end-to-end for raw text. `marque-extract` (Kreuzberg integration) is stubbed. `build.rs` emits placeholder generated code — actual ODNI schema parsing is not yet implemented. The incremental batch cache and server auth middleware are planned but not built.
+
+## Active Technologies
+- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack + `memchr` (Phase 1 scanner), `aho-corasick` (native Phase 2) (001-marque-mvp)
+- None for the MVP. The LMDB incremental cache is explicitly out of (001-marque-mvp)
+
+## Recent Changes
+- 001-marque-mvp: Added Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack + `memchr` (Phase 1 scanner), `aho-corasick` (native Phase 2)
