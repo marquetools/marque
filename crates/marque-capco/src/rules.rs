@@ -5,13 +5,19 @@
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
 
-use marque_core::{IsmAttributes, span::Span};
-use marque_rules::{Diagnostic, Fix, Rule, RuleContext, RuleId, RuleSet, Severity, AuditRecord};
+use marque_ism::{IsmAttributes, Span};
+use marque_rules::{AuditRecord, Diagnostic, Fix, Rule, RuleContext, RuleId, RuleSet, Severity};
 use std::time::SystemTime;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
 pub struct CapcoRuleSet {
     rules: Vec<Box<dyn Rule>>,
+}
+
+impl Default for CapcoRuleSet {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CapcoRuleSet {
@@ -46,12 +52,18 @@ impl RuleSet for CapcoRuleSet {
 struct BannerAbbreviationRule;
 
 impl Rule for BannerAbbreviationRule {
-    fn id(&self) -> RuleId { RuleId("E001") }
-    fn name(&self) -> &'static str { "banner-abbreviation" }
-    fn default_severity(&self) -> Severity { Severity::Fix }
+    fn id(&self) -> RuleId {
+        RuleId("E001")
+    }
+    fn name(&self) -> &'static str {
+        "banner-abbreviation"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_core::span::MarkingType;
+        use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
         }
@@ -78,11 +90,11 @@ impl Rule for BannerAbbreviationRule {
 /// Expand known portion-form abbreviations to their full banner forms.
 fn expand_dissem_abbreviation(s: &str) -> Option<&'static str> {
     match s {
-        "NF"     => Some("NOFORN"),
-        "OC"     => Some("ORCON"),
-        "IMC"    => Some("IMCON"),
-        "DSEN"   => Some("DEA SENSITIVE"),
-        _        => None,
+        "NF" => Some("NOFORN"),
+        "OC" => Some("ORCON"),
+        "IMC" => Some("IMCON"),
+        "DSEN" => Some("DEA SENSITIVE"),
+        _ => None,
     }
 }
 
@@ -93,16 +105,27 @@ fn expand_dissem_abbreviation(s: &str) -> Option<&'static str> {
 struct MissingUsaTrigraphRule;
 
 impl Rule for MissingUsaTrigraphRule {
-    fn id(&self) -> RuleId { RuleId("E004") }
-    fn name(&self) -> &'static str { "missing-usa-trigraph" }
-    fn default_severity(&self) -> Severity { Severity::Fix }
+    fn id(&self) -> RuleId {
+        RuleId("E004")
+    }
+    fn name(&self) -> &'static str {
+        "missing-usa-trigraph"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        if attrs.rel_to.is_empty() { return vec![]; }
-        let has_usa = attrs.rel_to.iter().any(|t| *t == marque_core::attrs::Trigraph::USA);
-        if has_usa { return vec![]; }
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if attrs.rel_to.is_empty() {
+            return vec![];
+        }
+        if attrs.rel_to.contains(&marque_ism::Trigraph::USA) {
+            return vec![];
+        }
 
-        let current = attrs.rel_to.iter()
+        let current = attrs
+            .rel_to
+            .iter()
             .map(|t| t.as_str())
             .collect::<Vec<_>>()
             .join(", ");
@@ -128,14 +151,24 @@ impl Rule for MissingUsaTrigraphRule {
 struct UsaTrigraphOrderRule;
 
 impl Rule for UsaTrigraphOrderRule {
-    fn id(&self) -> RuleId { RuleId("E005") }
-    fn name(&self) -> &'static str { "usa-trigraph-order" }
-    fn default_severity(&self) -> Severity { Severity::Fix }
+    fn id(&self) -> RuleId {
+        RuleId("E005")
+    }
+    fn name(&self) -> &'static str {
+        "usa-trigraph-order"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        if attrs.rel_to.len() < 2 { return vec![]; }
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if attrs.rel_to.len() < 2 {
+            return vec![];
+        }
         let first = &attrs.rel_to[0];
-        if *first == marque_core::attrs::Trigraph::USA { return vec![]; }
+        if *first == marque_ism::Trigraph::USA {
+            return vec![];
+        }
 
         let current: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
         let mut fixed = current.clone();
@@ -162,9 +195,15 @@ impl Rule for UsaTrigraphOrderRule {
 struct SeparatorCountRule;
 
 impl Rule for SeparatorCountRule {
-    fn id(&self) -> RuleId { RuleId("E003") }
-    fn name(&self) -> &'static str { "separator-count" }
-    fn default_severity(&self) -> Severity { Severity::Fix }
+    fn id(&self) -> RuleId {
+        RuleId("E003")
+    }
+    fn name(&self) -> &'static str {
+        "separator-count"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
 
     fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // TODO: wire raw source text into rule context so we can inspect
@@ -180,14 +219,24 @@ impl Rule for SeparatorCountRule {
 struct DeclassifyInBannerRule;
 
 impl Rule for DeclassifyInBannerRule {
-    fn id(&self) -> RuleId { RuleId("E006") }
-    fn name(&self) -> &'static str { "declassify-in-banner" }
-    fn default_severity(&self) -> Severity { Severity::Fix }
+    fn id(&self) -> RuleId {
+        RuleId("E006")
+    }
+    fn name(&self) -> &'static str {
+        "declassify-in-banner"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_core::span::MarkingType;
-        if ctx.marking_type != MarkingType::Banner { return vec![]; }
-        if attrs.declassify_on.is_none() { return vec![]; }
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+        if attrs.declassify_on.is_none() {
+            return vec![];
+        }
 
         vec![Diagnostic {
             rule: self.id(),
@@ -206,6 +255,7 @@ impl Rule for DeclassifyInBannerRule {
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn make_fix_diagnostic(
     rule: RuleId,
     severity: Severity,

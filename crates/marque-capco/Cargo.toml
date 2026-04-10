@@ -1,6 +1,6 @@
 [package]
 name        = "marque-capco"
-description = "CAPCO rule implementations for marque, code-generated from ODNI ISM schemas"
+description = "CAPCO rule implementations for marque, consuming generated code from marque-ism"
 version.workspace     = true
 edition.workspace     = true
 license.workspace     = true
@@ -8,17 +8,12 @@ repository.workspace  = true
 rust-version.workspace = true
 
 [dependencies]
+marque-ism   = { workspace = true }
 marque-rules = { workspace = true }
-marque-core  = { workspace = true }
 phf          = { workspace = true }
 thiserror    = { workspace = true }
 aho-corasick = { workspace = true }
 
-[build-dependencies]
-quick-xml = { workspace = true }
-anyhow    = { workspace = true }
-
-# Schema version pinned here — bump intentionally when ODNI publishes updates.
-# Schemas live in schemas/ISM-v<version>/
-[package.metadata.marque]
-ism-schema-version = "2022-DEC"
+[dev-dependencies]
+insta             = { workspace = true }
+marque-test-utils = { workspace = true }

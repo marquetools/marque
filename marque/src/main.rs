@@ -7,11 +7,11 @@
 //!   marque metadata [files...]    report document metadata issues
 
 use clap::{Parser, Subcommand};
+use marque_capco::capco_rules;
+use marque_config::{self, Config};
+use marque_engine::Engine;
 use std::path::PathBuf;
 use std::process;
-use marque_engine::Engine;
-use marque_config::{self, Config};
-use marque_capco::capco_rules;
 
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
@@ -61,16 +61,13 @@ enum Command {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("MARQUE_LOG")
-                .unwrap_or_else(|_| "marque=info".to_owned())
-        )
+        .with_env_filter(std::env::var("MARQUE_LOG").unwrap_or_else(|_| "marque=info".to_owned()))
         .init();
 
     let cli = Cli::parse();
 
-    let config = marque_config::load(std::env::current_dir().unwrap().as_path())
-        .unwrap_or_else(|e| {
+    let config =
+        marque_config::load(std::env::current_dir().unwrap().as_path()).unwrap_or_else(|e| {
             eprintln!("warning: could not load config: {e}");
             Config::default()
         });
@@ -79,7 +76,11 @@ async fn main() {
 
     let exit_code = match cli.command {
         Command::Check { files, format } => run_check(&engine, &files, &format),
-        Command::Fix { files, dry_run, confidence } => run_fix(&engine, &files, dry_run, confidence),
+        Command::Fix {
+            files,
+            dry_run,
+            confidence,
+        } => run_fix(&engine, &files, dry_run, confidence),
         Command::Metadata { files, strip } => run_metadata(&files, strip).await,
     };
 
@@ -107,7 +108,7 @@ fn run_check(engine: &Engine, files: &[PathBuf], format: &str) -> i32 {
 
         match format {
             "json" => print_json_diagnostics(path, &result),
-            _      => print_text_diagnostics(path, &result),
+            _ => print_text_diagnostics(path, &result),
         }
     }
 
@@ -159,7 +160,7 @@ async fn run_metadata(_files: &[PathBuf], _strip: bool) -> i32 {
     0
 }
 
-fn print_text_diagnostics(path: &PathBuf, result: &marque_engine::LintResult) {
+fn print_text_diagnostics(path: &std::path::Path, result: &marque_engine::LintResult) {
     for diag in &result.diagnostics {
         println!(
             "{}:{}:{} [{}] {}",
@@ -179,7 +180,7 @@ fn print_text_diagnostics(path: &PathBuf, result: &marque_engine::LintResult) {
     }
 }
 
-fn print_json_diagnostics(path: &PathBuf, result: &marque_engine::LintResult) {
+fn print_json_diagnostics(path: &std::path::Path, result: &marque_engine::LintResult) {
     let json = serde_json::json!({
         "file": path.display().to_string(),
         "diagnostics": result.diagnostics.iter().map(|d| serde_json::json!({

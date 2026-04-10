@@ -8,10 +8,10 @@ repository.workspace  = true
 rust-version.workspace = true
 
 [dependencies]
-marque-core = { workspace = true }
+marque-ism  = { workspace = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true, optional = true }
 
 [features]
 default = []
-serde   = ["dep:serde", "marque-core/serde"]
+serde   = ["dep:serde", "marque-ism/serde"]

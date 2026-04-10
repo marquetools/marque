@@ -4,10 +4,10 @@
 //! It has no rule implementations — those live in `marque-capco` and future crates.
 //! The engine depends only on this crate, enabling rule crates to be swapped.
 
+use marque_ism::{IsmAttributes, Span};
 use std::time::SystemTime;
-use marque_core::{IsmAttributes, Span};
 
-pub use marque_core::span::{DocumentPosition, MarkingType, Zone};
+pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 
 /// Document position context passed to rules alongside parsed markings.
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ pub struct RuleContext {
 }
 
 /// Unique rule identifier string (e.g., "E001", "capco/banner-abbreviation").
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleId(pub &'static str);
 
 impl std::fmt::Display for RuleId {

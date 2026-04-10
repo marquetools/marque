@@ -3,9 +3,9 @@
 //! TODO: wire Kreuzberg once crate dependency is confirmed.
 //! Current implementation is a stub that reads raw text files only.
 
+use crate::metadata::MetadataReport;
 use std::path::Path;
 use thiserror::Error;
-use crate::metadata::MetadataReport;
 
 #[derive(Debug, Error)]
 pub enum ExtractError {
@@ -60,7 +60,7 @@ impl Extractor {
     /// Extract text (and optionally metadata) from a file.
     pub async fn extract(
         path: &Path,
-        opts: ExtractionOptions,
+        _opts: ExtractionOptions,
     ) -> Result<ExtractedDocument, ExtractError> {
         // TODO: delegate to Kreuzberg for full format support.
         // Stub: read raw bytes and return as-is for plain text.

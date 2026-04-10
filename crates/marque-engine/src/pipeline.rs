@@ -6,7 +6,7 @@
 //! Each stage is a `Stream`. Middleware inserts between stages.
 //! This module defines the stage types; full async streaming implementation is TODO.
 
-use marque_core::span::Candidate;
+use marque_ism::Candidate;
 use marque_rules::Diagnostic;
 
 /// A chunk of source text with its byte offset in the original document.

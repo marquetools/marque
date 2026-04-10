@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "marque",
+    "crates/marque-ism",
     "crates/marque-core",
     "crates/marque-rules",
     "crates/marque-capco",
@@ -9,6 +10,7 @@ members = [
     "crates/marque-config",
     "crates/marque-wasm",
     "crates/marque-server",
+    "crates/marque-test-utils",
 ]
 resolver = "2"
 
@@ -21,12 +23,14 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 # Internal crates
+marque-ism     = { path = "crates/marque-ism" }
 marque-core    = { path = "crates/marque-core" }
 marque-rules   = { path = "crates/marque-rules" }
 marque-capco   = { path = "crates/marque-capco" }
 marque-engine  = { path = "crates/marque-engine" }
-marque-extract = { path = "crates/marque-extract" }
-marque-config  = { path = "crates/marque-config" }
+marque-extract    = { path = "crates/marque-extract" }
+marque-config     = { path = "crates/marque-config" }
+marque-test-utils = { path = "crates/marque-test-utils" }
 
 # Async
 tokio        = { version = "1", features = ["full"] }
@@ -60,8 +64,14 @@ phf = { version = "0.11", features = ["macros"] }
 # Batch processing utilities (concurrency control, fingerprinting)
 recoco-utils = { version = "0.2.1", default-features = false, features = ["concur_control", "fingerprint"] }
 
-# Build-time XML parsing (marque-capco build.rs)
+# Build-time XML parsing (marque-ism build.rs)
 quick-xml = "0.37"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Snapshot testing
+insta = { version = "1", features = ["json"] }
 
 # WASM
 wasm-bindgen      = "0.2"

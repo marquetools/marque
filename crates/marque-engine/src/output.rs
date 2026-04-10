@@ -15,24 +15,34 @@ impl LintResult {
 
     pub fn error_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Error).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count()
     }
 
     pub fn warn_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Warn).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warn)
+            .count()
     }
 
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
-        self.diagnostics.iter().filter(|d| d.severity == Severity::Fix).count()
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Fix)
+            .count()
     }
 }
 
 /// Result of a fix pass — modified source and audit trail.
 #[derive(Debug)]
 pub struct FixResult {
-    /// Fixed source bytes (UTF-8).
+    /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
+    /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     pub source: Vec<u8>,
     /// Audit records for every fix that was applied.
     pub applied: Vec<AuditRecord>,

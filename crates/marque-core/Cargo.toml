@@ -8,6 +8,7 @@ repository.workspace  = true
 rust-version.workspace = true
 
 [dependencies]
+marque-ism   = { workspace = true }
 thiserror    = { workspace = true }
 memchr       = { workspace = true }
 aho-corasick = { workspace = true }
