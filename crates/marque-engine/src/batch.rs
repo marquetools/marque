@@ -29,7 +29,10 @@
 //!
 //! let mut results = batch.lint_many(docs);
 //! while let Some((id, result)) = results.next().await {
-//!     println!("{id}: {} diagnostics", result.diagnostics.len());
+//!     match result {
+//!         Ok(lint) => println!("{id}: {} diagnostics", lint.diagnostics.len()),
+//!         Err(e) => eprintln!("{id}: failed: {e}"),
+//!     }
 //! }
 //! # }
 //! ```
@@ -41,6 +44,71 @@ use recoco_utils::concur_control::{ConcurrencyController, Options as ConcurOptio
 
 use crate::{Engine, FixResult, LintResult};
 
+/// Error returned when a single document in a batch fails to process.
+///
+/// Batch APIs surface this per-document so a panic or cancellation in one
+/// document does not abort the entire batch run.
+#[derive(Debug)]
+pub enum BatchError {
+    /// The blocking lint/fix task panicked or was cancelled.
+    TaskFailed(tokio::task::JoinError),
+}
+
+impl BatchError {
+    /// Returns `true` if the error was caused by a panic in the worker task.
+    ///
+    /// CI pipelines and supervisors should treat this as an application bug
+    /// that warrants investigation (not a transient infrastructure issue).
+    pub fn is_panic(&self) -> bool {
+        match self {
+            Self::TaskFailed(e) => e.is_panic(),
+        }
+    }
+
+    /// Returns `true` if the error was caused by task cancellation (e.g.,
+    /// runtime shutdown, explicit abort).
+    ///
+    /// Cancellation is an expected operational event — callers that see
+    /// this during a graceful shutdown should typically log-and-continue,
+    /// not alert.
+    pub fn is_cancelled(&self) -> bool {
+        match self {
+            Self::TaskFailed(e) => e.is_cancelled(),
+        }
+    }
+}
+
+impl std::fmt::Display for BatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TaskFailed(e) => {
+                let kind = if e.is_panic() {
+                    "panicked"
+                } else if e.is_cancelled() {
+                    "was cancelled"
+                } else {
+                    "failed"
+                };
+                write!(f, "batch task {kind}: {e}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for BatchError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TaskFailed(e) => Some(e),
+        }
+    }
+}
+
+impl From<tokio::task::JoinError> for BatchError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Self::TaskFailed(e)
+    }
+}
+
 /// Concurrency limits for batch processing.
 ///
 /// Both limits are optional and independent. When both are set the more
@@ -48,8 +116,17 @@ use crate::{Engine, FixResult, LintResult};
 pub struct BatchOptions {
     /// Maximum documents in-flight simultaneously.
     ///
-    /// Also used as the `buffer_unordered` cap, so this controls how many
-    /// futures are created ahead of being polled. Defaults to 32.
+    /// This field drives **two** independent limits that both happen to
+    /// share this value:
+    ///
+    /// 1. `ConcurrencyController::max_inflight_rows` — the semaphore that
+    ///    rate-limits how many documents can hold permits at the same time.
+    /// 2. `buffer_unordered` cap — how many per-document futures are
+    ///    created and polled ahead of readiness.
+    ///
+    /// In practice they are always set together: the effective maximum is
+    /// the minimum of whichever blocks first for a given workload.
+    /// Defaults to 32.
     pub max_concurrent_docs: Option<usize>,
 
     /// Maximum total bytes of document content in-flight simultaneously.
@@ -92,11 +169,13 @@ impl BatchEngine {
         }
     }
 
-    /// Lint many documents concurrently; yields `(id, LintResult)` in completion order.
+    /// Lint many documents concurrently. Yields `(id, Result)` in
+    /// completion order; an `Err` indicates the per-document task panicked
+    /// or was cancelled — it does not abort the batch.
     pub fn lint_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
-    ) -> impl Stream<Item = (String, LintResult)> {
+    ) -> impl Stream<Item = (String, Result<LintResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
         let concurrent = self.concurrent;
@@ -113,18 +192,20 @@ impl BatchEngine {
                         .expect("ConcurrencyController semaphore unexpectedly closed");
                     let result = tokio::task::spawn_blocking(move || engine.lint(&data))
                         .await
-                        .expect("lint task panicked");
+                        .map_err(BatchError::from);
                     (id, result)
                 }
             })
             .buffer_unordered(concurrent)
     }
 
-    /// Fix many documents concurrently; yields `(id, FixResult)` in completion order.
+    /// Fix many documents concurrently. Yields `(id, Result)` in
+    /// completion order; an `Err` indicates the per-document task panicked
+    /// or was cancelled — it does not abort the batch.
     pub fn fix_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
-    ) -> impl Stream<Item = (String, FixResult)> {
+    ) -> impl Stream<Item = (String, Result<FixResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
         let concurrent = self.concurrent;
@@ -139,9 +220,11 @@ impl BatchEngine {
                         .acquire(Some(|| byte_len))
                         .await
                         .expect("ConcurrencyController semaphore unexpectedly closed");
-                    let result = tokio::task::spawn_blocking(move || engine.fix(&data))
-                        .await
-                        .expect("fix task panicked");
+                    let result = tokio::task::spawn_blocking(move || {
+                        engine.fix(&data, crate::FixMode::Apply)
+                    })
+                    .await
+                    .map_err(BatchError::from);
                     (id, result)
                 }
             })

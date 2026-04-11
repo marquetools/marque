@@ -16,7 +16,6 @@ use axum::{
     routing::{get, post},
 };
 use marque_capco::capco_rules;
-use marque_config::Config;
 use marque_engine::Engine;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -70,7 +69,10 @@ struct FixJson {
 #[derive(Deserialize)]
 struct FixRequest {
     text: String,
-    #[allow(dead_code)]
+    /// Optional per-request override of the engine's confidence threshold.
+    /// When `None`, the engine uses its configured value. When `Some`, the
+    /// value is validated against `[0.0, 1.0]` and a 422 is returned on
+    /// invalid input.
     confidence_threshold: Option<f32>,
 }
 
@@ -113,12 +115,12 @@ async fn lint_handler(
         .iter()
         .map(|d| DiagnosticJson {
             rule_id: d.rule.to_string(),
-            severity: format!("{:?}", d.severity),
-            message: d.message.clone(),
+            severity: d.severity.to_string(),
+            message: d.message.to_string(),
             start: d.span.start,
             end: d.span.end,
             fix: d.fix.as_ref().map(|f| FixJson {
-                replacement: f.replacement.clone(),
+                replacement: f.replacement.to_string(),
                 confidence: f.confidence,
                 migration_ref: f.migration_ref.map(str::to_owned),
             }),
@@ -137,7 +139,14 @@ async fn fix_handler(
     State(state): State<AppState>,
     Json(req): Json<FixRequest>,
 ) -> Result<Json<FixResponse>, StatusCode> {
-    let result = state.engine.fix(req.text.as_bytes());
+    let result = state
+        .engine
+        .fix_with_threshold(
+            req.text.as_bytes(),
+            marque_engine::FixMode::Apply,
+            req.confidence_threshold,
+        )
+        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
     let fixed = String::from_utf8(result.source).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     Ok(Json(FixResponse {
@@ -155,7 +164,24 @@ async fn fix_handler(
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let config = Config::default();
+    // H-1: load the real layered config so the server honors `.marque.toml`,
+    // `MARQUE_CONFIDENCE_THRESHOLD`, `MARQUE_CLASSIFIER_ID`, and — most
+    // importantly — runs the FR-011 schema-version hard-fail validator.
+    let cwd = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: cannot determine working directory: {e}");
+            std::process::exit(74); // EX_IOERR per contracts/cli.md
+        }
+    };
+    let config = match marque_config::load(&cwd) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: failed to load configuration: {e}");
+            std::process::exit(e.exit_code());
+        }
+    };
+
     let engine = Engine::new(config, vec![Box::new(capco_rules())]);
     let state = AppState {
         engine: Arc::new(engine),

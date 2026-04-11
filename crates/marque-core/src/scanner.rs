@@ -1,7 +1,7 @@
 //! Phase 1: candidate detection — finds potential classification markings in a byte buffer.
 //!
 //! Uses `memchr` for SIMD-accelerated boundary detection. Zero heap allocation
-//! beyond the output `Vec<Candidate>`. Never invokes the parser.
+//! beyond the output `Vec<MarkingCandidate>`. Never invokes the parser.
 //!
 //! # Strategy
 //! - Portion candidates: scan for `(` with `memchr`, walk to `)`, apply
@@ -10,7 +10,7 @@
 //!   known classification prefix (UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP SECRET).
 //! - CAB candidates: scan for "Classified By:" label, walk to end of block.
 
-use marque_ism::span::{Candidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use memchr::memchr_iter;
 
 /// Phase 1 scanner. Stateless; call [`Scanner::scan`] on any byte buffer.
@@ -21,7 +21,7 @@ impl Scanner {
     ///
     /// Returns candidates in source order. Allocation is proportional to
     /// the number of candidates found, not source length.
-    pub fn scan(source: &[u8]) -> Vec<Candidate> {
+    pub fn scan(source: &[u8]) -> Vec<MarkingCandidate> {
         let mut candidates = Vec::new();
 
         Self::scan_portions(source, &mut candidates);
@@ -33,14 +33,14 @@ impl Scanner {
         candidates
     }
 
-    fn scan_portions(source: &[u8], out: &mut Vec<Candidate>) {
+    fn scan_portions(source: &[u8], out: &mut Vec<MarkingCandidate>) {
         // Find every `(` and walk forward to the matching `)`.
         for start in memchr_iter(b'(', source) {
             if let Some(end) = find_portion_end(source, start) {
                 let span = Span::new(start, end + 1);
                 // Heuristic gate: minimum length `(U)` = 3, max reasonable = 256
                 if span.len() >= 3 && span.len() <= 256 {
-                    out.push(Candidate {
+                    out.push(MarkingCandidate {
                         span,
                         kind: MarkingType::Portion,
                     });
@@ -49,7 +49,7 @@ impl Scanner {
         }
     }
 
-    fn scan_banners(source: &[u8], out: &mut Vec<Candidate>) {
+    fn scan_banners(source: &[u8], out: &mut Vec<MarkingCandidate>) {
         // Classification prefixes that can start a banner line (full-word form only).
         const BANNER_PREFIXES: &[&[u8]] =
             &[b"TOP SECRET", b"SECRET", b"CONFIDENTIAL", b"UNCLASSIFIED"];
@@ -61,7 +61,7 @@ impl Scanner {
                 // within `source`. Subtraction yields the byte offset safely.
                 let start = line.as_ptr() as usize - source.as_ptr() as usize;
                 let end = start + line.len();
-                out.push(Candidate {
+                out.push(MarkingCandidate {
                     span: Span::new(start, end),
                     kind: MarkingType::Banner,
                 });
@@ -69,13 +69,13 @@ impl Scanner {
         }
     }
 
-    fn scan_cab(source: &[u8], out: &mut Vec<Candidate>) {
+    fn scan_cab(source: &[u8], out: &mut Vec<MarkingCandidate>) {
         const CAB_LABEL: &[u8] = b"Classified By:";
         let mut search_from = 0;
         while let Some(rel) = find_subsequence(&source[search_from..], CAB_LABEL) {
             let pos = search_from + rel;
             let end = find_cab_end(source, pos);
-            out.push(Candidate {
+            out.push(MarkingCandidate {
                 span: Span::new(pos, end),
                 kind: MarkingType::Cab,
             });

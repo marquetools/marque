@@ -1,28 +1,124 @@
 //! marque-config — layered configuration loading.
 //!
 //! Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `.marque.toml`
+//!
+//! # Hard-fail validators (T023)
+//!
+//! The loader refuses to produce a `Config` if any of these conditions hold:
+//! - `.marque.toml` contains a `[user]` section (FR-010, SC-006) → exit 65
+//! - `[capco] version` mismatches `marque_ism::SCHEMA_VERSION` (FR-011) → exit 65
+//! - `confidence_threshold` outside `[0.0, 1.0]` → exit 65
 
+use marque_rules::Severity;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+/// Exit code 65 (`EX_DATAERR`) per `contracts/cli.md`.
+pub const EX_DATAERR: i32 = 65;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("failed to read config file {path}: {source}")]
-    ReadError { path: PathBuf, source: std::io::Error },
+    ReadError {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 
     #[error("failed to parse config: {0}")]
     ParseError(#[from] toml::de::Error),
+
+    /// `.marque.toml` contains a `[user]` section (FR-010, SC-006).
+    #[error(
+        "committed config file {path} contains a [user] section — classifier identity \
+         must live only in .marque.local.toml or env vars (FR-010)"
+    )]
+    UserSectionInCommitted { path: PathBuf },
+
+    /// Schema version in config doesn't match compiled schema.
+    #[error(
+        "schema version mismatch: config says {config_version:?} but marque was compiled \
+         against {compiled_version:?} (FR-011). Update [capco] version in .marque.toml."
+    )]
+    SchemaVersionMismatch {
+        config_version: String,
+        compiled_version: &'static str,
+    },
+
+    /// Confidence threshold out of range.
+    #[error("confidence_threshold {value} is outside [0.0, 1.0]")]
+    ThresholdOutOfRange { value: f32 },
+
+    /// Environment variable could not be parsed into the expected type.
+    #[error("environment variable {var} has invalid value {raw:?}: {reason}")]
+    InvalidEnvVar {
+        var: &'static str,
+        raw: String,
+        reason: &'static str,
+    },
+
+    /// Rule severity string in config is not one of the recognized values.
+    #[error(
+        "rule {rule:?} has unrecognized severity {value:?} — expected one of \
+         \"off\", \"warn\", \"error\", \"fix\""
+    )]
+    UnknownSeverity { rule: String, value: String },
+}
+
+impl ConfigError {
+    /// Returns the exit code for this error per `contracts/cli.md`.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::ReadError { .. } => 74, // EX_IOERR
+            Self::ParseError(_) => EX_DATAERR,
+            Self::UserSectionInCommitted { .. } => EX_DATAERR,
+            Self::SchemaVersionMismatch { .. } => EX_DATAERR,
+            Self::ThresholdOutOfRange { .. } => EX_DATAERR,
+            Self::InvalidEnvVar { .. } => EX_DATAERR,
+            Self::UnknownSeverity { .. } => EX_DATAERR,
+        }
+    }
 }
 
 /// Resolved, merged configuration ready for engine use.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub user: UserConfig,
     pub rules: RuleConfig,
     pub corrections: HashMap<String, String>,
     pub capco: CapcoConfig,
+    /// Fix confidence threshold. Fixes with confidence >= this value are auto-applied.
+    /// Default: 0.95 per spec.
+    confidence_threshold: f32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            user: UserConfig::default(),
+            rules: RuleConfig::default(),
+            corrections: HashMap::new(),
+            capco: CapcoConfig::default(),
+            confidence_threshold: 0.95,
+        }
+    }
+}
+
+impl Config {
+    /// Returns the confidence threshold for auto-applying fixes.
+    pub fn confidence_threshold(&self) -> f32 {
+        self.confidence_threshold
+    }
+
+    /// Set confidence threshold (validated at load time).
+    pub fn set_confidence_threshold(&mut self, value: f32) -> Result<(), ConfigError> {
+        if !(0.0..=1.0).contains(&value) || value.is_nan() {
+            return Err(ConfigError::ThresholdOutOfRange { value });
+        }
+        self.confidence_threshold = value;
+        Ok(())
+    }
 }
 
 /// User identity — always from local config, never committed.
@@ -44,13 +140,15 @@ pub struct RuleConfig {
 /// CAPCO-specific configuration.
 #[derive(Debug, Clone)]
 pub struct CapcoConfig {
-    /// Pinned ISM schema version. Must match the compiled marque-capco version.
+    /// Pinned ISM schema version. Must match the compiled marque-ism version.
     pub version: String,
 }
 
 impl Default for CapcoConfig {
     fn default() -> Self {
-        Self { version: "2022-DEC".to_owned() }
+        Self {
+            version: marque_ism::generated::values::SCHEMA_VERSION.to_owned(),
+        }
     }
 }
 
@@ -61,13 +159,15 @@ impl Default for CapcoConfig {
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct ConfigFile {
     #[serde(default)]
-    user: UserConfigFile,
+    user: Option<UserConfigFile>,
     #[serde(default)]
     rules: HashMap<String, String>,
     #[serde(default)]
     corrections: HashMap<String, String>,
     #[serde(default)]
     capco: CapcoConfigFile,
+    #[serde(default)]
+    confidence_threshold: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -90,54 +190,252 @@ struct CapcoConfigFile {
 /// Load and merge configuration from standard locations.
 ///
 /// Search order (first found wins for each layer):
-/// 1. `.marque.toml` in current directory or any parent
+/// 1. `.marque.toml` in current directory (committed, project policy)
 /// 2. `.marque.local.toml` alongside the project config (user-specific, gitignored)
+/// 3. Environment variables (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`, `MARQUE_LOG`)
+///
+/// Hard-fail validators run after merging all layers.
 pub fn load(project_root: &std::path::Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
     // Layer 1: project config
     let project_config = project_root.join(".marque.toml");
     if project_config.exists() {
-        let raw = std::fs::read_to_string(&project_config)
-            .map_err(|e| ConfigError::ReadError { path: project_config.clone(), source: e })?;
+        let raw = std::fs::read_to_string(&project_config).map_err(|e| ConfigError::ReadError {
+            path: project_config.clone(),
+            source: e,
+        })?;
         let file: ConfigFile = toml::from_str(&raw)?;
-        merge_file_into(&mut config, file);
+
+        // T023: refuse [user] section in committed config (FR-010, SC-006)
+        if file.user.is_some() {
+            return Err(ConfigError::UserSectionInCommitted {
+                path: project_config,
+            });
+        }
+
+        merge_project_into(&mut config, file)?;
     }
 
     // Layer 2: user-local config (gitignored)
     let local_config = project_root.join(".marque.local.toml");
     if local_config.exists() {
-        let raw = std::fs::read_to_string(&local_config)
-            .map_err(|e| ConfigError::ReadError { path: local_config.clone(), source: e })?;
+        let raw = std::fs::read_to_string(&local_config).map_err(|e| ConfigError::ReadError {
+            path: local_config.clone(),
+            source: e,
+        })?;
         let file: ConfigFile = toml::from_str(&raw)?;
         merge_user_into(&mut config, file);
     }
 
     // Layer 3: environment variables
-    apply_env(&mut config);
+    apply_env(&mut config)?;
+
+    // T023: validate schema version (FR-011)
+    validate_schema_version(&config)?;
 
     Ok(config)
 }
 
-fn merge_file_into(config: &mut Config, file: ConfigFile) {
+fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
+    // H-6: validate every severity override at load time. A typo like
+    // `banner-abbreviation = "err"` must fail loudly, not silently fall back
+    // to the rule default.
+    for (rule, value) in &file.rules {
+        if Severity::parse_config(value).is_none() {
+            return Err(ConfigError::UnknownSeverity {
+                rule: rule.clone(),
+                value: value.clone(),
+            });
+        }
+    }
     config.rules.overrides.extend(file.rules);
     config.corrections.extend(file.corrections);
     if let Some(v) = file.capco.version {
         config.capco.version = v;
     }
+    if let Some(threshold) = file.confidence_threshold {
+        config.set_confidence_threshold(threshold)?;
+    }
+    Ok(())
 }
 
 fn merge_user_into(config: &mut Config, file: ConfigFile) {
-    config.user.classifier_id = file.user.classifier_id.or(config.user.classifier_id.take());
-    config.user.classification_authority =
-        file.user.classification_authority.or(config.user.classification_authority.take());
-    config.user.default_reason = file.user.default_reason.or(config.user.default_reason.take());
-    config.user.derived_from_default =
-        file.user.derived_from_default.or(config.user.derived_from_default.take());
+    // L-2: an empty string is semantically equivalent to "not set". Without
+    // this guard, a .marque.local.toml entry of `classifier_id = ""` would
+    // silently overwrite a populated value from another layer with an empty
+    // string. For a security tool where classifier identity ends up in the
+    // audit record, that is a meaningful correctness hole.
+    fn non_empty(s: Option<String>) -> Option<String> {
+        s.filter(|v| !v.trim().is_empty())
+    }
+
+    if let Some(user) = file.user {
+        if let Some(v) = non_empty(user.classifier_id) {
+            config.user.classifier_id = Some(v);
+        }
+        if let Some(v) = non_empty(user.classification_authority) {
+            config.user.classification_authority = Some(v);
+        }
+        if let Some(v) = non_empty(user.default_reason) {
+            config.user.default_reason = Some(v);
+        }
+        if let Some(v) = non_empty(user.derived_from_default) {
+            config.user.derived_from_default = Some(v);
+        }
+    }
 }
 
-fn apply_env(config: &mut Config) {
+fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     if let Ok(id) = std::env::var("MARQUE_CLASSIFIER_ID") {
         config.user.classifier_id = Some(id);
+    }
+    // C-2: propagate parse failures. `MARQUE_CONFIDENCE_THRESHOLD=0.9o` must
+    // hard-fail, not silently apply the default.
+    if let Ok(raw) = std::env::var("MARQUE_CONFIDENCE_THRESHOLD") {
+        let threshold = raw.parse::<f32>().map_err(|_| ConfigError::InvalidEnvVar {
+            var: "MARQUE_CONFIDENCE_THRESHOLD",
+            raw: raw.clone(),
+            reason: "expected a floating-point number in [0.0, 1.0]",
+        })?;
+        config.set_confidence_threshold(threshold)?;
+    }
+    // MARQUE_LOG is handled by the tracing subscriber, not by config loading.
+    Ok(())
+}
+
+/// T023: validate schema version matches compiled marque-ism (FR-011).
+///
+/// Exact match required — the config must use the canonical form (e.g., "ISM-v2022-DEC").
+fn validate_schema_version(config: &Config) -> Result<(), ConfigError> {
+    let compiled = marque_ism::generated::values::SCHEMA_VERSION;
+    let config_ver = &config.capco.version;
+
+    if config_ver != compiled {
+        return Err(ConfigError::SchemaVersionMismatch {
+            config_version: config_ver.clone(),
+            compiled_version: compiled,
+        });
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_file_with_rules(rules: &[(&str, &str)]) -> ConfigFile {
+        let mut file = ConfigFile::default();
+        for (k, v) in rules {
+            file.rules.insert((*k).to_owned(), (*v).to_owned());
+        }
+        file
+    }
+
+    #[test]
+    fn set_confidence_threshold_accepts_boundaries() {
+        let mut c = Config::default();
+        assert!(c.set_confidence_threshold(0.0).is_ok());
+        assert!(c.set_confidence_threshold(1.0).is_ok());
+        assert!(c.set_confidence_threshold(0.5).is_ok());
+    }
+
+    #[test]
+    fn set_confidence_threshold_rejects_out_of_range() {
+        let mut c = Config::default();
+        assert!(matches!(
+            c.set_confidence_threshold(-0.1),
+            Err(ConfigError::ThresholdOutOfRange { .. })
+        ));
+        assert!(matches!(
+            c.set_confidence_threshold(1.1),
+            Err(ConfigError::ThresholdOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn set_confidence_threshold_rejects_nan() {
+        let mut c = Config::default();
+        assert!(matches!(
+            c.set_confidence_threshold(f32::NAN),
+            Err(ConfigError::ThresholdOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn merge_project_accepts_valid_severity_strings() {
+        let mut c = Config::default();
+        let file = config_file_with_rules(&[
+            ("E001", "fix"),
+            ("E002", "warn"),
+            ("E003", "error"),
+            ("E004", "off"),
+        ]);
+        assert!(merge_project_into(&mut c, file).is_ok());
+        assert_eq!(c.rules.overrides.len(), 4);
+    }
+
+    #[test]
+    fn merge_project_rejects_unknown_severity() {
+        let mut c = Config::default();
+        let file = config_file_with_rules(&[("E001", "err")]);
+        let err = merge_project_into(&mut c, file).unwrap_err();
+        match err {
+            ConfigError::UnknownSeverity { rule, value } => {
+                assert_eq!(rule, "E001");
+                assert_eq!(value, "err");
+            }
+            other => panic!("expected UnknownSeverity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn merge_project_rejects_severity_is_case_sensitive() {
+        // Severity::parse_config is case-sensitive by design — uppercase must fail.
+        let mut c = Config::default();
+        let file = config_file_with_rules(&[("E001", "FIX")]);
+        assert!(matches!(
+            merge_project_into(&mut c, file),
+            Err(ConfigError::UnknownSeverity { .. })
+        ));
+    }
+
+    #[test]
+    fn merge_project_rejects_empty_severity() {
+        let mut c = Config::default();
+        let file = config_file_with_rules(&[("E001", "")]);
+        assert!(matches!(
+            merge_project_into(&mut c, file),
+            Err(ConfigError::UnknownSeverity { .. })
+        ));
+    }
+
+    #[test]
+    fn exit_code_matches_contract() {
+        assert_eq!(
+            ConfigError::ThresholdOutOfRange { value: 2.0 }.exit_code(),
+            EX_DATAERR
+        );
+        assert_eq!(
+            ConfigError::UnknownSeverity {
+                rule: "E001".into(),
+                value: "err".into(),
+            }
+            .exit_code(),
+            EX_DATAERR
+        );
+        assert_eq!(
+            ConfigError::InvalidEnvVar {
+                var: "MARQUE_CONFIDENCE_THRESHOLD",
+                raw: "bananas".into(),
+                reason: "not a float",
+            }
+            .exit_code(),
+            EX_DATAERR
+        );
     }
 }

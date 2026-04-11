@@ -4,10 +4,22 @@
 //! to detect violations, then produces enriched diagnostics with fixes and confidence.
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
+//! Assignments per spec tasks.md:
+//!   E001 = banner abbreviation (T030)
+//!   E002 = REL TO missing USA trigraph (T031)
+//!   E003 = misordered banner blocks (T032, Phase 3)
+//!   E004 = separator-count normalization (T033)
+//!   E005 = declassification in banner (T034)
+//!   E006 = deprecated dissem control (T035, Phase 3)
+//!   E007 = X-shorthand declass date (T036, Phase 3)
+//!   E008 = unrecognized token (T037, Phase 3)
+//!   W001 = deprecated marking warning (T038, Phase 3)
+//!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::{IsmAttributes, Span};
-use marque_rules::{AuditRecord, Diagnostic, Fix, Rule, RuleContext, RuleId, RuleSet, Severity};
-use std::time::SystemTime;
+use marque_rules::{
+    Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
+};
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
 pub struct CapcoRuleSet {
@@ -26,7 +38,6 @@ impl CapcoRuleSet {
             rules: vec![
                 Box::new(BannerAbbreviationRule),
                 Box::new(MissingUsaTrigraphRule),
-                Box::new(UsaTrigraphOrderRule),
                 Box::new(SeparatorCountRule),
                 Box::new(DeclassifyInBannerRule),
             ],
@@ -53,7 +64,7 @@ struct BannerAbbreviationRule;
 
 impl Rule for BannerAbbreviationRule {
     fn id(&self) -> RuleId {
-        RuleId("E001")
+        RuleId::new("E001")
     }
     fn name(&self) -> &'static str {
         "banner-abbreviation"
@@ -67,20 +78,23 @@ impl Rule for BannerAbbreviationRule {
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
         }
-        // Check dissem controls for portion-form abbreviations in banner context.
         let mut diagnostics = Vec::new();
         for control in attrs.dissem_controls.iter() {
             if let Some(full) = expand_dissem_abbreviation(control) {
-                diagnostics.push(make_fix_diagnostic(
-                    self.id(),
-                    self.default_severity(),
-                    Span::new(0, 0), // TODO: wire actual span from parsed marking
-                    format!("banner uses abbreviated dissem control {control:?}; use {full:?}"),
-                    control.clone(),
-                    full.to_owned(),
-                    1.0,
-                    Some("CAPCO-2023-§3.2"),
-                ));
+                let abbrev = control.as_str().to_owned();
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    span: Span::new(0, 0), // TODO: wire actual span (Phase 3)
+                    message: format!(
+                        "banner uses abbreviated dissem control {abbrev:?}; use {full:?}"
+                    ),
+                    citation: "CAPCO-ISM-v2022-DEC-§3.2",
+                    original: abbrev,
+                    replacement: full.to_owned(),
+                    confidence: 1.0,
+                    migration_ref: Some("CAPCO-2023-§3.2"),
+                }));
             }
         }
         diagnostics
@@ -88,8 +102,8 @@ impl Rule for BannerAbbreviationRule {
 }
 
 /// Expand known portion-form abbreviations to their full banner forms.
-fn expand_dissem_abbreviation(s: &str) -> Option<&'static str> {
-    match s {
+fn expand_dissem_abbreviation(control: &marque_ism::DissemControl) -> Option<&'static str> {
+    match control.as_str() {
         "NF" => Some("NOFORN"),
         "OC" => Some("ORCON"),
         "IMC" => Some("IMCON"),
@@ -99,14 +113,14 @@ fn expand_dissem_abbreviation(s: &str) -> Option<&'static str> {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E004 — Missing USA in REL TO trigraph list
+// Rule: E002 — Missing USA in REL TO trigraph list
 // ---------------------------------------------------------------------------
 
 struct MissingUsaTrigraphRule;
 
 impl Rule for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {
-        RuleId("E004")
+        RuleId::new("E002")
     }
     fn name(&self) -> &'static str {
         "missing-usa-trigraph"
@@ -119,7 +133,14 @@ impl Rule for MissingUsaTrigraphRule {
         if attrs.rel_to.is_empty() {
             return vec![];
         }
-        if attrs.rel_to.contains(&marque_ism::Trigraph::USA) {
+
+        let has_usa = attrs.rel_to.contains(&marque_ism::Trigraph::USA);
+        let usa_first = attrs
+            .rel_to
+            .first()
+            .is_some_and(|t| *t == marque_ism::Trigraph::USA);
+
+        if has_usa && usa_first {
             return vec![];
         }
 
@@ -129,74 +150,45 @@ impl Rule for MissingUsaTrigraphRule {
             .map(|t| t.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        let fixed = format!("USA, {current}");
 
-        vec![make_fix_diagnostic(
-            self.id(),
-            self.default_severity(),
-            Span::new(0, 0),
-            "REL TO list missing required USA trigraph".to_owned(),
-            current,
-            fixed,
-            1.0,
-            Some("CAPCO-2023-§4.1"),
-        )]
+        // Build corrected list: USA first, then the rest in original order.
+        let mut fixed_parts: Vec<&str> = vec!["USA"];
+        for t in attrs.rel_to.iter() {
+            if *t != marque_ism::Trigraph::USA {
+                fixed_parts.push(t.as_str());
+            }
+        }
+        let fixed = fixed_parts.join(", ");
+
+        let message = if !has_usa {
+            "REL TO list missing required USA trigraph"
+        } else {
+            "USA must be the first trigraph in REL TO list"
+        };
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            span: Span::new(0, 0), // TODO: wire actual span (Phase 3)
+            message: message.to_owned(),
+            citation: "CAPCO-ISM-v2022-DEC-§4.1",
+            original: current,
+            replacement: fixed,
+            confidence: 0.97, // per spec T031
+            migration_ref: Some("CAPCO-2023-§4.1"),
+        })]
     }
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E005 — USA not first in REL TO list
-// ---------------------------------------------------------------------------
-
-struct UsaTrigraphOrderRule;
-
-impl Rule for UsaTrigraphOrderRule {
-    fn id(&self) -> RuleId {
-        RuleId("E005")
-    }
-    fn name(&self) -> &'static str {
-        "usa-trigraph-order"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if attrs.rel_to.len() < 2 {
-            return vec![];
-        }
-        let first = &attrs.rel_to[0];
-        if *first == marque_ism::Trigraph::USA {
-            return vec![];
-        }
-
-        let current: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
-        let mut fixed = current.clone();
-        fixed.retain(|&t| t != "USA");
-        fixed.insert(0, "USA");
-
-        vec![make_fix_diagnostic(
-            self.id(),
-            self.default_severity(),
-            Span::new(0, 0),
-            "USA must be the first trigraph in REL TO list".to_owned(),
-            current.join(", "),
-            fixed.join(", "),
-            1.0,
-            Some("CAPCO-2023-§4.1"),
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E003 — Wrong separator count (should always be exactly `//`)
+// Rule: E004 — Wrong separator count (should always be exactly `//`)
 // ---------------------------------------------------------------------------
 
 struct SeparatorCountRule;
 
 impl Rule for SeparatorCountRule {
     fn id(&self) -> RuleId {
-        RuleId("E003")
+        RuleId::new("E004")
     }
     fn name(&self) -> &'static str {
         "separator-count"
@@ -206,21 +198,21 @@ impl Rule for SeparatorCountRule {
     }
 
     fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        // TODO: wire raw source text into rule context so we can inspect
-        // literal separator characters. Currently IsmAttributes is post-parse.
+        // Requires raw source text in rule context — not available until Phase 3
+        // wires per-token spans. IsmAttributes is post-parse and discards separators.
         vec![]
     }
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E006 — Declassification marking in banner (should be in CAB)
+// Rule: E005 — Declassification marking in banner (should be in CAB)
 // ---------------------------------------------------------------------------
 
 struct DeclassifyInBannerRule;
 
 impl Rule for DeclassifyInBannerRule {
     fn id(&self) -> RuleId {
-        RuleId("E006")
+        RuleId::new("E005")
     }
     fn name(&self) -> &'static str {
         "declassify-in-banner"
@@ -238,16 +230,16 @@ impl Rule for DeclassifyInBannerRule {
             return vec![];
         }
 
-        vec![Diagnostic {
-            rule: self.id(),
-            severity: self.default_severity(),
-            span: Span::new(0, 0),
-            message: "declassification marking belongs in Classification Authority Block \
-                      (Declassify On:), not in the banner — remove from banner and add to CAB"
-                .to_owned(),
-            fix: None, // Fix requires document-level context (CAB presence/location);
-                       // engine handles this as a multi-span fix.
-        }]
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            Span::new(0, 0), // TODO: wire actual span (Phase 3)
+            "declassification marking belongs in Classification Authority Block \
+             (Declassify On:), not in the banner — remove from banner and add to CAB",
+            "CAPCO-ISM-v2022-DEC-§6.1",
+            None, // Fix requires document-level context (multi-span);
+                  // confidence 0.55 per T034 — suggestion only.
+        )]
     }
 }
 
@@ -255,35 +247,36 @@ impl Rule for DeclassifyInBannerRule {
 // Helpers
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
-fn make_fix_diagnostic(
+/// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
+/// positional helper signature so call sites read top-down by name.
+struct FixDiagnosticParams {
     rule: RuleId,
     severity: Severity,
     span: Span,
     message: String,
+    citation: &'static str,
     original: String,
     replacement: String,
     confidence: f32,
     migration_ref: Option<&'static str>,
-) -> Diagnostic {
-    Diagnostic {
-        rule: rule.clone(),
-        severity,
-        span,
-        message,
-        fix: Some(Fix {
-            span,
-            replacement: replacement.clone(),
-            confidence,
-            audit: AuditRecord {
-                rule,
-                original,
-                replacement,
-                confidence,
-                timestamp: SystemTime::now(),
-                classifier_id: None, // injected by engine from config
-            },
-            migration_ref,
-        }),
-    }
+}
+
+fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
+    let proposal = FixProposal::new(
+        p.rule.clone(),
+        FixSource::BuiltinRule,
+        p.span,
+        p.original,
+        p.replacement,
+        p.confidence,
+        p.migration_ref,
+    );
+    Diagnostic::new(
+        p.rule,
+        p.severity,
+        p.span,
+        p.message,
+        p.citation,
+        Some(proposal),
+    )
 }

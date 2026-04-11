@@ -2,12 +2,11 @@
 //!
 //! The automaton is built from all known CVE tokens at startup (via LazyLock)
 //! and injected into the parser as a `TokenSet` implementation.
-//!
-//! TODO: Migrate to build.rs-generated token list once CVE parsing is wired.
-//! Current implementation uses a hardcoded representative subset for scaffolding.
 
 use aho_corasick::AhoCorasick;
 use std::sync::LazyLock;
+
+use crate::generated::values;
 
 /// Minimal interface the parser needs from the token set.
 /// Implemented by `CapcoTokenSet`; injected at engine init.
@@ -19,71 +18,100 @@ pub trait TokenSet: Send + Sync {
     fn is_trigraph(&self, token: &str) -> bool;
 }
 
-/// Known CVE tokens — placeholder subset until build.rs generates the full list.
-/// Final list will contain every valid SCI control, SAR prefix, dissem control,
-/// handling instruction, and country trigraph from the ODNI CVE XML.
-static CVE_TOKENS: &[&str] = &[
-    // Classification (full-word banner forms)
-    "TOP SECRET",
-    "SECRET",
-    "CONFIDENTIAL",
-    "UNCLASSIFIED",
-    // SCI controls
-    "SI",
-    "TK",
-    "HCS",
-    "KDK",
-    "RST",
-    // Dissemination controls
-    "NOFORN",
-    "RELIDO",
-    "FOUO",
-    "ORCON",
-    "PROPIN",
-    "FISA",
-    "DSEN",
-    "LIMDIS",
-    // Handling instructions
-    "IMCON",
-    "EYES ONLY",
-    // Deprecated (retained for detection → migration rules)
-    "NF",
-    // Country trigraphs (representative subset — full list from CVE)
-    "USA",
-    "GBR",
-    "AUS",
-    "CAN",
-    "NZL",
-    "DEU",
-    "FRA",
-    "NLD",
-];
-
-#[allow(dead_code)] // Will be used once parser wires through marque-ism
+/// Aho-Corasick automaton over all CVE tokens — built once from generated data.
 static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
     AhoCorasick::builder()
         .ascii_case_insensitive(false) // markings are case-sensitive
-        .build(CVE_TOKENS)
+        .build(values::ALL_CVE_TOKENS)
         .expect("CVE token automaton construction failed")
 });
-
-/// Known country trigraphs for fast lookup.
-/// TODO: replace with phf map generated from CVE country codes.
-static TRIGRAPHS: &[&str] = &[
-    "USA", "GBR", "AUS", "CAN", "NZL", "DEU", "FRA", "NLD", "BEL", "DNK", "NOR", "SWE", "ESP",
-    "ITA", "PRT", "POL", "CZE", "HUN", "ROU", "BGR", "HRV", "SVK", "SVN", "EST", "LVA", "LTU",
-    "LUX", "GRC", "TUR", "JPN", "KOR", "ISR",
-];
 
 pub struct CapcoTokenSet;
 
 impl TokenSet for CapcoTokenSet {
     fn canonicalize(&self, token: &str) -> Option<&'static str> {
-        // Returns the canonical form if token matches a known CVE value.
-        CVE_TOKENS.iter().copied().find(|&t| t == token)
+        // `ALL_CVE_TOKENS` is emitted sorted and deduplicated by build.rs,
+        // so an O(log n) binary search is correct and faster than the
+        // previous O(n) linear scan.
+        values::ALL_CVE_TOKENS
+            .binary_search(&token)
+            .ok()
+            .map(|i| values::ALL_CVE_TOKENS[i])
     }
 
     fn is_trigraph(&self, token: &str) -> bool {
-        TRIGRAPHS.contains(&token)
+        // TRIGRAPHS is emitted sorted and deduplicated by build.rs, so
+        // binary_search is O(log n) over ~340 entries instead of the old
+        // O(n) `.contains()` linear scan. Hot path for every REL TO parse.
+        values::TRIGRAPHS.binary_search(&token).is_ok()
+    }
+}
+
+impl CapcoTokenSet {
+    /// Returns a reference to the Aho-Corasick automaton built from all CVE tokens.
+    /// Reserved for Phase 2 multi-pattern matching when per-token spans are wired.
+    #[allow(dead_code)]
+    pub(crate) fn automaton() -> &'static AhoCorasick {
+        &AUTOMATON
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_cve_tokens_are_sorted_and_unique() {
+        let tokens = values::ALL_CVE_TOKENS;
+        for window in tokens.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "ALL_CVE_TOKENS is not strictly sorted: {:?} >= {:?}",
+                window[0],
+                window[1],
+            );
+        }
+    }
+
+    #[test]
+    fn trigraphs_are_sorted_and_unique() {
+        // `is_trigraph` relies on binary_search, so the slice must be
+        // strictly-sorted. If a future ODNI XSD update shuffles the order,
+        // build.rs collects into a BTreeSet and this test catches any
+        // regression of that contract.
+        let trigraphs = values::TRIGRAPHS;
+        for window in trigraphs.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "TRIGRAPHS is not strictly sorted: {:?} >= {:?}",
+                window[0],
+                window[1],
+            );
+        }
+    }
+
+    #[test]
+    fn canonicalize_returns_known_token() {
+        let set = CapcoTokenSet;
+        // SECRET is in the banner-words we always emit.
+        assert_eq!(set.canonicalize("SECRET"), Some("SECRET"));
+    }
+
+    #[test]
+    fn canonicalize_returns_none_for_unknown() {
+        let set = CapcoTokenSet;
+        assert_eq!(set.canonicalize("BANANAPHONE"), None);
+    }
+
+    #[test]
+    fn usa_is_a_known_trigraph() {
+        let set = CapcoTokenSet;
+        assert!(set.is_trigraph("USA"));
+    }
+
+    #[test]
+    fn unknown_string_is_not_a_trigraph() {
+        let set = CapcoTokenSet;
+        assert!(!set.is_trigraph("XYZ_NOT_A_COUNTRY"));
     }
 }

@@ -6,11 +6,11 @@
 //! Format extraction is the caller's responsibility in WASM context.
 //! Use a web worker to avoid blocking the main thread.
 
-use wasm_bindgen::prelude::*;
-use serde::{Deserialize, Serialize};
-use marque_engine::Engine;
-use marque_config::Config;
 use marque_capco::capco_rules;
+use marque_config::Config;
+use marque_engine::Engine;
+use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 /// Initialize the WASM module. Call once before using lint/fix.
 /// Sets up panic hook for better error messages in browser console.
@@ -35,25 +35,28 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
     let result = engine.lint(text.as_bytes());
 
     let wasm_result = WasmLintResult {
-        diagnostics: result.diagnostics.iter().map(|d| WasmDiagnostic {
-            rule_id: d.rule.to_string(),
-            severity: format!("{:?}", d.severity),
-            message: d.message.clone(),
-            start: d.span.start,
-            end: d.span.end,
-            fix: d.fix.as_ref().map(|f| WasmFix {
-                replacement: f.replacement.clone(),
-                confidence: f.confidence,
-                migration_ref: f.migration_ref.map(str::to_owned),
-            }),
-        }).collect(),
+        diagnostics: result
+            .diagnostics
+            .iter()
+            .map(|d| WasmDiagnostic {
+                rule_id: d.rule.to_string(),
+                severity: d.severity.to_string(),
+                message: d.message.to_string(),
+                start: d.span.start,
+                end: d.span.end,
+                fix: d.fix.as_ref().map(|f| WasmFix {
+                    replacement: f.replacement.to_string(),
+                    confidence: f.confidence,
+                    migration_ref: f.migration_ref.map(str::to_owned),
+                }),
+            })
+            .collect(),
         error_count: result.error_count(),
         warn_count: result.warn_count(),
         fix_count: result.fix_count(),
     };
 
-    serde_json::to_string(&wasm_result)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    serde_json::to_string(&wasm_result).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Lint and apply fixes to a text string.
@@ -64,7 +67,7 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
 pub fn fix(text: &str, config_json: Option<String>) -> Result<String, JsValue> {
     let config = parse_config(config_json)?;
     let engine = build_engine(config);
-    let result = engine.fix(text.as_bytes());
+    let result = engine.fix(text.as_bytes(), marque_engine::FixMode::Apply);
 
     let wasm_result = WasmFixResult {
         fixed_text: String::from_utf8(result.source)
@@ -73,8 +76,7 @@ pub fn fix(text: &str, config_json: Option<String>) -> Result<String, JsValue> {
         remaining_diagnostics: result.remaining_diagnostics.len(),
     };
 
-    serde_json::to_string(&wasm_result)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    serde_json::to_string(&wasm_result).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -121,8 +123,7 @@ struct WasmConfig {
 
 fn parse_config(json: Option<String>) -> Result<Config, JsValue> {
     let wasm_cfg: WasmConfig = match json {
-        Some(s) => serde_json::from_str(&s)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?,
+        Some(s) => serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?,
         None => WasmConfig::default(),
     };
 

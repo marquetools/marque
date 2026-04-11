@@ -100,7 +100,18 @@ Source → [marque-extract] → TextStream → [Scanner] → SpanStream
 - `Diagnostic` (`marque-rules`) — a violation with `rule`, `severity`, `span`, `message`, `citation`, and optional `FixProposal`.
 - `FixProposal` (`marque-rules`) — `span` + `replacement` + `confidence` + `source` + `migration_ref`. Pure data; no timestamp or classifier identity. Suggestions until promoted by `Engine::fix`.
 - `AppliedFix` (`marque-rules`) — a promoted `FixProposal` with `timestamp`, `classifier_id`, `dry_run`, `input`. Constructed only by `Engine::fix`. Serves as the audit record.
-- `RuleContext` (`marque-rules`) — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`).
+- `RuleContext` (`marque-rules`) — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`). Also carries an optional `Arc<PageContext>` for banner/CAB candidates so banner-validation rules can compare the observed banner against the composite expected from all preceding portions.
+- `PageContext` (`marque-ism`) — page-level aggregation of portion markings: `max()` for classification, union for SCI/SAR/dissem controls, intersection (with NOFORN supersession) for `REL TO`, max-date for `declassify_on`. The engine builds this incrementally during `lint()` and hands banner/CAB rules an `Arc<PageContext>` via `RuleContext`.
+
+### Architectural Invariants (do not bypass)
+
+These contracts are enforced by convention and code review, not by the type system. A new crate or refactor that breaks one of them silently compromises the correctness or compliance guarantees of the tool.
+
+- **`AppliedFix::__engine_promote` is engine-only.** The constructor is `pub #[doc(hidden)]` because `marque-rules` is a dependency of `marque-engine` (not the other way around), so there is no way to seal it inside the engine crate at the visibility level. It **must only be called from `Engine::fix_inner`**. Calling it from a rule crate, CLI binary, or downstream consumer bypasses the confidence-threshold gate, the FR-016 sort, and the C-1 overlap guard, and injects arbitrary entries into the audit log. The audit log is the compliance output — arbitrary injection is a data-integrity failure, not just a bug. If you are writing a crate that needs to produce fixes, produce `FixProposal` values and let `Engine` promote them.
+- **`FixProposal` is pure data.** No timestamps, no classifier identity, no runtime context. Rule crates construct it; the engine snapshots runtime state into `AppliedFix` at promotion time. Keeping `FixProposal` pure is what lets tests snapshot rule output without a clock or user identity.
+- **`RuleContext.zone` and `RuleContext.position` are not trustworthy in Phase 2.** They are hardcoded to `Body` in the engine until Phase 3 wires document structure from the scanner. Rules that only key off `marking_type` (as of MVP) are unaffected. A rule that reads `zone` or `position` gets a silent wrong answer today — add a `TODO(phase-3)` if you write such a rule, or wait.
+- **`PageContext` never resets between pages today.** The engine accumulates portions across the entire document. Phase 3 scanner work will emit page-break candidates; until then, any rule that consumes `ctx.page_context` sees the whole document, not a single page. Correct for single-unit markings, over-restrictive for paginated documents.
+- **`Severity::Off` is a non-firing state, not a suppression.** A rule configured at `Off` is skipped in the rule loop, so no diagnostic is produced. This is the FR-008 invariant: an `Off`-severity diagnostic is unrepresentable.
 
 ### Batch Processing
 

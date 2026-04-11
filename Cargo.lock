@@ -813,6 +813,8 @@ dependencies = [
 name = "marque-config"
 version = "0.1.0"
 dependencies = [
+ "marque-ism",
+ "marque-rules",
  "serde",
  "thiserror",
  "toml",
@@ -867,10 +869,9 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "memchr",
- "phf",
  "quick-xml",
  "serde",
- "thiserror",
+ "toml",
 ]
 
 [[package]]
