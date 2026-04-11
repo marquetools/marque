@@ -156,8 +156,17 @@ impl<'t> Parser<'t> {
                 dissem.push(ctrl);
             } else if let Some(sar_id) = SarIdentifier::parse(block) {
                 sar.push(sar_id);
+            } else if let Some(exemption) = DeclassExemption::parse(block) {
+                // Declass exemption codes (e.g., 25X1, 50X1-HUM) that appear
+                // inside a banner or portion marking trigger E005 — they belong
+                // in the CAB "Declassify On:" line, not in the marking string.
+                attrs.declass_exemption = Some(exemption);
+            } else if is_declass_date(block) {
+                // Free-text declassification dates (YYYYMMDD or YYYY) that
+                // appear inside a banner or portion also belong in the CAB.
+                attrs.declassify_on = Some(block.into());
             }
-            // Unrecognized tokens are silently dropped here.
+            // Other unrecognized tokens are silently dropped here.
             // The rules layer (E008) detects and reports them.
         }
 
@@ -217,3 +226,116 @@ fn parse_rel_to(block: &str, tokens: &dyn TokenSet) -> Vec<Trigraph> {
 // exemptions all parse via their generated `parse()` methods (see
 // `parse_marking_string` above). The single hand-coded path is
 // `parse_classification`, which is documented inline.
+
+/// Returns `true` if `s` looks like an inline declassification date.
+///
+/// CAPCO allows `YYYYMMDD` (8-digit) or `YYYY` (4-digit, meaning declassify
+/// at the start of that calendar year). Both forms are valid in a CAB but
+/// are a violation (E005) if they appear directly in a banner or portion
+/// marking string.
+fn is_declass_date(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    matches!(bytes.len(), 4 | 8) && bytes.iter().all(u8::is_ascii_digit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::token_set::CapcoTokenSet;
+
+    fn make_candidate(text: &[u8], kind: MarkingType, offset: usize) -> MarkingCandidate {
+        MarkingCandidate {
+            span: Span::new(offset, offset + text.len()),
+            kind,
+        }
+    }
+
+    fn parse_banner(text: &str) -> ParsedMarking {
+        let source = text.as_bytes();
+        let tokens = CapcoTokenSet;
+        let parser = Parser::new(&tokens);
+        let candidate = make_candidate(source, MarkingType::Banner, 0);
+        parser.parse(&candidate, source).expect("parse should succeed")
+    }
+
+    fn parse_portion(text: &str) -> ParsedMarking {
+        let source = text.as_bytes();
+        let tokens = CapcoTokenSet;
+        let parser = Parser::new(&tokens);
+        let candidate = make_candidate(source, MarkingType::Portion, 0);
+        parser.parse(&candidate, source).expect("parse should succeed")
+    }
+
+    // --- declass exemption in banner (E005 detection) ---
+
+    #[test]
+    fn banner_with_declass_exemption_populates_attrs() {
+        // A banner string that (incorrectly) contains a declass exemption code.
+        // parse_marking_string must populate declass_exemption so E005 can fire.
+        let parsed = parse_banner("SECRET//25X1//NOFORN");
+        assert!(
+            parsed.attrs.declass_exemption.is_some(),
+            "declass_exemption should be populated when 25X1 appears in banner"
+        );
+        use marque_ism::DeclassExemption;
+        assert_eq!(parsed.attrs.declass_exemption, Some(DeclassExemption::X25x1));
+    }
+
+    #[test]
+    fn portion_with_declass_exemption_populates_attrs() {
+        let parsed = parse_portion("(SECRET//50X1-HUM)");
+        assert!(parsed.attrs.declass_exemption.is_some());
+    }
+
+    // --- declass date in banner (E005 detection) ---
+
+    #[test]
+    fn banner_with_declass_date_populates_attrs() {
+        let parsed = parse_banner("SECRET//20301231//NOFORN");
+        assert_eq!(
+            parsed.attrs.declassify_on.as_deref(),
+            Some("20301231"),
+            "declassify_on should be populated when YYYYMMDD appears in banner"
+        );
+    }
+
+    #[test]
+    fn banner_with_four_digit_year_populates_attrs() {
+        let parsed = parse_banner("SECRET//2035");
+        assert_eq!(parsed.attrs.declassify_on.as_deref(), Some("2035"));
+    }
+
+    // --- normal banner (no declass tokens) ---
+
+    #[test]
+    fn banner_without_declass_leaves_fields_none() {
+        let parsed = parse_banner("TOP SECRET//SI//NOFORN");
+        assert!(parsed.attrs.declassify_on.is_none());
+        assert!(parsed.attrs.declass_exemption.is_none());
+    }
+
+    // --- is_declass_date helper ---
+
+    #[test]
+    fn is_declass_date_accepts_yyyymmdd() {
+        assert!(is_declass_date("20301231"));
+    }
+
+    #[test]
+    fn is_declass_date_accepts_yyyy() {
+        assert!(is_declass_date("2035"));
+    }
+
+    #[test]
+    fn is_declass_date_rejects_non_digit() {
+        assert!(!is_declass_date("2030X231"));
+        assert!(!is_declass_date("YYYYMMDD"));
+    }
+
+    #[test]
+    fn is_declass_date_rejects_wrong_length() {
+        assert!(!is_declass_date("203012"));
+        assert!(!is_declass_date("203012311"));
+    }
+}

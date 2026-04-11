@@ -65,27 +65,62 @@ impl Engine {
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
     pub fn lint(&self, source: &[u8]) -> LintResult {
         use marque_core::{Parser, Scanner};
-        use marque_ism::CapcoTokenSet;
+        use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
         use marque_rules::RuleContext;
+        use std::sync::Arc;
 
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidates = Scanner::scan(source);
 
         let mut diagnostics = Vec::new();
+        // Build page context by accumulating portion markings in document order.
+        // Banner and CAB rules receive this context so they can validate the
+        // observed banner against the expected composite.
+        // TODO(phase-3): reset the context at page boundaries when the scanner
+        // provides page-break candidates.
+        let mut page_context = PageContext::new();
+        // Cache the current Arc<PageContext> so that consecutive banner/CAB
+        // candidates on the same page share a single allocation. The cache is
+        // invalidated (set to None) whenever a new portion is accumulated.
+        let mut page_context_arc: Option<Arc<PageContext>> = None;
 
         for candidate in &candidates {
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
+
+            // Accumulate portions before running banner/CAB rules so that
+            // when we reach a banner candidate the context already reflects
+            // all preceding portion data.
+            if parsed.kind == MarkingType::Portion {
+                page_context.add_portion(parsed.attrs.clone());
+                // Invalidate the cached Arc so the next banner/CAB gets a
+                // fresh snapshot. We rebuild it lazily below.
+                page_context_arc = None;
+            }
+
             // TODO(phase-3): plumb the document zone and position from the
             // scanner. Both are currently hardcoded to `Body`, which is
             // correct for current rules (they only key off `marking_type`)
             // but will silently lie to any future rule that reads them.
+            let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+                // Lazily wrap the accumulated context in an Arc once per
+                // page-context snapshot; subsequent banner/CAB candidates on
+                // the same page clone only the cheap Arc pointer.
+                Some(
+                    page_context_arc
+                        .get_or_insert_with(|| Arc::new(page_context.clone()))
+                        .clone(),
+                )
+            } else {
+                None
+            };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: marque_ism::Zone::Body,
                 position: marque_ism::DocumentPosition::Body,
+                page_context: ctx_page,
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {

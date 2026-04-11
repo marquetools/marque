@@ -116,11 +116,19 @@ impl std::fmt::Display for Severity {
 // ---------------------------------------------------------------------------
 
 /// Document position context passed to rules alongside parsed markings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `page_context` is `None` for Phase 2 (the engine does not yet build a
+/// per-page accumulator). Phase 3 will populate it for every `Banner` and
+/// `Cab` candidate so that banner-validation rules can compare the observed
+/// banner against the composite expected from all preceding portions.
+#[derive(Debug, Clone)]
 pub struct RuleContext {
     pub marking_type: MarkingType,
     pub zone: Zone,
     pub position: DocumentPosition,
+    /// Accumulated portion data for the current page. `None` until Phase 3
+    /// wires page-context building into the engine scan loop.
+    pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
 }
 
 // ---------------------------------------------------------------------------
