@@ -9,9 +9,15 @@ pub struct Span {
 }
 
 impl Span {
+    /// Construct a span. Panics in both debug and release builds if
+    /// `start > end`, because such a span will inevitably panic later
+    /// at slice time and the early panic gives a better error message.
     #[inline]
     pub fn new(start: usize, end: usize) -> Self {
-        debug_assert!(start <= end, "span start must not exceed end");
+        assert!(
+            start <= end,
+            "Span::new: start ({start}) must not exceed end ({end})"
+        );
         Self { start, end }
     }
 
@@ -25,9 +31,19 @@ impl Span {
         self.start == self.end
     }
 
+    /// Borrow the span's bytes from `source`. Panics if the span is
+    /// out of bounds for `source` — use [`Span::try_as_slice`] when the
+    /// caller cannot guarantee bounds.
     #[inline]
     pub fn as_slice<'a>(&self, source: &'a [u8]) -> &'a [u8] {
         &source[self.start..self.end]
+    }
+
+    /// Borrow the span's bytes from `source`, returning `None` if the
+    /// span lies outside the buffer instead of panicking.
+    #[inline]
+    pub fn try_as_slice<'a>(&self, source: &'a [u8]) -> Option<&'a [u8]> {
+        source.get(self.start..self.end)
     }
 
     /// Extract the spanned bytes as a UTF-8 string slice.
@@ -54,7 +70,7 @@ pub enum MarkingType {
 
 /// A scanner-identified candidate with its type and source span.
 #[derive(Debug, Clone, Copy)]
-pub struct Candidate {
+pub struct MarkingCandidate {
     pub span: Span,
     pub kind: MarkingType,
 }
@@ -75,4 +91,50 @@ pub enum DocumentPosition {
     Start,
     Body,
     End,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn span_new_accepts_equal_bounds() {
+        let s = Span::new(5, 5);
+        assert!(s.is_empty());
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn span_new_accepts_normal_range() {
+        let s = Span::new(2, 7);
+        assert!(!s.is_empty());
+        assert_eq!(s.len(), 5);
+    }
+
+    #[test]
+    #[should_panic(expected = "Span::new")]
+    fn span_new_panics_on_inverted_bounds() {
+        let _ = Span::new(7, 2);
+    }
+
+    #[test]
+    fn try_as_slice_returns_none_when_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(2, 100);
+        assert!(s.try_as_slice(buf).is_none());
+    }
+
+    #[test]
+    fn try_as_slice_returns_bytes_when_in_bounds() {
+        let buf = b"hello";
+        let s = Span::new(1, 4);
+        assert_eq!(s.try_as_slice(buf), Some(&b"ell"[..]));
+    }
+
+    #[test]
+    fn as_str_returns_utf8_slice() {
+        let buf = b"abc";
+        let s = Span::new(0, 3);
+        assert_eq!(s.as_str(buf).unwrap(), "abc");
+    }
 }

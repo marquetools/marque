@@ -1,6 +1,6 @@
 //! Output types returned by the engine's synchronous API surface.
 
-use marque_rules::{AuditRecord, Diagnostic};
+use marque_rules::{AppliedFix, Diagnostic};
 
 /// Result of a lint pass — diagnostics without source modification.
 #[derive(Debug, Default)]
@@ -29,11 +29,15 @@ impl LintResult {
             .count()
     }
 
+    /// Number of diagnostics that are configured at `Severity::Fix` AND
+    /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
+    /// with `fix: None` is not counted, since it cannot produce an
+    /// `AppliedFix` downstream.
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Fix)
+            .filter(|d| d.severity == Severity::Fix && d.fix.is_some())
             .count()
     }
 }
@@ -45,7 +49,7 @@ pub struct FixResult {
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     pub source: Vec<u8>,
     /// Audit records for every fix that was applied.
-    pub applied: Vec<AuditRecord>,
+    pub applied: Vec<AppliedFix>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic>,

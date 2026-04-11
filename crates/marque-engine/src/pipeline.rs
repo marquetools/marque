@@ -6,7 +6,7 @@
 //! Each stage is a `Stream`. Middleware inserts between stages.
 //! This module defines the stage types; full async streaming implementation is TODO.
 
-use marque_ism::Candidate;
+use marque_ism::MarkingCandidate;
 use marque_rules::Diagnostic;
 
 /// A chunk of source text with its byte offset in the original document.
@@ -25,5 +25,5 @@ pub trait Source: Send {
 /// A stream sink — anything that consumes pipeline output.
 pub trait Sink: Send {
     fn accept_diagnostic(&mut self, diag: Diagnostic);
-    fn accept_candidate(&mut self, candidate: Candidate);
+    fn accept_candidate(&mut self, candidate: MarkingCandidate);
 }

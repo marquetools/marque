@@ -2,4 +2,4 @@
 //!
 //! Canonical definitions live in `marque_ism::attrs`.
 
-pub use marque_ism::attrs::{Classification, DeclassOn, IsmAttributes, Trigraph};
+pub use marque_ism::attrs::{Classification, IsmAttributes, Trigraph};

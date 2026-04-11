@@ -2,4 +2,4 @@
 //!
 //! Canonical definitions live in `marque_ism::span`.
 
-pub use marque_ism::span::{Candidate, DocumentPosition, MarkingType, Span, Zone};
+pub use marque_ism::span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};

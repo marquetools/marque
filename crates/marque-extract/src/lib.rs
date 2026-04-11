@@ -14,5 +14,5 @@
 pub mod extractor;
 pub mod metadata;
 
-pub use extractor::{Extractor, ExtractionOptions, ExtractedDocument};
-pub use metadata::{MetadataReport, MetadataWarning, MetadataField};
+pub use extractor::{ExtractedDocument, ExtractionOptions, Extractor};
+pub use metadata::{MetadataField, MetadataReport, MetadataWarning};

@@ -8,7 +8,6 @@
 
 use clap::{Parser, Subcommand};
 use marque_capco::capco_rules;
-use marque_config::{self, Config};
 use marque_engine::Engine;
 use std::path::PathBuf;
 use std::process;
@@ -43,8 +42,12 @@ enum Command {
         dry_run: bool,
 
         /// Minimum confidence threshold for auto-fix (0.0–1.0).
-        #[arg(long, default_value_t = 0.90)]
-        confidence: f32,
+        ///
+        /// When omitted, the engine uses the value from `.marque.toml`
+        /// (or `MARQUE_CONFIDENCE_THRESHOLD`, default 0.95). When set,
+        /// this overrides the config for this invocation only.
+        #[arg(long)]
+        confidence: Option<f32>,
     },
 
     /// Report document metadata issues (sensitive fields, EXIF, revision history).
@@ -66,11 +69,26 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    let config =
-        marque_config::load(std::env::current_dir().unwrap().as_path()).unwrap_or_else(|e| {
-            eprintln!("warning: could not load config: {e}");
-            Config::default()
-        });
+    // H-4: handle working-directory lookup failure explicitly. `current_dir`
+    // can fail under chroot/sandbox, or when the cwd has been deleted.
+    let cwd = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: cannot determine working directory: {e}");
+            process::exit(74); // EX_IOERR per contracts/cli.md
+        }
+    };
+    // The config loader hard-fails on FR-010 (committed [user] section),
+    // FR-011 (schema version mismatch), and threshold/severity validation.
+    // These are intentional safety gates — do not silently fall back to
+    // `Config::default()` on error.
+    let config = match marque_config::load(&cwd) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            process::exit(e.exit_code());
+        }
+    };
 
     let engine = Engine::new(config, vec![Box::new(capco_rules())]);
 
@@ -115,8 +133,13 @@ fn run_check(engine: &Engine, files: &[PathBuf], format: &str) -> i32 {
     exit_code
 }
 
-fn run_fix(engine: &Engine, files: &[PathBuf], dry_run: bool, _confidence: f32) -> i32 {
+fn run_fix(engine: &Engine, files: &[PathBuf], dry_run: bool, confidence: Option<f32>) -> i32 {
     let mut exit_code = 0;
+    let mode = if dry_run {
+        marque_engine::FixMode::DryRun
+    } else {
+        marque_engine::FixMode::Apply
+    };
 
     for path in files {
         let source = match std::fs::read(path) {
@@ -128,7 +151,13 @@ fn run_fix(engine: &Engine, files: &[PathBuf], dry_run: bool, _confidence: f32) 
             }
         };
 
-        let result = engine.fix(&source);
+        let result = match engine.fix_with_threshold(&source, mode, confidence) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return 65; // EX_DATAERR per contracts/cli.md
+            }
+        };
         let applied = result.applied.len();
 
         if dry_run {
@@ -157,7 +186,9 @@ fn run_fix(engine: &Engine, files: &[PathBuf], dry_run: bool, _confidence: f32) 
 
 async fn run_metadata(_files: &[PathBuf], _strip: bool) -> i32 {
     eprintln!("metadata command: Kreuzberg integration pending (TODO)");
-    0
+    // Exit 69 (EX_UNAVAILABLE) so callers do not interpret silence as
+    // success — the command is wired up but the implementation is a stub.
+    69
 }
 
 fn print_text_diagnostics(path: &std::path::Path, result: &marque_engine::LintResult) {
@@ -185,11 +216,14 @@ fn print_json_diagnostics(path: &std::path::Path, result: &marque_engine::LintRe
         "file": path.display().to_string(),
         "diagnostics": result.diagnostics.iter().map(|d| serde_json::json!({
             "rule": d.rule.to_string(),
-            "severity": format!("{:?}", d.severity),
+            "severity": d.severity.to_string(),
             "message": d.message,
             "start": d.span.start,
             "end": d.span.end,
         })).collect::<Vec<_>>(),
     });
-    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+    match serde_json::to_string_pretty(&json) {
+        Ok(s) => println!("{s}"),
+        Err(e) => eprintln!("error: failed to serialize diagnostics: {e}"),
+    }
 }

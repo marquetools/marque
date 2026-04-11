@@ -1,6 +1,6 @@
 //! Phase 2/3: token extraction and structural parsing.
 //!
-//! Takes [`Candidate`] spans from the scanner and produces [`IsmAttributes`].
+//! Takes [`MarkingCandidate`] spans from the scanner and produces [`IsmAttributes`].
 //!
 //! # Phase 2 — Token Extraction
 //! A compile-time Aho-Corasick automaton (built from CVE token list in marque-capco)
@@ -16,8 +16,13 @@
 //! free of a direct dependency on marque-capco's generated data.
 
 use crate::error::CoreError;
-use marque_ism::attrs::{Classification, DeclassOn, IsmAttributes, Trigraph};
-use marque_ism::span::{Candidate, MarkingType, Span};
+use marque_ism::attrs::{
+    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
+    Trigraph,
+};
+// Note: unused import warnings for SarIdentifier are expected until the SAR CVE
+// has entries. The type is used in from_str() which returns None for now.
+use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 
 /// Parse result for a single candidate.
@@ -39,7 +44,11 @@ impl<'t> Parser<'t> {
     }
 
     /// Parse a single scanner candidate into [`IsmAttributes`].
-    pub fn parse(&self, candidate: &Candidate, source: &[u8]) -> Result<ParsedMarking, CoreError> {
+    pub fn parse(
+        &self,
+        candidate: &MarkingCandidate,
+        source: &[u8],
+    ) -> Result<ParsedMarking, CoreError> {
         let text = candidate
             .span
             .as_str(source)
@@ -51,7 +60,11 @@ impl<'t> Parser<'t> {
         }
     }
 
-    fn parse_portion(&self, text: &str, candidate: &Candidate) -> Result<ParsedMarking, CoreError> {
+    fn parse_portion(
+        &self,
+        text: &str,
+        candidate: &MarkingCandidate,
+    ) -> Result<ParsedMarking, CoreError> {
         // Strip outer parentheses: "(TS//SI//NF)" -> "TS//SI//NF"
         let inner = text
             .strip_prefix('(')
@@ -66,7 +79,11 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_banner(&self, text: &str, candidate: &Candidate) -> Result<ParsedMarking, CoreError> {
+    fn parse_banner(
+        &self,
+        text: &str,
+        candidate: &MarkingCandidate,
+    ) -> Result<ParsedMarking, CoreError> {
         let attrs = self.parse_marking_string(text.trim(), MarkingType::Banner)?;
         Ok(ParsedMarking {
             attrs,
@@ -75,17 +92,26 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_cab(&self, text: &str, candidate: &Candidate) -> Result<ParsedMarking, CoreError> {
+    fn parse_cab(
+        &self,
+        text: &str,
+        candidate: &MarkingCandidate,
+    ) -> Result<ParsedMarking, CoreError> {
         // CAB is line-structured: "Classified By: ...\nDerived From: ...\nDeclassify On: ..."
         let mut attrs = IsmAttributes::default();
 
         for line in text.lines() {
             if let Some(val) = line.strip_prefix("Classified By:") {
-                attrs.classified_by = Some(val.trim().to_owned());
+                attrs.classified_by = Some(val.trim().into());
             } else if let Some(val) = line.strip_prefix("Derived From:") {
-                attrs.derived_from = Some(val.trim().to_owned());
+                attrs.derived_from = Some(val.trim().into());
             } else if let Some(val) = line.strip_prefix("Declassify On:") {
-                attrs.declassify_on = Some(parse_declass_on(val.trim()));
+                let s = val.trim();
+                if let Some(exemption) = DeclassExemption::parse(s) {
+                    attrs.declass_exemption = Some(exemption);
+                } else {
+                    attrs.declassify_on = Some(s.into());
+                }
             }
         }
 
@@ -115,22 +141,24 @@ impl<'t> Parser<'t> {
         attrs.classification = parse_classification(blocks[0].trim());
 
         // Parse subsequent blocks.
-        let mut sci = Vec::new();
-        let mut sar = Vec::new();
-        let mut dissem = Vec::new();
+        let mut sci: Vec<SciControl> = Vec::new();
+        let mut sar: Vec<SarIdentifier> = Vec::new();
+        let mut dissem: Vec<DissemControl> = Vec::new();
         let mut rel_to = Vec::new();
 
         for block in &blocks[1..] {
             let block = block.trim();
             if block.starts_with("REL TO") || block.starts_with("REL ") {
                 rel_to.extend(parse_rel_to(block, self.tokens));
-            } else if is_sci_control(block) {
-                sci.push(block.to_owned());
-            } else if is_sar_identifier(block) {
-                sar.push(block.to_owned());
-            } else {
-                dissem.push(block.to_owned());
+            } else if let Some(ctrl) = SciControl::parse(block) {
+                sci.push(ctrl);
+            } else if let Some(ctrl) = DissemControl::parse(block) {
+                dissem.push(ctrl);
+            } else if let Some(sar_id) = SarIdentifier::parse(block) {
+                sar.push(sar_id);
             }
+            // Unrecognized tokens are silently dropped here.
+            // The rules layer (E008) detects and reports them.
         }
 
         attrs.sci_controls = sci.into_boxed_slice();
@@ -144,6 +172,14 @@ impl<'t> Parser<'t> {
     }
 }
 
+/// Parse a classification string in either portion form (`"TS"`, `"S"`, `"C"`,
+/// `"U"`) or banner form (`"TOP SECRET"`, `"SECRET"`, ...).
+///
+/// Note: `Classification` is hand-written in `marque-ism::attrs` rather than
+/// generated from the CVE because the CVE only ships single-letter abbreviations
+/// and the tool needs both forms. Other CVE-derived enums (`SciControl`,
+/// `DissemControl`, `SarIdentifier`, `DeclassExemption`) go through their
+/// generated `parse()` methods.
 fn parse_classification(s: &str) -> Option<Classification> {
     match s {
         "TS" | "TOP SECRET" => Some(Classification::TopSecret),
@@ -169,7 +205,7 @@ fn parse_rel_to(block: &str, tokens: &dyn TokenSet) -> Vec<Trigraph> {
         .filter_map(|t| {
             let b = t.as_bytes();
             if b.len() == 3 {
-                Some(Trigraph([b[0], b[1], b[2]]))
+                Trigraph::try_new([b[0], b[1], b[2]])
             } else {
                 None
             }
@@ -177,54 +213,7 @@ fn parse_rel_to(block: &str, tokens: &dyn TokenSet) -> Vec<Trigraph> {
         .collect()
 }
 
-/// Heuristic: SCI controls typically start with known prefixes.
-/// Full validation done by marque-capco rules against CVE.
-fn is_sci_control(s: &str) -> bool {
-    matches!(s, "SI" | "TK" | "HCS" | "KDK" | "RST")
-        || s.starts_with("SI-")
-        || s.starts_with("TK-")
-        || s.starts_with("HCS-")
-}
-
-/// Heuristic: SAR identifiers are typically 3–10 uppercase chars.
-/// Full validation done by marque-capco rules.
-fn is_sar_identifier(s: &str) -> bool {
-    s.len() >= 3
-        && s.len() <= 15
-        && s.chars().all(|c| c.is_uppercase() || c == '-')
-        && !is_known_dissem(s)
-}
-
-fn is_known_dissem(s: &str) -> bool {
-    matches!(
-        s,
-        "NOFORN"
-            | "NF"
-            | "RELIDO"
-            | "FOUO"
-            | "ORCON"
-            | "PROPIN"
-            | "FISA"
-            | "DSEN"
-            | "LIMDIS"
-            | "IMC"
-            | "IMCON"
-            | "EYES ONLY"
-    )
-}
-
-fn parse_declass_on(s: &str) -> DeclassOn {
-    // Exemptions start with X, DN, etc.
-    if s.starts_with('X') || s.starts_with("DN") {
-        DeclassOn::Exemption(s.to_owned())
-    } else if s
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
-        DeclassOn::Date(s.to_owned())
-    } else {
-        DeclassOn::Event(s.to_owned())
-    }
-}
+// SCI controls, dissemination controls, SAR identifiers, and declass
+// exemptions all parse via their generated `parse()` methods (see
+// `parse_marking_string` above). The single hand-coded path is
+// `parse_classification`, which is documented inline.

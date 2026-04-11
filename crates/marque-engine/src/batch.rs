@@ -29,7 +29,10 @@
 //!
 //! let mut results = batch.lint_many(docs);
 //! while let Some((id, result)) = results.next().await {
-//!     println!("{id}: {} diagnostics", result.diagnostics.len());
+//!     match result {
+//!         Ok(lint) => println!("{id}: {} diagnostics", lint.diagnostics.len()),
+//!         Err(e) => eprintln!("{id}: failed: {e}"),
+//!     }
 //! }
 //! # }
 //! ```
@@ -40,6 +43,38 @@ use futures::{Stream, StreamExt, stream};
 use recoco_utils::concur_control::{ConcurrencyController, Options as ConcurOptions};
 
 use crate::{Engine, FixResult, LintResult};
+
+/// Error returned when a single document in a batch fails to process.
+///
+/// Batch APIs surface this per-document so a panic or cancellation in one
+/// document does not abort the entire batch run.
+#[derive(Debug)]
+pub enum BatchError {
+    /// The blocking lint/fix task panicked or was cancelled.
+    TaskFailed(tokio::task::JoinError),
+}
+
+impl std::fmt::Display for BatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TaskFailed(e) => write!(f, "batch task failed: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for BatchError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TaskFailed(e) => Some(e),
+        }
+    }
+}
+
+impl From<tokio::task::JoinError> for BatchError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Self::TaskFailed(e)
+    }
+}
 
 /// Concurrency limits for batch processing.
 ///
@@ -92,11 +127,13 @@ impl BatchEngine {
         }
     }
 
-    /// Lint many documents concurrently; yields `(id, LintResult)` in completion order.
+    /// Lint many documents concurrently. Yields `(id, Result)` in
+    /// completion order; an `Err` indicates the per-document task panicked
+    /// or was cancelled — it does not abort the batch.
     pub fn lint_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
-    ) -> impl Stream<Item = (String, LintResult)> {
+    ) -> impl Stream<Item = (String, Result<LintResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
         let concurrent = self.concurrent;
@@ -113,18 +150,20 @@ impl BatchEngine {
                         .expect("ConcurrencyController semaphore unexpectedly closed");
                     let result = tokio::task::spawn_blocking(move || engine.lint(&data))
                         .await
-                        .expect("lint task panicked");
+                        .map_err(BatchError::from);
                     (id, result)
                 }
             })
             .buffer_unordered(concurrent)
     }
 
-    /// Fix many documents concurrently; yields `(id, FixResult)` in completion order.
+    /// Fix many documents concurrently. Yields `(id, Result)` in
+    /// completion order; an `Err` indicates the per-document task panicked
+    /// or was cancelled — it does not abort the batch.
     pub fn fix_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
-    ) -> impl Stream<Item = (String, FixResult)> {
+    ) -> impl Stream<Item = (String, Result<FixResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
         let concurrent = self.concurrent;
@@ -139,9 +178,11 @@ impl BatchEngine {
                         .acquire(Some(|| byte_len))
                         .await
                         .expect("ConcurrencyController semaphore unexpectedly closed");
-                    let result = tokio::task::spawn_blocking(move || engine.fix(&data))
-                        .await
-                        .expect("fix task panicked");
+                    let result = tokio::task::spawn_blocking(move || {
+                        engine.fix(&data, crate::FixMode::Apply)
+                    })
+                    .await
+                    .map_err(BatchError::from);
                     (id, result)
                 }
             })
