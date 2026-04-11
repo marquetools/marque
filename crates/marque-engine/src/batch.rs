@@ -54,10 +54,43 @@ pub enum BatchError {
     TaskFailed(tokio::task::JoinError),
 }
 
+impl BatchError {
+    /// Returns `true` if the error was caused by a panic in the worker task.
+    ///
+    /// CI pipelines and supervisors should treat this as an application bug
+    /// that warrants investigation (not a transient infrastructure issue).
+    pub fn is_panic(&self) -> bool {
+        match self {
+            Self::TaskFailed(e) => e.is_panic(),
+        }
+    }
+
+    /// Returns `true` if the error was caused by task cancellation (e.g.,
+    /// runtime shutdown, explicit abort).
+    ///
+    /// Cancellation is an expected operational event — callers that see
+    /// this during a graceful shutdown should typically log-and-continue,
+    /// not alert.
+    pub fn is_cancelled(&self) -> bool {
+        match self {
+            Self::TaskFailed(e) => e.is_cancelled(),
+        }
+    }
+}
+
 impl std::fmt::Display for BatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TaskFailed(e) => write!(f, "batch task failed: {e}"),
+            Self::TaskFailed(e) => {
+                let kind = if e.is_panic() {
+                    "panicked"
+                } else if e.is_cancelled() {
+                    "was cancelled"
+                } else {
+                    "failed"
+                };
+                write!(f, "batch task {kind}: {e}")
+            }
         }
     }
 }
@@ -83,8 +116,17 @@ impl From<tokio::task::JoinError> for BatchError {
 pub struct BatchOptions {
     /// Maximum documents in-flight simultaneously.
     ///
-    /// Also used as the `buffer_unordered` cap, so this controls how many
-    /// futures are created ahead of being polled. Defaults to 32.
+    /// This field drives **two** independent limits that both happen to
+    /// share this value:
+    ///
+    /// 1. `ConcurrencyController::max_inflight_rows` — the semaphore that
+    ///    rate-limits how many documents can hold permits at the same time.
+    /// 2. `buffer_unordered` cap — how many per-document futures are
+    ///    created and polled ahead of readiness.
+    ///
+    /// In practice they are always set together: the effective maximum is
+    /// the minimum of whichever blocks first for a given workload.
+    /// Defaults to 32.
     pub max_concurrent_docs: Option<usize>,
 
     /// Maximum total bytes of document content in-flight simultaneously.

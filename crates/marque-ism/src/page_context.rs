@@ -178,16 +178,36 @@ impl PageContext {
     }
 
     /// The maximum (furthest-out) declassification date observed across all
-    /// portions, as an `YYYYMMDD` string, or `None` if no portion carries one.
+    /// portions, as an `YYYYMMDD` or `YYYY` string, or `None` if no portion
+    /// carries one.
     ///
     /// A banner or CAB that specifies an earlier date than this maximum is a
     /// violation — it would cause portions to be declassified before the most
     /// restrictive date allows.
+    ///
+    /// # Encoding invariant (read before editing the comparator)
+    ///
+    /// Lexicographic `String::cmp` is used here and is **semantically
+    /// correct** under the encoding documented in
+    /// `marque_core::parser::is_declass_date`:
+    /// - `YYYYMMDD` vs `YYYYMMDD` → raw ASCII order = chronological.
+    /// - `YYYY` means "declassify at the **start** of year YYYY" (Jan 1).
+    ///   When compared to a `YYYYMMDD` in the same year, `"YYYY"` is a
+    ///   proper prefix of `"YYYYMMDD"`, so the shorter string sorts first,
+    ///   which matches the semantic "Jan 1 ≤ any later date in that year."
+    /// - `YYYY` vs a `YYYYMMDD` in a different year is decided by the
+    ///   first four digits, which are already chronological.
+    ///
+    /// If the `YYYY` convention is ever redefined to mean "end of year"
+    /// (Dec 31), this comparator must switch to a parsing-based one: lex
+    /// order would silently return wrong answers for `"2030"` vs
+    /// `"20300101"`. `is_declass_date` in `marque-core` is the single
+    /// source of truth for the encoding.
     pub fn expected_declassify_on(&self) -> Option<&str> {
         self.portions
             .iter()
             .filter_map(|a| a.declassify_on.as_deref())
-            .max_by(|a, b| a.cmp(b)) // lexicographic; YYYYMMDD sorts correctly
+            .max_by(|a, b| a.cmp(b))
     }
 
     /// The last-observed declass exemption across all portions, or `None` if

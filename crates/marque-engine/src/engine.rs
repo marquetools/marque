@@ -370,25 +370,39 @@ mod tests {
     }
 
     fn proposal(rule: &'static str, start: usize, end: usize, replacement: &str) -> FixProposal {
+        proposal_with_confidence(rule, start, end, replacement, 1.0)
+    }
+
+    fn proposal_with_confidence(
+        rule: &'static str,
+        start: usize,
+        end: usize,
+        replacement: &str,
+        confidence: f32,
+    ) -> FixProposal {
         FixProposal::new(
             RuleId::new(rule),
             FixSource::BuiltinRule,
             Span::new(start, end),
             "x",
             replacement,
-            1.0,
+            confidence,
             None,
         )
     }
 
     fn engine_with(proposals: Vec<FixProposal>) -> Engine {
+        engine_with_config(Config::default(), proposals)
+    }
+
+    fn engine_with_config(config: Config, proposals: Vec<FixProposal>) -> Engine {
         let stub = StubRule {
             id: "TEST",
             proposals,
         };
         let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(stub)]));
         Engine::with_clock(
-            Config::default(),
+            config,
             vec![set],
             Box::new(FixedClock::new(
                 UNIX_EPOCH + Duration::from_secs(1_700_000_000),
@@ -487,5 +501,82 @@ mod tests {
         let r1 = engine.fix(TEST_SRC, FixMode::Apply);
         let r2 = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(r1.applied[0].timestamp, r2.applied[0].timestamp);
+    }
+
+    // H-3: fix_with_threshold must reject non-finite overrides in all
+    // directions, not just NaN. INFINITY and NEG_INFINITY are both caught
+    // by the range check; this test pins that behavior so a future refactor
+    // that uses e.g. `is_finite` instead of `contains + is_nan` cannot
+    // silently regress.
+    #[test]
+    fn fix_with_threshold_rejects_infinity() {
+        let engine = engine_with(vec![]);
+        assert!(matches!(
+            engine.fix_with_threshold(TEST_SRC, FixMode::Apply, Some(f32::INFINITY)),
+            Err(InvalidThreshold(_))
+        ));
+        assert!(matches!(
+            engine.fix_with_threshold(TEST_SRC, FixMode::Apply, Some(f32::NEG_INFINITY)),
+            Err(InvalidThreshold(_))
+        ));
+    }
+
+    // M-4: the confidence filter at `f.confidence >= threshold` is on the
+    // hot path of Engine::fix. These two tests pin the `>=` semantics so a
+    // future refactor that flips it to `>` (or vice versa) is caught.
+    #[test]
+    fn confidence_below_default_threshold_is_excluded() {
+        // Config::default().confidence_threshold == 0.95. A fix at 0.94
+        // must not be applied.
+        let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.94)]);
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(result.applied.len(), 0);
+        // The below-threshold fix is a suggestion — it survives in
+        // remaining_diagnostics so the caller can surface it.
+        assert_eq!(result.remaining_diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn confidence_at_default_threshold_is_included() {
+        // A fix at exactly 0.95 must be applied (inclusive threshold).
+        let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.95)]);
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(result.applied.len(), 1);
+    }
+
+    // M-5: the zero-length-span filter (`!f.span.is_empty()`) in fix_inner
+    // is what masked the Phase 2 Span::new(0, 0) placeholders from the
+    // C-1 overlap guard. This test pins that guard explicitly so a future
+    // refactor that drops the filter is caught.
+    #[test]
+    fn zero_length_span_fix_is_filtered_before_sort() {
+        let engine = engine_with(vec![proposal("E001", 5, 5, "X")]);
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(result.applied.len(), 0);
+        // Source unchanged: no splice was attempted.
+        assert_eq!(result.source, TEST_SRC);
+    }
+
+    // L-4: all the other threshold tests go through fix_with_threshold
+    // (override path). This exercises the Config-supplied path explicitly
+    // so both branches of `fix_with_threshold_inner`'s threshold selection
+    // are covered.
+    #[test]
+    fn config_supplied_threshold_filters_proposals() {
+        let mut config = Config::default();
+        config.set_confidence_threshold(0.5).unwrap();
+        let engine = engine_with_config(
+            config,
+            vec![
+                proposal_with_confidence("E001", 0, 6, "AA", 0.4), // below
+                proposal_with_confidence("E002", 8, 14, "BB", 0.6), // above
+            ],
+        );
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        // Only the 0.6 fix is applied.
+        assert_eq!(result.applied.len(), 1);
+        assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
+        // The 0.4 fix surfaces as a remaining diagnostic.
+        assert_eq!(result.remaining_diagnostics.len(), 1);
     }
 }

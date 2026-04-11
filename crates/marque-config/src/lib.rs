@@ -261,18 +261,27 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
 }
 
 fn merge_user_into(config: &mut Config, file: ConfigFile) {
+    // L-2: an empty string is semantically equivalent to "not set". Without
+    // this guard, a .marque.local.toml entry of `classifier_id = ""` would
+    // silently overwrite a populated value from another layer with an empty
+    // string. For a security tool where classifier identity ends up in the
+    // audit record, that is a meaningful correctness hole.
+    fn non_empty(s: Option<String>) -> Option<String> {
+        s.filter(|v| !v.trim().is_empty())
+    }
+
     if let Some(user) = file.user {
-        if user.classifier_id.is_some() {
-            config.user.classifier_id = user.classifier_id;
+        if let Some(v) = non_empty(user.classifier_id) {
+            config.user.classifier_id = Some(v);
         }
-        if user.classification_authority.is_some() {
-            config.user.classification_authority = user.classification_authority;
+        if let Some(v) = non_empty(user.classification_authority) {
+            config.user.classification_authority = Some(v);
         }
-        if user.default_reason.is_some() {
-            config.user.default_reason = user.default_reason;
+        if let Some(v) = non_empty(user.default_reason) {
+            config.user.default_reason = Some(v);
         }
-        if user.derived_from_default.is_some() {
-            config.user.derived_from_default = user.derived_from_default;
+        if let Some(v) = non_empty(user.derived_from_default) {
+            config.user.derived_from_default = Some(v);
         }
     }
 }

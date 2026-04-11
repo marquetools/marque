@@ -54,16 +54,27 @@ impl std::fmt::Display for RuleId {
 
 /// Rule severity level. Configurable per rule in `.marque.toml`.
 ///
-/// # Ordering and merge semantics
+/// # Ordering
 ///
-/// The derived `Ord` is `Off < Warn < Error < Fix`. Future config-merge
-/// helpers that combine layers with `.max()` therefore raise severity
-/// when a higher layer sets a stricter level — and **cannot lower** it.
-/// In particular, a project-config `Error` cannot be downgraded to `Off`
-/// by a local override; this is intentional for a security tool, where
-/// allowing local config to silently disable an error is the wrong
-/// default. The current loader does last-write-wins per layer, so this
-/// note documents the design point for future merge implementations.
+/// The derived `Ord` is `Off < Warn < Error < Fix`. The ordering is
+/// exposed for consumers that want to compare severities (e.g.,
+/// "is this at least `Error`?") but the config loader does **not** use it
+/// as a merge operator today.
+///
+/// # Merge semantics (current: last-write-wins)
+///
+/// `marque-config` merges layers in strict precedence order — env vars
+/// override `.marque.local.toml` which overrides `.marque.toml`. Whatever
+/// the highest-precedence layer says for a given rule wins, including
+/// downgrades: a local override of `"off"` will suppress a project-config
+/// `"error"`. This is intentional — individual classifiers sometimes need
+/// to silence a rule while iterating, and the audit log still records the
+/// configured severity for every applied fix.
+///
+/// If a future policy requires strictness-only merging (where a lower
+/// layer cannot downgrade a higher layer's severity), change the loader
+/// to `.max()` over `Severity::parse_config` values rather than `extend`.
+/// The derived `Ord` above is already the correct operator for that case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
     /// Rule is disabled entirely. FR-008: severity=off is unrepresentable on emitted diagnostics

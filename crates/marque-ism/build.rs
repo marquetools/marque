@@ -190,8 +190,10 @@ fn to_rust_ident(s: &str) -> String {
 /// codegen-breaking CVE additions at build time rather than at consumer
 /// compile time. (C-4)
 fn resolve_idents(name: &str, entries: &[(String, String)]) -> Vec<(String, String, String)> {
-    use std::collections::HashSet;
-    let mut seen: HashSet<String> = HashSet::with_capacity(entries.len());
+    use std::collections::HashMap;
+    // Map ident -> first CVE value that produced it, so a collision can name
+    // both offenders in its panic message. (M-2)
+    let mut seen: HashMap<String, String> = HashMap::with_capacity(entries.len());
     let mut resolved = Vec::with_capacity(entries.len());
     for (value, desc) in entries {
         let ident = to_rust_ident(value);
@@ -199,11 +201,13 @@ fn resolve_idents(name: &str, entries: &[(String, String)]) -> Vec<(String, Stri
             !ident.is_empty(),
             "build.rs: enum {name}: CVE value {value:?} produced an empty Rust identifier"
         );
-        assert!(
-            seen.insert(ident.clone()),
-            "build.rs: enum {name}: CVE values produce duplicate identifier {ident:?} \
-             (one of them is {value:?}). to_rust_ident needs disambiguation."
-        );
+        if let Some(existing_value) = seen.get(&ident) {
+            panic!(
+                "build.rs: enum {name}: CVE values {existing_value:?} and {value:?} both \
+                 produce the Rust identifier {ident:?}. to_rust_ident needs disambiguation."
+            );
+        }
+        seen.insert(ident.clone(), value.clone());
         resolved.push((value.clone(), ident, desc.clone()));
     }
     resolved
@@ -338,6 +342,22 @@ fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
     writeln!(out).unwrap();
 }
 
+/// Assert that a required CVE file produced at least one entry.
+///
+/// SAR is the only CVE with a legitimate empty-file contract (the public
+/// schema intentionally ships no entries). Every other enum must be
+/// non-empty — an empty `CVEnumISMDissem.xml` from a bad schema copy would
+/// silently produce a valid-but-empty Rust enum and make all dissem rules
+/// fire zero diagnostics. (M-1)
+fn assert_required(name: &str, entries: &[(String, String)], file: &str) {
+    assert!(
+        !entries.is_empty(),
+        "build.rs: required CVE file {file} produced zero entries for enum {name}. \
+         This is almost always a bad schema copy — verify the ODNI ISM bundle \
+         is present at schemas/ISM-v2022-DEC/ and that the XML file parses."
+    );
+}
+
 fn generate_values(out: &Path, schema_dir: &Path) {
     use std::fmt::Write;
     let cve_dir = schema_dir.join("CVE_ISM");
@@ -352,9 +372,15 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     // `Classification` enum, to avoid the ambiguity of two types with the
     // same name in the crate.
     let class_entries = parse_cve_xml(&cve_dir.join("CVEnumISMClassificationAll.xml"));
+    assert_required(
+        "Classification (ALL_CVE_TOKENS)",
+        &class_entries,
+        "CVEnumISMClassificationAll.xml",
+    );
 
     // --- SCI Controls ---
     let sci_entries = parse_cve_xml(&cve_dir.join("CVEnumISMSCIControls.xml"));
+    assert_required("SciControl", &sci_entries, "CVEnumISMSCIControls.xml");
     emit_enum(
         &mut content,
         "SciControl",
@@ -364,6 +390,7 @@ fn generate_values(out: &Path, schema_dir: &Path) {
 
     // --- Dissemination Controls ---
     let dissem_entries = parse_cve_xml(&cve_dir.join("CVEnumISMDissem.xml"));
+    assert_required("DissemControl", &dissem_entries, "CVEnumISMDissem.xml");
     emit_enum(
         &mut content,
         "DissemControl",
@@ -394,6 +421,7 @@ fn generate_values(out: &Path, schema_dir: &Path) {
 
     // --- Declass Exemptions (25X codes) ---
     let declass_entries = parse_cve_xml(&cve_dir.join("CVEnumISM25X.xml"));
+    assert_required("DeclassExemption", &declass_entries, "CVEnumISM25X.xml");
     emit_enum(
         &mut content,
         "DeclassExemption",
@@ -403,6 +431,7 @@ fn generate_values(out: &Path, schema_dir: &Path) {
 
     // --- ExemptFrom ---
     let exempt_entries = parse_cve_xml(&cve_dir.join("CVEnumISMExemptFrom.xml"));
+    assert_required("ExemptFrom", &exempt_entries, "CVEnumISMExemptFrom.xml");
     emit_enum(
         &mut content,
         "ExemptFrom",
@@ -418,15 +447,24 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             .join("CVEnumISMCATRelTo.xsd"),
     );
 
-    // Emit trigraph array (not an enum — too many values, and Trigraph is a [u8; 3] newtype)
+    // Emit trigraph array (not an enum — too many values, and Trigraph is a [u8; 3] newtype).
+    //
+    // M-3: sort and deduplicate into a BTreeSet before emission so
+    // `is_trigraph` in token_set.rs can use `binary_search` over a
+    // guaranteed-sorted slice. The XSD emits entries in document order
+    // (USA first, then alphabetical), so an unsorted emission would
+    // silently break binary_search if the ODNI bundle ever reorders.
+    let sorted_trigraphs: std::collections::BTreeSet<String> =
+        trigraphs.into_iter().map(|(v, _)| v).collect();
     writeln!(
         content,
-        "/// All valid country/entity trigraphs from CVEnumISMCATRelTo.xsd."
+        "/// All valid country/entity trigraphs from CVEnumISMCATRelTo.xsd,\n\
+         /// sorted ascending and deduplicated. `is_trigraph` uses binary_search."
     )
     .unwrap();
-    writeln!(content, "/// {} entries total.", trigraphs.len()).unwrap();
+    writeln!(content, "/// {} entries total.", sorted_trigraphs.len()).unwrap();
     writeln!(content, "pub static TRIGRAPHS: &[&str] = &[").unwrap();
-    for (value, _desc) in &trigraphs {
+    for value in &sorted_trigraphs {
         writeln!(content, "    {value:?},").unwrap();
     }
     writeln!(content, "];").unwrap();

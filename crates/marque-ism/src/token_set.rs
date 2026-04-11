@@ -40,9 +40,10 @@ impl TokenSet for CapcoTokenSet {
     }
 
     fn is_trigraph(&self, token: &str) -> bool {
-        // TRIGRAPHS are in CVE-defined order (USA first, then alphabetical).
-        // Use linear scan; the list is ~340 entries — fast enough for parsing.
-        values::TRIGRAPHS.contains(&token)
+        // TRIGRAPHS is emitted sorted and deduplicated by build.rs, so
+        // binary_search is O(log n) over ~340 entries instead of the old
+        // O(n) `.contains()` linear scan. Hot path for every REL TO parse.
+        values::TRIGRAPHS.binary_search(&token).is_ok()
     }
 }
 
@@ -66,6 +67,23 @@ mod tests {
             assert!(
                 window[0] < window[1],
                 "ALL_CVE_TOKENS is not strictly sorted: {:?} >= {:?}",
+                window[0],
+                window[1],
+            );
+        }
+    }
+
+    #[test]
+    fn trigraphs_are_sorted_and_unique() {
+        // `is_trigraph` relies on binary_search, so the slice must be
+        // strictly-sorted. If a future ODNI XSD update shuffles the order,
+        // build.rs collects into a BTreeSet and this test catches any
+        // regression of that contract.
+        let trigraphs = values::TRIGRAPHS;
+        for window in trigraphs.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "TRIGRAPHS is not strictly sorted: {:?} >= {:?}",
                 window[0],
                 window[1],
             );
