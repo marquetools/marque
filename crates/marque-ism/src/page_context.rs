@@ -38,7 +38,10 @@
 //! future Phase 3 rule is responsible for applying the appropriate default when
 //! no explicit date is present.
 
-use crate::attrs::{Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl, Trigraph};
+use crate::attrs::{
+    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
+    Trigraph,
+};
 
 /// Page-level aggregation context, built by the engine as it processes portion
 /// markings on a page.
@@ -88,10 +91,7 @@ impl PageContext {
     /// Returns `None` only if no portions have been accumulated or all
     /// portions failed to parse a classification level.
     pub fn expected_classification(&self) -> Option<Classification> {
-        self.portions
-            .iter()
-            .filter_map(|a| a.classification)
-            .max()
+        self.portions.iter().filter_map(|a| a.classification).max()
     }
 
     /// All SCI controls that must appear on the banner (union of all portions).
@@ -169,7 +169,11 @@ impl PageContext {
             .rel_to
             .iter()
             .copied()
-            .filter(|t| rel_to_portions[1..].iter().all(|attrs| attrs.rel_to.contains(t)))
+            .filter(|t| {
+                rel_to_portions[1..]
+                    .iter()
+                    .all(|attrs| attrs.rel_to.contains(t))
+            })
             .collect()
     }
 
@@ -223,10 +227,7 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(attrs_with_classification(Classification::Secret));
         ctx.add_portion(attrs_with_classification(Classification::Confidential));
-        assert_eq!(
-            ctx.expected_classification(),
-            Some(Classification::Secret)
-        );
+        assert_eq!(ctx.expected_classification(), Some(Classification::Secret));
     }
 
     #[test]
@@ -259,13 +260,11 @@ mod tests {
         use crate::attrs::Trigraph;
         let mut ctx = PageContext::new();
         let a1 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()]
-                .into_boxed_slice(),
+            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
             ..Default::default()
         };
         let a2 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"DEU").unwrap()]
-                .into_boxed_slice(),
+            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"DEU").unwrap()].into_boxed_slice(),
             ..Default::default()
         };
         ctx.add_portion(a1);
@@ -281,8 +280,7 @@ mod tests {
         let mut ctx = PageContext::new();
         // Portion 1: REL TO USA, GBR
         let a1 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()]
-                .into_boxed_slice(),
+            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
             ..Default::default()
         };
         // Portion 2: NOFORN

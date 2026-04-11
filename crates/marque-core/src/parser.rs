@@ -256,7 +256,9 @@ mod tests {
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
         let candidate = make_candidate(source, MarkingType::Banner, 0);
-        parser.parse(&candidate, source).expect("parse should succeed")
+        parser
+            .parse(&candidate, source)
+            .expect("parse should succeed")
     }
 
     fn parse_portion(text: &str) -> ParsedMarking {
@@ -264,7 +266,9 @@ mod tests {
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
         let candidate = make_candidate(source, MarkingType::Portion, 0);
-        parser.parse(&candidate, source).expect("parse should succeed")
+        parser
+            .parse(&candidate, source)
+            .expect("parse should succeed")
     }
 
     // --- declass exemption in banner (E005 detection) ---
@@ -279,7 +283,10 @@ mod tests {
             "declass_exemption should be populated when 25X1 appears in banner"
         );
         use marque_ism::DeclassExemption;
-        assert_eq!(parsed.attrs.declass_exemption, Some(DeclassExemption::X25x1));
+        assert_eq!(
+            parsed.attrs.declass_exemption,
+            Some(DeclassExemption::X25x1)
+        );
     }
 
     #[test]
