@@ -57,34 +57,39 @@ if [[ -z "$TIME_LINE" ]]; then
     exit 1
 fi
 
-# Extract the last "number unit" pair (upper bound of CI)
-UPPER_VAL=$(echo "$TIME_LINE" | grep -oP '[\d.]+\s*[µnm]s' | tail -1 || echo "")
+# Extract the last "number unit" pair (upper bound of CI) and convert to microseconds.
+# Uses Python instead of grep -oP (PCRE) for portability across macOS/BSD/Linux.
+# Rounds up (math.ceil) so fractional µs values never undercount a regression.
+CURRENT_US=$(python3 -c "
+import math, re, sys
+line = sys.argv[1]
+matches = re.findall(r'([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)', line)
+if not matches:
+    sys.exit(1)
+value, unit = matches[-1]
+value = float(value)
+if unit == 'ns':
+    print(math.ceil(value / 1000))
+elif unit == 'µs':
+    print(math.ceil(value))
+elif unit == 'ms':
+    print(math.ceil(value * 1000))
+else:
+    sys.exit(2)
+" "$TIME_LINE" 2>/dev/null || echo "")
 
-if [[ -z "$UPPER_VAL" ]]; then
+if [[ -z "$CURRENT_US" ]]; then
     echo "bench-check: ERROR — could not parse timing from criterion output"
     echo "$BENCH_OUTPUT"
-    exit 1
-fi
-
-# Convert to microseconds
-VALUE=$(echo "$UPPER_VAL" | grep -oP '[\d.]+')
-UNIT=$(echo "$UPPER_VAL" | grep -oP '[µnm]s')
-
-if [[ "$UNIT" == "ns" ]]; then
-    CURRENT_US=$(python3 -c "print(int($VALUE / 1000))")
-elif [[ "$UNIT" == "µs" ]]; then
-    CURRENT_US=$(python3 -c "print(int($VALUE))")
-elif [[ "$UNIT" == "ms" ]]; then
-    CURRENT_US=$(python3 -c "print(int($VALUE * 1000))")
-else
-    echo "bench-check: ERROR — unexpected unit: $UNIT"
     exit 1
 fi
 
 echo "bench-check: measured upper CI = ${CURRENT_US} µs"
 
 # Check for >10% regression vs baseline
-THRESHOLD=$(python3 -c "print(int($BASELINE_P95 * 1.10))")
+# Round up (math.ceil) so the threshold is conservative — a fractional µs in the
+# baseline can never silently pass a regression.
+THRESHOLD=$(python3 -c "import math; print(math.ceil($BASELINE_P95 * 1.10))")
 echo "bench-check: regression threshold (baseline + 10%) = ${THRESHOLD} µs"
 
 if [[ "$CURRENT_US" -gt "$THRESHOLD" ]]; then

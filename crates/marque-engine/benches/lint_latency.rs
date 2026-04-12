@@ -42,6 +42,10 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
     // which would create artificial partial-token diagnostics.
     let complete_blocks = target_bytes / block_bytes.len();
     input.truncate(complete_blocks.max(1) * block_bytes.len());
+    // Pad with spaces to reach exactly target_bytes so the benchmark name
+    // (`lint_10kb`) and the SC-001 gate are measured against a true 10KB input.
+    // Trailing whitespace does not affect any token boundaries.
+    input.resize(target_bytes, b' ');
     input
 }
 
