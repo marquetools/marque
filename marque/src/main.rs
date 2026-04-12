@@ -344,7 +344,11 @@ fn run_fix(
                     result.remaining_diagnostics.len()
                 );
             }
-            exit_code = EX_DIAG_ERROR;
+            // Only escalate to EX_DIAG_ERROR when no higher-priority code
+            // (e.g. EX_IOERR from an earlier file) has already been recorded.
+            if matches!(exit_code, EX_OK | EX_DIAG_WARN) {
+                exit_code = EX_DIAG_ERROR;
+            }
         }
     }
     exit_code

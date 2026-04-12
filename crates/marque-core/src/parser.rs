@@ -177,15 +177,6 @@ impl<'t> Parser<'t> {
 
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
-        // Record the separator spans (Phase 3 needs them for E004).
-        for &sep_start in &separators {
-            token_spans.push(TokenSpan {
-                kind: TokenKind::Separator,
-                span: Span::new(s_offset + sep_start, s_offset + sep_start + 2),
-                text: "//".into(),
-            });
-        }
-
         // First block is the classification.
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
@@ -280,6 +271,17 @@ impl<'t> Parser<'t> {
         attrs.sar_identifiers = sar.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.rel_to = rel_to.into_boxed_slice();
+        // Record separator spans (Phase 3 needs them for E004). Push them
+        // here alongside block tokens, then sort by start offset so the
+        // final slice is in document (source) order.
+        for &sep_start in &separators {
+            token_spans.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(s_offset + sep_start, s_offset + sep_start + 2),
+                text: "//".into(),
+            });
+        }
+        token_spans.sort_unstable_by_key(|ts| ts.span.start);
         attrs.token_spans = token_spans.into_boxed_slice();
 
         let _ = context; // used for future context-aware validation

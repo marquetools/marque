@@ -1,7 +1,7 @@
 //! Diagnostic rendering for the `marque` CLI.
 //!
 //! Two formats are supported:
-//! - **human**: rustc-style with caret + citation, ANSI-coloured by default.
+//! - **human**: location-prefixed diagnostic header with citation, ANSI-coloured by default.
 //! - **json**: NDJSON conforming to `contracts/diagnostic.json`.
 //!
 //! ANSI is suppressed when any of these is true:

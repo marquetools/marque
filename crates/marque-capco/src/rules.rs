@@ -303,7 +303,7 @@ impl Rule for MisorderedBlocksRule {
         // 0.95 threshold so it stays a suggestion, but present in the
         // diagnostic stream so consumers (Phase 5 corrections, lower-
         // threshold runs, IDE quick-fix surfaces) can act on it.
-        let reordered = reorder_marking(attrs, ctx.marking_type);
+        let reordered = reorder_marking(attrs);
         let original: String = reordered
             .as_ref()
             .map(|_| {
@@ -370,8 +370,7 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
 /// engine could splice if a caller lowers the threshold below 0.6.
-fn reorder_marking(attrs: &IsmAttributes, kind: marque_ism::MarkingType) -> Option<String> {
-    use marque_ism::MarkingType;
+fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
 
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
@@ -411,10 +410,10 @@ fn reorder_marking(attrs: &IsmAttributes, kind: marque_ism::MarkingType) -> Opti
     }
 
     let joined = blocks.join("//");
-    Some(match kind {
-        MarkingType::Portion => format!("({joined})"),
-        _ => joined,
-    })
+    // Portion spans exclude the outer parentheses, so the replacement must
+    // be the inner marking text only (no wrapping parens) to avoid producing
+    // `((…))` when the fix proposal is spliced back into the original source.
+    Some(joined)
 }
 
 // ---------------------------------------------------------------------------
