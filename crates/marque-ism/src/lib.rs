@@ -17,7 +17,7 @@ pub mod token_set;
 // Re-export primary types at crate root for convenience.
 pub use attrs::{
     Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    Trigraph,
+    TokenKind, TokenSpan, Trigraph,
 };
 pub use generated::values::SCHEMA_VERSION;
 pub use page_context::PageContext;

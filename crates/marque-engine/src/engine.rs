@@ -76,16 +76,28 @@ impl Engine {
         let mut diagnostics = Vec::new();
         // Build page context by accumulating portion markings in document order.
         // Banner and CAB rules receive this context so they can validate the
-        // observed banner against the expected composite.
-        // TODO(phase-3): reset the context at page boundaries when the scanner
-        // provides page-break candidates.
+        // observed banner against the expected composite. Phase 3 wires the
+        // page-break reset below — the scanner emits a `MarkingType::PageBreak`
+        // candidate at every form-feed and at every `\n\n\n+` run; on each
+        // such candidate we drop the accumulator and start a fresh page.
         let mut page_context = PageContext::new();
         // Cache the current Arc<PageContext> so that consecutive banner/CAB
         // candidates on the same page share a single allocation. The cache is
-        // invalidated (set to None) whenever a new portion is accumulated.
+        // invalidated (set to None) whenever a new portion is accumulated or
+        // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
 
         for candidate in &candidates {
+            // Page-break candidates are scanner-emitted boundaries with no
+            // parsable content. Reset the context BEFORE attempting to parse
+            // — otherwise the parser's MalformedMarking error would skip the
+            // continue and leave us accumulating across pages.
+            if candidate.kind == MarkingType::PageBreak {
+                page_context = PageContext::new();
+                page_context_arc = None;
+                continue;
+            }
+
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
@@ -100,10 +112,10 @@ impl Engine {
                 page_context_arc = None;
             }
 
-            // TODO(phase-3): plumb the document zone and position from the
-            // scanner. Both are currently hardcoded to `Body`, which is
-            // correct for current rules (they only key off `marking_type`)
-            // but will silently lie to any future rule that reads them.
+            // Phase 3: zone and position are Option-typed and stay None
+            // until a structural scanner pass can prove them. The previous
+            // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
+            // lie to any future rule that read them.
             let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
                 // Lazily wrap the accumulated context in an Arc once per
                 // page-context snapshot; subsequent banner/CAB candidates on
@@ -118,8 +130,8 @@ impl Engine {
             };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
-                zone: marque_ism::Zone::Body,
-                position: marque_ism::DocumentPosition::Body,
+                zone: None,
+                position: None,
                 page_context: ctx_page,
             };
             for rule_set in &self.rule_sets {
@@ -578,5 +590,156 @@ mod tests {
         assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
         // The 0.4 fix surfaces as a remaining diagnostic.
         assert_eq!(result.remaining_diagnostics.len(), 1);
+    }
+
+    // Phase 3 Task 2: PageBreak candidates must reset the engine's
+    // PageContext accumulator. Without this, banner-validation rules on
+    // the second page would see portions from the first page, producing
+    // over-restrictive expected aggregates.
+    #[test]
+    fn lint_handles_multi_page_document_with_form_feed() {
+        let src: &[u8] = b"(SECRET//NOFORN) page 1 body.\nSECRET//NOFORN\n\x0c(CONFIDENTIAL) page 2 body.\nCONFIDENTIAL\n";
+        let engine = engine_with(vec![]);
+        let result = engine.lint(src);
+        // Stub rule with no proposals: clean lint, no panic, no parser
+        // error from the page-break candidate (which is filtered before
+        // parser.parse is called).
+        assert!(result.is_clean());
+    }
+
+    // F.1: PageContext reset semantics are observable.
+    //
+    // ContextRecorderRule captures the live `page_context.portion_count()`
+    // every time it's invoked. By running the engine over a multi-page
+    // document and inspecting the captured counts at each banner candidate,
+    // we prove that the engine resets PageContext at the page break instead
+    // of accumulating across pages.
+    #[derive(Clone)]
+    struct ContextRecorderRule {
+        observations: std::sync::Arc<std::sync::Mutex<Vec<(marque_ism::MarkingType, usize)>>>,
+    }
+
+    impl Rule for ContextRecorderRule {
+        fn id(&self) -> RuleId {
+            RuleId::new("RECORD")
+        }
+        fn name(&self) -> &'static str {
+            "page-context-recorder"
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Warn
+        }
+        fn check(&self, _attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+            let count = ctx
+                .page_context
+                .as_ref()
+                .map(|pc| pc.portion_count())
+                .unwrap_or(0);
+            self.observations
+                .lock()
+                .unwrap()
+                .push((ctx.marking_type, count));
+            vec![]
+        }
+    }
+
+    struct RecorderSet(Vec<Box<dyn Rule>>);
+    impl RuleSet for RecorderSet {
+        fn rules(&self) -> &[Box<dyn Rule>] {
+            &self.0
+        }
+        fn schema_version(&self) -> &'static str {
+            "TEST"
+        }
+    }
+
+    #[test]
+    fn page_context_resets_observably_across_form_feed() {
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        );
+
+        // Two pages, separated by a form feed:
+        //   Page 1: one portion + one banner
+        //   Page break (\f)
+        //   Page 2: one portion + one banner
+        //
+        // The recorder fires on every candidate that reaches the rule loop.
+        // For the page-1 banner we expect to see 1 accumulated portion.
+        // For the page-2 banner we expect to see 1 accumulated portion
+        // (NOT 2) — the form feed must have reset the context.
+        let src: &[u8] = b"(SECRET//NF) p1 text\nSECRET//NOFORN\n\x0c(CONFIDENTIAL//NF) p2\nCONFIDENTIAL//NOFORN\n";
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        // The recorder ran once per non-PageBreak candidate. Filter to
+        // banners and check the page_context count each banner saw.
+        let banner_counts: Vec<usize> = obs
+            .iter()
+            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .map(|(_, count)| *count)
+            .collect();
+        assert_eq!(
+            banner_counts.len(),
+            2,
+            "expected 2 banner observations, got: {obs:?}"
+        );
+        assert_eq!(
+            banner_counts[0], 1,
+            "page-1 banner should see 1 accumulated portion"
+        );
+        assert_eq!(
+            banner_counts[1], 1,
+            "page-2 banner should see 1 accumulated portion (the page-1 \
+             portion must be cleared by the form feed)"
+        );
+    }
+
+    #[test]
+    fn page_context_lint_starts_fresh_on_each_call() {
+        // Calling Engine::lint twice on the same engine must produce a
+        // fresh PageContext for the second call — no cross-call accumulation.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        );
+        let src: &[u8] = b"(SECRET//NF) text\nSECRET//NOFORN\n";
+        let _ = engine.lint(src);
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        // Both calls should see identical observations — if the second
+        // call leaked state from the first, the page-2 banner_count would
+        // double.
+        let banner_counts: Vec<usize> = obs
+            .iter()
+            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .map(|(_, count)| *count)
+            .collect();
+        assert_eq!(
+            banner_counts.len(),
+            2,
+            "two lint calls should produce two banner observations"
+        );
+        assert_eq!(banner_counts, vec![1, 1]);
     }
 }

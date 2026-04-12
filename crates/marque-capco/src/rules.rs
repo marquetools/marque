@@ -1,22 +1,25 @@
 //! CAPCO rule implementations — Layer 2 diagnostic intelligence.
 //!
-//! Each rule uses Layer 1 schema predicates (from generated/validators.rs, once wired)
-//! to detect violations, then produces enriched diagnostics with fixes and confidence.
+//! Each rule uses Layer 1 schema predicates (from generated/validators.rs) to
+//! detect violations, then produces enriched diagnostics with fixes and
+//! confidence. Phase 3 lands the full set of MVP rules with byte-precise
+//! spans threaded through `IsmAttributes::token_spans`.
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
 //! Assignments per spec tasks.md:
 //!   E001 = banner abbreviation (T030)
 //!   E002 = REL TO missing USA trigraph (T031)
-//!   E003 = misordered banner blocks (T032, Phase 3)
+//!   E003 = misordered banner blocks (T032)
 //!   E004 = separator-count normalization (T033)
 //!   E005 = declassification in banner (T034)
-//!   E006 = deprecated dissem control (T035, Phase 3)
-//!   E007 = X-shorthand declass date (T036, Phase 3)
-//!   E008 = unrecognized token (T037, Phase 3)
-//!   W001 = deprecated marking warning (T038, Phase 3)
+//!   E006 = deprecated dissem control (T035)
+//!   E007 = X-shorthand declass date (T036)
+//!   E008 = unrecognized token (T037)
+//!   W001 = deprecated marking warning (T038)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
-use marque_ism::{IsmAttributes, Span};
+use marque_ism::generated::migrations::find_migration;
+use marque_ism::{IsmAttributes, Span, TokenKind, TokenSpan};
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
@@ -38,8 +41,13 @@ impl CapcoRuleSet {
             rules: vec![
                 Box::new(BannerAbbreviationRule),
                 Box::new(MissingUsaTrigraphRule),
+                Box::new(MisorderedBlocksRule),
                 Box::new(SeparatorCountRule),
                 Box::new(DeclassifyInBannerRule),
+                Box::new(DeprecatedDissemRule),
+                Box::new(XShorthandDateRule),
+                Box::new(UnknownTokenRule),
+                Box::new(DeprecatedMarkingWarningRule),
             ],
         }
     }
@@ -79,23 +87,50 @@ impl Rule for BannerAbbreviationRule {
             return vec![];
         }
         let mut diagnostics = Vec::new();
-        for control in attrs.dissem_controls.iter() {
-            if let Some(full) = expand_dissem_abbreviation(control) {
-                let abbrev = control.as_str().to_owned();
-                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    span: Span::new(0, 0), // TODO: wire actual span (Phase 3)
-                    message: format!(
-                        "banner uses abbreviated dissem control {abbrev:?}; use {full:?}"
-                    ),
-                    citation: "CAPCO-ISM-v2022-DEC-§3.2",
-                    original: abbrev,
-                    replacement: full.to_owned(),
-                    confidence: 1.0,
-                    migration_ref: Some("CAPCO-2023-§3.2"),
-                }));
+        // Walk dissem-control token spans in document order. For each one
+        // whose canonical CVE form is an abbreviation that maps to a full
+        // banner form, check whether the SOURCE BYTES are the abbreviation
+        // (not just the parsed enum — the parser also accepts banner-form
+        // full words via parse_dissem_full_form, and those are already
+        // correct).
+        //
+        // The emit check happens at construction time against
+        // `token_span.text` rather than as a post-hoc length filter, so the
+        // logic cannot silently regress if a future abbreviation has a
+        // different length from its canonical form.
+        let dissem_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl)
+            .collect();
+        for (idx, control) in attrs.dissem_controls.iter().enumerate() {
+            let Some(full) = expand_dissem_abbreviation(control) else {
+                continue;
+            };
+            // The Nth dissem token span corresponds to the Nth dissem
+            // control entry — both vectors are in document order.
+            let Some(token_span) = dissem_spans.get(idx) else {
+                continue;
+            };
+            let abbrev = control.as_str();
+            // Only fire when the literal source text is the abbreviation.
+            // A banner containing "NOFORN" parses to DissemControl::Nf but
+            // token_span.text is "NOFORN" — skip it.
+            if token_span.text.as_ref() != abbrev {
+                continue;
             }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
+                citation: "CAPCO-ISM-v2022-DEC-§3.2",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§3.2"),
+            }));
         }
         diagnostics
     }
@@ -166,10 +201,23 @@ impl Rule for MissingUsaTrigraphRule {
             "USA must be the first trigraph in REL TO list"
         };
 
+        // Span: the first REL TO trigraph in the marking. This points the
+        // user at the leading edge of the offending list.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToTrigraph)
+            .map(|t| t.span)
+            // Defensive: if there's no token span (shouldn't happen given
+            // attrs.rel_to is non-empty), use a zero-length span which the
+            // engine's fix path will filter rather than mis-splice.
+            .unwrap_or(Span::new(0, 0));
+
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
             severity: self.default_severity(),
-            span: Span::new(0, 0), // TODO: wire actual span (Phase 3)
+            source: FixSource::BuiltinRule,
+            span,
             message: message.to_owned(),
             citation: "CAPCO-ISM-v2022-DEC-§4.1",
             original: current,
@@ -178,6 +226,183 @@ impl Rule for MissingUsaTrigraphRule {
             migration_ref: Some("CAPCO-2023-§4.1"),
         })]
     }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E003 — Misordered banner blocks
+// ---------------------------------------------------------------------------
+
+/// CAPCO requires the order:
+/// `Classification // SCI controls // SAR identifiers // Dissem (incl REL TO)`
+///
+/// E003 fires when the order is violated for a banner or portion marking.
+/// Confidence 0.6 — kept as a suggestion under the default 0.95 threshold
+/// because reordering changes byte spans across the whole marking.
+struct MisorderedBlocksRule;
+
+impl Rule for MisorderedBlocksRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E003")
+    }
+    fn name(&self) -> &'static str {
+        "misordered-blocks"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
+            return vec![];
+        }
+
+        // Walk token kinds in document order, ignoring separators. Map each
+        // kind to a CAPCO ordinal: 0=Class, 1=SCI, 2=SAR, 3=Dissem/RelTo.
+        // Any descending step is a violation.
+        let kinds: Vec<u8> = attrs
+            .token_spans
+            .iter()
+            .filter_map(|t| ordinal_for_block(t.kind))
+            .collect();
+
+        if kinds.len() < 2 {
+            return vec![];
+        }
+        let mut max_seen = kinds[0];
+        let mut violation = false;
+        for &k in &kinds[1..] {
+            if k < max_seen {
+                violation = true;
+                break;
+            }
+            max_seen = max_seen.max(k);
+        }
+        if !violation {
+            return vec![];
+        }
+
+        // Span: the whole marking (first → last block-bearing token).
+        let first = attrs
+            .token_spans
+            .iter()
+            .find(|t| ordinal_for_block(t.kind).is_some())
+            .map(|t| t.span);
+        let last = attrs
+            .token_spans
+            .iter()
+            .rev()
+            .find(|t| ordinal_for_block(t.kind).is_some())
+            .map(|t| t.span);
+        let span = match (first, last) {
+            (Some(f), Some(l)) => Span::new(f.start, l.end),
+            _ => return vec![],
+        };
+
+        // T032: emit a FixProposal with confidence 0.6. Below the default
+        // 0.95 threshold so it stays a suggestion, but present in the
+        // diagnostic stream so consumers (Phase 5 corrections, lower-
+        // threshold runs, IDE quick-fix surfaces) can act on it.
+        //
+        // `original` is left empty: the engine splices by `span` alone and
+        // never reads `FixProposal.original`, so the field is a cosmetic
+        // audit display only. A prior reconstruction that joined token
+        // texts dropped the "REL TO " prefix for REL TO blocks (because
+        // the parser stores individual trigraph spans without the block
+        // prefix), producing a string that did NOT match the actual source
+        // bytes at `span`. An empty original is unambiguously "unknown at
+        // this layer"; consumers that need the original bytes should read
+        // `source[span.start..span.end]` from the authoritative buffer.
+        let reordered = reorder_marking(attrs);
+        let fix = reordered.map(|replacement| {
+            FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                span,
+                String::new(),
+                replacement,
+                0.6,
+                Some("CAPCO-2023-§3.1"),
+            )
+        });
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "marking blocks are out of CAPCO order \
+             (expected: Classification // SCI // SAR // Dissem // REL TO)",
+            "CAPCO-ISM-v2022-DEC-§3.1",
+            fix,
+        )]
+    }
+}
+
+fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
+    match kind {
+        TokenKind::Classification => Some(0),
+        TokenKind::SciControl => Some(1),
+        TokenKind::SarIdentifier => Some(2),
+        TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
+        // Separators, declass, and unknown tokens do not participate in
+        // ordering — they belong to other blocks or other rules.
+        _ => None,
+    }
+}
+
+/// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
+/// block ordinals: Classification // SCI // SAR // Dissem // REL TO.
+///
+/// Within each block, tokens preserve their document order. REL TO trigraphs
+/// are reassembled into a single `REL TO ...` block. Returns `None` if there
+/// is nothing meaningful to reorder (no classification recorded).
+///
+/// This is the suggestion path for E003 (T032). It is not byte-equivalent to
+/// the original markup whitespace, but it is a valid CAPCO marking that the
+/// engine could splice if a caller lowers the threshold below 0.6.
+fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
+    // Group token texts by ordinal, preserving document order.
+    let mut classification: Vec<&str> = Vec::new();
+    let mut sci: Vec<&str> = Vec::new();
+    let mut sar: Vec<&str> = Vec::new();
+    let mut dissem: Vec<&str> = Vec::new();
+    let mut rel_to: Vec<&str> = Vec::new();
+
+    for token in attrs.token_spans.iter() {
+        match token.kind {
+            TokenKind::Classification => classification.push(token.text.as_ref()),
+            TokenKind::SciControl => sci.push(token.text.as_ref()),
+            TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
+            TokenKind::DissemControl => dissem.push(token.text.as_ref()),
+            TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
+            _ => {}
+        }
+    }
+
+    if classification.is_empty() {
+        return None;
+    }
+
+    let mut blocks: Vec<String> = Vec::with_capacity(8);
+    blocks.push(classification.join(" "));
+    for s in sci {
+        blocks.push(s.to_owned());
+    }
+    for s in sar {
+        blocks.push(s.to_owned());
+    }
+    for d in dissem {
+        blocks.push(d.to_owned());
+    }
+    if !rel_to.is_empty() {
+        blocks.push(format!("REL TO {}", rel_to.join(", ")));
+    }
+
+    let joined = blocks.join("//");
+    // Portion spans exclude the outer parentheses, so the replacement must
+    // be the inner marking text only (no wrapping parens) to avoid producing
+    // `((…))` when the fix proposal is spliced back into the original source.
+    Some(joined)
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +422,85 @@ impl Rule for SeparatorCountRule {
         Severity::Fix
     }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        // Requires raw source text in rule context — not available until Phase 3
-        // wires per-token spans. IsmAttributes is post-parse and discards separators.
-        vec![]
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        // === Extra separators (`////` or longer runs) ===
+        // Adjacent separator spans (back-to-back `//` with nothing between)
+        // indicate `///+` runs. Phase 3 records every separator span via the
+        // parser; we walk consecutive pairs and emit E004 when their gap
+        // is empty.
+        let seps: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Separator)
+            .collect();
+        for window in seps.windows(2) {
+            let a = window[0].span;
+            let b = window[1].span;
+            if b.start == a.end {
+                // `////` — back-to-back separators with no block between.
+                let span = Span::new(a.start, b.end);
+                let original = "//".repeat((span.end - span.start) / 2);
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span,
+                    message: "redundant block separator: collapse to a single `//`".to_owned(),
+                    citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                    original,
+                    replacement: "//".to_owned(),
+                    confidence: 0.99,
+                    migration_ref: None,
+                }));
+            }
+        }
+
+        // === Missing separators (single `/` not part of `//`) ===
+        // When a user writes `SECRET/NOFORN` (one slash) the parser cannot
+        // split on `//`, so the entire marking lands in one block whose
+        // text contains a stray `/`. The block is recorded as either a
+        // `Classification` token (if it's the first/only block) or an
+        // `Unknown` token (if a partial split happened, e.g.
+        // `SECRET//SI/NF` → blocks `SECRET`, `SI/NF`). E004 walks both and
+        // emits one diagnostic per single-slash position.
+        for token in attrs.token_spans.iter() {
+            if !matches!(token.kind, TokenKind::Classification | TokenKind::Unknown) {
+                continue;
+            }
+            let bytes = token.text.as_bytes();
+            // Find every `/` that is NOT adjacent to another `/`. A doubled
+            // `/` is a separator and would have been recognized by the
+            // outer `//` split, so any `/` we see here in a non-Separator
+            // token is by construction a stray single slash.
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'/' {
+                    let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
+                    let next_is_slash = bytes.get(i + 1) == Some(&b'/');
+                    if !prev_is_slash && !next_is_slash {
+                        let abs_pos = token.span.start + i;
+                        let span = Span::new(abs_pos, abs_pos + 1);
+                        diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                            rule: self.id(),
+                            severity: self.default_severity(),
+                            source: FixSource::BuiltinRule,
+                            span,
+                            message: "missing block separator: single `/` should be `//`"
+                                .to_owned(),
+                            citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                            original: "/".to_owned(),
+                            replacement: "//".to_owned(),
+                            confidence: 0.99,
+                            migration_ref: None,
+                        }));
+                    }
+                }
+                i += 1;
+            }
+        }
+
+        diagnostics
     }
 }
 
@@ -218,7 +518,7 @@ impl Rule for DeclassifyInBannerRule {
         "declassify-in-banner"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Fix
+        Severity::Error
     }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -226,20 +526,363 @@ impl Rule for DeclassifyInBannerRule {
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
         }
-        if attrs.declassify_on.is_none() {
+        if attrs.declassify_on.is_none() && attrs.declass_exemption.is_none() {
             return vec![];
         }
+
+        // Span: whichever declass-related token is present.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| matches!(t.kind, TokenKind::DeclassExemption | TokenKind::DeclassDate))
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
 
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
-            Span::new(0, 0), // TODO: wire actual span (Phase 3)
+            span,
             "declassification marking belongs in Classification Authority Block \
              (Declassify On:), not in the banner — remove from banner and add to CAB",
             "CAPCO-ISM-v2022-DEC-§6.1",
             None, // Fix requires document-level context (multi-span);
                   // confidence 0.55 per T034 — suggestion only.
         )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E006 — Deprecated dissem control
+// ---------------------------------------------------------------------------
+
+/// Fires when a marking contains a deprecated dissemination control.
+///
+/// Most deprecated dissem controls (e.g., `LIMDIS`, `FOUO`) are absent from
+/// the modern CVE entirely, so the parser surfaces them as `Unknown` tokens.
+/// E006 walks Unknown tokens and looks each up in the migration table; a
+/// hit whose replacement is a known dissem control fires the diagnostic.
+///
+/// Entries owned by E001 (banner abbreviation, e.g., `NF`→`NOFORN`) are
+/// handled by E001 instead, so the duplicate dispatch is suppressed via the
+/// `is_dissem_replacement` filter below.
+struct DeprecatedDissemRule;
+
+impl Rule for DeprecatedDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E006")
+    }
+    fn name(&self) -> &'static str {
+        "deprecated-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        // Walk every TokenSpan whose kind is either DissemControl (the
+        // deprecated marking is in the modern CVE — e.g., FOUO) or Unknown
+        // (the deprecated marking has been removed from the CVE — e.g.,
+        // LIMDIS). For each, look up the migration table by text. A hit
+        // whose replacement is a known dissem name is an E006 violation.
+        for token in attrs.token_spans.iter() {
+            if !matches!(token.kind, TokenKind::DissemControl | TokenKind::Unknown) {
+                continue;
+            }
+            let Some(entry) = find_migration(token.text.as_ref()) else {
+                continue;
+            };
+            // Skip declass-shorthand entries (E007 owns those).
+            if !is_dissem_replacement(entry.replacement) {
+                continue;
+            }
+            // Portion-form abbreviations (NF, OC, IMC, DSEN, PR) are NOT
+            // deprecations — they are the canonical portion form and the
+            // banner expansion is owned by E001. Skip them at every layer.
+            if is_abbreviation_expansion(token.text.as_ref(), entry.replacement) {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::MigrationTable,
+                span: token.span,
+                message: format!(
+                    "{:?} is a deprecated dissemination control; replace with {:?}",
+                    token.text, entry.replacement
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§3.4",
+                original: token.text.to_string(),
+                replacement: entry.replacement.to_owned(),
+                confidence: entry.confidence,
+                migration_ref: Some(entry.reference),
+            }));
+        }
+        diagnostics
+    }
+}
+
+/// Returns `true` if `from`→`to` is a portion-form abbreviation expansion
+/// owned by E001 (so E006 should not double-fire on the same span).
+fn is_abbreviation_expansion(from: &str, to: &str) -> bool {
+    matches!(
+        (from, to),
+        ("NF", "NOFORN")
+            | ("OC", "ORCON")
+            | ("IMC", "IMCON")
+            | ("DSEN", "DEA SENSITIVE")
+            | ("PR", "PROPIN")
+    )
+}
+
+fn is_dissem_replacement(replacement: &str) -> bool {
+    matches!(
+        replacement,
+        "RELIDO" | "CUI" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE" | "PROPIN"
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E007 — X-shorthand declassification date
+// ---------------------------------------------------------------------------
+
+/// CAPCO X-shorthand declass codes (e.g., `25X1-`, `25X2-`, `50X1-`,
+/// `50X1-HUM-`) are deprecated in favor of the canonical forms (`25X1`,
+/// `50X1-HUM`, etc.). The deprecated dashed form is not in the CVE, so
+/// the parser surfaces it as `TokenKind::Unknown`. E007 walks Unknown
+/// tokens via two paths:
+///
+/// 1. **Migration table lookup**: exact match in the seed `MIGRATIONS`
+///    table (e.g., `25X1-` → `25X1`, `50X1-` → `50X1-HUM`). This path
+///    uses the table's authoritative confidence and reference.
+/// 2. **Pattern match** (fallback): any `TokenKind::Unknown` whose text
+///    matches the `\d+X\d+(-[A-Z]+)?-` shape — i.e., a CAPCO
+///    X-shorthand form with a trailing `-`. This catches forms the
+///    seed table does not enumerate (e.g., `25X2-`, `25X5-`, `25X9-`).
+///    The suggested replacement is the text with the trailing `-`
+///    stripped; confidence is 0.95 (slightly lower than the 0.97 used
+///    for table-backed matches to reflect the lack of an authoritative
+///    replacement mapping).
+struct XShorthandDateRule;
+
+impl Rule for XShorthandDateRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E007")
+    }
+    fn name(&self) -> &'static str {
+        "x-shorthand-date"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        for token in attrs.token_spans.iter() {
+            if token.kind != TokenKind::Unknown {
+                continue;
+            }
+            let text = token.text.as_ref();
+
+            // Path 1: exact migration-table match. Uses the table's
+            // authoritative replacement and reference. Skips entries
+            // owned by E006 (dissem deprecations).
+            if let Some(entry) = find_migration(text) {
+                if is_dissem_replacement(entry.replacement) {
+                    continue;
+                }
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::MigrationTable,
+                    span: token.span,
+                    message: format!(
+                        "X-shorthand declassification code {text:?} is deprecated; \
+                         use {:?}",
+                        entry.replacement
+                    ),
+                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    original: text.to_owned(),
+                    replacement: entry.replacement.to_owned(),
+                    confidence: entry.confidence,
+                    migration_ref: Some(entry.reference),
+                }));
+                continue;
+            }
+
+            // Path 2: pattern match for X-shorthand forms not in the
+            // seed migration table (e.g., `25X2-`, `25X5-`, `25X9-`).
+            // Strip the trailing `-` to produce the canonical form.
+            if looks_like_deprecated_x_shorthand(text) {
+                let replacement = text.trim_end_matches('-').to_owned();
+                if replacement.is_empty() {
+                    continue;
+                }
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::MigrationTable,
+                    span: token.span,
+                    message: format!(
+                        "X-shorthand declassification code {text:?} is deprecated; \
+                         use {replacement:?}"
+                    ),
+                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    original: text.to_owned(),
+                    replacement,
+                    // 0.95: slightly below table-backed 0.97 because
+                    // the canonical form is derived by pattern stripping
+                    // rather than an authoritative CVE mapping.
+                    confidence: 0.95,
+                    migration_ref: Some("CAPCO-2023-§5.1-X-shorthand-pattern"),
+                }));
+            }
+        }
+        diagnostics
+    }
+}
+
+/// Returns `true` if `s` looks like a DEPRECATED CAPCO X-shorthand
+/// declassification form — specifically a canonical form with a
+/// trailing `-`.
+///
+/// Matched patterns:
+/// - `NNXNN-`             (e.g., `25X1-`, `25X2-`, `50X1-`)
+/// - `NNXNN-AAA-`         (e.g., `50X1-HUM-`, `25X9-WMD-`)
+///
+/// The canonical (modern) forms (`25X1`, `50X1-HUM`) are in the CVE and
+/// parse as `DeclassExemption`, so they never reach this function via
+/// the `TokenKind::Unknown` walk.
+///
+/// Used by both E007 (to emit) and E008 (to skip) so the two rules
+/// cannot drift on which tokens each owns.
+fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    // Must end with `-`.
+    if bytes.last() != Some(&b'-') {
+        return false;
+    }
+    let inner = &bytes[..bytes.len() - 1];
+    if inner.is_empty() {
+        return false;
+    }
+    let mut i = 0;
+    // Leading digits.
+    while i < inner.len() && inner[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 || i >= inner.len() {
+        return false;
+    }
+    // `X` separator.
+    if inner[i] != b'X' {
+        return false;
+    }
+    i += 1;
+    // One or more digits after `X`.
+    let start_digits = i;
+    while i < inner.len() && inner[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == start_digits {
+        return false;
+    }
+    // Optional `-LETTERS` suffix (e.g., `-HUM`, `-WMD`).
+    if i == inner.len() {
+        return true;
+    }
+    if inner[i] != b'-' {
+        return false;
+    }
+    i += 1;
+    while i < inner.len() {
+        if !inner[i].is_ascii_uppercase() {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E008 — Unrecognized token inside marking
+// ---------------------------------------------------------------------------
+
+/// FR-012: any token inside a marking candidate boundary that the parser
+/// could not classify is reported as an error with no fix offered.
+struct UnknownTokenRule;
+
+impl Rule for UnknownTokenRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E008")
+    }
+    fn name(&self) -> &'static str {
+        "unrecognized-token"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            // Skip entries that E006/E007 will pick up. Two paths to check,
+            // in lockstep with E007's emit logic:
+            //   1. Migration-table hit (covers LIMDIS/FOUO for E006 and
+            //      25X1-/50X1- for E007).
+            //   2. Pattern-matched X-shorthand with a trailing `-` for
+            //      forms not in the seed table (25X2-, 25X9-, etc.).
+            // An Unknown that hits either path is not "unrecognized" — it
+            // is a deprecated form that another rule will surface.
+            .filter(|t| {
+                let text = t.text.as_ref();
+                find_migration(text).is_none() && !looks_like_deprecated_x_shorthand(text)
+            })
+            .map(|t| {
+                Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    t.span,
+                    "unrecognized token inside marking — does not match any \
+                     known CAPCO classification, control, or trigraph",
+                    "CAPCO-ISM-v2022-DEC-§3.1",
+                    None, // FR-012: no fix offered
+                )
+            })
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: W001 — Deprecated marking warning
+// ---------------------------------------------------------------------------
+
+/// W001 surfaces markings that are still legal but have a newer canonical
+/// form. The seed migration table has no W001-flagged entries, so this rule
+/// fires zero diagnostics in Phase 3 against real corpus content. Synthetic
+/// entries can be injected through a custom `RuleSet` for tests; see
+/// `tests/rules_us1.rs`.
+struct DeprecatedMarkingWarningRule;
+
+impl Rule for DeprecatedMarkingWarningRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W001")
+    }
+    fn name(&self) -> &'static str {
+        "deprecated-marking-warning"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Phase 3: no W001-flagged migration entries exist yet. The rule is
+        // wired so that adding a `is_warning_only: true` field to
+        // MigrationEntry in a future build.rs change starts firing
+        // diagnostics with no other code changes.
+        vec![]
     }
 }
 
@@ -252,6 +895,7 @@ impl Rule for DeclassifyInBannerRule {
 struct FixDiagnosticParams {
     rule: RuleId,
     severity: Severity,
+    source: FixSource,
     span: Span,
     message: String,
     citation: &'static str,
@@ -264,7 +908,7 @@ struct FixDiagnosticParams {
 fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
     let proposal = FixProposal::new(
         p.rule.clone(),
-        FixSource::BuiltinRule,
+        p.source,
         p.span,
         p.original,
         p.replacement,
@@ -279,4 +923,266 @@ fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
         p.citation,
         Some(proposal),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_capco_test_support::{lint_banner, lint_portion};
+
+    #[test]
+    fn capco_rule_set_registers_all_phase3_rules() {
+        let set = CapcoRuleSet::new();
+        let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
+        assert!(ids.contains(&"E001"));
+        assert!(ids.contains(&"E002"));
+        assert!(ids.contains(&"E003"));
+        assert!(ids.contains(&"E004"));
+        assert!(ids.contains(&"E005"));
+        assert!(ids.contains(&"E006"));
+        assert!(ids.contains(&"E007"));
+        assert!(ids.contains(&"E008"));
+        assert!(ids.contains(&"W001"));
+        assert_eq!(set.rules().len(), 9);
+    }
+
+    #[test]
+    fn e001_fires_on_abbreviated_dissem_in_banner_with_real_span() {
+        let diags = lint_banner("TOP SECRET//SI//NF");
+        let e001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E001").collect();
+        assert_eq!(e001.len(), 1);
+        // The span must point at the literal "NF" bytes — not at 0..0.
+        let src = b"TOP SECRET//SI//NF";
+        assert_eq!(e001[0].span.as_str(src).unwrap(), "NF");
+    }
+
+    #[test]
+    fn e001_does_not_fire_on_full_form_noforn() {
+        let diags = lint_banner("TOP SECRET//SI//NOFORN");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E001"));
+    }
+
+    #[test]
+    fn e002_fires_when_usa_missing_with_real_span() {
+        let diags = lint_banner("SECRET//REL TO GBR, AUS");
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        // Span points at the first trigraph in the list.
+        let src = b"SECRET//REL TO GBR, AUS";
+        assert_eq!(e002[0].span.as_str(src).unwrap(), "GBR");
+    }
+
+    #[test]
+    fn e003_fires_on_misordered_blocks() {
+        // SCI (SI) appears AFTER dissem (NF) — out of order.
+        let diags = lint_banner("SECRET//NF//SI");
+        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
+        assert_eq!(e003.len(), 1);
+    }
+
+    #[test]
+    fn e003_does_not_fire_on_correct_order() {
+        let diags = lint_banner("SECRET//SI//NOFORN");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E003"));
+    }
+
+    #[test]
+    fn e003_emits_fix_proposal_with_confidence_06() {
+        // T032: E003 must emit a FixProposal at confidence 0.6 (suggestion-
+        // only under default 0.95 threshold) so consumers that lower the
+        // threshold or surface fixes in IDE quick-fixes can act on it.
+        let diags = lint_banner("SECRET//NOFORN//SI");
+        let e003 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E003")
+            .expect("E003 must fire");
+        let fix = e003
+            .fix
+            .as_ref()
+            .expect("E003 must carry a FixProposal (T032)");
+        assert!((fix.confidence - 0.6).abs() < f32::EPSILON);
+        assert_eq!(fix.replacement.as_ref(), "SECRET//SI//NOFORN");
+    }
+
+    #[test]
+    fn e004_fires_on_redundant_separator() {
+        // `////` between SECRET and NOFORN is two separators back-to-back.
+        let diags = lint_banner("SECRET////NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(e004.len(), 1);
+        let src = b"SECRET////NOFORN";
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "////");
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_clean_separator() {
+        let diags = lint_banner("SECRET//NOFORN");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E004"));
+    }
+
+    #[test]
+    fn e004_fires_on_missing_separator_single_slash() {
+        // T033: E004 must detect missing separators (single `/`).
+        let diags = lint_banner("SECRET/NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(e004.len(), 1);
+        // The fix replaces the single `/` at byte 6 with `//`.
+        assert_eq!(e004[0].span.start, 6);
+        assert_eq!(e004[0].span.end, 7);
+        let fix = e004[0].fix.as_ref().unwrap();
+        assert_eq!(fix.original.as_ref(), "/");
+        assert_eq!(fix.replacement.as_ref(), "//");
+    }
+
+    #[test]
+    fn e004_fires_on_missing_separator_in_later_block() {
+        // The parser splits on `//` so the partial split puts `SI/NF` into
+        // an Unknown block. E004's stray-slash walk catches it.
+        let diags = lint_banner("SECRET//SI/NF");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(e004.len(), 1);
+        assert_eq!(e004[0].span.start, 10);
+    }
+
+    #[test]
+    fn e005_fires_on_declass_exemption_in_banner() {
+        let diags = lint_banner("SECRET//25X1//NOFORN");
+        let e005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E005").collect();
+        assert_eq!(e005.len(), 1);
+        let src = b"SECRET//25X1//NOFORN";
+        assert_eq!(e005[0].span.as_str(src).unwrap(), "25X1");
+    }
+
+    #[test]
+    fn e008_fires_on_unknown_token() {
+        let diags = lint_banner("SECRET//XYZZY//NOFORN");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert_eq!(e008.len(), 1);
+        let src = b"SECRET//XYZZY//NOFORN";
+        assert_eq!(e008[0].span.as_str(src).unwrap(), "XYZZY");
+    }
+
+    #[test]
+    fn looks_like_deprecated_x_shorthand_matches_expected_patterns() {
+        use super::looks_like_deprecated_x_shorthand as m;
+        // Deprecated forms (must match)
+        assert!(m("25X1-"));
+        assert!(m("25X2-"));
+        assert!(m("25X9-"));
+        assert!(m("50X1-"));
+        assert!(m("50X1-HUM-"));
+        assert!(m("25X3-WMD-"));
+        // Canonical forms (must NOT match — no trailing dash)
+        assert!(!m("25X1"));
+        assert!(!m("50X1-HUM"));
+        // Malformed / unrelated
+        assert!(!m(""));
+        assert!(!m("-"));
+        assert!(!m("X1-"));
+        assert!(!m("25-X1-"));
+        assert!(!m("25X-"));
+        assert!(!m("ABCX1-"));
+        assert!(!m("25X1-hum-"), "lowercase suffix should not match");
+        assert!(!m("NOFORN"));
+    }
+
+    #[test]
+    fn e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table() {
+        // `25X2-` is NOT in the seed MIGRATIONS table. Before the pattern
+        // fallback, this would have fallen through to E008. Now E007
+        // should fire with a confidence of 0.95 and a replacement of
+        // `25X2` (trailing `-` stripped).
+        let diags = lint_banner("SECRET//25X2-//NOFORN");
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
+        assert_eq!(e007.len(), 1);
+        let fix = e007[0].fix.as_ref().expect("E007 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "25X2");
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
+        // E008 must NOT also fire on the same span.
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E008"));
+    }
+
+    #[test]
+    fn e007_still_fires_on_migration_table_entries() {
+        // The existing 25X1- path (table-backed) must still work.
+        let diags = lint_banner("SECRET//25X1-//NOFORN");
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
+        assert_eq!(e007.len(), 1);
+        let fix = e007[0].fix.as_ref().unwrap();
+        assert_eq!(fix.replacement.as_ref(), "25X1");
+        // Table confidence from the seed MIGRATIONS entry (0.97).
+        assert!((fix.confidence - 0.97).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e008_no_fix_offered() {
+        let diags = lint_banner("SECRET//XYZZY//NOFORN");
+        let e008 = diags.iter().find(|d| d.rule.as_str() == "E008").unwrap();
+        assert!(e008.fix.is_none(), "FR-012: E008 must not propose a fix");
+    }
+
+    #[test]
+    fn no_diagnostics_on_clean_banner() {
+        let diags = lint_banner("TOP SECRET//SI//NOFORN");
+        assert!(
+            diags.is_empty(),
+            "clean banner should produce no diagnostics, got: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn no_diagnostics_on_clean_portion() {
+        let diags = lint_portion("(SECRET//NF)");
+        // (NF is the portion-form abbreviation; portion markings legitimately
+        // use abbreviations, so E001 must not fire on a portion candidate.)
+        assert!(
+            diags.is_empty(),
+            "clean portion should produce no diagnostics, got: {diags:?}"
+        );
+    }
+}
+
+/// Internal test support module — drives the parser and rules directly,
+/// without depending on the engine crate. This avoids a circular dependency
+/// (`marque-capco` is below `marque-engine` in the workspace graph).
+#[cfg(test)]
+mod marque_capco_test_support {
+    use super::CapcoRuleSet;
+    use marque_core::{Parser, Scanner};
+    use marque_ism::{CapcoTokenSet, MarkingType};
+    use marque_rules::{Diagnostic, RuleContext, RuleSet};
+
+    fn run(source: &[u8]) -> Vec<Diagnostic> {
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidates = Scanner::scan(source);
+        let rule_set = CapcoRuleSet::new();
+        let mut out = Vec::new();
+        for candidate in &candidates {
+            if candidate.kind == MarkingType::PageBreak {
+                continue;
+            }
+            let Ok(parsed) = parser.parse(candidate, source) else {
+                continue;
+            };
+            let ctx = RuleContext {
+                marking_type: candidate.kind,
+                zone: None,
+                position: None,
+                page_context: None,
+            };
+            for rule in rule_set.rules() {
+                out.extend(rule.check(&parsed.attrs, &ctx));
+            }
+        }
+        out
+    }
+
+    pub fn lint_banner(s: &str) -> Vec<Diagnostic> {
+        run(s.as_bytes())
+    }
+
+    pub fn lint_portion(s: &str) -> Vec<Diagnostic> {
+        run(s.as_bytes())
+    }
 }

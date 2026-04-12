@@ -190,17 +190,31 @@ struct CapcoConfigFile {
 /// Load and merge configuration from standard locations.
 ///
 /// Search order (first found wins for each layer):
-/// 1. `.marque.toml` in current directory (committed, project policy)
-/// 2. `.marque.local.toml` alongside the project config (user-specific, gitignored)
-/// 3. Environment variables (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`, `MARQUE_LOG`)
+/// 1. `.marque.toml` discovered by walking upward from `start` per
+///    `contracts/cli.md`. The walk stops at the **first** of:
+///    - a directory containing `.marque.toml`
+///    - a directory containing `.git/` (git repository root)
+///    - the filesystem root
+///
+///    If the walk finds a `.marque.toml`, that directory is the project root
+///    for both Layer 1 (committed) and Layer 2 (local). If the walk finds a
+///    git root or filesystem root first, no project config is loaded —
+///    Layer 3 (env vars) still runs.
+/// 2. `.marque.local.toml` **only in the same directory** as the discovered
+///    `.marque.toml`. The local-config search is never independently walked,
+///    so a stray `.marque.local.toml` in a parent directory cannot silently
+///    attach to a child project's config.
+/// 3. Environment variables (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`,
+///    `MARQUE_LOG`).
 ///
 /// Hard-fail validators run after merging all layers.
-pub fn load(project_root: &std::path::Path) -> Result<Config, ConfigError> {
+pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
-    // Layer 1: project config
-    let project_config = project_root.join(".marque.toml");
-    if project_config.exists() {
+    // Layer 1+2: walk upward for the project config.
+    if let Some(project_dir) = discover_project_dir(start) {
+        // Layer 1: project config
+        let project_config = project_dir.join(".marque.toml");
         let raw = std::fs::read_to_string(&project_config).map_err(|e| ConfigError::ReadError {
             path: project_config.clone(),
             source: e,
@@ -215,17 +229,18 @@ pub fn load(project_root: &std::path::Path) -> Result<Config, ConfigError> {
         }
 
         merge_project_into(&mut config, file)?;
-    }
 
-    // Layer 2: user-local config (gitignored)
-    let local_config = project_root.join(".marque.local.toml");
-    if local_config.exists() {
-        let raw = std::fs::read_to_string(&local_config).map_err(|e| ConfigError::ReadError {
-            path: local_config.clone(),
-            source: e,
-        })?;
-        let file: ConfigFile = toml::from_str(&raw)?;
-        merge_user_into(&mut config, file);
+        // Layer 2: user-local config in the SAME directory only.
+        let local_config = project_dir.join(".marque.local.toml");
+        if local_config.exists() {
+            let raw =
+                std::fs::read_to_string(&local_config).map_err(|e| ConfigError::ReadError {
+                    path: local_config.clone(),
+                    source: e,
+                })?;
+            let file: ConfigFile = toml::from_str(&raw)?;
+            merge_user_into(&mut config, file);
+        }
     }
 
     // Layer 3: environment variables
@@ -235,6 +250,77 @@ pub fn load(project_root: &std::path::Path) -> Result<Config, ConfigError> {
     validate_schema_version(&config)?;
 
     Ok(config)
+}
+
+/// Load configuration from an explicit `.marque.toml` path, bypassing the
+/// upward walk. Used by `--config <PATH>` per `contracts/cli.md`:
+/// "short-circuits the walk and uses the specified path as the project
+/// config; the local-config search still applies, only in the directory
+/// containing the supplied path."
+pub fn load_with_explicit_config(project_config: &std::path::Path) -> Result<Config, ConfigError> {
+    let mut config = Config::default();
+
+    // Layer 1: explicit project config — required to exist.
+    let raw = std::fs::read_to_string(project_config).map_err(|e| ConfigError::ReadError {
+        path: project_config.to_path_buf(),
+        source: e,
+    })?;
+    let file: ConfigFile = toml::from_str(&raw)?;
+
+    if file.user.is_some() {
+        return Err(ConfigError::UserSectionInCommitted {
+            path: project_config.to_path_buf(),
+        });
+    }
+
+    merge_project_into(&mut config, file)?;
+
+    // Layer 2: local config in the same directory as the explicit path.
+    if let Some(parent) = project_config.parent() {
+        let local_config = parent.join(".marque.local.toml");
+        if local_config.exists() {
+            let raw =
+                std::fs::read_to_string(&local_config).map_err(|e| ConfigError::ReadError {
+                    path: local_config.clone(),
+                    source: e,
+                })?;
+            let file: ConfigFile = toml::from_str(&raw)?;
+            merge_user_into(&mut config, file);
+        }
+    }
+
+    apply_env(&mut config)?;
+    validate_schema_version(&config)?;
+    Ok(config)
+}
+
+/// Walk upward from `start` looking for a directory containing `.marque.toml`.
+///
+/// Returns `Some(dir)` if a `.marque.toml` is found before hitting either a
+/// git repository root (a directory containing `.git/`) or the filesystem
+/// root. Returns `None` otherwise — falling back to built-in defaults is the
+/// caller's responsibility.
+///
+/// The walk treats `.git` as a hard stop *only when* the directory does not
+/// also contain `.marque.toml`. A repo with `.marque.toml` at its root is
+/// the common case and must succeed.
+fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join(".marque.toml").is_file() {
+            return Some(current);
+        }
+        // Hit a git repo root that did not contain .marque.toml — stop.
+        // The check is for `.git` as either a file (git worktree pointer)
+        // or a directory (normal repo).
+        if current.join(".git").exists() {
+            return None;
+        }
+        if !current.pop() {
+            // Filesystem root — nothing more to walk.
+            return None;
+        }
+    }
 }
 
 fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
@@ -437,5 +523,136 @@ mod tests {
             .exit_code(),
             EX_DATAERR
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // D.1: discover_project_dir upward-walk semantics
+    // ---------------------------------------------------------------------
+
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn make_tmpdir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("marque-config-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create tmpdir");
+        dir
+    }
+
+    #[test]
+    fn discover_finds_marque_toml_in_start_dir() {
+        let dir = make_tmpdir("discover-here");
+        fs::write(dir.join(".marque.toml"), b"").unwrap();
+        assert_eq!(super::discover_project_dir(&dir), Some(dir.clone()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discover_walks_upward_for_marque_toml() {
+        // tmp/root/.marque.toml; start from tmp/root/sub/deeper.
+        let root = make_tmpdir("discover-walk");
+        fs::write(root.join(".marque.toml"), b"").unwrap();
+        let sub = root.join("sub").join("deeper");
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(super::discover_project_dir(&sub), Some(root.clone()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn discover_stops_at_git_root_without_marque_toml() {
+        // tmp/root/.git/ + tmp/root/sub/ — start from sub, walk should hit
+        // .git in root and return None (no project config above this point).
+        let root = make_tmpdir("discover-git-stop");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(super::discover_project_dir(&sub), None);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn discover_returns_marque_toml_at_git_root_when_both_present() {
+        // The common case: a repo whose root has both .git and .marque.toml.
+        // The walk must NOT stop at .git before checking .marque.toml.
+        let root = make_tmpdir("discover-both");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".marque.toml"), b"").unwrap();
+        let sub = root.join("crates").join("foo");
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(super::discover_project_dir(&sub), Some(root.clone()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_walks_upward_to_find_project_config() {
+        // tmp/root/.marque.toml + tmp/root/sub/, load from sub.
+        let root = make_tmpdir("load-walk");
+        fs::write(
+            root.join(".marque.toml"),
+            br#"
+[rules]
+E001 = "warn"
+"#,
+        )
+        .unwrap();
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let config = super::load(&sub).expect("load should succeed");
+        assert_eq!(config.rules.overrides.get("E001"), Some(&"warn".to_owned()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_returns_defaults_when_walk_finds_no_marque_toml() {
+        // tmp/root/.git but no .marque.toml — load returns defaults.
+        let root = make_tmpdir("load-defaults");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let config = super::load(&sub).expect("load should succeed with defaults");
+        assert!(config.rules.overrides.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_local_config_only_in_same_dir_as_marque_toml() {
+        // tmp/root/.marque.toml + tmp/root/.marque.local.toml
+        // tmp/root/sub/.marque.local.toml (should NOT be loaded)
+        let root = make_tmpdir("load-local-same-dir");
+        fs::write(
+            root.join(".marque.toml"),
+            br#"
+[capco]
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join(".marque.local.toml"),
+            br#"
+[user]
+classifier_id = "from-root"
+"#,
+        )
+        .unwrap();
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        // A stray local config in `sub` should NOT be loaded — the local
+        // search is anchored to the directory of the project config.
+        fs::write(
+            sub.join(".marque.local.toml"),
+            br#"
+[user]
+classifier_id = "from-sub"
+"#,
+        )
+        .unwrap();
+        let config = super::load(&sub).expect("load should succeed");
+        assert_eq!(
+            config.user.classifier_id.as_deref(),
+            Some("from-root"),
+            "local config must be the one alongside .marque.toml, not in sub"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 }

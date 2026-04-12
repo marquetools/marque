@@ -18,7 +18,7 @@
 use crate::error::CoreError;
 use marque_ism::attrs::{
     Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    Trigraph,
+    TokenKind, TokenSpan, Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
 // has entries. The type is used in from_str() which returns None for now.
@@ -57,6 +57,13 @@ impl<'t> Parser<'t> {
             MarkingType::Portion => self.parse_portion(text, candidate),
             MarkingType::Banner => self.parse_banner(text, candidate),
             MarkingType::Cab => self.parse_cab(text, candidate),
+            // PageBreak candidates are scanner-emitted boundaries with no
+            // parsable content. Engine::lint filters them out before calling
+            // `parse`; reaching this arm is a programming error in the
+            // pipeline, so a `MalformedMarking` is the right surface.
+            MarkingType::PageBreak => Err(CoreError::MalformedMarking(
+                "page-break candidate must not be parsed".to_owned(),
+            )),
         }
     }
 
@@ -66,12 +73,15 @@ impl<'t> Parser<'t> {
         candidate: &MarkingCandidate,
     ) -> Result<ParsedMarking, CoreError> {
         // Strip outer parentheses: "(TS//SI//NF)" -> "TS//SI//NF"
+        // The inner-string offset is `candidate.span.start + 1` because
+        // the leading `(` is one byte (verified ASCII by the scanner).
         let inner = text
             .strip_prefix('(')
             .and_then(|s| s.strip_suffix(')'))
             .ok_or_else(|| CoreError::MalformedMarking(text.to_owned()))?;
 
-        let attrs = self.parse_marking_string(inner, MarkingType::Portion)?;
+        let attrs =
+            self.parse_marking_string(inner, MarkingType::Portion, candidate.span.start + 1)?;
         Ok(ParsedMarking {
             attrs,
             source_span: candidate.span,
@@ -84,7 +94,18 @@ impl<'t> Parser<'t> {
         text: &str,
         candidate: &MarkingCandidate,
     ) -> Result<ParsedMarking, CoreError> {
-        let attrs = self.parse_marking_string(text.trim(), MarkingType::Banner)?;
+        // For banner candidates, `text` is the full line bytes from the
+        // scanner. `text.trim()` may consume leading whitespace, which
+        // shifts the per-token offsets. Compute the leading whitespace
+        // length so we can add it to candidate.span.start.
+        let trimmed = text.trim_start();
+        let lead_ws = text.len() - trimmed.len();
+        let trimmed = trimmed.trim_end();
+        let attrs = self.parse_marking_string(
+            trimmed,
+            MarkingType::Banner,
+            candidate.span.start + lead_ws,
+        )?;
         Ok(ParsedMarking {
             attrs,
             source_span: candidate.span,
@@ -124,56 +145,144 @@ impl<'t> Parser<'t> {
 
     /// Parse a marking string (without outer parentheses) into IsmAttributes.
     /// Handles both portion form (abbreviated) and banner form (full words).
+    ///
+    /// `s_offset` is the absolute byte offset of `s` within the original
+    /// source buffer. Phase 3 uses it to record per-token absolute spans on
+    /// `IsmAttributes::token_spans` so rules can point at byte-precise
+    /// diagnostic locations.
     fn parse_marking_string(
         &self,
         s: &str,
         context: MarkingType,
+        s_offset: usize,
     ) -> Result<IsmAttributes, CoreError> {
         let mut attrs = IsmAttributes::default();
 
-        // Blocks are separated by `//`; the first block is always the classification.
-        let blocks: Vec<&str> = s.split("//").collect();
-        if blocks.is_empty() {
+        if s.is_empty() {
             return Err(CoreError::MalformedMarking(s.to_owned()));
         }
 
-        // Parse classification (first block).
-        attrs.classification = parse_classification(blocks[0].trim());
+        // Walk separator (`//`) positions inside `s`. Each block is the
+        // substring between consecutive separators (or string ends). Track
+        // both the block content and its inner offset so we can compute
+        // per-token absolute spans.
+        let separators: Vec<usize> = s.match_indices("//").map(|(i, _)| i).collect();
+        let mut block_ranges: Vec<(usize, usize)> = Vec::with_capacity(separators.len() + 1);
+        let mut prev_end = 0usize;
+        for &sep_start in &separators {
+            block_ranges.push((prev_end, sep_start));
+            prev_end = sep_start + 2; // skip the `//`
+        }
+        block_ranges.push((prev_end, s.len()));
 
-        // Parse subsequent blocks.
+        let mut token_spans: Vec<TokenSpan> = Vec::new();
+
+        // First block is the classification.
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
-        let mut rel_to = Vec::new();
+        let mut rel_to: Vec<Trigraph> = Vec::new();
 
-        for block in &blocks[1..] {
-            let block = block.trim();
-            if block.starts_with("REL TO") || block.starts_with("REL ") {
-                rel_to.extend(parse_rel_to(block, self.tokens));
-            } else if let Some(ctrl) = SciControl::parse(block) {
+        for (idx, &(rel_start, rel_end)) in block_ranges.iter().enumerate() {
+            let raw = &s[rel_start..rel_end];
+            // Trim ASCII whitespace and recover the trimmed-content offset
+            // within the raw block, then add to the absolute s_offset.
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let trim_lead = raw.len() - raw.trim_start().len();
+            let abs_start = s_offset + rel_start + trim_lead;
+            let abs_end = abs_start + trimmed.len();
+            let span = Span::new(abs_start, abs_end);
+
+            if idx == 0 {
+                // Classification block — track even when parse fails so the
+                // span is available for diagnostics.
+                attrs.classification = parse_classification(trimmed);
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::Classification,
+                    span,
+                    text: trimmed.into(),
+                });
+                continue;
+            }
+
+            if trimmed.starts_with("REL TO") || trimmed.starts_with("REL ") {
+                let parsed_trigraphs =
+                    parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
+                rel_to.extend(parsed_trigraphs);
+            } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
-            } else if let Some(ctrl) = DissemControl::parse(block) {
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciControl,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if let Some(ctrl) =
+                DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
+            {
                 dissem.push(ctrl);
-            } else if let Some(sar_id) = SarIdentifier::parse(block) {
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DissemControl,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if let Some(sar_id) = SarIdentifier::parse(trimmed) {
                 sar.push(sar_id);
-            } else if let Some(exemption) = DeclassExemption::parse(block) {
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SarIdentifier,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if let Some(exemption) = DeclassExemption::parse(trimmed) {
                 // Declass exemption codes (e.g., 25X1, 50X1-HUM) that appear
                 // inside a banner or portion marking trigger E005 — they belong
                 // in the CAB "Declassify On:" line, not in the marking string.
                 attrs.declass_exemption = Some(exemption);
-            } else if is_declass_date(block) {
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DeclassExemption,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if is_declass_date(trimmed) {
                 // Free-text declassification dates (YYYYMMDD or YYYY) that
                 // appear inside a banner or portion also belong in the CAB.
-                attrs.declassify_on = Some(block.into());
+                attrs.declassify_on = Some(trimmed.into());
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DeclassDate,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else {
+                // Unrecognized — Phase 3 records this as TokenKind::Unknown
+                // so E008 can fire one diagnostic per unknown token without
+                // re-parsing. E007 also walks Unknown tokens and looks each
+                // up in the migration table to detect deprecated forms.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::Unknown,
+                    span,
+                    text: trimmed.into(),
+                });
             }
-            // Other unrecognized tokens are silently dropped here.
-            // The rules layer (E008) detects and reports them.
         }
 
         attrs.sci_controls = sci.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.rel_to = rel_to.into_boxed_slice();
+        // Record separator spans (Phase 3 needs them for E004). Push them
+        // here alongside block tokens, then sort by start offset so the
+        // final slice is in document (source) order.
+        for &sep_start in &separators {
+            token_spans.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(s_offset + sep_start, s_offset + sep_start + 2),
+                text: "//".into(),
+            });
+        }
+        token_spans.sort_unstable_by_key(|ts| ts.span.start);
+        attrs.token_spans = token_spans.into_boxed_slice();
 
         let _ = context; // used for future context-aware validation
 
@@ -199,27 +308,86 @@ fn parse_classification(s: &str) -> Option<Classification> {
     }
 }
 
-fn parse_rel_to(block: &str, tokens: &dyn TokenSet) -> Vec<Trigraph> {
-    // "REL TO USA, GBR, AUS" or "REL USA, GBR"
-    let after_rel = block
-        .strip_prefix("REL TO")
-        .or_else(|| block.strip_prefix("REL"))
-        .unwrap_or(block)
-        .trim();
+/// Map a banner-form (full-word) dissemination control to its CVE
+/// abbreviation form. The CVE only ships abbreviations (`NF`, `OC`, ...),
+/// but banner markings use the full words (`NOFORN`, `ORCON`, ...) and the
+/// parser must accept both. Phase 3 added this fallback so banner-form
+/// markings parse cleanly into a typed `DissemControl`.
+///
+/// Rules that detect "banner uses portion abbreviation" (E001) read the
+/// raw token span via `attrs.token_spans` and inspect the original bytes,
+/// so this mapping does not lose the abbreviation-vs-full-word signal.
+fn parse_dissem_full_form(s: &str) -> Option<DissemControl> {
+    let abbrev = match s {
+        "NOFORN" => "NF",
+        "ORCON" => "OC",
+        "IMCON" => "IMC",
+        "DEA SENSITIVE" => "DSEN",
+        "PROPIN" => "PR",
+        "RELIDO" => "RELIDO",
+        _ => return None,
+    };
+    DissemControl::parse(abbrev)
+}
 
-    after_rel
-        .split(',')
-        .map(str::trim)
-        .filter(|t| tokens.is_trigraph(t))
-        .filter_map(|t| {
-            let b = t.as_bytes();
-            if b.len() == 3 {
-                Trigraph::try_new([b[0], b[1], b[2]])
-            } else {
-                None
-            }
-        })
-        .collect()
+/// Span-aware parse of a `REL TO ...` block. Records one
+/// `TokenKind::RelToTrigraph` per recognized country code.
+///
+/// `block_offset` is the absolute byte offset of `block` within the
+/// original source buffer.
+fn parse_rel_to_with_spans(
+    block: &str,
+    block_offset: usize,
+    tokens: &dyn TokenSet,
+    token_spans: &mut Vec<TokenSpan>,
+) -> Vec<Trigraph> {
+    // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
+    // need the offset of the *trigraph list* within `block` so that each
+    // trigraph's absolute span can be computed.
+    let prefix_skip = if let Some(rest) = block.strip_prefix("REL TO") {
+        block.len() - rest.len()
+    } else if let Some(rest) = block.strip_prefix("REL") {
+        block.len() - rest.len()
+    } else {
+        0
+    };
+    let after_rel = &block[prefix_skip..];
+
+    let mut out: Vec<Trigraph> = Vec::new();
+    // Walk comma-separated entries, tracking each entry's offset within
+    // `after_rel` so we can land an absolute span on the trigraph itself
+    // (not on any leading whitespace).
+    let mut cursor = 0usize;
+    for entry in after_rel.split(',') {
+        let entry_start_in_after = cursor;
+        // Advance past the entry and its trailing comma. On the final
+        // iteration this steps one past the end of `after_rel`, but the
+        // cursor is never read after the loop ends — the split iterator
+        // drives loop termination, not the cursor. usize addition here
+        // is bounded by the document size, so no overflow in practice.
+        cursor += entry.len() + 1;
+
+        let trim_lead = entry.len() - entry.trim_start().len();
+        let trimmed = entry.trim();
+        if trimmed.is_empty() || !tokens.is_trigraph(trimmed) {
+            continue;
+        }
+        let b = trimmed.as_bytes();
+        if b.len() != 3 {
+            continue;
+        }
+        let Some(t) = Trigraph::try_new([b[0], b[1], b[2]]) else {
+            continue;
+        };
+        out.push(t);
+        let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
+        token_spans.push(TokenSpan {
+            kind: TokenKind::RelToTrigraph,
+            span: Span::new(abs_start, abs_start + 3),
+            text: trimmed.into(),
+        });
+    }
+    out
 }
 
 // SCI controls, dissemination controls, SAR identifiers, and declass
@@ -344,5 +512,116 @@ mod tests {
     fn is_declass_date_rejects_wrong_length() {
         assert!(!is_declass_date("203012"));
         assert!(!is_declass_date("203012311"));
+    }
+
+    // --- token spans ---
+
+    #[test]
+    fn token_spans_track_offsets_in_banner() {
+        let parsed = parse_banner("TOP SECRET//SI//NF");
+        let kinds: Vec<TokenKind> = parsed.attrs.token_spans.iter().map(|t| t.kind).collect();
+        // Two separators + classification + sci + dissem.
+        assert!(kinds.contains(&TokenKind::Separator));
+        assert!(kinds.contains(&TokenKind::Classification));
+        assert!(kinds.contains(&TokenKind::SciControl));
+        assert!(kinds.contains(&TokenKind::DissemControl));
+
+        // Find each by kind and verify the byte slice matches.
+        let src = b"TOP SECRET//SI//NF";
+        let cls = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .unwrap();
+        assert_eq!(cls.span.as_str(src).unwrap(), "TOP SECRET");
+
+        let sci = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SciControl)
+            .unwrap();
+        assert_eq!(sci.span.as_str(src).unwrap(), "SI");
+
+        let dissem = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl)
+            .unwrap();
+        assert_eq!(dissem.span.as_str(src).unwrap(), "NF");
+    }
+
+    #[test]
+    fn token_spans_strip_paren_in_portion() {
+        let parsed = parse_portion("(SECRET//NF)");
+        let src = b"(SECRET//NF)";
+        let cls = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .unwrap();
+        // SECRET starts at byte 1 (after the open paren), runs to byte 7.
+        assert_eq!(cls.span.start, 1);
+        assert_eq!(cls.span.end, 7);
+        assert_eq!(cls.span.as_str(src).unwrap(), "SECRET");
+
+        let dissem = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl)
+            .unwrap();
+        // NF starts at byte 9 (after `SECRET//`).
+        assert_eq!(dissem.span.start, 9);
+        assert_eq!(dissem.span.end, 11);
+    }
+
+    #[test]
+    fn token_spans_record_unknown_token() {
+        let parsed = parse_banner("SECRET//XYZZY//NOFORN");
+        let unknowns: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .collect();
+        assert_eq!(unknowns.len(), 1);
+        assert_eq!(
+            unknowns[0].span.as_str(b"SECRET//XYZZY//NOFORN").unwrap(),
+            "XYZZY"
+        );
+    }
+
+    #[test]
+    fn token_spans_record_rel_to_trigraphs() {
+        let parsed = parse_banner("SECRET//REL TO USA, GBR, AUS");
+        let trigraphs: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToTrigraph)
+            .collect();
+        assert_eq!(trigraphs.len(), 3);
+        let src = b"SECRET//REL TO USA, GBR, AUS";
+        assert_eq!(trigraphs[0].span.as_str(src).unwrap(), "USA");
+        assert_eq!(trigraphs[1].span.as_str(src).unwrap(), "GBR");
+        assert_eq!(trigraphs[2].span.as_str(src).unwrap(), "AUS");
+    }
+
+    #[test]
+    fn token_spans_record_separators() {
+        let parsed = parse_banner("SECRET//NF");
+        let seps: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Separator)
+            .collect();
+        assert_eq!(seps.len(), 1);
+        let src = b"SECRET//NF";
+        assert_eq!(seps[0].span.as_str(src).unwrap(), "//");
     }
 }

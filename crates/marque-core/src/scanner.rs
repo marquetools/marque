@@ -27,10 +27,58 @@ impl Scanner {
         Self::scan_portions(source, &mut candidates);
         Self::scan_banners(source, &mut candidates);
         Self::scan_cab(source, &mut candidates);
+        Self::scan_page_breaks(source, &mut candidates);
 
-        // Sort by span start for deterministic ordering.
-        candidates.sort_unstable_by_key(|c| c.span.start);
+        // Sort by `(start, kind_priority)`. PageBreak gets priority 0 so
+        // it sorts before any content candidate at the same offset — the
+        // engine's PageContext reset must run before a co-located banner
+        // or portion is processed, otherwise the reset is defeated by an
+        // unstable secondary order.
+        candidates.sort_unstable_by(|a, b| {
+            a.span
+                .start
+                .cmp(&b.span.start)
+                .then_with(|| kind_sort_priority(a.kind).cmp(&kind_sort_priority(b.kind)))
+        });
         candidates
+    }
+
+    /// Phase 3 — emit a `MarkingType::PageBreak` candidate at every form-feed
+    /// (`\f`) byte and at the third consecutive `\n` of a `\n\n\n+` run.
+    /// The engine uses these to reset `PageContext` so banner/CAB rules on
+    /// the next page see a fresh aggregate.
+    ///
+    /// PageBreak spans are zero-length and carry no parsable content; the
+    /// parser will reject them, so the engine must filter them out *before*
+    /// calling `parser.parse`.
+    fn scan_page_breaks(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+        // Form-feed: every `\f` is a hard page break in pretty much every
+        // ASCII document convention. memchr is overkill at this scale but
+        // matches the rest of the scanner's idiom.
+        for pos in memchr_iter(b'\x0c', source) {
+            out.push(MarkingCandidate {
+                span: Span::new(pos, pos),
+                kind: MarkingType::PageBreak,
+            });
+        }
+        // Three-or-more consecutive `\n` is a soft page break under our
+        // heuristic. We emit one candidate at the third newline, then skip
+        // ahead until we leave the run, so a single blank gap between
+        // paragraphs (`\n\n`) does NOT trip the reset.
+        let mut run = 0usize;
+        for (i, &b) in source.iter().enumerate() {
+            if b == b'\n' {
+                run += 1;
+                if run == 3 {
+                    out.push(MarkingCandidate {
+                        span: Span::new(i, i),
+                        kind: MarkingType::PageBreak,
+                    });
+                }
+            } else if b != b'\r' {
+                run = 0;
+            }
+        }
     }
 
     fn scan_portions(source: &[u8], out: &mut Vec<MarkingCandidate>) {
@@ -84,13 +132,31 @@ impl Scanner {
     }
 }
 
+/// Sort priority for `MarkingCandidate` kinds at equal start offsets.
+/// PageBreak sorts first so the engine's `PageContext` reset runs before
+/// any co-located content candidate is processed (banner/portion/CAB at
+/// the same byte offset as a page break — an edge case, but hardened).
+fn kind_sort_priority(kind: MarkingType) -> u8 {
+    match kind {
+        MarkingType::PageBreak => 0,
+        _ => 1,
+    }
+}
+
 fn find_portion_end(source: &[u8], open: usize) -> Option<usize> {
-    // Walk bytes after `(` looking for `)`. Reject nested parens and newlines.
+    // Walk bytes after `(` looking for `)`. Reject anything that cannot
+    // legitimately appear inside a single-line portion marking:
+    //   - `\n` / `\r`: portion markings are always on a single line
+    //   - `(`: nested parens are never valid
+    //   - `\x0c` (form feed): a page-break control character cannot
+    //     appear inside a portion. Rejecting it here keeps a
+    //     PageBreak candidate from being shadowed by a spurious
+    //     Portion that spans the form feed.
     let rest = source.get(open + 1..)?;
     for (i, &b) in rest.iter().enumerate() {
         match b {
             b')' => return Some(open + 1 + i),
-            b'\n' | b'\r' | b'(' => return None,
+            b'\n' | b'\r' | b'\x0c' | b'(' => return None,
             _ => {}
         }
     }
@@ -148,5 +214,103 @@ mod tests {
         let src = b"(TS\n//NF) not a real marking";
         let candidates = Scanner::scan(src);
         assert!(candidates.iter().all(|c| c.kind != MarkingType::Portion));
+    }
+
+    #[test]
+    fn rejects_form_feed_in_portion() {
+        // A `\f` inside `(...)` is never a valid single-line portion.
+        // Without this rejection the portion candidate would span the
+        // form feed and shadow the PageBreak candidate at that offset.
+        let src = b"(TS\x0c//NF)";
+        let candidates = Scanner::scan(src);
+        assert!(
+            candidates.iter().all(|c| c.kind != MarkingType::Portion),
+            "form feed inside portion parens must not produce a Portion candidate"
+        );
+        // The PageBreak candidate at offset 3 should still be emitted.
+        assert!(
+            candidates
+                .iter()
+                .any(|c| c.kind == MarkingType::PageBreak && c.span.start == 3),
+            "expected PageBreak at form-feed offset 3"
+        );
+    }
+
+    #[test]
+    fn detects_page_break_form_feed() {
+        let src = b"page1\x0cpage2";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        // Form feed sits at offset 5 in `b"page1\x0cpage2"`.
+        assert_eq!(breaks[0].span.start, 5);
+        assert_eq!(breaks[0].span.end, 5);
+    }
+
+    #[test]
+    fn detects_page_break_blank_line_run() {
+        let src = b"page1\n\n\npage2";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        // Exactly one PageBreak — emitted at the *third* newline (offset 7),
+        // not one per `\n` in the run.
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 7);
+    }
+
+    #[test]
+    fn double_newline_does_not_emit_page_break() {
+        // A normal paragraph break (`\n\n`) must NOT trip the reset, otherwise
+        // every paragraph in a multi-page document looks like a fresh page.
+        let src = b"paragraph one\n\nparagraph two";
+        let candidates = Scanner::scan(src);
+        assert!(
+            candidates.iter().all(|c| c.kind != MarkingType::PageBreak),
+            "double newline should not produce a PageBreak candidate"
+        );
+    }
+
+    #[test]
+    fn page_break_sorts_before_co_located_content() {
+        // Edge case: a banner line whose line start is at the same byte
+        // offset as a form-feed candidate. The scanner emits both at
+        // offset N — PageBreak (zero-length) and Banner (line span).
+        // The sort must place PageBreak first so the engine reset runs
+        // before the banner is processed.
+        //
+        // Construct `\fSECRET\n`: form-feed at 0, banner line 1..7.
+        // The PageBreak lands at offset 0 with zero length; the banner
+        // line scanner's offset is 1 (after the `\f`), so they are NOT
+        // co-located in this case. Build a synthetic double-push case
+        // by testing `kind_sort_priority` directly instead — simpler
+        // and covers the sort key without fighting the scanner.
+        assert_eq!(kind_sort_priority(MarkingType::PageBreak), 0);
+        assert!(
+            kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Banner)
+        );
+        assert!(
+            kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Portion)
+        );
+        assert!(kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Cab));
+    }
+
+    #[test]
+    fn page_break_form_feed_inside_blank_run_emits_both() {
+        // `\n\n\f\n\n` — the form feed itself is one PageBreak; the surrounding
+        // newlines do not also trip the 3-newline heuristic because the run
+        // is broken by the `\f`.
+        let src = b"a\n\n\x0c\n\nb";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1, "only the form-feed should fire here");
     }
 }

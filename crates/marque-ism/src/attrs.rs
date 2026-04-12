@@ -13,6 +13,7 @@
 //! `crate::generated::values`.
 
 use crate::generated::values;
+use crate::span::Span;
 
 // Re-export generated enum types for convenience.
 pub use values::{DeclassExemption, DissemControl, SarIdentifier, SciControl};
@@ -50,6 +51,58 @@ pub struct IsmAttributes {
 
     /// Declassification exemption code from CAB (e.g., 25X1, 50X1-HUM).
     pub declass_exemption: Option<DeclassExemption>,
+
+    /// Per-token byte spans into the *original source buffer*, recorded by
+    /// the parser as it walks the marking string. Phase 3 added this so
+    /// rules can point at the exact offending byte range instead of the
+    /// whole marking. Empty for CAB markings (CAB parsing is line-structured
+    /// and doesn't go through the token-walking path).
+    ///
+    /// Indexing convention: `token_spans` is in document order. To find the
+    /// span for the Nth `DissemControl`, walk the slice and pick the Nth
+    /// entry whose `kind == TokenKind::DissemControl`.
+    pub token_spans: Box<[TokenSpan]>,
+}
+
+/// One parser-recognized token plus its byte span in the original source.
+///
+/// Used by Phase 3 rules to surface byte-precise diagnostic spans without
+/// re-parsing the source. The `text` field carries the literal token bytes
+/// so rules that need the source content (E006, E007, E008 against migration
+/// keys) can look up entries without threading `&[u8] source` through every
+/// `Rule::check` signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenSpan {
+    pub kind: TokenKind,
+    pub span: Span,
+    pub text: Box<str>,
+}
+
+/// Discriminant for `TokenSpan`. Phase 3 rules read these to filter
+/// token-span lookups by category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TokenKind {
+    /// Classification level token (S, SECRET, TS, TOP SECRET, ...).
+    Classification,
+    /// SCI control token (SI, TK, HCS, ...).
+    SciControl,
+    /// SAR identifier token.
+    SarIdentifier,
+    /// Dissemination control token (NOFORN, NF, ORCON, OC, RELIDO, ...).
+    DissemControl,
+    /// REL TO country trigraph (USA, GBR, AUS, ...). One per token, not the
+    /// whole REL TO list.
+    RelToTrigraph,
+    /// Declassification exemption code in CAB or banner (25X1, 50X1-HUM).
+    DeclassExemption,
+    /// Declassification date in CAB or banner (YYYYMMDD or YYYY).
+    DeclassDate,
+    /// `//` separator between blocks. Recorded so E004 can detect extra/
+    /// missing separator runs.
+    Separator,
+    /// A non-empty block that did not match any known token kind. E008 fires
+    /// one diagnostic per `Unknown` entry.
+    Unknown,
 }
 
 /// Classification level. These values are stable across CAPCO schema versions.

@@ -128,17 +128,29 @@ impl std::fmt::Display for Severity {
 
 /// Document position context passed to rules alongside parsed markings.
 ///
-/// `page_context` is `None` for Phase 2 (the engine does not yet build a
-/// per-page accumulator). Phase 3 will populate it for every `Banner` and
-/// `Cab` candidate so that banner-validation rules can compare the observed
-/// banner against the composite expected from all preceding portions.
+/// Phase 3 made `zone` and `position` `Option`-typed: the scanner cannot
+/// reliably determine header/footer/body or document position from raw
+/// text alone, so a rule that reads either field must handle `None`.
+/// They will become populated in a future scanner pass that consumes
+/// document structural metadata (page count, line numbers, header/footer
+/// detection on extracted documents).
+///
+/// `page_context` is populated by the engine for every non-portion
+/// candidate (Banner, CAB) so banner-validation rules can compare the
+/// observed banner against the composite expected from all preceding
+/// portions. The engine resets it at scanner-emitted `MarkingType::PageBreak`
+/// candidates (form-feed `\f` and `\n\n\n+` heuristics) so the context
+/// reflects only the current page.
 #[derive(Debug, Clone)]
 pub struct RuleContext {
     pub marking_type: MarkingType,
-    pub zone: Zone,
-    pub position: DocumentPosition,
-    /// Accumulated portion data for the current page. `None` until Phase 3
-    /// wires page-context building into the engine scan loop.
+    /// Document zone (header/footer/body/CAB) when known. `None` in Phase 3
+    /// — the scanner cannot prove header vs footer from raw text.
+    pub zone: Option<Zone>,
+    /// Coarse document position when known. `None` in Phase 3.
+    pub position: Option<DocumentPosition>,
+    /// Accumulated portion data for the current page, reset at every
+    /// scanner-emitted `MarkingType::PageBreak`.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
 }
 
