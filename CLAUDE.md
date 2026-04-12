@@ -195,11 +195,20 @@ GET  /v1/schema/version
 
 ## Current Status
 
-Pre-MVP. Core pipeline (scanner → parser → engine → rules) is functional end-to-end for raw text. `marque-extract` (Kreuzberg integration) is stubbed. `build.rs` emits placeholder generated code — actual ODNI schema parsing is not yet implemented. The incremental batch cache and server auth middleware are planned but not built.
+MVP complete. Full lint → fix → audit pipeline for raw text with 10 CAPCO rules (E001–E008, W001, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
+
+**Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
-- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack + `memchr` (Phase 1 scanner), `aho-corasick` (native Phase 2) (001-marque-mvp)
-- None for the MVP. The LMDB incremental cache is explicitly out of (001-marque-mvp)
+- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack
+- `memchr` 2 — SIMD candidate detection (Phase 1 scanner)
+- `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections
+- `criterion` 0.5 — benchmarking (SC-001, SC-005)
+- `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
 
 ## Recent Changes
-- 001-marque-mvp: Added Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack + `memchr` (Phase 1 scanner), `aho-corasick` (native Phase 2)
+- Phase 7: Criterion benchmarks (lint_latency, linear_scaling), corpus accuracy harness, WASM parity scaling to full corpus, cargo-fuzz target, bench-check regression gate
+- Phase 6: WASM web worker build with SC-008 parity, `batch` feature flag, CachedAhoCorasick optimization
+- Phase 5: Configurable severity overrides, corrections map with AhoCorasick pre-scanner
+- Phase 3-4: Full lint/fix/audit pipeline, 10 CAPCO rules, CLI with check/fix subcommands
+- Phase 1-2: marque-ism crate extraction, test corpus scaffolding, benchmark stubs

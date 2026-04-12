@@ -90,6 +90,12 @@ fn invalid_corpus_matches_expected_diagnostics() {
         "tests/corpus/invalid/ is empty — Phase 3 must populate the corpus"
     );
     for path in fixtures {
+        // C001 fixtures require a corrections config — skip in rule-level tests.
+        // C001 accuracy is validated by marque-engine's c001_corrections_map_accuracy test.
+        let fname = path.file_name().unwrap().to_string_lossy();
+        if fname.starts_with("corrections_map_typo") {
+            continue;
+        }
         let source = load_fixture(&path);
         let expected = load_expected(&path);
         let actual = lint(&source);

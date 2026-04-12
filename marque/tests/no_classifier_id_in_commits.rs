@@ -27,6 +27,7 @@ const ALLOWED_SENTINELS: &[&str] = &[
     "from-root",
     "from-sub",
     "TEST-12345",
+    "TEST-WASM-42",
 ];
 
 /// Scan a file for classifier-id-shaped strings.

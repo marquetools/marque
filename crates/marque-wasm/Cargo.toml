@@ -41,3 +41,6 @@ serde         = { workspace = true }
 # (well under the 1MB target), so this is acceptable for the MVP.
 # Re-enable once wasm-opt is updated: wasm-opt = ["-Os"]
 wasm-opt = false
+
+[package.metadata.wasm-pack.profile.release-wasm]
+wasm-opt = false
