@@ -25,7 +25,9 @@ if [[ ! -f "$BASELINE" ]]; then
     exit 1
 fi
 
-# Extract baseline p95 in microseconds
+# Extract baseline upper CI bound in microseconds.
+# Note: baseline fields are labeled p50/p95/p99 but are actually
+# lower_ci/mean/upper_ci from criterion's confidence interval.
 BASELINE_P95=$(python3 -c "
 import json, sys
 with open('$BASELINE') as f:
@@ -38,56 +40,55 @@ if [[ -z "$BASELINE_P95" ]]; then
     exit 1
 fi
 
-echo "bench-check: baseline p95 = ${BASELINE_P95} µs"
+echo "bench-check: baseline upper CI = ${BASELINE_P95} µs"
 echo "bench-check: running lint_latency benchmark..."
 
 # Run benchmark and capture output
 BENCH_OUTPUT=$(cargo bench -p marque-engine --bench lint_latency 2>&1)
 
-# Parse the mean time from criterion output.
-# Criterion format: "lint_10kb               time:   [276.03 µs 280.01 µs 284.99 µs]"
-# We take the upper bound (third value) as a conservative p95 proxy.
-MEASURED=$(echo "$BENCH_OUTPUT" | grep -oP 'time:\s+\[\S+ \S+ (\S+) \S+ (\S+)' | head -1 || echo "")
-
-if [[ -z "$MEASURED" ]]; then
-    # Try to extract the upper bound value directly
-    UPPER_US=$(echo "$BENCH_OUTPUT" | grep -oP '\[\S+ [µn]s\s+\S+ [µn]s\s+(\S+) ([µn]s)' | head -1 || echo "")
-fi
-
-# Simpler extraction: get the three values from the time line
+# Parse criterion's time line: "lint_10kb  time:  [276.03 µs 280.01 µs 284.99 µs]"
+# Extract the upper bound (third value + unit) as a conservative regression proxy.
 TIME_LINE=$(echo "$BENCH_OUTPUT" | grep "time:" | head -1)
 echo "bench-check: criterion output: $TIME_LINE"
 
-# Extract upper bound (third numeric value before unit)
-UPPER_VAL=$(echo "$TIME_LINE" | grep -oP '[\d.]+\s*[µn]s' | tail -1 || echo "")
+if [[ -z "$TIME_LINE" ]]; then
+    echo "bench-check: ERROR — no 'time:' line found in criterion output"
+    echo "$BENCH_OUTPUT"
+    exit 1
+fi
+
+# Extract the last "number unit" pair (upper bound of CI)
+UPPER_VAL=$(echo "$TIME_LINE" | grep -oP '[\d.]+\s*[µnm]s' | tail -1 || echo "")
 
 if [[ -z "$UPPER_VAL" ]]; then
-    echo "bench-check: WARNING — could not parse benchmark output. Manual review needed."
+    echo "bench-check: ERROR — could not parse timing from criterion output"
     echo "$BENCH_OUTPUT"
-    exit 0  # Don't fail CI on parse issues — the benchmark ran successfully
+    exit 1
 fi
 
 # Convert to microseconds
 VALUE=$(echo "$UPPER_VAL" | grep -oP '[\d.]+')
-UNIT=$(echo "$UPPER_VAL" | grep -oP '[µn]s')
+UNIT=$(echo "$UPPER_VAL" | grep -oP '[µnm]s')
 
 if [[ "$UNIT" == "ns" ]]; then
     CURRENT_US=$(python3 -c "print(int($VALUE / 1000))")
 elif [[ "$UNIT" == "µs" ]]; then
     CURRENT_US=$(python3 -c "print(int($VALUE))")
+elif [[ "$UNIT" == "ms" ]]; then
+    CURRENT_US=$(python3 -c "print(int($VALUE * 1000))")
 else
-    echo "bench-check: WARNING — unexpected unit: $UNIT"
-    exit 0
+    echo "bench-check: ERROR — unexpected unit: $UNIT"
+    exit 1
 fi
 
-echo "bench-check: measured upper bound = ${CURRENT_US} µs"
+echo "bench-check: measured upper CI = ${CURRENT_US} µs"
 
-# Check for >10% regression
+# Check for >10% regression vs baseline
 THRESHOLD=$(python3 -c "print(int($BASELINE_P95 * 1.10))")
 echo "bench-check: regression threshold (baseline + 10%) = ${THRESHOLD} µs"
 
 if [[ "$CURRENT_US" -gt "$THRESHOLD" ]]; then
-    echo "bench-check: FAIL — p95 regressed: ${CURRENT_US} µs > ${THRESHOLD} µs (baseline: ${BASELINE_P95} µs)"
+    echo "bench-check: FAIL — regressed: ${CURRENT_US} µs > ${THRESHOLD} µs (baseline: ${BASELINE_P95} µs)"
     exit 1
 fi
 

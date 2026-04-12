@@ -37,6 +37,13 @@ fn lint_accuracy_invalid_fixtures() {
     let mut total_matched = 0usize;
 
     for path in &fixtures {
+        // C001 fixtures require a corrections config — tested separately
+        // in c001_corrections_map_accuracy.
+        let fname = path.file_name().unwrap().to_string_lossy();
+        if fname.starts_with("corrections_map_typo") {
+            continue;
+        }
+
         let source = load_fixture(path);
         let expected = load_expected(path);
         let result = engine.lint(&source);
@@ -114,6 +121,11 @@ fn fix_accuracy_invalid_fixtures() {
     // Only count rules that produce at least one fix proposal with confidence >= threshold.
     // Rules like E005 (no fix), E008 (FR-012: no fix), and E003 (confidence 0.6 < 0.95)
     // intentionally don't auto-fix and should not count against fix accuracy.
+    //
+    // NOTE: `total_fixable` / `total_fixed_clean` count at fixture level — a fixture
+    // is "fixed clean" only if ALL its fixable rules were resolved. This is stricter
+    // than per-rule aggregation: a multi-rule fixture where one rule fails pulls the
+    // overall metric down even if 9/10 rules pass individually.
     let mut per_rule: HashMap<String, (usize, usize)> = HashMap::new();
     let mut total_fixable = 0usize;
     let mut total_fixed_clean = 0usize;
@@ -240,6 +252,81 @@ fn precision_prose_zero_diagnostics() {
                 .join("\n")
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// C001: Corrections-map accuracy (requires non-default config)
+// ---------------------------------------------------------------------------
+
+/// C001 fixtures require a corrections map in config. The default harness uses
+/// Config::default() (empty corrections), so C001 is tested separately.
+///
+/// W001 is architecturally dormant — the rule is registered but the migration
+/// table has no W001-flagged entries, so it fires zero diagnostics by design.
+/// W001 fixtures will be added when migration entries are activated.
+#[test]
+fn c001_corrections_map_accuracy() {
+    let c001_fixtures: Vec<_> = marque_test_utils::fixtures_in("invalid")
+        .into_iter()
+        .filter(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("corrections_map_typo")
+        })
+        .collect();
+
+    assert!(
+        c001_fixtures.len() >= 3,
+        "need >=3 C001 corpus fixtures, found {}",
+        c001_fixtures.len()
+    );
+
+    // Each C001 fixture's expected.json has a _note explaining the required
+    // corrections. We build a superset corrections map covering all fixtures.
+    let mut corrections = std::collections::HashMap::new();
+    corrections.insert("SERCET".to_string(), "SECRET".to_string());
+    corrections.insert("NOFORM".to_string(), "NOFORN".to_string());
+    corrections.insert("GBER".to_string(), "GBR".to_string());
+
+    let mut config = Config::default();
+    config.corrections = corrections;
+    let engine = Engine::new(config, marque_engine::default_ruleset());
+
+    let mut matched = 0;
+    let mut total = 0;
+
+    for path in &c001_fixtures {
+        let source = load_fixture(path);
+        let expected = load_expected(path);
+        let result = engine.lint(&source);
+
+        for exp in &expected.diagnostics {
+            if exp.rule != "C001" {
+                continue;
+            }
+            total += 1;
+            let found = result.diagnostics.iter().any(|d| {
+                d.rule.as_str() == "C001"
+                    && d.span.start == exp.span.start
+                    && d.span.end == exp.span.end
+            });
+            if found {
+                matched += 1;
+            }
+        }
+    }
+
+    assert!(
+        total > 0,
+        "no C001 expected diagnostics found in C001 fixtures"
+    );
+    let accuracy = matched as f64 / total as f64;
+    assert!(
+        accuracy >= 0.95,
+        "C001 accuracy: {matched}/{total} = {:.1}% (need >=95%)",
+        accuracy * 100.0
+    );
 }
 
 // ---------------------------------------------------------------------------

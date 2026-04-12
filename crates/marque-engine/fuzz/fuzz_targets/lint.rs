@@ -3,7 +3,8 @@
 //! Assertions:
 //!   (a) `lint` never panics
 //!   (b) every emitted `Span` is within input bounds and satisfies `start <= end`
-//!   (c) `fix`-then-`lint` does not panic and produces valid spans
+//!   (c) `fix` is idempotent: `fix(fix(x)).source == fix(x).source`
+//!   (d) `fix`-then-`lint` produces valid spans
 //!
 //! Run: `cargo +nightly fuzz run lint -- -max_total_time=60`
 //! Not CI-gated in MVP; runs on nightly cron once infrastructure lands.
@@ -14,6 +15,13 @@ use libfuzzer_sys::fuzz_target;
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
+use std::sync::OnceLock;
+
+static ENGINE: OnceLock<Engine> = OnceLock::new();
+
+fn get_engine() -> &'static Engine {
+    ENGINE.get_or_init(|| Engine::new(Config::default(), vec![Box::new(capco_rules())]))
+}
 
 fuzz_target!(|data: &[u8]| {
     // Bound input to 64KB to prevent OOM on pathological inputs.
@@ -21,7 +29,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    let engine = Engine::new(Config::default(), vec![Box::new(capco_rules())]);
+    let engine = get_engine();
 
     // (a) lint never panics
     let result = engine.lint(data);
@@ -42,8 +50,15 @@ fuzz_target!(|data: &[u8]| {
         );
     }
 
-    // (c) fix-then-lint idempotency: no panics and valid spans
+    // (c) fix idempotency: applying fix twice yields same output as once
     let fixed = engine.fix(data, FixMode::Apply);
+    let fixed2 = engine.fix(&fixed.source, FixMode::Apply);
+    assert_eq!(
+        fixed.source, fixed2.source,
+        "fix is not idempotent: second application changed output"
+    );
+
+    // (d) fix-then-lint produces valid spans
     let relint = engine.lint(&fixed.source);
     for d in &relint.diagnostics {
         assert!(

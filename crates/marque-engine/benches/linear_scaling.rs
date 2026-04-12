@@ -1,9 +1,10 @@
 //! SC-005 benchmark: linear throughput scaling across input sizes.
 //!
 //! Sweeps input size across at least one order of magnitude (1KB -> 100KB)
-//! and asserts throughput stays linear with no super-linear growth.
-//! Criterion's HTML report (`target/criterion/`) visualises the throughput
-//! curve — visual inspection confirms linearity.
+//! and measures throughput at each size. Criterion's HTML report
+//! (`target/criterion/`) visualises the throughput curve for linearity
+//! verification. The ≤16ms p95 threshold is enforced by
+//! `scripts/bench-check.sh`; this benchmark provides the scaling data.
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use marque_config::Config;
@@ -25,11 +26,14 @@ fn build_input(target_bytes: usize) -> Vec<u8> {
         "\n",
     );
 
-    let mut input = Vec::with_capacity(target_bytes + block.len());
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
     while input.len() < target_bytes {
-        input.extend_from_slice(block.as_bytes());
+        input.extend_from_slice(block_bytes);
     }
-    input.truncate(target_bytes);
+    // Truncate to a block-aligned boundary to avoid splitting mid-token.
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
     input
 }
 

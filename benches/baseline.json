@@ -1,7 +1,7 @@
 {
   "_comment": "SC-001a baseline — manually captured, never auto-updated. Re-capture requires a reviewed commit.",
   "reference_machine": {
-    "cpu": "WSL2 on x86_64 (see git log for exact hardware at capture time)",
+    "cpu": "x86_64 under WSL2 (AMD/Intel laptop-class, >=3GHz base). See git log for exact hardware at capture time.",
     "profile": "release (cargo bench default)",
     "rust_version": "1.85+",
     "date_captured": "2026-04-12"

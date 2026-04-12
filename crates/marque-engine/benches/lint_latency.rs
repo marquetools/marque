@@ -1,6 +1,8 @@
-//! SC-001 benchmark: Engine::lint p95 latency on representative inputs.
+//! SC-001 benchmark: Engine::lint latency on representative inputs.
 //!
 //! Target: <= 16ms p95 on inputs <= 10KB of raw text on commodity dev hardware.
+//! The threshold is enforced by `scripts/bench-check.sh`, not by this benchmark
+//! file. Run `./scripts/bench-check.sh` to gate on the SC-001 target.
 //!
 //! Reference baseline: x86_64 >= 3.0 GHz single-thread (e.g. modern laptop-class CPU),
 //! warm cache, `--release` build, no tracing subscriber.
@@ -31,11 +33,15 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
         "\n",
     );
 
-    let mut input = Vec::with_capacity(target_bytes + block.len());
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
     while input.len() < target_bytes {
-        input.extend_from_slice(block.as_bytes());
+        input.extend_from_slice(block_bytes);
     }
-    input.truncate(target_bytes);
+    // Truncate to a block-aligned boundary to avoid splitting mid-token,
+    // which would create artificial partial-token diagnostics.
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
     input
 }
 
