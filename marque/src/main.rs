@@ -440,28 +440,41 @@ fn run_fix(
 
         // Audit emission (T049, FR-005a) — NEVER suppressed by -q.
         // Each record is atomic: serialize to buffer, single write_all.
-        let mut audit_failed = false;
+        let mut audit_exit_code: Option<i32> = None;
         {
             let mut stderr_lock = stderr.lock();
             for applied_fix in &result.applied {
                 // Set the caller-supplied input identifier on the audit record.
                 // The engine leaves `input` as None; the CLI fills it in at the
-                // boundary per the architecture contract.
+                // boundary per the architecture contract. Stdin is represented
+                // as "-" per contracts/audit-record.json.
                 let mut audit_fix = applied_fix.clone();
-                audit_fix.input = path
-                    .as_ref()
-                    .map(|p| std::sync::Arc::from(p.display().to_string().as_str()));
+                audit_fix.input = Some(match path.as_ref() {
+                    Some(p) => std::sync::Arc::from(p.display().to_string().as_str()),
+                    None => std::sync::Arc::from("-"),
+                });
                 if let Err(e) = render::render_audit_record(&mut stderr_lock, &audit_fix) {
-                    eprintln!("error: audit record emission failed: {e}");
-                    audit_failed = true;
+                    let _ = writeln!(
+                        &mut stderr_lock,
+                        "error: audit record emission failed: {e}"
+                    );
+                    // ErrorKind::Other is set by render_audit_record for
+                    // serde_json serialization failures; any other kind is a
+                    // true I/O failure (broken pipe, disk full, etc.).
+                    let code = if e.kind() == std::io::ErrorKind::Other {
+                        EX_DATAERR
+                    } else {
+                        EX_IOERR
+                    };
+                    audit_exit_code = Some(code);
                     break;
                 }
             }
         }
 
-        if audit_failed {
-            // FR-005a: serialization failure → nonzero exit.
-            return EX_DATAERR;
+        if let Some(code) = audit_exit_code {
+            // FR-005a: audit emission failure → nonzero exit.
+            return code;
         }
 
         // Output routing.
