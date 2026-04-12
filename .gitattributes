@@ -1,0 +1,2 @@
+# Mark ODNI ISM schemas as vendored so GitHub classifies the repo as Rust, not XSLT.
+crates/marque-ism/schemas/** linguist-vendored
