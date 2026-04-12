@@ -307,6 +307,43 @@ impl Rule for MisorderedBlocksRule {
             _ => return vec![],
         };
 
+        // T032: emit a FixProposal with confidence 0.6. Below the default
+        // 0.95 threshold so it stays a suggestion, but present in the
+        // diagnostic stream so consumers (Phase 5 corrections, lower-
+        // threshold runs, IDE quick-fix surfaces) can act on it.
+        let reordered = reorder_marking(attrs, ctx.marking_type);
+        let original: String = reordered
+            .as_ref()
+            .map(|_| {
+                // The original bytes the engine would splice out: the
+                // marking text from `first.start` to `last.end`. We don't
+                // have source bytes here, so we reconstruct an approximation
+                // by joining the in-order token texts. This is byte-
+                // equivalent for whitespace-free markings (which is all
+                // canonical fixtures) and good-enough as a display string.
+                attrs
+                    .token_spans
+                    .iter()
+                    .filter(|t| {
+                        ordinal_for_block(t.kind).is_some() || t.kind == TokenKind::Separator
+                    })
+                    .map(|t| t.text.as_ref())
+                    .collect::<String>()
+            })
+            .unwrap_or_default();
+
+        let fix = reordered.map(|replacement| {
+            FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                span,
+                original,
+                replacement,
+                0.6,
+                Some("CAPCO-2023-§3.1"),
+            )
+        });
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
@@ -314,11 +351,7 @@ impl Rule for MisorderedBlocksRule {
             "marking blocks are out of CAPCO order \
              (expected: Classification // SCI // SAR // Dissem // REL TO)",
             "CAPCO-ISM-v2022-DEC-§3.1",
-            // No automatic fix: reordering rebuilds the entire marking and
-            // is left as a suggestion-only path. A fix proposal would carry
-            // confidence 0.6 and so would not auto-apply at the default 0.95
-            // threshold anyway, so we leave the rebuild to a human.
-            None,
+            fix,
         )]
     }
 }
@@ -333,6 +366,63 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
         // ordering — they belong to other blocks or other rules.
         _ => None,
     }
+}
+
+/// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
+/// block ordinals: Classification // SCI // SAR // Dissem // REL TO.
+///
+/// Within each block, tokens preserve their document order. REL TO trigraphs
+/// are reassembled into a single `REL TO ...` block. Returns `None` if there
+/// is nothing meaningful to reorder (no classification recorded).
+///
+/// This is the suggestion path for E003 (T032). It is not byte-equivalent to
+/// the original markup whitespace, but it is a valid CAPCO marking that the
+/// engine could splice if a caller lowers the threshold below 0.6.
+fn reorder_marking(attrs: &IsmAttributes, kind: marque_ism::MarkingType) -> Option<String> {
+    use marque_ism::MarkingType;
+
+    // Group token texts by ordinal, preserving document order.
+    let mut classification: Vec<&str> = Vec::new();
+    let mut sci: Vec<&str> = Vec::new();
+    let mut sar: Vec<&str> = Vec::new();
+    let mut dissem: Vec<&str> = Vec::new();
+    let mut rel_to: Vec<&str> = Vec::new();
+
+    for token in attrs.token_spans.iter() {
+        match token.kind {
+            TokenKind::Classification => classification.push(token.text.as_ref()),
+            TokenKind::SciControl => sci.push(token.text.as_ref()),
+            TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
+            TokenKind::DissemControl => dissem.push(token.text.as_ref()),
+            TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
+            _ => {}
+        }
+    }
+
+    if classification.is_empty() {
+        return None;
+    }
+
+    let mut blocks: Vec<String> = Vec::with_capacity(8);
+    blocks.push(classification.join(" "));
+    for s in sci {
+        blocks.push(s.to_owned());
+    }
+    for s in sar {
+        blocks.push(s.to_owned());
+    }
+    for d in dissem {
+        blocks.push(d.to_owned());
+    }
+    if !rel_to.is_empty() {
+        blocks.push(format!("REL TO {}", rel_to.join(", ")));
+    }
+
+    let joined = blocks.join("//");
+    Some(match kind {
+        MarkingType::Portion => format!("({joined})"),
+        _ => joined,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -354,10 +444,11 @@ impl Rule for SeparatorCountRule {
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        // Adjacent separator spans (back-to-back `//` with nothing or only
-        // whitespace between) indicate `///+` runs. Phase 3 records every
-        // separator span via the parser; we walk consecutive pairs and
-        // emit E004 when their gap is empty.
+        // === Extra separators (`////` or longer runs) ===
+        // Adjacent separator spans (back-to-back `//` with nothing between)
+        // indicate `///+` runs. Phase 3 records every separator span via the
+        // parser; we walk consecutive pairs and emit E004 when their gap
+        // is empty.
         let seps: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
@@ -384,6 +475,51 @@ impl Rule for SeparatorCountRule {
                 }));
             }
         }
+
+        // === Missing separators (single `/` not part of `//`) ===
+        // When a user writes `SECRET/NOFORN` (one slash) the parser cannot
+        // split on `//`, so the entire marking lands in one block whose
+        // text contains a stray `/`. The block is recorded as either a
+        // `Classification` token (if it's the first/only block) or an
+        // `Unknown` token (if a partial split happened, e.g.
+        // `SECRET//SI/NF` → blocks `SECRET`, `SI/NF`). E004 walks both and
+        // emits one diagnostic per single-slash position.
+        for token in attrs.token_spans.iter() {
+            if !matches!(token.kind, TokenKind::Classification | TokenKind::Unknown) {
+                continue;
+            }
+            let bytes = token.text.as_bytes();
+            // Find every `/` that is NOT adjacent to another `/`. A doubled
+            // `/` is a separator and would have been recognized by the
+            // outer `//` split, so any `/` we see here in a non-Separator
+            // token is by construction a stray single slash.
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'/' {
+                    let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
+                    let next_is_slash = bytes.get(i + 1) == Some(&b'/');
+                    if !prev_is_slash && !next_is_slash {
+                        let abs_pos = token.span.start + i;
+                        let span = Span::new(abs_pos, abs_pos + 1);
+                        diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                            rule: self.id(),
+                            severity: self.default_severity(),
+                            source: FixSource::BuiltinRule,
+                            span,
+                            message: "missing block separator: single `/` should be `//`"
+                                .to_owned(),
+                            citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                            original: "/".to_owned(),
+                            replacement: "//".to_owned(),
+                            confidence: 0.99,
+                            migration_ref: None,
+                        }));
+                    }
+                }
+                i += 1;
+            }
+        }
+
         diagnostics
     }
 }
@@ -762,6 +898,24 @@ mod tests {
     }
 
     #[test]
+    fn e003_emits_fix_proposal_with_confidence_06() {
+        // T032: E003 must emit a FixProposal at confidence 0.6 (suggestion-
+        // only under default 0.95 threshold) so consumers that lower the
+        // threshold or surface fixes in IDE quick-fixes can act on it.
+        let diags = lint_banner("SECRET//NOFORN//SI");
+        let e003 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E003")
+            .expect("E003 must fire");
+        let fix = e003
+            .fix
+            .as_ref()
+            .expect("E003 must carry a FixProposal (T032)");
+        assert!((fix.confidence - 0.6).abs() < f32::EPSILON);
+        assert_eq!(fix.replacement.as_ref(), "SECRET//SI//NOFORN");
+    }
+
+    #[test]
     fn e004_fires_on_redundant_separator() {
         // `////` between SECRET and NOFORN is two separators back-to-back.
         let diags = lint_banner("SECRET////NOFORN");
@@ -775,6 +929,30 @@ mod tests {
     fn e004_does_not_fire_on_clean_separator() {
         let diags = lint_banner("SECRET//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E004"));
+    }
+
+    #[test]
+    fn e004_fires_on_missing_separator_single_slash() {
+        // T033: E004 must detect missing separators (single `/`).
+        let diags = lint_banner("SECRET/NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(e004.len(), 1);
+        // The fix replaces the single `/` at byte 6 with `//`.
+        assert_eq!(e004[0].span.start, 6);
+        assert_eq!(e004[0].span.end, 7);
+        let fix = e004[0].fix.as_ref().unwrap();
+        assert_eq!(fix.original.as_ref(), "/");
+        assert_eq!(fix.replacement.as_ref(), "//");
+    }
+
+    #[test]
+    fn e004_fires_on_missing_separator_in_later_block() {
+        // The parser splits on `//` so the partial split puts `SI/NF` into
+        // an Unknown block. E004's stray-slash walk catches it.
+        let diags = lint_banner("SECRET//SI/NF");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(e004.len(), 1);
+        assert_eq!(e004[0].span.start, 10);
     }
 
     #[test]

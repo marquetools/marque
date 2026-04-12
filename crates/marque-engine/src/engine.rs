@@ -596,14 +596,6 @@ mod tests {
     // PageContext accumulator. Without this, banner-validation rules on
     // the second page would see portions from the first page, producing
     // over-restrictive expected aggregates.
-    //
-    // We can't observe PageContext directly from a rule without extending
-    // the public API, so this test asserts the indirect contract: a
-    // multi-page document drives `Engine::lint` to completion without
-    // panicking and the page-break candidates do not crash the parser.
-    // The page-context reset semantics themselves are exercised by the
-    // marque-ism page_context unit tests, which build a PageContext
-    // directly.
     #[test]
     fn lint_handles_multi_page_document_with_form_feed() {
         let src: &[u8] = b"(SECRET//NOFORN) page 1 body.\nSECRET//NOFORN\n\x0c(CONFIDENTIAL) page 2 body.\nCONFIDENTIAL\n";
@@ -613,5 +605,141 @@ mod tests {
         // error from the page-break candidate (which is filtered before
         // parser.parse is called).
         assert!(result.is_clean());
+    }
+
+    // F.1: PageContext reset semantics are observable.
+    //
+    // ContextRecorderRule captures the live `page_context.portion_count()`
+    // every time it's invoked. By running the engine over a multi-page
+    // document and inspecting the captured counts at each banner candidate,
+    // we prove that the engine resets PageContext at the page break instead
+    // of accumulating across pages.
+    #[derive(Clone)]
+    struct ContextRecorderRule {
+        observations: std::sync::Arc<std::sync::Mutex<Vec<(marque_ism::MarkingType, usize)>>>,
+    }
+
+    impl Rule for ContextRecorderRule {
+        fn id(&self) -> RuleId {
+            RuleId::new("RECORD")
+        }
+        fn name(&self) -> &'static str {
+            "page-context-recorder"
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Warn
+        }
+        fn check(&self, _attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+            let count = ctx
+                .page_context
+                .as_ref()
+                .map(|pc| pc.portion_count())
+                .unwrap_or(0);
+            self.observations
+                .lock()
+                .unwrap()
+                .push((ctx.marking_type, count));
+            vec![]
+        }
+    }
+
+    struct RecorderSet(Vec<Box<dyn Rule>>);
+    impl RuleSet for RecorderSet {
+        fn rules(&self) -> &[Box<dyn Rule>] {
+            &self.0
+        }
+        fn schema_version(&self) -> &'static str {
+            "TEST"
+        }
+    }
+
+    #[test]
+    fn page_context_resets_observably_across_form_feed() {
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        );
+
+        // Two pages, separated by a form feed:
+        //   Page 1: one portion + one banner
+        //   Page break (\f)
+        //   Page 2: one portion + one banner
+        //
+        // The recorder fires on every candidate that reaches the rule loop.
+        // For the page-1 banner we expect to see 1 accumulated portion.
+        // For the page-2 banner we expect to see 1 accumulated portion
+        // (NOT 2) — the form feed must have reset the context.
+        let src: &[u8] = b"(SECRET//NF) p1 text\nSECRET//NOFORN\n\x0c(CONFIDENTIAL//NF) p2\nCONFIDENTIAL//NOFORN\n";
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        // The recorder ran once per non-PageBreak candidate. Filter to
+        // banners and check the page_context count each banner saw.
+        let banner_counts: Vec<usize> = obs
+            .iter()
+            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .map(|(_, count)| *count)
+            .collect();
+        assert_eq!(
+            banner_counts.len(),
+            2,
+            "expected 2 banner observations, got: {obs:?}"
+        );
+        assert_eq!(
+            banner_counts[0], 1,
+            "page-1 banner should see 1 accumulated portion"
+        );
+        assert_eq!(
+            banner_counts[1], 1,
+            "page-2 banner should see 1 accumulated portion (the page-1 \
+             portion must be cleared by the form feed)"
+        );
+    }
+
+    #[test]
+    fn page_context_lint_starts_fresh_on_each_call() {
+        // Calling Engine::lint twice on the same engine must produce a
+        // fresh PageContext for the second call — no cross-call accumulation.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        );
+        let src: &[u8] = b"(SECRET//NF) text\nSECRET//NOFORN\n";
+        let _ = engine.lint(src);
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        // Both calls should see identical observations — if the second
+        // call leaked state from the first, the page-2 banner_count would
+        // double.
+        let banner_counts: Vec<usize> = obs
+            .iter()
+            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .map(|(_, count)| *count)
+            .collect();
+        assert_eq!(
+            banner_counts.len(),
+            2,
+            "two lint calls should produce two banner observations"
+        );
+        assert_eq!(banner_counts, vec![1, 1]);
     }
 }

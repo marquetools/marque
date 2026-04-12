@@ -147,11 +147,16 @@ fn load_config(
     cwd: &std::path::Path,
     common: &CommonOptions,
 ) -> Result<marque_config::Config, i32> {
-    let load_root = match &common.config {
-        Some(p) => p.parent().unwrap_or(p).to_path_buf(),
-        None => cwd.to_path_buf(),
+    // Per contracts/cli.md: --config <PATH> short-circuits the upward walk
+    // and uses the specified path as the project config (with local-config
+    // search in the same directory). Without --config, the walk starts
+    // from cwd and stops at the first .marque.toml, .git/, or filesystem
+    // root.
+    let result = match &common.config {
+        Some(path) => marque_config::load_with_explicit_config(path),
+        None => marque_config::load(cwd),
     };
-    match marque_config::load(&load_root) {
+    match result {
         Ok(c) => Ok(c),
         Err(e) => {
             eprintln!("error: {e}");
