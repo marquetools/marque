@@ -964,10 +964,12 @@ dependencies = [
 name = "marque-wasm"
 version = "0.1.0"
 dependencies = [
+ "humantime",
  "js-sys",
  "marque-capco",
  "marque-config",
  "marque-engine",
+ "marque-rules",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
