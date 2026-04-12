@@ -2,6 +2,7 @@
 
 use crate::clock::{Clock, SystemClock};
 use crate::output::{FixResult, LintResult};
+use aho_corasick::AhoCorasick;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{AppliedFix, Diagnostic, FixProposal, FixSource, RuleId, RuleSet, Severity};
@@ -198,55 +199,50 @@ impl Engine {
                     .map(|d| d.span)
                     .collect();
 
-                for (key, value) in corrections.iter() {
-                    if key == value {
-                        continue; // skip no-op corrections
-                    }
-                    // Skip the structural separator "//" — it is marking syntax,
-                    // not a correctable token. (Note: "//" as a banner prefix for
-                    // foreign-classified markings like "//DEU C" is handled by the
-                    // scanner, not by the corrections map.)
-                    if key == "//" {
-                        continue;
-                    }
-                    let key_bytes = key.as_bytes();
-                    // Find all non-overlapping occurrences of `key` in source.
-                    let mut search_start = 0;
-                    while search_start + key_bytes.len() <= source.len() {
-                        let haystack = &source[search_start..];
-                        let Some(pos) = haystack
-                            .windows(key_bytes.len())
-                            .position(|w| w == key_bytes)
-                        else {
-                            break;
-                        };
-                        let abs_start = search_start + pos;
-                        let abs_end = abs_start + key_bytes.len();
-                        let span = Span::new(abs_start, abs_end);
+                // Build an Aho-Corasick automaton from all non-trivial correction
+                // keys so we can scan the full source in a single O(n + m) pass
+                // rather than one O(n * key_len) scan per key.
+                let active: Vec<(&str, &str)> = corrections
+                    .iter()
+                    .filter(|(k, v)| k != v && k.as_str() != "//")
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect();
 
-                        // Skip if the rule pipeline already produced a C001
-                        // diagnostic for this exact span.
-                        if !existing_c001_spans.contains(&span) {
-                            let proposal = FixProposal::new(
-                                RuleId::new("C001"),
-                                FixSource::CorrectionsMap,
-                                span,
-                                key.as_str(),
-                                value.as_str(),
-                                1.0,
-                                None,
-                            );
-                            diagnostics.push(Diagnostic::new(
-                                RuleId::new("C001"),
-                                c001_severity,
-                                span,
-                                format!("corrections map: {key:?} → {value:?}"),
-                                "CONFIG:[corrections]",
-                                Some(proposal),
-                            ));
+                if !active.is_empty() {
+                    let patterns: Vec<&str> = active.iter().map(|(k, _)| *k).collect();
+                    // Build with leftmost-first semantics so overlapping patterns
+                    // resolve deterministically (longest match at each position wins
+                    // when the set contains prefix-of-prefix patterns, e.g. "S" and
+                    // "SE").
+                    if let Ok(ac) = AhoCorasick::new(&patterns) {
+                        for mat in ac.find_iter(source) {
+                            let abs_start = mat.start();
+                            let abs_end = mat.end();
+                            let span = Span::new(abs_start, abs_end);
+                            let (key, value) = active[mat.pattern().as_usize()];
+
+                            // Skip if the rule pipeline already produced a C001
+                            // diagnostic for this exact span.
+                            if !existing_c001_spans.contains(&span) {
+                                let proposal = FixProposal::new(
+                                    RuleId::new("C001"),
+                                    FixSource::CorrectionsMap,
+                                    span,
+                                    key,
+                                    value,
+                                    1.0,
+                                    None,
+                                );
+                                diagnostics.push(Diagnostic::new(
+                                    RuleId::new("C001"),
+                                    c001_severity,
+                                    span,
+                                    format!("corrections map: {key:?} → {value:?}"),
+                                    "CONFIG:[corrections]",
+                                    Some(proposal),
+                                ));
+                            }
                         }
-
-                        search_start = abs_end; // advance past this match
                     }
                 }
             }

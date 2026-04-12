@@ -893,6 +893,7 @@ dependencies = [
 name = "marque-engine"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "criterion",
  "futures",
  "humantime",

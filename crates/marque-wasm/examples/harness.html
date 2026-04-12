@@ -43,7 +43,7 @@
       const text = inputEl.value;
       const t0 = performance.now();
       try {
-        const result = lint(text, null);
+        const result = lint(text, undefined);
         const elapsed = (performance.now() - t0).toFixed(2);
         outputEl.textContent = result || '(no diagnostics)';
         outputEl.classList.remove('error');
@@ -60,7 +60,7 @@
       const threshold = parseFloat(threshEl.value) || 0.95;
       const t0 = performance.now();
       try {
-        const result = fix(text, threshold, null);
+        const result = fix(text, threshold, undefined);
         const elapsed = (performance.now() - t0).toFixed(2);
         // Pretty-print the JSON result
         const parsed = JSON.parse(result);

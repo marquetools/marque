@@ -13,6 +13,7 @@ marque-core   = { workspace = true }
 marque-rules  = { workspace = true }
 marque-capco  = { workspace = true }
 marque-config = { workspace = true }
+aho-corasick  = { workspace = true }
 tokio         = { workspace = true, optional = true }
 futures       = { workspace = true, optional = true }
 thiserror     = { workspace = true }

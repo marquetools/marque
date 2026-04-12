@@ -12,7 +12,7 @@ name = "marque-server"
 path = "src/main.rs"
 
 [dependencies]
-marque-engine  = { workspace = true }
+marque-engine  = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-config  = { workspace = true }
 marque-capco   = { path = "../marque-capco" }

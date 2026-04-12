@@ -46,7 +46,7 @@ import('../pkg/marque_wasm.js').then(async (mod) => {
     const iterations = 100;
     for (let i = 0; i < iterations; i++) {
       const t0 = performance.now();
-      mod.lint(text, null);
+      mod.lint(text, undefined);
       times.push(performance.now() - t0);
     }
     times.sort((a, b) => a - b);
