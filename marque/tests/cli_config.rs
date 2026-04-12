@@ -156,7 +156,8 @@ fn severity_override_off_suppresses_rule() {
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
         .write_stdin("SECRET//NF\n")
-        .assert();
+        .assert()
+        .success();
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(

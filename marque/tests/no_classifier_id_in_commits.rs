@@ -41,12 +41,10 @@ fn scan_file_for_classifier_ids(path: &Path) -> Vec<String> {
     let mut violations = Vec::new();
 
     for (line_num, line) in content.lines().enumerate() {
-        // Skip comment lines and known test infrastructure
-        if line.trim_start().starts_with("//")
-            || line.trim_start().starts_with('#')
-            || line.contains("ALLOWED_SENTINELS")
-            || line.contains("allowlist")
-        {
+        // Skip only known test infrastructure/allowlist lines.
+        // Comment lines are still scanned because committed comments can
+        // accidentally contain real classifier IDs.
+        if line.contains("ALLOWED_SENTINELS") || line.contains("allowlist") {
             continue;
         }
 
@@ -134,7 +132,7 @@ fn sc006_no_classifier_id_in_committed_test_files() {
 
     let mut all_violations = Vec::new();
     for dir in &scan_dirs {
-        let files = collect_files(dir, &["rs", "txt", "json", "toml"]);
+        let files = collect_files(dir, &["rs", "txt", "json", "toml", "md"]);
         for file in &files {
             // Skip this test file itself
             if file.ends_with("no_classifier_id_in_commits.rs") {
