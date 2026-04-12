@@ -124,18 +124,22 @@ fn sc002a_no_classifier_id_in_corpus_fixtures() {
         let Ok(content) = std::fs::read_to_string(file) else {
             continue;
         };
-        // Look for realistic-looking classifier IDs in fixture content.
-        // A realistic classifier ID is a numeric string of 5+ digits.
+        // A realistic classifier ID is a quoted numeric string of 5+ digits.
         for (line_num, line) in content.lines().enumerate() {
-            if line.contains("classifier_id") && line.contains('"') {
-                // Check if value looks realistic (not "null" or test sentinel)
-                if !line.contains("null") && !line.contains("TEST") && !line.contains("None") {
-                    violations.push(format!(
-                        "{}:{}: {}",
-                        file.display(),
-                        line_num + 1,
-                        line.trim()
-                    ));
+            if let Some((_, remainder)) = line.split_once("classifier_id") {
+                if let Some(start) = remainder.find('"') {
+                    let quoted = &remainder[start + 1..];
+                    if let Some(end) = quoted.find('"') {
+                        let value = &quoted[..end];
+                        if value.len() >= 5 && value.chars().all(|c| c.is_ascii_digit()) {
+                            violations.push(format!(
+                                "{}:{}: {}",
+                                file.display(),
+                                line_num + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
                 }
             }
         }

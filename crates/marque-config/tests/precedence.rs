@@ -11,6 +11,7 @@
 use marque_config::ConfigError;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 /// Create a unique tempdir with a process-id + test-name discriminator.
 fn make_tmpdir(name: &str) -> PathBuf {
@@ -22,6 +23,43 @@ fn make_tmpdir(name: &str) -> PathBuf {
 
 /// The compiled schema version — config files must use this to pass FR-011.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
+
+/// Global mutex serializing all env-var mutations in this test binary.
+///
+/// Environment variables are process-global state. Tests within the same
+/// integration-test binary can run in parallel, so without serialization
+/// one test's `set_var` can race with another test's `load()` call.
+/// Holding this lock for the entire set → load → remove sequence ensures
+/// no interleaving occurs between tests that mutate the same variable.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+/// RAII guard: saves the previous value of `var`, sets it to `value`,
+/// and restores the original on drop. Caller must hold `ENV_MUTEX`.
+struct EnvGuard {
+    var: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(var: &'static str, value: &str) -> Self {
+        let previous = std::env::var(var).ok();
+        // SAFETY: single-threaded access is ensured by the caller holding ENV_MUTEX.
+        unsafe { std::env::set_var(var, value) };
+        Self { var, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: single-threaded access is ensured by the caller holding ENV_MUTEX.
+        unsafe {
+            match &self.previous {
+                Some(v) => std::env::set_var(self.var, v),
+                None => std::env::remove_var(self.var),
+            }
+        }
+    }
+}
 
 // -----------------------------------------------------------------------
 // T052: Four-layer precedence chain
@@ -141,17 +179,10 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    // Env vars are process-global, so use a distinguishing value.
-    // Safety: env var manipulation in tests is inherently non-thread-safe;
-    // cargo test runs integration test binaries in separate processes, so
-    // this is fine for integration tests (separate binary per test file).
-    unsafe {
-        std::env::set_var("MARQUE_CLASSIFIER_ID", "ENV-99");
-    }
+    // Serialise env-var access so parallel test threads don't race.
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CLASSIFIER_ID", "ENV-99");
     let config = marque_config::load(&dir);
-    unsafe {
-        std::env::remove_var("MARQUE_CLASSIFIER_ID");
-    }
 
     let config = config.expect("load should succeed");
     assert_eq!(
@@ -171,13 +202,9 @@ fn layer3_env_overrides_project_config_threshold() {
     )
     .unwrap();
 
-    unsafe {
-        std::env::set_var("MARQUE_CONFIDENCE_THRESHOLD", "0.5");
-    }
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "0.5");
     let config = marque_config::load(&dir);
-    unsafe {
-        std::env::remove_var("MARQUE_CONFIDENCE_THRESHOLD");
-    }
 
     let config = config.expect("load should succeed");
     assert!(
@@ -371,13 +398,9 @@ fn hard_fail_env_threshold_not_a_float() {
     let dir = make_tmpdir("hf-env-parse");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
-    unsafe {
-        std::env::set_var("MARQUE_CONFIDENCE_THRESHOLD", "bananas");
-    }
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "bananas");
     let result = marque_config::load(&dir);
-    unsafe {
-        std::env::remove_var("MARQUE_CONFIDENCE_THRESHOLD");
-    }
 
     let err = result.unwrap_err();
     assert!(
@@ -394,13 +417,9 @@ fn hard_fail_env_threshold_nan() {
     let dir = make_tmpdir("hf-env-nan");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
-    unsafe {
-        std::env::set_var("MARQUE_CONFIDENCE_THRESHOLD", "NaN");
-    }
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "NaN");
     let result = marque_config::load(&dir);
-    unsafe {
-        std::env::remove_var("MARQUE_CONFIDENCE_THRESHOLD");
-    }
 
     let err = result.unwrap_err();
     assert!(
@@ -433,13 +452,9 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    unsafe {
-        std::env::set_var("MARQUE_CLASSIFIER_ID", "");
-    }
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CLASSIFIER_ID", "");
     let config = marque_config::load(&dir);
-    unsafe {
-        std::env::remove_var("MARQUE_CLASSIFIER_ID");
-    }
 
     let config = config.expect("load should succeed");
     assert_eq!(

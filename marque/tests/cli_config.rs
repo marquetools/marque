@@ -10,7 +10,7 @@ fn marque() -> Command {
 }
 
 /// The compiled schema version for config files.
-const SCHEMA_VERSION: &str = "ISM-v2022-DEC";
+const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
 
 // -----------------------------------------------------------------------
 // --explain-config

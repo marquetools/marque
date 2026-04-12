@@ -938,7 +938,7 @@ impl Rule for CorrectionsMapRule {
                 source: FixSource::CorrectionsMap,
                 span: token_span.span,
                 message: format!("corrections map: {text:?} → {replacement:?}"),
-                citation: "corrections-map",
+                citation: "CONFIG:[corrections]",
                 original: text.to_owned(),
                 replacement: replacement.clone(),
                 confidence: 1.0,

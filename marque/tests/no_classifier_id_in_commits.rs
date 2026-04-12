@@ -26,7 +26,7 @@ const ALLOWED_SENTINELS: &[&str] = &[
     "SUPER-SECRET-99",
     "from-root",
     "from-sub",
-    "12345",
+    "TEST-12345",
 ];
 
 /// Scan a file for classifier-id-shaped strings.
