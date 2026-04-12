@@ -371,7 +371,6 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 /// the original markup whitespace, but it is a valid CAPCO marking that the
 /// engine could splice if a caller lowers the threshold below 0.6.
 fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
-
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
