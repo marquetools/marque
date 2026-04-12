@@ -1,7 +1,7 @@
 version = 1
 SPDX-PackageName = "marque"
 SPDX-PackageSupplier = "Knitli Inc. <knitli@knit.li>"
-SPDX-PackageDownloadLocation = "https://github.com/knitli/marque"
+SPDX-PackageDownloadLocation = "https://github.com/marquetools/marque"
 
 [[annotations]]
 path = ["crates/marque-capco/schemas/"]
