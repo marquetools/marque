@@ -742,4 +742,34 @@ mod tests {
         );
         assert_eq!(banner_counts, vec![1, 1]);
     }
+
+    // M6: FR-016 tiebreaker — same span, different rule IDs.
+    // The sort is (span.end DESC, span.start DESC, rule_id ASC, replacement ASC).
+    // When two fixes target the exact same span, rule_id ASC breaks the tie,
+    // and C-1 drops the second (overlapping) fix.
+    #[test]
+    fn fr016_same_span_different_rule_ids_picks_lower_rule_id() {
+        // Two proposals for span 0..6 with different rule IDs.
+        // "C001" < "E001" lexicographically, so C001 is kept and E001 dropped.
+        let engine = engine_with(vec![
+            proposal("E001", 0, 6, "BB"),
+            proposal("C001", 0, 6, "AA"),
+        ]);
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(result.applied.len(), 1);
+        assert_eq!(result.applied[0].proposal.rule.as_str(), "C001");
+        assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AA");
+    }
+
+    // FR-016 tiebreaker — same span, same rule ID, different replacements.
+    #[test]
+    fn fr016_same_span_same_rule_picks_lower_replacement() {
+        let engine = engine_with(vec![
+            proposal("E001", 0, 6, "ZZZ"),
+            proposal("E001", 0, 6, "AAA"),
+        ]);
+        let result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(result.applied.len(), 1);
+        assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AAA");
+    }
 }

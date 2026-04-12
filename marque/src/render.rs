@@ -35,7 +35,7 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_engine::LintResult;
-use marque_rules::Diagnostic;
+use marque_rules::{AppliedFix, Diagnostic};
 use serde::Serialize;
 use std::path::Path;
 
@@ -297,6 +297,113 @@ pub fn render_human_result(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Audit record NDJSON — contracts/audit-record.json (schema "marque-mvp-1")
+// ---------------------------------------------------------------------------
+
+/// JSON projection of an `AppliedFix` conforming to `contracts/audit-record.json`.
+///
+/// Every field from the schema is present. `schema` is always `"marque-mvp-1"`.
+/// Emitted to stderr as NDJSON (one record per line). FR-005a requires atomic
+/// emission: serialize to buffer, then single `write_all`.
+#[derive(Debug, Serialize)]
+pub struct AuditRecordJson {
+    pub schema: &'static str,
+    pub rule: String,
+    pub source: &'static str,
+    pub span: SpanJson,
+    pub original: String,
+    pub replacement: String,
+    pub confidence: f32,
+    pub migration_ref: Option<String>,
+    pub timestamp: String,
+    pub classifier_id: Option<String>,
+    pub dry_run: bool,
+    pub input: Option<String>,
+}
+
+const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
+
+fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
+    match source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+    }
+}
+
+/// Convert an `AppliedFix` to the JSON audit record shape.
+pub fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
+    AuditRecordJson {
+        schema: AUDIT_SCHEMA_VERSION,
+        rule: fix.proposal.rule.as_str().to_owned(),
+        source: fix_source_str(fix.proposal.source),
+        span: SpanJson {
+            start: fix.proposal.span.start,
+            end: fix.proposal.span.end,
+        },
+        original: fix.proposal.original.to_string(),
+        replacement: fix.proposal.replacement.to_string(),
+        confidence: fix.proposal.confidence,
+        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
+        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
+        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
+        dry_run: fix.dry_run,
+        input: fix.input.as_ref().map(|s| s.to_string()),
+    }
+}
+
+/// Emit a single audit record as NDJSON to `stderr`.
+///
+/// FR-005a: each record is serialized to an in-memory buffer and flushed
+/// with a single `write_all` ending in `\n`. A partially-serialized record
+/// is never flushed. On serialization failure, emits an error frame and
+/// returns `Err`.
+pub fn render_audit_record(
+    stderr: &mut dyn std::io::Write,
+    fix: &AppliedFix,
+) -> std::io::Result<()> {
+    let json = applied_fix_to_audit_json(fix);
+    match serde_json::to_vec(&json) {
+        Ok(mut buf) => {
+            buf.push(b'\n');
+            stderr.write_all(&buf)
+        }
+        Err(e) => {
+            render_audit_error_frame(stderr, fix.proposal.rule.as_str(), &e.to_string())?;
+            Err(std::io::Error::other(format!(
+                "audit record serialization failed for rule {}: {e}",
+                fix.proposal.rule
+            )))
+        }
+    }
+}
+
+/// Emit an error frame on the audit stream when serialization fails.
+///
+/// FR-005a fallback: every line on the audit stream must be a complete JSON
+/// object. The error frame is the last resort when the normal serializer has
+/// already failed, so it JSON-escapes its inputs via `serde_json::to_string`
+/// to guarantee well-formed output even if the error message contains quotes
+/// or backslashes.
+///
+/// Shape: `{"schema":"marque-mvp-1","error":"<code>","rule":"<id>"}`
+pub fn render_audit_error_frame(
+    stderr: &mut dyn std::io::Write,
+    rule_id: &str,
+    error_code: &str,
+) -> std::io::Result<()> {
+    // JSON-escape both values so special characters in error messages
+    // cannot produce malformed JSON on the audit stream.
+    let escaped_error =
+        serde_json::to_string(error_code).unwrap_or_else(|_| "\"serialization_error\"".to_owned());
+    let escaped_rule = serde_json::to_string(rule_id).unwrap_or_else(|_| "\"unknown\"".to_owned());
+    let frame = format!(
+        "{{\"schema\":\"{AUDIT_SCHEMA_VERSION}\",\"error\":{escaped_error},\"rule\":{escaped_rule}}}\n"
+    );
+    stderr.write_all(frame.as_bytes())
+}
+
 /// Convert a byte offset into 1-based (line, column).
 fn byte_to_line_col(source: &[u8], offset: usize) -> (usize, usize) {
     let mut line = 1usize;
@@ -467,5 +574,77 @@ mod tests {
         let rendered = String::from_utf8(out).unwrap();
         assert!(rendered.contains("^^^^^"));
         assert!(!rendered.contains("replace with"));
+    }
+
+    // --- Audit record tests ---
+
+    #[test]
+    fn render_audit_error_frame_produces_valid_json() {
+        let mut buf = Vec::new();
+        render_audit_error_frame(&mut buf, "E001", "some error").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.ends_with('\n'), "must end with newline");
+        let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
+        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["error"], "some error");
+        assert_eq!(v["rule"], "E001");
+    }
+
+    #[test]
+    fn render_audit_error_frame_escapes_special_characters() {
+        let mut buf = Vec::new();
+        // Error message with quotes and backslashes that would break raw interpolation.
+        render_audit_error_frame(&mut buf, "E001", "key \"foo\\bar\"").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        // Must parse as valid JSON despite special characters in the error.
+        let v: serde_json::Value =
+            serde_json::from_str(s.trim()).expect("error frame must be valid JSON");
+        assert_eq!(v["error"], "key \"foo\\bar\"");
+        assert_eq!(v["schema"], "marque-mvp-1");
+    }
+
+    #[test]
+    fn render_audit_record_produces_valid_ndjson() {
+        use marque_rules::AppliedFix;
+        use std::sync::Arc;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let fix = FixProposal::new(
+            RuleId::new("E001"),
+            FixSource::BuiltinRule,
+            Span::new(8, 10),
+            "NF",
+            "NOFORN",
+            1.0,
+            Some("CAPCO-2023-§3.2"),
+        );
+        let applied = AppliedFix::__engine_promote(
+            fix,
+            UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            Some(Arc::from("classifier-42")),
+            false,
+            Some(Arc::from("test.txt")),
+        );
+
+        let mut buf = Vec::new();
+        render_audit_record(&mut buf, &applied).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.ends_with('\n'));
+
+        let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
+        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["rule"], "E001");
+        assert_eq!(v["source"], "BuiltinRule");
+        assert_eq!(v["span"]["start"], 8);
+        assert_eq!(v["span"]["end"], 10);
+        assert_eq!(v["original"], "NF");
+        assert_eq!(v["replacement"], "NOFORN");
+        assert_eq!(v["confidence"], 1.0);
+        assert_eq!(v["migration_ref"], "CAPCO-2023-§3.2");
+        assert_eq!(v["classifier_id"], "classifier-42");
+        assert_eq!(v["dry_run"], false);
+        assert_eq!(v["input"], "test.txt");
+        // timestamp must be a valid RFC3339 string
+        assert!(v["timestamp"].as_str().unwrap().contains('T'));
     }
 }
