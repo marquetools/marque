@@ -35,7 +35,7 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_engine::LintResult;
-use marque_rules::Diagnostic;
+use marque_rules::{AppliedFix, Diagnostic};
 use serde::Serialize;
 use std::path::Path;
 
@@ -295,6 +295,104 @@ pub fn render_human_result(
         render_human(out, path_label, source, d, color)?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Audit record NDJSON — contracts/audit-record.json (schema "marque-mvp-1")
+// ---------------------------------------------------------------------------
+
+/// JSON projection of an `AppliedFix` conforming to `contracts/audit-record.json`.
+///
+/// Every field from the schema is present. `schema` is always `"marque-mvp-1"`.
+/// Emitted to stderr as NDJSON (one record per line). FR-005a requires atomic
+/// emission: serialize to buffer, then single `write_all`.
+#[derive(Debug, Serialize)]
+pub struct AuditRecordJson {
+    pub schema: &'static str,
+    pub rule: String,
+    pub source: &'static str,
+    pub span: SpanJson,
+    pub original: String,
+    pub replacement: String,
+    pub confidence: f32,
+    pub migration_ref: Option<String>,
+    pub timestamp: String,
+    pub classifier_id: Option<String>,
+    pub dry_run: bool,
+    pub input: Option<String>,
+}
+
+const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
+
+fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
+    match source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+    }
+}
+
+/// Convert an `AppliedFix` to the JSON audit record shape.
+pub fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
+    AuditRecordJson {
+        schema: AUDIT_SCHEMA_VERSION,
+        rule: fix.proposal.rule.as_str().to_owned(),
+        source: fix_source_str(fix.proposal.source),
+        span: SpanJson {
+            start: fix.proposal.span.start,
+            end: fix.proposal.span.end,
+        },
+        original: fix.proposal.original.to_string(),
+        replacement: fix.proposal.replacement.to_string(),
+        confidence: fix.proposal.confidence,
+        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
+        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
+        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
+        dry_run: fix.dry_run,
+        input: fix.input.as_ref().map(|s| s.to_string()),
+    }
+}
+
+/// Emit a single audit record as NDJSON to `stderr`.
+///
+/// FR-005a: each record is serialized to an in-memory buffer and flushed
+/// with a single `write_all` ending in `\n`. A partially-serialized record
+/// is never flushed. On serialization failure, emits an error frame and
+/// returns `Err`.
+pub fn render_audit_record(
+    stderr: &mut dyn std::io::Write,
+    fix: &AppliedFix,
+) -> std::io::Result<()> {
+    let json = applied_fix_to_audit_json(fix);
+    match serde_json::to_vec(&json) {
+        Ok(mut buf) => {
+            buf.push(b'\n');
+            stderr.write_all(&buf)
+        }
+        Err(e) => {
+            render_audit_error_frame(stderr, fix.proposal.rule.as_str(), &e.to_string())?;
+            Err(std::io::Error::other(format!(
+                "audit record serialization failed for rule {}: {e}",
+                fix.proposal.rule
+            )))
+        }
+    }
+}
+
+/// Emit an error frame on the audit stream when serialization fails.
+///
+/// The frame is constructed manually (no serde) because the serializer
+/// already failed. Shape: `{"schema":"marque-mvp-1","error":"<code>","rule":"<id>"}`
+pub fn render_audit_error_frame(
+    stderr: &mut dyn std::io::Write,
+    rule_id: &str,
+    error_code: &str,
+) -> std::io::Result<()> {
+    // Manual JSON construction — no serde dependency, no allocation failure.
+    let frame = format!(
+        "{{\"schema\":\"{AUDIT_SCHEMA_VERSION}\",\"error\":\"{error_code}\",\"rule\":\"{rule_id}\"}}\n"
+    );
+    stderr.write_all(frame.as_bytes())
 }
 
 /// Convert a byte offset into 1-based (line, column).

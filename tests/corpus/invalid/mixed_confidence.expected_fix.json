@@ -1,0 +1,22 @@
+{
+  "description": "US2 acceptance fixture: one high-confidence fix (E001 at 1.0) and one low-confidence suggestion (E003 at 0.6). Default threshold 0.95 applies only E001.",
+  "post_fix_text": "SECRET//NOFORN\nSECRET//NOFORN//SI\n",
+  "applied": [
+    {
+      "rule": "E001",
+      "source": "BuiltinRule",
+      "span": { "start": 8, "end": 10 },
+      "original": "NF",
+      "replacement": "NOFORN",
+      "confidence": 1.0
+    }
+  ],
+  "remaining": [
+    {
+      "rule": "E003",
+      "span": { "start": 11, "end": 29 },
+      "confidence": 0.6,
+      "description": "Below default threshold — remains as suggestion"
+    }
+  ]
+}
