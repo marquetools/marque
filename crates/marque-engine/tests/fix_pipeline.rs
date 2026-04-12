@@ -175,6 +175,11 @@ fn classifier_id_propagated_when_configured() {
 
 // --- H3: insta snapshot tests for audit NDJSON shape (T046) ---
 
+/// Must match `AUDIT_SCHEMA_VERSION` in `marque/src/render.rs`. If a version
+/// bump changes the value there, the insta snapshots here will fail, surfacing
+/// the mismatch at test time.
+const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
+
 /// Serialize an AppliedFix to the audit-record JSON shape for snapshot testing.
 fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
     let source_str = match fix.proposal.source {
@@ -183,7 +188,7 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         marque_rules::FixSource::MigrationTable => "MigrationTable",
     };
     json!({
-        "schema": "marque-mvp-1",
+        "schema": AUDIT_SCHEMA_VERSION,
         "rule": fix.proposal.rule.as_str(),
         "source": source_str,
         "span": {

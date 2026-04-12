@@ -207,7 +207,23 @@ fn load_config(
     }
 }
 
+/// Validate `--confidence-threshold` early per `contracts/cli.md` §"Hard-fail
+/// at config load" item 3: outside `[0.0, 1.0]` → `65 EX_DATAERR`.
+fn validate_threshold(common: &CommonOptions) -> Result<(), i32> {
+    if let Some(t) = common.confidence_threshold {
+        if !(0.0..=1.0).contains(&t) || t.is_nan() {
+            eprintln!("error: --confidence-threshold {t} is outside [0.0, 1.0]");
+            return Err(EX_DATAERR);
+        }
+    }
+    Ok(())
+}
+
 fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) -> i32 {
+    if let Err(code) = validate_threshold(&common) {
+        return code;
+    }
+
     // `-q` / `--quiet` suppresses non-diagnostic stderr narration per
     // contracts/cli.md. The `check` subcommand currently emits NO operator
     // narration at all — only diagnostics on stdout. So `-q` is a no-op
@@ -354,6 +370,10 @@ fn run_fix(
         return EX_USAGE;
     }
 
+    if let Err(code) = validate_threshold(&common) {
+        return code;
+    }
+
     let config = match load_config(cwd, &common) {
         Ok(c) => c,
         Err(code) => return code,
@@ -454,10 +474,11 @@ fn run_fix(
                     None => std::sync::Arc::from("-"),
                 });
                 if let Err(e) = render::render_audit_record(&mut stderr_lock, &audit_fix) {
-                    let _ = writeln!(
-                        &mut stderr_lock,
-                        "error: audit record emission failed: {e}"
-                    );
+                    // Do NOT write a plain-text error line here — the audit
+                    // stream must contain only valid NDJSON objects (FR-005a).
+                    // render_audit_record already emitted a JSON error frame
+                    // on the serialization-failure path.
+                    //
                     // ErrorKind::Other is set by render_audit_record for
                     // serde_json serialization failures; any other kind is a
                     // true I/O failure (broken pipe, disk full, etc.).

@@ -316,6 +316,26 @@ fn fix_dry_run_exit_code_matches_apply_exit_code() {
     );
 }
 
+// --- L2: out-of-range --confidence-threshold exits EX_DATAERR (65) ---
+
+#[test]
+fn fix_confidence_threshold_out_of_range_exits_65() {
+    marque()
+        .args(["fix", "--confidence-threshold", "99.0"])
+        .write_stdin("SECRET//NF\n")
+        .assert()
+        .code(65);
+}
+
+#[test]
+fn check_confidence_threshold_out_of_range_exits_65() {
+    marque()
+        .args(["check", "--confidence-threshold", "1.5"])
+        .write_stdin("SECRET//NF\n")
+        .assert()
+        .code(65);
+}
+
 #[test]
 fn fix_explain_config_mutual_exclusion() {
     marque()
