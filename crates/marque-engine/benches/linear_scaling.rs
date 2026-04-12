@@ -45,9 +45,13 @@ fn linear_scaling_benchmark(c: &mut Criterion) {
     for &size in sizes {
         let input = build_input(size);
         group.throughput(Throughput::Bytes(input.len() as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
-            b.iter(|| engine.lint(black_box(input)));
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(input.len()),
+            &input,
+            |b, input| {
+                b.iter(|| engine.lint(black_box(input)));
+            },
+        );
     }
     group.finish();
 }

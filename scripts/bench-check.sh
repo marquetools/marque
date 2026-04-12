@@ -26,21 +26,25 @@ if [[ ! -f "$BASELINE" ]]; then
 fi
 
 # Extract baseline upper CI bound in microseconds.
-# Note: baseline fields are labeled p50/p95/p99 but are actually
-# lower_ci/mean/upper_ci from criterion's confidence interval.
-BASELINE_P95=$(python3 -c "
+BASELINE_UPPER_CI=$(python3 -c "
 import json, sys
 with open('$BASELINE') as f:
     data = json.load(f)
-print(data['lint_10kb']['p95_us'])
+print(data['lint_10kb']['upper_ci_us'])
 " 2>/dev/null || echo "")
 
-if [[ -z "$BASELINE_P95" ]]; then
-    echo "bench-check: ERROR — could not parse baseline p95 from $BASELINE"
+if [[ -z "$BASELINE_UPPER_CI" ]]; then
+    echo "bench-check: ERROR — could not parse baseline upper_ci_us from $BASELINE"
     exit 1
 fi
 
-echo "bench-check: baseline upper CI = ${BASELINE_P95} µs"
+# L-3: Validate that the extracted value is a positive integer.
+if ! [[ "$BASELINE_UPPER_CI" =~ ^[0-9]+$ ]]; then
+    echo "bench-check: ERROR — baseline upper_ci_us is not a positive integer: ${BASELINE_UPPER_CI}"
+    exit 1
+fi
+
+echo "bench-check: baseline upper CI = ${BASELINE_UPPER_CI} µs"
 echo "bench-check: running lint_latency benchmark..."
 
 # Run benchmark and capture output
@@ -89,11 +93,11 @@ echo "bench-check: measured upper CI = ${CURRENT_US} µs"
 # Check for >10% regression vs baseline
 # Round up (math.ceil) so the threshold is conservative — a fractional µs in the
 # baseline can never silently pass a regression.
-THRESHOLD=$(python3 -c "import math; print(math.ceil($BASELINE_P95 * 1.10))")
+THRESHOLD=$(python3 -c "import math; print(math.ceil($BASELINE_UPPER_CI * 1.10))")
 echo "bench-check: regression threshold (baseline + 10%) = ${THRESHOLD} µs"
 
 if [[ "$CURRENT_US" -gt "$THRESHOLD" ]]; then
-    echo "bench-check: FAIL — regressed: ${CURRENT_US} µs > ${THRESHOLD} µs (baseline: ${BASELINE_P95} µs)"
+    echo "bench-check: FAIL — regressed: ${CURRENT_US} µs > ${THRESHOLD} µs (baseline: ${BASELINE_UPPER_CI} µs)"
     exit 1
 fi
 

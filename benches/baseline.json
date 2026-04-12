@@ -7,10 +7,11 @@
     "date_captured": "2026-04-12"
   },
   "lint_10kb": {
-    "p50_us": 276,
-    "p95_us": 285,
-    "p99_us": 300,
+    "lower_ci_us": 276,
+    "mean_us": 280,
+    "upper_ci_us": 285,
     "unit": "microseconds",
+    "_note": "Values are criterion 95% confidence interval bounds, not percentile distribution samples.",
     "target_p95_us": 16000
   }
 }
