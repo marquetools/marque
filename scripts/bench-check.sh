@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # SC-001a — Performance regression gate.
 #
-# Runs the lint_latency benchmark and compares against the baseline.
-# Fails with non-zero exit if p95 regresses by >10% versus baseline.
+# Runs the lint_latency benchmark and compares Criterion's confidence-interval
+# upper bound against the baseline. Fails with non-zero exit if the CI upper
+# bound regresses by >10% versus baseline, or exceeds the SC-001 absolute target.
 #
 # Usage:
-#   bash scripts/bench-check.sh           # run benchmark and check
+#   bash scripts/bench-check.sh           # run benchmark and check regression
 #   bash scripts/bench-check.sh --skip    # skip (for local dev without bench)
+#
+# Called by scripts/check.sh --bench (opt-in for local dev, required in CI).
 
 set -euo pipefail
 

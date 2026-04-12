@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/check.sh — Run all workspace quality checks.
 #
-# Usage: ./scripts/check.sh
+# Usage: ./scripts/check.sh [--bench]
+#   --bench  Also run the performance regression gate (scripts/bench-check.sh)
 # Exit code: non-zero if any check fails.
 
 set -euo pipefail

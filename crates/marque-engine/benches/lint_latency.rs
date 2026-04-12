@@ -1,6 +1,7 @@
 //! SC-001 benchmark: Engine::lint latency on representative inputs.
 //!
-//! Target: <= 16ms p95 on inputs <= 10KB of raw text on commodity dev hardware.
+//! Target: <= 16ms on inputs <= 10KB of raw text on commodity dev hardware,
+//! using Criterion's confidence-interval upper bound as the enforced metric.
 //! The threshold is enforced by `scripts/bench-check.sh`, not by this benchmark
 //! file. Run `./scripts/bench-check.sh` to gate on the SC-001 target.
 //!

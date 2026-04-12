@@ -12,15 +12,14 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{Engine, FixMode, default_ruleset};
 use std::sync::OnceLock;
 
 static ENGINE: OnceLock<Engine> = OnceLock::new();
 
 fn get_engine() -> &'static Engine {
-    ENGINE.get_or_init(|| Engine::new(Config::default(), vec![Box::new(capco_rules())]))
+    ENGINE.get_or_init(|| Engine::new(Config::default(), default_ruleset()))
 }
 
 fuzz_target!(|data: &[u8]| {

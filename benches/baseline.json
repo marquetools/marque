@@ -12,6 +12,6 @@
     "upper_ci_us": 285,
     "unit": "microseconds",
     "_note": "Values are criterion 95% confidence interval bounds, not percentile distribution samples.",
-    "target_p95_us": 16000
+    "target_upper_ci_us": 16000
   }
 }
