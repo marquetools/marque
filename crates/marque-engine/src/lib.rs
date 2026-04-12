@@ -4,12 +4,14 @@
 //! The pipeline is a chain of async streams; each stage is a `Stream` impl.
 //! CLI, WASM, and server are different Source/Sink configurations wired to the same middle.
 
+#[cfg(feature = "batch")]
 pub mod batch;
 pub mod clock;
 pub mod engine;
 pub mod output;
 pub mod pipeline;
 
+#[cfg(feature = "batch")]
 pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use engine::{Engine, FixMode, InvalidThreshold};

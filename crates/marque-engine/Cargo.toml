@@ -13,11 +13,16 @@ marque-core   = { workspace = true }
 marque-rules  = { workspace = true }
 marque-capco  = { workspace = true }
 marque-config = { workspace = true }
-tokio         = { workspace = true }
-futures       = { workspace = true }
+aho-corasick  = { workspace = true }
+tokio         = { workspace = true, optional = true }
+futures       = { workspace = true, optional = true }
 thiserror     = { workspace = true }
 tracing       = { workspace = true }
-recoco-utils  = { workspace = true }
+recoco-utils  = { workspace = true, optional = true }
+
+[features]
+default = ["batch"]
+batch   = ["dep:tokio", "dep:futures", "dep:recoco-utils"]
 
 [dev-dependencies]
 criterion         = { workspace = true }

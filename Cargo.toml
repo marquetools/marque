@@ -27,7 +27,7 @@ marque-ism     = { path = "crates/marque-ism" }
 marque-core    = { path = "crates/marque-core" }
 marque-rules   = { path = "crates/marque-rules" }
 marque-capco   = { path = "crates/marque-capco" }
-marque-engine  = { path = "crates/marque-engine" }
+marque-engine  = { path = "crates/marque-engine", default-features = false }
 marque-extract    = { path = "crates/marque-extract" }
 marque-config     = { path = "crates/marque-config" }
 marque-test-utils = { path = "crates/marque-test-utils" }

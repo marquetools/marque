@@ -317,3 +317,96 @@ fn us3_acceptance_scenario_combined_corrections_and_builtin_fix() {
     assert_eq!(nf_fix.proposal.source, FixSource::CorrectionsMap);
     assert_eq!(nf_fix.proposal.migration_ref, None);
 }
+
+// -----------------------------------------------------------------------
+// Pre-scanner text corrections (markings the scanner misses)
+// -----------------------------------------------------------------------
+
+#[test]
+fn pre_scanner_corrections_fires_on_unrecognized_classification_prefix() {
+    // "SERCET" is not a known classification prefix, so the scanner does
+    // not detect "SERCET//NF" as a banner candidate. The pre-scanner text
+    // corrections pass should still find "SERCET" and emit a C001 diagnostic.
+    let mut corrections = HashMap::new();
+    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SERCET//NF\n";
+    let result = engine.lint(source);
+
+    let c001_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+
+    assert!(
+        !c001_diags.is_empty(),
+        "pre-scanner corrections must fire on SERCET even though the scanner \
+         doesn't detect it as a banner"
+    );
+    let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
+    assert_eq!(fix.source, FixSource::CorrectionsMap);
+    assert_eq!(fix.original.as_ref(), "SERCET");
+    assert_eq!(fix.replacement.as_ref(), "SECRET");
+}
+
+#[test]
+fn pre_scanner_corrections_fix_produces_correct_output() {
+    // Full spec acceptance scenario: SERCET//NF with corrections SERCET→SECRET.
+    // After fix: the pre-scanner pass replaces SERCET→SECRET, then the
+    // scanner detects SECRET//NF, E001 fires on NF→NOFORN, and the final
+    // output is SECRET//NOFORN.
+    let mut corrections = HashMap::new();
+    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SERCET//NF\n";
+    let result = engine.fix(source, FixMode::Apply);
+
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert_eq!(
+        fixed_text, "SECRET//NOFORN\n",
+        "SERCET//NF should become SECRET//NOFORN after corrections + E001 fix"
+    );
+
+    // The C001 fix for SERCET→SECRET should be in the audit trail.
+    let c001_fix = result
+        .applied
+        .iter()
+        .find(|f| f.proposal.rule.as_str() == "C001");
+    assert!(
+        c001_fix.is_some(),
+        "audit trail must contain a C001 fix for SERCET→SECRET"
+    );
+    assert_eq!(c001_fix.unwrap().proposal.source, FixSource::CorrectionsMap);
+}
+
+#[test]
+fn pre_scanner_corrections_does_not_duplicate_rule_pipeline_c001() {
+    // When the rule pipeline already produces a C001 diagnostic for a span
+    // (because the scanner DID detect the marking), the pre-scanner pass
+    // must not emit a duplicate.
+    let mut corrections = HashMap::new();
+    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    // SECRET//NF — the scanner detects this as a banner. The rule pipeline's
+    // C001 matches "NF" via token_spans. The pre-scanner text scan also
+    // finds "NF" in the raw text. Only ONE C001 diagnostic should exist.
+    let source = b"SECRET//NF\n";
+    let result = engine.lint(source);
+
+    let c001_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+
+    // There should be exactly one C001, not two.
+    assert_eq!(
+        c001_diags.len(),
+        1,
+        "pre-scanner must not duplicate rule-pipeline C001 diagnostics: {c001_diags:?}"
+    );
+}

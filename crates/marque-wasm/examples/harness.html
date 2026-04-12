@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>marque WASM Harness</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    textarea { width: 100%; font-family: monospace; font-size: 0.9rem; }
+    button { margin: 0.5rem 0.5rem 0.5rem 0; padding: 0.4rem 1rem; cursor: pointer; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; white-space: pre-wrap; font-size: 0.85rem; border: 1px solid #ddd; }
+    .error { color: #c00; }
+    .meta { color: #666; font-size: 0.8rem; margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+  <h1>marque WASM Harness</h1>
+  <p>Enter a classification marking to lint or fix. Output conforms to
+  <code>contracts/diagnostic.json</code> (NDJSON, one record per line).</p>
+
+  <textarea id="input" rows="4" cols="60">TOP SECRET//SI//NF</textarea>
+  <br>
+  <label>Confidence threshold: <input id="threshold" type="number" value="0.95" min="0" max="1" step="0.05"></label>
+  <br>
+  <button id="lint-btn">Lint</button>
+  <button id="fix-btn">Fix</button>
+  <div class="meta" id="timing"></div>
+  <pre id="output">Click "Lint" or "Fix" to see results.</pre>
+
+  <script type="module">
+    // wasm-pack build output lands in ../pkg/ by default.
+    import init, { lint, fix } from '../pkg/marque_wasm.js';
+
+    const inputEl    = document.getElementById('input');
+    const threshEl   = document.getElementById('threshold');
+    const outputEl   = document.getElementById('output');
+    const timingEl   = document.getElementById('timing');
+
+    await init();
+    console.log('marque WASM module loaded.');
+
+    document.getElementById('lint-btn').addEventListener('click', () => {
+      const text = inputEl.value;
+      const t0 = performance.now();
+      try {
+        const result = lint(text, undefined);
+        const elapsed = (performance.now() - t0).toFixed(2);
+        outputEl.textContent = result || '(no diagnostics)';
+        outputEl.classList.remove('error');
+        timingEl.textContent = `lint completed in ${elapsed} ms`;
+      } catch (e) {
+        outputEl.textContent = 'Error: ' + e;
+        outputEl.classList.add('error');
+        timingEl.textContent = '';
+      }
+    });
+
+    document.getElementById('fix-btn').addEventListener('click', () => {
+      const text = inputEl.value;
+      const threshold = parseFloat(threshEl.value) || 0.95;
+      const t0 = performance.now();
+      try {
+        const result = fix(text, threshold, undefined);
+        const elapsed = (performance.now() - t0).toFixed(2);
+        // Pretty-print the JSON result
+        const parsed = JSON.parse(result);
+        outputEl.textContent = JSON.stringify(parsed, null, 2);
+        outputEl.classList.remove('error');
+        timingEl.textContent = `fix completed in ${elapsed} ms`;
+      } catch (e) {
+        outputEl.textContent = 'Error: ' + e;
+        outputEl.classList.add('error');
+        timingEl.textContent = '';
+      }
+    });
+  </script>
+</body>
+</html>

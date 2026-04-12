@@ -2,9 +2,10 @@
 
 use crate::clock::{Clock, SystemClock};
 use crate::output::{FixResult, LintResult};
+use aho_corasick::AhoCorasick;
 use marque_config::Config;
 use marque_ism::Span;
-use marque_rules::{AppliedFix, RuleId, RuleSet, Severity};
+use marque_rules::{AppliedFix, Diagnostic, FixProposal, FixSource, RuleId, RuleSet, Severity};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -43,6 +44,19 @@ pub struct Engine {
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
     /// deep-clone of the entire HashMap.
     corrections_arc: Option<Arc<HashMap<String, String>>>,
+    /// Pre-built Aho-Corasick automaton for pre-scanner text corrections.
+    /// Built once at construction time from the corrections map (excluding
+    /// no-op and "//" entries). `None` when the corrections map is empty or
+    /// all entries are filtered out.
+    corrections_ac: Option<CachedAhoCorasick>,
+}
+
+/// Cached AhoCorasick automaton + the active (key, value) pairs that
+/// correspond to its pattern indices.
+struct CachedAhoCorasick {
+    ac: AhoCorasick,
+    /// Active correction pairs, indexed by `PatternID::as_usize()`.
+    active: Vec<(Box<str>, Box<str>)>,
 }
 
 impl Engine {
@@ -64,11 +78,42 @@ impl Engine {
         } else {
             Some(Arc::new(std::mem::take(&mut config.corrections)))
         };
+
+        // Pre-build the AhoCorasick automaton for pre-scanner text corrections.
+        // This is O(total pattern bytes) and done once, not per-lint call.
+        let corrections_ac = corrections_arc.as_ref().and_then(|corrections| {
+            // Sort by key for deterministic pattern ordering — HashMap
+            // iteration order is random (hash seed varies per process),
+            // and AhoCorasick pattern IDs depend on insertion order.
+            let mut active: Vec<(Box<str>, Box<str>)> = corrections
+                .iter()
+                .filter(|(k, v)| k != v && k.as_str() != "//")
+                .map(|(k, v)| (k.as_str().into(), v.as_str().into()))
+                .collect();
+            active.sort_by(|(a, _), (b, _)| a.cmp(b));
+            if active.is_empty() {
+                return None;
+            }
+            let patterns: Vec<&str> = active.iter().map(|(k, _)| k.as_ref()).collect();
+            match AhoCorasick::new(&patterns) {
+                Ok(ac) => Some(CachedAhoCorasick { ac, active }),
+                Err(e) => {
+                    tracing::warn!(
+                        "failed to build AhoCorasick automaton for corrections map \
+                         ({} patterns): {e}; pre-scanner text corrections disabled",
+                        patterns.len()
+                    );
+                    None
+                }
+            }
+        });
+
         Self {
             config,
             rule_sets,
             clock,
             corrections_arc,
+            corrections_ac,
         }
     }
 
@@ -173,6 +218,63 @@ impl Engine {
             }
         }
 
+        // Pre-scanner text corrections: scan the raw source for
+        // corrections-map keys that the scanner missed (e.g., "SERCET" is
+        // not a known classification prefix, so the scanner never detects
+        // "SERCET//NF" as a candidate, and C001 never sees the token).
+        //
+        // This pass emits C001 diagnostics for raw-text matches that don't
+        // overlap with any C001 diagnostic already produced by the rule
+        // pipeline above. Spans reference the original source buffer.
+        if let Some(cached) = &self.corrections_ac {
+            let c001_severity = self
+                .config
+                .rules
+                .overrides
+                .get("C001")
+                .and_then(|s| Severity::parse_config(s))
+                .unwrap_or(Severity::Fix);
+
+            if c001_severity != Severity::Off {
+                // Collect spans already covered by rule-pipeline C001.
+                let existing_c001_spans: std::collections::HashSet<Span> = diagnostics
+                    .iter()
+                    .filter(|d| d.rule.as_str() == "C001")
+                    .map(|d| d.span)
+                    .collect();
+
+                // Use the pre-built AhoCorasick automaton to scan the full
+                // source in a single O(n + m) pass. The automaton and its
+                // active pairs were built once at Engine construction time.
+                for mat in cached.ac.find_iter(source) {
+                    let span = Span::new(mat.start(), mat.end());
+                    let (ref key, ref value) = cached.active[mat.pattern().as_usize()];
+
+                    // Skip if the rule pipeline already produced a C001
+                    // diagnostic for this exact span.
+                    if !existing_c001_spans.contains(&span) {
+                        let proposal = FixProposal::new(
+                            RuleId::new("C001"),
+                            FixSource::CorrectionsMap,
+                            span,
+                            key.as_ref(),
+                            value.as_ref(),
+                            1.0,
+                            None,
+                        );
+                        diagnostics.push(Diagnostic::new(
+                            RuleId::new("C001"),
+                            c001_severity,
+                            span,
+                            format!("corrections map: {key:?} → {value:?}"),
+                            "CONFIG:[corrections]",
+                            Some(proposal),
+                        ));
+                    }
+                }
+            }
+        }
+
         LintResult { diagnostics }
     }
 
@@ -219,7 +321,29 @@ impl Engine {
     fn fix_inner(&self, source: &[u8], mode: FixMode, threshold: f32) -> FixResult {
         use std::collections::HashSet;
 
-        let lint = self.lint(source);
+        // Two-pass fix strategy for pre-scanner text corrections.
+        //
+        // Pass 1: lint the original source. The pre-scanner text scan may
+        // produce C001 diagnostics for corrections-map matches the scanner
+        // missed (e.g., "SERCET" is not a known classification prefix).
+        // Apply those C001 fixes to produce an intermediate source.
+        //
+        // Pass 2: re-lint the intermediate source. The scanner now detects
+        // the corrected marking (e.g., "SECRET//NF") and additional rules
+        // fire (e.g., E001 on NF→NOFORN). Apply those fixes on top.
+        //
+        // Without this, the spec scenario "SERCET//NF → SECRET//NOFORN"
+        // would stop at "SECRET//NF".
+        let lint1 = self.lint(source);
+        let (effective_source, pass1_applied) =
+            self.apply_text_corrections(source, &lint1, threshold, mode);
+
+        let lint = if !pass1_applied.is_empty() {
+            // Re-lint the corrected source so the scanner picks up newly-valid markings.
+            self.lint(&effective_source)
+        } else {
+            lint1
+        };
 
         let mut fixes: Vec<_> = lint
             .diagnostics
@@ -285,7 +409,7 @@ impl Engine {
         // Dry-run returns the original source verbatim.
         let output = match mode {
             FixMode::Apply => {
-                let mut buf = source.to_vec();
+                let mut buf = effective_source.clone();
                 for fix in kept_fixes {
                     buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
                     applied_keys.insert((fix.rule.clone(), fix.span));
@@ -314,6 +438,11 @@ impl Engine {
             }
         };
 
+        // Prepend pass-1 text corrections to the applied list so they
+        // appear in the audit trail.
+        let mut all_applied = pass1_applied;
+        all_applied.extend(applied);
+
         // Remaining diagnostics: those whose fix was not applied.
         // Filter by (rule_id, span) pair — not just rule ID — so that if
         // rule E001 fires on three spans and only one is fixed, the other
@@ -330,9 +459,78 @@ impl Engine {
 
         FixResult {
             source: output,
-            applied,
+            applied: all_applied,
             remaining_diagnostics,
         }
+    }
+
+    /// Apply pre-scanner text corrections (C001) from lint diagnostics and
+    /// return the corrected source + applied fixes. Used by `fix_inner` to
+    /// produce an intermediate source that the scanner can detect.
+    fn apply_text_corrections(
+        &self,
+        source: &[u8],
+        lint: &LintResult,
+        threshold: f32,
+        mode: FixMode,
+    ) -> (Vec<u8>, Vec<AppliedFix>) {
+        let mut text_fixes: Vec<&FixProposal> = lint
+            .diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "C001")
+            .filter_map(|d| d.fix.as_ref())
+            .filter(|f| f.source == FixSource::CorrectionsMap)
+            .filter(|f| f.confidence >= threshold)
+            .filter(|f| !f.span.is_empty())
+            .collect();
+
+        if text_fixes.is_empty() {
+            return (source.to_vec(), Vec::new());
+        }
+
+        // Sort and deduplicate using FR-016 order + C-1 overlap guard.
+        text_fixes.sort_by(|a, b| {
+            b.span
+                .end
+                .cmp(&a.span.end)
+                .then(b.span.start.cmp(&a.span.start))
+                .then(a.rule.cmp(&b.rule))
+                .then(a.replacement.cmp(&b.replacement))
+        });
+        let mut kept: Vec<&FixProposal> = Vec::new();
+        let mut next_end: Option<usize> = None;
+        for fix in &text_fixes {
+            let fits = next_end.is_none_or(|b| fix.span.end <= b);
+            if fits {
+                next_end = Some(fix.span.start);
+                kept.push(*fix);
+            }
+        }
+
+        let classifier_id: Option<Arc<str>> =
+            self.config.user.classifier_id.as_deref().map(Arc::from);
+        let dry_run = mode == FixMode::DryRun;
+        let now = self.clock.now();
+
+        // Always apply text corrections to the intermediate buffer, even in
+        // DryRun mode. This buffer is internal — pass 2 needs it to re-lint
+        // corrected text so downstream rules fire (e.g., E001 on NF after
+        // SERCET→SECRET). The final output for DryRun returns the original
+        // source in fix_inner, not this intermediate buffer.
+        let mut buf = source.to_vec();
+        let mut applied = Vec::with_capacity(kept.len());
+        for fix in &kept {
+            buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+            applied.push(AppliedFix::__engine_promote(
+                (*fix).clone(),
+                now,
+                classifier_id.clone(),
+                dry_run,
+                None,
+            ));
+        }
+
+        (buf, applied)
     }
 }
 
