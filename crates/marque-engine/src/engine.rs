@@ -67,11 +67,21 @@ impl Engine {
         use marque_core::{Parser, Scanner};
         use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
         use marque_rules::RuleContext;
+        use std::collections::HashMap;
         use std::sync::Arc;
 
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidates = Scanner::scan(source);
+
+        // Wrap the corrections map in an Arc once so each RuleContext
+        // clone is an O(1) refcount bump.
+        let corrections_arc: Option<Arc<HashMap<String, String>>> =
+            if self.config.corrections.is_empty() {
+                None
+            } else {
+                Some(Arc::new(self.config.corrections.clone()))
+            };
 
         let mut diagnostics = Vec::new();
         // Build page context by accumulating portion markings in document order.
@@ -133,6 +143,7 @@ impl Engine {
                 zone: None,
                 position: None,
                 page_context: ctx_page,
+                corrections: corrections_arc.clone(),
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {

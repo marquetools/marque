@@ -36,6 +36,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
             zone: None,
             position: None,
             page_context: None,
+            corrections: None,
         };
         for rule in rule_set.rules() {
             for d in rule.check(&parsed.attrs, &ctx) {

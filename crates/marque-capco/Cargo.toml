@@ -17,4 +17,6 @@ aho-corasick = { workspace = true }
 [dev-dependencies]
 insta             = { workspace = true }
 marque-core       = { workspace = true }
+marque-config     = { workspace = true }
+marque-engine     = { workspace = true }
 marque-test-utils = { workspace = true }
