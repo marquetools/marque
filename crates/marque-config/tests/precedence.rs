@@ -232,6 +232,45 @@ classifier_id = ""
     let _ = fs::remove_dir_all(&dir);
 }
 
+// F-07: local config intentionally carries only user identity, not rules.
+#[test]
+fn layer2_local_config_does_not_override_rule_severities() {
+    let dir = make_tmpdir("l2-rules-ignored");
+    fs::write(
+        dir.join(".marque.toml"),
+        format!(
+            r#"
+[capco]
+version = "{SCHEMA_VERSION}"
+
+[rules]
+E001 = "error"
+"#
+        ),
+    )
+    .unwrap();
+    // .marque.local.toml may contain a [rules] section, but merge_user_into
+    // only picks up [user] fields — rule overrides from local config are
+    // silently ignored. This is by design: local config is for user identity,
+    // not project policy.
+    fs::write(
+        dir.join(".marque.local.toml"),
+        r#"
+[rules]
+E001 = "off"
+"#,
+    )
+    .unwrap();
+
+    let config = marque_config::load(&dir).expect("load should succeed");
+    assert_eq!(
+        config.rules.overrides.get("E001"),
+        Some(&"error".to_owned()),
+        "local config must not override project rule severity"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // -----------------------------------------------------------------------
 // T053: Hard-fail scenarios
 // -----------------------------------------------------------------------
@@ -346,5 +385,67 @@ fn hard_fail_env_threshold_not_a_float() {
         "expected InvalidEnvVar, got: {err:?}"
     );
     assert_eq!(err.exit_code(), 65);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// F-11: NaN parses as f32 but must be rejected by set_confidence_threshold.
+#[test]
+fn hard_fail_env_threshold_nan() {
+    let dir = make_tmpdir("hf-env-nan");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+
+    unsafe {
+        std::env::set_var("MARQUE_CONFIDENCE_THRESHOLD", "NaN");
+    }
+    let result = marque_config::load(&dir);
+    unsafe {
+        std::env::remove_var("MARQUE_CONFIDENCE_THRESHOLD");
+    }
+
+    let err = result.unwrap_err();
+    assert!(
+        matches!(err, ConfigError::ThresholdOutOfRange { .. }),
+        "NaN threshold via env var should be rejected, got: {err:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// F-02: empty MARQUE_CLASSIFIER_ID must not overwrite a populated local value.
+#[test]
+fn empty_env_classifier_id_does_not_overwrite_local() {
+    let dir = make_tmpdir("env-empty-classifier");
+    fs::write(
+        dir.join(".marque.toml"),
+        format!(
+            r#"
+[capco]
+version = "{SCHEMA_VERSION}"
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        dir.join(".marque.local.toml"),
+        r#"
+[user]
+classifier_id = "LOCAL-42"
+"#,
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("MARQUE_CLASSIFIER_ID", "");
+    }
+    let config = marque_config::load(&dir);
+    unsafe {
+        std::env::remove_var("MARQUE_CLASSIFIER_ID");
+    }
+
+    let config = config.expect("load should succeed");
+    assert_eq!(
+        config.user.classifier_id.as_deref(),
+        Some("LOCAL-42"),
+        "empty env var must not overwrite populated local classifier_id"
+    );
     let _ = fs::remove_dir_all(&dir);
 }

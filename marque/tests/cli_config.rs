@@ -130,6 +130,10 @@ fn severity_override_downgrades_rule_to_warn() {
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
+        stdout.contains("\"rule\":\"E001\""),
+        "E001 should be present in diagnostics, got: {stdout}"
+    );
+    assert!(
         stdout.contains("\"severity\":\"warn\""),
         "diagnostic should have severity=warn per config override, got: {stdout}"
     );
@@ -156,6 +160,36 @@ fn severity_override_off_suppresses_rule() {
     assert!(
         !stdout.contains("\"rule\":\"E001\""),
         "E001 should not fire when configured to off, got: {stdout}"
+    );
+}
+
+// F-08: Layer 4 (CLI flag) overrides all other layers.
+#[test]
+fn cli_confidence_threshold_overrides_config() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let config_path = tmp_dir.path().join(".marque.toml");
+    // Config sets threshold=0.5, which would auto-apply E003 (confidence 0.6).
+    // CLI flag --confidence-threshold=0.99 should override, excluding E003.
+    std::fs::write(
+        &config_path,
+        format!("confidence_threshold = 0.5\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
+    )
+    .unwrap();
+
+    // With threshold=0.99, only fixes >= 0.99 confidence are applied.
+    // E001 (confidence 1.0) is applied but E003 (confidence 0.6) is not.
+    let assert = marque()
+        .args(["fix", "--confidence-threshold", "0.99", "--config"])
+        .arg(&config_path)
+        .write_stdin("SECRET//NF\n")
+        .assert()
+        .success(); // E001 applied, no remaining errors
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_eq!(
+        stdout.as_ref(),
+        "SECRET//NOFORN\n",
+        "CLI threshold override should still allow E001 (conf=1.0)"
     );
 }
 

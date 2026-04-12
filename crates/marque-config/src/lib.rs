@@ -373,8 +373,13 @@ fn merge_user_into(config: &mut Config, file: ConfigFile) {
 }
 
 fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
+    // L-2 parity: apply the same non-empty guard as merge_user_into so that
+    // `MARQUE_CLASSIFIER_ID=""` does not silently overwrite a populated
+    // local-config value with an empty string.
     if let Ok(id) = std::env::var("MARQUE_CLASSIFIER_ID") {
-        config.user.classifier_id = Some(id);
+        if !id.trim().is_empty() {
+            config.user.classifier_id = Some(id);
+        }
     }
     // C-2: propagate parse failures. `MARQUE_CONFIDENCE_THRESHOLD=0.9o` must
     // hard-fail, not silently apply the default.

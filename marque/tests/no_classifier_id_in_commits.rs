@@ -22,6 +22,8 @@ const ALLOWED_SENTINELS: &[&str] = &[
     "LOCAL-42",
     "ENV-99",
     "LEAKED-42",
+    "CLI-TEST-ID-77",
+    "SUPER-SECRET-99",
     "from-root",
     "from-sub",
     "12345",
@@ -124,7 +126,11 @@ fn walkdir(dir: &Path) -> Vec<PathBuf> {
 #[test]
 fn sc006_no_classifier_id_in_committed_test_files() {
     let root = workspace_root();
-    let scan_dirs = [root.join("tests").join("corpus"), root.join("crates")];
+    let scan_dirs = [
+        root.join("tests").join("corpus"),
+        root.join("crates"),
+        root.join("marque").join("tests"),
+    ];
 
     let mut all_violations = Vec::new();
     for dir in &scan_dirs {

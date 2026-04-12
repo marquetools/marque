@@ -4,7 +4,9 @@
 //! (a) Every file under `tests/corpus/` matches a registered path pattern
 //! (b) `CORPUS_PROVENANCE.md` exists and contains a reviewer line
 //! (c) No fixture contains classifier-id-shaped strings
+//! (d) Fixture token strings are drawn from known CVE enumerations
 
+use marque_ism::SciControl;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
@@ -142,6 +144,159 @@ fn sc002a_no_classifier_id_in_corpus_fixtures() {
     assert!(
         violations.is_empty(),
         "SC-002a(c): {} classifier-id-shaped string(s) in corpus fixtures:\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
+}
+
+// -----------------------------------------------------------------------
+// T055a(d): fixture tokens must come from known CVE enumerations
+// -----------------------------------------------------------------------
+
+/// Build a set of all known token strings from the ISM CVE enumerations.
+fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
+    let mut tokens = std::collections::HashSet::new();
+
+    // Classification levels (full and abbreviated forms)
+    for s in &[
+        "TOP SECRET",
+        "TS",
+        "SECRET",
+        "S",
+        "CONFIDENTIAL",
+        "C",
+        "UNCLASSIFIED",
+        "U",
+    ] {
+        tokens.insert(*s);
+    }
+
+    // SCI controls — verify each parses through the generated code
+    for s in &[
+        "SI", "TK", "HCS", "BUR", "KLM", "RSV", "MVL", "SI-G", "SI-NK", "SI-EU", "HCS-O", "HCS-P",
+        "HCS-X", "BUR-BLG", "BUR-DTP", "BUR-WRG", "KLM-R", "TK-BLFH", "TK-IDIT", "TK-KAND",
+    ] {
+        assert!(
+            SciControl::parse(s).is_some(),
+            "SCI control {s:?} must parse"
+        );
+        tokens.insert(*s);
+    }
+
+    // Dissem controls (canonical and abbreviated forms)
+    for s in &[
+        "NOFORN",
+        "NF",
+        "ORCON",
+        "OC",
+        "IMCON",
+        "IMC",
+        "PROPIN",
+        "RELIDO",
+        "DEA SENSITIVE",
+        "DSEN",
+        "FISA",
+        "DISPLAY ONLY",
+        "WAIVED",
+    ] {
+        tokens.insert(*s);
+    }
+
+    // REL TO, trigraphs, and structural elements
+    for s in &[
+        "REL TO", "USA", "GBR", "CAN", "AUS", "NZL", "FVEY", "//", "/",
+    ] {
+        tokens.insert(*s);
+    }
+
+    // Declassification exemption markers
+    for s in &["X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8"] {
+        tokens.insert(*s);
+    }
+
+    tokens
+}
+
+#[test]
+fn sc002a_fixture_tokens_within_known_vocabulary() {
+    // Only validate valid/ fixtures — invalid/ fixtures intentionally
+    // contain non-CVE tokens to exercise error-detection rules.
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("valid");
+    if !corpus_dir.exists() {
+        return; // no valid fixtures yet
+    }
+    let known = known_cve_tokens();
+    let mut violations = Vec::new();
+
+    for file in walkdir(&corpus_dir) {
+        if !file.extension().is_some_and(|e| e == "txt") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            // Strip portion parens if present
+            let marking = trimmed
+                .strip_prefix('(')
+                .and_then(|s| s.strip_suffix(')'))
+                .unwrap_or(trimmed);
+
+            // Split on "//" separators and check each token
+            for block in marking.split("//") {
+                let block = block.trim();
+                if block.is_empty() {
+                    continue;
+                }
+                // Skip "REL TO ..." blocks — trigraph list varies
+                if block.starts_with("REL TO") || block.starts_with("REL ") {
+                    continue;
+                }
+                // Skip date-like tokens (YYYYMMDD or Xn patterns)
+                if block.len() == 8 && block.chars().all(|c| c.is_ascii_digit()) {
+                    continue;
+                }
+                // Skip "Classified By:", "Derived From:", etc. (CAB lines)
+                if block.contains(':') {
+                    continue;
+                }
+                // Skip prose content (lines with spaces and lowercase chars)
+                if block.contains(' ') && block.chars().any(|c| c.is_lowercase()) {
+                    continue;
+                }
+
+                // Handle comma-separated lists (e.g., "SI, TK")
+                let sub_tokens: Vec<&str> = if block.contains(',') {
+                    block.split(',').map(|t| t.trim()).collect()
+                } else {
+                    vec![block]
+                };
+
+                for token in sub_tokens {
+                    if token.is_empty() {
+                        continue;
+                    }
+                    if !known.contains(token) {
+                        violations.push(format!(
+                            "{}:{}: unknown token {:?}",
+                            file.display(),
+                            line_num + 1,
+                            token
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "SC-002a(d): {} token(s) in corpus fixtures not in CVE vocabulary:\n{}",
         violations.len(),
         violations.join("\n")
     );

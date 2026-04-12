@@ -912,30 +912,38 @@ impl Rule for CorrectionsMapRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Engine guarantees corrections is Some only when the map is non-empty
+        // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
         let Some(corrections) = ctx.corrections.as_ref() else {
             return vec![];
         };
-        if corrections.is_empty() {
-            return vec![];
-        }
 
         let mut diagnostics = Vec::new();
         for token_span in attrs.token_spans.iter() {
-            let text = token_span.text.as_ref();
-            if let Some(replacement) = corrections.get(text) {
-                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::CorrectionsMap,
-                    span: token_span.span,
-                    message: format!("corrections map: {text:?} → {replacement:?}"),
-                    citation: "corrections-map",
-                    original: text.to_owned(),
-                    replacement: replacement.clone(),
-                    confidence: 1.0,
-                    migration_ref: Some("corrections-map"),
-                }));
+            // M1: skip structural separators — corrections never apply to "//"
+            if token_span.kind == TokenKind::Separator {
+                continue;
             }
+            let text = token_span.text.as_ref();
+            let Some(replacement) = corrections.get(text) else {
+                continue;
+            };
+            // M2: skip no-op corrections (replacement == original)
+            if replacement == text {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::CorrectionsMap,
+                span: token_span.span,
+                message: format!("corrections map: {text:?} → {replacement:?}"),
+                citation: "corrections-map",
+                original: text.to_owned(),
+                replacement: replacement.clone(),
+                confidence: 1.0,
+                migration_ref: Some("corrections-map"),
+            }));
         }
         diagnostics
     }

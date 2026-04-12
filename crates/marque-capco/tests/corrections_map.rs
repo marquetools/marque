@@ -33,14 +33,15 @@ fn engine_default() -> Engine {
 
 #[test]
 fn c001_fires_on_corrections_map_match() {
+    // C001 can only correct tokens inside markings the scanner detects.
+    // The scanner recognizes banners starting with known classification
+    // prefixes (SECRET, TOP SECRET, etc.), so we use a valid banner with
+    // a corrections-map entry matching a dissem control token.
     let mut corrections = HashMap::new();
-    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
+    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
     let engine = engine_with_corrections(corrections);
 
-    // "SERCET//NF" — the scanner finds a banner candidate. The parser
-    // may or may not fully parse "SERCET" (it's not a valid classification),
-    // but token_spans will contain the token text.
-    let source = b"SERCET//NOFORN\n";
+    let source = b"SECRET//NF\n";
     let result = engine.lint(source);
 
     let c001_diags: Vec<_> = result
@@ -49,16 +50,15 @@ fn c001_fires_on_corrections_map_match() {
         .filter(|d| d.rule.as_str() == "C001")
         .collect();
 
-    // C001 should fire on "SERCET" if the parser included it in token_spans.
-    // If the parser doesn't emit a token for unrecognized classification text,
-    // C001 won't fire — that's the documented limitation.
-    if !c001_diags.is_empty() {
-        let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
-        assert_eq!(fix.source, FixSource::CorrectionsMap);
-        assert_eq!(fix.replacement.as_ref(), "SECRET");
-        assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
-        assert_eq!(fix.migration_ref, Some("corrections-map"));
-    }
+    assert!(
+        !c001_diags.is_empty(),
+        "C001 must fire when corrections map matches a token"
+    );
+    let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
+    assert_eq!(fix.source, FixSource::CorrectionsMap);
+    assert_eq!(fix.replacement.as_ref(), "NOFORN");
+    assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
+    assert_eq!(fix.migration_ref, Some("corrections-map"));
 }
 
 #[test]
@@ -80,6 +80,7 @@ fn c001_no_match_when_corrections_empty() {
 
 #[test]
 fn c001_no_match_when_token_not_in_map() {
+    // Corrections map has "SERCET" but the input contains "SECRET" — no match.
     let mut corrections = HashMap::new();
     corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
     let engine = engine_with_corrections(corrections);
@@ -128,16 +129,19 @@ fn fr009_c001_wins_over_builtin_rule_on_same_span() {
         .filter(|f| f.proposal.replacement.as_ref() == "NOFORN")
         .collect();
 
-    if nf_fixes.len() == 1 {
-        // When both C001 and E001 competed for the same span, C001 should
-        // have won under FR-016 sort order ("C001" < "E001").
-        assert_eq!(
-            nf_fixes[0].proposal.rule.as_str(),
-            "C001",
-            "C001 should win over E001 on the same span (FR-009)"
-        );
-        assert_eq!(nf_fixes[0].proposal.source, FixSource::CorrectionsMap);
-    }
+    // Both C001 and E001 compete for the NF span. C-1 overlap guard keeps
+    // only one. FR-016 sort picks C001 ("C001" < "E001" lexicographically).
+    assert_eq!(
+        nf_fixes.len(),
+        1,
+        "exactly one NOFORN fix should be applied (C-1 overlap guard)"
+    );
+    assert_eq!(
+        nf_fixes[0].proposal.rule.as_str(),
+        "C001",
+        "C001 should win over E001 on the same span (FR-009)"
+    );
+    assert_eq!(nf_fixes[0].proposal.source, FixSource::CorrectionsMap);
 }
 
 #[test]
@@ -155,13 +159,15 @@ fn c001_fix_carries_corrections_map_source_in_audit() {
         .filter(|f| f.proposal.rule.as_str() == "C001")
         .collect();
 
-    if !c001_fixes.is_empty() {
-        assert_eq!(c001_fixes[0].proposal.source, FixSource::CorrectionsMap);
-        assert_eq!(
-            c001_fixes[0].proposal.migration_ref,
-            Some("corrections-map")
-        );
-    }
+    assert!(
+        !c001_fixes.is_empty(),
+        "C001 must appear in applied fixes for NF→NOFORN"
+    );
+    assert_eq!(c001_fixes[0].proposal.source, FixSource::CorrectionsMap);
+    assert_eq!(
+        c001_fixes[0].proposal.migration_ref,
+        Some("corrections-map")
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -202,4 +208,83 @@ fn absent_classifier_id_is_none_in_audit() {
             "absent classifier_id should be None, not empty"
         );
     }
+}
+
+// -----------------------------------------------------------------------
+// Edge cases (M1, M2, T3, T4)
+// -----------------------------------------------------------------------
+
+#[test]
+fn c001_does_not_fire_on_separator_tokens() {
+    // M1: corrections map entry for "//" must not match separator tokens.
+    let mut corrections = HashMap::new();
+    corrections.insert("//".to_owned(), "///".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SECRET//NOFORN\n";
+    let result = engine.lint(source);
+
+    let c001_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+    assert!(
+        c001_diags.is_empty(),
+        "C001 must not fire on separator tokens, got: {c001_diags:?}"
+    );
+}
+
+#[test]
+fn c001_skips_noop_correction() {
+    // M2: a corrections entry where key == value must not produce a fix.
+    let mut corrections = HashMap::new();
+    corrections.insert("NOFORN".to_owned(), "NOFORN".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SECRET//NOFORN\n";
+    let result = engine.fix(source, FixMode::Apply);
+
+    let c001_fixes: Vec<_> = result
+        .applied
+        .iter()
+        .filter(|f| f.proposal.rule.as_str() == "C001")
+        .collect();
+    assert!(
+        c001_fixes.is_empty(),
+        "no-op correction (replacement == original) must not produce an applied fix"
+    );
+}
+
+// -----------------------------------------------------------------------
+// F-13: exact spec input scenario
+// -----------------------------------------------------------------------
+
+#[test]
+fn us3_acceptance_scenario_combined_corrections_and_builtin_fix() {
+    // US3 acceptance scenario 2 (adapted): corrections map for NF→NOFORN,
+    // input "SECRET//NF\n" → output "SECRET//NOFORN\n". C001 handles NF
+    // and E001 would also fire but C001 wins via FR-009/FR-016.
+    let mut corrections = HashMap::new();
+    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SECRET//NF\n";
+    let result = engine.fix(source, FixMode::Apply);
+
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert_eq!(
+        fixed_text, "SECRET//NOFORN\n",
+        "combined fix should produce SECRET//NOFORN"
+    );
+
+    // Verify C001 is the rule that won for the NF→NOFORN span
+    let nf_fix = result
+        .applied
+        .iter()
+        .find(|f| f.proposal.replacement.as_ref() == "NOFORN")
+        .expect("should have a NOFORN fix");
+    assert_eq!(nf_fix.proposal.rule.as_str(), "C001");
+    assert_eq!(nf_fix.proposal.source, FixSource::CorrectionsMap);
+    assert_eq!(nf_fix.proposal.migration_ref, Some("corrections-map"));
 }
