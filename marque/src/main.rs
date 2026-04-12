@@ -10,7 +10,7 @@ mod render;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
-use marque_engine::{Engine, LintResult};
+use marque_engine::Engine;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process;
@@ -115,11 +115,25 @@ impl From<FormatArg> for render::Format {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("MARQUE_LOG").unwrap_or_else(|_| "marque=info".to_owned()))
-        .init();
-
+    // Parse the CLI BEFORE initializing the tracing subscriber so the
+    // `-v` flag can promote the default filter to `marque=debug` per
+    // `contracts/cli.md` ("-v equivalent to MARQUE_LOG=marque=debug").
+    //
+    // Precedence chain (matches FR-007): CLI flag > env var > default.
+    // If the user passes `-v`, `marque=debug` wins regardless of
+    // MARQUE_LOG. Otherwise MARQUE_LOG wins if set, else `marque=info`.
     let cli = Cli::parse();
+
+    let verbose = match &cli.command {
+        Command::Check { common, .. } | Command::Fix { common, .. } => common.verbose,
+        Command::Metadata { .. } => false,
+    };
+    let env_filter = if verbose {
+        "marque=debug".to_owned()
+    } else {
+        std::env::var("MARQUE_LOG").unwrap_or_else(|_| "marque=info".to_owned())
+    };
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
@@ -166,6 +180,14 @@ fn load_config(
 }
 
 fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) -> i32 {
+    // `-q` / `--quiet` suppresses non-diagnostic stderr narration per
+    // contracts/cli.md. The `check` subcommand currently emits NO operator
+    // narration at all — only diagnostics on stdout. So `-q` is a no-op
+    // for `check` today and the `common.quiet` field is intentionally
+    // unread. If a future change adds a file-header narration line or a
+    // summary, guard it with `if !common.quiet { eprintln!(...) }`.
+    let _ = common.quiet;
+
     // --explain-config is mutually exclusive with input paths.
     if common.explain_config && !paths.is_empty() {
         eprintln!("error: --explain-config is mutually exclusive with input paths");
@@ -343,14 +365,23 @@ fn read_stdin() -> std::io::Result<Vec<u8>> {
 ///
 /// Emits the merged Configuration as JSON to stdout, then exits 0.
 ///
-/// `classifier_id` is NEVER included in the output — only a boolean
-/// `classifier_id_present` flag, per the contract.
+/// Per the contract: "rule severities, corrections-map keys, confidence
+/// threshold, schema version, classifier-id presence as a boolean, *not*
+/// the value." The `corrections` field is the sorted list of keys (not a
+/// count), and the classifier_id value is NEVER included in the output —
+/// only a boolean `classifier_id_present` flag.
 fn run_explain_config(config: &marque_config::Config) -> i32 {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
+
+    // Sort the corrections keys so the output is deterministic across
+    // HashMap iteration orders — important for CI-golden consumers.
+    let mut corrections_keys: Vec<&String> = config.corrections.keys().collect();
+    corrections_keys.sort();
+
     let json = serde_json::json!({
         "rules": config.rules.overrides,
-        "corrections_count": config.corrections.len(),
+        "corrections": corrections_keys,
         "confidence_threshold": config.confidence_threshold(),
         "schema_version": config.capco.version,
         "classifier_id_present": config.user.classifier_id.is_some(),
@@ -365,6 +396,5 @@ fn run_explain_config(config: &marque_config::Config) -> i32 {
     if writeln!(lock, "{s}").is_err() {
         return EX_IOERR;
     }
-    let _ = LintResult::default(); // suppress unused-import warning if any
     EX_OK
 }

@@ -87,60 +87,52 @@ impl Rule for BannerAbbreviationRule {
             return vec![];
         }
         let mut diagnostics = Vec::new();
-        // Iterate dissem-control token spans in document order; for each one
+        // Walk dissem-control token spans in document order. For each one
         // whose canonical CVE form is an abbreviation that maps to a full
-        // banner form, fire E001 with the actual span.
+        // banner form, check whether the SOURCE BYTES are the abbreviation
+        // (not just the parsed enum — the parser also accepts banner-form
+        // full words via parse_dissem_full_form, and those are already
+        // correct).
+        //
+        // The emit check happens at construction time against
+        // `token_span.text` rather than as a post-hoc length filter, so the
+        // logic cannot silently regress if a future abbreviation has a
+        // different length from its canonical form.
         let dissem_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::DissemControl)
             .collect();
         for (idx, control) in attrs.dissem_controls.iter().enumerate() {
-            if let Some(full) = expand_dissem_abbreviation(control) {
-                let abbrev = control.as_str().to_owned();
-                // The Nth dissem token span corresponds to the Nth dissem
-                // control entry — both vectors are in document order.
-                let Some(token_span) = dissem_spans.get(idx) else {
-                    continue;
-                };
-                // Only fire E001 when the source bytes match the *abbreviation*
-                // form. The parser also accepts full banner forms ("NOFORN")
-                // via parse_dissem_full_form, and those should NOT trigger
-                // E001 — they are already correct.
-                let span = token_span.span;
-                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::BuiltinRule,
-                    span,
-                    message: format!(
-                        "banner uses abbreviated dissem control {abbrev:?}; use {full:?}"
-                    ),
-                    citation: "CAPCO-ISM-v2022-DEC-§3.2",
-                    original: abbrev,
-                    replacement: full.to_owned(),
-                    confidence: 1.0,
-                    migration_ref: Some("CAPCO-2023-§3.2"),
-                }));
+            let Some(full) = expand_dissem_abbreviation(control) else {
+                continue;
+            };
+            // The Nth dissem token span corresponds to the Nth dissem
+            // control entry — both vectors are in document order.
+            let Some(token_span) = dissem_spans.get(idx) else {
+                continue;
+            };
+            let abbrev = control.as_str();
+            // Only fire when the literal source text is the abbreviation.
+            // A banner containing "NOFORN" parses to DissemControl::Nf but
+            // token_span.text is "NOFORN" — skip it.
+            if token_span.text.as_ref() != abbrev {
+                continue;
             }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
+                citation: "CAPCO-ISM-v2022-DEC-§3.2",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§3.2"),
+            }));
         }
-        // Filter the just-emitted diagnostics so we only fire on entries
-        // whose source bytes are the *abbreviation*. The parser accepts
-        // both forms, so a banner saying "NOFORN" should not produce E001.
         diagnostics
-            .into_iter()
-            .filter(|d| {
-                // The diagnostic's span points at the source token; if those
-                // bytes equal the original (abbreviation) we keep it.
-                if let Some(ref proposal) = d.fix {
-                    let original_bytes = proposal.original.as_bytes();
-                    let span_bytes = d.span.end - d.span.start;
-                    span_bytes == original_bytes.len()
-                } else {
-                    true
-                }
-            })
-            .collect()
     }
 }
 
@@ -693,13 +685,11 @@ impl Rule for XShorthandDateRule {
             let Some(entry) = find_migration(token.text.as_ref()) else {
                 continue;
             };
-            // Skip entries owned by E006 (dissem deprecations) — those are
-            // distinguished by having a replacement that's a known dissem
-            // control name.
-            if matches!(
-                entry.replacement,
-                "RELIDO" | "CUI" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE"
-            ) {
+            // Skip entries owned by E006 (dissem deprecations). Reuses the
+            // single `is_dissem_replacement` predicate so the E006/E007
+            // guard sets cannot drift — if a new dissem control is added
+            // to the shared set, both rules pick it up at the same time.
+            if is_dissem_replacement(entry.replacement) {
                 continue;
             }
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {

@@ -358,7 +358,12 @@ fn parse_rel_to_with_spans(
     let mut cursor = 0usize;
     for entry in after_rel.split(',') {
         let entry_start_in_after = cursor;
-        cursor += entry.len() + 1; // +1 for the comma; OK to overflow on the last entry — unused after the loop
+        // Advance past the entry and its trailing comma. On the final
+        // iteration this steps one past the end of `after_rel`, but the
+        // cursor is never read after the loop ends — the split iterator
+        // drives loop termination, not the cursor. usize addition here
+        // is bounded by the document size, so no overflow in practice.
+        cursor += entry.len() + 1;
 
         let trim_lead = entry.len() - entry.trim_start().len();
         let trimmed = entry.trim();

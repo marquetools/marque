@@ -118,6 +118,38 @@ fn explain_config_with_paths_exits_64() {
 }
 
 #[test]
+fn explain_config_emits_corrections_keys_not_count() {
+    // D.2: `--explain-config` must emit the sorted list of corrections
+    // keys per contracts/cli.md "corrections-map keys", not a count.
+    let assert = marque()
+        .args(["check", "--explain-config"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("\"corrections\""),
+        "--explain-config must emit a `corrections` array, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("corrections_count"),
+        "--explain-config must NOT emit corrections_count (deprecated), got: {stdout}"
+    );
+}
+
+#[test]
+fn verbose_flag_does_not_break_invocation() {
+    // D.3: `-v` must be parsed and wired to the tracing subscriber. We
+    // can't easily assert the log-level effect in an integration test,
+    // but we can assert the flag doesn't error and the subcommand runs
+    // to completion.
+    marque()
+        .args(["check", "-v", "--format", "json"])
+        .arg(fixture("valid/clean_banner_top_secret.txt"))
+        .assert()
+        .success();
+}
+
+#[test]
 fn no_color_env_var_suppresses_ansi() {
     // With NO_COLOR set, the human format must not contain ANSI escapes.
     let assert = marque()

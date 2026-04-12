@@ -29,8 +29,17 @@ impl Scanner {
         Self::scan_cab(source, &mut candidates);
         Self::scan_page_breaks(source, &mut candidates);
 
-        // Sort by span start for deterministic ordering.
-        candidates.sort_unstable_by_key(|c| c.span.start);
+        // Sort by `(start, kind_priority)`. PageBreak gets priority 0 so
+        // it sorts before any content candidate at the same offset — the
+        // engine's PageContext reset must run before a co-located banner
+        // or portion is processed, otherwise the reset is defeated by an
+        // unstable secondary order.
+        candidates.sort_unstable_by(|a, b| {
+            a.span
+                .start
+                .cmp(&b.span.start)
+                .then_with(|| kind_sort_priority(a.kind).cmp(&kind_sort_priority(b.kind)))
+        });
         candidates
     }
 
@@ -120,6 +129,17 @@ impl Scanner {
             });
             search_from = end;
         }
+    }
+}
+
+/// Sort priority for `MarkingCandidate` kinds at equal start offsets.
+/// PageBreak sorts first so the engine's `PageContext` reset runs before
+/// any co-located content candidate is processed (banner/portion/CAB at
+/// the same byte offset as a page break — an edge case, but hardened).
+fn kind_sort_priority(kind: MarkingType) -> u8 {
+    match kind {
+        MarkingType::PageBreak => 0,
+        _ => 1,
     }
 }
 
@@ -227,6 +247,30 @@ mod tests {
             candidates.iter().all(|c| c.kind != MarkingType::PageBreak),
             "double newline should not produce a PageBreak candidate"
         );
+    }
+
+    #[test]
+    fn page_break_sorts_before_co_located_content() {
+        // Edge case: a banner line whose line start is at the same byte
+        // offset as a form-feed candidate. The scanner emits both at
+        // offset N — PageBreak (zero-length) and Banner (line span).
+        // The sort must place PageBreak first so the engine reset runs
+        // before the banner is processed.
+        //
+        // Construct `\fSECRET\n`: form-feed at 0, banner line 1..7.
+        // The PageBreak lands at offset 0 with zero length; the banner
+        // line scanner's offset is 1 (after the `\f`), so they are NOT
+        // co-located in this case. Build a synthetic double-push case
+        // by testing `kind_sort_priority` directly instead — simpler
+        // and covers the sort key without fighting the scanner.
+        assert_eq!(kind_sort_priority(MarkingType::PageBreak), 0);
+        assert!(
+            kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Banner)
+        );
+        assert!(
+            kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Portion)
+        );
+        assert!(kind_sort_priority(MarkingType::PageBreak) < kind_sort_priority(MarkingType::Cab));
     }
 
     #[test]
