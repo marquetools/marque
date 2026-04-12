@@ -66,6 +66,11 @@ pub enum MarkingType {
     Banner,
     /// Multi-line Classification Authority Block (Classified By / Derived From / Declassify On).
     Cab,
+    /// Document page break — `\f` (form feed) or `\n\n\n+` heuristic.
+    /// Carries a zero-length span at the boundary offset. The engine uses
+    /// this to reset its `PageContext` so banner/CAB rules on the next page
+    /// see a fresh aggregate (Phase 3, plan §Task 1).
+    PageBreak,
 }
 
 /// A scanner-identified candidate with its type and source span.

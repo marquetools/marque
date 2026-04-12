@@ -1,0 +1,23 @@
+---
+source: crates/marque-engine/tests/lint_pipeline.rs
+assertion_line: 191
+expression: json
+---
+[
+  {
+    "citation": "CAPCO-ISM-v2022-DEC-§3.2",
+    "fix": {
+      "confidence": 1.0,
+      "migration_ref": "CAPCO-2023-§3.2",
+      "replacement": "NOFORN",
+      "source": "BuiltinRule"
+    },
+    "message": "banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"",
+    "rule": "E001",
+    "severity": "fix",
+    "span": {
+      "end": 18,
+      "start": 16
+    }
+  }
+]

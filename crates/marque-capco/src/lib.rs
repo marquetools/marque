@@ -13,6 +13,7 @@
 pub mod rules;
 
 pub use marque_ism::CapcoTokenSet;
+pub use rules::CapcoRuleSet;
 
 use marque_rules::RuleSet;
 

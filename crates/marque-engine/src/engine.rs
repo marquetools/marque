@@ -76,16 +76,28 @@ impl Engine {
         let mut diagnostics = Vec::new();
         // Build page context by accumulating portion markings in document order.
         // Banner and CAB rules receive this context so they can validate the
-        // observed banner against the expected composite.
-        // TODO(phase-3): reset the context at page boundaries when the scanner
-        // provides page-break candidates.
+        // observed banner against the expected composite. Phase 3 wires the
+        // page-break reset below — the scanner emits a `MarkingType::PageBreak`
+        // candidate at every form-feed and at every `\n\n\n+` run; on each
+        // such candidate we drop the accumulator and start a fresh page.
         let mut page_context = PageContext::new();
         // Cache the current Arc<PageContext> so that consecutive banner/CAB
         // candidates on the same page share a single allocation. The cache is
-        // invalidated (set to None) whenever a new portion is accumulated.
+        // invalidated (set to None) whenever a new portion is accumulated or
+        // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
 
         for candidate in &candidates {
+            // Page-break candidates are scanner-emitted boundaries with no
+            // parsable content. Reset the context BEFORE attempting to parse
+            // — otherwise the parser's MalformedMarking error would skip the
+            // continue and leave us accumulating across pages.
+            if candidate.kind == MarkingType::PageBreak {
+                page_context = PageContext::new();
+                page_context_arc = None;
+                continue;
+            }
+
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
@@ -100,10 +112,10 @@ impl Engine {
                 page_context_arc = None;
             }
 
-            // TODO(phase-3): plumb the document zone and position from the
-            // scanner. Both are currently hardcoded to `Body`, which is
-            // correct for current rules (they only key off `marking_type`)
-            // but will silently lie to any future rule that reads them.
+            // Phase 3: zone and position are Option-typed and stay None
+            // until a structural scanner pass can prove them. The previous
+            // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
+            // lie to any future rule that read them.
             let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
                 // Lazily wrap the accumulated context in an Arc once per
                 // page-context snapshot; subsequent banner/CAB candidates on
@@ -118,8 +130,8 @@ impl Engine {
             };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
-                zone: marque_ism::Zone::Body,
-                position: marque_ism::DocumentPosition::Body,
+                zone: None,
+                position: None,
                 page_context: ctx_page,
             };
             for rule_set in &self.rule_sets {
@@ -578,5 +590,28 @@ mod tests {
         assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
         // The 0.4 fix surfaces as a remaining diagnostic.
         assert_eq!(result.remaining_diagnostics.len(), 1);
+    }
+
+    // Phase 3 Task 2: PageBreak candidates must reset the engine's
+    // PageContext accumulator. Without this, banner-validation rules on
+    // the second page would see portions from the first page, producing
+    // over-restrictive expected aggregates.
+    //
+    // We can't observe PageContext directly from a rule without extending
+    // the public API, so this test asserts the indirect contract: a
+    // multi-page document drives `Engine::lint` to completion without
+    // panicking and the page-break candidates do not crash the parser.
+    // The page-context reset semantics themselves are exercised by the
+    // marque-ism page_context unit tests, which build a PageContext
+    // directly.
+    #[test]
+    fn lint_handles_multi_page_document_with_form_feed() {
+        let src: &[u8] = b"(SECRET//NOFORN) page 1 body.\nSECRET//NOFORN\n\x0c(CONFIDENTIAL) page 2 body.\nCONFIDENTIAL\n";
+        let engine = engine_with(vec![]);
+        let result = engine.lint(src);
+        // Stub rule with no proposals: clean lint, no panic, no parser
+        // error from the page-break candidate (which is filtered before
+        // parser.parse is called).
+        assert!(result.is_clean());
     }
 }
