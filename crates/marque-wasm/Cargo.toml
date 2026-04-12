@@ -13,19 +13,16 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 marque-engine = { path = "../marque-engine", default-features = false }
 marque-config = { workspace = true }
-marque-capco  = { path = "../marque-capco" }
 marque-rules  = { workspace = true }
 wasm-bindgen       = { workspace = true }
-serde-wasm-bindgen = { workspace = true }
-js-sys             = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
-thiserror          = { workspace = true }
 humantime          = { workspace = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 
 [features]
-default                   = []
-console_error_panic_hook  = []
+default                  = []
+console_error_panic_hook = ["dep:console_error_panic_hook"]
 
 # marque-extract intentionally excluded — format extraction is caller's
 # responsibility in WASM context; core operates on pre-extracted text.
@@ -33,14 +30,14 @@ console_error_panic_hook  = []
 [dev-dependencies]
 marque-engine = { workspace = true }
 marque-config = { workspace = true }
-marque-capco  = { path = "../marque-capco" }
+marque-capco  = { workspace = true }
 marque-rules  = { workspace = true }
 serde_json    = { workspace = true }
 serde         = { workspace = true }
 
 [package.metadata.wasm-pack.profile.release]
 # wasm-opt disabled: the bundled wasm-opt binary has a compatibility issue
-# with the WASM memory.copy instruction. The unoptimized artifact is ~237KB
+# with the WASM memory.copy instruction. The unoptimized artifact is ~252KB
 # (well under the 1MB target), so this is acceptable for the MVP.
 # Re-enable once wasm-opt is updated: wasm-opt = ["-Os"]
 wasm-opt = false

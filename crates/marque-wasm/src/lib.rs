@@ -15,7 +15,6 @@
 //! per `contracts/audit-record.json`), and `remaining` (diagnostics per
 //! `contracts/diagnostic.json`).
 
-use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
@@ -161,7 +160,7 @@ fn parse_config(json: Option<String>) -> Result<Config, String> {
 }
 
 fn build_engine(config: Config) -> Engine {
-    Engine::new(config, vec![Box::new(capco_rules())])
+    Engine::new(config, marque_engine::default_ruleset())
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +186,9 @@ pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, St
 
 /// Fix text, returning a JSON object with `fixed_text`, `applied` audit records,
 /// and `remaining` diagnostics.
+///
+/// The `threshold` parameter always takes precedence over any `confidence_threshold`
+/// in `config_json`. This matches the CLI's Layer 4 (CLI flag) override behavior.
 pub fn fix_native(
     text: &str,
     threshold: f32,
@@ -212,8 +214,8 @@ pub fn fix_native(
     let remaining: Vec<serde_json::Value> = result
         .remaining_diagnostics
         .iter()
-        .map(|d| serde_json::to_value(diagnostic_to_json(d)).unwrap_or(serde_json::Value::Null))
-        .collect();
+        .map(|d| serde_json::to_value(diagnostic_to_json(d)).map_err(|e| e.to_string()))
+        .collect::<Result<_, _>>()?;
 
     let fix_result = FixResultJson {
         fixed_text,

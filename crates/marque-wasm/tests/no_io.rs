@@ -28,14 +28,15 @@ const BANNED_CRATES: &[&str] = &[
     "marque-server",
 ];
 
-#[test]
-fn wasm_dep_tree_has_no_io_crates() {
+/// Run `cargo tree` for the WASM crate (excluding dev-dependencies) and
+/// return the stdout output. Panics if the command fails.
+fn wasm_dep_tree() -> String {
     let output = Command::new("cargo")
         .args([
             "tree",
             "-p",
             "marque-wasm",
-            "--no-dev-dependencies",
+            "-e=no-dev",
             "--prefix",
             "none",
             "--format",
@@ -50,25 +51,31 @@ fn wasm_dep_tree_has_no_io_crates() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let tree_output = String::from_utf8_lossy(&output.stdout);
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Check whether a crate name appears in the dep tree output using word-boundary
+/// matching: "crate_name vX.Y.Z" but not "crate_name-extra vX.Y.Z".
+fn tree_contains_crate(tree_output: &str, crate_name: &str) -> bool {
+    tree_output.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with(crate_name)
+            && trimmed
+                .get(crate_name.len()..)
+                .is_some_and(|rest| rest.starts_with(' ') || rest.is_empty())
+    })
+}
+
+#[test]
+fn wasm_dep_tree_has_no_io_crates() {
+    let tree_output = wasm_dep_tree();
 
     for banned in BANNED_CRATES {
-        // Match crate name at word boundary: "tokio v1.50" but not "tokio-macros"
-        // (although tokio-macros would also be a problem). We check both forms.
-        let has_banned = tree_output.lines().any(|line| {
-            let trimmed = line.trim();
-            // Exact crate name: "crate_name vX.Y.Z"
-            trimmed.starts_with(banned)
-                && trimmed
-                    .get(banned.len()..)
-                    .is_some_and(|rest| rest.starts_with(' ') || rest.is_empty())
-        });
-
         assert!(
-            !has_banned,
+            !tree_contains_crate(&tree_output, banned),
             "FR-013 violation: banned crate `{banned}` found in marque-wasm dependency tree.\n\
              The WASM build must not contain filesystem or network dependencies.\n\
-             Run `cargo tree -p marque-wasm --no-dev-dependencies` to investigate."
+             Run `cargo tree -p marque-wasm -e=no-dev` to investigate."
         );
     }
 }
@@ -77,21 +84,9 @@ fn wasm_dep_tree_has_no_io_crates() {
 fn wasm_dep_tree_no_extract_crate() {
     // Redundant with the above but makes the intent explicit: marque-extract
     // (Kreuzberg wrapper) must NEVER be a dependency of the WASM crate.
-    let output = Command::new("cargo")
-        .args([
-            "tree",
-            "-p",
-            "marque-wasm",
-            "--no-dev-dependencies",
-            "--prefix",
-            "none",
-        ])
-        .output()
-        .expect("failed to run `cargo tree`");
-
-    let tree_output = String::from_utf8_lossy(&output.stdout);
+    let tree_output = wasm_dep_tree();
     assert!(
-        !tree_output.contains("marque-extract"),
+        !tree_contains_crate(&tree_output, "marque-extract"),
         "marque-extract must not be a dependency of marque-wasm (format extraction is caller's responsibility)"
     );
 }

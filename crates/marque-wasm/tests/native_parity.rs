@@ -92,20 +92,24 @@ fn load_fixture(path: &std::path::Path) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
 }
 
+fn txt_files_in(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "txt"))
+        .map(|e| e.path())
+        .collect();
+    files.sort();
+    files
+}
+
 // ---------------------------------------------------------------------------
 // Parity: lint
 // ---------------------------------------------------------------------------
 
 #[test]
 fn lint_parity_invalid_fixtures() {
-    let invalid_dir = corpus_dir().join("invalid");
-    let mut txt_files: Vec<_> = std::fs::read_dir(&invalid_dir)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", invalid_dir.display()))
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "txt"))
-        .map(|e| e.path())
-        .collect();
-    txt_files.sort();
+    let txt_files = txt_files_in(&corpus_dir().join("invalid"));
 
     assert!(
         txt_files.len() >= 10,
@@ -133,14 +137,7 @@ fn lint_parity_invalid_fixtures() {
 
 #[test]
 fn lint_parity_valid_fixtures() {
-    let valid_dir = corpus_dir().join("valid");
-    let mut txt_files: Vec<_> = std::fs::read_dir(&valid_dir)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", valid_dir.display()))
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "txt"))
-        .map(|e| e.path())
-        .collect();
-    txt_files.sort();
+    let txt_files = txt_files_in(&corpus_dir().join("valid"));
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -161,32 +158,26 @@ fn lint_parity_valid_fixtures() {
 }
 
 // ---------------------------------------------------------------------------
-// Parity: fix
+// Parity: fix (all invalid fixtures, not just 10)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn fix_parity_invalid_fixtures() {
-    let invalid_dir = corpus_dir().join("invalid");
-    let mut txt_files: Vec<_> = std::fs::read_dir(&invalid_dir)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", invalid_dir.display()))
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "txt"))
-        .map(|e| e.path())
-        .collect();
-    txt_files.sort();
+    let txt_files = txt_files_in(&corpus_dir().join("invalid"));
+    let default_threshold = Config::default().confidence_threshold();
 
-    for path in txt_files.iter().take(10) {
+    for path in &txt_files {
         let source = load_fixture(path);
         let text = std::str::from_utf8(&source)
             .unwrap_or_else(|_| panic!("non-UTF-8 fixture: {}", path.display()));
 
-        // Run fix through both paths.
+        // Run fix through both paths with the same threshold.
         let engine = Engine::new(Config::default(), vec![Box::new(capco_rules())]);
         let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
         let native_fixed =
             String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
 
-        let wasm_json = marque_wasm::fix_native(text, 0.95, None)
+        let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
             .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));
 
         let wasm_result: serde_json::Value =
@@ -223,11 +214,64 @@ fn lint_clean_input() {
 
 #[test]
 fn fix_clean_input_unchanged() {
-    let result = marque_wasm::fix_native("SECRET//NOFORN\n", 0.95, None).expect("fix clean");
+    let threshold = Config::default().confidence_threshold();
+    let result = marque_wasm::fix_native("SECRET//NOFORN\n", threshold, None).expect("fix clean");
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_eq!(
         parsed["fixed_text"].as_str().unwrap(),
         "SECRET//NOFORN\n",
         "clean input should be unchanged after fix"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Config passthrough (M-5: test corrections, classifier_id, error cases)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_with_corrections_config() {
+    // Corrections map NF→NOFORN should produce C001 diagnostic.
+    let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
+    let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
+        .expect("lint with corrections");
+    assert!(
+        result.contains("\"rule\":\"C001\""),
+        "corrections map should trigger C001, got: {result}"
+    );
+}
+
+#[test]
+fn fix_with_corrections_config() {
+    let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
+    let result = marque_wasm::fix_native("SECRET//NF\n", 0.95, Some(config.to_owned()))
+        .expect("fix with corrections");
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed["fixed_text"].as_str().unwrap(),
+        "SECRET//NOFORN\n",
+        "corrections should fix NF→NOFORN"
+    );
+}
+
+#[test]
+fn invalid_config_json_returns_error() {
+    let result = marque_wasm::lint_native("SECRET//NF\n", Some("not json".to_owned()));
+    assert!(result.is_err(), "invalid JSON config should return error");
+}
+
+#[test]
+fn config_with_invalid_threshold_returns_error() {
+    let result = marque_wasm::fix_native("SECRET//NF\n", -0.5, None);
+    assert!(result.is_err(), "negative threshold should return error");
+}
+
+#[test]
+fn config_with_classifier_id() {
+    let config = r#"{"classifier_id":"TEST-WASM-42"}"#;
+    let result = marque_wasm::fix_native("SECRET//NF\n", 0.95, Some(config.to_owned()))
+        .expect("fix with classifier_id");
+    assert!(
+        result.contains("TEST-WASM-42"),
+        "classifier_id should appear in audit records, got: {result}"
     );
 }
