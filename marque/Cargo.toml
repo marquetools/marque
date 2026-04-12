@@ -15,7 +15,7 @@ path = "src/main.rs"
 marque-engine  = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-config  = { workspace = true }
-marque-capco   = { path = "../crates/marque-capco" }
+marque-capco   = { workspace = true }
 marque-rules   = { workspace = true }
 marque-ism     = { workspace = true }
 clap               = { workspace = true }

@@ -15,7 +15,7 @@ path = "src/main.rs"
 marque-engine  = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-config  = { workspace = true }
-marque-capco   = { path = "../marque-capco" }
+marque-capco   = { workspace = true }
 axum           = { workspace = true }
 tower          = { workspace = true }
 tower-http     = { workspace = true }

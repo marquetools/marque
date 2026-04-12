@@ -44,6 +44,19 @@ pub struct Engine {
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
     /// deep-clone of the entire HashMap.
     corrections_arc: Option<Arc<HashMap<String, String>>>,
+    /// Pre-built Aho-Corasick automaton for pre-scanner text corrections.
+    /// Built once at construction time from the corrections map (excluding
+    /// no-op and "//" entries). `None` when the corrections map is empty or
+    /// all entries are filtered out.
+    corrections_ac: Option<CachedAhoCorasick>,
+}
+
+/// Cached AhoCorasick automaton + the active (key, value) pairs that
+/// correspond to its pattern indices.
+struct CachedAhoCorasick {
+    ac: AhoCorasick,
+    /// Active correction pairs, indexed by `PatternID::as_usize()`.
+    active: Vec<(Box<str>, Box<str>)>,
 }
 
 impl Engine {
@@ -65,11 +78,38 @@ impl Engine {
         } else {
             Some(Arc::new(std::mem::take(&mut config.corrections)))
         };
+
+        // Pre-build the AhoCorasick automaton for pre-scanner text corrections.
+        // This is O(total pattern bytes) and done once, not per-lint call.
+        let corrections_ac = corrections_arc.as_ref().and_then(|corrections| {
+            let active: Vec<(Box<str>, Box<str>)> = corrections
+                .iter()
+                .filter(|(k, v)| k != v && k.as_str() != "//")
+                .map(|(k, v)| (k.as_str().into(), v.as_str().into()))
+                .collect();
+            if active.is_empty() {
+                return None;
+            }
+            let patterns: Vec<&str> = active.iter().map(|(k, _)| k.as_ref()).collect();
+            match AhoCorasick::new(&patterns) {
+                Ok(ac) => Some(CachedAhoCorasick { ac, active }),
+                Err(e) => {
+                    tracing::warn!(
+                        "failed to build AhoCorasick automaton for corrections map \
+                         ({} patterns): {e}; pre-scanner text corrections disabled",
+                        patterns.len()
+                    );
+                    None
+                }
+            }
+        });
+
         Self {
             config,
             rule_sets,
             clock,
             corrections_arc,
+            corrections_ac,
         }
     }
 
@@ -182,7 +222,7 @@ impl Engine {
         // This pass emits C001 diagnostics for raw-text matches that don't
         // overlap with any C001 diagnostic already produced by the rule
         // pipeline above. Spans reference the original source buffer.
-        if let Some(corrections) = &self.corrections_arc {
+        if let Some(cached) = &self.corrections_ac {
             let c001_severity = self
                 .config
                 .rules
@@ -199,50 +239,33 @@ impl Engine {
                     .map(|d| d.span)
                     .collect();
 
-                // Build an Aho-Corasick automaton from all non-trivial correction
-                // keys so we can scan the full source in a single O(n + m) pass
-                // rather than one O(n * key_len) scan per key.
-                let active: Vec<(&str, &str)> = corrections
-                    .iter()
-                    .filter(|(k, v)| k != v && k.as_str() != "//")
-                    .map(|(k, v)| (k.as_str(), v.as_str()))
-                    .collect();
+                // Use the pre-built AhoCorasick automaton to scan the full
+                // source in a single O(n + m) pass. The automaton and its
+                // active pairs were built once at Engine construction time.
+                for mat in cached.ac.find_iter(source) {
+                    let span = Span::new(mat.start(), mat.end());
+                    let (ref key, ref value) = cached.active[mat.pattern().as_usize()];
 
-                if !active.is_empty() {
-                    let patterns: Vec<&str> = active.iter().map(|(k, _)| *k).collect();
-                    // Build with leftmost-first semantics so overlapping patterns
-                    // resolve deterministically (longest match at each position wins
-                    // when the set contains prefix-of-prefix patterns, e.g. "S" and
-                    // "SE").
-                    if let Ok(ac) = AhoCorasick::new(&patterns) {
-                        for mat in ac.find_iter(source) {
-                            let abs_start = mat.start();
-                            let abs_end = mat.end();
-                            let span = Span::new(abs_start, abs_end);
-                            let (key, value) = active[mat.pattern().as_usize()];
-
-                            // Skip if the rule pipeline already produced a C001
-                            // diagnostic for this exact span.
-                            if !existing_c001_spans.contains(&span) {
-                                let proposal = FixProposal::new(
-                                    RuleId::new("C001"),
-                                    FixSource::CorrectionsMap,
-                                    span,
-                                    key,
-                                    value,
-                                    1.0,
-                                    None,
-                                );
-                                diagnostics.push(Diagnostic::new(
-                                    RuleId::new("C001"),
-                                    c001_severity,
-                                    span,
-                                    format!("corrections map: {key:?} → {value:?}"),
-                                    "CONFIG:[corrections]",
-                                    Some(proposal),
-                                ));
-                            }
-                        }
+                    // Skip if the rule pipeline already produced a C001
+                    // diagnostic for this exact span.
+                    if !existing_c001_spans.contains(&span) {
+                        let proposal = FixProposal::new(
+                            RuleId::new("C001"),
+                            FixSource::CorrectionsMap,
+                            span,
+                            key.as_ref(),
+                            value.as_ref(),
+                            1.0,
+                            None,
+                        );
+                        diagnostics.push(Diagnostic::new(
+                            RuleId::new("C001"),
+                            c001_severity,
+                            span,
+                            format!("corrections map: {key:?} → {value:?}"),
+                            "CONFIG:[corrections]",
+                            Some(proposal),
+                        ));
                     }
                 }
             }
