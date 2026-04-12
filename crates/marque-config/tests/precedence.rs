@@ -82,6 +82,7 @@ E001 = "warn"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(
         config.rules.overrides.get("E001"),
@@ -109,6 +110,7 @@ SECERT = "SECRET"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(config.corrections.get("SERCET"), Some(&"SECRET".to_owned()));
     assert_eq!(config.corrections.get("SECERT"), Some(&"SECRET".to_owned()));
@@ -125,6 +127,7 @@ fn layer1_project_config_sets_confidence_threshold() {
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert!((config.confidence_threshold() - 0.8).abs() < f32::EPSILON);
     let _ = fs::remove_dir_all(&dir);
@@ -152,6 +155,7 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(config.user.classifier_id.as_deref(), Some("LOCAL-42"));
     let _ = fs::remove_dir_all(&dir);
@@ -220,6 +224,7 @@ fn defaults_when_no_config_files() {
     let dir = make_tmpdir("defaults");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed with defaults");
     assert!(config.rules.overrides.is_empty());
     assert!(config.corrections.is_empty());
@@ -251,6 +256,7 @@ classifier_id = ""
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert!(
         config.user.classifier_id.is_none(),
@@ -289,6 +295,7 @@ E001 = "off"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(
         config.rules.overrides.get("E001"),
@@ -319,6 +326,7 @@ classifier_id = "LEAKED-42"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::UserSectionInCommitted { .. }),
@@ -340,6 +348,7 @@ version = "ISM-v1999-WRONG"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::SchemaVersionMismatch { .. }),
@@ -358,6 +367,7 @@ fn hard_fail_threshold_out_of_range() {
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::ThresholdOutOfRange { .. }),
@@ -384,6 +394,7 @@ E001 = "err"
     )
     .unwrap();
 
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::UnknownSeverity { .. }),
