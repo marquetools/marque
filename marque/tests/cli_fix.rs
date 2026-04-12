@@ -18,9 +18,10 @@ fn marque() -> Command {
 
 #[test]
 fn fix_applies_high_confidence_and_emits_audit() {
-    // Copy fixture to temp so in-place write doesn't clobber corpus.
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    let tmp_path = tmp.path().to_path_buf();
+    // Copy fixture to temp dir so in-place write doesn't clobber corpus.
+    // Uses tempdir (not NamedTempFile) to avoid Windows file-locking issues.
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_path = tmp_dir.path().join("mixed_confidence.txt");
     std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
 
     let assert = marque().args(["fix"]).arg(&tmp_path).assert().code(1); // E003 remains
@@ -50,8 +51,8 @@ fn fix_applies_high_confidence_and_emits_audit() {
 
 #[test]
 fn fix_dry_run_does_not_modify_file() {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    let tmp_path = tmp.path().to_path_buf();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_path = tmp_dir.path().join("mixed_confidence.txt");
     std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
     let original = std::fs::read_to_string(&tmp_path).unwrap();
 
@@ -271,8 +272,8 @@ fn fix_all_below_threshold_exits_one_no_audit() {
 
 #[test]
 fn fix_write_stdout_on_file_input() {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    let tmp_path = tmp.path().to_path_buf();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_path = tmp_dir.path().join("input.txt");
     std::fs::write(&tmp_path, "SECRET//NF\n").unwrap();
     let original = std::fs::read_to_string(&tmp_path).unwrap();
 

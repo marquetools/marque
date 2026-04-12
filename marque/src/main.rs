@@ -295,6 +295,12 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
     let mut stdout_lock = stdout.lock();
 
     for (path, source) in &inputs {
+        // contracts/cli.md §"Input handling": non-UTF-8 → 74 EX_IOERR.
+        let label = render::label_for(path.as_deref());
+        if let Err(code) = validate_utf8(source, &label) {
+            return code;
+        }
+
         let result = engine.lint(source);
         // Fix-severity diagnostics are still violations — they just have a
         // fix proposal attached. Treat them as errors for the exit-code
@@ -304,7 +310,6 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         } else if result.warn_count() > 0 {
             overall_warns = true;
         }
-        let label = render::label_for(path.as_deref());
         let render_result = match format {
             render::Format::Json => render::render_ndjson(&mut stdout_lock, &result),
             render::Format::Human => {
@@ -449,6 +454,12 @@ fn run_fix(
     let mut exit_code = EX_OK;
 
     for (path, source) in &inputs {
+        // contracts/cli.md §"Input handling": non-UTF-8 → 74 EX_IOERR.
+        let label = render::label_for(path.as_deref());
+        if let Err(code) = validate_utf8(source, &label) {
+            return code;
+        }
+
         let result =
             match engine.fix_with_threshold(source, engine_mode, common.confidence_threshold) {
                 Ok(r) => r,
@@ -470,7 +481,7 @@ fn run_fix(
                 // as "-" per contracts/audit-record.json.
                 let mut audit_fix = applied_fix.clone();
                 audit_fix.input = Some(match path.as_ref() {
-                    Some(p) => std::sync::Arc::from(p.display().to_string().as_str()),
+                    Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
                     None => std::sync::Arc::from("-"),
                 });
                 if let Err(e) = render::render_audit_record(&mut stderr_lock, &audit_fix) {
@@ -540,7 +551,6 @@ fn run_fix(
 
         // Narration (suppressible with -q) — AFTER audit records.
         let applied_count = result.applied.len();
-        let label = render::label_for(path.as_deref());
         if !common.quiet && applied_count > 0 {
             if dry_run {
                 eprintln!("{label}: would apply {applied_count} fix(es)");
@@ -603,6 +613,16 @@ fn read_stdin() -> std::io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     std::io::stdin().lock().read_to_end(&mut buf)?;
     Ok(buf)
+}
+
+/// Validate that `buf` is valid UTF-8 per `contracts/cli.md` §"Input handling".
+/// Returns `EX_IOERR` (74) on non-UTF-8 input.
+fn validate_utf8(buf: &[u8], label: &str) -> Result<(), i32> {
+    if std::str::from_utf8(buf).is_err() {
+        eprintln!("error: {label}: input is not valid UTF-8");
+        return Err(EX_IOERR);
+    }
+    Ok(())
 }
 
 /// `--explain-config` JSON dump per `contracts/cli.md`.
