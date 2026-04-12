@@ -646,11 +646,23 @@ fn is_dissem_replacement(replacement: &str) -> bool {
 // Rule: E007 — X-shorthand declassification date
 // ---------------------------------------------------------------------------
 
-/// CAPCO X-shorthand declass codes (e.g., `25X1-`, `50X1-`) are deprecated
-/// in favor of the canonical forms (`25X1`, `50X1-HUM`). The deprecated
-/// dashed form is not in the CVE, so the parser surfaces it as
-/// `TokenKind::Unknown`. E007 walks Unknown tokens and looks each up in
-/// the migration table; a hit produces an E007 fix diagnostic.
+/// CAPCO X-shorthand declass codes (e.g., `25X1-`, `25X2-`, `50X1-`,
+/// `50X1-HUM-`) are deprecated in favor of the canonical forms (`25X1`,
+/// `50X1-HUM`, etc.). The deprecated dashed form is not in the CVE, so
+/// the parser surfaces it as `TokenKind::Unknown`. E007 walks Unknown
+/// tokens via two paths:
+///
+/// 1. **Migration table lookup**: exact match in the seed `MIGRATIONS`
+///    table (e.g., `25X1-` → `25X1`, `50X1-` → `50X1-HUM`). This path
+///    uses the table's authoritative confidence and reference.
+/// 2. **Pattern match** (fallback): any `TokenKind::Unknown` whose text
+///    matches the `\d+X\d+(-[A-Z]+)?-` shape — i.e., a CAPCO
+///    X-shorthand form with a trailing `-`. This catches forms the
+///    seed table does not enumerate (e.g., `25X2-`, `25X5-`, `25X9-`).
+///    The suggested replacement is the text with the trailing `-`
+///    stripped; confidence is 0.95 (slightly lower than the 0.97 used
+///    for table-backed matches to reflect the lack of an authoritative
+///    replacement mapping).
 struct XShorthandDateRule;
 
 impl Rule for XShorthandDateRule {
@@ -670,34 +682,126 @@ impl Rule for XShorthandDateRule {
             if token.kind != TokenKind::Unknown {
                 continue;
             }
-            let Some(entry) = find_migration(token.text.as_ref()) else {
-                continue;
-            };
-            // Skip entries owned by E006 (dissem deprecations). Reuses the
-            // single `is_dissem_replacement` predicate so the E006/E007
-            // guard sets cannot drift — if a new dissem control is added
-            // to the shared set, both rules pick it up at the same time.
-            if is_dissem_replacement(entry.replacement) {
+            let text = token.text.as_ref();
+
+            // Path 1: exact migration-table match. Uses the table's
+            // authoritative replacement and reference. Skips entries
+            // owned by E006 (dissem deprecations).
+            if let Some(entry) = find_migration(text) {
+                if is_dissem_replacement(entry.replacement) {
+                    continue;
+                }
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::MigrationTable,
+                    span: token.span,
+                    message: format!(
+                        "X-shorthand declassification code {text:?} is deprecated; \
+                         use {:?}",
+                        entry.replacement
+                    ),
+                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    original: text.to_owned(),
+                    replacement: entry.replacement.to_owned(),
+                    confidence: entry.confidence,
+                    migration_ref: Some(entry.reference),
+                }));
                 continue;
             }
-            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                rule: self.id(),
-                severity: self.default_severity(),
-                source: FixSource::MigrationTable,
-                span: token.span,
-                message: format!(
-                    "X-shorthand declassification code {:?} is deprecated; use {:?}",
-                    token.text, entry.replacement
-                ),
-                citation: "CAPCO-ISM-v2022-DEC-§5.1",
-                original: token.text.to_string(),
-                replacement: entry.replacement.to_owned(),
-                confidence: entry.confidence,
-                migration_ref: Some(entry.reference),
-            }));
+
+            // Path 2: pattern match for X-shorthand forms not in the
+            // seed migration table (e.g., `25X2-`, `25X5-`, `25X9-`).
+            // Strip the trailing `-` to produce the canonical form.
+            if looks_like_deprecated_x_shorthand(text) {
+                let replacement = text.trim_end_matches('-').to_owned();
+                if replacement.is_empty() {
+                    continue;
+                }
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::MigrationTable,
+                    span: token.span,
+                    message: format!(
+                        "X-shorthand declassification code {text:?} is deprecated; \
+                         use {replacement:?}"
+                    ),
+                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    original: text.to_owned(),
+                    replacement,
+                    // 0.95: slightly below table-backed 0.97 because
+                    // the canonical form is derived by pattern stripping
+                    // rather than an authoritative CVE mapping.
+                    confidence: 0.95,
+                    migration_ref: Some("CAPCO-2023-§5.1-X-shorthand-pattern"),
+                }));
+            }
         }
         diagnostics
     }
+}
+
+/// Returns `true` if `s` looks like a DEPRECATED CAPCO X-shorthand
+/// declassification form — specifically a canonical form with a
+/// trailing `-`.
+///
+/// Matched patterns:
+/// - `NNXNN-`             (e.g., `25X1-`, `25X2-`, `50X1-`)
+/// - `NNXNN-AAA-`         (e.g., `50X1-HUM-`, `25X9-WMD-`)
+///
+/// The canonical (modern) forms (`25X1`, `50X1-HUM`) are in the CVE and
+/// parse as `DeclassExemption`, so they never reach this function via
+/// the `TokenKind::Unknown` walk.
+///
+/// Used by both E007 (to emit) and E008 (to skip) so the two rules
+/// cannot drift on which tokens each owns.
+fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    // Must end with `-`.
+    if bytes.last() != Some(&b'-') {
+        return false;
+    }
+    let inner = &bytes[..bytes.len() - 1];
+    if inner.is_empty() {
+        return false;
+    }
+    let mut i = 0;
+    // Leading digits.
+    while i < inner.len() && inner[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 || i >= inner.len() {
+        return false;
+    }
+    // `X` separator.
+    if inner[i] != b'X' {
+        return false;
+    }
+    i += 1;
+    // One or more digits after `X`.
+    let start_digits = i;
+    while i < inner.len() && inner[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == start_digits {
+        return false;
+    }
+    // Optional `-LETTERS` suffix (e.g., `-HUM`, `-WMD`).
+    if i == inner.len() {
+        return true;
+    }
+    if inner[i] != b'-' {
+        return false;
+    }
+    i += 1;
+    while i < inner.len() {
+        if !inner[i].is_ascii_uppercase() {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -724,11 +828,18 @@ impl Rule for UnknownTokenRule {
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::Unknown)
-            // Skip entries that E007 (deprecated X-shorthand) will pick up.
-            // The deprecated migration table is the union of dissem and
-            // declass entries; an Unknown that maps to one is not really
-            // unrecognized, just deprecated.
-            .filter(|t| find_migration(t.text.as_ref()).is_none())
+            // Skip entries that E006/E007 will pick up. Two paths to check,
+            // in lockstep with E007's emit logic:
+            //   1. Migration-table hit (covers LIMDIS/FOUO for E006 and
+            //      25X1-/50X1- for E007).
+            //   2. Pattern-matched X-shorthand with a trailing `-` for
+            //      forms not in the seed table (25X2-, 25X9-, etc.).
+            // An Unknown that hits either path is not "unrecognized" — it
+            // is a deprecated form that another rule will surface.
+            .filter(|t| {
+                let text = t.text.as_ref();
+                find_migration(text).is_none() && !looks_like_deprecated_x_shorthand(text)
+            })
             .map(|t| {
                 Diagnostic::new(
                     self.id(),
@@ -949,6 +1060,58 @@ mod tests {
         assert_eq!(e008.len(), 1);
         let src = b"SECRET//XYZZY//NOFORN";
         assert_eq!(e008[0].span.as_str(src).unwrap(), "XYZZY");
+    }
+
+    #[test]
+    fn looks_like_deprecated_x_shorthand_matches_expected_patterns() {
+        use super::looks_like_deprecated_x_shorthand as m;
+        // Deprecated forms (must match)
+        assert!(m("25X1-"));
+        assert!(m("25X2-"));
+        assert!(m("25X9-"));
+        assert!(m("50X1-"));
+        assert!(m("50X1-HUM-"));
+        assert!(m("25X3-WMD-"));
+        // Canonical forms (must NOT match — no trailing dash)
+        assert!(!m("25X1"));
+        assert!(!m("50X1-HUM"));
+        // Malformed / unrelated
+        assert!(!m(""));
+        assert!(!m("-"));
+        assert!(!m("X1-"));
+        assert!(!m("25-X1-"));
+        assert!(!m("25X-"));
+        assert!(!m("ABCX1-"));
+        assert!(!m("25X1-hum-"), "lowercase suffix should not match");
+        assert!(!m("NOFORN"));
+    }
+
+    #[test]
+    fn e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table() {
+        // `25X2-` is NOT in the seed MIGRATIONS table. Before the pattern
+        // fallback, this would have fallen through to E008. Now E007
+        // should fire with a confidence of 0.95 and a replacement of
+        // `25X2` (trailing `-` stripped).
+        let diags = lint_banner("SECRET//25X2-//NOFORN");
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
+        assert_eq!(e007.len(), 1);
+        let fix = e007[0].fix.as_ref().expect("E007 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "25X2");
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
+        // E008 must NOT also fire on the same span.
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E008"));
+    }
+
+    #[test]
+    fn e007_still_fires_on_migration_table_entries() {
+        // The existing 25X1- path (table-backed) must still work.
+        let diags = lint_banner("SECRET//25X1-//NOFORN");
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
+        assert_eq!(e007.len(), 1);
+        let fix = e007[0].fix.as_ref().unwrap();
+        assert_eq!(fix.replacement.as_ref(), "25X1");
+        // Table confidence from the seed MIGRATIONS entry (0.97).
+        assert!((fix.confidence - 0.97).abs() < f32::EPSILON);
     }
 
     #[test]

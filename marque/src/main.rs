@@ -282,6 +282,22 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
     }
 }
 
+/// Phase 3 stub of `marque fix`. The full implementation lives in Phase 4
+/// (US2 — auto-fix with audit trail) and lands via tasks T047–T051a. This
+/// function keeps the Phase 2 minimal body so the `fix` subcommand still
+/// works for simple cases, but two required behaviors are explicitly
+/// deferred:
+///
+/// - **TODO(phase-4: T049)** — Emit an NDJSON audit record to stderr for
+///   every `AppliedFix` in `result.applied`, conforming to
+///   `contracts/audit-record.json`. Phase 3 only prints a summary line;
+///   FR-005a mandates the full audit stream. See the plan's "NOT Building"
+///   section for the Phase 3 scope carve-out.
+///
+/// - **TODO(phase-4: T048)** — Replace `std::fs::write` with an atomic
+///   temp-file-and-rename sequence so a crash mid-write cannot leave a
+///   partially-written file on disk. `contracts/cli.md` §"Input handling"
+///   mandates atomicity for `--in-place` writes.
 fn run_fix(
     cwd: &std::path::Path,
     common: CommonOptions,
@@ -322,11 +338,21 @@ fn run_fix(
             }
         };
         let applied = result.applied.len();
+        // TODO(phase-4: T049) — Emit an NDJSON audit record per
+        // AppliedFix here, writing to stderr and conforming to
+        // `contracts/audit-record.json` (schema version `marque-mvp-1`).
+        // Each record must be serialized to an in-memory buffer and
+        // flushed with a single `write_all` ending in `\n` (per FR-005a
+        // atomic-emission contract). `-q` must NOT suppress audit lines.
         if dry_run {
             if !common.quiet {
                 eprintln!("{}: would apply {} fix(es)", path.display(), applied);
             }
         } else {
+            // TODO(phase-4: T048) — Replace with an atomic temp-file
+            // rename so a crash mid-write cannot leave a partially-
+            // written file on disk. Contract: `contracts/cli.md`
+            // §"Input handling".
             if let Err(e) = std::fs::write(&path, &result.source) {
                 eprintln!("error writing {}: {e}", path.display());
                 exit_code = EX_IOERR;

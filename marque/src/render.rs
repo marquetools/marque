@@ -1,7 +1,10 @@
 //! Diagnostic rendering for the `marque` CLI.
 //!
 //! Two formats are supported:
-//! - **human**: location-prefixed diagnostic header with citation, ANSI-coloured by default.
+//! - **human**: rustc-style diagnostic — a header line with location and
+//!   rule identifier, followed by a source snippet with a `|` gutter, the
+//!   offending line(s), and a `^^^` caret line pointing at the span.
+//!   ANSI-coloured by default.
 //! - **json**: NDJSON conforming to `contracts/diagnostic.json`.
 //!
 //! ANSI is suppressed when any of these is true:
@@ -13,6 +16,23 @@
 //! The contract for stream usage:
 //! - `check` writes diagnostics to **stdout**.
 //! - Operator narration goes to **stderr** (suppressible via `-q`).
+//!
+//! # Human output shape
+//!
+//! ```text
+//! banner.txt:1:17 error[E001] banner uses abbreviated dissem control "NF"; use "NOFORN"
+//!   --> banner.txt:1:17-19
+//!    |
+//!  1 | TOP SECRET//SI//NF
+//!    |                 ^^ replace with "NOFORN"
+//!    |
+//!    = citation: CAPCO-ISM-v2022-DEC-§3.2
+//! ```
+//!
+//! The line-number gutter width auto-sizes to the largest line number in
+//! the diagnostic. For multi-line spans, the caret line extends to the
+//! end of the first line of the span; additional lines are not rendered
+//! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_engine::LintResult;
 use marque_rules::Diagnostic;
@@ -53,7 +73,9 @@ pub fn default_format() -> Format {
     }
 }
 
-/// Render a single diagnostic in human format. Caller writes to stdout.
+/// Render a single diagnostic in rustc-style human format. Caller writes to
+/// stdout. Produces 6+ lines per diagnostic: header, location arrow, source
+/// snippet with line number and caret, citation footer.
 pub fn render_human(
     out: &mut dyn std::io::Write,
     path_label: &str,
@@ -61,38 +83,144 @@ pub fn render_human(
     diag: &Diagnostic,
     color: bool,
 ) -> std::io::Result<()> {
-    let (line, col) = byte_to_line_col(source, diag.span.start);
-    let level = match diag.severity {
+    let (line, col_start) = byte_to_line_col(source, diag.span.start);
+    let (end_line, col_end_raw) = byte_to_line_col(source, diag.span.end);
+    // For multi-line spans, clamp the caret to the end of the first line.
+    // CAPCO markings are single-line so this is a defensive clamp.
+    let col_end = if end_line == line {
+        col_end_raw
+    } else {
+        // end of source line: look up the line bytes and use its length + 1
+        extract_line(source, line)
+            .map(|l| l.len() + 1)
+            .unwrap_or(col_start + 1)
+    };
+
+    let level = level_str(diag.severity);
+    let level_styled = paint(color, AnsiStyle::BoldRed, level);
+    let rule_styled = paint(color, AnsiStyle::Bold, &format!("[{}]", diag.rule));
+
+    // ---- Header line ----
+    // banner.txt:1:17 error[E001] banner uses abbreviated dissem control "NF"; use "NOFORN"
+    writeln!(
+        out,
+        "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {}",
+        diag.message
+    )?;
+
+    // ---- Source snippet ----
+    //   --> path:line:col_start-col_end
+    //    |
+    //  N | <source line>
+    //    |   ^^^^ hint
+    //    |
+    //    = citation: ...
+    let line_num_str = line.to_string();
+    let gutter_width = line_num_str.len();
+    let gutter = " ".repeat(gutter_width);
+    let arrow = paint(color, AnsiStyle::BoldBlue, "-->");
+    let pipe = paint(color, AnsiStyle::BoldBlue, "|");
+    let eq = paint(color, AnsiStyle::BoldBlue, "=");
+
+    writeln!(
+        out,
+        "{gutter} {arrow} {path_label}:{line}:{col_start}-{col_end}"
+    )?;
+
+    if let Some(line_bytes) = extract_line(source, line) {
+        if let Ok(line_text) = std::str::from_utf8(line_bytes) {
+            // Blank gutter line above the source snippet
+            writeln!(out, "{gutter} {pipe}")?;
+            // Source line with line number gutter
+            let line_num_styled = paint(color, AnsiStyle::BoldBlue, &line_num_str);
+            writeln!(out, "{line_num_styled} {pipe} {line_text}")?;
+            // Caret line: spaces to col_start-1, then carets spanning col_start..col_end
+            let caret_pad_width = col_start.saturating_sub(1);
+            let caret_width = col_end.saturating_sub(col_start).max(1);
+            let caret_pad = " ".repeat(caret_pad_width);
+            let carets = "^".repeat(caret_width);
+            let carets_styled = paint(color, AnsiStyle::BoldRed, &carets);
+            let hint = diag
+                .fix
+                .as_ref()
+                .map(|f| {
+                    format!(
+                        " replace with {:?} (confidence {:.0}%)",
+                        f.replacement.as_ref(),
+                        f.confidence * 100.0
+                    )
+                })
+                .unwrap_or_default();
+            writeln!(out, "{gutter} {pipe} {caret_pad}{carets_styled}{hint}")?;
+            // Blank gutter line below the caret
+            writeln!(out, "{gutter} {pipe}")?;
+        }
+    }
+
+    // Citation footer
+    writeln!(out, "{gutter} {eq} citation: {}", diag.citation)?;
+
+    Ok(())
+}
+
+/// Extract the bytes of the 1-indexed `line_num` from `source`, excluding
+/// the trailing `\n` (and `\r` for CRLF). Returns `None` if the source
+/// doesn't have that many lines.
+fn extract_line(source: &[u8], line_num: usize) -> Option<&[u8]> {
+    let mut current_line = 1;
+    let mut line_start = 0;
+    for (i, &b) in source.iter().enumerate() {
+        if b == b'\n' {
+            if current_line == line_num {
+                // Strip trailing `\r` for CRLF line endings.
+                let end = if i > line_start && source[i - 1] == b'\r' {
+                    i - 1
+                } else {
+                    i
+                };
+                return Some(&source[line_start..end]);
+            }
+            current_line += 1;
+            line_start = i + 1;
+        }
+    }
+    // EOF without trailing `\n` — the last line is everything from
+    // `line_start` to the end.
+    if current_line == line_num {
+        return Some(&source[line_start..]);
+    }
+    None
+}
+
+fn level_str(severity: marque_rules::Severity) -> &'static str {
+    match severity {
         marque_rules::Severity::Error => "error",
         marque_rules::Severity::Warn => "warning",
         marque_rules::Severity::Fix => "fix",
         marque_rules::Severity::Off => "off", // unreachable in practice
-    };
-    let level_styled = if color {
-        format!("\x1b[31;1m{level}\x1b[0m")
-    } else {
-        level.to_owned()
-    };
-    let rule_styled = if color {
-        format!("\x1b[1m[{}]\x1b[0m", diag.rule)
-    } else {
-        format!("[{}]", diag.rule)
-    };
-    writeln!(
-        out,
-        "{path_label}:{line}:{col} {level_styled}{rule_styled} {}",
-        diag.message
-    )?;
-    writeln!(out, "  citation: {}", diag.citation)?;
-    if let Some(fix) = &diag.fix {
-        writeln!(
-            out,
-            "  fix (confidence {:.0}%): {:?}",
-            fix.confidence * 100.0,
-            fix.replacement,
-        )?;
     }
-    Ok(())
+}
+
+/// ANSI style selectors for the human renderer. Keeping the set small
+/// avoids a dependency on `owo-colors` or similar — the escape codes are
+/// inlined in `paint`.
+#[derive(Debug, Clone, Copy)]
+enum AnsiStyle {
+    BoldRed,
+    BoldBlue,
+    Bold,
+}
+
+fn paint(color: bool, style: AnsiStyle, text: &str) -> String {
+    if !color {
+        return text.to_owned();
+    }
+    let (prefix, suffix) = match style {
+        AnsiStyle::BoldRed => ("\x1b[31;1m", "\x1b[0m"),
+        AnsiStyle::BoldBlue => ("\x1b[34;1m", "\x1b[0m"),
+        AnsiStyle::Bold => ("\x1b[1m", "\x1b[0m"),
+    };
+    format!("{prefix}{text}{suffix}")
 }
 
 /// JSON projection of a Diagnostic conforming to `contracts/diagnostic.json`.
@@ -189,5 +317,155 @@ pub fn label_for(path: Option<&Path>) -> String {
     match path {
         Some(p) => p.display().to_string(),
         None => "-".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_ism::Span;
+    use marque_rules::{FixProposal, FixSource, RuleId, Severity};
+
+    fn make_diagnostic(
+        rule: &'static str,
+        span: Span,
+        message: &str,
+        fix: Option<FixProposal>,
+    ) -> Diagnostic {
+        Diagnostic::new(
+            RuleId::new(rule),
+            Severity::Fix,
+            span,
+            message,
+            "CAPCO-ISM-v2022-DEC-§3.2",
+            fix,
+        )
+    }
+
+    #[test]
+    fn extract_line_returns_first_line() {
+        let src = b"first\nsecond\nthird";
+        assert_eq!(extract_line(src, 1), Some(&b"first"[..]));
+    }
+
+    #[test]
+    fn extract_line_returns_middle_line() {
+        let src = b"first\nsecond\nthird";
+        assert_eq!(extract_line(src, 2), Some(&b"second"[..]));
+    }
+
+    #[test]
+    fn extract_line_returns_last_line_without_trailing_newline() {
+        let src = b"first\nsecond";
+        assert_eq!(extract_line(src, 2), Some(&b"second"[..]));
+    }
+
+    #[test]
+    fn extract_line_strips_crlf() {
+        let src = b"first\r\nsecond\r\n";
+        assert_eq!(extract_line(src, 1), Some(&b"first"[..]));
+        assert_eq!(extract_line(src, 2), Some(&b"second"[..]));
+    }
+
+    #[test]
+    fn extract_line_returns_none_when_out_of_range() {
+        let src = b"first\nsecond";
+        assert_eq!(extract_line(src, 5), None);
+    }
+
+    #[test]
+    fn render_human_produces_rustc_style_shape_with_caret() {
+        // Single-line source with a span pointing at "NF" in banner form.
+        let src = b"TOP SECRET//SI//NF\n";
+        let span = Span::new(16, 18);
+        let fix = FixProposal::new(
+            RuleId::new("E001"),
+            FixSource::BuiltinRule,
+            span,
+            "NF".to_owned(),
+            "NOFORN".to_owned(),
+            1.0,
+            Some("CAPCO-2023-§3.2"),
+        );
+        let diag = make_diagnostic(
+            "E001",
+            span,
+            "banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"",
+            Some(fix),
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "banner.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        // Header line: path:line:col with level + rule + message
+        assert!(rendered.contains("banner.txt:1:17 fix[E001]"));
+        assert!(rendered.contains("banner uses abbreviated dissem control"));
+        // Location arrow
+        assert!(rendered.contains("--> banner.txt:1:17-19"));
+        // Source snippet with line number gutter
+        assert!(rendered.contains("1 | TOP SECRET//SI//NF"));
+        // Caret line: 16 spaces of padding + "^^" carets
+        // (span starts at col 17, so 16 chars of padding from col 1)
+        assert!(
+            rendered.contains("                ^^"),
+            "expected caret at col 17; got:\n{rendered}"
+        );
+        // Hint includes the replacement
+        assert!(rendered.contains("replace with \"NOFORN\""));
+        assert!(rendered.contains("(confidence 100%)"));
+        // Citation footer
+        assert!(rendered.contains("= citation: CAPCO-ISM-v2022-DEC-§3.2"));
+    }
+
+    #[test]
+    fn render_human_without_color_has_no_ansi_escapes() {
+        let src = b"TOP SECRET//SI//NF\n";
+        let span = Span::new(16, 18);
+        let diag = make_diagnostic("E001", span, "test", None);
+
+        let mut out = Vec::new();
+        render_human(&mut out, "x.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(
+            !rendered.contains('\x1b'),
+            "color=false must not emit ANSI escapes, got:\n{rendered:?}"
+        );
+    }
+
+    #[test]
+    fn render_human_with_color_emits_ansi_escapes() {
+        let src = b"TOP SECRET//SI//NF\n";
+        let span = Span::new(16, 18);
+        let diag = make_diagnostic("E001", span, "test", None);
+
+        let mut out = Vec::new();
+        render_human(&mut out, "x.txt", src, &diag, true).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(
+            rendered.contains('\x1b'),
+            "color=true must emit ANSI escapes, got:\n{rendered:?}"
+        );
+    }
+
+    #[test]
+    fn render_human_diagnostic_without_fix_omits_hint() {
+        // E008-style: no fix proposal, caret only
+        let src = b"SECRET//XYZZY//NOFORN\n";
+        let span = Span::new(8, 13);
+        let diag = Diagnostic::new(
+            RuleId::new("E008"),
+            Severity::Error,
+            span,
+            "unrecognized token",
+            "CAPCO-ISM-v2022-DEC-§3.1",
+            None,
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "x.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("^^^^^"));
+        assert!(!rendered.contains("replace with"));
     }
 }
