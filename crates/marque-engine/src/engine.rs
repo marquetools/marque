@@ -82,11 +82,15 @@ impl Engine {
         // Pre-build the AhoCorasick automaton for pre-scanner text corrections.
         // This is O(total pattern bytes) and done once, not per-lint call.
         let corrections_ac = corrections_arc.as_ref().and_then(|corrections| {
-            let active: Vec<(Box<str>, Box<str>)> = corrections
+            // Sort by key for deterministic pattern ordering — HashMap
+            // iteration order is random (hash seed varies per process),
+            // and AhoCorasick pattern IDs depend on insertion order.
+            let mut active: Vec<(Box<str>, Box<str>)> = corrections
                 .iter()
                 .filter(|(k, v)| k != v && k.as_str() != "//")
                 .map(|(k, v)| (k.as_str().into(), v.as_str().into()))
                 .collect();
+            active.sort_by(|(a, _), (b, _)| a.cmp(b));
             if active.is_empty() {
                 return None;
             }
@@ -508,12 +512,15 @@ impl Engine {
         let dry_run = mode == FixMode::DryRun;
         let now = self.clock.now();
 
+        // Always apply text corrections to the intermediate buffer, even in
+        // DryRun mode. This buffer is internal — pass 2 needs it to re-lint
+        // corrected text so downstream rules fire (e.g., E001 on NF after
+        // SERCET→SECRET). The final output for DryRun returns the original
+        // source in fix_inner, not this intermediate buffer.
         let mut buf = source.to_vec();
         let mut applied = Vec::with_capacity(kept.len());
         for fix in &kept {
-            if !dry_run {
-                buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-            }
+            buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
             applied.push(AppliedFix::__engine_promote(
                 (*fix).clone(),
                 now,

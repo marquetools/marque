@@ -28,14 +28,18 @@ const BANNED_CRATES: &[&str] = &[
     "marque-server",
 ];
 
-/// Run `cargo tree` for the WASM crate (excluding dev-dependencies) and
-/// return the stdout output. Panics if the command fails.
+/// Run `cargo tree` for the WASM crate targeting `wasm32-unknown-unknown`
+/// (excluding dev-dependencies) and return the stdout output.
+/// Uses the actual WASM target graph, not the host-target graph, so
+/// cfg-gated dependencies are resolved correctly for FR-013 enforcement.
 fn wasm_dep_tree() -> String {
     let output = Command::new("cargo")
         .args([
             "tree",
             "-p",
             "marque-wasm",
+            "--target",
+            "wasm32-unknown-unknown",
             "-e=no-dev",
             "--prefix",
             "none",
@@ -47,7 +51,8 @@ fn wasm_dep_tree() -> String {
 
     assert!(
         output.status.success(),
-        "cargo tree failed: {}",
+        "cargo tree failed (is the wasm32-unknown-unknown target installed? \
+         run `rustup target add wasm32-unknown-unknown`): {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
