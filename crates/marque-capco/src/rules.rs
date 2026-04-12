@@ -303,33 +303,23 @@ impl Rule for MisorderedBlocksRule {
         // 0.95 threshold so it stays a suggestion, but present in the
         // diagnostic stream so consumers (Phase 5 corrections, lower-
         // threshold runs, IDE quick-fix surfaces) can act on it.
+        //
+        // `original` is left empty: the engine splices by `span` alone and
+        // never reads `FixProposal.original`, so the field is a cosmetic
+        // audit display only. A prior reconstruction that joined token
+        // texts dropped the "REL TO " prefix for REL TO blocks (because
+        // the parser stores individual trigraph spans without the block
+        // prefix), producing a string that did NOT match the actual source
+        // bytes at `span`. An empty original is unambiguously "unknown at
+        // this layer"; consumers that need the original bytes should read
+        // `source[span.start..span.end]` from the authoritative buffer.
         let reordered = reorder_marking(attrs);
-        let original: String = reordered
-            .as_ref()
-            .map(|_| {
-                // The original bytes the engine would splice out: the
-                // marking text from `first.start` to `last.end`. We don't
-                // have source bytes here, so we reconstruct an approximation
-                // by joining the in-order token texts. This is byte-
-                // equivalent for whitespace-free markings (which is all
-                // canonical fixtures) and good-enough as a display string.
-                attrs
-                    .token_spans
-                    .iter()
-                    .filter(|t| {
-                        ordinal_for_block(t.kind).is_some() || t.kind == TokenKind::Separator
-                    })
-                    .map(|t| t.text.as_ref())
-                    .collect::<String>()
-            })
-            .unwrap_or_default();
-
         let fix = reordered.map(|replacement| {
             FixProposal::new(
                 self.id(),
                 FixSource::BuiltinRule,
                 span,
-                original,
+                String::new(),
                 replacement,
                 0.6,
                 Some("CAPCO-2023-§3.1"),

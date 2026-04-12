@@ -144,12 +144,19 @@ fn kind_sort_priority(kind: MarkingType) -> u8 {
 }
 
 fn find_portion_end(source: &[u8], open: usize) -> Option<usize> {
-    // Walk bytes after `(` looking for `)`. Reject nested parens and newlines.
+    // Walk bytes after `(` looking for `)`. Reject anything that cannot
+    // legitimately appear inside a single-line portion marking:
+    //   - `\n` / `\r`: portion markings are always on a single line
+    //   - `(`: nested parens are never valid
+    //   - `\x0c` (form feed): a page-break control character cannot
+    //     appear inside a portion. Rejecting it here keeps a
+    //     PageBreak candidate from being shadowed by a spurious
+    //     Portion that spans the form feed.
     let rest = source.get(open + 1..)?;
     for (i, &b) in rest.iter().enumerate() {
         match b {
             b')' => return Some(open + 1 + i),
-            b'\n' | b'\r' | b'(' => return None,
+            b'\n' | b'\r' | b'\x0c' | b'(' => return None,
             _ => {}
         }
     }
@@ -207,6 +214,26 @@ mod tests {
         let src = b"(TS\n//NF) not a real marking";
         let candidates = Scanner::scan(src);
         assert!(candidates.iter().all(|c| c.kind != MarkingType::Portion));
+    }
+
+    #[test]
+    fn rejects_form_feed_in_portion() {
+        // A `\f` inside `(...)` is never a valid single-line portion.
+        // Without this rejection the portion candidate would span the
+        // form feed and shadow the PageBreak candidate at that offset.
+        let src = b"(TS\x0c//NF)";
+        let candidates = Scanner::scan(src);
+        assert!(
+            candidates.iter().all(|c| c.kind != MarkingType::Portion),
+            "form feed inside portion parens must not produce a Portion candidate"
+        );
+        // The PageBreak candidate at offset 3 should still be emitted.
+        assert!(
+            candidates
+                .iter()
+                .any(|c| c.kind == MarkingType::PageBreak && c.span.start == 3),
+            "expected PageBreak at form-feed offset 3"
+        );
     }
 
     #[test]

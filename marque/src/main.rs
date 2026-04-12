@@ -345,7 +345,16 @@ fn run_fix(
                 );
             }
             // Only escalate to EX_DIAG_ERROR when no higher-priority code
-            // (e.g. EX_IOERR from an earlier file) has already been recorded.
+            // (e.g. EX_IOERR from an earlier file) has already been
+            // recorded. Priority order: EX_IOERR > EX_DIAG_ERROR >
+            // EX_DIAG_WARN > EX_OK.
+            //
+            // `EX_DIAG_WARN` is included in the match for defensive
+            // parallelism with `run_check`'s exit-code logic — `run_fix`
+            // does not currently emit warnings (it only surfaces errors
+            // via `remaining_diagnostics`), but keeping the guard
+            // consistent across both subcommands means a future addition
+            // of `run_fix` warning support will not need to revisit this.
             if matches!(exit_code, EX_OK | EX_DIAG_WARN) {
                 exit_code = EX_DIAG_ERROR;
             }
