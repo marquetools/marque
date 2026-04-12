@@ -846,7 +846,9 @@ version = "0.1.0"
 dependencies = [
  "aho-corasick",
  "insta",
+ "marque-config",
  "marque-core",
+ "marque-engine",
  "marque-ism",
  "marque-rules",
  "marque-test-utils",
@@ -861,6 +863,7 @@ dependencies = [
  "marque-ism",
  "marque-rules",
  "serde",
+ "tempfile",
  "thiserror",
  "toml",
 ]

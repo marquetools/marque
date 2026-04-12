@@ -12,6 +12,7 @@
 //! This makes "suggested vs applied" a type-system invariant.
 
 use marque_ism::{IsmAttributes, Span};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -152,6 +153,9 @@ pub struct RuleContext {
     /// Accumulated portion data for the current page, reset at every
     /// scanner-emitted `MarkingType::PageBreak`.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
+    /// Organization-specific corrections map from config `[corrections]`.
+    /// `None` when no corrections are configured.
+    pub corrections: Option<Arc<HashMap<String, String>>>,
 }
 
 // ---------------------------------------------------------------------------

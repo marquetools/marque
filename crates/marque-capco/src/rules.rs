@@ -48,6 +48,7 @@ impl CapcoRuleSet {
                 Box::new(XShorthandDateRule),
                 Box::new(UnknownTokenRule),
                 Box::new(DeprecatedMarkingWarningRule),
+                Box::new(CorrectionsMapRule),
             ],
         }
     }
@@ -887,6 +888,68 @@ impl Rule for DeprecatedMarkingWarningRule {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: C001 — Corrections-map typo replacement
+// ---------------------------------------------------------------------------
+
+/// Scans token spans against the organization-specific corrections map from
+/// `[corrections]` in `.marque.toml`. Each match produces a fix proposal with
+/// `FixSource::CorrectionsMap` and `confidence = 1.0`.
+///
+/// FR-009: user corrections take precedence over built-in rules on the same
+/// span. This is automatic under FR-016 sort order — `"C001" < "E001"`
+/// lexicographically, so C001 wins under the C-1 overlap guard.
+struct CorrectionsMapRule;
+
+impl Rule for CorrectionsMapRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("C001")
+    }
+    fn name(&self) -> &'static str {
+        "corrections-map"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Engine guarantees corrections is Some only when the map is non-empty
+        // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
+        let Some(corrections) = ctx.corrections.as_ref() else {
+            return vec![];
+        };
+
+        let mut diagnostics = Vec::new();
+        for token_span in attrs.token_spans.iter() {
+            // M1: skip structural separators — corrections never apply to "//"
+            if token_span.kind == TokenKind::Separator {
+                continue;
+            }
+            let text = token_span.text.as_ref();
+            let Some(replacement) = corrections.get(text) else {
+                continue;
+            };
+            // M2: skip no-op corrections (replacement == original)
+            if replacement == text {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::CorrectionsMap,
+                span: token_span.span,
+                message: format!("corrections map: {text:?} → {replacement:?}"),
+                citation: "CONFIG:[corrections]",
+                original: text.to_owned(),
+                replacement: replacement.clone(),
+                confidence: 1.0,
+                migration_ref: None,
+            }));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -931,7 +994,7 @@ mod tests {
     use marque_capco_test_support::{lint_banner, lint_portion};
 
     #[test]
-    fn capco_rule_set_registers_all_phase3_rules() {
+    fn capco_rule_set_registers_all_rules() {
         let set = CapcoRuleSet::new();
         let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
         assert!(ids.contains(&"E001"));
@@ -943,7 +1006,8 @@ mod tests {
         assert!(ids.contains(&"E007"));
         assert!(ids.contains(&"E008"));
         assert!(ids.contains(&"W001"));
-        assert_eq!(set.rules().len(), 9);
+        assert!(ids.contains(&"C001"));
+        assert_eq!(set.rules().len(), 10);
     }
 
     #[test]
@@ -1170,6 +1234,7 @@ mod marque_capco_test_support {
                 zone: None,
                 position: None,
                 page_context: None,
+                corrections: None,
             };
             for rule in rule_set.rules() {
                 out.extend(rule.check(&parsed.attrs, &ctx));

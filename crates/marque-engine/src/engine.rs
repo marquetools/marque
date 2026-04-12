@@ -5,6 +5,8 @@ use crate::output::{FixResult, LintResult};
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{AppliedFix, RuleId, RuleSet, Severity};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Whether to apply fixes or just simulate (dry-run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,28 +39,36 @@ pub struct Engine {
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet>>,
     clock: Box<dyn Clock>,
+    /// Corrections map wrapped in Arc once at construction time so that each
+    /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
+    /// deep-clone of the entire HashMap.
+    corrections_arc: Option<Arc<HashMap<String, String>>>,
 }
 
 impl Engine {
     /// Create a new engine with the given configuration and rule sets.
     pub fn new(config: Config, rule_sets: Vec<Box<dyn RuleSet>>) -> Self {
-        Self {
-            config,
-            rule_sets,
-            clock: Box::new(SystemClock),
-        }
+        Self::with_clock(config, rule_sets, Box::new(SystemClock))
     }
 
     /// Create an engine with a custom clock (for deterministic tests).
     pub fn with_clock(
-        config: Config,
+        mut config: Config,
         rule_sets: Vec<Box<dyn RuleSet>>,
         clock: Box<dyn Clock>,
     ) -> Self {
+        // Take ownership of the corrections map instead of cloning —
+        // nothing reads config.corrections after construction.
+        let corrections_arc = if config.corrections.is_empty() {
+            None
+        } else {
+            Some(Arc::new(std::mem::take(&mut config.corrections)))
+        };
         Self {
             config,
             rule_sets,
             clock,
+            corrections_arc,
         }
     }
 
@@ -67,11 +77,14 @@ impl Engine {
         use marque_core::{Parser, Scanner};
         use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
         use marque_rules::RuleContext;
-        use std::sync::Arc;
 
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidates = Scanner::scan(source);
+
+        // corrections_arc was built once at Engine construction; each clone here
+        // is an O(1) refcount bump.
+        let corrections_arc = self.corrections_arc.clone();
 
         let mut diagnostics = Vec::new();
         // Build page context by accumulating portion markings in document order.
@@ -133,6 +146,7 @@ impl Engine {
                 zone: None,
                 position: None,
                 page_context: ctx_page,
+                corrections: corrections_arc.clone(),
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
