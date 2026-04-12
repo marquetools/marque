@@ -1,0 +1,23 @@
+[package]
+name = "marque-engine-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+marque-engine = { path = "..", features = ["batch"] }
+marque-capco  = { path = "../../marque-capco" }
+marque-config = { path = "../../marque-config" }
+
+# Prevent this from being part of the main workspace
+[workspace]
+
+[[bin]]
+name = "lint"
+path = "fuzz_targets/lint.rs"
+test = false
+doc = false

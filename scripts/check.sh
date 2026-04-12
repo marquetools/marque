@@ -20,4 +20,11 @@ else
     cargo test --workspace
 fi
 
+if [[ "${1:-}" == "--bench" ]]; then
+    echo "==> scripts/bench-check.sh (performance regression gate)"
+    bash "$(dirname "$0")/bench-check.sh"
+else
+    echo "==> Skipping bench-check (pass --bench to enable)"
+fi
+
 echo "==> All checks passed."

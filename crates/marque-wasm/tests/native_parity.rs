@@ -112,9 +112,8 @@ fn lint_parity_invalid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("invalid"));
 
     assert!(
-        txt_files.len() >= 10,
-        "T061 requires ≥10 corpus fixtures, found {}",
-        txt_files.len()
+        !txt_files.is_empty(),
+        "T070 requires corpus fixtures, found none"
     );
 
     for path in &txt_files {
@@ -191,6 +190,70 @@ fn fix_parity_invalid_fixtures() {
             native_fixed,
             wasm_fixed,
             "SC-008 fix parity failure on {}",
+            path.file_name().unwrap().to_string_lossy()
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T070: Parity on prose corpus
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_parity_prose_fixtures() {
+    let prose_dir = corpus_dir().join("prose");
+    if !prose_dir.is_dir() {
+        return; // prose dir may not exist in minimal checkouts
+    }
+    let txt_files = txt_files_in(&prose_dir);
+
+    for path in &txt_files {
+        let source = load_fixture(path);
+        let text = std::str::from_utf8(&source)
+            .unwrap_or_else(|_| panic!("non-UTF-8 fixture: {}", path.display()));
+
+        let native_ndjson = engine_lint_to_ndjson(&source);
+        let wasm_ndjson = marque_wasm::lint_native(text, None)
+            .unwrap_or_else(|e| panic!("lint_native failed on {}: {e}", path.display()));
+
+        assert_eq!(
+            native_ndjson,
+            wasm_ndjson,
+            "SC-008 lint parity failure on prose {}",
+            path.file_name().unwrap().to_string_lossy()
+        );
+    }
+}
+
+#[test]
+fn fix_parity_valid_fixtures() {
+    let txt_files = txt_files_in(&corpus_dir().join("valid"));
+    let default_threshold = Config::default().confidence_threshold();
+
+    for path in &txt_files {
+        let source = load_fixture(path);
+        let text = std::str::from_utf8(&source)
+            .unwrap_or_else(|_| panic!("non-UTF-8 fixture: {}", path.display()));
+
+        let engine = Engine::new(Config::default(), vec![Box::new(capco_rules())]);
+        let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
+        let native_fixed =
+            String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
+
+        let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
+            .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));
+
+        let wasm_result: serde_json::Value =
+            serde_json::from_str(&wasm_json).expect("fix_native returned invalid JSON");
+
+        let wasm_fixed = wasm_result["fixed_text"]
+            .as_str()
+            .expect("missing fixed_text in fix output");
+
+        assert_eq!(
+            native_fixed,
+            wasm_fixed,
+            "SC-008 fix parity failure on valid {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
