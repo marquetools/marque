@@ -24,13 +24,21 @@ fn make_tmpdir(name: &str) -> PathBuf {
 /// The compiled schema version — config files must use this to pass FR-011.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
 
-/// Global mutex serializing all env-var mutations in this test binary.
+/// Global mutex serializing all env-var access in this test binary.
 ///
 /// Environment variables are process-global state. Tests within the same
 /// integration-test binary can run in parallel, so without serialization
 /// one test's `set_var` can race with another test's `load()` call.
-/// Holding this lock for the entire set → load → remove sequence ensures
-/// no interleaving occurs between tests that mutate the same variable.
+/// Every test that calls `marque_config::load()` must hold this lock —
+/// not just tests that set env vars — because `load()` reads env vars
+/// internally (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`).
+///
+/// **Scope**: this mutex serializes threads within this test binary only.
+/// Different integration-test binaries are separate OS processes, each
+/// with their own copy of this static. Cross-binary races are impossible
+/// because each process has its own environment. If a future test file
+/// in this crate also touches env vars, it needs its own mutex or must
+/// be merged into this file.
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 /// RAII guard: saves the previous value of `var`, sets it to `value`,

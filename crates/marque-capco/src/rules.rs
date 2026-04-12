@@ -942,7 +942,7 @@ impl Rule for CorrectionsMapRule {
                 original: text.to_owned(),
                 replacement: replacement.clone(),
                 confidence: 1.0,
-                migration_ref: Some("corrections-map"),
+                migration_ref: None,
             }));
         }
         diagnostics
@@ -994,7 +994,7 @@ mod tests {
     use marque_capco_test_support::{lint_banner, lint_portion};
 
     #[test]
-    fn capco_rule_set_registers_all_phase3_rules() {
+    fn capco_rule_set_registers_all_rules() {
         let set = CapcoRuleSet::new();
         let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
         assert!(ids.contains(&"E001"));

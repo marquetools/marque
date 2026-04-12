@@ -48,17 +48,7 @@ pub struct Engine {
 impl Engine {
     /// Create a new engine with the given configuration and rule sets.
     pub fn new(config: Config, rule_sets: Vec<Box<dyn RuleSet>>) -> Self {
-        let corrections_arc = if config.corrections.is_empty() {
-            None
-        } else {
-            Some(Arc::new(config.corrections.clone()))
-        };
-        Self {
-            config,
-            rule_sets,
-            clock: Box::new(SystemClock),
-            corrections_arc,
-        }
+        Self::with_clock(config, rule_sets, Box::new(SystemClock))
     }
 
     /// Create an engine with a custom clock (for deterministic tests).

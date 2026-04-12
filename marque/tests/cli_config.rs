@@ -46,11 +46,13 @@ fn explain_config_outputs_valid_json_and_exits_zero() {
     );
     assert_eq!(json["schema_version"], SCHEMA_VERSION);
     assert_eq!(json["rules"]["E001"], "warn");
-    assert!(
-        json["corrections"]
-            .as_array()
-            .unwrap()
-            .contains(&"SERCET".into())
+    let corrections = json["corrections"]
+        .as_array()
+        .expect("corrections must be an array");
+    assert_eq!(
+        corrections,
+        &vec![serde_json::Value::String("SERCET".into())],
+        "corrections should contain exactly [\"SERCET\"]"
     );
     // classifier_id_present should be false (no local config)
     assert_eq!(json["classifier_id_present"], false);

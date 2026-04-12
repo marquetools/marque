@@ -2,7 +2,7 @@
 //!
 //! Exercises FR-009: user corrections take precedence over built-in rules
 //! when both match the same span. The C001 rule emits `FixSource::CorrectionsMap`
-//! and `migration_ref = Some("corrections-map")` for audit trail fidelity.
+//! and `FixSource::CorrectionsMap` for audit trail fidelity.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -58,7 +58,7 @@ fn c001_fires_on_corrections_map_match() {
     assert_eq!(fix.source, FixSource::CorrectionsMap);
     assert_eq!(fix.replacement.as_ref(), "NOFORN");
     assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
-    assert_eq!(fix.migration_ref, Some("corrections-map"));
+    assert_eq!(fix.migration_ref, None);
 }
 
 #[test]
@@ -164,10 +164,7 @@ fn c001_fix_carries_corrections_map_source_in_audit() {
         "C001 must appear in applied fixes for NF→NOFORN"
     );
     assert_eq!(c001_fixes[0].proposal.source, FixSource::CorrectionsMap);
-    assert_eq!(
-        c001_fixes[0].proposal.migration_ref,
-        Some("corrections-map")
-    );
+    assert_eq!(c001_fixes[0].proposal.migration_ref, None);
 }
 
 // -----------------------------------------------------------------------
@@ -257,6 +254,38 @@ fn c001_skips_noop_correction() {
 }
 
 // -----------------------------------------------------------------------
+// LOW-2: multi-token marking where only one token matches corrections
+// -----------------------------------------------------------------------
+
+#[test]
+fn c001_fires_only_on_matching_token_in_multi_token_marking() {
+    // SECRET//NF//NOFORN — corrections map has NF→NOFORN. C001 should
+    // fire on the "NF" token but NOT on "NOFORN" (not in the map) or
+    // "SECRET" (not in the map).
+    let mut corrections = HashMap::new();
+    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
+    let engine = engine_with_corrections(corrections);
+
+    let source = b"SECRET//NF//NOFORN\n";
+    let result = engine.lint(source);
+
+    let c001_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+
+    assert_eq!(
+        c001_diags.len(),
+        1,
+        "C001 should fire exactly once (on NF), not on SECRET or NOFORN: {c001_diags:?}"
+    );
+    let fix = c001_diags[0].fix.as_ref().unwrap();
+    assert_eq!(fix.original.as_ref(), "NF");
+    assert_eq!(fix.replacement.as_ref(), "NOFORN");
+}
+
+// -----------------------------------------------------------------------
 // F-13: exact spec input scenario
 // -----------------------------------------------------------------------
 
@@ -286,5 +315,5 @@ fn us3_acceptance_scenario_combined_corrections_and_builtin_fix() {
         .expect("should have a NOFORN fix");
     assert_eq!(nf_fix.proposal.rule.as_str(), "C001");
     assert_eq!(nf_fix.proposal.source, FixSource::CorrectionsMap);
-    assert_eq!(nf_fix.proposal.migration_ref, Some("corrections-map"));
+    assert_eq!(nf_fix.proposal.migration_ref, None);
 }

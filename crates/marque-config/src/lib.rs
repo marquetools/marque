@@ -86,6 +86,11 @@ impl ConfigError {
 pub struct Config {
     pub user: UserConfig,
     pub rules: RuleConfig,
+    /// Organization-specific typo corrections from `[corrections]` in `.marque.toml`.
+    ///
+    /// **Do not mutate after passing to `Engine::new`** — the engine caches
+    /// this as an `Arc<HashMap>` at construction time. Post-construction
+    /// mutation leaves the cached copy stale.
     pub corrections: HashMap<String, String>,
     pub capco: CapcoConfig,
     /// Fix confidence threshold. Fixes with confidence >= this value are auto-applied.
