@@ -53,14 +53,16 @@ impl Engine {
 
     /// Create an engine with a custom clock (for deterministic tests).
     pub fn with_clock(
-        config: Config,
+        mut config: Config,
         rule_sets: Vec<Box<dyn RuleSet>>,
         clock: Box<dyn Clock>,
     ) -> Self {
+        // Take ownership of the corrections map instead of cloning —
+        // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
             None
         } else {
-            Some(Arc::new(config.corrections.clone()))
+            Some(Arc::new(std::mem::take(&mut config.corrections)))
         };
         Self {
             config,
