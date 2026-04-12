@@ -4,7 +4,7 @@ use crate::clock::{Clock, SystemClock};
 use crate::output::{FixResult, LintResult};
 use marque_config::Config;
 use marque_ism::Span;
-use marque_rules::{AppliedFix, RuleId, RuleSet, Severity};
+use marque_rules::{AppliedFix, Diagnostic, FixProposal, FixSource, RuleId, RuleSet, Severity};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -173,6 +173,85 @@ impl Engine {
             }
         }
 
+        // Pre-scanner text corrections: scan the raw source for
+        // corrections-map keys that the scanner missed (e.g., "SERCET" is
+        // not a known classification prefix, so the scanner never detects
+        // "SERCET//NF" as a candidate, and C001 never sees the token).
+        //
+        // This pass emits C001 diagnostics for raw-text matches that don't
+        // overlap with any C001 diagnostic already produced by the rule
+        // pipeline above. Spans reference the original source buffer.
+        if let Some(corrections) = &self.corrections_arc {
+            let c001_severity = self
+                .config
+                .rules
+                .overrides
+                .get("C001")
+                .and_then(|s| Severity::parse_config(s))
+                .unwrap_or(Severity::Fix);
+
+            if c001_severity != Severity::Off {
+                // Collect spans already covered by rule-pipeline C001.
+                let existing_c001_spans: std::collections::HashSet<Span> = diagnostics
+                    .iter()
+                    .filter(|d| d.rule.as_str() == "C001")
+                    .map(|d| d.span)
+                    .collect();
+
+                for (key, value) in corrections.iter() {
+                    if key == value {
+                        continue; // skip no-op corrections
+                    }
+                    // Skip the structural separator "//" — it is marking syntax,
+                    // not a correctable token. (Note: "//" as a banner prefix for
+                    // foreign-classified markings like "//DEU C" is handled by the
+                    // scanner, not by the corrections map.)
+                    if key == "//" {
+                        continue;
+                    }
+                    let key_bytes = key.as_bytes();
+                    // Find all non-overlapping occurrences of `key` in source.
+                    let mut search_start = 0;
+                    while search_start + key_bytes.len() <= source.len() {
+                        let haystack = &source[search_start..];
+                        let Some(pos) = haystack
+                            .windows(key_bytes.len())
+                            .position(|w| w == key_bytes)
+                        else {
+                            break;
+                        };
+                        let abs_start = search_start + pos;
+                        let abs_end = abs_start + key_bytes.len();
+                        let span = Span::new(abs_start, abs_end);
+
+                        // Skip if the rule pipeline already produced a C001
+                        // diagnostic for this exact span.
+                        if !existing_c001_spans.contains(&span) {
+                            let proposal = FixProposal::new(
+                                RuleId::new("C001"),
+                                FixSource::CorrectionsMap,
+                                span,
+                                key.as_str(),
+                                value.as_str(),
+                                1.0,
+                                None,
+                            );
+                            diagnostics.push(Diagnostic::new(
+                                RuleId::new("C001"),
+                                c001_severity,
+                                span,
+                                format!("corrections map: {key:?} → {value:?}"),
+                                "CONFIG:[corrections]",
+                                Some(proposal),
+                            ));
+                        }
+
+                        search_start = abs_end; // advance past this match
+                    }
+                }
+            }
+        }
+
         LintResult { diagnostics }
     }
 
@@ -219,7 +298,29 @@ impl Engine {
     fn fix_inner(&self, source: &[u8], mode: FixMode, threshold: f32) -> FixResult {
         use std::collections::HashSet;
 
-        let lint = self.lint(source);
+        // Two-pass fix strategy for pre-scanner text corrections.
+        //
+        // Pass 1: lint the original source. The pre-scanner text scan may
+        // produce C001 diagnostics for corrections-map matches the scanner
+        // missed (e.g., "SERCET" is not a known classification prefix).
+        // Apply those C001 fixes to produce an intermediate source.
+        //
+        // Pass 2: re-lint the intermediate source. The scanner now detects
+        // the corrected marking (e.g., "SECRET//NF") and additional rules
+        // fire (e.g., E001 on NF→NOFORN). Apply those fixes on top.
+        //
+        // Without this, the spec scenario "SERCET//NF → SECRET//NOFORN"
+        // would stop at "SECRET//NF".
+        let lint1 = self.lint(source);
+        let (effective_source, pass1_applied) =
+            self.apply_text_corrections(source, &lint1, threshold, mode);
+
+        let lint = if !pass1_applied.is_empty() {
+            // Re-lint the corrected source so the scanner picks up newly-valid markings.
+            self.lint(&effective_source)
+        } else {
+            lint1
+        };
 
         let mut fixes: Vec<_> = lint
             .diagnostics
@@ -285,7 +386,7 @@ impl Engine {
         // Dry-run returns the original source verbatim.
         let output = match mode {
             FixMode::Apply => {
-                let mut buf = source.to_vec();
+                let mut buf = effective_source.clone();
                 for fix in kept_fixes {
                     buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
                     applied_keys.insert((fix.rule.clone(), fix.span));
@@ -314,6 +415,11 @@ impl Engine {
             }
         };
 
+        // Prepend pass-1 text corrections to the applied list so they
+        // appear in the audit trail.
+        let mut all_applied = pass1_applied;
+        all_applied.extend(applied);
+
         // Remaining diagnostics: those whose fix was not applied.
         // Filter by (rule_id, span) pair — not just rule ID — so that if
         // rule E001 fires on three spans and only one is fixed, the other
@@ -330,9 +436,75 @@ impl Engine {
 
         FixResult {
             source: output,
-            applied,
+            applied: all_applied,
             remaining_diagnostics,
         }
+    }
+
+    /// Apply pre-scanner text corrections (C001) from lint diagnostics and
+    /// return the corrected source + applied fixes. Used by `fix_inner` to
+    /// produce an intermediate source that the scanner can detect.
+    fn apply_text_corrections(
+        &self,
+        source: &[u8],
+        lint: &LintResult,
+        threshold: f32,
+        mode: FixMode,
+    ) -> (Vec<u8>, Vec<AppliedFix>) {
+        let mut text_fixes: Vec<&FixProposal> = lint
+            .diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "C001")
+            .filter_map(|d| d.fix.as_ref())
+            .filter(|f| f.source == FixSource::CorrectionsMap)
+            .filter(|f| f.confidence >= threshold)
+            .filter(|f| !f.span.is_empty())
+            .collect();
+
+        if text_fixes.is_empty() {
+            return (source.to_vec(), Vec::new());
+        }
+
+        // Sort and deduplicate using FR-016 order + C-1 overlap guard.
+        text_fixes.sort_by(|a, b| {
+            b.span
+                .end
+                .cmp(&a.span.end)
+                .then(b.span.start.cmp(&a.span.start))
+                .then(a.rule.cmp(&b.rule))
+                .then(a.replacement.cmp(&b.replacement))
+        });
+        let mut kept: Vec<&FixProposal> = Vec::new();
+        let mut next_end: Option<usize> = None;
+        for fix in &text_fixes {
+            let fits = next_end.is_none_or(|b| fix.span.end <= b);
+            if fits {
+                next_end = Some(fix.span.start);
+                kept.push(*fix);
+            }
+        }
+
+        let classifier_id: Option<Arc<str>> =
+            self.config.user.classifier_id.as_deref().map(Arc::from);
+        let dry_run = mode == FixMode::DryRun;
+        let now = self.clock.now();
+
+        let mut buf = source.to_vec();
+        let mut applied = Vec::with_capacity(kept.len());
+        for fix in &kept {
+            if !dry_run {
+                buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+            }
+            applied.push(AppliedFix::__engine_promote(
+                (*fix).clone(),
+                now,
+                classifier_id.clone(),
+                dry_run,
+                None,
+            ));
+        }
+
+        (buf, applied)
     }
 }
 
