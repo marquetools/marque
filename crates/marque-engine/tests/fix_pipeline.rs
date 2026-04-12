@@ -10,6 +10,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock, LintResult};
+use serde_json::json;
 use std::time::{Duration, UNIX_EPOCH};
 
 /// Fixed timestamp for deterministic audit records.
@@ -170,4 +171,81 @@ fn classifier_id_propagated_when_configured() {
             "classifier_id should match config"
         );
     }
+}
+
+// --- H3: insta snapshot tests for audit NDJSON shape (T046) ---
+
+/// Serialize an AppliedFix to the audit-record JSON shape for snapshot testing.
+fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
+    let source_str = match fix.proposal.source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+    };
+    json!({
+        "schema": "marque-mvp-1",
+        "rule": fix.proposal.rule.as_str(),
+        "source": source_str,
+        "span": {
+            "start": fix.proposal.span.start,
+            "end": fix.proposal.span.end,
+        },
+        "original": fix.proposal.original.as_ref(),
+        "replacement": fix.proposal.replacement.as_ref(),
+        "confidence": fix.proposal.confidence,
+        "migration_ref": fix.proposal.migration_ref,
+        "timestamp": humantime::format_rfc3339(fix.timestamp).to_string(),
+        "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),
+        "dry_run": fix.dry_run,
+        "input": fix.input.as_ref().map(|s| s.as_ref()),
+    })
+}
+
+#[test]
+fn audit_record_snapshot_e001_apply() {
+    let engine = test_engine();
+    let source = b"SECRET//NF\n";
+    let result = engine.fix(source, FixMode::Apply);
+    assert_eq!(result.applied.len(), 1);
+
+    let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
+    insta::assert_json_snapshot!(json);
+}
+
+#[test]
+fn audit_record_snapshot_e001_dry_run() {
+    let engine = test_engine();
+    let source = b"SECRET//NF\n";
+    let result = engine.fix(source, FixMode::DryRun);
+    assert_eq!(result.applied.len(), 1);
+
+    let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
+    insta::assert_json_snapshot!(json);
+}
+
+// --- L4: parity test verifies rule IDs, not just count ---
+
+#[test]
+fn dry_run_parity_rule_ids_match() {
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+
+    let apply_result = engine.fix(&source, FixMode::Apply);
+    let dry_result = engine.fix(&source, FixMode::DryRun);
+
+    // Verify remaining diagnostics have the same rule IDs, not just same count.
+    let apply_rules: Vec<&str> = apply_result
+        .remaining_diagnostics
+        .iter()
+        .map(|d| d.rule.as_str())
+        .collect();
+    let dry_rules: Vec<&str> = dry_result
+        .remaining_diagnostics
+        .iter()
+        .map(|d| d.rule.as_str())
+        .collect();
+    assert_eq!(
+        apply_rules, dry_rules,
+        "remaining diagnostic rule IDs must match between Apply and DryRun"
+    );
 }

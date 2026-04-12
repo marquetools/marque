@@ -320,6 +320,8 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
 /// - File paths → `--in-place` by default (atomic temp-file rename, T048).
 /// - stdin → `--write-stdout` by default.
 /// - `--dry-run` → audit records emitted, no file/stdout output.
+// Flat CLI argument set mirrors the clap struct exactly; extracting into a
+// separate args struct would duplicate all fields without reducing complexity.
 #[allow(clippy::too_many_arguments)]
 fn run_fix(
     cwd: &std::path::Path,
@@ -343,6 +345,12 @@ fn run_fix(
     // --in-place and --write-stdout are mutually exclusive.
     if in_place && write_stdout {
         eprintln!("error: --in-place and --write-stdout are mutually exclusive");
+        return EX_USAGE;
+    }
+    // --dry-run and --write-stdout are mutually exclusive (dry-run produces
+    // no output; --write-stdout has no effect and would confuse the user).
+    if dry_run && write_stdout {
+        eprintln!("error: --dry-run and --write-stdout are mutually exclusive");
         return EX_USAGE;
     }
 
@@ -377,14 +385,11 @@ fn run_fix(
         Engine::new(config, vec![Box::new(capco_rules())])
     };
 
-    // Always run the engine in Apply mode so we get the real post-fix text.
-    // For --dry-run, we set dry_run=true on the audit records but still
-    // compute the would-be post-fix text for exit-code determination.
-    // Note: Engine::fix already handles DryRun vs Apply internally — in
-    // DryRun mode it returns original source but records the proposals.
-    // However, for post-fix re-lint exit codes we need the *actual* fixed
-    // text. So we always call with Apply mode and control output ourselves.
-    let engine_mode = marque_engine::FixMode::Apply;
+    let engine_mode = if dry_run {
+        marque_engine::FixMode::DryRun
+    } else {
+        marque_engine::FixMode::Apply
+    };
 
     // Build input list — same pattern as run_check.
     let inputs: Vec<(Option<PathBuf>, Vec<u8>)> = if paths.is_empty() {
@@ -439,13 +444,10 @@ fn run_fix(
         {
             let mut stderr_lock = stderr.lock();
             for applied_fix in &result.applied {
-                // For --dry-run, we ran the engine in Apply mode to get the
-                // post-fix text, but the audit records must reflect dry_run=true.
-                // Patch the audit record: set dry_run flag and input identifier.
+                // Set the caller-supplied input identifier on the audit record.
+                // The engine leaves `input` as None; the CLI fills it in at the
+                // boundary per the architecture contract.
                 let mut audit_fix = applied_fix.clone();
-                if dry_run {
-                    audit_fix.dry_run = true;
-                }
                 audit_fix.input = path
                     .as_ref()
                     .map(|p| std::sync::Arc::from(p.display().to_string().as_str()));
@@ -469,6 +471,8 @@ fn run_fix(
 
         if should_write_file {
             // T048: atomic temp-file rename for --in-place writes.
+            // IO errors on write are fatal — return immediately rather than
+            // continuing to the next file with a partially-processed batch.
             if let Some(file_path) = path {
                 let dir = file_path
                     .parent()
@@ -477,19 +481,16 @@ fn run_fix(
                     Ok(mut tmp) => {
                         if let Err(e) = std::io::Write::write_all(&mut tmp, &result.source) {
                             eprintln!("error writing temp file: {e}");
-                            exit_code = EX_IOERR;
-                            continue;
+                            return EX_IOERR;
                         }
                         if let Err(e) = tmp.persist(file_path) {
                             eprintln!("error: atomic rename to {}: {e}", file_path.display());
-                            exit_code = EX_IOERR;
-                            continue;
+                            return EX_IOERR;
                         }
                     }
                     Err(e) => {
                         eprintln!("error: cannot create temp file in {}: {e}", dir.display());
-                        exit_code = EX_IOERR;
-                        continue;
+                        return EX_IOERR;
                     }
                 }
             }
@@ -506,7 +507,7 @@ fn run_fix(
         // Narration (suppressible with -q) — AFTER audit records.
         let applied_count = result.applied.len();
         let label = render::label_for(path.as_deref());
-        if !common.quiet {
+        if !common.quiet && applied_count > 0 {
             if dry_run {
                 eprintln!("{label}: would apply {applied_count} fix(es)");
             } else {
@@ -514,20 +515,34 @@ fn run_fix(
             }
         }
 
-        // Post-fix exit code from remaining diagnostics.
-        // remaining_diagnostics is computed identically for Apply and DryRun
-        // by the engine, so this satisfies the contract: "dry-run exit codes
-        // are computed against the post-fix text (as if applied)".
-        let has_errors = result.remaining_diagnostics.iter().any(|d| {
-            matches!(
-                d.severity,
-                marque_rules::Severity::Error | marque_rules::Severity::Fix
-            )
-        });
-        let has_warns = result
-            .remaining_diagnostics
-            .iter()
-            .any(|d| d.severity == marque_rules::Severity::Warn);
+        // C1: post-fix re-lint for exit code (T050).
+        //
+        // Re-lint the post-fix text to catch cascading resolutions (a fix
+        // resolved a secondary violation) and introduced violations (unlikely
+        // but contractually required). For DryRun mode, the engine returns the
+        // original source — to get the "as if applied" text we re-lint the
+        // original source with the applied proposals replayed. However, the
+        // engine's fix_inner already computes `result.source` as the fixed
+        // text for Apply mode. For DryRun, we need the would-be fixed text.
+        //
+        // Strategy: run a second Apply-mode fix call for DryRun to get the
+        // actual post-fix text for re-lint. This is the simplest correct
+        // approach — the extra cost is negligible for MVP document sizes.
+        let relint_source = if dry_run {
+            match engine.fix_with_threshold(
+                source,
+                marque_engine::FixMode::Apply,
+                common.confidence_threshold,
+            ) {
+                Ok(r) => r.source,
+                Err(_) => source.to_vec(), // threshold already validated; unreachable
+            }
+        } else {
+            result.source.clone()
+        };
+        let relint = engine.lint(&relint_source);
+        let has_errors = relint.error_count() > 0 || relint.fix_count() > 0;
+        let has_warns = relint.warn_count() > 0;
 
         if has_errors && matches!(exit_code, EX_OK | EX_DIAG_WARN) {
             exit_code = EX_DIAG_ERROR;

@@ -187,6 +187,136 @@ fn fixed_timestamp_produces_deterministic_audit() {
 }
 
 #[test]
+fn fix_dry_run_and_write_stdout_mutual_exclusion() {
+    marque()
+        .args(["fix", "--dry-run", "--write-stdout"])
+        .write_stdin("SECRET//NF\n")
+        .assert()
+        .code(64);
+}
+
+// --- H4: empty input through fix path ---
+
+#[test]
+fn fix_empty_input_exits_zero_no_audit() {
+    let assert = marque().args(["fix"]).write_stdin("").assert().success();
+
+    // No markings → no fixes → no audit records.
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        !stderr.contains("\"schema\""),
+        "empty input should produce no audit records, got: {stderr}"
+    );
+    // stdout should be empty (no content to write).
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_eq!(stdout.as_ref(), "", "empty input → empty stdout");
+}
+
+// --- H5: dry-run with stdin ---
+
+#[test]
+fn fix_dry_run_stdin_produces_no_stdout() {
+    let assert = marque()
+        .args(["fix", "--dry-run"])
+        .write_stdin("SECRET//NF\n")
+        .assert()
+        .success();
+
+    // --dry-run should not write any output to stdout.
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_eq!(
+        stdout.as_ref(),
+        "",
+        "dry-run should produce no stdout output"
+    );
+
+    // But audit records should still appear on stderr.
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("\"schema\":\"marque-mvp-1\""),
+        "dry-run should still emit audit records on stderr, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("\"dry_run\":true"),
+        "dry-run audit should have dry_run=true, got: {stderr}"
+    );
+}
+
+// --- H6: all fixes below threshold ---
+
+#[test]
+fn fix_all_below_threshold_exits_one_no_audit() {
+    // SECRET//NOFORN//SI triggers only E003 at confidence 0.6, below
+    // the default 0.95 threshold. No fixes applied.
+    let assert = marque()
+        .args(["fix"])
+        .write_stdin("SECRET//NOFORN//SI\n")
+        .assert()
+        .code(1); // E003 remains as error
+
+    // No fixes applied → no audit records.
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let audit_lines: Vec<&str> = stderr.lines().filter(|l| l.starts_with('{')).collect();
+    assert!(
+        audit_lines.is_empty(),
+        "no fixes applied → no audit records, got: {audit_lines:?}"
+    );
+
+    // stdout should contain the original text (unchanged, written via --write-stdout default).
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_eq!(stdout.as_ref(), "SECRET//NOFORN//SI\n");
+}
+
+// --- L3: --write-stdout with file path ---
+
+#[test]
+fn fix_write_stdout_on_file_input() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let tmp_path = tmp.path().to_path_buf();
+    std::fs::write(&tmp_path, "SECRET//NF\n").unwrap();
+    let original = std::fs::read_to_string(&tmp_path).unwrap();
+
+    let assert = marque()
+        .args(["fix", "--write-stdout"])
+        .arg(&tmp_path)
+        .assert()
+        .success();
+
+    // stdout should have fixed content.
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_eq!(stdout.as_ref(), "SECRET//NOFORN\n");
+
+    // File should be UNCHANGED (--write-stdout overrides --in-place default).
+    let after = std::fs::read_to_string(&tmp_path).unwrap();
+    assert_eq!(original, after, "--write-stdout must not modify the file");
+}
+
+// --- L3 continued: dry-run exit code matches apply exit code ---
+
+#[test]
+fn fix_dry_run_exit_code_matches_apply_exit_code() {
+    let input = "SECRET//NF\nSECRET//NOFORN//SI\n";
+    let apply_code = marque()
+        .args(["fix"])
+        .write_stdin(input)
+        .assert()
+        .get_output()
+        .status
+        .code();
+    let dry_code = marque()
+        .args(["fix", "--dry-run"])
+        .write_stdin(input)
+        .assert()
+        .get_output()
+        .status
+        .code();
+    assert_eq!(
+        apply_code, dry_code,
+        "dry-run exit code must match apply exit code"
+    );
+}
+
+#[test]
 fn fix_explain_config_mutual_exclusion() {
     marque()
         .args(["fix", "--explain-config"])

@@ -882,6 +882,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "futures",
+ "humantime",
  "insta",
  "marque-capco",
  "marque-config",

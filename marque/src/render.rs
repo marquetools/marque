@@ -381,16 +381,25 @@ pub fn render_audit_record(
 
 /// Emit an error frame on the audit stream when serialization fails.
 ///
-/// The frame is constructed manually (no serde) because the serializer
-/// already failed. Shape: `{"schema":"marque-mvp-1","error":"<code>","rule":"<id>"}`
+/// FR-005a fallback: every line on the audit stream must be a complete JSON
+/// object. The error frame is the last resort when the normal serializer has
+/// already failed, so it JSON-escapes its inputs via `serde_json::to_string`
+/// to guarantee well-formed output even if the error message contains quotes
+/// or backslashes.
+///
+/// Shape: `{"schema":"marque-mvp-1","error":"<code>","rule":"<id>"}`
 pub fn render_audit_error_frame(
     stderr: &mut dyn std::io::Write,
     rule_id: &str,
     error_code: &str,
 ) -> std::io::Result<()> {
-    // Manual JSON construction — no serde dependency, no allocation failure.
+    // JSON-escape both values so special characters in error messages
+    // cannot produce malformed JSON on the audit stream.
+    let escaped_error =
+        serde_json::to_string(error_code).unwrap_or_else(|_| "\"serialization_error\"".to_owned());
+    let escaped_rule = serde_json::to_string(rule_id).unwrap_or_else(|_| "\"unknown\"".to_owned());
     let frame = format!(
-        "{{\"schema\":\"{AUDIT_SCHEMA_VERSION}\",\"error\":\"{error_code}\",\"rule\":\"{rule_id}\"}}\n"
+        "{{\"schema\":\"{AUDIT_SCHEMA_VERSION}\",\"error\":{escaped_error},\"rule\":{escaped_rule}}}\n"
     );
     stderr.write_all(frame.as_bytes())
 }
@@ -565,5 +574,77 @@ mod tests {
         let rendered = String::from_utf8(out).unwrap();
         assert!(rendered.contains("^^^^^"));
         assert!(!rendered.contains("replace with"));
+    }
+
+    // --- Audit record tests ---
+
+    #[test]
+    fn render_audit_error_frame_produces_valid_json() {
+        let mut buf = Vec::new();
+        render_audit_error_frame(&mut buf, "E001", "some error").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.ends_with('\n'), "must end with newline");
+        let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
+        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["error"], "some error");
+        assert_eq!(v["rule"], "E001");
+    }
+
+    #[test]
+    fn render_audit_error_frame_escapes_special_characters() {
+        let mut buf = Vec::new();
+        // Error message with quotes and backslashes that would break raw interpolation.
+        render_audit_error_frame(&mut buf, "E001", "key \"foo\\bar\"").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        // Must parse as valid JSON despite special characters in the error.
+        let v: serde_json::Value =
+            serde_json::from_str(s.trim()).expect("error frame must be valid JSON");
+        assert_eq!(v["error"], "key \"foo\\bar\"");
+        assert_eq!(v["schema"], "marque-mvp-1");
+    }
+
+    #[test]
+    fn render_audit_record_produces_valid_ndjson() {
+        use marque_rules::AppliedFix;
+        use std::sync::Arc;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let fix = FixProposal::new(
+            RuleId::new("E001"),
+            FixSource::BuiltinRule,
+            Span::new(8, 10),
+            "NF",
+            "NOFORN",
+            1.0,
+            Some("CAPCO-2023-§3.2"),
+        );
+        let applied = AppliedFix::__engine_promote(
+            fix,
+            UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            Some(Arc::from("classifier-42")),
+            false,
+            Some(Arc::from("test.txt")),
+        );
+
+        let mut buf = Vec::new();
+        render_audit_record(&mut buf, &applied).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.ends_with('\n'));
+
+        let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
+        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["rule"], "E001");
+        assert_eq!(v["source"], "BuiltinRule");
+        assert_eq!(v["span"]["start"], 8);
+        assert_eq!(v["span"]["end"], 10);
+        assert_eq!(v["original"], "NF");
+        assert_eq!(v["replacement"], "NOFORN");
+        assert_eq!(v["confidence"], 1.0);
+        assert_eq!(v["migration_ref"], "CAPCO-2023-§3.2");
+        assert_eq!(v["classifier_id"], "classifier-42");
+        assert_eq!(v["dry_run"], false);
+        assert_eq!(v["input"], "test.txt");
+        // timestamp must be a valid RFC3339 string
+        assert!(v["timestamp"].as_str().unwrap().contains('T'));
     }
 }
