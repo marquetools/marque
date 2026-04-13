@@ -24,13 +24,11 @@ copyleft = "deny"
 confidence-threshold = 0.8
 
 [bans]
-version = 2
 multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
 
 [sources]
-version = 2
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
