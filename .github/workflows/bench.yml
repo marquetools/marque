@@ -17,19 +17,19 @@ jobs:
     name: Criterion regression check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.85"
+          toolchain: "1.89"
 
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.x"
+          python-version: "3.13"
 
       - name: Run bench-check
         run: bash scripts/bench-check.sh
