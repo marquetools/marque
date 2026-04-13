@@ -1,0 +1,4 @@
+[files]
+extend-exclude = [
+    "crates/marque-ism/schemas/",
+]
