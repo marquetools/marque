@@ -263,15 +263,29 @@ impl Classification {
 // FGI classification (non-US, country-prefixed)
 // ---------------------------------------------------------------------------
 
-/// Non-US (FGI) classification: country-prefixed, e.g., `//GBR S//...`.
+/// Non-US (FGI) classification.
+///
+/// Two forms exist:
+///
+/// - **Source-acknowledged**: country trigraph(s) identify the originator.
+///   `//GBR S//REL TO USA, GBR`
+/// - **Source-concealed**: `FGI` replaces the country trigraph(s) when
+///   the originating country is sensitive. `//FGI S//REL TO USA, GBR`
+///   An empty `countries` list indicates source-concealed FGI.
 ///
 /// Countries are space-delimited in the source marking.
-/// An empty `countries` list represents pure `//FGI//` — used when the
-/// originating country is sensitive (almost always NOFORN).
+///
+/// # Banner aggregation
+///
+/// If a document contains **any** source-concealed FGI portions alongside
+/// source-acknowledged FGI portions, the banner must use `FGI` without
+/// country codes — revealing the country list would compromise the
+/// concealed source. This rule is enforced at the `PageContext` level
+/// during banner validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiClassification {
     /// Originating countries (space-delimited in source).
-    /// Empty for pure FGI (sensitive originator).
+    /// Empty for source-concealed FGI (`//FGI S//...`).
     pub countries: Box<[Trigraph]>,
     /// Classification level (includes RESTRICTED).
     pub level: Classification,
@@ -405,11 +419,14 @@ pub struct JointClassification {
 /// marking where the classification itself IS foreign. This marker says
 /// "this US-classified marking contains foreign government information."
 ///
-/// An empty `countries` list represents pure `FGI` with no country
-/// attribution (sensitive originator — almost always NOFORN).
+/// An empty `countries` list represents source-concealed FGI (no country
+/// attribution). If a document mixes source-concealed and source-acknowledged
+/// FGI portions, the banner must use the bare `FGI` form without countries
+/// to avoid compromising the concealed source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiMarker {
-    /// Countries (space-delimited in source). Empty for pure `FGI`.
+    /// Countries (space-delimited in source).
+    /// Empty for source-concealed FGI.
     pub countries: Box<[Trigraph]>,
 }
 
