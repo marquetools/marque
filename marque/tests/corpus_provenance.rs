@@ -233,7 +233,7 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
     let mut violations = Vec::new();
 
     for file in walkdir(&corpus_dir) {
-        if !file.extension().is_some_and(|e| e == "txt") {
+        if file.extension().is_none_or(|e| e != "txt") {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(&file) else {
