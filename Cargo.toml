@@ -24,14 +24,14 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 # Internal crates
-marque-ism     = { path = "crates/marque-ism" }
-marque-core    = { path = "crates/marque-core" }
-marque-rules   = { path = "crates/marque-rules" }
-marque-capco   = { path = "crates/marque-capco" }
-marque-engine  = { path = "crates/marque-engine", default-features = false }
-marque-extract    = { path = "crates/marque-extract" }
-marque-config     = { path = "crates/marque-config" }
-marque-test-utils = { path = "crates/marque-test-utils" }
+marque-ism     = { version = "0.1.0", path = "crates/marque-ism" }
+marque-core    = { version = "0.1.0", path = "crates/marque-core" }
+marque-rules   = { version = "0.1.0", path = "crates/marque-rules" }
+marque-capco   = { version = "0.1.0", path = "crates/marque-capco" }
+marque-engine  = { version = "0.1.0", path = "crates/marque-engine", default-features = false }
+marque-extract    = { version = "0.1.0", path = "crates/marque-extract" }
+marque-config     = { version = "0.1.0", path = "crates/marque-config" }
+marque-test-utils = { version = "0.1.0", path = "crates/marque-test-utils" }
 
 # Async
 tokio        = { version = "1", features = ["full"] }

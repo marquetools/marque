@@ -19,6 +19,7 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
+unused-allowed-license = "allow"
 confidence-threshold = 0.8
 
 [bans]
