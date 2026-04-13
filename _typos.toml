@@ -1,4 +1,20 @@
 [files]
 extend-exclude = [
     "crates/marque-ism/schemas/",
+    # Design docs and specs contain intentional misspellings as examples
+    "docs/plans/",
+    "specs/",
 ]
+
+[default.extend-words]
+# Intentional misspellings used in corrections map test data
+SECRECT = "SECRECT"
+SECERT = "SECERT"
+CONFIDENTAL = "CONFIDENTAL"
+
+[default.extend-identifiers]
+# Hyphenated "mis-splice" is intentional in rule comments
+mis = "mis"
+
+# "unparseable" is acceptable (both forms exist in English)
+unparseable = "unparseable"
