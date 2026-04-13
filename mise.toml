@@ -1,3 +1,9 @@
+experimental_monorepo_root = true
+
+[shell_alias]
+mx = "mise exec --"
+mr = "mise run"
+
 [tools]
 "cargo:cargo-audit" = "latest"
 "cargo:cargo-deny" = "latest"

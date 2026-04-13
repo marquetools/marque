@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-`marque` is a linter, formatter, and auto-fixer for IC (Intelligence Community) classification markings — portion markings, banner markings, and Classification Authority Blocks (CABs) — in the style of `ruff`. It targets CAPCO/ODNI ISM specifications (currently ISM-v2022-DEC). The tool operates on raw text and 75+ document formats (via Kreuzberg), and is designed for perceptual instantaneity at any scale.
+`marque` is a linter, formatter, and auto-fixer for U.S. Government control markings. Currently it only supports IC classification markings (ISM): portion markings, banner markings, and Classification Authority Blocks (CABs) — in the style of `ruff`. It targets CAPCO/ODNI ISM specifications (currently ISM-v2022-DEC). The tool operates on raw text, and is designed for perceptual instantaneity at any scale. Support for a wide range of document formats using existing libraries (possibly Kruezberg) planned.
 
 ## Build Commands
 

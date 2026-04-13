@@ -98,9 +98,18 @@ impl Scanner {
     }
 
     fn scan_banners(source: &[u8], out: &mut Vec<MarkingCandidate>) {
-        // Classification prefixes that can start a banner line (full-word form only).
-        const BANNER_PREFIXES: &[&[u8]] =
-            &[b"TOP SECRET", b"SECRET", b"CONFIDENTIAL", b"UNCLASSIFIED"];
+        // Classification prefixes that can start a banner line.
+        // `//` detects non-US classifications (FGI, NATO, JOINT) where the
+        // US classification slot is empty. `RESTRICTED` supports foreign-origin
+        // markings with the RESTRICTED level.
+        const BANNER_PREFIXES: &[&[u8]] = &[
+            b"TOP SECRET",
+            b"SECRET",
+            b"CONFIDENTIAL",
+            b"RESTRICTED",
+            b"UNCLASSIFIED",
+            b"//",
+        ];
 
         for line in source.split(|&b| b == b'\n') {
             let trimmed = trim_ascii(line);
@@ -312,5 +321,51 @@ mod tests {
             .filter(|c| c.kind == MarkingType::PageBreak)
             .collect();
         assert_eq!(breaks.len(), 1, "only the form-feed should fire here");
+    }
+
+    // --- Non-US banner detection ---
+
+    #[test]
+    fn detects_non_us_banner_nato() {
+        let src = b"//NATO SECRET//REL TO USA, GBR\n";
+        let candidates = Scanner::scan(src);
+        let banners: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::Banner)
+            .collect();
+        assert_eq!(banners.len(), 1);
+    }
+
+    #[test]
+    fn detects_non_us_banner_portion_form() {
+        let src = b"//NS//NF\n";
+        let candidates = Scanner::scan(src);
+        assert!(candidates.iter().any(|c| c.kind == MarkingType::Banner));
+    }
+
+    #[test]
+    fn detects_restricted_banner() {
+        let src = b"RESTRICTED//NF\n";
+        let candidates = Scanner::scan(src);
+        assert!(candidates.iter().any(|c| c.kind == MarkingType::Banner));
+    }
+
+    #[test]
+    fn non_us_portion_detected_by_existing_scanner() {
+        // Portions starting with (// should already be detected via `(`.
+        let src = b"(//NS//REL TO USA, GBR)";
+        let candidates = Scanner::scan(src);
+        assert!(candidates.iter().any(|c| c.kind == MarkingType::Portion));
+    }
+
+    #[test]
+    fn double_slash_mid_line_is_not_banner() {
+        // `//` not at start of trimmed line should not produce a banner.
+        let src = b"some text // not a marking\n";
+        let candidates = Scanner::scan(src);
+        assert!(
+            candidates.iter().all(|c| c.kind != MarkingType::Banner),
+            "// in middle of line should not produce a banner candidate"
+        );
     }
 }

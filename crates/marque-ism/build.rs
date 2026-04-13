@@ -484,7 +484,7 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     }
     // Full banner-word forms for classification (not present in the CVE,
     // which only ships single-letter abbreviations).
-    for word in ["TOP SECRET", "SECRET", "CONFIDENTIAL", "UNCLASSIFIED"] {
+    for word in ["TOP SECRET", "SECRET", "CONFIDENTIAL", "RESTRICTED", "UNCLASSIFIED"] {
         all_tokens.insert(word.to_owned());
     }
     for (value, _) in &sci_entries {
@@ -634,7 +634,7 @@ pub fn rel_to_requires_trigraph(has_rel: bool, trigraph_count: usize) -> bool {
 
 /// Schematron assertion: Banner must use full classification word.
 pub fn banner_requires_full_classification(s: &str) -> bool {
-    matches!(s, "UNCLASSIFIED" | "CONFIDENTIAL" | "SECRET" | "TOP SECRET")
+    matches!(s, "UNCLASSIFIED" | "RESTRICTED" | "CONFIDENTIAL" | "SECRET" | "TOP SECRET")
 }
 "#;
 

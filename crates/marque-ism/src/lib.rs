@@ -10,14 +10,16 @@
 
 pub mod attrs;
 pub mod generated;
+pub mod marking_forms;
 pub mod page_context;
 pub mod span;
 pub mod token_set;
 
 // Re-export primary types at crate root for convenience.
 pub use attrs::{
-    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    TokenKind, TokenSpan, Trigraph,
+    Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
+    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    NatoClassification, NatoLevel, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
 };
 pub use generated::values::SCHEMA_VERSION;
 pub use page_context::PageContext;

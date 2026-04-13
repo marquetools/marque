@@ -91,7 +91,7 @@ impl PageContext {
     /// Returns `None` only if no portions have been accumulated or all
     /// portions failed to parse a classification level.
     pub fn expected_classification(&self) -> Option<Classification> {
-        self.portions.iter().filter_map(|a| a.classification).max()
+        self.portions.iter().filter_map(|a| a.us_classification()).max()
     }
 
     /// All SCI controls that must appear on the banner (union of all portions).
@@ -233,11 +233,11 @@ impl PageContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attrs::Classification;
+    use crate::attrs::{Classification, MarkingClassification};
 
     fn attrs_with_classification(c: Classification) -> IsmAttributes {
         IsmAttributes {
-            classification: Some(c),
+            classification: Some(MarkingClassification::Us(c)),
             ..Default::default()
         }
     }
