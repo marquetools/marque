@@ -61,5 +61,6 @@ jobs:
             FLAGS="$FLAGS --dry-run-cargo-publish"
           fi
           cargo smart-release --execute $FLAGS \
-            marque-capco marque-engine \
+            marque-ism marque-rules marque-core marque-config \
+            marque-extract marque-capco marque-engine \
             marque-wasm marque-server marque
