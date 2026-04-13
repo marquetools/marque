@@ -64,6 +64,15 @@ pub struct IsmAttributes {
     /// Dissemination controls (e.g., NOFORN, RELIDO, ORCON, FISA).
     pub dissem_controls: Box<[DissemControl]>,
 
+    /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
+    ///
+    /// Separate authority framework (CAPCO Register §9), distinct from IC
+    /// dissem controls. In classified documents these appear only in portion
+    /// markings (stripped from banners). On unclassified pages they propagate
+    /// to the banner. LES-NF and SBU-NF carry NOFORN treatment even when
+    /// stripped.
+    pub non_ic_dissem: Box<[NonIcDissem]>,
+
     /// REL TO country trigraphs. USA must be present and first if non-empty.
     ///
     /// Structurally part of the dissem block (comma-delimited), but kept as
@@ -137,6 +146,8 @@ pub enum TokenKind {
     FgiMarker,
     /// Dissemination control token (NOFORN, NF, ORCON, OC, RELIDO, ...).
     DissemControl,
+    /// Non-IC dissemination control token (LIMDIS, DS, SBU, LES, SSI, ...).
+    NonIcDissem,
     /// REL TO country trigraph (USA, GBR, AUS, ...). One per token, not the
     /// whole REL TO list.
     RelToTrigraph,
@@ -400,6 +411,127 @@ pub struct JointClassification {
 pub struct FgiMarker {
     /// Countries (space-delimited in source). Empty for pure `FGI`.
     pub countries: Box<[Trigraph]>,
+}
+
+// ===========================================================================
+// Non-IC dissemination controls
+// ===========================================================================
+
+/// Non-Intelligence Community dissemination control markings (CAPCO Register §9).
+///
+/// These operate under a separate authority framework from IC dissem controls.
+/// In classified documents, non-IC dissem controls appear **only in portion
+/// markings** — they are stripped from banners. The document's banner reflects
+/// the aggregate IC dissem controls. When the page is **unclassified**,
+/// non-IC dissem controls DO propagate to the banner.
+///
+/// LES-NF and SBU-NF carry NOFORN treatment even when stripped from the banner.
+///
+/// # CUI note
+///
+/// CUI (Controlled Unclassified Information) is recognized but not validated.
+/// Full CUI rule support is planned for a dedicated crate. The IC equivalent
+/// (FOUO) remains in active use in the `DissemControl` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum NonIcDissem {
+    /// LIMITED DISTRIBUTION / LIMDIS / DS
+    Limdis,
+    /// EXCLUSIVE DISTRIBUTION / EXDIS / XD
+    Exdis,
+    /// NO DISTRIBUTION / NODIS / ND
+    Nodis,
+    /// SENSITIVE BUT UNCLASSIFIED / SBU / SBU
+    Sbu,
+    /// SENSITIVE BUT UNCLASSIFIED NOFORN / SBU NOFORN / SBU-NF
+    /// Carries NOFORN treatment even when stripped from banner.
+    SbuNf,
+    /// LAW ENFORCEMENT SENSITIVE / LES / LES
+    Les,
+    /// LAW ENFORCEMENT SENSITIVE NOFORN / LES NOFORN / LES-NF
+    /// Carries NOFORN treatment even when stripped from banner.
+    LesNf,
+    /// SENSITIVE SECURITY INFORMATION / SSI / SSI
+    Ssi,
+}
+
+impl NonIcDissem {
+    /// Banner-line abbreviation form.
+    pub fn banner_str(self) -> &'static str {
+        match self {
+            Self::Limdis => "LIMDIS",
+            Self::Exdis => "EXDIS",
+            Self::Nodis => "NODIS",
+            Self::Sbu => "SBU",
+            Self::SbuNf => "SBU NOFORN",
+            Self::Les => "LES",
+            Self::LesNf => "LES NOFORN",
+            Self::Ssi => "SSI",
+        }
+    }
+
+    /// Portion mark abbreviation.
+    pub fn portion_str(self) -> &'static str {
+        match self {
+            Self::Limdis => "DS",
+            Self::Exdis => "XD",
+            Self::Nodis => "ND",
+            Self::Sbu => "SBU",
+            Self::SbuNf => "SBU-NF",
+            Self::Les => "LES",
+            Self::LesNf => "LES-NF",
+            Self::Ssi => "SSI",
+        }
+    }
+
+    /// Parse from either banner or portion form.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "LIMDIS" | "DS" => Some(Self::Limdis),
+            "EXDIS" | "XD" => Some(Self::Exdis),
+            "NODIS" | "ND" => Some(Self::Nodis),
+            "SBU" => Some(Self::Sbu),
+            "SBU NOFORN" | "SBU-NF" => Some(Self::SbuNf),
+            "LES" => Some(Self::Les),
+            "LES NOFORN" | "LES-NF" => Some(Self::LesNf),
+            "SSI" => Some(Self::Ssi),
+            _ => None,
+        }
+    }
+
+    /// Returns true if this control carries NOFORN treatment.
+    pub fn carries_noforn(self) -> bool {
+        matches!(self, Self::SbuNf | Self::LesNf)
+    }
+
+    /// Returns true if this control propagates to classified banners.
+    ///
+    /// Most non-IC dissem controls are stripped from banners in classified
+    /// documents. These exceptions propagate:
+    /// - LIMDIS: NGA Title 10 marking, appears in classified banners
+    /// - LES: propagates to banners; LES-NF propagates as NOFORN//LES
+    /// - SSI: propagates to banners
+    pub fn propagates_to_classified_banner(self) -> bool {
+        matches!(self, Self::Limdis | Self::Les | Self::LesNf | Self::Ssi)
+    }
+
+    /// All valid values.
+    pub const ALL: &[NonIcDissem] = &[
+        Self::Limdis,
+        Self::Exdis,
+        Self::Nodis,
+        Self::Sbu,
+        Self::SbuNf,
+        Self::Les,
+        Self::LesNf,
+        Self::Ssi,
+    ];
+}
+
+impl std::fmt::Display for NonIcDissem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.portion_str())
+    }
 }
 
 // ===========================================================================

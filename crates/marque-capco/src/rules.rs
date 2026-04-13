@@ -24,6 +24,7 @@
 //!   E015 = non-US classification without dissem control
 //!   W001 = deprecated marking warning (T038)
 //!   W002 = US + FGI comingling in portion
+//!   W003 = non-IC dissem in classified banner
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -67,6 +68,7 @@ impl CapcoRuleSet {
                 Box::new(CominglingWarningRule),
                 Box::new(JointRelToRule),
                 Box::new(NonUsMissingDissemRule),
+                Box::new(NonIcInClassifiedBannerRule),
             ],
         }
     }
@@ -1572,6 +1574,82 @@ impl Rule for NonUsMissingDissemRule {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: W003 — Non-IC dissem in classified banner
+// ---------------------------------------------------------------------------
+
+/// Some non-IC dissemination controls should not appear in classified banners.
+///
+/// LIMDIS, LES, LES-NF, and SSI propagate to classified banners and are fine.
+/// EXDIS, NODIS, SBU, and SBU-NF do NOT propagate — they belong only in
+/// portion markings (or in UNCLASSIFIED banners).
+struct NonIcInClassifiedBannerRule;
+
+impl Rule for NonIcInClassifiedBannerRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W003")
+    }
+    fn name(&self) -> &'static str {
+        "non-ic-dissem-in-classified-banner"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+
+        if attrs.non_ic_dissem.is_empty() {
+            return vec![];
+        }
+
+        // Non-IC dissem is fine in UNCLASSIFIED banners.
+        let is_classified = attrs
+            .us_classification()
+            .is_some_and(|c| c > marque_ism::Classification::Unclassified);
+        if !is_classified {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            // LIMDIS, LES, LES-NF, SSI propagate to classified banners.
+            if nic.propagates_to_classified_banner() {
+                continue;
+            }
+
+            let span = nic_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "non-IC dissem control {} should not appear in a classified banner; \
+                     use only in portion markings",
+                    nic.banner_str(),
+                ),
+                "CAPCO-ISM-v2022-DEC-§9",
+                None,
+            ));
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -1636,8 +1714,9 @@ mod tests {
         assert!(ids.contains(&"E015"));
         assert!(ids.contains(&"W001"));
         assert!(ids.contains(&"W002"));
+        assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
-        assert_eq!(set.rules().len(), 18);
+        assert_eq!(set.rules().len(), 19);
     }
 
     #[test]
@@ -2043,6 +2122,102 @@ mod tests {
         assert!(
             unexpected.is_empty(),
             "clean NATO portion should have no unexpected diagnostics, got: {unexpected:?}"
+        );
+    }
+
+    // --- Non-IC dissem controls ---
+
+    #[test]
+    fn non_ic_dissem_parses_in_portion() {
+        let diags = lint_portion("(U//DS)");
+        // DS = LIMDIS portion form. Should parse without E008 (unknown token).
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E008"),
+            "DS should be recognized as non-IC dissem, not unknown: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_les_nf_parses() {
+        let diags = lint_portion("(U//LES-NF)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E008"),
+            "LES-NF should be recognized: {diags:?}"
+        );
+    }
+
+    // --- W003: Non-IC dissem in classified banner ---
+
+    #[test]
+    fn w003_fires_on_sbu_in_classified_banner() {
+        let diags = lint_banner("CONFIDENTIAL//SBU");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(w003.len(), 1);
+        assert!(w003[0].message.contains("SBU"));
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_unclassified_banner() {
+        let diags = lint_banner("UNCLASSIFIED//SBU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "W003 should not fire on UNCLASSIFIED banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_limdis_in_classified_banner() {
+        // LIMDIS (NGA Title 10) propagates to classified banners.
+        let diags = lint_banner("SECRET//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "LIMDIS propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_les_in_classified_banner() {
+        // LES propagates to classified banners.
+        let diags = lint_banner("SECRET//LES");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "LES propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_ssi_in_classified_banner() {
+        // SSI propagates to classified banners.
+        let diags = lint_banner("SECRET//SSI");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "SSI propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_portion() {
+        let diags = lint_portion("(C//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "W003 is banner-only: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_correct_classified_doc() {
+        // The example from the user: classified doc with non-IC dissem only in portions.
+        // Banner should be clean.
+        let diags = lint_banner("CONFIDENTIAL//NOFORN");
+        assert!(
+            diags.is_empty(),
+            "clean classified banner should have no diagnostics: {diags:?}"
+        );
+        // Portion with non-IC dissem is fine.
+        let diags = lint_portion("(U//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "non-IC dissem in portion should not fire W003: {diags:?}"
         );
     }
 }

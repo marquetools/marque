@@ -19,7 +19,8 @@ pub mod token_set;
 pub use attrs::{
     Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NatoLevel, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    NatoClassification, NatoLevel, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan,
+    Trigraph,
 };
 pub use generated::values::SCHEMA_VERSION;
 pub use page_context::PageContext;

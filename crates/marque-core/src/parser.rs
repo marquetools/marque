@@ -19,7 +19,7 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
 // has entries. The type is used in from_str() which returns None for now.
@@ -181,6 +181,7 @@ impl<'t> Parser<'t> {
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
+        let mut non_ic: Vec<NonIcDissem> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
@@ -279,6 +280,13 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+            } else if let Some(nic) = NonIcDissem::parse(trimmed) {
+                non_ic.push(nic);
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::NonIcDissem,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if let Some(sar_id) = SarIdentifier::parse(trimmed) {
                 sar.push(sar_id);
                 token_spans.push(TokenSpan {
@@ -339,6 +347,7 @@ impl<'t> Parser<'t> {
         attrs.sci_controls = sci.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
+        attrs.non_ic_dissem = non_ic.into_boxed_slice();
         attrs.rel_to = rel_to.into_boxed_slice();
         // Record separator spans (Phase 3 needs them for E004). Push them
         // here alongside block tokens, then sort by start offset so the
@@ -1089,5 +1098,58 @@ mod tests {
             parsed.attrs.classification,
             Some(MarkingClassification::Us(Classification::Restricted)),
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Non-IC dissemination controls
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn non_ic_dissem_limdis_banner_form() {
+        let parsed = parse_banner("UNCLASSIFIED//LIMDIS");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(
+            parsed.attrs.non_ic_dissem[0],
+            NonIcDissem::Limdis,
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_ds_portion_form() {
+        let parsed = parse_portion("(U//DS)");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Limdis);
+    }
+
+    #[test]
+    fn non_ic_dissem_les_nf() {
+        let parsed = parse_portion("(U//LES-NF)");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::LesNf);
+        assert!(parsed.attrs.non_ic_dissem[0].carries_noforn());
+    }
+
+    #[test]
+    fn non_ic_dissem_sbu_nf_banner() {
+        let parsed = parse_banner("UNCLASSIFIED//SBU NOFORN");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::SbuNf);
+    }
+
+    #[test]
+    fn non_ic_dissem_not_confused_with_ic_dissem() {
+        // SSI should be non-IC, not IC.
+        let parsed = parse_portion("(U//SSI)");
+        assert!(parsed.attrs.dissem_controls.is_empty());
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Ssi);
+    }
+
+    #[test]
+    fn non_ic_dissem_alongside_ic_dissem() {
+        // Classified portion with both IC and non-IC dissem.
+        let parsed = parse_portion("(C//NF//DS)");
+        assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);   // DS = LIMDIS
     }
 }
