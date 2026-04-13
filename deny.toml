@@ -8,7 +8,6 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 
 [licenses]
 version = 2
-unlicensed = "deny"
 allow = [
     "Apache-2.0",
     "MIT",
@@ -20,7 +19,6 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
-copyleft = "deny"
 confidence-threshold = 0.8
 
 [bans]
