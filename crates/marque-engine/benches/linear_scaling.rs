@@ -2,7 +2,7 @@
 //!
 //! Sweeps input size across at least one order of magnitude (1KB -> 100KB)
 //! and measures throughput at each size. Criterion's HTML report
-//! (`target/criterion/`) visualises the throughput curve for linearity
+//! (`target/criterion/`) visualizes the throughput curve for linearity
 //! verification. The ≤16ms regression threshold (based on Criterion's
 //! CI upper bound) is enforced by `scripts/bench-check.sh`; this
 //! benchmark provides the scaling data.

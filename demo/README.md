@@ -20,7 +20,7 @@ Then open: <http://localhost:8080/demo/>
 wasm-pack build crates/marque-wasm --target web --dev
 ```
 
-For a production-optimised build (requires wasm-opt or `wasm-opt = false` in
+For a production-optimized build (requires wasm-opt or `wasm-opt = false` in
 `Cargo.toml`):
 
 ```sh
@@ -29,7 +29,7 @@ wasm-pack build crates/marque-wasm --target web --profile release-wasm
 
 ## What the demo shows
 
-| Behaviour | How |
+| Behavior | How |
 |-----------|-----|
 | Banner auto-updates as you type | `compute_banner()` on every keystroke (50 ms debounce) |
 | Typos self-correct | `fix(text, 0.0)` — threshold 0 applies all fixes including corrections map |

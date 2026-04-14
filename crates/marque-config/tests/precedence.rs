@@ -191,7 +191,7 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    // Serialise env-var access so parallel test threads don't race.
+    // Serialize env-var access so parallel test threads don't race.
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _env = EnvGuard::set("MARQUE_CLASSIFIER_ID", "ENV-99");
     let config = marque_config::load(&dir);

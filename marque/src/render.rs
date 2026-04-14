@@ -4,7 +4,7 @@
 //! - **human**: rustc-style diagnostic — a header line with location and
 //!   rule identifier, followed by a source snippet with a `|` gutter, the
 //!   offending line(s), and a `^^^` caret line pointing at the span.
-//!   ANSI-coloured by default.
+//!   ANSI-colored by default.
 //! - **json**: NDJSON conforming to `contracts/diagnostic.json`.
 //!
 //! ANSI is suppressed when any of these is true:
