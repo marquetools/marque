@@ -39,8 +39,8 @@
 //! no explicit date is present.
 
 use crate::attrs::{
-    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    Trigraph,
+    AeaMarking, Classification, DeclassExemption, DissemControl, FgiMarker, IsmAttributes,
+    MarkingClassification, NonIcDissem, SarIdentifier, SciControl, Trigraph,
 };
 
 /// Page-level aggregation context, built by the engine as it processes portion
@@ -116,15 +116,57 @@ impl PageContext {
         seen.into_iter().collect()
     }
 
-    /// All dissemination controls that must appear on the banner (union of all
-    /// portions). Includes controls from the banner form (e.g., NOFORN, ORCON).
+    /// All dissemination controls that must appear on the banner.
+    ///
+    /// Base rule is union, with important exceptions per ISM-Rollup XSLT:
+    ///
+    /// - **OC-USGOV**: Drops if not present on ALL OC-carrying portions
+    /// - **FOUO**: Drops in classified documents (stays in unclassified)
+    /// - **DSEN**: Overrides/replaces FOUO when both present
+    /// - **NF injection**: Added when non-IC SBU-NF/LES-NF split occurs
+    ///   in classified docs (caller should check `expected_non_ic_dissem()`)
     pub fn expected_dissem_controls(&self) -> Vec<DissemControl> {
+        let classified = self.is_classified();
+
+        // Step 1: Basic union of all dissem controls.
         let mut seen = std::collections::BTreeSet::new();
         for attrs in &self.portions {
             for &ctrl in attrs.dissem_controls.iter() {
                 seen.insert(ctrl);
             }
         }
+
+        // Step 2: OC-USGOV drops if not on ALL OC-carrying portions.
+        if seen.contains(&DissemControl::OcUsgov) {
+            let oc_portions: Vec<_> = self
+                .portions
+                .iter()
+                .filter(|a| a.dissem_controls.contains(&DissemControl::Oc))
+                .collect();
+            if !oc_portions.is_empty() {
+                let all_have_usgov = oc_portions
+                    .iter()
+                    .all(|a| a.dissem_controls.contains(&DissemControl::OcUsgov));
+                if !all_have_usgov {
+                    seen.remove(&DissemControl::OcUsgov);
+                }
+            }
+        }
+
+        // Step 3: FOUO drops in classified documents.
+        if classified && seen.contains(&DissemControl::Fouo) {
+            // DSEN overrides FOUO — if both present, FOUO is replaced by DSEN
+            // regardless of classification. If only FOUO, it just drops in
+            // classified docs.
+            seen.remove(&DissemControl::Fouo);
+        }
+
+        // Step 4: NF injection from non-IC SBU-NF/LES-NF split.
+        let (_, needs_nf) = self.expected_non_ic_dissem();
+        if needs_nf {
+            seen.insert(DissemControl::Nf);
+        }
+
         seen.into_iter().collect()
     }
 
@@ -228,6 +270,232 @@ impl PageContext {
             .filter_map(|a| a.declass_exemption)
             .next_back()
     }
+
+    // -----------------------------------------------------------------------
+    // Classification helper
+    // -----------------------------------------------------------------------
+
+    /// Whether the expected banner classification is above UNCLASSIFIED.
+    ///
+    /// Used by AEA, non-IC, and FOUO rollup logic — several markings are
+    /// dropped or transformed when the document/page is classified.
+    pub fn is_classified(&self) -> bool {
+        self.expected_classification()
+            .is_some_and(|c| c > Classification::Unclassified)
+    }
+
+    // -----------------------------------------------------------------------
+    // AEA rollup
+    // -----------------------------------------------------------------------
+
+    /// Expected AEA markings for the banner.
+    ///
+    /// Aggregation rules (ISM-Rollup XSLT + CAPCO-2016):
+    /// - Union of all AEA markings across portions
+    /// - **UCNI/DCNI drop in classified documents** — only appear in
+    ///   unclassified banners
+    /// - SIGMA compartment numbers are aggregated and sorted
+    /// - RD blocks are merged: if multiple portions have RD with different
+    ///   SIGMA numbers, the result is a single RD block with all SIGMAs
+    pub fn expected_aea_markings(&self) -> Vec<AeaMarking> {
+        let classified = self.is_classified();
+        let mut has_rd = false;
+        let mut rd_cnwdi = false;
+        let mut rd_sigma: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
+        let mut has_frd = false;
+        let mut frd_sigma: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
+        let mut has_tfni = false;
+        let mut has_dod_ucni = false;
+        let mut has_doe_ucni = false;
+
+        for attrs in &self.portions {
+            for aea in attrs.aea_markings.iter() {
+                match aea {
+                    AeaMarking::Rd(rd) => {
+                        has_rd = true;
+                        if rd.cnwdi {
+                            rd_cnwdi = true;
+                        }
+                        for &s in rd.sigma.iter() {
+                            rd_sigma.insert(s);
+                        }
+                    }
+                    AeaMarking::Frd(frd) => {
+                        has_frd = true;
+                        for &s in frd.sigma.iter() {
+                            frd_sigma.insert(s);
+                        }
+                    }
+                    AeaMarking::Tfni => has_tfni = true,
+                    AeaMarking::DodUcni => has_dod_ucni = true,
+                    AeaMarking::DoeUcni => has_doe_ucni = true,
+                }
+            }
+        }
+
+        let mut result = Vec::new();
+
+        // RD (with merged CNWDI + SIGMA). RD takes precedence — if RD is
+        // present, FRD SIGMAs merge into the RD block per CAPCO-2016.
+        if has_rd {
+            // When both RD and FRD SIGMA are present, all SIGMAs go
+            // under the RD block.
+            let all_sigma: Vec<u8> = rd_sigma.union(&frd_sigma).copied().collect();
+            result.push(AeaMarking::Rd(crate::attrs::RdBlock {
+                cnwdi: rd_cnwdi,
+                sigma: all_sigma.into(),
+            }));
+        }
+
+        // FRD only if RD is not present (RD takes precedence).
+        if has_frd && !has_rd {
+            result.push(AeaMarking::Frd(crate::attrs::FrdBlock {
+                sigma: frd_sigma.into_iter().collect::<Vec<_>>().into(),
+            }));
+        }
+
+        if has_tfni && !has_rd {
+            result.push(AeaMarking::Tfni);
+        }
+
+        // UCNI/DCNI drop in classified documents.
+        if !classified {
+            if has_dod_ucni {
+                result.push(AeaMarking::DodUcni);
+            }
+            if has_doe_ucni {
+                result.push(AeaMarking::DoeUcni);
+            }
+        }
+
+        result
+    }
+
+    // -----------------------------------------------------------------------
+    // FGI rollup
+    // -----------------------------------------------------------------------
+
+    /// Expected FGI marker for the banner.
+    ///
+    /// Rules (ISM-Rollup XSLT):
+    /// - If any portion has source-concealed FGI (empty countries), the
+    ///   banner uses bare `FGI` with no countries (protected supersedes open)
+    /// - Otherwise, union of all FGI source countries
+    /// - Non-USA ownerProducer on portions contributes to FGI sources
+    pub fn expected_fgi_marker(&self) -> Option<FgiMarker> {
+        let mut has_any_fgi = false;
+        let mut has_source_concealed = false;
+        let mut countries = std::collections::BTreeSet::new();
+
+        for attrs in &self.portions {
+            // Explicit FGI markers on portions.
+            if let Some(marker) = &attrs.fgi_marker {
+                has_any_fgi = true;
+                if marker.countries.is_empty() {
+                    has_source_concealed = true;
+                } else {
+                    for &c in marker.countries.iter() {
+                        countries.insert(c.as_str().to_owned());
+                    }
+                }
+            }
+
+            // Non-US classification systems contribute to FGI in banner.
+            match &attrs.classification {
+                Some(MarkingClassification::Fgi(fgi)) => {
+                    has_any_fgi = true;
+                    if fgi.countries.is_empty() {
+                        has_source_concealed = true;
+                    } else {
+                        for c in fgi.countries.iter() {
+                            countries.insert(c.as_str().to_owned());
+                        }
+                    }
+                }
+                Some(MarkingClassification::Nato(_)) => {
+                    has_any_fgi = true;
+                    countries.insert("NATO".to_owned());
+                }
+                Some(MarkingClassification::Joint(j)) => {
+                    has_any_fgi = true;
+                    for c in j.countries.iter() {
+                        if c.as_str() != "USA" {
+                            countries.insert(c.as_str().to_owned());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !has_any_fgi {
+            return None;
+        }
+
+        // Source-concealed supersedes all open sources.
+        if has_source_concealed {
+            return Some(FgiMarker {
+                countries: Box::new([]),
+            });
+        }
+
+        // Convert country strings back to Trigraphs (only 3-char codes).
+        let trigraphs: Vec<Trigraph> = countries
+            .iter()
+            .filter_map(|s| {
+                if s.len() == 3 {
+                    Trigraph::try_new(s.as_bytes().try_into().ok()?)
+                } else {
+                    None // Skip tetragraphs like NATO for now
+                }
+            })
+            .collect();
+
+        Some(FgiMarker {
+            countries: trigraphs.into(),
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Non-IC dissem rollup
+    // -----------------------------------------------------------------------
+
+    /// Expected non-IC dissem controls for the banner.
+    ///
+    /// Rules (ISM-Rollup XSLT + NonICRollup.xspec):
+    /// - Union of all non-IC controls across portions
+    /// - **SBU-NF in classified docs**: Splits to SBU + NF (NF goes to dissem)
+    /// - **LES-NF in classified docs**: Splits to LES + NF
+    /// - In unclassified docs: SBU-NF and LES-NF kept intact
+    ///
+    /// Returns a tuple: (non_ic_controls, additional_nf) where additional_nf
+    /// is true if NF should be added to dissem controls from the split.
+    pub fn expected_non_ic_dissem(&self) -> (Vec<NonIcDissem>, bool) {
+        let classified = self.is_classified();
+        let mut seen = std::collections::BTreeSet::new();
+        let mut needs_nf_from_split = false;
+
+        for attrs in &self.portions {
+            for &nic in attrs.non_ic_dissem.iter() {
+                seen.insert(nic);
+            }
+        }
+
+        if classified {
+            // SBU-NF → SBU + NF (dissem)
+            if seen.remove(&NonIcDissem::SbuNf) {
+                seen.insert(NonIcDissem::Sbu);
+                needs_nf_from_split = true;
+            }
+            // LES-NF → LES + NF (dissem)
+            if seen.remove(&NonIcDissem::LesNf) {
+                seen.insert(NonIcDissem::Les);
+                needs_nf_from_split = true;
+            }
+        }
+
+        (seen.into_iter().collect(), needs_nf_from_split)
+    }
 }
 
 #[cfg(test)]
@@ -328,5 +596,189 @@ mod tests {
         ctx.add_portion(a1);
         ctx.add_portion(a2);
         assert_eq!(ctx.expected_declassify_on(), Some("20481231"));
+    }
+
+    // --- is_classified ---
+
+    #[test]
+    fn is_classified_true_for_secret() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+        assert!(ctx.is_classified());
+    }
+
+    #[test]
+    fn is_classified_false_for_unclassified() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Unclassified));
+        assert!(!ctx.is_classified());
+    }
+
+    // --- AEA rollup ---
+
+    #[test]
+    fn aea_rd_union_across_portions() {
+        use crate::attrs::{AeaMarking, RdBlock};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            aea_markings: vec![AeaMarking::Rd(RdBlock::default())].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            aea_markings: vec![AeaMarking::Rd(RdBlock {
+                cnwdi: false,
+                sigma: vec![18].into(),
+            })]
+            .into(),
+            ..Default::default()
+        });
+        let aea = ctx.expected_aea_markings();
+        assert_eq!(aea.len(), 1);
+        match &aea[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(!rd.cnwdi);
+                assert_eq!(&*rd.sigma, &[18]);
+            }
+            other => panic!("expected Rd, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_sigma_aggregated_sorted() {
+        use crate::attrs::{AeaMarking, RdBlock};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            aea_markings: vec![AeaMarking::Rd(RdBlock {
+                cnwdi: false,
+                sigma: vec![20, 14].into(),
+            })]
+            .into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            aea_markings: vec![AeaMarking::Rd(RdBlock {
+                cnwdi: false,
+                sigma: vec![18].into(),
+            })]
+            .into(),
+            ..Default::default()
+        });
+        let aea = ctx.expected_aea_markings();
+        match &aea[0] {
+            AeaMarking::Rd(rd) => {
+                // All unique SIGMAs merged and sorted.
+                assert_eq!(&*rd.sigma, &[14, 18, 20]);
+            }
+            other => panic!("expected Rd, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_ucni_drops_in_classified() {
+        use crate::attrs::AeaMarking;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            aea_markings: vec![AeaMarking::DodUcni].into(),
+            ..Default::default()
+        });
+        // Classified doc → UCNI drops.
+        let aea = ctx.expected_aea_markings();
+        assert!(aea.is_empty(), "UCNI should drop in classified: {aea:?}");
+    }
+
+    #[test]
+    fn aea_ucni_kept_in_unclassified() {
+        use crate::attrs::AeaMarking;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            aea_markings: vec![AeaMarking::DodUcni].into(),
+            ..Default::default()
+        });
+        let aea = ctx.expected_aea_markings();
+        assert_eq!(aea.len(), 1);
+        assert_eq!(aea[0], AeaMarking::DodUcni);
+    }
+
+    // --- Non-IC rollup ---
+
+    #[test]
+    fn non_ic_sbu_nf_splits_in_classified() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
+            ..Default::default()
+        });
+        let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+        // SBU-NF splits to SBU + NF
+        assert!(non_ic.contains(&NonIcDissem::Sbu));
+        assert!(!non_ic.contains(&NonIcDissem::SbuNf));
+        assert!(needs_nf, "NF should be added to dissem from SBU-NF split");
+    }
+
+    #[test]
+    fn non_ic_sbu_nf_kept_in_unclassified() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
+            ..Default::default()
+        });
+        let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+        assert!(non_ic.contains(&NonIcDissem::SbuNf));
+        assert!(!needs_nf);
+    }
+
+    // --- FGI rollup ---
+
+    #[test]
+    fn fgi_source_concealed_supersedes_open() {
+        let mut ctx = PageContext::new();
+        // One portion with source-concealed FGI.
+        ctx.add_portion(IsmAttributes {
+            fgi_marker: Some(FgiMarker {
+                countries: Box::new([]),
+            }),
+            ..Default::default()
+        });
+        // Another with source-acknowledged FGI.
+        ctx.add_portion(IsmAttributes {
+            fgi_marker: Some(FgiMarker {
+                countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+            }),
+            ..Default::default()
+        });
+        let marker = ctx.expected_fgi_marker().expect("should have FGI marker");
+        // Source-concealed wins → no countries.
+        assert!(
+            marker.countries.is_empty(),
+            "source-concealed should supersede: {:?}",
+            marker.countries,
+        );
+    }
+
+    #[test]
+    fn fgi_open_union_of_countries() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            fgi_marker: Some(FgiMarker {
+                countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+            }),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            fgi_marker: Some(FgiMarker {
+                countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+            }),
+            ..Default::default()
+        });
+        let marker = ctx.expected_fgi_marker().unwrap();
+        assert_eq!(marker.countries.len(), 2);
     }
 }
