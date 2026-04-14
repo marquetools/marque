@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

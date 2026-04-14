@@ -270,3 +270,179 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
 pub fn fix(text: &str, threshold: f32, config_json: Option<String>) -> Result<String, JsValue> {
     fix_native(text, threshold, config_json).map_err(|e| JsValue::from_str(&e))
 }
+
+// ---------------------------------------------------------------------------
+// compute_banner — scanner + parser + PageContext only (no rules engine)
+// ---------------------------------------------------------------------------
+
+/// Compute the expected CAPCO banner string from portion markings in `text`.
+///
+/// Scans the text for portion markings only, parses each, accumulates a
+/// [`PageContext`], and returns `render_expected_banner()`. Does NOT run the
+/// rules engine — this is purely: scanner → parser → PageContext.
+///
+/// Returns `"UNCLASSIFIED"` if no portions are found or none parse.
+pub fn compute_banner_native(text: &str) -> Result<String, String> {
+    use marque_core::{Parser, Scanner};
+    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
+
+    let token_set = CapcoTokenSet;
+    let parser = Parser::new(&token_set);
+    let candidates = Scanner::scan(text.as_bytes());
+    let mut page_context = PageContext::new();
+
+    for candidate in &candidates {
+        if candidate.kind != MarkingType::Portion {
+            continue;
+        }
+        if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
+            page_context.add_portion(parsed.attrs);
+        }
+    }
+
+    Ok(page_context
+        .render_expected_banner()
+        .unwrap_or_else(|| "UNCLASSIFIED".to_owned()))
+}
+
+/// Compute the expected CAPCO banner string from portion markings in `text`.
+///
+/// Returns `"UNCLASSIFIED"` if no portion markings are found.
+#[wasm_bindgen]
+pub fn compute_banner(text: &str) -> Result<String, JsValue> {
+    compute_banner_native(text).map_err(|e| JsValue::from_str(&e))
+}
+
+// ---------------------------------------------------------------------------
+// generate_cab — Classification Authority Block text
+// ---------------------------------------------------------------------------
+
+/// Generate a Classification Authority Block (CAB) text block.
+///
+/// Scans `text` for portion markings to determine the document's expected
+/// classification and declassification marking, then produces a formatted CAB:
+///
+/// ```text
+/// Classified By: <classified_by>
+/// Derived From: <derived_from>
+/// Declassify On: <declass>
+/// ```
+///
+/// # Declassification logic
+///
+/// 1. If an explicit `declassify_on` date or `declass_exemption` is found in a
+///    parsed marking in `text`, that value is used verbatim.
+/// 2. Otherwise, the default is **25 years from the current year** per
+///    EO 13526 § 1.5(a) (the CAPCO default for NSI when no other instruction
+///    is present).
+/// 3. If the document computes as UNCLASSIFIED (with or without dissem
+///    controls), returns an **empty string** — no CAB is required for
+///    UNCLASSIFIED documents.
+///
+/// `classified_by` defaults to `"Derivative Classifier"` if not provided.
+/// `derived_from` defaults to `"Multiple Sources"` if not provided.
+pub fn generate_cab_native(
+    text: &str,
+    classified_by: Option<String>,
+    derived_from: Option<String>,
+) -> Result<String, String> {
+    use marque_core::{Parser, Scanner};
+    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
+
+    let classified_by =
+        classified_by.unwrap_or_else(|| "Derivative Classifier".to_owned());
+    let derived_from = derived_from.unwrap_or_else(|| "Multiple Sources".to_owned());
+
+    // Scan text to accumulate portions into PageContext and collect any
+    // declassification markings already present.
+    let token_set = CapcoTokenSet;
+    let parser = Parser::new(&token_set);
+    let candidates = Scanner::scan(text.as_bytes());
+    let mut page_context = PageContext::new();
+    let mut found_declass_date: Option<String> = None;
+    let mut found_declass_exemption: Option<String> = None;
+
+    for candidate in &candidates {
+        if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
+            if candidate.kind == MarkingType::Portion {
+                page_context.add_portion(parsed.attrs.clone());
+            }
+            if found_declass_date.is_none() {
+                if let Some(date) = &parsed.attrs.declassify_on {
+                    found_declass_date = Some(date.to_string());
+                }
+            }
+            if found_declass_exemption.is_none() {
+                if let Some(ex) = parsed.attrs.declass_exemption {
+                    found_declass_exemption = Some(ex.as_str().to_owned());
+                }
+            }
+        }
+    }
+
+    // If the document is unclassified, there is no CAB at all.
+    // CAPCO: a CAB is only required for classified NSI documents; an
+    // UNCLASSIFIED banner (with or without dissem controls) carries no
+    // "Classified By", "Derived From", or "Declassify On" fields.
+    if !page_context.is_classified() {
+        return Ok(String::new());
+    }
+
+    // Determine the declassification marking.
+    let declass = if let Some(date) = found_declass_date {
+        date
+    } else if let Some(ex) = found_declass_exemption {
+        ex
+    } else if let Some(ex) = page_context.expected_declass_exemption() {
+        ex.as_str().to_owned()
+    } else {
+        // EO 13526 §1.5(a) default: 25 years from the date of origin.
+        // Since we cannot determine the document date from raw text, we
+        // use the current year as a conservative base (the user should
+        // supply a known origination date via a future API parameter when
+        // precision matters).
+        // Format as YYYYMMDD (December 31, conventional end-of-year date).
+        let base_year = current_year();
+        format!("{}1231", base_year + 25)
+    };
+
+    Ok(format!(
+        "Classified By: {classified_by}\nDerived From: {derived_from}\nDeclassify On: {declass}"
+    ))
+}
+
+/// Seconds in a Julian year (365.25 × 24 × 3600), used to approximate the
+/// current calendar year from a UNIX timestamp.
+const SECONDS_PER_JULIAN_YEAR: u64 = 31_557_600;
+
+/// Returns the current calendar year, usable in both native and WASM contexts.
+///
+/// Uses `std::time::SystemTime` (available since Rust 1.85 in `wasm32-unknown-unknown`).
+/// Falls back gracefully if the system clock is unavailable.
+fn current_year() -> u32 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Approximate: 1970 + elapsed_seconds / seconds_per_year (Julian year ≈ 365.25 days)
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    1970 + (secs / SECONDS_PER_JULIAN_YEAR) as u32
+}
+
+/// Generate a Classification Authority Block (CAB) text block.
+///
+/// Returns formatted multi-line text suitable for display in the CAB section
+/// of a classified document.
+///
+/// # Arguments
+/// - `text`: document body text (used to compute classification from portions)
+/// - `classified_by`: optional "Classified By" field (defaults to "Derivative Classifier")
+/// - `derived_from`: optional "Derived From" field (defaults to "Multiple Sources")
+#[wasm_bindgen]
+pub fn generate_cab(
+    text: &str,
+    classified_by: Option<String>,
+    derived_from: Option<String>,
+) -> Result<String, JsValue> {
+    generate_cab_native(text, classified_by, derived_from).map_err(|e| JsValue::from_str(&e))
+}

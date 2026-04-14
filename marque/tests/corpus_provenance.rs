@@ -285,8 +285,12 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
                 }
 
                 // Handle comma-separated lists (e.g., "SI, TK")
+                // Also handle CAPCO §D.1 slash-separated entries within a block
+                // (e.g., "SI/TK" → ["SI", "TK"]).
                 let sub_tokens: Vec<&str> = if block.contains(',') {
                     block.split(',').map(|t| t.trim()).collect()
+                } else if block.contains('/') {
+                    block.split('/').map(|t| t.trim()).collect()
                 } else {
                     vec![block]
                 };
