@@ -29,8 +29,8 @@ marque-core = { path = "crates/marque-core" }
 marque-engine = { path = "crates/marque-engine", default-features = false }
 marque-extract = { path = "crates/marque-extract" }
 # Internal crates
-marque-ism = { path = "crates/marque-ism" }
-marque-rules = { path = "crates/marque-rules" }
+marque-ism = { path = "crates/marque-ism", version = "0.2.0" }
+marque-rules = { path = "crates/marque-rules", version = "0.2.0" }
 marque-test-utils = { path = "crates/marque-test-utils" }
 
 async-trait = "0.1.89"
