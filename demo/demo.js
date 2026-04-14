@@ -303,8 +303,14 @@ async function main() {
     } catch (e) {
       cabText = 'Error generating CAB.';
     }
-    cabContent.textContent = cabText;
-    cabContent.classList.remove('cab-placeholder');
+    if (cabText) {
+      cabContent.textContent = cabText;
+      cabContent.classList.remove('cab-placeholder');
+    } else {
+      // UNCLASSIFIED document — no CAB required.
+      cabContent.textContent = 'No Classification Authority Block required for UNCLASSIFIED documents.';
+      cabContent.classList.add('cab-placeholder');
+    }
   });
 
   // ---------------------------------------------------------------------------

@@ -334,8 +334,10 @@ pub fn compute_banner(text: &str) -> Result<String, JsValue> {
 ///    parsed marking in `text`, that value is used verbatim.
 /// 2. Otherwise, the default is **25 years from the current year** per
 ///    EO 13526 § 1.5(a) (the CAPCO default for NSI when no other instruction
-///    is present). This can be overridden by the caller via `declass_override`.
-/// 3. If the document is UNCLASSIFIED, the `Declassify On` line is omitted.
+///    is present).
+/// 3. If the document computes as UNCLASSIFIED (with or without dissem
+///    controls), returns an **empty string** — no CAB is required for
+///    UNCLASSIFIED documents.
 ///
 /// `classified_by` defaults to `"Derivative Classifier"` if not provided.
 /// `derived_from` defaults to `"Multiple Sources"` if not provided.
@@ -378,11 +380,12 @@ pub fn generate_cab_native(
         }
     }
 
-    // If the document is unclassified, omit the Declassify On line entirely.
+    // If the document is unclassified, there is no CAB at all.
+    // CAPCO: a CAB is only required for classified NSI documents; an
+    // UNCLASSIFIED banner (with or without dissem controls) carries no
+    // "Classified By", "Derived From", or "Declassify On" fields.
     if !page_context.is_classified() {
-        return Ok(format!(
-            "Classified By: {classified_by}\nDerived From: {derived_from}"
-        ));
+        return Ok(String::new());
     }
 
     // Determine the declassification marking.
