@@ -1,7 +1,7 @@
 [package]
 name        = "marque-extract"
 description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
-version.workspace     = true
+version = "0.1.0"
 edition.workspace     = true
 license.workspace     = true
 repository.workspace  = true
