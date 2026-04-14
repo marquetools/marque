@@ -153,11 +153,10 @@ impl PageContext {
             }
         }
 
-        // Step 3: FOUO drops in classified documents.
-        if classified && seen.contains(&DissemControl::Fouo) {
-            // DSEN overrides FOUO — if both present, FOUO is replaced by DSEN
-            // regardless of classification. If only FOUO, it just drops in
-            // classified docs.
+        // Step 3: FOUO drops in classified documents; also drops whenever DSEN
+        // is present (DSEN overrides FOUO regardless of classification level).
+        let dsen_present = seen.contains(&DissemControl::Dsen);
+        if seen.contains(&DissemControl::Fouo) && (classified || dsen_present) {
             seen.remove(&DissemControl::Fouo);
         }
 
@@ -932,6 +931,26 @@ mod tests {
         assert!(
             dissem.contains(&DissemControl::Fouo),
             "FOUO should stay in unclassified: {dissem:?}"
+        );
+    }
+
+    #[test]
+    fn dissem_fouo_drops_when_dsen_present_unclassified() {
+        // DSEN overrides FOUO even on an unclassified page.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            dissem_controls: vec![DissemControl::Dsen, DissemControl::Fouo].into(),
+            ..Default::default()
+        });
+        let dissem = ctx.expected_dissem_controls();
+        assert!(
+            !dissem.contains(&DissemControl::Fouo),
+            "FOUO should drop when DSEN is present, even unclassified: {dissem:?}"
+        );
+        assert!(
+            dissem.contains(&DissemControl::Dsen),
+            "DSEN should be retained: {dissem:?}"
         );
     }
 
