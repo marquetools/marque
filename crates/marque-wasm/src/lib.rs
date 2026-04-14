@@ -270,3 +270,93 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
 pub fn fix(text: &str, threshold: f32, config_json: Option<String>) -> Result<String, JsValue> {
     fix_native(text, threshold, config_json).map_err(|e| JsValue::from_str(&e))
 }
+
+// ---------------------------------------------------------------------------
+// compute_banner — scanner + parser + PageContext only (no rules engine)
+// ---------------------------------------------------------------------------
+
+/// Compute the expected CAPCO banner string from portion markings in `text`.
+///
+/// Scans the text for portion markings only, parses each, accumulates a
+/// [`PageContext`], and returns `render_expected_banner()`. Does NOT run the
+/// rules engine — this is purely: scanner → parser → PageContext.
+///
+/// Returns `"UNCLASSIFIED"` if no portions are found or none parse.
+pub fn compute_banner_native(text: &str) -> Result<String, String> {
+    use marque_core::{Parser, Scanner};
+    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
+
+    let token_set = CapcoTokenSet;
+    let parser = Parser::new(&token_set);
+    let candidates = Scanner::scan(text.as_bytes());
+    let mut page_context = PageContext::new();
+
+    for candidate in &candidates {
+        if candidate.kind != MarkingType::Portion {
+            continue;
+        }
+        if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
+            page_context.add_portion(parsed.attrs);
+        }
+    }
+
+    Ok(page_context
+        .render_expected_banner()
+        .unwrap_or_else(|| "UNCLASSIFIED".to_owned()))
+}
+
+/// Compute the expected CAPCO banner string from portion markings in `text`.
+///
+/// Returns `"UNCLASSIFIED"` if no portion markings are found.
+#[wasm_bindgen]
+pub fn compute_banner(text: &str) -> Result<String, JsValue> {
+    compute_banner_native(text).map_err(|e| JsValue::from_str(&e))
+}
+
+// ---------------------------------------------------------------------------
+// generate_cab — Classification Authority Block text
+// ---------------------------------------------------------------------------
+
+/// Generate a Classification Authority Block (CAB) text block.
+///
+/// Computes the expected classification from portion markings in `text` and
+/// produces a formatted CAB:
+/// ```text
+/// Classified By: <classified_by>
+/// Derived From: <derived_from>
+/// Declassify On: 25X1
+/// ```
+///
+/// `classified_by` defaults to `"Derivative Classifier"` if not provided.
+/// `derived_from` defaults to `"Multiple Sources"` if not provided.
+pub fn generate_cab_native(
+    _text: &str,
+    classified_by: Option<String>,
+    derived_from: Option<String>,
+) -> Result<String, String> {
+    let classified_by =
+        classified_by.unwrap_or_else(|| "Derivative Classifier".to_owned());
+    let derived_from = derived_from.unwrap_or_else(|| "Multiple Sources".to_owned());
+
+    Ok(format!(
+        "Classified By: {classified_by}\nDerived From: {derived_from}\nDeclassify On: 25X1"
+    ))
+}
+
+/// Generate a Classification Authority Block (CAB) text block.
+///
+/// Returns formatted multi-line text suitable for display in the CAB section
+/// of a classified document.
+///
+/// # Arguments
+/// - `text`: document body text (used to compute classification from portions)
+/// - `classified_by`: optional "Classified By" field (defaults to "Derivative Classifier")
+/// - `derived_from`: optional "Derived From" field (defaults to "Multiple Sources")
+#[wasm_bindgen]
+pub fn generate_cab(
+    text: &str,
+    classified_by: Option<String>,
+    derived_from: Option<String>,
+) -> Result<String, JsValue> {
+    generate_cab_native(text, classified_by, derived_from).map_err(|e| JsValue::from_str(&e))
+}
