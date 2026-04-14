@@ -17,8 +17,9 @@
 
 use crate::error::CoreError;
 use marque_ism::attrs::{
-    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    TokenKind, TokenSpan, Trigraph,
+    Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
+    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    NatoClassification, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
 // has entries. The type is used in from_str() which returns None for now.
@@ -177,16 +178,19 @@ impl<'t> Parser<'t> {
 
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
-        // First block is the classification.
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
 
+        // When the marking starts with `//` (after trimming any incidental
+        // leading whitespace inside the candidate), block 0 is empty and the
+        // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
+        // the foreign classification.
+        let is_non_us = s.trim_start().starts_with("//");
+
         for (idx, &(rel_start, rel_end)) in block_ranges.iter().enumerate() {
             let raw = &s[rel_start..rel_end];
-            // Trim ASCII whitespace and recover the trimmed-content offset
-            // within the raw block, then add to the absolute s_offset.
             let trimmed = raw.trim();
             if trimmed.is_empty() {
                 continue;
@@ -196,10 +200,12 @@ impl<'t> Parser<'t> {
             let abs_end = abs_start + trimmed.len();
             let span = Span::new(abs_start, abs_end);
 
-            if idx == 0 {
-                // Classification block — track even when parse fails so the
-                // span is available for diagnostics.
-                attrs.classification = parse_classification(trimmed);
+            // ---------------------------------------------------------------
+            // Block 0: US classification (or empty for non-US markings)
+            // ---------------------------------------------------------------
+            if idx == 0 && !is_non_us {
+                attrs.classification =
+                    parse_classification(trimmed).map(MarkingClassification::Us);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Classification,
                     span,
@@ -208,7 +214,45 @@ impl<'t> Parser<'t> {
                 continue;
             }
 
+            // ---------------------------------------------------------------
+            // Block 1 when non-US: foreign classification
+            // ---------------------------------------------------------------
+            if idx == 1 && is_non_us {
+                if let Some(nato) = parse_nato_classification(trimmed) {
+                    attrs.classification = Some(MarkingClassification::Nato(nato));
+                } else if let Some(joint) = parse_joint_classification(trimmed) {
+                    attrs.classification = Some(MarkingClassification::Joint(joint));
+                } else if let Some(fgi) = parse_fgi_classification(trimmed) {
+                    attrs.classification = Some(MarkingClassification::Fgi(fgi));
+                } else {
+                    // Unrecognized non-US classification block.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
+                    continue;
+                }
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::Classification,
+                    span,
+                    text: trimmed.into(),
+                });
+                continue;
+            }
+
+            // ---------------------------------------------------------------
+            // Remaining blocks: controls, markers, and fallbacks
+            // ---------------------------------------------------------------
+
             if trimmed.starts_with("REL TO") || trimmed.starts_with("REL ") {
+                // Record the full block text before the individual trigraph tokens
+                // so token_spans maintains a logical ordering (block → constituents).
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::RelToBlock,
+                    span,
+                    text: trimmed.into(),
+                });
                 let parsed_trigraphs =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
                 rel_to.extend(parsed_trigraphs);
@@ -219,6 +263,21 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+            } else if trimmed.starts_with("FGI")
+                && matches!(
+                    attrs.classification,
+                    Some(MarkingClassification::Us(_))
+                )
+            {
+                // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
+                if let Some(marker) = parse_fgi_marker(trimmed) {
+                    attrs.fgi_marker = Some(marker);
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::FgiMarker,
+                        span,
+                        text: trimmed.into(),
+                    });
+                }
             } else if let Some(ctrl) =
                 DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
             {
@@ -236,9 +295,6 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if let Some(exemption) = DeclassExemption::parse(trimmed) {
-                // Declass exemption codes (e.g., 25X1, 50X1-HUM) that appear
-                // inside a banner or portion marking trigger E005 — they belong
-                // in the CAB "Declassify On:" line, not in the marking string.
                 attrs.declass_exemption = Some(exemption);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassExemption,
@@ -246,19 +302,40 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if is_declass_date(trimmed) {
-                // Free-text declassification dates (YYYYMMDD or YYYY) that
-                // appear inside a banner or portion also belong in the CAB.
                 attrs.declassify_on = Some(trimmed.into());
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassDate,
                     span,
                     text: trimmed.into(),
                 });
+            } else if let Some(foreign) = try_parse_foreign_classification(trimmed) {
+                // Conflict: a foreign classification in a marking that already
+                // has a US classification. US wins at the greater of the two.
+                if let Some(MarkingClassification::Us(us_level)) = attrs.classification {
+                    let foreign_equiv = match &foreign {
+                        ForeignClassification::Nato(n) => n.us_equivalent(),
+                        ForeignClassification::Fgi(f) => f.level,
+                        ForeignClassification::Joint(j) => j.level,
+                    };
+                    let max_level = us_level.max(foreign_equiv);
+                    attrs.classification = Some(MarkingClassification::Conflict {
+                        us: max_level,
+                        foreign: Box::new(foreign),
+                    });
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Classification,
+                        span,
+                        text: trimmed.into(),
+                    });
+                } else {
+                    // No prior US classification — just Unknown.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
+                }
             } else {
-                // Unrecognized — Phase 3 records this as TokenKind::Unknown
-                // so E008 can fire one diagnostic per unknown token without
-                // re-parsing. E007 also walks Unknown tokens and looks each
-                // up in the migration table to detect deprecated forms.
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Unknown,
                     span,
@@ -291,7 +368,9 @@ impl<'t> Parser<'t> {
 }
 
 /// Parse a classification string in either portion form (`"TS"`, `"S"`, `"C"`,
-/// `"U"`) or banner form (`"TOP SECRET"`, `"SECRET"`, ...).
+/// `"R"`, `"U"`) or banner form (`"TOP SECRET"`, `"SECRET"`, ...).
+///
+/// Includes RESTRICTED/R for foreign-origin markings (between U and C).
 ///
 /// Note: `Classification` is hand-written in `marque-ism::attrs` rather than
 /// generated from the CVE because the CVE only ships single-letter abbreviations
@@ -303,8 +382,192 @@ fn parse_classification(s: &str) -> Option<Classification> {
         "TS" | "TOP SECRET" => Some(Classification::TopSecret),
         "S" | "SECRET" => Some(Classification::Secret),
         "C" | "CONFIDENTIAL" => Some(Classification::Confidential),
+        "R" | "RESTRICTED" => Some(Classification::Restricted),
         "U" | "UNCLASSIFIED" => Some(Classification::Unclassified),
         _ => None,
+    }
+}
+
+/// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
+/// `"COSMIC TOP SECRET"`, etc.) or portion form (`"NS"`, `"CTS"`, etc.).
+///
+/// Includes SAP variants (ATOMAL, BOHEMIA, BALK). Longer patterns are checked
+/// first to avoid prefix ambiguity (e.g., `"COSMIC TOP SECRET ATOMAL"` before
+/// `"COSMIC TOP SECRET"`).
+fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
+    // Check longer patterns first to avoid prefix matches.
+    match s {
+        // Banner forms (full words)
+        "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
+        "NATO SECRET-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NATO SECRET" => Some(NatoClassification::NatoSecret),
+        "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
+        "NATO CONFIDENTIAL-BOHEMIA" => Some(NatoClassification::NatoConfidentialBohemia),
+        "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
+        "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
+        "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
+        // Portion forms (abbreviations)
+        "CTSA" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "CTS" => Some(NatoClassification::CosmicTopSecret),
+        "NS-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NS" => Some(NatoClassification::NatoSecret),
+        "NCA" => Some(NatoClassification::NatoConfidentialAtomal),
+        "NC-B" => Some(NatoClassification::NatoConfidentialBohemia),
+        "NC" => Some(NatoClassification::NatoConfidential),
+        "NR" => Some(NatoClassification::NatoRestricted),
+        "NU" => Some(NatoClassification::NatoUnclassified),
+        _ => None,
+    }
+}
+
+/// Parse a JOINT classification block: `"JOINT S USA GBR"` or `"JOINT SECRET USA GBR"`.
+///
+/// Format: `JOINT` + classification level + space-delimited country trigraphs.
+/// Countries are space-delimited (NOT comma-delimited like REL TO).
+fn parse_joint_classification(s: &str) -> Option<JointClassification> {
+    let rest = s.strip_prefix("JOINT ")?;
+    let mut tokens = rest.split_whitespace();
+
+    // First token(s) after JOINT are the classification level.
+    // Handle two-word levels like "TOP SECRET".
+    let first = tokens.next()?;
+    let (level, remaining_start) = if first == "TOP" {
+        // Check if next token is "SECRET" to form "TOP SECRET"
+        let mut peek_tokens = rest.split_whitespace();
+        peek_tokens.next(); // skip "TOP"
+        if peek_tokens.next() == Some("SECRET") {
+            let level = parse_classification("TOP SECRET")?;
+            // Skip past "TOP SECRET" — countries start after
+            let after_ts = rest.find("SECRET").map(|i| i + "SECRET".len())?;
+            (level, after_ts)
+        } else {
+            return None; // "TOP" alone is not a valid level
+        }
+    } else {
+        let level = parse_classification(first)?;
+        let after_level = rest.find(first).map(|i| i + first.len())?;
+        (level, after_level)
+    };
+
+    // Remaining tokens are space-delimited country trigraphs.
+    let country_str = rest[remaining_start..].trim();
+    let mut countries = Vec::new();
+    for token in country_str.split_whitespace() {
+        if token.len() == 3 {
+            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
+                countries.push(t);
+            }
+        }
+        // Skip non-trigraph tokens (tetragraphs like NATO handled later)
+    }
+
+    if countries.is_empty() {
+        return None; // JOINT must have at least one country
+    }
+
+    Some(JointClassification {
+        level,
+        countries: countries.into(),
+    })
+}
+
+/// Parse an FGI classification block: `"GBR S"`, `"DEU TS"`, `"GBR DEU S"`,
+/// or `"FGI S"` (FGI as placeholder for unknown country).
+///
+/// Format: one or more country trigraphs (or "FGI") + classification level.
+/// Countries are space-delimited. The last token is the classification level.
+///
+/// Returns `None` if no classification level is found (e.g., bare `"FGI"` with
+/// no level — that's an error, not a valid FGI classification).
+fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
+    let tokens: Vec<&str> = s.split_whitespace().collect();
+    if tokens.len() < 2 {
+        return None; // Need at least country + level
+    }
+
+    // Last token is the classification level. Handle "TOP SECRET" as two tokens.
+    let (level, country_end) = if tokens.len() >= 3
+        && tokens[tokens.len() - 2] == "TOP"
+        && tokens[tokens.len() - 1] == "SECRET"
+    {
+        (
+            parse_classification("TOP SECRET")?,
+            tokens.len() - 2,
+        )
+    } else {
+        (
+            parse_classification(tokens[tokens.len() - 1])?,
+            tokens.len() - 1,
+        )
+    };
+
+    // Preceding tokens are country trigraphs (or "FGI" placeholder).
+    let mut countries = Vec::new();
+    for &token in &tokens[..country_end] {
+        if token == "FGI" {
+            // FGI as placeholder for unknown country — countries stays empty
+            continue;
+        }
+        if token.len() == 3 {
+            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
+                countries.push(t);
+            } else {
+                return None; // Invalid trigraph
+            }
+        } else {
+            return None; // Not a trigraph or "FGI"
+        }
+    }
+
+    Some(FgiClassification {
+        countries: countries.into(),
+        level,
+    })
+}
+
+/// Parse an FGI marker block in a US-classified marking: `"FGI"` or `"FGI DEU"` or `"FGI DEU GBR"`.
+///
+/// This is the FGI block between SAR and dissem controls in a US-classified
+/// marking (e.g., `SECRET//FGI DEU//NOFORN`). Not to be confused with
+/// [`parse_fgi_classification`] which parses a non-US classification.
+fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
+    if s == "FGI" {
+        return Some(FgiMarker {
+            countries: Box::new([]),
+        });
+    }
+
+    let rest = s.strip_prefix("FGI ")?;
+    let mut countries = Vec::new();
+    for token in rest.split_whitespace() {
+        if token.len() == 3 {
+            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
+                countries.push(t);
+            }
+        }
+        // Skip non-trigraph tokens for now (tetragraphs like NATO)
+    }
+
+    Some(FgiMarker {
+        countries: countries.into(),
+    })
+}
+
+/// Attempt to parse a block as a foreign classification (NATO, JOINT, or FGI).
+///
+/// Used as a fallback in the block loop to detect conflict scenarios
+/// (e.g., `SECRET//NATO SECRET//NOFORN`) where a foreign classification
+/// appears alongside a US classification.
+fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
+    if let Some(nato) = parse_nato_classification(s) {
+        Some(ForeignClassification::Nato(nato))
+    } else if let Some(joint) = parse_joint_classification(s) {
+        Some(ForeignClassification::Joint(joint))
+    } else if let Some(fgi) = parse_fgi_classification(s) {
+        Some(ForeignClassification::Fgi(fgi))
+    } else {
+        None
     }
 }
 
@@ -317,17 +580,11 @@ fn parse_classification(s: &str) -> Option<Classification> {
 /// Rules that detect "banner uses portion abbreviation" (E001) read the
 /// raw token span via `attrs.token_spans` and inspect the original bytes,
 /// so this mapping does not lose the abbreviation-vs-full-word signal.
+///
+/// Mapping data sourced from [`marque_ism::marking_forms`].
 fn parse_dissem_full_form(s: &str) -> Option<DissemControl> {
-    let abbrev = match s {
-        "NOFORN" => "NF",
-        "ORCON" => "OC",
-        "IMCON" => "IMC",
-        "DEA SENSITIVE" => "DSEN",
-        "PROPIN" => "PR",
-        "RELIDO" => "RELIDO",
-        _ => return None,
-    };
-    DissemControl::parse(abbrev)
+    let portion = marque_ism::marking_forms::banner_to_portion(s)?;
+    DissemControl::parse(portion)
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
@@ -623,5 +880,222 @@ mod tests {
         assert_eq!(seps.len(), 1);
         let src = b"SECRET//NF";
         assert_eq!(seps[0].span.as_str(src).unwrap(), "//");
+    }
+
+    // -----------------------------------------------------------------------
+    // Non-US classification parsing
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn nato_banner_parses_all_variants() {
+        for (input, expected) in [
+            ("//NATO UNCLASSIFIED", NatoClassification::NatoUnclassified),
+            ("//NATO RESTRICTED", NatoClassification::NatoRestricted),
+            ("//NATO CONFIDENTIAL", NatoClassification::NatoConfidential),
+            (
+                "//NATO CONFIDENTIAL ATOMAL",
+                NatoClassification::NatoConfidentialAtomal,
+            ),
+            (
+                "//NATO CONFIDENTIAL-BOHEMIA",
+                NatoClassification::NatoConfidentialBohemia,
+            ),
+            ("//NATO SECRET", NatoClassification::NatoSecret),
+            ("//NATO SECRET-BALK", NatoClassification::NatoSecretBalk),
+            ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
+            (
+                "//COSMIC TOP SECRET ATOMAL",
+                NatoClassification::CosmicTopSecretAtomal,
+            ),
+        ] {
+            let parsed = parse_banner(input);
+            assert_eq!(
+                parsed.attrs.classification,
+                Some(MarkingClassification::Nato(expected)),
+                "failed for banner: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn nato_portion_parses_all_variants() {
+        for (input, expected) in [
+            ("(//NU)", NatoClassification::NatoUnclassified),
+            ("(//NR)", NatoClassification::NatoRestricted),
+            ("(//NC)", NatoClassification::NatoConfidential),
+            ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
+            ("(//NC-B)", NatoClassification::NatoConfidentialBohemia),
+            ("(//NS)", NatoClassification::NatoSecret),
+            ("(//NS-BALK)", NatoClassification::NatoSecretBalk),
+            ("(//CTS)", NatoClassification::CosmicTopSecret),
+            ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
+        ] {
+            let parsed = parse_portion(input);
+            assert_eq!(
+                parsed.attrs.classification,
+                Some(MarkingClassification::Nato(expected)),
+                "failed for portion: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn nato_banner_with_rel_to() {
+        let parsed = parse_banner("//NATO SECRET//REL TO USA, GBR");
+        assert_eq!(
+            parsed.attrs.classification,
+            Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
+        );
+        assert_eq!(parsed.attrs.rel_to.len(), 2);
+        assert_eq!(parsed.attrs.rel_to[0], Trigraph::USA);
+    }
+
+    #[test]
+    fn joint_banner_parses_correctly() {
+        let parsed = parse_banner("//JOINT S USA GBR");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Joint(j)) => {
+                assert_eq!(j.level, Classification::Secret);
+                assert_eq!(j.countries.len(), 2);
+                assert_eq!(j.countries[0], Trigraph::USA);
+                assert_eq!(j.countries[1].as_str(), "GBR");
+            }
+            other => panic!("expected Joint, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn joint_portion_with_rel_to() {
+        let parsed = parse_portion("(//JOINT TS USA AUS GBR//REL TO USA, AUS, GBR)");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Joint(j)) => {
+                assert_eq!(j.level, Classification::TopSecret);
+                assert_eq!(j.countries.len(), 3);
+            }
+            other => panic!("expected Joint, got: {other:?}"),
+        }
+        assert_eq!(parsed.attrs.rel_to.len(), 3);
+    }
+
+    #[test]
+    fn fgi_single_country_parses() {
+        let parsed = parse_portion("(//GBR S//NF)");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Fgi(f)) => {
+                assert_eq!(f.level, Classification::Secret);
+                assert_eq!(f.countries.len(), 1);
+                assert_eq!(f.countries[0].as_str(), "GBR");
+            }
+            other => panic!("expected Fgi, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fgi_multiple_countries_parses() {
+        let parsed = parse_banner("//GBR DEU TS//NF");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Fgi(f)) => {
+                assert_eq!(f.level, Classification::TopSecret);
+                assert_eq!(f.countries.len(), 2);
+            }
+            other => panic!("expected Fgi, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fgi_placeholder_country_parses() {
+        // FGI as placeholder for unknown country + level
+        let parsed = parse_portion("(//FGI S//NF)");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Fgi(f)) => {
+                assert_eq!(f.level, Classification::Secret);
+                assert!(f.countries.is_empty(), "FGI placeholder should have no countries");
+            }
+            other => panic!("expected Fgi, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fgi_no_level_is_error() {
+        // //FGI// with no classification level — classification should be None
+        let parsed = parse_banner("//FGI//NF");
+        assert!(
+            parsed.attrs.classification.is_none()
+                || matches!(parsed.attrs.classification, Some(MarkingClassification::Us(_))),
+            "bare FGI with no level should not produce a valid non-US classification: {:?}",
+            parsed.attrs.classification,
+        );
+    }
+
+    #[test]
+    fn fgi_marker_in_us_marking() {
+        let parsed = parse_banner("SECRET//FGI DEU//NOFORN");
+        assert_eq!(
+            parsed.attrs.classification,
+            Some(MarkingClassification::Us(Classification::Secret)),
+        );
+        let marker = parsed.attrs.fgi_marker.as_ref().expect("should have FGI marker");
+        assert_eq!(marker.countries.len(), 1);
+        assert_eq!(marker.countries[0].as_str(), "DEU");
+    }
+
+    #[test]
+    fn fgi_marker_no_countries() {
+        let parsed = parse_banner("SECRET//FGI//NOFORN");
+        assert_eq!(
+            parsed.attrs.classification,
+            Some(MarkingClassification::Us(Classification::Secret)),
+        );
+        let marker = parsed.attrs.fgi_marker.as_ref().expect("should have FGI marker");
+        assert!(marker.countries.is_empty());
+    }
+
+    #[test]
+    fn conflict_us_and_nato() {
+        let parsed = parse_banner("SECRET//NATO SECRET//NOFORN");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Conflict { us, foreign }) => {
+                assert_eq!(*us, Classification::Secret);
+                assert!(matches!(
+                    foreign.as_ref(),
+                    ForeignClassification::Nato(NatoClassification::NatoSecret)
+                ));
+            }
+            other => panic!("expected Conflict, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn conflict_level_escalation() {
+        // SECRET + COSMIC TOP SECRET → US escalates to TopSecret
+        let parsed = parse_banner("SECRET//COSMIC TOP SECRET//NOFORN");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Conflict { us, foreign }) => {
+                assert_eq!(*us, Classification::TopSecret);
+                assert!(matches!(
+                    foreign.as_ref(),
+                    ForeignClassification::Nato(NatoClassification::CosmicTopSecret)
+                ));
+            }
+            other => panic!("expected Conflict with escalation, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn restricted_classification_parses() {
+        let parsed = parse_banner("RESTRICTED//NF");
+        assert_eq!(
+            parsed.attrs.classification,
+            Some(MarkingClassification::Us(Classification::Restricted)),
+        );
+    }
+
+    #[test]
+    fn restricted_portion_parses() {
+        let parsed = parse_portion("(R//NF)");
+        assert_eq!(
+            parsed.attrs.classification,
+            Some(MarkingClassification::Us(Classification::Restricted)),
+        );
     }
 }

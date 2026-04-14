@@ -39,8 +39,8 @@
 //! no explicit date is present.
 
 use crate::attrs::{
-    Classification, DeclassExemption, DissemControl, IsmAttributes, SarIdentifier, SciControl,
-    Trigraph,
+    Classification, DeclassExemption, DissemControl, IsmAttributes, MarkingClassification,
+    SarIdentifier, SciControl, Trigraph,
 };
 
 /// Page-level aggregation context, built by the engine as it processes portion
@@ -86,12 +86,19 @@ impl PageContext {
     // -----------------------------------------------------------------------
 
     /// The classification level the banner *must* carry: the maximum (most
-    /// restrictive) classification across all accumulated portions.
+    /// restrictive) classification across all accumulated portions, regardless
+    /// of classification system.
     ///
-    /// Returns `None` only if no portions have been accumulated or all
-    /// portions failed to parse a classification level.
+    /// Non-US systems (FGI, NATO, JOINT) are compared via their effective US-
+    /// equivalent level so that a purely NATO or FGI page still produces a
+    /// correct expected classification. Returns `None` only if no portions
+    /// have been accumulated or all portions failed to parse a classification
+    /// level.
     pub fn expected_classification(&self) -> Option<Classification> {
-        self.portions.iter().filter_map(|a| a.classification).max()
+        self.portions
+            .iter()
+            .filter_map(|a| a.classification.as_ref().map(MarkingClassification::effective_level))
+            .max()
     }
 
     /// All SCI controls that must appear on the banner (union of all portions).
@@ -233,11 +240,11 @@ impl PageContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attrs::Classification;
+    use crate::attrs::{Classification, MarkingClassification};
 
     fn attrs_with_classification(c: Classification) -> IsmAttributes {
         IsmAttributes {
-            classification: Some(c),
+            classification: Some(MarkingClassification::Us(c)),
             ..Default::default()
         }
     }
