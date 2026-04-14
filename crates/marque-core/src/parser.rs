@@ -398,23 +398,25 @@ fn parse_classification(s: &str) -> Option<Classification> {
 fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
     // Check longer patterns first to avoid prefix matches.
     match s {
-        // Banner forms (full words)
+        // Banner forms (full words) — longer patterns first
         "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "COSMIC TOP SECRET-BOHEMIA" => Some(NatoClassification::CosmicTopSecretBohemia),
+        "COSMIC TOP SECRET-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
         "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
-        "NATO SECRET-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NATO SECRET ATOMAL" => Some(NatoClassification::NatoSecretAtomal),
         "NATO SECRET" => Some(NatoClassification::NatoSecret),
         "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NATO CONFIDENTIAL-BOHEMIA" => Some(NatoClassification::NatoConfidentialBohemia),
         "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
         "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
         "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
-        // Portion forms (abbreviations)
-        "CTSA" => Some(NatoClassification::CosmicTopSecretAtomal),
+        // Portion forms — primary (CAPCO Register)
+        "CTSA" | "CTS-A" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "CTS-B" => Some(NatoClassification::CosmicTopSecretBohemia),
+        "CTS-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
         "CTS" => Some(NatoClassification::CosmicTopSecret),
-        "NS-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NSAT" | "NS-A" => Some(NatoClassification::NatoSecretAtomal),
         "NS" => Some(NatoClassification::NatoSecret),
-        "NCA" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NC-B" => Some(NatoClassification::NatoConfidentialBohemia),
+        "NCA" | "NC-A" => Some(NatoClassification::NatoConfidentialAtomal),
         "NC" => Some(NatoClassification::NatoConfidential),
         "NR" => Some(NatoClassification::NatoRestricted),
         "NU" => Some(NatoClassification::NatoUnclassified),
@@ -897,16 +899,20 @@ mod tests {
                 "//NATO CONFIDENTIAL ATOMAL",
                 NatoClassification::NatoConfidentialAtomal,
             ),
-            (
-                "//NATO CONFIDENTIAL-BOHEMIA",
-                NatoClassification::NatoConfidentialBohemia,
-            ),
             ("//NATO SECRET", NatoClassification::NatoSecret),
-            ("//NATO SECRET-BALK", NatoClassification::NatoSecretBalk),
+            ("//NATO SECRET ATOMAL", NatoClassification::NatoSecretAtomal),
             ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
             (
                 "//COSMIC TOP SECRET ATOMAL",
                 NatoClassification::CosmicTopSecretAtomal,
+            ),
+            (
+                "//COSMIC TOP SECRET-BOHEMIA",
+                NatoClassification::CosmicTopSecretBohemia,
+            ),
+            (
+                "//COSMIC TOP SECRET-BALK",
+                NatoClassification::CosmicTopSecretBalk,
             ),
         ] {
             let parsed = parse_banner(input);
@@ -925,11 +931,15 @@ mod tests {
             ("(//NR)", NatoClassification::NatoRestricted),
             ("(//NC)", NatoClassification::NatoConfidential),
             ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NC-B)", NatoClassification::NatoConfidentialBohemia),
+            ("(//NC-A)", NatoClassification::NatoConfidentialAtomal),
             ("(//NS)", NatoClassification::NatoSecret),
-            ("(//NS-BALK)", NatoClassification::NatoSecretBalk),
+            ("(//NSAT)", NatoClassification::NatoSecretAtomal),
+            ("(//NS-A)", NatoClassification::NatoSecretAtomal),
             ("(//CTS)", NatoClassification::CosmicTopSecret),
             ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
+            ("(//CTS-A)", NatoClassification::CosmicTopSecretAtomal),
+            ("(//CTS-B)", NatoClassification::CosmicTopSecretBohemia),
+            ("(//CTS-BALK)", NatoClassification::CosmicTopSecretBalk),
         ] {
             let parsed = parse_portion(input);
             assert_eq!(

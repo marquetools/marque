@@ -301,24 +301,31 @@ pub struct FgiClassification {
 /// Not everyone with a US clearance is cleared for NATO; many US systems
 /// are not approved for NATO information.
 ///
-/// NATO SAP markings (ATOMAL, BOHEMIA, BALK) are structurally part of the
-/// classification — appended with system-specific formatting:
-/// - ATOMAL: no hyphen (`NATO CONFIDENTIAL ATOMAL` → `NCA`)
-/// - BOHEMIA: hyphenated (`NATO CONFIDENTIAL-BOHEMIA` → `NC-B`)
-/// - BALK: hyphenated (`NATO SECRET-BALK` → `NS-BALK`)
+/// # NATO SAP markings
 ///
-/// BALK is the exercise-only form of BOHEMIA.
+/// Three NATO SAP programs exist, each with specific constraints:
+///
+/// - **ATOMAL**: Applies to CTS, NS, and NC levels. Space-separated in
+///   banner (`COSMIC TOP SECRET ATOMAL`). Portion marks: CTSA, NSAT, NCA.
+///   Alternative portion forms CTS-A, NS-A, NC-A also appear in practice.
+/// - **BOHEMIA**: CTS-only. Hyphenated (`COSMIC TOP SECRET-BOHEMIA` → `CTS-B`).
+/// - **BALK**: CTS-only, exercise replacement for BOHEMIA.
+///   Hyphenated (`COSMIC TOP SECRET-BALK` → `CTS-BALK`).
+///
+/// Per the CAPCO Register, bare `COSMIC TOP SECRET` requires either
+/// BOHEMIA or BALK — standalone CTS without a SAP suffix is an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
-    NatoUnclassified,          // NU
-    NatoRestricted,            // NR
-    NatoConfidential,          // NC
-    NatoConfidentialAtomal,    // NCA
-    NatoConfidentialBohemia,   // NC-B
-    NatoSecret,                // NS
-    NatoSecretBalk,            // NS-BALK
-    CosmicTopSecret,           // CTS
-    CosmicTopSecretAtomal,     // CTSA
+    NatoUnclassified,                // NU
+    NatoRestricted,                  // NR
+    NatoConfidential,                // NC
+    NatoConfidentialAtomal,          // NCA (alt: NC-A)
+    NatoSecret,                      // NS
+    NatoSecretAtomal,                // NSAT (alt: NS-A)
+    CosmicTopSecret,                 // CTS (requires BOHEMIA or BALK)
+    CosmicTopSecretAtomal,           // CTSA (alt: CTS-A)
+    CosmicTopSecretBohemia,          // CTS-B
+    CosmicTopSecretBalk,             // CTS-BALK
 }
 
 impl NatoClassification {
@@ -329,26 +336,28 @@ impl NatoClassification {
             Self::NatoRestricted => "NATO RESTRICTED",
             Self::NatoConfidential => "NATO CONFIDENTIAL",
             Self::NatoConfidentialAtomal => "NATO CONFIDENTIAL ATOMAL",
-            Self::NatoConfidentialBohemia => "NATO CONFIDENTIAL-BOHEMIA",
             Self::NatoSecret => "NATO SECRET",
-            Self::NatoSecretBalk => "NATO SECRET-BALK",
+            Self::NatoSecretAtomal => "NATO SECRET ATOMAL",
             Self::CosmicTopSecret => "COSMIC TOP SECRET",
             Self::CosmicTopSecretAtomal => "COSMIC TOP SECRET ATOMAL",
+            Self::CosmicTopSecretBohemia => "COSMIC TOP SECRET-BOHEMIA",
+            Self::CosmicTopSecretBalk => "COSMIC TOP SECRET-BALK",
         }
     }
 
-    /// Portion form (abbreviation used in portion markings).
+    /// Portion form (primary abbreviation from the CAPCO Register).
     pub fn portion_str(self) -> &'static str {
         match self {
             Self::NatoUnclassified => "NU",
             Self::NatoRestricted => "NR",
             Self::NatoConfidential => "NC",
             Self::NatoConfidentialAtomal => "NCA",
-            Self::NatoConfidentialBohemia => "NC-B",
             Self::NatoSecret => "NS",
-            Self::NatoSecretBalk => "NS-BALK",
+            Self::NatoSecretAtomal => "NSAT",
             Self::CosmicTopSecret => "CTS",
             Self::CosmicTopSecretAtomal => "CTSA",
+            Self::CosmicTopSecretBohemia => "CTS-B",
+            Self::CosmicTopSecretBalk => "CTS-BALK",
         }
     }
 
@@ -357,11 +366,14 @@ impl NatoClassification {
         match self {
             Self::NatoUnclassified => NatoLevel::NatoUnclassified,
             Self::NatoRestricted => NatoLevel::NatoRestricted,
-            Self::NatoConfidential
-            | Self::NatoConfidentialAtomal
-            | Self::NatoConfidentialBohemia => NatoLevel::NatoConfidential,
-            Self::NatoSecret | Self::NatoSecretBalk => NatoLevel::NatoSecret,
-            Self::CosmicTopSecret | Self::CosmicTopSecretAtomal => NatoLevel::CosmicTopSecret,
+            Self::NatoConfidential | Self::NatoConfidentialAtomal => {
+                NatoLevel::NatoConfidential
+            }
+            Self::NatoSecret | Self::NatoSecretAtomal => NatoLevel::NatoSecret,
+            Self::CosmicTopSecret
+            | Self::CosmicTopSecretAtomal
+            | Self::CosmicTopSecretBohemia
+            | Self::CosmicTopSecretBalk => NatoLevel::CosmicTopSecret,
         }
     }
 
@@ -687,11 +699,12 @@ mod tests {
             NatoClassification::NatoRestricted,
             NatoClassification::NatoConfidential,
             NatoClassification::NatoConfidentialAtomal,
-            NatoClassification::NatoConfidentialBohemia,
             NatoClassification::NatoSecret,
-            NatoClassification::NatoSecretBalk,
+            NatoClassification::NatoSecretAtomal,
             NatoClassification::CosmicTopSecret,
             NatoClassification::CosmicTopSecretAtomal,
+            NatoClassification::CosmicTopSecretBohemia,
+            NatoClassification::CosmicTopSecretBalk,
         ] {
             assert!(!n.banner_str().is_empty());
             assert!(!n.portion_str().is_empty());
