@@ -248,6 +248,13 @@ impl<'t> Parser<'t> {
             // ---------------------------------------------------------------
 
             if trimmed.starts_with("REL TO") || trimmed.starts_with("REL ") {
+                // Record the full block text before the individual trigraph tokens
+                // so token_spans maintains a logical ordering (block → constituents).
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::RelToBlock,
+                    span,
+                    text: trimmed.into(),
+                });
                 let parsed_trigraphs =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
                 rel_to.extend(parsed_trigraphs);

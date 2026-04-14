@@ -73,9 +73,11 @@ pub struct IsmAttributes {
     /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
     ///
     /// Separate authority framework (CAPCO Register §9), distinct from IC
-    /// dissem controls. In classified documents these appear only in portion
-    /// markings (stripped from banners). On unclassified pages they propagate
-    /// to the banner. LES-NF and SBU-NF carry NOFORN treatment even when
+    /// dissem controls. In classified documents these are generally portion-
+    /// only and stripped from banners, but some values propagate to the
+    /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
+    /// for the authoritative rule. On unclassified pages they propagate to
+    /// the banner. LES-NF and SBU-NF carry NOFORN treatment even when
     /// stripped.
     pub non_ic_dissem: Box<[NonIcDissem]>,
 
@@ -159,6 +161,9 @@ pub enum TokenKind {
     /// REL TO country trigraph (USA, GBR, AUS, ...). One per token, not the
     /// whole REL TO list.
     RelToTrigraph,
+    /// The full `REL TO ...` block text. Recorded so E013 can inspect the
+    /// raw source for delimiter errors (spaces instead of commas).
+    RelToBlock,
     /// Declassification exemption code in CAB or banner (25X1, 50X1-HUM).
     DeclassExemption,
     /// Declassification date in CAB or banner (YYYYMMDD or YYYY).
@@ -203,6 +208,25 @@ pub enum MarkingClassification {
         /// The foreign classification that should become an FGI marker.
         foreign: Box<ForeignClassification>,
     },
+}
+
+impl MarkingClassification {
+    /// The effective classification level for ordering purposes, regardless of
+    /// classification system.
+    ///
+    /// NATO levels are mapped to their US equivalents via
+    /// [`NatoClassification::us_equivalent`]. All systems use the
+    /// [`Classification`] ladder for comparison so that `Iterator::max()` on
+    /// a mixed set of portions returns the most restrictive level overall.
+    pub fn effective_level(&self) -> Classification {
+        match self {
+            Self::Us(c) => *c,
+            Self::Fgi(f) => f.level,
+            Self::Nato(n) => n.us_equivalent(),
+            Self::Joint(j) => j.level,
+            Self::Conflict { us, .. } => *us,
+        }
+    }
 }
 
 impl Default for MarkingClassification {
@@ -701,10 +725,12 @@ pub struct FgiMarker {
 /// Non-Intelligence Community dissemination control markings (CAPCO Register §9).
 ///
 /// These operate under a separate authority framework from IC dissem controls.
-/// In classified documents, non-IC dissem controls appear **only in portion
-/// markings** — they are stripped from banners. The document's banner reflects
-/// the aggregate IC dissem controls. When the page is **unclassified**,
-/// non-IC dissem controls DO propagate to the banner.
+/// In classified documents, most non-IC dissem controls appear **only in portion
+/// markings** — they are stripped from banners. However, some controls propagate
+/// to classified banners: LIMDIS (NGA Title 10), LES, LES-NF, and SSI. See
+/// [`NonIcDissem::propagates_to_classified_banner`] for the authoritative list.
+/// When the page is **unclassified**, all non-IC dissem controls propagate to
+/// the banner.
 ///
 /// LES-NF and SBU-NF carry NOFORN treatment even when stripped from the banner.
 ///

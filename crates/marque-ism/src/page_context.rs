@@ -86,12 +86,19 @@ impl PageContext {
     // -----------------------------------------------------------------------
 
     /// The classification level the banner *must* carry: the maximum (most
-    /// restrictive) classification across all accumulated portions.
+    /// restrictive) classification across all accumulated portions, regardless
+    /// of classification system.
     ///
-    /// Returns `None` only if no portions have been accumulated or all
-    /// portions failed to parse a classification level.
+    /// Non-US systems (FGI, NATO, JOINT) are compared via their effective US-
+    /// equivalent level so that a purely NATO or FGI page still produces a
+    /// correct expected classification. Returns `None` only if no portions
+    /// have been accumulated or all portions failed to parse a classification
+    /// level.
     pub fn expected_classification(&self) -> Option<Classification> {
-        self.portions.iter().filter_map(|a| a.us_classification()).max()
+        self.portions
+            .iter()
+            .filter_map(|a| a.classification.as_ref().map(MarkingClassification::effective_level))
+            .max()
     }
 
     /// All SCI controls that must appear on the banner (union of all portions).
