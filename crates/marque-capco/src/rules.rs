@@ -29,6 +29,11 @@
 //!   E018 = JOINT may not be used with IC dissem (except REL TO)
 //!   E019 = JOINT may not be used with non-IC dissem
 //!   E020 = country code list ordering (alphabetical after USA)
+//!   E021 = RD/FRD requires NOFORN (configurable to warn)
+//!   E022 = CNWDI only with TS or S RD
+//!   E023 = SIGMA valid values + numerical order
+//!   E024 = RD precedence over FRD/TFNI
+//!   E025 = UCNI only with UNCLASSIFIED
 //!   W003 = non-IC dissem in classified banner
 //!   C001 = corrections-map typo (T058, Phase 5)
 
@@ -79,6 +84,11 @@ impl CapcoRuleSet {
                 Box::new(JointIcDissemRule),
                 Box::new(JointNonIcDissemRule),
                 Box::new(CountryCodeOrderingRule),
+                Box::new(AeaNofornRule),
+                Box::new(CnwdiConstraintRule),
+                Box::new(SigmaValidationRule),
+                Box::new(RdPrecedenceRule),
+                Box::new(UcniClassificationRule),
             ],
         }
     }
@@ -1998,6 +2008,354 @@ fn check_trigraph_ordering(
 }
 
 // ---------------------------------------------------------------------------
+// Rule: E021 — RD/FRD requires NOFORN
+// ---------------------------------------------------------------------------
+
+/// RD and FRD information must always be marked NOFORN unless a sharing
+/// agreement exists per the Atomic Energy Act (Sections 123 and 144).
+///
+/// Default severity: Error. Users working in contexts with established
+/// sharing agreements can override to Warn in `.marque.toml`.
+struct AeaNofornRule;
+
+impl Rule for AeaNofornRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E021")
+    }
+    fn name(&self) -> &'static str {
+        "aea-noforn"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
+            matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni)
+        });
+        if !has_rd_or_frd {
+            return vec![];
+        }
+
+        let has_noforn = attrs
+            .dissem_controls
+            .iter()
+            .any(|d| d.as_str() == "NF");
+        if has_noforn {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+             per the Atomic Energy Act; override to warn via rule severity \
+             config if sharing agreements apply",
+            "CAPCO-ISM-v2022-DEC-§6/AEA",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E022 — CNWDI only with TS or S RD
+// ---------------------------------------------------------------------------
+
+/// CNWDI may only be used with TOP SECRET or SECRET Restricted Data.
+/// It cannot appear standalone, with FRD, or with CONFIDENTIAL.
+struct CnwdiConstraintRule;
+
+impl Rule for CnwdiConstraintRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E022")
+    }
+    fn name(&self) -> &'static str {
+        "cnwdi-constraint"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_cnwdi = attrs.aea_markings.iter().any(|a| {
+            matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)
+        });
+        if !has_cnwdi {
+            return vec![];
+        }
+
+        // CNWDI requires TS or S classification.
+        let level = attrs.us_classification();
+        let valid = matches!(
+            level,
+            Some(marque_ism::Classification::TopSecret | marque_ism::Classification::Secret)
+        );
+        if valid {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        let level_str = level
+            .map(|c| c.banner_str())
+            .unwrap_or("unknown");
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "CNWDI may only be used with TOP SECRET or SECRET RD; \
+                 current classification is {level_str}"
+            ),
+            "CAPCO-ISM-v2022-DEC-§6/CNWDI",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E023 — SIGMA valid values and numerical order
+// ---------------------------------------------------------------------------
+
+/// SIGMA compartment numbers must be from the valid set (14, 15, 18, 20)
+/// and listed in numerical order. Values 1–5 and 9–13 are obsolete.
+struct SigmaValidationRule;
+
+impl Rule for SigmaValidationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E023")
+    }
+    fn name(&self) -> &'static str {
+        "sigma-validation"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let mut diagnostics = Vec::new();
+        let valid_sigmas: &[u8] = &[14, 15, 18, 20];
+
+        for aea in attrs.aea_markings.iter() {
+            let sigma = match aea {
+                AeaMarking::Rd(rd) => &rd.sigma,
+                AeaMarking::Frd(frd) => &frd.sigma,
+                _ => continue,
+            };
+            if sigma.is_empty() {
+                continue;
+            }
+
+            let span = attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::AeaMarking)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            // Check for invalid values.
+            let invalid: Vec<u8> = sigma
+                .iter()
+                .filter(|n| !valid_sigmas.contains(n))
+                .copied()
+                .collect();
+            if !invalid.is_empty() {
+                let obsolete: Vec<u8> = invalid
+                    .iter()
+                    .filter(|n| matches!(n, 1..=5 | 9..=13))
+                    .copied()
+                    .collect();
+                let message = if !obsolete.is_empty() {
+                    format!(
+                        "SIGMA {:?} are obsolete; convert to current categories (14, 15, 18, 20)",
+                        obsolete,
+                    )
+                } else {
+                    format!(
+                        "SIGMA {:?} are not valid; current values are 14, 15, 18, 20",
+                        invalid,
+                    )
+                };
+                diagnostics.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    message,
+                    "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                    None,
+                ));
+            }
+
+            // Check numerical order.
+            if sigma.len() >= 2 {
+                let mut sorted = sigma.to_vec();
+                sorted.sort_unstable();
+                sorted.dedup();
+                if sigma.as_ref() != sorted.as_slice() {
+                    let original: Vec<String> = sigma.iter().map(|n| n.to_string()).collect();
+                    let replacement: Vec<String> = sorted.iter().map(|n| n.to_string()).collect();
+                    diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                        rule: self.id(),
+                        severity: self.default_severity(),
+                        source: FixSource::BuiltinRule,
+                        span,
+                        message: format!(
+                            "SIGMA numbers must be in numerical order: {} → {}",
+                            original.join(" "),
+                            replacement.join(" "),
+                        ),
+                        citation: "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                        original: original.join(" "),
+                        replacement: replacement.join(" "),
+                        confidence: 1.0,
+                        migration_ref: None,
+                    }));
+                }
+            }
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E024 — RD precedence over FRD/TFNI
+// ---------------------------------------------------------------------------
+
+/// When both RD and FRD (or TFNI) appear in the same marking, only RD
+/// should be used — RD takes precedence in both banners and portions.
+struct RdPrecedenceRule;
+
+impl Rule for RdPrecedenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E024")
+    }
+    fn name(&self) -> &'static str {
+        "rd-precedence"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(_)));
+        if !has_rd {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        for (idx, aea) in attrs.aea_markings.iter().enumerate() {
+            let superseded = match aea {
+                AeaMarking::Frd(_) => "FRD",
+                AeaMarking::Tfni => "TFNI",
+                _ => continue,
+            };
+
+            let aea_spans: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::AeaMarking)
+                .collect();
+            let span = aea_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "{superseded} should not appear alongside RD; \
+                     RD takes precedence over {superseded} in both banners and portions"
+                ),
+                "CAPCO-ISM-v2022-DEC-§6/RD",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E025 — UCNI only with UNCLASSIFIED
+// ---------------------------------------------------------------------------
+
+/// DOD UCNI and DOE UCNI apply only to unclassified information.
+struct UcniClassificationRule;
+
+impl Rule for UcniClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E025")
+    }
+    fn name(&self) -> &'static str {
+        "ucni-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_ucni = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni));
+        if !has_ucni {
+            return vec![];
+        }
+
+        let is_unclassified = attrs
+            .us_classification()
+            .is_some_and(|c| c == marque_ism::Classification::Unclassified);
+        if is_unclassified {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
+            "CAPCO-ISM-v2022-DEC-§6/UCNI",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -2067,9 +2425,14 @@ mod tests {
         assert!(ids.contains(&"E018"));
         assert!(ids.contains(&"E019"));
         assert!(ids.contains(&"E020"));
+        assert!(ids.contains(&"E021"));
+        assert!(ids.contains(&"E022"));
+        assert!(ids.contains(&"E023"));
+        assert!(ids.contains(&"E024"));
+        assert!(ids.contains(&"E025"));
         assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
-        assert_eq!(set.rules().len(), 24);
+        assert_eq!(set.rules().len(), 29);
     }
 
     #[test]
@@ -2659,6 +3022,93 @@ mod tests {
         assert!(
             !e020.is_empty(),
             "E020 should fire on unordered JOINT countries: {diags:?}"
+        );
+    }
+
+    // --- E021: RD/FRD requires NOFORN ---
+
+    #[test]
+    fn e021_fires_on_rd_without_noforn() {
+        let diags = lint_banner("SECRET//RD//REL TO USA, GBR");
+        let e021: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E021").collect();
+        assert_eq!(e021.len(), 1);
+    }
+
+    #[test]
+    fn e021_does_not_fire_on_rd_with_noforn() {
+        let diags = lint_banner("SECRET//RD//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E021"),
+            "E021 should not fire with NOFORN present: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e021_fires_on_frd_without_noforn() {
+        let diags = lint_banner("SECRET//FRD//REL TO USA, GBR");
+        let e021: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E021").collect();
+        assert_eq!(e021.len(), 1);
+    }
+
+    // --- E022: CNWDI only with TS or S RD ---
+
+    #[test]
+    fn e022_fires_on_cnwdi_with_confidential() {
+        let diags = lint_banner("CONFIDENTIAL//RD-CNWDI//NOFORN");
+        let e022: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E022").collect();
+        assert_eq!(e022.len(), 1);
+    }
+
+    #[test]
+    fn e022_does_not_fire_on_cnwdi_with_secret() {
+        let diags = lint_banner("SECRET//RD-CNWDI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E022"),
+            "E022 should not fire with SECRET: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e022_does_not_fire_on_cnwdi_with_top_secret() {
+        let diags = lint_banner("TOP SECRET//RD-CNWDI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E022"),
+            "E022 should not fire with TOP SECRET: {diags:?}"
+        );
+    }
+
+    // --- E024: RD precedence ---
+
+    #[test]
+    fn e024_fires_on_rd_plus_frd() {
+        // Both RD and FRD in same marking — FRD should be removed.
+        let diags = lint_banner("SECRET//RD//FRD//NOFORN");
+        let e024: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E024").collect();
+        assert_eq!(e024.len(), 1);
+        assert!(e024[0].message.contains("FRD"));
+    }
+
+    #[test]
+    fn e024_does_not_fire_on_rd_alone() {
+        let diags = lint_banner("SECRET//RD//NOFORN");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E024"));
+    }
+
+    // --- E025: UCNI only with UNCLASSIFIED ---
+
+    #[test]
+    fn e025_fires_on_ucni_with_secret() {
+        let diags = lint_banner("SECRET//DOD UCNI");
+        let e025: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E025").collect();
+        assert_eq!(e025.len(), 1);
+    }
+
+    #[test]
+    fn e025_does_not_fire_on_ucni_with_unclassified() {
+        let diags = lint_banner("UNCLASSIFIED//DOD UCNI");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E025"),
+            "E025 should not fire with UNCLASSIFIED: {diags:?}"
         );
     }
 }
