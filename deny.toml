@@ -9,15 +9,15 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 [licenses]
 version = 2
 allow = [
-    "Apache-2.0",
-    "MIT",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "Unlicense",
-    "Zlib",
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "Zlib",
 ]
 unused-allowed-license = "allow"
 confidence-threshold = 0.8

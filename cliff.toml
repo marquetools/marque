@@ -36,17 +36,17 @@ conventional_commits = true
 filter_unconventional = true
 split_commits = false
 commit_parsers = [
-    { message = "(?i)^feat", group = "Features" },
-    { message = "(?i)^fix", group = "Bug Fixes" },
-    { message = "(?i)^perf", group = "Performance" },
-    { message = "(?i)^refactor", group = "Refactoring" },
-    { message = "(?i)^doc", group = "Documentation" },
-    { message = "(?i)^test", group = "Testing" },
-    { message = "(?i)^ci", group = "CI/CD" },
-    { message = "(?i)^chore", group = "Miscellaneous" },
-    { message = "(?i)^style", skip = true },
-    { message = "^Release ", skip = true },
-    { body = ".*", group = "Other" },
+  { message = "(?i)^feat", group = "Features" },
+  { message = "(?i)^fix", group = "Bug Fixes" },
+  { message = "(?i)^perf", group = "Performance" },
+  { message = "(?i)^refactor", group = "Refactoring" },
+  { message = "(?i)^doc", group = "Documentation" },
+  { message = "(?i)^test", group = "Testing" },
+  { message = "(?i)^ci", group = "CI/CD" },
+  { message = "(?i)^chore", group = "Miscellaneous" },
+  { message = "(?i)^style", skip = true },
+  { message = "^Release ", skip = true },
+  { body = ".*", group = "Other" },
 ]
 protect_breaking_commits = false
 filter_commits = false

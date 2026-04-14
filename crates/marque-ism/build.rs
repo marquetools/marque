@@ -21,6 +21,7 @@
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
+
 use std::{env, fs, path::Path};
 
 const SCHEMA_VERSION: &str = "ISM-v2022-DEC";
@@ -128,7 +129,7 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
                 // entity in a CVE file would otherwise feed an empty value
                 // into `to_rust_ident`, which would be caught by C-4 below
                 // but with a confusing error message — fail loudly here.
-                let decoded = e.unescape().unwrap_or_else(|err| {
+                let decoded = e.decode().unwrap_or_else(|err| {
                     panic!("XML entity unescape error in {}: {err}", path.display())
                 });
                 if in_value {

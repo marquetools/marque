@@ -1,41 +1,11 @@
 [package]
-name        = "marque-wasm"
-description = "WASM target for marque — web worker and browser integration"
+name = "marque-wasm"
 version = "0.1.0"
-edition.workspace     = true
-license.workspace     = true
-repository.workspace  = true
+edition.workspace = true
 rust-version.workspace = true
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-marque-engine = { workspace = true, default-features = false }
-marque-config = { workspace = true }
-marque-rules  = { workspace = true }
-marque-core   = { workspace = true }
-marque-ism    = { workspace = true }
-wasm-bindgen       = { workspace = true }
-serde              = { workspace = true }
-serde_json         = { workspace = true }
-humantime          = { workspace = true }
-console_error_panic_hook = { version = "0.1", optional = true }
-
-[features]
-default                  = []
-console_error_panic_hook = ["dep:console_error_panic_hook"]
-
-# marque-extract intentionally excluded — format extraction is caller's
-# responsibility in WASM context; core operates on pre-extracted text.
-
-[dev-dependencies]
-marque-engine = { workspace = true }
-marque-config = { workspace = true }
-marque-capco  = { workspace = true }
-marque-rules  = { workspace = true }
-serde_json    = { workspace = true }
-serde         = { workspace = true }
+description = "WASM target for marque — web worker and browser integration"
+repository.workspace = true
+license.workspace = true
 
 [package.metadata.wasm-pack.profile.release]
 # wasm-opt disabled: the bundled wasm-opt binary has a compatibility issue
@@ -46,3 +16,33 @@ wasm-opt = false
 
 [package.metadata.wasm-pack.profile.release-wasm]
 wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+console_error_panic_hook = { version = "0.1", optional = true }
+humantime = { workspace = true }
+marque-config = { workspace = true }
+marque-core = { workspace = true }
+marque-engine = { workspace = true, default-features = false }
+marque-ism = { workspace = true }
+marque-rules = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = { workspace = true }
+
+[dev-dependencies]
+marque-capco = { workspace = true }
+marque-config = { workspace = true }
+marque-engine = { workspace = true }
+marque-rules = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+console_error_panic_hook = ["dep:console_error_panic_hook"]
+
+# marque-extract intentionally excluded — format extraction is caller's
+# responsibility in WASM context; core operates on pre-extracted text.

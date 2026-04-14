@@ -1,19 +1,19 @@
 [package]
-name        = "marque-core"
-description = "Format-agnostic scanner and parser for IC classification markings"
+name = "marque-core"
 version = "0.1.0"
-edition.workspace     = true
-license.workspace     = true
-repository.workspace  = true
+edition.workspace = true
 rust-version.workspace = true
+description = "Format-agnostic scanner and parser for IC classification markings"
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-marque-ism   = { workspace = true }
-thiserror    = { workspace = true }
-memchr       = { workspace = true }
 aho-corasick = { workspace = true }
-serde        = { workspace = true, optional = true }
+marque-ism = { workspace = true }
+memchr = { workspace = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
 
 [features]
-default  = []
-serde    = ["dep:serde"]
+default = []
+serde = ["dep:serde"]

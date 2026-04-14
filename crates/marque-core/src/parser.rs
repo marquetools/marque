@@ -19,11 +19,8 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan,
-    Trigraph,
+    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
 };
-// Note: unused import warnings for SarIdentifier are expected until the SAR CVE
-// has entries. The type is used in from_str() which returns None for now.
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 
@@ -762,7 +759,9 @@ fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
         Some(ForeignClassification::Nato(nato))
     } else if let Some(joint) = parse_joint_classification(s) {
         Some(ForeignClassification::Joint(joint))
-    } else { parse_fgi_classification(s).map(ForeignClassification::Fgi) }
+    } else {
+        parse_fgi_classification(s).map(ForeignClassification::Fgi)
+    }
 }
 
 /// Map a banner-form (full-word) dissemination control to its CVE
@@ -1394,7 +1393,7 @@ mod tests {
         assert_eq!(parsed.attrs.aea_markings.len(), 1);
         assert_eq!(
             parsed.attrs.aea_markings[0],
-            AeaMarking::Rd(RdBlock::default()),
+            AeaMarking::Rd(marque_ism::RdBlock::default()),
         );
     }
 
@@ -1458,7 +1457,7 @@ mod tests {
         assert_eq!(parsed.attrs.aea_markings.len(), 1);
         assert_eq!(
             parsed.attrs.aea_markings[0],
-            AeaMarking::Frd(FrdBlock::default()),
+            AeaMarking::Frd(marque_ism::FrdBlock::default()),
         );
     }
 

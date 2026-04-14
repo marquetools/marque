@@ -1,9 +1,9 @@
 [files]
 extend-exclude = [
-    "crates/marque-ism/schemas/",
-    # Design docs and specs contain intentional misspellings as examples
-    "docs/plans/",
-    "specs/",
+  "crates/marque-ism/schemas/",
+  # Design docs and specs contain intentional misspellings as examples
+  "docs/plans/",
+  "specs/",
 ]
 
 [default.extend-words]

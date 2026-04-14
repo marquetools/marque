@@ -1,19 +1,19 @@
 [package]
-name        = "marque-extract"
-description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
+name = "marque-extract"
 version = "0.1.0"
-edition.workspace     = true
-license.workspace     = true
-repository.workspace  = true
+edition.workspace = true
 rust-version.workspace = true
+description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
+futures = { workspace = true }
 marque-core = { workspace = true }
-tokio       = { workspace = true }
-futures     = { workspace = true }
-thiserror   = { workspace = true }
-tracing     = { workspace = true }
-serde       = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 # Kreuzberg: polyglot document intelligence — text extraction, metadata, OCR.
 # https://github.com/kreuzberg-dev/kreuzberg
@@ -22,4 +22,4 @@ serde       = { workspace = true }
 
 [features]
 default = []
-ocr     = []   # enables OCR backends via Kreuzberg when available
+ocr = []  # enables OCR backends via Kreuzberg when available

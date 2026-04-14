@@ -1,40 +1,40 @@
 [package]
-name        = "marque-engine"
-description = "Pipeline orchestration: core + rules → diagnostics + fixes"
+name = "marque-engine"
 version = "0.1.0"
-edition.workspace     = true
-license.workspace     = true
-repository.workspace  = true
+edition.workspace = true
 rust-version.workspace = true
+description = "Pipeline orchestration: core + rules → diagnostics + fixes"
+repository.workspace = true
+license.workspace = true
+
+[[bench]]
+harness = false
+name = "lint_latency"
+
+[[bench]]
+harness = false
+name = "linear_scaling"
 
 [dependencies]
-marque-ism    = { workspace = true }
-marque-core   = { workspace = true }
-marque-rules  = { workspace = true }
-marque-capco  = { workspace = true }
+aho-corasick = { workspace = true }
+futures = { workspace = true, optional = true }
+marque-capco = { workspace = true }
 marque-config = { workspace = true }
-aho-corasick  = { workspace = true }
-tokio         = { workspace = true, optional = true }
-futures       = { workspace = true, optional = true }
-thiserror     = { workspace = true }
-tracing       = { workspace = true }
-recoco-utils  = { workspace = true, optional = true }
+marque-core = { workspace = true }
+marque-ism = { workspace = true }
+marque-rules = { workspace = true }
+recoco-utils = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+humantime = { workspace = true }
+insta = { workspace = true, features = ["json"] }
+marque-test-utils = { workspace = true }
+serde_json = { workspace = true }
 
 [features]
 default = ["batch"]
-batch   = ["dep:tokio", "dep:futures", "dep:recoco-utils"]
-
-[dev-dependencies]
-criterion         = { workspace = true }
-humantime         = { workspace = true }
-insta             = { workspace = true, features = ["json"] }
-marque-test-utils = { workspace = true }
-serde_json        = { workspace = true }
-
-[[bench]]
-name = "lint_latency"
-harness = false
-
-[[bench]]
-name = "linear_scaling"
-harness = false
+batch = ["dep:futures", "dep:recoco-utils", "dep:tokio"]

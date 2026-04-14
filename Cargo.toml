@@ -1,102 +1,105 @@
 [workspace]
-members = [
-    "marque",
-    "crates/marque-ism",
-    "crates/marque-core",
-    "crates/marque-rules",
-    "crates/marque-capco",
-    "crates/marque-engine",
-    "crates/marque-extract",
-    "crates/marque-config",
-    "crates/marque-wasm",
-    "crates/marque-server",
-    "crates/marque-test-utils",
-]
 resolver = "2"
-exclude  = ["crates/marque-engine/fuzz"]
+members = [
+  "crates/marque-capco",
+  "crates/marque-config",
+  "crates/marque-core",
+  "crates/marque-engine",
+  "crates/marque-extract",
+  "crates/marque-ism",
+  "crates/marque-rules",
+  "crates/marque-server",
+  "crates/marque-test-utils",
+  "crates/marque-wasm",
+  "marque",
+]
+exclude = ["crates/marque-engine/fuzz"]
 
 [workspace.package]
-version      = "0.1.0"
-edition      = "2024"
-license      = "Apache-2.0"
-repository   = "https://github.com/marquetools/marque"
+version = "0.1.0"
+edition = "2024"
 rust-version = "1.85"
+repository = "https://github.com/marquetools/marque"
+license = "Apache-2.0"
 
 [workspace.dependencies]
+marque-capco = { path = "crates/marque-capco", version = "0.1.0" }
+marque-config = { path = "crates/marque-config", version = "0.1.0" }
+marque-core = { path = "crates/marque-core", version = "0.1.0" }
+marque-engine = { path = "crates/marque-engine", version = "0.1.0", default-features = false }
+marque-extract = { path = "crates/marque-extract", version = "0.1.0" }
 # Internal crates
-marque-ism     = { version = "0.1.0", path = "crates/marque-ism" }
-marque-core    = { version = "0.1.0", path = "crates/marque-core" }
-marque-rules   = { version = "0.1.0", path = "crates/marque-rules" }
-marque-capco   = { version = "0.1.0", path = "crates/marque-capco" }
-marque-engine  = { version = "0.1.0", path = "crates/marque-engine", default-features = false }
-marque-extract    = { version = "0.1.0", path = "crates/marque-extract" }
-marque-config     = { version = "0.1.0", path = "crates/marque-config" }
-marque-test-utils = { version = "0.1.0", path = "crates/marque-test-utils" }
+marque-ism = { path = "crates/marque-ism", version = "0.1.0" }
+marque-rules = { path = "crates/marque-rules", version = "0.1.0" }
+marque-test-utils = { path = "crates/marque-test-utils", version = "0.1.0" }
 
+async-trait = "0.1.89"
+futures = "0.3.32"
 # Async
-tokio        = { version = "1", features = ["full"] }
-futures      = "0.3"
-async-trait  = "0.1"
+tokio = { version = "1.51.1", features = ["full"] }
 
+aho-corasick = "1.1.4"
 # Text processing / scanning
-memchr       = "2"
-aho-corasick = "1"
+memchr = "2.8.0"
 
+anyhow = "1.0.102"
 # Error handling
-thiserror = "2"
-anyhow    = "1"
+thiserror = "2.0.18"
 
 # Serialization
-serde      = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml       = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.149"
+toml = "0.8"
 
 # HTTP / server
-axum        = { version = "0.8", features = ["json"] }
-tower       = "0.5"
-tower-http  = { version = "0.6", features = ["trace", "cors"] }
+axum = { version = "0.8", features = ["json"] }
+tower = "0.5.3"
+tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 
+assert_cmd = "2.2.0"
 # CLI
-clap        = { version = "4", features = ["derive"] }
-is-terminal = "0.4"
-assert_cmd  = "2"
-tempfile    = "3"
-humantime   = "2"
+clap = { version = "4.6.0", features = ["derive"] }
+humantime = "2.3.0"
+is-terminal = "0.4.17"
+tempfile = "3.27.0"
 
 # Compile-time tables
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.13.1", features = ["macros"] }
 
 # Batch processing utilities (concurrency control, fingerprinting)
-recoco-utils = { version = "0.2.1", default-features = false, features = ["concur_control", "fingerprint"] }
+recoco-utils = { version = "0.2.3", default-features = false, features = [
+  "concur_control",
+  "fingerprint"
+] }
 
 # Build-time XML parsing (marque-ism build.rs)
-quick-xml = "0.37"
+quick-xml = "0.39.2"
 
 # XML processing (Schematron validation, XPath, DOM)
 xmloxide = { version = "0.4", default-features = false }
 
 # Benchmarking
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 
 # Snapshot testing
-insta = { version = "1", features = ["json"] }
+insta = { version = "1.47.2", features = ["json"] }
 
+js-sys = "0.3.95"
+serde-wasm-bindgen = "0.6.5"
 # WASM
-wasm-bindgen      = "0.2"
-serde-wasm-bindgen = "0.6"
-js-sys            = "0.3"
+wasm-bindgen = "0.2.118"
 
 # Observability
-tracing            = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [profile.release]
-opt-level     = 3
-lto           = "fat"
+opt-level = 3
+strip = "symbols"
+lto = "fat"
+panic = "abort"
 codegen-units = 1
-strip         = "symbols"
-panic         = "abort"
 
 [profile.release-wasm]
-inherits      = "release"
-opt-level     = "s"       # size-optimized for WASM
+inherits = "release"
+opt-level = "s"  # size-optimized for WASM

@@ -1,22 +1,22 @@
 [package]
-name        = "marque-capco"
-description = "CAPCO rule implementations for marque, consuming generated code from marque-ism"
+name = "marque-capco"
 version = "0.1.0"
-edition.workspace     = true
-license.workspace     = true
-repository.workspace  = true
+edition.workspace = true
 rust-version.workspace = true
+description = "CAPCO rule implementations for marque, consuming generated code from marque-ism"
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-marque-ism   = { workspace = true }
-marque-rules = { workspace = true }
-phf          = { workspace = true }
-thiserror    = { workspace = true }
 aho-corasick = { workspace = true }
+marque-ism = { workspace = true }
+marque-rules = { workspace = true }
+phf = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-insta             = { workspace = true }
-marque-core       = { workspace = true }
-marque-config     = { workspace = true }
-marque-engine     = { workspace = true }
+insta = { workspace = true }
+marque-config = { workspace = true }
+marque-core = { workspace = true }
+marque-engine = { workspace = true }
 marque-test-utils = { workspace = true }

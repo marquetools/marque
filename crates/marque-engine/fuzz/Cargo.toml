@@ -1,22 +1,22 @@
 [package]
 name = "marque-engine-fuzz"
 version = "0.0.0"
-publish = false
 edition = "2024"
+publish = false
 
 [package.metadata]
 cargo-fuzz = true
-
-[dependencies]
-libfuzzer-sys = "0.4"
-marque-engine = { path = "..", features = ["batch"] }
-marque-config = { path = "../../marque-config" }
 
 # Prevent this from being part of the main workspace
 [workspace]
 
 [[bin]]
+doc = false
 name = "lint"
 path = "fuzz_targets/lint.rs"
 test = false
-doc = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+marque-config = { path = "../../marque-config" }
+marque-engine = { path = "..", features = ["batch"] }

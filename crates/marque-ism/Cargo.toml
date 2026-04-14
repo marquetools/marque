@@ -1,30 +1,30 @@
 [package]
-name        = "marque-ism"
-description = "ISM vocabulary types, generated CVE enums, and Span for marque"
+name = "marque-ism"
 version = "0.1.0"
-edition.workspace      = true
-license.workspace      = true
-repository.workspace   = true
+edition.workspace = true
 rust-version.workspace = true
-
-[dependencies]
-aho-corasick = { workspace = true }
-serde        = { workspace = true, optional = true }
-
-[build-dependencies]
-quick-xml = { workspace = true }
-anyhow    = { workspace = true }
-toml      = { workspace = true }
-memchr    = { workspace = true }
-
-[dev-dependencies]
-xmloxide = { workspace = true }
-
-[features]
-default = []
-serde   = ["dep:serde"]
+description = "ISM vocabulary types, generated CVE enums, and Span for marque"
+repository.workspace = true
+license.workspace = true
 
 # Schema version pinned here — bump intentionally when ODNI publishes updates.
 # Schemas live in schemas/ISM-v<version>/
 [package.metadata.marque]
 ism-schema-version = "ISM-v2022-DEC"
+
+[dependencies]
+aho-corasick = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+xmloxide = { workspace = true }
+
+[build-dependencies]
+anyhow = { workspace = true }
+memchr = { workspace = true }
+quick-xml = { workspace = true }
+toml = { workspace = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
