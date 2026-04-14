@@ -1419,10 +1419,12 @@ impl Rule for DelimiterMismatchRule {
                 .unwrap_or(text)
                 .trim_start();
             // Space-delimited error: multiple words, none of which are commas/comma-adjacent.
-            let words: Vec<&str> = country_list.split_whitespace().collect();
-            if words.len() > 1 && !country_list.contains(',') {
+            if country_list.split_whitespace().count() > 1 && !country_list.contains(',') {
                 // Build the correctly comma-delimited replacement.
-                let fixed = format!("REL TO {}", words.join(", "));
+                let fixed = format!(
+                    "REL TO {}",
+                    country_list.split_whitespace().collect::<Vec<_>>().join(", ")
+                );
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
