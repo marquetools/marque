@@ -8,9 +8,10 @@
 //! Reference baseline: x86_64 >= 3.0 GHz single-thread (e.g. modern laptop-class CPU),
 //! warm cache, `--release` build, no tracing subscriber.
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::Engine;
+use std::hint::black_box;
 
 /// Build a ~10KB representative input by repeating a block of mixed valid and
 /// invalid markings interspersed with prose. This mimics a real document with

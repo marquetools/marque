@@ -7,9 +7,10 @@
 //! CI upper bound) is enforced by `scripts/bench-check.sh`; this
 //! benchmark provides the scaling data.
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::Engine;
+use std::hint::black_box;
 
 /// Build an input of approximately `target_bytes` by repeating a representative
 /// marking block with mixed valid/invalid content.
