@@ -1,0 +1,667 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" 
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:arh="urn:us:gov:ic:arh"
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    xmlns:ntk="urn:us:gov:ic:ntk" 
+    version="2">
+    
+    <x:scenario label="NTK-AnyOf multiple Different Anyof" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                       
+                   </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="ntk:TooManyRequiresAnyOf element indicating multiple diferent NTK anyOf" test="count(.//arh:Security[@ism:resourceElement='true']//ntk:TooManyRequiresAnyOf) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="NTK-AnyOf multiple Different Anyof with an allOf in the mix" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf>
+                                <ntk:AccessProfileList>
+                                    <ntk:AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                                        <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                                        <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                            ntk:name="organization:usa-agency"
+                                            ntk:sourceVersion="201502" />
+                                        <ntk:AccessProfileValue ntk:qualifier="originator"
+                                            ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="ntk:TooManyRequiresAnyOf element indicating multiple diferent NTK anyOf" test="count(.//arh:Security[@ism:resourceElement='true']//ntk:TooManyRequiresAnyOf) = 1"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="NTK-AnyOf multiple same Anyof one doubled" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="expect 1 anyOf ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAnyOf)[1]/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="expect zero allOf ntk:AccessProfile" test="count(.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf) = 0"/>
+    </x:scenario>
+    
+    <x:scenario label="NTK-AnyOf multiple same on each" pending="multiple NKT anyOF" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="1 anyOf ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile) = 7"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="NTK-AnyOf 2 identical ORCON different order for agencies and identical AnyOf on both of them." >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211"/>
+                    
+                    
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf>
+                                <ntk:AccessProfileList>
+                                    <ntk:AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                                        <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                                        <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                            ntk:name="organization:usa-agency"
+                                            ntk:sourceVersion="201502" />
+                                        <ntk:AccessProfileValue ntk:qualifier="originator"
+                                            ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf>
+                                <ntk:AccessProfileList>
+                                    <ntk:AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                                        <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                                        <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                            ntk:name="organization:usa-agency"
+                                            ntk:sourceVersion="201502" />
+                                        
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="originator"
+                                            ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="1 allof ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf)[1]/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="1 anyOf ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAnyOf)[1]/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="1 ntk:RequiresAnyOf profile value TEST_DATA" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile/ntk:AccessProfileValue[.='TEST_DATA']) = 1"/>
+        <x:expect label="1 ntk:RequiresAnyOf profile value TEST_DATA2" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile/ntk:AccessProfileValue[.='TEST_DATA2']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="NTK-AnyOf 2 identical ORCON different order for agencies and different order otherwise identical AnyOf on both of them." >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211"/>
+                    
+                    
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf>
+                                <ntk:AccessProfileList>
+                                    <ntk:AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                                        <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                                        <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                            ntk:name="organization:usa-agency"
+                                            ntk:sourceVersion="201502" />
+                                        <ntk:AccessProfileValue ntk:qualifier="originator"
+                                            ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf>
+                                <ntk:AccessProfileList>
+                                    <ntk:AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                                        <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                                        <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                            ntk:name="organization:usa-agency"
+                                            ntk:sourceVersion="201502" />
+                                        
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                            ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:qualifier="originator"
+                                            ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA</AccessProfileValue>
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">TEST_DATA2</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="1 allof ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf)[1]/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="1 anyOf ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true']//ntk:RequiresAnyOf)[1]/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="1 ntk:RequiresAnyOf profile value TEST_DATA" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile/ntk:AccessProfileValue[.='TEST_DATA']) = 1"/>
+        <x:expect label="1 ntk:RequiresAnyOf profile value TEST_DATA2" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile/ntk:AccessProfileValue[.='TEST_DATA2']) = 1"/>
+        
+    </x:scenario>
+  
+  
+    <x:scenario label="NTK-AnyOf intersection one has A or B the other has B or C" pending="multiple NKT anyOF" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">A</AccessProfileValue>
+                                    </AccessProfile>
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">B</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf>
+                                <AccessProfileList xmlns="urn:us:gov:ic:ntk">
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">B</AccessProfileValue>
+                                    </AccessProfile>
+                                    <AccessProfile ism:classification="U"
+                                        ism:ownerProducer="USA">
+                                        <AccessPolicy>urn:us:gov:ic:aces:ntk:rac</AccessPolicy>
+                                        <ProfileDes>urn:us:gov:ic:ntk:profile:datasphere</ProfileDes>
+                                        <VocabularyType ntk:name="datasphere:rac"
+                                            ntk:source="urn:us:gov:ic:cvenum:authcat:authcattype"
+                                            ntk:sourceVersion="201508" />
+                                        <AccessProfileValue ntk:vocabulary="datasphere:rac">C</AccessProfileValue>
+                                    </AccessProfile>
+                                </AccessProfileList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="1 ntk:RequiresAnyOf ntk:AccessProfile" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile) = 1"/>
+        <x:expect label="1 ntk:RequiresAnyOf profile value of B" test="count((.//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf/ntk:AccessProfileList/ntk:AccessProfile/ntk:AccessProfileValue[.='B']) = 1"/>
+    </x:scenario>
+</x:description>

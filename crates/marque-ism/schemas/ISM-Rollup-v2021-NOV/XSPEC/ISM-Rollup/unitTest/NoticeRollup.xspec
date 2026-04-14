@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl"
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    xmlns:ntk="urn:us:gov:ic:ntk" version="2">
+    
+   
+    <x:scenario label="FISA Notice 2 different FISA notices"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 2</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="2 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 2"/>
+    </x:scenario>
+    
+    <x:scenario label="FISA Notice 2 different FISA notices one S"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="S"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 2</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//ism:NoticeList[1][@ism:classification='S']) = 1"/>
+        <x:expect label="2 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 2"/>
+    </x:scenario>
+    
+    <x:scenario label="FISA Notice 2 identical FISA notices"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="1 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="FISA Notice 2 identical FISA notices text different classification"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="S"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="2 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 2"/>
+    </x:scenario>
+    
+    <x:scenario label="FISA Notice 2 identical FISA notices text different classification add SCI"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="S"  ism:SCIcontrols="SI"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:SCIcontrols is SI" test="count(.//ism:NoticeList[1][@ism:SCIcontrols='SI']) = 1"/>
+        
+        <x:expect label="2 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 2"/>
+    </x:scenario>
+    
+    <x:scenario label="FISA Notice 2 identical FISA notices text different classification attribute order"  >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:classification="U"
+                                    ism:ownerProducer="USA">FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ism:NoticeList ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ism:Notice ism:classification="U"
+                                ism:ownerProducer="USA"
+                                ism:noticeType="FISA">
+                                <ism:NoticeText ism:ownerProducer="USA" ism:classification="U"
+                                    >FISA Notice 1</ism:NoticeText>
+                            </ism:Notice>
+                        </ism:NoticeList>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="1 ism:Notice" test="count((.//ism:NoticeList)[1]/ism:Notice) = 1"/>
+    </x:scenario>
+    
+</x:description>
