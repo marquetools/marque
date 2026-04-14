@@ -20,6 +20,7 @@ debug/
 .wrangler/
 
 *.spdx
+*:Zone.Identifier
 
 # General
 nohup.out

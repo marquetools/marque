@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" 
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" 
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util"
+    xmlns:ism-func="urn:us:gov:ic:ism:functions"
+    version="2">
+ 
+    <x:scenario label="CountryRollup-Functions countFdrPortions Function all REL"  >
+        <x:call function="util:countFdrPortions">
+            <x:param name="context">
+                <wrapper>
+                    <resourceElement
+                        xmlns:ism="urn:us:gov:ic:ism"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                        ism:DESVersion="202111.202211"
+                        ism:compliesWith="USGov"
+                        ism:resourceElement="true"
+                        ism:createDate="2018-08-10"
+                        ism:ISMCATCESVersion="202211"                
+                        ism:ownerProducer="USA"
+                        ism:classification="U"
+                        ism:nonICmarkings="SBU-NF"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                        <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                    </sampleAttributes>
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS" ism:excludeFromRollup='true'/>
+                </wrapper>
+            </x:param>
+        </x:call>
+        <x:expect label="count part tag is 2 ">2</x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions countFdrPortions Function all but 1 REL"  >
+        <x:call function="util:countFdrPortions">
+            <x:param name="context">
+                <wrapper>
+                    <resourceElement
+                        xmlns:ism="urn:us:gov:ic:ism"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                        ism:DESVersion="202111.202211"
+                        ism:compliesWith="USGov"
+                        ism:resourceElement="true"
+                        ism:createDate="2018-08-10"
+                        ism:ISMCATCESVersion="202211"                
+                        ism:ownerProducer="USA"
+                        ism:classification="U"
+                        ism:nonICmarkings="SBU-NF"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                        <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                    </sampleAttributes>
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA"/>
+                </wrapper>
+            </x:param>
+        </x:call>
+        <x:expect label="count part tag is 2 ">3</x:expect>
+    </x:scenario>
+  
+    <x:scenario label="CountryRollup-Functions Expand FVEY to individual countries using ism-func:expandDecomposableTetras">
+        <x:call function="ism-func:expandDecomposableTetras">
+            <x:param name="portionCountryStrings">USA FVEY</x:param>
+        </x:call>
+        <x:expect label="Since USA is excluded expecting AUS CAN GBR NZL " select="('AUS', 'CAN', 'NZL', 'GBR')"/>
+    </x:scenario>
+    
+   
+    <x:scenario label="CountryRollup-Functions Rel Token Hash with duplicates util:createRelTokenHash" >
+        <x:call function="util:createRelTokenHash">
+            <x:param name="relToStrings" select="('AUS CAN NZL NZL', 'FVEY', 'AUS CAN GBR NZL')"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 1 GBR 1 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="1">FVEY</token>
+            <token count="1">GBR</token>
+            <token count="2">NZL</token>
+        </x:expect>
+    </x:scenario>
+ 
+    <x:scenario label="CountryRollup-Functions Rel Token Hash util:createRelTokenHash" >
+        <x:call function="util:createRelTokenHash">
+            <x:param name="relToStrings" select="('AUS CAN NZL', 'FVEY', 'AUS CAN GBR NZL')"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 1 GBR 1 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="1">FVEY</token>
+            <token count="1">GBR</token>
+            <token count="2">NZL</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions commonToAllTokens drop 1 util:commonToAllTokens" >
+        <x:call function="util:commonToAllTokens">
+            <x:param name="relToStrings" select="('AUS CAN NZL', 'AUS CAN GBR NZL')"/>
+            <x:param name="countFdrPortionsLocal" select="2"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="2">NZL</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions commonToAllTokens use Tetra util:commonToAllTokens">
+        <x:call function="util:commonToAllTokens">
+            <x:param name="relToStrings" select="('AUS CAN NZL FVEY', 'AUS CAN GBR NZL FVEY')"/>
+            <x:param name="countFdrPortionsLocal" select="2"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 2 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="2">FVEY</token>
+            <token count="2">NZL</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions Rel Strings minus the common Tokens util:RelStringsWithoutCommonTokens">
+        <x:call function="util:RelStringsWithoutCommonTokens">
+            <x:param name="relToStrings" select="('AUS CAN FVEY', 'AUS CAN GBR NZL')"/>
+            <x:param name="countFdrPortionsLocal" select="2"/>
+        </x:call>
+        <!-- Not sure why this test fails -->
+<!--        <x:expect label=" expecting FVEY, GBR NZL $x:result" select="('FVEY', 'GBR NZL')"/>
+-->        <x:expect label=" expecting First element to be FVEY" test="$x:result[1]='FVEY'"/>
+        <x:expect label=" expecting 2nd element to be GBR NZL" test="$x:result[2]='GBR NZL'"/>
+        <x:expect label=" count of results to be 2" test="count($x:result)=2"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions Rel Strings minus the common Tokens lose entire portion util:RelStringsWithoutCommonTokens" >
+        <x:call function="util:RelStringsWithoutCommonTokens">
+            <x:param name="relToStrings" select="('AUS CAN FVEY', 'AUS CAN GBR NZL', 'AUS CAN')"/>
+            <x:param name="countFdrPortionsLocal" select="3"/>
+        </x:call>
+       
+        <x:expect label=" expecting First element to be FVEY" test="$x:result[1]='FVEY'"/>
+        <x:expect label=" expecting 2nd element to be GBR NZL" test="$x:result[2]='GBR NZL'"/>
+        <x:expect label=" expecting 3rd element to be empty" test="$x:result[3]=''"/>
+        <x:expect label=" count of results to be 3" test="count($x:result)=3"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions Expand all tetras util:expandAllTetras"  >
+        <x:call function="util:expandAllTetras">
+            <x:param name="relToStrings" select="('AUS CAN FVEY', 'AUS CAN GBR NZL', 'AUS CAN')"/>
+        </x:call>
+        
+        <x:expect label=" expecting First element to be AUS CAN NZL GBR" test="$x:result[1]=' AUS CAN NZL GBR ' "/>
+        <x:expect label=" expecting 2nd element to be AUS CAN GBR NZL" test="$x:result[2]=' AUS CAN GBR NZL '"/>
+        <x:expect label=" expecting 3rd element to be AUS CAN" test="$x:result[3]=' AUS CAN '"/>
+        <x:expect label=" count of results to be 3" test="count($x:result)=3"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="CountryRollup-Functions unsortedCommonRelTokens use Tetra util:unsortedCommonRelTokens" >
+        <x:call function="util:unsortedCommonRelTokens">
+            <x:param name="relToStrings" select="('AUS CAN NZL FVEY', 'AUS CAN GBR NZL')"/>
+            <x:param name="countFdrPortionsLocal" select="2"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 2 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="2">NZL</token>
+            <token count="2">GBR</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions unsortedCommonRelTokens use Tetra util:unsortedCommonRelTokens" >
+        <x:call function="util:unsortedCommonRelTokens">
+            <x:param name="relToStrings" select="('AUS CAN NZL FVEY', 'AUS CAN GBR NZL', 'AUS CAN')"/>
+            <x:param name="countFdrPortionsLocal" select="3"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 2 NZL 2 ">
+            <token count="3">AUS</token>
+            <token count="3">CAN</token>
+        </x:expect>
+    </x:scenario>
+    
+    
+    <x:scenario label="CountryRollup-Functions unsortedCommonRelTokens add APFS as non decomposable use Tetra util:unsortedCommonRelTokens" >
+        <x:call function="util:unsortedCommonRelTokens">
+            <x:param name="relToStrings" select="('AUS CAN NZL FVEY', 'AUS CAN GBR NZL APFS')"/>
+            <x:param name="countFdrPortionsLocal" select="2"/>
+        </x:call>
+        <x:expect label=" expecting AUS 2 CAN 2 FVEY 2 NZL 2 ">
+            <token count="2">AUS</token>
+            <token count="2">CAN</token>
+            <token count="2">NZL</token>
+            <token count="2">GBR</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions FVEY and other countries use Tetra util:unsortedCommonRelTokens" >
+        <x:call function="util:unsortedCommonRelTokens">
+            <x:param name="relToStrings" select="('DEU JPN FVEY', 'DEU FVEY', 'DEU NZL FVEY')"/>
+            <x:param name="countFdrPortionsLocal" select="3"/>
+        </x:call>
+        <x:expect label=" expecting DEU 3 FVEY 3 ">
+            <token count="3">DEU</token>
+            <token count="3">FVEY</token>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions countFdrPortions Function all unclass one uncaveated."  >
+        <x:call function="util:countFdrPortions">
+            <x:param name="context">
+                <wrapper>
+                    <resourceElement
+                        xmlns:ism="urn:us:gov:ic:ism"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                        ism:DESVersion="202111.202211"
+                        ism:compliesWith="USGov"
+                        ism:resourceElement="true"
+                        ism:createDate="2018-08-10"
+                        ism:ISMCATCESVersion="202211"                
+                        ism:ownerProducer="USA"
+                        ism:classification="U"
+                        ism:nonICmarkings="SBU-NF"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                        <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                    </sampleAttributes>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+                </wrapper>
+            </x:param>
+        </x:call>
+        <x:expect label="count part tag is 2 ">2</x:expect>
+    </x:scenario>
+    
+    
+    <x:scenario label="CountryRollup-Functions util:PartakesInFDR U with REL"  >
+        <x:call function="util:PartakesInFDR">
+            <x:param name="elementNode">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+            </x:param>
+        </x:call>
+        <x:expect label="Does participate in FDR true" select="true()"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions util:PartakesInFDR U alone"  >
+        <x:call function="util:PartakesInFDR">
+            <x:param name="elementNode">
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+            </x:param>
+        </x:call>
+        <x:expect label="Does participate in FDR false" select="false()"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup-Functions util:PartakesInFDR U//FOUO"  >
+        <x:call function="util:PartakesInFDR">
+            <x:param name="elementNode">
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="FOUO" />
+            </x:param>
+        </x:call>
+        <x:expect label="Does participate in FDR true" select="true()"/>
+    </x:scenario>
+    
+</x:description>

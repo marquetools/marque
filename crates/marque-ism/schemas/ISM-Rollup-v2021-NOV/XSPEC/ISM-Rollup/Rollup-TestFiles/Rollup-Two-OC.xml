@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - distEditionBlockReplace-->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<wrapper xmlns:ism="urn:us:gov:ic:ism"  xmlns:ntk="urn:us:gov:ic:ntk" >
+    <doc>
+        <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+            ism:classification="U"
+            ism:ownerProducer="USA"
+            ism:compliesWith="USGov USIC"
+            ism:resourceElement="true"
+            ism:createDate="9999-11-11"
+            ism:DESVersion="202111.202211"
+            ism:ISMCATCESVersion="202211">
+            <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                ism:classification="U"
+                ism:ownerProducer="USA">
+                <ntk:RequiresAllOf>
+                    <ntk:AccessProfileList>
+                        <ntk:AccessProfile ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                            <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                            <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                ntk:name="organization:usa-agency"
+                                ntk:sourceVersion="201502" />
+                            <ntk:AccessProfileValue ntk:qualifier="originator"
+                                ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                            <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                            <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                        </ntk:AccessProfile>
+                    </ntk:AccessProfileList>
+                </ntk:RequiresAllOf>
+            </ntk:Access>
+        </arh:Security>
+    </doc>
+    <doc>
+        <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+            ism:classification="U"
+            ism:ownerProducer="USA">
+            <ntk:Access xmlns:ntk="urn:us:gov:ic:ntk"
+                ism:classification="U"
+                ism:ownerProducer="USA">
+                <ntk:RequiresAllOf>
+                    <ntk:AccessProfileList>
+                        <ntk:AccessProfile ism:classification="U"
+                            ism:ownerProducer="USA">
+                            <ntk:AccessPolicy>urn:us:gov:ic:aces:ntk:oc</ntk:AccessPolicy>
+                            <ntk:ProfileDes>urn:us:gov:ic:ntk:profile:agencydissem</ntk:ProfileDes>
+                            <VocabularyType xmlns="urn:us:gov:ic:ntk"
+                                ntk:name="organization:usa-agency"
+                                ntk:sourceVersion="201502" />
+                            <ntk:AccessProfileValue ntk:qualifier="originator"
+                                ntk:vocabulary="organization:usa-agency">CIA</ntk:AccessProfileValue>
+                            <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                ntk:vocabulary="organization:usa-agency">DNI</ntk:AccessProfileValue>
+                            <ntk:AccessProfileValue ntk:qualifier="dissemto"
+                                ntk:vocabulary="organization:usa-agency">NSA</ntk:AccessProfileValue>
+                        </ntk:AccessProfile>
+                    </ntk:AccessProfileList>
+                </ntk:RequiresAllOf>
+            </ntk:Access>
+        </arh:Security>
+        <portion ism:classification="S" ism:disseminationControls="OC NF"
+            ism:ownerProducer="USA"/>
+        
+    </doc>
+</wrapper>

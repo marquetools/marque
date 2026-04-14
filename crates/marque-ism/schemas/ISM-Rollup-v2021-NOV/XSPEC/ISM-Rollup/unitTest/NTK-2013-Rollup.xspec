@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" 
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:arh="urn:us:gov:ic:arh"
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    xmlns:ntk="urn:us:gov:ic:ntk" 
+    version="2">
+    
+    <!-- So not sure that rollup SHOULD handle data from 2013 but here is seeing if it could at least not break the NTK. -->
+    <x:scenario label="NTK-2013-AnyOf simple Single Anyof">
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf ism:classification="U" ism:ownerProducer="USA">
+                                <!-- Sample file restricting use to the people in SourceForge who 
+            Have are members of the Wheel or SuperUser groups in the Bob LDAP    -->
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211"/>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="AnyOf duplicated no changes" test="//arh:Security[@ism:resourceElement='true']//ntk:RequiresAnyOf" >
+            <ntk:RequiresAnyOf ism:classification="U" ism:ownerProducer="USA">
+                <!-- Sample file restricting use to the people in SourceForge who 
+            Have are members of the Wheel or SuperUser groups in the Bob LDAP    -->
+                <ntk:AccessGroupList>
+                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                    </ntk:AccessGroup>
+                </ntk:AccessGroupList>
+            </ntk:RequiresAnyOf>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="NTK-2013-AnyOf multiple identical Anyof AccessGroupList actually dedupe" >
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf ism:classification="U" ism:ownerProducer="USA">
+                                <!-- Sample file restricting use to the people in SourceForge who 
+            Have are members of the Wheel or SuperUser groups in the Bob LDAP    -->
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAnyOf ism:classification="U" ism:ownerProducer="USA">
+                                <!-- Sample file restricting use to the people in SourceForge who 
+            Have are members of the Wheel or SuperUser groups in the Bob LDAP    -->
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAnyOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="RequiresAllOf duplicated no changes" test="(//arh:Security[@ism:resourceElement='true'])[1]//ntk:RequiresAnyOf" >
+            <ntk:RequiresAnyOf ism:classification="U" ism:ownerProducer="USA">
+                <ntk:AccessGroupList>
+                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                    </ntk:AccessGroup>
+                </ntk:AccessGroupList>
+            </ntk:RequiresAnyOf>
+        </x:expect>
+    </x:scenario>
+    
+    
+    <x:scenario label="NTK-2013-RequiresAllOf simple Single AllOF using accessProfile">
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessProfileList ism:classification="U" ism:ownerProducer="USA">
+                                    <ntk:AccessProfile ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">UnclassSourceForge</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessProfileValue ntk:vocabulary="projectName"
+                                            ism:classification="U"
+                                            ism:ownerProducer="USA">Data Standards Coordination Activity</ntk:AccessProfileValue>
+                                        <ntk:AccessProfileValue ntk:vocabulary="role"
+                                            ism:classification="U"
+                                            ism:ownerProducer="USA">SourceView</ntk:AccessProfileValue>
+                                    </ntk:AccessProfile>
+                                </ntk:AccessProfileList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211"/>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="RequiresAllOf duplicated no changes" test="//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf" >
+            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                <ntk:AccessProfileList ism:classification="U" ism:ownerProducer="USA">
+                    <ntk:AccessProfile ism:classification="U" ism:ownerProducer="USA">
+                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">UnclassSourceForge</ntk:AccessPolicy>
+                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                        <ntk:AccessProfileValue ntk:vocabulary="projectName"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">Data Standards Coordination Activity</ntk:AccessProfileValue>
+                        <ntk:AccessProfileValue ntk:vocabulary="role"
+                            ism:classification="U"
+                            ism:ownerProducer="USA">SourceView</ntk:AccessProfileValue>
+                    </ntk:AccessProfile>
+                </ntk:AccessProfileList>
+            </ntk:RequiresAllOf>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="NTK-2013-RequiresAllOf simple Single AllOF using ntk:AccessGroup">
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211"/>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="RequiresAllOf duplicated no changes" test="//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf" >
+            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                <ntk:AccessGroupList>
+                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                    </ntk:AccessGroup>
+                </ntk:AccessGroupList>
+            </ntk:RequiresAllOf>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="NTK-2013-RequiresAllOf multiple identical AllOF using ntk:AccessGroup" pending="de-dupe-2013NTK">
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="RequiresAllOf duplicated no changes" test="//arh:Security[@ism:resourceElement='true']//ntk:RequiresAllOf" >
+            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                <ntk:AccessGroupList>
+                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                    </ntk:AccessGroup>
+                </ntk:AccessGroupList>
+            </ntk:RequiresAllOf>
+        </x:expect>
+    </x:scenario>
+    
+    <x:scenario label="NTK-2013-RequiresAllOf multiple identical AllOF using ntk:AccessGroup generate error">
+        <x:context>
+            <wrapper>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+                <doc>
+                    <arh:Security xmlns:arh="urn:us:gov:ic:arh"
+                        ism:classification="U"
+                        ism:ownerProducer="USA"
+                        ism:compliesWith="USGov USIC"
+                        ism:resourceElement="true"
+                        ism:createDate="9999-11-11"
+                        ism:DESVersion="202111.202211"
+                        ism:ISMCATCESVersion="202211">
+                        <ntk:Access ism:classification="U" ism:ownerProducer="USA">
+                            <ntk:RequiresAllOf ism:classification="U" ism:ownerProducer="USA">
+                                <ntk:AccessGroupList>
+                                    <ntk:AccessGroup ism:classification="U" ism:ownerProducer="USA">
+                                        <ntk:AccessPolicy ism:classification="U" ism:ownerProducer="USA">Bob_LDAP</ntk:AccessPolicy>
+                                        <ntk:ProfileDes ism:classification="U" ism:ownerProducer="USA">guide://999990/exampleProfileDES</ntk:ProfileDes>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">Wheel</ntk:AccessGroupValue>
+                                        <ntk:AccessGroupValue ism:classification="U" ism:ownerProducer="USA">SuperUser</ntk:AccessGroupValue>
+                                    </ntk:AccessGroup>
+                                </ntk:AccessGroupList>
+                            </ntk:RequiresAllOf>
+                        </ntk:Access>
+                    </arh:Security>
+                </doc>
+            </wrapper>
+        </x:context>
+        <x:expect label="ntk:NTK-13-unsupported for rollup" test="count(.//arh:Security[@ism:resourceElement='true']//ntk:NTK-13-unsupported) = 1"/>
+        
+    </x:scenario>
+</x:description>

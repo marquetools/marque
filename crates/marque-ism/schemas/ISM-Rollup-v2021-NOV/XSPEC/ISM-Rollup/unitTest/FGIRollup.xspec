@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" 
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl"
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    version="2">
+    
+    <x:scenario label="FGIRollup FGI Open NATO from NATO FGI"  >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:FGIsourceOpen="NATO" ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:FGIsourceOpen is NATO" test="count(.//resourceElement[@ism:FGIsourceOpen='NATO']) = 1"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="FGIRollup FGI Open NATO from NATO Portion"  >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="NATO"  ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:FGIsourceOpen is NATO" test="count(.//resourceElement[@ism:FGIsourceOpen='NATO']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="FGIRollup FGI Open NATO, AUS from NATO Portion and JOINT Portion" >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="NATO"  ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="AUS USA" ism:joint="true" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:FGIsourceOpen is AUS NATO" test="count(.//resourceElement[@ism:FGIsourceOpen='AUS NATO']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="FGIRollup FGI Protected trumps NATO from NATO Portion"  >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="NATO"  ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:FGIsourceOpen is not present" test="count(.//resourceElement[@ism:FGIsourceOpen]) = 0"/>
+        <x:expect label="@ism:FGIsourceProtected is present" test="count(.//resourceElement[@ism:FGIsourceProtected]) = 1"/>
+        <x:expect label="@ism:FGIsourceProtected is 'FGI'" test="count(.//resourceElement[@ism:FGIsourceProtected='FGI']) = 1"/>
+    </x:scenario>
+  
+</x:description>

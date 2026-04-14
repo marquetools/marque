@@ -186,11 +186,10 @@ impl<'t> Parser<'t> {
         let mut non_ic: Vec<NonIcDissem> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
 
-        // When the marking starts with `//` (after trimming any incidental
-        // leading whitespace inside the candidate), block 0 is empty and the
+        // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
         // the foreign classification.
-        let is_non_us = s.trim_start().starts_with("//");
+        let is_non_us = s.starts_with("//");
 
         for (idx, &(rel_start, rel_end)) in block_ranges.iter().enumerate() {
             let raw = &s[rel_start..rel_end];

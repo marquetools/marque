@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" xmlns:ism="urn:us:gov:ic:ism" version="2">
+    <!-- stylesheet="../XSL/IC-ISM-GenerateBanner.xsl" -->
+   
+    <x:scenario label="NonICRollup Drop SBU-NF classified doc." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="RELIDO"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="RELIDO"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 0"/>
+        <x:expect label="@ism:nonICmarkings SBU is present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 1"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+   
+    <x:scenario label="NonICRollup Keep SBU-NF Unclass doc." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is  present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 0"/>
+    </x:scenario>
+    
+    <x:scenario label="NonICRollup change SBU-NF to SBU and add NF dissem Unclass doc." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="NF"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 0"/>
+        <x:expect label="@ism:nonICmarkings SBU is present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 1"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+ 
+    <x:scenario label="NonICRollup change SBU-NF to SBU and add NF dissem use REL Unclass doc." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA FVEY"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 0"/>
+        <x:expect label="@ism:nonICmarkings SBU is present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 1"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="NonICRollup change SBU-NF to SBU and add NF dissem use DISPLAYONLY Unclass doc." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="USA FVEY"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 0"/>
+        <x:expect label="@ism:nonICmarkings SBU is present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 1"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="NonICRollup Keep SBU-NF and don't add NF dissem use DISPLAYONLY with excludeFromRollup true in Unclass doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:nonICmarkings="SBU-NF" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="USA FVEY" ism:excludeFromRollup='true'/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU-NF is present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU-NF')]) = 1"/>
+        <x:expect label="@ism:nonICmarkings SBU is not present" test="count(.//resourceElement[normalize-space(@ism:nonICmarkings)][xs:NMTOKENS(@ism:nonICmarkings) = xs:NMTOKENS('SBU')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 0"/>
+    </x:scenario>
+</x:description>

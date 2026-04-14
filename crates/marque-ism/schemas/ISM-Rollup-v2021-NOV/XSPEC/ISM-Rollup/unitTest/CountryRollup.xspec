@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" xmlns:ism="urn:us:gov:ic:ism" version="2">
+    <x:import href="CountryRollup-Functions.xspec"/>
+    
+    <x:scenario label="CountryRollup Simple REL intersection with an intersection" >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 1"/>
+        <x:expect label="@ism:releasableTo is USA AUS" test="count(.//resourceElement[normalize-space(@ism:releasableTo)='USA AUS']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup Simple REL intersection resulting in NF" >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA GBR"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is NOT present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is  present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup invalid REL missing USA intersection resulting in NF" >
+        <!-- Not a "valid" test since all ism:releasableTo should have USA but easy to account for and plausible mistake that we should not overlook.  -->
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="GBR"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is NOT present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is  present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="CountryRollup FVEY REL intersection." >
+        <x:context select="/">
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA FVEY"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 1"/>
+        <x:expect label="@ism:releasableTo is USA AUS count" test="count(.//resourceElement[normalize-space(@ism:releasableTo)='USA AUS CAN']) = 1"/>
+        <x:expect label="@ism:releasableTo is USA AUS" test=".//resourceElement/@ism:releasableTo='USA AUS CAN'"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup Simple EYES intersection.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="EYES" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="EYES" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="EYES" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls EYES is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('EYES')]) = 1"/>
+        <x:expect label="@ism:releasableTo is USA AUS" test="count(.//resourceElement[normalize-space(@ism:releasableTo)='USA AUS']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup displayOnly breaks REL list.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls DISPLAYONLY is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('DISPLAYONLY')]) = 1"/>
+        <x:expect label="@ism:disseminationControls REL  is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+    </x:scenario>
+    
+    <x:scenario label="CountryRollup Unclass no REL with Unclass REL.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 1"/>
+        <x:expect label="@ism:releasableTo is USA AUS" test="count(.//resourceElement[normalize-space(@ism:releasableTo)='USA AUS']) = 1"/>
+    </x:scenario>
+    
+    
+</x:description>

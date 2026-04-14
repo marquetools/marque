@@ -1,0 +1,323 @@
+//! Golden tests derived from the ODNI ISM-Rollup XSpec test suite.
+//!
+//! Each test translates an authoritative XSpec scenario into a Rust test.
+//! Uses Default::default() + field mutation since IsmAttributes is #[non_exhaustive].
+
+use marque_ism::attrs::*;
+use marque_ism::page_context::PageContext;
+
+fn portion(c: Classification) -> IsmAttributes {
+    let mut a = IsmAttributes::default();
+    a.classification = Some(MarkingClassification::Us(c));
+    a
+}
+
+// =========================================================================
+// AEA Rollup
+// =========================================================================
+
+/// XSpec: "AEARollup testMultipleSigma+RDPass"
+#[test]
+fn aea_multiple_sigma_aggregated() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.aea_markings = vec![AeaMarking::Rd(RdBlock {
+        cnwdi: false,
+        sigma: vec![14, 15, 20].into(),
+    })].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::TopSecret);
+    p2.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
+    ctx.add_portion(p2);
+
+    let mut p3 = portion(Classification::Secret);
+    p3.aea_markings = vec![AeaMarking::Rd(RdBlock {
+        cnwdi: false,
+        sigma: vec![18].into(),
+    })].into();
+    ctx.add_portion(p3);
+
+    assert_eq!(ctx.expected_classification(), Some(Classification::TopSecret));
+    let aea = ctx.expected_aea_markings();
+    assert_eq!(aea.len(), 1);
+    match &aea[0] {
+        AeaMarking::Rd(rd) => assert_eq!(&*rd.sigma, &[14, 15, 18, 20]),
+        other => panic!("expected Rd, got: {other:?}"),
+    }
+}
+
+/// XSpec: "AEARollup Ensure AEA U marks drop in classified doc."
+#[test]
+fn aea_ucni_drops_in_classified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.aea_markings = vec![AeaMarking::DodUcni].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Unclassified);
+    p2.aea_markings = vec![AeaMarking::DoeUcni].into();
+    ctx.add_portion(p2);
+
+    ctx.add_portion(portion(Classification::Secret));
+
+    assert_eq!(ctx.expected_classification(), Some(Classification::Secret));
+    assert!(ctx.expected_aea_markings().is_empty());
+}
+
+/// XSpec: "AEARollup Ensure AEA U marks don't drop in a U doc."
+#[test]
+fn aea_ucni_kept_in_unclassified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.aea_markings = vec![AeaMarking::DodUcni].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Unclassified);
+    p2.aea_markings = vec![AeaMarking::DoeUcni].into();
+    ctx.add_portion(p2);
+
+    assert_eq!(ctx.expected_aea_markings().len(), 2);
+}
+
+// =========================================================================
+// Non-IC Rollup
+// =========================================================================
+
+/// XSpec: "NonICRollup Drop SBU-NF classified doc."
+#[test]
+fn non_ic_sbu_nf_splits_in_classified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
+    ctx.add_portion(p1);
+
+    ctx.add_portion(portion(Classification::Secret));
+
+    let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+    assert!(non_ic.contains(&NonIcDissem::Sbu));
+    assert!(!non_ic.contains(&NonIcDissem::SbuNf));
+    assert!(needs_nf);
+
+    let dissem = ctx.expected_dissem_controls();
+    assert!(dissem.contains(&DissemControl::Nf));
+}
+
+/// XSpec: "NonICRollup Keep SBU-NF Unclass doc."
+#[test]
+fn non_ic_sbu_nf_kept_in_unclassified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
+    ctx.add_portion(p1);
+
+    let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+    assert!(non_ic.contains(&NonIcDissem::SbuNf));
+    assert!(!needs_nf);
+}
+
+// =========================================================================
+// Dissem Control Rollup
+// =========================================================================
+
+/// XSpec: OC-USGOV drops if not on all OC portions
+#[test]
+fn dissem_oc_usgov_drops_partial() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    ctx.add_portion(p2);
+
+    let mut p3 = portion(Classification::Secret);
+    p3.dissem_controls = vec![DissemControl::Oc].into();
+    ctx.add_portion(p3);
+
+    let dissem = ctx.expected_dissem_controls();
+    assert!(dissem.contains(&DissemControl::Oc));
+    assert!(!dissem.contains(&DissemControl::OcUsgov));
+}
+
+/// OC-USGOV kept when on all OC portions
+#[test]
+fn dissem_oc_usgov_kept_when_all() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    ctx.add_portion(p2);
+
+    let dissem = ctx.expected_dissem_controls();
+    assert!(dissem.contains(&DissemControl::OcUsgov));
+}
+
+/// FOUO drops in classified
+#[test]
+fn dissem_fouo_drops_classified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.dissem_controls = vec![DissemControl::Fouo].into();
+    ctx.add_portion(p1);
+
+    ctx.add_portion(portion(Classification::Secret));
+
+    let dissem = ctx.expected_dissem_controls();
+    assert!(!dissem.contains(&DissemControl::Fouo));
+}
+
+/// FOUO kept in unclassified
+#[test]
+fn dissem_fouo_kept_unclassified() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Unclassified);
+    p1.dissem_controls = vec![DissemControl::Fouo].into();
+    ctx.add_portion(p1);
+
+    let dissem = ctx.expected_dissem_controls();
+    assert!(dissem.contains(&DissemControl::Fouo));
+}
+
+// =========================================================================
+// Country Rollup
+// =========================================================================
+
+/// REL TO intersection: USA AUS CAN ∩ USA AUS = USA AUS
+#[test]
+fn country_rel_intersection() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.rel_to = vec![
+        Trigraph::USA,
+        Trigraph::try_new(*b"AUS").unwrap(),
+        Trigraph::try_new(*b"CAN").unwrap(),
+    ].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_controls = vec![DissemControl::Rel].into();
+    p2.rel_to = vec![
+        Trigraph::USA,
+        Trigraph::try_new(*b"AUS").unwrap(),
+    ].into();
+    ctx.add_portion(p2);
+
+    let rel = ctx.expected_rel_to();
+    assert_eq!(rel.len(), 2);
+    assert_eq!(rel[0], Trigraph::USA);
+    assert_eq!(rel[1].as_str(), "AUS");
+}
+
+/// NOFORN supersedes REL TO
+#[test]
+fn country_noforn_supersedes_rel() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_controls = vec![DissemControl::Nf].into();
+    ctx.add_portion(p2);
+
+    assert!(ctx.expected_rel_to().is_empty());
+    assert!(ctx.expected_dissem_controls().contains(&DissemControl::Nf));
+}
+
+// =========================================================================
+// FGI Rollup
+// =========================================================================
+
+/// Source-concealed supersedes open
+#[test]
+fn fgi_concealed_supersedes_open() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = IsmAttributes::default();
+    p1.fgi_marker = Some(FgiMarker {
+        countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+    });
+    ctx.add_portion(p1);
+
+    let mut p2 = IsmAttributes::default();
+    p2.fgi_marker = Some(FgiMarker {
+        countries: Box::new([]),
+    });
+    ctx.add_portion(p2);
+
+    let fgi = ctx.expected_fgi_marker().unwrap();
+    assert!(fgi.countries.is_empty());
+}
+
+/// FGI open countries union
+#[test]
+fn fgi_open_union() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = IsmAttributes::default();
+    p1.fgi_marker = Some(FgiMarker {
+        countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+    });
+    ctx.add_portion(p1);
+
+    let mut p2 = IsmAttributes::default();
+    p2.fgi_marker = Some(FgiMarker {
+        countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+    });
+    ctx.add_portion(p2);
+
+    let fgi = ctx.expected_fgi_marker().unwrap();
+    assert_eq!(fgi.countries.len(), 2);
+}
+
+// =========================================================================
+// Classification + SCI
+// =========================================================================
+
+/// Max classification across portions
+#[test]
+fn classification_max() {
+    let mut ctx = PageContext::new();
+    ctx.add_portion(portion(Classification::Unclassified));
+    ctx.add_portion(portion(Classification::Secret));
+    ctx.add_portion(portion(Classification::Confidential));
+    assert_eq!(ctx.expected_classification(), Some(Classification::Secret));
+}
+
+/// SCI union
+#[test]
+fn sci_union() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = IsmAttributes::default();
+    p1.sci_controls = vec![SciControl::Si].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = IsmAttributes::default();
+    p2.sci_controls = vec![SciControl::Tk, SciControl::HcsP].into();
+    ctx.add_portion(p2);
+
+    let sci = ctx.expected_sci_controls();
+    assert_eq!(sci.len(), 3);
+    assert!(sci.contains(&SciControl::Si));
+    assert!(sci.contains(&SciControl::Tk));
+    assert!(sci.contains(&SciControl::HcsP));
+}

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec" 
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl" 
+    xmlns:ism="urn:us:gov:ic:ism" 
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    xmlns:ntk="urn:us:gov:ic:ntk" 
+    version="2">
+    
+   
+    <x:scenario label="DeclassException simple single value." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:declassException="50X1">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" />
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="CAN"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:declassException 50X1 is present" test="count(.//resourceElement[normalize-space(@ism:declassException)][xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('50X1')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="DeclassException simple multi value." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:declassException="50X1">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:declassException="50X2"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="CAN"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:declassException 50X1 is present" test="count(.//resourceElement[normalize-space(@ism:declassException)][xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('50X1')]) = 1"/>
+        <x:expect label="@ism:declassException 50X2 is present" test="count(.//resourceElement[normalize-space(@ism:declassException)][xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('50X2')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="DeclassException simple multi value with duplicates." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:declassException="50X1">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:declassException="50X2"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY" ism:displayOnlyTo="CAN" ism:declassException="50X2"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:declassException 50X1 is present" test="count(.//resourceElement[normalize-space(@ism:declassException)][xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('50X1')]) = 1"/>
+        <x:expect label="@ism:declassException 50X2 is present only 1 time" test="count(.//resourceElement[normalize-space(@ism:declassException)][xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('50X2')]) = 1"/>
+    </x:scenario>
+</x:description>

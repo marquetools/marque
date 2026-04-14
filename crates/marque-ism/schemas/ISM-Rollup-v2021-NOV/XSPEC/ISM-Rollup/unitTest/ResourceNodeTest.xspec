@@ -1,0 +1,452 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl"
+    xmlns:ism="urn:us:gov:ic:ism"
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    version="2">
+  
+    <x:import href="CountryRollup.xspec"/>
+    <x:import href="AEARollup.xspec"/>
+    <x:import href="FGIRollup.xspec"/>
+    <x:import href="NonICRollup.xspec"/>
+    
+    <x:scenario label="SimpleUTest">
+        <x:context>
+            <wrapper>
+                <resourceElement 
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"
+                    ism:declassException="AEA"
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:derivativelyClassifiedBy="Bob"
+                    ism:derivedFrom="Some guide"
+                    ism:atomicEnergyMarkings="RD-BOBOB"
+                    />
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" />
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" />
+            </wrapper>
+        </x:context>
+        <x:expect label="resourceElement" test=".//resourceElement">
+            <resourceElement xmlns:ism="urn:us:gov:ic:ism"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                ism:DESVersion="202111.202211"
+                ism:compliesWith="USGov"
+                ism:resourceElement="true"
+                ism:createDate="2018-08-10"
+                ism:ISMCATCESVersion="202211"                
+                ism:ownerProducer="USA"
+                ism:classification="U">...</resourceElement>
+        </x:expect>
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U'])=1"/>
+    </x:scenario>
+    
+    <x:scenario label="SimpleUTest with S that is exclude from Rollup">
+        <x:context>
+            <wrapper>
+                <resourceElement 
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"
+                    ism:declassException="AEA"
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:derivativelyClassifiedBy="Bob"
+                    ism:derivedFrom="Some guide"
+                    ism:atomicEnergyMarkings="RD-BOBOB"
+                />
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" />
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:excludeFromRollup='true'/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" />
+            </wrapper>
+        </x:context>
+        <x:expect label="resourceElement" test=".//resourceElement">
+            <resourceElement xmlns:ism="urn:us:gov:ic:ism"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                ism:DESVersion="202111.202211"
+                ism:compliesWith="USGov"
+                ism:resourceElement="true"
+                ism:createDate="2018-08-10"
+                ism:ISMCATCESVersion="202211"                
+                ism:ownerProducer="USA"
+                ism:classification="U">...</resourceElement>
+        </x:expect>
+        <x:expect label="ism:classification is U" test="count(.//resourceElement[@ism:classification='U'])=1"/>
+    </x:scenario>
+    
+   
+    <x:scenario label="Drop REL and Display due to explicit NF classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="NF">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls DISPLAYONLY is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('DISPLAYONLY')]) = 0"/>
+        <x:expect label="@ism:disseminationControls REL is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="Drop REL and Display due to explicit NF classified doc with other dissems present." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="NF OC">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls DISPLAYONLY is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('DISPLAYONLY')]) = 0"/>
+        <x:expect label="@ism:disseminationControls REL is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="Drop REL  due to portion without REL/EYES classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="Drop EYES  due to portion without REL/EYES classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="EYES"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 0"/>
+        <x:expect label="@ism:disseminationControls EYES is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('EYES')]) = 0"/>
+        <x:expect label="@ism:disseminationControls NF is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('NF')]) = 1"/>
+        
+    </x:scenario>
+    
+    <x:scenario label="Keep REL and drop eyes due to portions with either REL/EYES classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="EYES" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="DISPLAYONLY REL" ism:releasableTo="USA AUS CAN"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S']) = 1"/>
+        <x:expect label="@ism:disseminationControls REL is present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('REL')]) = 1"/>
+        <x:expect label="@ism:disseminationControls EYES is not present" test="count(.//resourceElement[normalize-space(@ism:disseminationControls)][xs:NMTOKENS(@ism:disseminationControls) = xs:NMTOKENS('EYES')]) = 0"/>
+    </x:scenario>
+    
+    <x:scenario label="Approx Markings true." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="true" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:hasApproximateMarkings is true" test="count(.//resourceElement[@ism:hasApproximateMarkings='true']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="Approx Markings false." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:hasApproximateMarkings is true" test="count(.//resourceElement[@ism:hasApproximateMarkings='true']) = 0"/>
+    </x:scenario>
+    
+    <x:scenario label="Approx Markings true and false." >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="false" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:hasApproximateMarkings is true" test="count(.//resourceElement[@ism:hasApproximateMarkings='true']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="Declass Date 25 years when unknown"  >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA"  ism:disseminationControls="IMC" ism:hasApproximateMarkings="false">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:disseminationControls="RS REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:noticeType="IMC" ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS">IMC Notice</sampleAttributes>
+                <sampleAttributes ism:noticeType="RSEN" ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS">RSEN Notice</sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:declassDate is 25 years out" test="count(.//resourceElement[@ism:declassDate=(current-date() + xs:yearMonthDuration('P25Y'))]) = 1"/>
+    </x:scenario>
+    
+    
+    <x:scenario label="Multiple Declass Date's choose longest" >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA"  ism:disseminationControls="IMC" ism:hasApproximateMarkings="false" ism:declassDate="2019-08-10">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:disseminationControls="RS REL" ism:declassDate="2025-08-10" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:noticeType="IMC" ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS">IMC Notice</sampleAttributes>
+                <sampleAttributes ism:noticeType="RSEN" ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS">RSEN Notice</sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:declassDate is 2025-08-10 " test="count(.//resourceElement[@ism:declassDate='2025-08-10']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="Multiple SCI sort" >
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA"  ism:disseminationControls="IMC" ism:SCIcontrols="TK" ism:hasApproximateMarkings="false" ism:declassDate="2019-08-10">
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:SCIcontrols="SI" ism:disseminationControls="RS REL" ism:declassDate="2025-08-10" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:FGIsourceProtected="FGI" ism:SCIcontrols="SI TK" ism:disseminationControls="REL" ism:hasApproximateMarkings="true"  ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:noticeType="IMC" ism:classification="S" ism:ownerProducer="USA" ism:SCIcontrols="SI SI-G" ism:disseminationControls="REL" ism:releasableTo="USA AUS">IMC Notice</sampleAttributes>
+                <sampleAttributes ism:noticeType="RSEN" ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS">RSEN Notice</sampleAttributes>
+            </wrapper>
+        </x:context>
+        
+        <x:expect label="@ism:SCIcontrols is SI SI-G TK " test="count(.//resourceElement[@ism:SCIcontrols='SI SI-G TK']) = 1"/>
+    </x:scenario>
+    
+    <x:scenario label="PartTags Function simple"  >
+        <x:call function="util:partTags">
+            <x:param name="context">
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:nonICmarkings="SBU-NF"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS"/>
+            </wrapper>
+            </x:param>
+        </x:call>
+        <x:expect label="count part tag is 3 " test="count(./*)=3"/>
+    </x:scenario>
+    
+    <x:scenario label="PartTags Function with 1 excludeFromRollup portion"  >
+        <x:call function="util:partTags">
+            <x:param name="context">
+                <wrapper>
+                    <resourceElement
+                        xmlns:ism="urn:us:gov:ic:ism"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                        ism:DESVersion="202111.202211"
+                        ism:compliesWith="USGov"
+                        ism:resourceElement="true"
+                        ism:createDate="2018-08-10"
+                        ism:ISMCATCESVersion="202211"                
+                        ism:ownerProducer="USA"
+                        ism:classification="U"
+                        ism:nonICmarkings="SBU-NF"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN">
+                        <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS CAN"/>
+                    </sampleAttributes>
+                    <sampleAttributes ism:classification="S" ism:ownerProducer="USA" ism:disseminationControls="REL" ism:releasableTo="USA AUS" ism:excludeFromRollup='true'/>
+                </wrapper>
+            </x:param>
+        </x:call>
+        <x:expect label="count part tag is 2 " test="count(./*)=2"/>
+    </x:scenario>
+    
+    
+</x:description>
