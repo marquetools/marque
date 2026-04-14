@@ -50,12 +50,14 @@ jobs:
       - name: Publish crates
         env:
             CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
         run: |
           FLAGS="--bump ${{ inputs.bump }} --no-changelog"
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run-cargo-publish"
           fi
-          cargo smart-release -u --execute $FLAGS \
+          cargo smart-release -u --auto-publish-of-stable-crates --execute $FLAGS \
             marque-ism marque-rules marque-core marque-config \
             marque-extract marque-capco marque-engine \
             marque-wasm marque-server marque
