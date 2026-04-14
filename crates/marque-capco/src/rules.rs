@@ -1340,13 +1340,18 @@ fn looks_like_fgi_classification(s: &str) -> bool {
     }
     // Last token (or last two for TOP SECRET) must be a classification level.
     let last = parts[parts.len() - 1];
-    let is_level = matches!(last, "TS" | "S" | "C" | "R" | "U"
-        | "TOP SECRET" | "SECRET" | "CONFIDENTIAL" | "RESTRICTED" | "UNCLASSIFIED");
-    if !is_level && !(parts.len() >= 3 && parts[parts.len() - 2] == "TOP" && last == "SECRET") {
+    let is_top_secret =
+        parts.len() >= 3 && parts[parts.len() - 2] == "TOP" && last == "SECRET";
+    let is_single_token_level = matches!(
+        last,
+        "TS" | "S" | "C" | "R" | "U" | "SECRET" | "CONFIDENTIAL" | "RESTRICTED" | "UNCLASSIFIED"
+    );
+    let is_level = is_single_token_level || is_top_secret;
+    if !is_level {
         return false;
     }
     // Preceding tokens should look like country trigraphs or "FGI".
-    let country_end = if parts.len() >= 3 && parts[parts.len() - 2] == "TOP" {
+    let country_end = if is_top_secret {
         parts.len() - 2
     } else {
         parts.len() - 1
@@ -1456,8 +1461,9 @@ impl Rule for DualClassificationRule {
 /// JOINT country lists are space-delimited, REL TO lists are comma-delimited.
 /// A common error is using commas in JOINT or spaces in REL TO.
 ///
-/// This rule detects commas in JOINT classification token text and spaces
-/// (without commas) in REL TO token text.
+/// This rule detects:
+/// - Commas in JOINT classification token text (`//JOINT S USA,GBR` → fix to space-delimited)
+/// - Space-only delimiters in REL TO lists (`REL TO USA GBR` → fix to comma-delimited)
 struct DelimiterMismatchRule;
 
 impl Rule for DelimiterMismatchRule {
@@ -1500,6 +1506,42 @@ impl Rule for DelimiterMismatchRule {
                         migration_ref: None,
                     }));
                 }
+            }
+        }
+
+        // Check REL TO for space-only delimiters (commas required between trigraphs).
+        if let Some(token) = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+        {
+            let text = token.text.as_ref();
+            // Strip the "REL TO " / "REL " prefix to isolate the country list.
+            let country_list = text
+                .strip_prefix("REL TO")
+                .or_else(|| text.strip_prefix("REL"))
+                .unwrap_or(text)
+                .trim_start();
+            // Space-delimited error: multiple words, none of which are commas/comma-adjacent.
+            if country_list.split_whitespace().count() > 1 && !country_list.contains(',') {
+                // Build the correctly comma-delimited replacement.
+                let fixed = format!(
+                    "REL TO {}",
+                    country_list.split_whitespace().collect::<Vec<_>>().join(", ")
+                );
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span: token.span,
+                    message: "REL TO country list must be comma-delimited, not space-delimited"
+                        .to_owned(),
+                    citation: "CAPCO-ISM-v2022-DEC-§3",
+                    original: text.to_owned(),
+                    replacement: fixed,
+                    confidence: 0.95,
+                    migration_ref: None,
+                }));
             }
         }
 

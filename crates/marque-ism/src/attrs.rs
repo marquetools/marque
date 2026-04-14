@@ -161,6 +161,9 @@ pub enum TokenKind {
     /// REL TO country trigraph (USA, GBR, AUS, ...). One per token, not the
     /// whole REL TO list.
     RelToTrigraph,
+    /// The full `REL TO ...` block text. Recorded so E013 can inspect the
+    /// raw source for delimiter errors (spaces instead of commas).
+    RelToBlock,
     /// Declassification exemption code in CAB or banner (25X1, 50X1-HUM).
     DeclassExemption,
     /// Declassification date in CAB or banner (YYYYMMDD or YYYY).
@@ -205,6 +208,25 @@ pub enum MarkingClassification {
         /// The foreign classification that should become an FGI marker.
         foreign: Box<ForeignClassification>,
     },
+}
+
+impl MarkingClassification {
+    /// The effective classification level for ordering purposes, regardless of
+    /// classification system.
+    ///
+    /// NATO levels are mapped to their US equivalents via
+    /// [`NatoClassification::us_equivalent`]. All systems use the
+    /// [`Classification`] ladder for comparison so that `Iterator::max()` on
+    /// a mixed set of portions returns the most restrictive level overall.
+    pub fn effective_level(&self) -> Classification {
+        match self {
+            Self::Us(c) => *c,
+            Self::Fgi(f) => f.level,
+            Self::Nato(n) => n.us_equivalent(),
+            Self::Joint(j) => j.level,
+            Self::Conflict { us, .. } => *us,
+        }
+    }
 }
 
 impl Default for MarkingClassification {
