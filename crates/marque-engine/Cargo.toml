@@ -32,7 +32,8 @@ tracing = { workspace = true }
 criterion = { workspace = true }
 humantime = { workspace = true }
 insta = { workspace = true, features = ["json"] }
-marque-test-utils = { workspace = true }
+# path-only so `cargo publish` strips it (marque-test-utils is publish=false).
+marque-test-utils = { path = "../marque-test-utils" }
 serde_json = { workspace = true }
 
 [features]
