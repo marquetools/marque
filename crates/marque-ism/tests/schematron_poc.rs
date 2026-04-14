@@ -53,8 +53,7 @@ fn xpath_extracts_cve_dissem_values() {
     let doc = xmloxide::Document::parse_str(&content).unwrap();
     let root = doc.root_element().unwrap();
 
-    let result =
-        xmloxide::xpath::evaluate(&doc, root, "count(//*[local-name()='Value'])").unwrap();
+    let result = xmloxide::xpath::evaluate(&doc, root, "count(//*[local-name()='Value'])").unwrap();
     let count = result.to_number();
     assert!(
         count >= 20.0,
@@ -64,8 +63,7 @@ fn xpath_extracts_cve_dissem_values() {
 
 #[test]
 fn xpath_extracts_cve_sci_values() {
-    let cve_path =
-        crate_root().join("schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISMSCIControls.xml");
+    let cve_path = crate_root().join("schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISMSCIControls.xml");
     if !cve_path.exists() {
         return;
     }
@@ -74,8 +72,7 @@ fn xpath_extracts_cve_sci_values() {
     let doc = xmloxide::Document::parse_str(&content).unwrap();
     let root = doc.root_element().unwrap();
 
-    let result =
-        xmloxide::xpath::evaluate(&doc, root, "count(//*[local-name()='Value'])").unwrap();
+    let result = xmloxide::xpath::evaluate(&doc, root, "count(//*[local-name()='Value'])").unwrap();
     let count = result.to_number();
     assert!(
         count >= 15.0,

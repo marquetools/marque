@@ -91,7 +91,10 @@ impl PageContext {
     /// Returns `None` only if no portions have been accumulated or all
     /// portions failed to parse a classification level.
     pub fn expected_classification(&self) -> Option<Classification> {
-        self.portions.iter().filter_map(|a| a.us_classification()).max()
+        self.portions
+            .iter()
+            .filter_map(|a| a.us_classification())
+            .max()
     }
 
     /// All SCI controls that must appear on the banner (union of all portions).
@@ -607,7 +610,11 @@ impl PageContext {
         }
         // REL TO list (comma-delimited countries with "REL TO " prefix).
         if !rel_to.is_empty() {
-            let trigraphs = rel_to.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", ");
+            let trigraphs = rel_to
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             dissem_parts.push(format!("REL TO {trigraphs}"));
         }
         if !dissem_parts.is_empty() {
@@ -975,19 +982,11 @@ mod tests {
         // Wait, USA is common. Let's test non-overlapping non-USA countries.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![
-                Trigraph::USA,
-                Trigraph::try_new(*b"AUS").unwrap(),
-            ]
-            .into(),
+            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"AUS").unwrap()].into(),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![
-                Trigraph::USA,
-                Trigraph::try_new(*b"GBR").unwrap(),
-            ]
-            .into(),
+            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
             ..Default::default()
         });
         let rel = ctx.expected_rel_to();

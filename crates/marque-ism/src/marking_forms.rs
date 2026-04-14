@@ -45,23 +45,64 @@ pub struct MarkingForm {
 /// intentionally omitted — they don't need form correction.
 pub static MARKING_FORMS: &[MarkingForm] = &[
     // §8 Dissemination Control Markings
-    
-    MarkingForm { banner: "NOFORN",        portion: "NF" },
-    MarkingForm { banner: "ORCON-USGOV",   portion: "OC-USGOV"}, 
-    MarkingForm { banner: "ORCON",         portion: "OC" },
-    MarkingForm { banner: "IMCON",         portion: "IMC" },
-    MarkingForm { banner: "PROPIN",        portion: "PR" },
-    MarkingForm { banner: "RSEN",          portion: "RS" },
-    MarkingForm { banner: "DEA SENSITIVE", portion: "DSEN" },
+    MarkingForm {
+        banner: "NOFORN",
+        portion: "NF",
+    },
+    MarkingForm {
+        banner: "ORCON-USGOV",
+        portion: "OC-USGOV",
+    },
+    MarkingForm {
+        banner: "ORCON",
+        portion: "OC",
+    },
+    MarkingForm {
+        banner: "IMCON",
+        portion: "IMC",
+    },
+    MarkingForm {
+        banner: "PROPIN",
+        portion: "PR",
+    },
+    MarkingForm {
+        banner: "RSEN",
+        portion: "RS",
+    },
+    MarkingForm {
+        banner: "DEA SENSITIVE",
+        portion: "DSEN",
+    },
     // §9 Non-IC Dissemination Control Markings
-    MarkingForm { banner: "LIMDIS",        portion: "DS" },
-    MarkingForm { banner: "EXDIS",         portion: "XD" },
-    MarkingForm { banner: "NODIS",         portion: "ND" },
-    MarkingForm { banner: "SBU NOFORN",    portion: "SBU-NF" },
-    MarkingForm { banner: "LES NOFORN",    portion: "LES-NF" },
+    MarkingForm {
+        banner: "LIMDIS",
+        portion: "DS",
+    },
+    MarkingForm {
+        banner: "EXDIS",
+        portion: "XD",
+    },
+    MarkingForm {
+        banner: "NODIS",
+        portion: "ND",
+    },
+    MarkingForm {
+        banner: "SBU NOFORN",
+        portion: "SBU-NF",
+    },
+    MarkingForm {
+        banner: "LES NOFORN",
+        portion: "LES-NF",
+    },
     // §6 Atomic Energy Act Information Markings (differing forms only)
-    MarkingForm { banner: "DOD UCNI",      portion: "DCNI" },
-    MarkingForm { banner: "DOE UCNI",      portion: "UCNI" },
+    MarkingForm {
+        banner: "DOD UCNI",
+        portion: "DCNI",
+    },
+    MarkingForm {
+        banner: "DOE UCNI",
+        portion: "UCNI",
+    },
     // Note: SIGMA [##] ↔ SG [##] is parametric and handled separately
     // by the parser's pattern-matching path, not this static table.
 ];
@@ -163,11 +204,7 @@ mod tests {
         for (i, a) in MARKING_FORMS.iter().enumerate() {
             for (j, b) in MARKING_FORMS.iter().enumerate() {
                 if i != j {
-                    assert_ne!(
-                        a.banner, b.banner,
-                        "duplicate banner entry: {:?}",
-                        a.banner
-                    );
+                    assert_ne!(a.banner, b.banner, "duplicate banner entry: {:?}", a.banner);
                 }
             }
         }

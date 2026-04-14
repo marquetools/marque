@@ -3,6 +3,14 @@
 All notable changes to the marque workspace are documented in this file.
 ## [Unreleased]
 
+### Features
+
+- Improved parsing and token handling, expanded validation using official tests, demo pilot (#14)([c157476](https://github.com/marquetools/marque/commit/c1574766cf76e985bc8955128580a5da46c12626))
+- PageContext banner rollup per ISM-Rollup spec (#13)([4e27e46](https://github.com/marquetools/marque/commit/4e27e46c618e78f63a7cf9db7b69d2e6abdb374e))
+- Non-IC dissemination controls (LIMDIS, SBU, LES, SSI) (#12)([314d905](https://github.com/marquetools/marque/commit/314d9055cf311a4a5b45347a400482ca843c75d0))
+- Non-US classification support (FGI, NATO, JOINT) (#11)([e28b2b1](https://github.com/marquetools/marque/commit/e28b2b1642acf4a3e854476499917e0d02ea96f5))
+## [0.1.0] - 2026-04-13
+
 ### Bug Fixes
 
 - Address reviewer feedback on bench-check.sh and benchmarks([8f0704d](https://github.com/marquetools/marque/commit/8f0704d3714002ea2f3a9df6267b02d1b5c4fc7c))
@@ -31,6 +39,7 @@ All notable changes to the marque workspace are documented in this file.
 
 ### Miscellaneous
 
+- Update CHANGELOG.md([a5049b6](https://github.com/marquetools/marque/commit/a5049b64c647e417e5774ab1b6daa71f98aac74b))
 - **scaffold**: Add scaffolding for docs([3281772](https://github.com/marquetools/marque/commit/328177263ba8c9328830c2905482952d156577f7))
 - **ci**: Update versions and action names([a790471](https://github.com/marquetools/marque/commit/a790471722d207452db62d084f88bafbc25e1c52))
 - Rustfmt cleanup on reorder_marking after review fixes([434499d](https://github.com/marquetools/marque/commit/434499df30d885f40974f1c766388f3b9b838116))

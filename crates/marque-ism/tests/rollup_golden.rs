@@ -25,7 +25,8 @@ fn aea_multiple_sigma_aggregated() {
     p1.aea_markings = vec![AeaMarking::Rd(RdBlock {
         cnwdi: false,
         sigma: vec![14, 15, 20].into(),
-    })].into();
+    })]
+    .into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::TopSecret);
@@ -36,10 +37,14 @@ fn aea_multiple_sigma_aggregated() {
     p3.aea_markings = vec![AeaMarking::Rd(RdBlock {
         cnwdi: false,
         sigma: vec![18].into(),
-    })].into();
+    })]
+    .into();
     ctx.add_portion(p3);
 
-    assert_eq!(ctx.expected_classification(), Some(Classification::TopSecret));
+    assert_eq!(
+        ctx.expected_classification(),
+        Some(Classification::TopSecret)
+    );
     let aea = ctx.expected_aea_markings();
     assert_eq!(aea.len(), 1);
     match &aea[0] {
@@ -207,15 +212,13 @@ fn country_rel_intersection() {
         Trigraph::USA,
         Trigraph::try_new(*b"AUS").unwrap(),
         Trigraph::try_new(*b"CAN").unwrap(),
-    ].into();
+    ]
+    .into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
     p2.dissem_controls = vec![DissemControl::Rel].into();
-    p2.rel_to = vec![
-        Trigraph::USA,
-        Trigraph::try_new(*b"AUS").unwrap(),
-    ].into();
+    p2.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"AUS").unwrap()].into();
     ctx.add_portion(p2);
 
     let rel = ctx.expected_rel_to();

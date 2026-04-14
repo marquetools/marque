@@ -348,16 +348,16 @@ pub struct FgiClassification {
 /// BOHEMIA or BALK — standalone CTS without a SAP suffix is an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
-    NatoUnclassified,                // NU
-    NatoRestricted,                  // NR
-    NatoConfidential,                // NC
-    NatoConfidentialAtomal,          // NCA (alt: NC-A)
-    NatoSecret,                      // NS
-    NatoSecretAtomal,                // NSAT (alt: NS-A)
-    CosmicTopSecret,                 // CTS (requires BOHEMIA or BALK)
-    CosmicTopSecretAtomal,           // CTSA (alt: CTS-A)
-    CosmicTopSecretBohemia,          // CTS-B
-    CosmicTopSecretBalk,             // CTS-BALK
+    NatoUnclassified,       // NU
+    NatoRestricted,         // NR
+    NatoConfidential,       // NC
+    NatoConfidentialAtomal, // NCA (alt: NC-A)
+    NatoSecret,             // NS
+    NatoSecretAtomal,       // NSAT (alt: NS-A)
+    CosmicTopSecret,        // CTS (requires BOHEMIA or BALK)
+    CosmicTopSecretAtomal,  // CTSA (alt: CTS-A)
+    CosmicTopSecretBohemia, // CTS-B
+    CosmicTopSecretBalk,    // CTS-BALK
 }
 
 impl NatoClassification {
@@ -398,9 +398,7 @@ impl NatoClassification {
         match self {
             Self::NatoUnclassified => NatoLevel::NatoUnclassified,
             Self::NatoRestricted => NatoLevel::NatoRestricted,
-            Self::NatoConfidential | Self::NatoConfidentialAtomal => {
-                NatoLevel::NatoConfidential
-            }
+            Self::NatoConfidential | Self::NatoConfidentialAtomal => NatoLevel::NatoConfidential,
             Self::NatoSecret | Self::NatoSecretAtomal => NatoLevel::NatoSecret,
             Self::CosmicTopSecret
             | Self::CosmicTopSecretAtomal
@@ -611,7 +609,10 @@ impl AeaMarking {
         if s == "RD" || s == "RESTRICTED DATA" {
             return Some(Self::Rd(RdBlock::default()));
         }
-        if let Some(rest) = s.strip_prefix("RD-").or_else(|| s.strip_prefix("RESTRICTED DATA-")) {
+        if let Some(rest) = s
+            .strip_prefix("RD-")
+            .or_else(|| s.strip_prefix("RESTRICTED DATA-"))
+        {
             return Self::parse_rd_modifiers(rest);
         }
 
@@ -620,8 +621,9 @@ impl AeaMarking {
         if s == "FRD" || s == "FORMERLY RESTRICTED DATA" {
             return Some(Self::Frd(FrdBlock::default()));
         }
-        if let Some(rest) =
-            s.strip_prefix("FRD-").or_else(|| s.strip_prefix("FORMERLY RESTRICTED DATA-"))
+        if let Some(rest) = s
+            .strip_prefix("FRD-")
+            .or_else(|| s.strip_prefix("FORMERLY RESTRICTED DATA-"))
         {
             return Self::parse_frd_modifiers(rest);
         }
@@ -1001,9 +1003,7 @@ mod tests {
     #[test]
     fn us_classification_convenience_returns_none_for_nato() {
         let attrs = IsmAttributes {
-            classification: Some(MarkingClassification::Nato(
-                NatoClassification::NatoSecret,
-            )),
+            classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
             ..Default::default()
         };
         assert_eq!(attrs.us_classification(), None);

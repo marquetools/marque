@@ -349,8 +349,7 @@ pub fn generate_cab_native(
     use marque_core::{Parser, Scanner};
     use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
 
-    let classified_by =
-        classified_by.unwrap_or_else(|| "Derivative Classifier".to_owned());
+    let classified_by = classified_by.unwrap_or_else(|| "Derivative Classifier".to_owned());
     let derived_from = derived_from.unwrap_or_else(|| "Multiple Sources".to_owned());
 
     // Scan text to accumulate portions into PageContext and collect any

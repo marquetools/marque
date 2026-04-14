@@ -484,7 +484,13 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     }
     // Full banner-word forms for classification (not present in the CVE,
     // which only ships single-letter abbreviations).
-    for word in ["TOP SECRET", "SECRET", "CONFIDENTIAL", "RESTRICTED", "UNCLASSIFIED"] {
+    for word in [
+        "TOP SECRET",
+        "SECRET",
+        "CONFIDENTIAL",
+        "RESTRICTED",
+        "UNCLASSIFIED",
+    ] {
         all_tokens.insert(word.to_owned());
     }
     for (value, _) in &sci_entries {

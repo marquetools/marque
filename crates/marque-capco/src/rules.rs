@@ -1185,13 +1185,13 @@ impl Rule for BareHcsRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::SciControl;
 
-        let has_bare_hcs = attrs.sci_controls.iter().any(|s| *s == SciControl::Hcs);
+        let has_bare_hcs = attrs.sci_controls.contains(&SciControl::Hcs);
         if !has_bare_hcs {
             return vec![];
         }
 
-        let has_hcs_o = attrs.sci_controls.iter().any(|s| *s == SciControl::HcsO);
-        let has_hcs_p = attrs.sci_controls.iter().any(|s| *s == SciControl::HcsP);
+        let has_hcs_o = attrs.sci_controls.contains(&SciControl::HcsO);
+        let has_hcs_p = attrs.sci_controls.contains(&SciControl::HcsP);
 
         // If HCS-O or HCS-P already appears alongside bare HCS, the bare
         // HCS is redundant — but we still flag it because it needs a suffix.
@@ -1333,8 +1333,7 @@ fn looks_like_fgi_classification(s: &str) -> bool {
     }
     // Last token (or last two for TOP SECRET) must be a classification level.
     let last = parts[parts.len() - 1];
-    let is_top_secret =
-        parts.len() >= 3 && parts[parts.len() - 2] == "TOP" && last == "SECRET";
+    let is_top_secret = parts.len() >= 3 && parts[parts.len() - 2] == "TOP" && last == "SECRET";
     let is_single_token_level = matches!(
         last,
         "TS" | "S" | "C" | "R" | "U" | "SECRET" | "CONFIDENTIAL" | "RESTRICTED" | "UNCLASSIFIED"
@@ -1520,7 +1519,10 @@ impl Rule for DelimiterMismatchRule {
                 // Build the correctly comma-delimited replacement.
                 let fixed = format!(
                     "REL TO {}",
-                    country_list.split_whitespace().collect::<Vec<_>>().join(", ")
+                    country_list
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
@@ -2161,17 +2163,15 @@ impl Rule for AeaNofornRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::AeaMarking;
 
-        let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
-            matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni)
-        });
+        let has_rd_or_frd = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni));
         if !has_rd_or_frd {
             return vec![];
         }
 
-        let has_noforn = attrs
-            .dissem_controls
-            .iter()
-            .any(|d| d.as_str() == "NF");
+        let has_noforn = attrs.dissem_controls.iter().any(|d| d.as_str() == "NF");
         if has_noforn {
             return vec![];
         }
@@ -2218,9 +2218,10 @@ impl Rule for CnwdiConstraintRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::AeaMarking;
 
-        let has_cnwdi = attrs.aea_markings.iter().any(|a| {
-            matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)
-        });
+        let has_cnwdi = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi));
         if !has_cnwdi {
             return vec![];
         }
@@ -2242,9 +2243,7 @@ impl Rule for CnwdiConstraintRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
-        let level_str = level
-            .map(|c| c.banner_str())
-            .unwrap_or("unknown");
+        let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
 
         vec![Diagnostic::new(
             self.id(),
@@ -2484,7 +2483,6 @@ impl Rule for UcniClassificationRule {
     }
 }
 
-
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -2522,7 +2520,6 @@ fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
         Some(proposal),
     )
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -2652,7 +2649,11 @@ mod tests {
         // Non-IC dissem (LIMDIS) before IC dissem (NOFORN) is out of order.
         let diags = lint_banner("SECRET//LIMDIS//NOFORN");
         let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
-        assert_eq!(e003.len(), 1, "E003 must fire when non-IC dissem precedes IC dissem");
+        assert_eq!(
+            e003.len(),
+            1,
+            "E003 must fire when non-IC dissem precedes IC dissem"
+        );
         // The reordered fix must preserve the non-IC dissem as the last block.
         let fix = e003[0].fix.as_ref().expect("E003 must carry FixProposal");
         assert!(
@@ -2870,7 +2871,11 @@ mod tests {
         // "LIMDIS" is the banner form; a portion should use "DS".
         let diags = lint_portion("(S//LIMDIS)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1, "E009 must fire on LIMDIS in portion: {diags:?}");
+        assert_eq!(
+            e009.len(),
+            1,
+            "E009 must fire on LIMDIS in portion: {diags:?}"
+        );
         let src = b"(S//LIMDIS)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
@@ -2974,7 +2979,10 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E012"),
             "E012 should not fire on pure NATO, got: {:?}",
-            diags.iter().filter(|d| d.rule.as_str() == "E012").collect::<Vec<_>>()
+            diags
+                .iter()
+                .filter(|d| d.rule.as_str() == "E012")
+                .collect::<Vec<_>>()
         );
     }
 
@@ -3016,7 +3024,10 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E014"),
             "E014 should not fire when all JOINT countries in REL TO, got: {:?}",
-            diags.iter().filter(|d| d.rule.as_str() == "E014").collect::<Vec<_>>()
+            diags
+                .iter()
+                .filter(|d| d.rule.as_str() == "E014")
+                .collect::<Vec<_>>()
         );
     }
 
@@ -3035,7 +3046,10 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E015"),
             "E015 should not fire when dissem present, got: {:?}",
-            diags.iter().filter(|d| d.rule.as_str() == "E015").collect::<Vec<_>>()
+            diags
+                .iter()
+                .filter(|d| d.rule.as_str() == "E015")
+                .collect::<Vec<_>>()
         );
     }
 

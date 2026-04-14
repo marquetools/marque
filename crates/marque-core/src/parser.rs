@@ -18,8 +18,8 @@
 use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
-    ForeignClassification, FrdBlock, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, RdBlock, SarIdentifier, SciControl, TokenKind, TokenSpan,
+    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan,
     Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
@@ -206,8 +206,7 @@ impl<'t> Parser<'t> {
             // Block 0: US classification (or empty for non-US markings)
             // ---------------------------------------------------------------
             if idx == 0 && !is_non_us {
-                attrs.classification =
-                    parse_classification(trimmed).map(MarkingClassification::Us);
+                attrs.classification = parse_classification(trimmed).map(MarkingClassification::Us);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Classification,
                     span,
@@ -266,10 +265,7 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if trimmed.starts_with("FGI")
-                && matches!(
-                    attrs.classification,
-                    Some(MarkingClassification::Us(_))
-                )
+                && matches!(attrs.classification, Some(MarkingClassification::Us(_)))
             {
                 // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
                 if let Some(marker) = parse_fgi_marker(trimmed) {
@@ -397,8 +393,8 @@ impl<'t> Parser<'t> {
                             sar: None,
                             aea: None,
                         });
-                    } else if let Some(ctrl) = DissemControl::parse(sub_tok)
-                        .or_else(|| parse_dissem_full_form(sub_tok))
+                    } else if let Some(ctrl) =
+                        DissemControl::parse(sub_tok).or_else(|| parse_dissem_full_form(sub_tok))
                     {
                         results.push(SubResult {
                             kind: SubKind::Dissem,
@@ -696,10 +692,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
         && tokens[tokens.len() - 2] == "TOP"
         && tokens[tokens.len() - 1] == "SECRET"
     {
-        (
-            parse_classification("TOP SECRET")?,
-            tokens.len() - 2,
-        )
+        (parse_classification("TOP SECRET")?, tokens.len() - 2)
     } else {
         (
             parse_classification(tokens[tokens.len() - 1])?,
@@ -769,11 +762,7 @@ fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
         Some(ForeignClassification::Nato(nato))
     } else if let Some(joint) = parse_joint_classification(s) {
         Some(ForeignClassification::Joint(joint))
-    } else if let Some(fgi) = parse_fgi_classification(s) {
-        Some(ForeignClassification::Fgi(fgi))
-    } else {
-        None
-    }
+    } else { parse_fgi_classification(s).map(ForeignClassification::Fgi) }
 }
 
 /// Map a banner-form (full-word) dissemination control to its CVE
@@ -1241,7 +1230,10 @@ mod tests {
         match &parsed.attrs.classification {
             Some(MarkingClassification::Fgi(f)) => {
                 assert_eq!(f.level, Classification::Secret);
-                assert!(f.countries.is_empty(), "FGI placeholder should have no countries");
+                assert!(
+                    f.countries.is_empty(),
+                    "FGI placeholder should have no countries"
+                );
             }
             other => panic!("expected Fgi, got: {other:?}"),
         }
@@ -1253,7 +1245,10 @@ mod tests {
         let parsed = parse_banner("//FGI//NF");
         assert!(
             parsed.attrs.classification.is_none()
-                || matches!(parsed.attrs.classification, Some(MarkingClassification::Us(_))),
+                || matches!(
+                    parsed.attrs.classification,
+                    Some(MarkingClassification::Us(_))
+                ),
             "bare FGI with no level should not produce a valid non-US classification: {:?}",
             parsed.attrs.classification,
         );
@@ -1266,7 +1261,11 @@ mod tests {
             parsed.attrs.classification,
             Some(MarkingClassification::Us(Classification::Secret)),
         );
-        let marker = parsed.attrs.fgi_marker.as_ref().expect("should have FGI marker");
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("should have FGI marker");
         assert_eq!(marker.countries.len(), 1);
         assert_eq!(marker.countries[0].as_str(), "DEU");
     }
@@ -1278,7 +1277,11 @@ mod tests {
             parsed.attrs.classification,
             Some(MarkingClassification::Us(Classification::Secret)),
         );
-        let marker = parsed.attrs.fgi_marker.as_ref().expect("should have FGI marker");
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("should have FGI marker");
         assert!(marker.countries.is_empty());
     }
 
@@ -1339,10 +1342,7 @@ mod tests {
     fn non_ic_dissem_limdis_banner_form() {
         let parsed = parse_banner("UNCLASSIFIED//LIMDIS");
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
-        assert_eq!(
-            parsed.attrs.non_ic_dissem[0],
-            NonIcDissem::Limdis,
-        );
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Limdis,);
     }
 
     #[test]
@@ -1381,7 +1381,7 @@ mod tests {
         // Classified portion with both IC and non-IC dissem.
         let parsed = parse_portion("(C//NF//DS)");
         assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
-        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);   // DS = LIMDIS
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1); // DS = LIMDIS
     }
 
     // -----------------------------------------------------------------------
@@ -1521,7 +1521,11 @@ mod tests {
         );
         // No Unknown token spans
         assert!(
-            parsed.attrs.token_spans.iter().all(|t| t.kind != TokenKind::Unknown),
+            parsed
+                .attrs
+                .token_spans
+                .iter()
+                .all(|t| t.kind != TokenKind::Unknown),
             "no Unknown spans expected: {:?}",
             parsed.attrs.token_spans
         );
@@ -1545,7 +1549,10 @@ mod tests {
         let parsed = parse_banner("SECRET//SI//NF/RELIDO");
         let dissem: Vec<DissemControl> = parsed.attrs.dissem_controls.to_vec();
         assert!(dissem.contains(&DissemControl::Nf), "must contain NF");
-        assert!(dissem.contains(&DissemControl::Relido), "must contain RELIDO");
+        assert!(
+            dissem.contains(&DissemControl::Relido),
+            "must contain RELIDO"
+        );
     }
 
     #[test]
@@ -1553,7 +1560,11 @@ mod tests {
         // An unknown token like "XYZZY" in a slash block → Unknown span.
         let parsed = parse_portion("(S//XYZZY)");
         assert!(
-            parsed.attrs.token_spans.iter().any(|t| t.kind == TokenKind::Unknown),
+            parsed
+                .attrs
+                .token_spans
+                .iter()
+                .any(|t| t.kind == TokenKind::Unknown),
             "XYZZY must produce Unknown span"
         );
     }
