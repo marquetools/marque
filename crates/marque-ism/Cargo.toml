@@ -17,6 +17,9 @@ anyhow    = { workspace = true }
 toml      = { workspace = true }
 memchr    = { workspace = true }
 
+[dev-dependencies]
+xmloxide = { workspace = true }
+
 [features]
 default = []
 serde   = ["dep:serde"]
