@@ -18,8 +18,9 @@
 use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
-    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    ForeignClassification, FrdBlock, IsmAttributes, JointClassification, MarkingClassification,
+    NatoClassification, NonIcDissem, RdBlock, SarIdentifier, SciControl, TokenKind, TokenSpan,
+    Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
 // has entries. The type is used in from_str() which returns None for now.
@@ -1180,48 +1181,86 @@ mod tests {
     fn aea_rd_parses() {
         let parsed = parse_banner("TOP SECRET//RD//NOFORN");
         assert_eq!(parsed.attrs.aea_markings.len(), 1);
-        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Rd);
+        assert_eq!(
+            parsed.attrs.aea_markings[0],
+            AeaMarking::Rd(RdBlock::default()),
+        );
     }
 
     #[test]
-    fn aea_rd_cnwdi_parses() {
-        let parsed = parse_banner("TOP SECRET//RD//CNWDI//NOFORN");
-        assert_eq!(parsed.attrs.aea_markings.len(), 2);
-        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Rd);
-        assert_eq!(parsed.attrs.aea_markings[1], AeaMarking::Cnwdi);
+    fn aea_rd_cnwdi_compound() {
+        // CNWDI is a hyphen-modifier of RD, not a separate // block.
+        let parsed = parse_banner("SECRET//RD-CNWDI//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(rd.cnwdi);
+                assert!(rd.sigma.is_empty());
+            }
+            other => panic!("expected Rd with CNWDI, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_sigma_compound() {
+        // SIGMA is a hyphen-modifier: RD-SIGMA 20
+        let parsed = parse_banner("SECRET//RD-SIGMA 20//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(!rd.cnwdi);
+                assert_eq!(&*rd.sigma, &[20]);
+            }
+            other => panic!("expected Rd with SIGMA, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_cnwdi_sigma_compound() {
+        let parsed = parse_banner("SECRET//RD-CNWDI-SIGMA 18 20//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(rd.cnwdi);
+                assert_eq!(&*rd.sigma, &[18, 20]);
+            }
+            other => panic!("expected Rd with CNWDI+SIGMA, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_sigma_portion() {
+        // Portion form uses SG instead of SIGMA.
+        let parsed = parse_portion("(TS//RD-SG 14//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert_eq!(&*rd.sigma, &[14]);
+            }
+            other => panic!("expected Rd with SG, got: {other:?}"),
+        }
     }
 
     #[test]
     fn aea_frd_parses() {
         let parsed = parse_portion("(S//FRD//NF)");
         assert_eq!(parsed.attrs.aea_markings.len(), 1);
-        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Frd);
+        assert_eq!(
+            parsed.attrs.aea_markings[0],
+            AeaMarking::Frd(FrdBlock::default()),
+        );
     }
 
     #[test]
-    fn aea_sigma_banner_parses() {
-        let parsed = parse_banner("TOP SECRET//RD//SIGMA 14//NOFORN");
-        let sigmas: Vec<_> = parsed
-            .attrs
-            .aea_markings
-            .iter()
-            .filter(|a| matches!(a, AeaMarking::Sigma(_)))
-            .collect();
-        assert_eq!(sigmas.len(), 1);
-        assert_eq!(*sigmas[0], AeaMarking::Sigma(14));
-    }
-
-    #[test]
-    fn aea_sigma_portion_parses() {
-        let parsed = parse_portion("(TS//RD//SG 14//NF)");
-        let sigmas: Vec<_> = parsed
-            .attrs
-            .aea_markings
-            .iter()
-            .filter(|a| matches!(a, AeaMarking::Sigma(_)))
-            .collect();
-        assert_eq!(sigmas.len(), 1);
-        assert_eq!(*sigmas[0], AeaMarking::Sigma(14));
+    fn aea_frd_sigma_compound() {
+        let parsed = parse_banner("SECRET//FRD-SIGMA 14//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Frd(frd) => {
+                assert_eq!(&*frd.sigma, &[14]);
+            }
+            other => panic!("expected Frd with SIGMA, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -1243,5 +1282,16 @@ mod tests {
         let parsed = parse_banner("SECRET//TFNI//NOFORN");
         assert_eq!(parsed.attrs.aea_markings.len(), 1);
         assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Tfni);
+    }
+
+    #[test]
+    fn aea_rd_n_shorthand() {
+        // DoD shorthand: RD-N means RD-CNWDI
+        let parsed = parse_portion("(S//RD-N//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => assert!(rd.cnwdi),
+            other => panic!("expected Rd with CNWDI from RD-N, got: {other:?}"),
+        }
     }
 }

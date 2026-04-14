@@ -432,100 +432,236 @@ pub struct JointClassification {
 
 /// Atomic Energy Act information markings (CAPCO Register §6).
 ///
-/// These markings identify nuclear-related information controlled under the
-/// Atomic Energy Act of 1954. They sit between SAR and FGI in CAPCO block
-/// ordering.
+/// AEA markings appear as a single `//`-delimited block in the marking string,
+/// using hyphen separators for compound forms:
+/// - `SECRET//RD//NOFORN` — RD alone
+/// - `SECRET//RD-CNWDI//NOFORN` — RD with CNWDI modifier
+/// - `SECRET//RD-SIGMA 20//NOFORN` — RD with SIGMA compartment
+/// - `SECRET//RD-SIGMA 18 20//NOFORN` — RD with multiple SIGMAs
+/// - `SECRET//FRD//NOFORN` — FRD alone
+/// - `SECRET//FRD-SIGMA 14//NOFORN` — FRD with SIGMA
 ///
-/// # Categories
+/// Standalone (non-compound) markings:
+/// - `UNCLASSIFIED//DOD UCNI` / `(U//DCNI)`
+/// - `UNCLASSIFIED//DOE UCNI` / `(U//UCNI)`
+/// - `SECRET//TFNI//NOFORN` / `(S//TFNI//NF)`
 ///
-/// - **RD** (Restricted Data): Nuclear weapon design, production, or use.
-/// - **CNWDI** (Critical Nuclear Weapon Design Information): Subset of RD
-///   revealing critical design theory/features. Always accompanied by RD.
-/// - **SIGMA [##]** (under RD): Specific RD compartments (numbered).
-///   Banner: `SIGMA 14`, Portion: `SG 14`.
-/// - **FRD** (Formerly Restricted Data): Nuclear info transferred to DoD.
-/// - **SIGMA [##]** (under FRD): FRD compartments use the same SIGMA scheme.
-/// - **DOD UCNI** (DoD Unclassified Controlled Nuclear Information): Portion `DCNI`.
-/// - **DOE UCNI** (DOE Unclassified Controlled Nuclear Information): Portion `UCNI`.
-/// - **TFNI** (Transclassified Foreign Nuclear Information).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// # Key rules (CAPCO-2016)
+///
+/// - RD and FRD always require NOFORN unless a sharing agreement exists
+///   (default severity: Error, configurable to Warn via `.marque.toml`)
+/// - CNWDI may only be used with TS or S RD (not standalone, not with FRD)
+/// - SIGMA 14, 15, 18, 20 may only be used with TS or S RD or FRD
+/// - RD takes precedence over FRD and TFNI in both banners and portions
+/// - SIGMA numbers must be in numerical order, space-separated
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AeaMarking {
-    /// RESTRICTED DATA / RD / RD
-    Rd,
-    /// CRITICAL NUCLEAR WEAPON DESIGN INFORMATION / CNWDI / CNWDI
-    /// Always accompanied by RD.
-    Cnwdi,
-    /// SIGMA [##] under RD / SIGMA [##] / SG [##]
-    Sigma(u8),
-    /// FORMERLY RESTRICTED DATA / FRD / FRD
-    Frd,
-    /// SIGMA [##] under FRD / SIGMA [##] / SG [##]
-    SigmaFrd(u8),
-    /// DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION / DOD UCNI / DCNI
+    /// Compound RD block: `RD`, `RD-CNWDI`, `RD-SIGMA 20`, `RD-CNWDI-SIGMA 18 20`
+    Rd(RdBlock),
+    /// Compound FRD block: `FRD`, `FRD-SIGMA 14`
+    Frd(FrdBlock),
+    /// DOD UCNI / DCNI — standalone, unclassified only
     DodUcni,
-    /// DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION / DOE UCNI / UCNI
+    /// DOE UCNI / UCNI — standalone, unclassified only
     DoeUcni,
-    /// TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION / TFNI / TFNI
+    /// TFNI — standalone
     Tfni,
 }
 
+/// Restricted Data block with optional modifiers.
+///
+/// Rendered as `RD`, `RD-CNWDI`, `RD-SIGMA 20`, or `RD-CNWDI-SIGMA 18 20`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RdBlock {
+    /// Whether CNWDI is present. Only valid with TS or S classification.
+    pub cnwdi: bool,
+    /// SIGMA compartment numbers (14, 15, 18, 20). Must be in numerical order.
+    /// Empty if no SIGMA designation.
+    pub sigma: Box<[u8]>,
+}
+
+impl Default for RdBlock {
+    fn default() -> Self {
+        Self {
+            cnwdi: false,
+            sigma: Box::new([]),
+        }
+    }
+}
+
+/// Formerly Restricted Data block with optional SIGMA modifier.
+///
+/// Rendered as `FRD` or `FRD-SIGMA 14`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FrdBlock {
+    /// SIGMA compartment numbers. Must be in numerical order.
+    /// Empty if no SIGMA designation.
+    pub sigma: Box<[u8]>,
+}
+
+impl Default for FrdBlock {
+    fn default() -> Self {
+        Self {
+            sigma: Box::new([]),
+        }
+    }
+}
+
 impl AeaMarking {
-    /// Banner-line abbreviation form.
+    /// Banner-line form.
     pub fn banner_str(&self) -> String {
         match self {
-            Self::Rd => "RD".to_owned(),
-            Self::Cnwdi => "CNWDI".to_owned(),
-            Self::Sigma(n) => format!("SIGMA {n}"),
-            Self::Frd => "FRD".to_owned(),
-            Self::SigmaFrd(n) => format!("SIGMA {n}"),
+            Self::Rd(rd) => {
+                let mut s = "RD".to_owned();
+                if rd.cnwdi {
+                    s.push_str("-CNWDI");
+                }
+                if !rd.sigma.is_empty() {
+                    s.push_str("-SIGMA ");
+                    let nums: Vec<String> = rd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::Frd(frd) => {
+                let mut s = "FRD".to_owned();
+                if !frd.sigma.is_empty() {
+                    s.push_str("-SIGMA ");
+                    let nums: Vec<String> = frd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
             Self::DodUcni => "DOD UCNI".to_owned(),
             Self::DoeUcni => "DOE UCNI".to_owned(),
             Self::Tfni => "TFNI".to_owned(),
         }
     }
 
-    /// Portion mark abbreviation.
+    /// Portion mark form.
     pub fn portion_str(&self) -> String {
         match self {
-            Self::Rd => "RD".to_owned(),
-            Self::Cnwdi => "CNWDI".to_owned(),
-            Self::Sigma(n) => format!("SG {n}"),
-            Self::Frd => "FRD".to_owned(),
-            Self::SigmaFrd(n) => format!("SG {n}"),
+            Self::Rd(rd) => {
+                let mut s = "RD".to_owned();
+                if rd.cnwdi {
+                    s.push_str("-CNWDI");
+                }
+                if !rd.sigma.is_empty() {
+                    s.push_str("-SG ");
+                    let nums: Vec<String> = rd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::Frd(frd) => {
+                let mut s = "FRD".to_owned();
+                if !frd.sigma.is_empty() {
+                    s.push_str("-SG ");
+                    let nums: Vec<String> = frd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
             Self::DodUcni => "DCNI".to_owned(),
             Self::DoeUcni => "UCNI".to_owned(),
             Self::Tfni => "TFNI".to_owned(),
         }
     }
 
-    /// Parse from either banner or portion form.
+    /// Parse a `//`-delimited AEA block from either banner or portion form.
+    ///
+    /// Handles compound tokens: `RD`, `RD-CNWDI`, `RD-SIGMA 20`,
+    /// `RD-CNWDI-SIGMA 18 20`, `FRD`, `FRD-SIGMA 14`, etc.
     pub fn parse(s: &str) -> Option<Self> {
+        // Standalone non-compound markings.
         match s {
-            "RD" | "RESTRICTED DATA" => Some(Self::Rd),
-            "CNWDI" | "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION" => Some(Self::Cnwdi),
-            "FRD" | "FORMERLY RESTRICTED DATA" => Some(Self::Frd),
-            "DOD UCNI" | "DCNI" => Some(Self::DodUcni),
-            "DOE UCNI" | "UCNI" => Some(Self::DoeUcni),
-            "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => Some(Self::Tfni),
-            _ => Self::parse_sigma(s),
+            "DOD UCNI" | "DCNI" => return Some(Self::DodUcni),
+            "DOE UCNI" | "UCNI" => return Some(Self::DoeUcni),
+            "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => return Some(Self::Tfni),
+            _ => {}
         }
+
+        // RD compound block: RD, RD-CNWDI, RD-SIGMA ##, RD-CNWDI-SIGMA ##,
+        // RESTRICTED DATA, RESTRICTED DATA-CNWDI, etc.
+        if s == "RD" || s == "RESTRICTED DATA" {
+            return Some(Self::Rd(RdBlock::default()));
+        }
+        if let Some(rest) = s.strip_prefix("RD-").or_else(|| s.strip_prefix("RESTRICTED DATA-")) {
+            return Self::parse_rd_modifiers(rest);
+        }
+
+        // FRD compound block: FRD, FRD-SIGMA ##,
+        // FORMERLY RESTRICTED DATA, etc.
+        if s == "FRD" || s == "FORMERLY RESTRICTED DATA" {
+            return Some(Self::Frd(FrdBlock::default()));
+        }
+        if let Some(rest) =
+            s.strip_prefix("FRD-").or_else(|| s.strip_prefix("FORMERLY RESTRICTED DATA-"))
+        {
+            return Self::parse_frd_modifiers(rest);
+        }
+
+        None
     }
 
-    /// Parse SIGMA variants: `SIGMA ##` (banner) or `SG ##` (portion).
-    ///
-    /// Returns `Sigma(n)` by default. The caller must determine from
-    /// context (presence of RD vs FRD in the same marking) whether this
-    /// is `Sigma` or `SigmaFrd`.
-    fn parse_sigma(s: &str) -> Option<Self> {
-        if let Some(rest) = s.strip_prefix("SIGMA ") {
-            rest.trim().parse::<u8>().ok().map(Self::Sigma)
-        } else if let Some(rest) = s.strip_prefix("SG ") {
-            rest.trim().parse::<u8>().ok().map(Self::Sigma)
+    /// Parse RD modifiers after the `RD-` prefix.
+    /// Handles: `CNWDI`, `SIGMA ##`, `CNWDI-SIGMA ##`, `SG ##`, `CNWDI-SG ##`.
+    fn parse_rd_modifiers(s: &str) -> Option<Self> {
+        let mut cnwdi = false;
+        let mut rest = s;
+
+        // Check for CNWDI prefix.
+        if let Some(after) = rest.strip_prefix("CNWDI") {
+            cnwdi = true;
+            rest = after.strip_prefix('-').unwrap_or(after);
+        } else if rest == "N" {
+            // DoD shorthand: RD-N means RD-CNWDI (per CAPCO-2016 §6)
+            return Some(Self::Rd(RdBlock {
+                cnwdi: true,
+                sigma: Box::new([]),
+            }));
+        }
+
+        // Check for SIGMA/SG.
+        let sigma = parse_sigma_numbers(rest);
+
+        if rest.is_empty() || !sigma.is_empty() {
+            Some(Self::Rd(RdBlock {
+                cnwdi,
+                sigma: sigma.into(),
+            }))
         } else {
             None
         }
     }
+
+    /// Parse FRD modifiers after the `FRD-` prefix.
+    /// Handles: `SIGMA ##`, `SG ##`.
+    fn parse_frd_modifiers(s: &str) -> Option<Self> {
+        let sigma = parse_sigma_numbers(s);
+        if !sigma.is_empty() {
+            Some(Self::Frd(FrdBlock {
+                sigma: sigma.into(),
+            }))
+        } else {
+            None
+        }
+    }
+}
+
+/// Parse SIGMA/SG numbers from a string like `SIGMA 18 20` or `SG 14`.
+fn parse_sigma_numbers(s: &str) -> Vec<u8> {
+    let rest = s
+        .strip_prefix("SIGMA ")
+        .or_else(|| s.strip_prefix("SG "))
+        .unwrap_or("");
+    if rest.is_empty() {
+        return vec![];
+    }
+    rest.split_whitespace()
+        .filter_map(|n| n.parse::<u8>().ok())
+        .collect()
 }
 
 impl std::fmt::Display for AeaMarking {
