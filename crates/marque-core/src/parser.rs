@@ -352,6 +352,75 @@ impl<'t> Parser<'t> {
                         text: trimmed.into(),
                     });
                 }
+            } else if trimmed.contains('/') && !trimmed.starts_with("REL") {
+                // Multi-token block per CAPCO §D.1: multiple entries within a
+                // category are separated by a single `/` (e.g., "SI/TK", "NF/RD").
+                // Split on `/` and attempt to parse each sub-token individually.
+                // Compute per-sub-token absolute spans from the block's abs_start.
+                let mut any_parsed = false;
+                for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
+                    let sub_abs_start = abs_start + sub_off;
+                    let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
+                    if let Some(ctrl) = SciControl::parse(sub_tok) {
+                        sci.push(ctrl);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::SciControl,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                        any_parsed = true;
+                    } else if let Some(ctrl) = DissemControl::parse(sub_tok)
+                        .or_else(|| parse_dissem_full_form(sub_tok))
+                    {
+                        dissem.push(ctrl);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::DissemControl,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                        any_parsed = true;
+                    } else if let Some(nic) = NonIcDissem::parse(sub_tok) {
+                        non_ic.push(nic);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::NonIcDissem,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                        any_parsed = true;
+                    } else if let Some(sar_id) = SarIdentifier::parse(sub_tok) {
+                        sar.push(sar_id);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::SarIdentifier,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                        any_parsed = true;
+                    } else if let Some(aea_marking) = AeaMarking::parse(sub_tok) {
+                        aea.push(aea_marking);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::AeaMarking,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                        any_parsed = true;
+                    } else {
+                        // Unrecognized sub-token: emit Unknown for diagnostic.
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::Unknown,
+                            span: sub_span,
+                            text: sub_tok.into(),
+                        });
+                    }
+                }
+                // If nothing parsed and the whole block is Unknown, also emit
+                // a block-level Unknown so E008 fires on the right span.
+                if !any_parsed {
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
+                }
             } else {
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Unknown,
@@ -682,6 +751,25 @@ fn parse_rel_to_with_spans(
 fn is_declass_date(s: &str) -> bool {
     let bytes = s.as_bytes();
     matches!(bytes.len(), 4 | 8) && bytes.iter().all(u8::is_ascii_digit)
+}
+
+/// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
+/// `offset` is the byte offset of the trimmed token within `s`.
+///
+/// Used by the multi-token block fallback to handle CAPCO §D.1 blocks like
+/// `"SI/TK"` or `"NF/LIMDIS"` where multiple entries share one `//` block.
+fn split_slash_with_offsets(s: &str) -> Vec<(usize, &str)> {
+    let mut result = Vec::new();
+    let mut pos = 0usize;
+    for part in s.split('/') {
+        let trim_lead = part.len() - part.trim_start().len();
+        let trimmed = part.trim();
+        if !trimmed.is_empty() {
+            result.push((pos + trim_lead, trimmed));
+        }
+        pos += part.len() + 1; // +1 for the `/` separator
+    }
+    result
 }
 
 #[cfg(test)]
@@ -1301,5 +1389,57 @@ mod tests {
             AeaMarking::Rd(rd) => assert!(rd.cnwdi),
             other => panic!("expected Rd with CNWDI from RD-N, got: {other:?}"),
         }
+    }
+
+    // --- CAPCO §D.1 intra-block `/` separator ---
+
+    #[test]
+    fn slash_separated_sci_in_single_block_parses() {
+        // CAPCO §D.1: multiple SCI controls in one block, `/`-separated.
+        // "(TS//SI/TK//NF)" must produce sci_controls: [Si, Tk], NOT Unknown.
+        use marque_ism::SciControl;
+        let parsed = parse_portion("(TS//SI/TK//NF)");
+        assert_eq!(
+            parsed.attrs.sci_controls.as_ref(),
+            &[SciControl::Si, SciControl::Tk],
+            "SI/TK block must yield two SCI controls"
+        );
+        // No Unknown token spans
+        assert!(
+            parsed.attrs.token_spans.iter().all(|t| t.kind != TokenKind::Unknown),
+            "no Unknown spans expected: {:?}",
+            parsed.attrs.token_spans
+        );
+    }
+
+    #[test]
+    fn slash_separated_sci_banner_parses() {
+        // Same rule applies to banner markings.
+        use marque_ism::SciControl;
+        let parsed = parse_banner("TOP SECRET//SI/TK//NOFORN");
+        assert_eq!(
+            parsed.attrs.sci_controls.as_ref(),
+            &[SciControl::Si, SciControl::Tk],
+        );
+    }
+
+    #[test]
+    fn slash_separated_dissem_in_single_block_parses() {
+        // Dissem controls can also share a block: "NF/RD" in one // block.
+        use marque_ism::DissemControl;
+        let parsed = parse_banner("SECRET//SI//NF/RELIDO");
+        let dissem: Vec<DissemControl> = parsed.attrs.dissem_controls.to_vec();
+        assert!(dissem.contains(&DissemControl::Nf), "must contain NF");
+        assert!(dissem.contains(&DissemControl::Relido), "must contain RELIDO");
+    }
+
+    #[test]
+    fn unrecognized_slash_token_emits_unknown() {
+        // An unknown token like "XYZZY" in a slash block → Unknown span.
+        let parsed = parse_portion("(S//XYZZY)");
+        assert!(
+            parsed.attrs.token_spans.iter().any(|t| t.kind == TokenKind::Unknown),
+            "XYZZY must produce Unknown span"
+        );
     }
 }

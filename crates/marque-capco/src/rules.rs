@@ -454,20 +454,23 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
 
     let mut blocks: Vec<String> = Vec::with_capacity(8);
     blocks.push(classification.join(" "));
-    for s in sci {
-        blocks.push(s.to_owned());
+    // CAPCO §D.1: multiple entries within a category are separated by a single
+    // `/`; the double-slash `//` separates categories from each other.
+    // Group all controls of each type into one block, `/`-joined.
+    if !sci.is_empty() {
+        blocks.push(sci.join("/"));
     }
-    for s in sar {
-        blocks.push(s.to_owned());
+    if !sar.is_empty() {
+        blocks.push(sar.join("/"));
     }
-    for d in dissem {
-        blocks.push(d.to_owned());
+    if !dissem.is_empty() {
+        blocks.push(dissem.join("/"));
     }
     if !rel_to.is_empty() {
         blocks.push(format!("REL TO {}", rel_to.join(", ")));
     }
-    for n in non_ic {
-        blocks.push(n.to_owned());
+    if !non_ic.is_empty() {
+        blocks.push(non_ic.join("/"));
     }
 
     let joined = blocks.join("//");
@@ -2711,13 +2714,14 @@ mod tests {
     }
 
     #[test]
-    fn e004_fires_on_missing_separator_in_later_block() {
-        // The parser splits on `//` so the partial split puts `SI/NF` into
-        // an Unknown block. E004's stray-slash walk catches it.
-        let diags = lint_banner("SECRET//SI/NF");
+    fn e004_fires_on_missing_separator_in_classification_block() {
+        // A truly missing separator: "SECRET/NOFORN" (one slash, no `//`).
+        // The entire string lands in one Classification block whose text
+        // contains a stray `/`. E004's stray-slash walk fires on it.
+        let diags = lint_banner("SECRET/NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1);
-        assert_eq!(e004[0].span.start, 10);
+        assert_eq!(e004.len(), 1, "E004 must fire on SECRET/NOFORN: {diags:?}");
+        assert_eq!(e004[0].span.start, 6);
     }
 
     #[test]
