@@ -1,12 +1,11 @@
 [package]
 name = "marque-test-utils"
-version.workspace = true
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Shared test utilities and corpus loader for marque"
 repository.workspace = true
 license.workspace = true
-publish = false
 
 [dependencies]
 serde = { workspace = true }
