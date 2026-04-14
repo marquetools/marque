@@ -73,9 +73,11 @@ pub struct IsmAttributes {
     /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
     ///
     /// Separate authority framework (CAPCO Register §9), distinct from IC
-    /// dissem controls. In classified documents these appear only in portion
-    /// markings (stripped from banners). On unclassified pages they propagate
-    /// to the banner. LES-NF and SBU-NF carry NOFORN treatment even when
+    /// dissem controls. In classified documents these are generally portion-
+    /// only and stripped from banners, but some values propagate to the
+    /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
+    /// for the authoritative rule. On unclassified pages they propagate to
+    /// the banner. LES-NF and SBU-NF carry NOFORN treatment even when
     /// stripped.
     pub non_ic_dissem: Box<[NonIcDissem]>,
 
@@ -701,10 +703,12 @@ pub struct FgiMarker {
 /// Non-Intelligence Community dissemination control markings (CAPCO Register §9).
 ///
 /// These operate under a separate authority framework from IC dissem controls.
-/// In classified documents, non-IC dissem controls appear **only in portion
-/// markings** — they are stripped from banners. The document's banner reflects
-/// the aggregate IC dissem controls. When the page is **unclassified**,
-/// non-IC dissem controls DO propagate to the banner.
+/// In classified documents, most non-IC dissem controls appear **only in portion
+/// markings** — they are stripped from banners. However, some controls propagate
+/// to classified banners: LIMDIS (NGA Title 10), LES, LES-NF, and SSI. See
+/// [`NonIcDissem::propagates_to_classified_banner`] for the authoritative list.
+/// When the page is **unclassified**, all non-IC dissem controls propagate to
+/// the banner.
 ///
 /// LES-NF and SBU-NF carry NOFORN treatment even when stripped from the banner.
 ///

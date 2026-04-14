@@ -173,6 +173,40 @@ impl Rule for BannerAbbreviationRule {
                 migration_ref: Some("CAPCO-2023-§3.2"),
             }));
         }
+        // Walk non-IC dissem token spans. If the source text is the portion
+        // abbreviation (e.g., "DS" instead of "LIMDIS"), suggest the banner form.
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let Some(full) = marque_ism::marking_forms::portion_to_banner(nic.portion_str()) else {
+                // banner_str == portion_str (e.g., SBU, LES, SSI) — no correction needed.
+                continue;
+            };
+            let Some(token_span) = nic_spans.get(idx) else {
+                continue;
+            };
+            let abbrev = nic.portion_str();
+            if token_span.text.as_ref() != abbrev {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§9",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§9"),
+            }));
+        }
         diagnostics
     }
 }
@@ -361,7 +395,7 @@ impl Rule for MisorderedBlocksRule {
             self.default_severity(),
             span,
             "marking blocks are out of CAPCO order \
-             (expected: Classification // SCI // SAR // Dissem // REL TO)",
+             (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
             "CAPCO-ISM-v2022-DEC-§3.1",
             fix,
         )]
@@ -374,6 +408,8 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
         TokenKind::SciControl => Some(1),
         TokenKind::SarIdentifier => Some(2),
         TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
+        // Non-IC dissem always comes after IC dissem (last block).
+        TokenKind::NonIcDissem => Some(4),
         // Separators, declass, and unknown tokens do not participate in
         // ordering — they belong to other blocks or other rules.
         _ => None,
@@ -381,11 +417,12 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 }
 
 /// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
-/// block ordinals: Classification // SCI // SAR // Dissem // REL TO.
+/// block ordinals: Classification // SCI // SAR // Dissem // REL TO // Non-IC.
 ///
 /// Within each block, tokens preserve their document order. REL TO trigraphs
-/// are reassembled into a single `REL TO ...` block. Returns `None` if there
-/// is nothing meaningful to reorder (no classification recorded).
+/// are reassembled into a single `REL TO ...` block. Non-IC dissem controls
+/// appear last per CAPCO Register §9. Returns `None` if there is nothing
+/// meaningful to reorder (no classification recorded).
 ///
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
@@ -397,6 +434,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     let mut sar: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
+    let mut non_ic: Vec<&str> = Vec::new();
 
     for token in attrs.token_spans.iter() {
         match token.kind {
@@ -405,6 +443,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
             TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
+            TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
             _ => {}
         }
     }
@@ -426,6 +465,9 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     }
     if !rel_to.is_empty() {
         blocks.push(format!("REL TO {}", rel_to.join(", ")));
+    }
+    for n in non_ic {
+        blocks.push(n.to_owned());
     }
 
     let joined = blocks.join("//");
@@ -1078,6 +1120,46 @@ impl Rule for PortionAbbreviationRule {
             }));
         }
 
+        // --- Non-IC dissem controls: banner form in portion → abbreviate ---
+        // Walk non-IC dissem token spans. For each one whose source text is
+        // the banner form (e.g., "LIMDIS"), suggest the portion abbreviation.
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let Some(token_span) = nic_spans.get(idx) else {
+                continue;
+            };
+            let text = token_span.text.as_ref();
+            // Only fire when banner form ≠ portion form and the source text
+            // is the banner form (e.g., "LIMDIS" → "DS").
+            let Some(portion) = marque_ism::marking_forms::banner_to_portion(text) else {
+                // banner_str == portion_str (e.g., SBU, LES, SSI) — skip.
+                continue;
+            };
+            // Defensive: ensure the suggested portion form matches this enum
+            // variant's canonical portion string to avoid cross-mapping.
+            if portion != nic.portion_str() {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "portion uses banner-form non-IC dissem control {text:?}; use {portion:?}"
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§9",
+                original: text.to_owned(),
+                replacement: portion.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§9"),
+            }));
+        }
+
         diagnostics
     }
 }
@@ -1625,10 +1707,22 @@ impl Rule for NonIcInClassifiedBannerRule {
             return vec![];
         }
 
-        // Non-IC dissem is fine in UNCLASSIFIED banners.
-        let is_classified = attrs
-            .us_classification()
-            .is_some_and(|c| c > marque_ism::Classification::Unclassified);
+        // Non-IC dissem controls are fine only in UNCLASSIFIED banners.
+        // Determine classification from the full banner classification, not
+        // just the US-specific view, so non-US classified banners (NATO,
+        // JOINT, FGI forms) are also checked.
+        let is_classified = match &attrs.classification {
+            Some(marque_ism::MarkingClassification::Us(c)) => {
+                *c > marque_ism::Classification::Unclassified
+            }
+            Some(
+                marque_ism::MarkingClassification::Fgi(_)
+                | marque_ism::MarkingClassification::Nato(_)
+                | marque_ism::MarkingClassification::Joint(_)
+                | marque_ism::MarkingClassification::Conflict { .. },
+            ) => true,
+            None => false,
+        };
         if !is_classified {
             return vec![];
         }
@@ -2452,6 +2546,38 @@ mod tests {
     }
 
     #[test]
+    fn e001_fires_on_non_ic_dissem_portion_form_in_banner() {
+        // "DS" is the portion form of LIMDIS; a banner should use "LIMDIS".
+        let diags = lint_banner("SECRET//DS");
+        let e001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E001").collect();
+        assert_eq!(e001.len(), 1, "E001 must fire on DS in banner: {diags:?}");
+        let src = b"SECRET//DS";
+        assert_eq!(e001[0].span.as_str(src).unwrap(), "DS");
+        let fix = e001[0].fix.as_ref().expect("E001 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "LIMDIS");
+    }
+
+    #[test]
+    fn e001_does_not_fire_on_non_ic_dissem_banner_form_in_banner() {
+        // "LIMDIS" is the correct banner form — E001 must not fire.
+        let diags = lint_banner("SECRET//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E001"),
+            "E001 must not fire when banner uses LIMDIS (correct banner form): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e001_does_not_fire_on_non_ic_dissem_with_equal_banner_portion() {
+        // SBU/LES/SSI have identical banner and portion forms — no correction.
+        let diags = lint_banner("UNCLASSIFIED//SBU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E001"),
+            "E001 must not fire when banner=portion for SBU: {diags:?}"
+        );
+    }
+
+    #[test]
     fn e002_fires_when_usa_missing_with_real_span() {
         let diags = lint_banner("SECRET//REL TO GBR, AUS");
         let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
@@ -2473,6 +2599,31 @@ mod tests {
     fn e003_does_not_fire_on_correct_order() {
         let diags = lint_banner("SECRET//SI//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E003"));
+    }
+
+    #[test]
+    fn e003_does_not_fire_on_non_ic_dissem_last() {
+        // Non-IC dissem as last block is the correct CAPCO order.
+        let diags = lint_banner("SECRET//NOFORN//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E003"),
+            "non-IC dissem after dissem is correct order: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e003_fires_on_non_ic_dissem_before_ic_dissem() {
+        // Non-IC dissem (LIMDIS) before IC dissem (NOFORN) is out of order.
+        let diags = lint_banner("SECRET//LIMDIS//NOFORN");
+        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
+        assert_eq!(e003.len(), 1, "E003 must fire when non-IC dissem precedes IC dissem");
+        // The reordered fix must preserve the non-IC dissem as the last block.
+        let fix = e003[0].fix.as_ref().expect("E003 must carry FixProposal");
+        assert!(
+            fix.replacement.as_ref().ends_with("//LIMDIS"),
+            "non-IC dissem must be last in reordered output: {}",
+            fix.replacement.as_ref()
+        );
     }
 
     #[test]
@@ -2676,6 +2827,38 @@ mod tests {
         // E009 is portion-only; banner-form in banners is correct.
         let diags = lint_banner("TOP SECRET//SI//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E009"));
+    }
+
+    #[test]
+    fn e009_fires_on_non_ic_dissem_banner_form_in_portion() {
+        // "LIMDIS" is the banner form; a portion should use "DS".
+        let diags = lint_portion("(S//LIMDIS)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert_eq!(e009.len(), 1, "E009 must fire on LIMDIS in portion: {diags:?}");
+        let src = b"(S//LIMDIS)";
+        assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "DS");
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_non_ic_dissem_portion_form_in_portion() {
+        // "DS" is the correct portion form — E009 must not fire.
+        let diags = lint_portion("(S//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when portion uses DS (correct portion form): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_non_ic_dissem_with_equal_banner_portion() {
+        // SBU/LES/SSI have identical banner and portion forms — no correction.
+        let diags = lint_portion("(U//LES)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when banner=portion for LES: {diags:?}"
+        );
     }
 
     // --- E010: Bare HCS rule ---
@@ -2908,6 +3091,18 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
             "SSI propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_fires_on_sbu_in_nato_classified_banner() {
+        // Non-US (NATO) classified banners are still classified — W003 should fire.
+        let diags = lint_banner("//NS//SBU");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(
+            w003.len(),
+            1,
+            "W003 must fire on SBU in NATO classified banner: {diags:?}"
         );
     }
 
