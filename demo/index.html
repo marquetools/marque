@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marque — Interactive Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="#">mar<span>que</span></a>
+  <span class="nav-hint">Classification marking linter &amp; auto-fixer</span>
+</nav>
+
+<div class="page-wrapper">
+
+  <!-- Document card -->
+  <p class="section-heading">Live Document Preview</p>
+
+  <div class="document">
+
+    <!-- Top banner (auto-updated) -->
+    <div class="banner level-empty" id="banner-top">Loading…</div>
+
+    <!-- Memo header (non-editable) -->
+    <div class="doc-header">
+      <table>
+        <tr>
+          <td>MEMORANDUM FOR:</td>
+          <td>Distribution List</td>
+        </tr>
+        <tr>
+          <td>FROM:</td>
+          <td>Office of the Directorate</td>
+        </tr>
+        <tr>
+          <td>SUBJECT:</td>
+          <td>Intelligence Assessment — Program Status</td>
+        </tr>
+        <tr>
+          <td>DATE:</td>
+          <td id="doc-date"></td>
+        </tr>
+      </table>
+      <hr class="doc-divider" />
+    </div>
+
+    <!-- Editable body — CodeMirror mounts here -->
+    <div class="doc-body">
+      <div id="editor-mount"></div>
+    </div>
+
+    <!-- Bottom banner (mirrors top) -->
+    <div class="banner level-empty" id="banner-bottom">Loading…</div>
+
+    <!-- CAB section -->
+    <div class="doc-cab">
+      <div class="cab-label">
+        Classification Authority Block
+        <button class="btn-generate-cab" id="btn-generate-cab">Generate CAB</button>
+      </div>
+      <pre id="cab-content" class="cab-placeholder">Click "Generate CAB" to populate from document markings.</pre>
+    </div>
+
+  </div>
+
+  <!-- Issues panel -->
+  <p class="section-heading">Diagnostics</p>
+
+  <div class="issues-panel">
+    <div class="issues-header" id="issues-header">
+      <span>Issues</span>
+      <span class="badge badge-ok">✓</span>
+    </div>
+    <ul class="issues-list" id="issues-list">
+      <div class="issues-empty">Loading…</div>
+    </ul>
+  </div>
+
+  <!-- Playground -->
+  <p class="section-heading">Playground — Paste any text</p>
+
+  <div class="playground-section">
+    <div class="playground-header">
+      <span>Raw lint output (NDJSON)</span>
+    </div>
+    <div class="playground-body">
+      <div>
+        <div class="playground-input-label">Input</div>
+        <textarea
+          class="playground-textarea"
+          id="playground-input"
+          placeholder="Paste any text containing classification markings…"
+          spellcheck="false"
+        ></textarea>
+      </div>
+      <div>
+        <div class="playground-output-label">Diagnostics (NDJSON)</div>
+        <div class="playground-output" id="playground-output"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Set today's date in memo header
+  const d = new Date();
+  document.getElementById('doc-date').textContent =
+    d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+</script>
+
+<script type="module" src="demo.js"></script>
+
+</body>
+</html>
