@@ -168,176 +168,176 @@ jobs:
           fi
 
           BODY=$(cat <<EOF
-## ODNI ISM Schema Update Detected
-
-A new version of the ISM specification has been published on the ODNI page.
-
-| | Version |
-|---|---|
-| **Pinned in repo** | \`${OLD_VERSION}\` |
-| **Available**      | \`${NEW_VERSION}\` |
-
-### Download
-
-${DOWNLOAD_URL}
-
-### Update checklist
-
-- [ ] Download and extract the schema ZIP
-- [ ] Create \`crates/marque-capco/schemas/ISM-v${NEW_VERSION}/\` and populate from the ZIP (which extracts to an \`ISM/\` root):
-  - \`ISM/CVE/ISM/\`              → \`CVE_ISM/\`
-  - \`ISM/CVE/CveSchema/ISMCAT/\` → \`CVE_ISMCAT/\`
-  - \`ISM/Schema/ISM/\`           → \`Schema/\`
-  - \`ISM/Schematron/ISM/\`       → \`Schematron/\`
-- [ ] Update \`crates/marque-capco/schemas/CURRENT_VERSION\` → \`${NEW_VERSION}\`
-- [ ] Update \`[package.metadata.marque] ism-schema-version\` in \`crates/marque-capco/Cargo.toml\`
-- [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/src/lib.rs\`
-- [ ] Update default \`capco.version\` in \`crates/marque-config/src/lib.rs\`
-- [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/build.rs\`
-- [ ] Run \`cargo build -p marque-capco\` and review \`build.rs\` output diffs
-- [ ] Update migration rules for any newly deprecated or renamed markings
-- [ ] Bump \`marque-capco\` crate version and update changelog
-- [ ] Update pinned schema version in integration tests
-
-### Notes
-
-Review the ISM release notes for:
-- New SCI controls or SAR identifiers added to CVE
-- Deprecated markings and their canonical replacements
-- Changes to block ordering rules
-- Changes to CAB (Classification Authority Block) requirements
-
----
-*Detected by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
-EOF
-)
-
-          gh issue create \
-            --title "ISM schema update available: ${NEW_VERSION}" \
-            --label "schema-update" \
-            --body "${BODY}"
-
-          echo "Issue created for schema update: ${OLD_VERSION} → ${NEW_VERSION}"
-
-      # -----------------------------------------------------------------------
-      # Page unreachable after retries — open an issue if one isn't already open.
-      # This signals either site downtime OR the URL has moved.
-      # -----------------------------------------------------------------------
-      - name: Open issue for fetch failure
-        if: steps.fetch.outputs.fetch_ok == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HTTP_STATUS: ${{ steps.fetch.outputs.http_status }}
-          PAGE_URL: ${{ env.ODNI_ISM_PAGE }}
-        run: |
-          EXISTING=$(gh issue list \
-            --label "schema-check-failure" \
-            --state open \
-            --json number \
-            --jq length)
-
-          if [ "${EXISTING}" != "0" ]; then
-            echo "Failure issue already open. Skipping."
-            exit 0
-          fi
-
-          BODY=$(cat <<EOF
-## ISM Schema Check: Fetch Failure
-
-The monthly ISM schema check could not reach the ODNI page after 3 attempts.
-
-**Monitored URL:**
-\`\`\`
-${PAGE_URL}
-\`\`\`
-
-**HTTP status received:** \`${HTTP_STATUS}\`
-**Date:** $(date -u '+%Y-%m-%d')
-
-### Possible causes
-
-| HTTP Status | Likely cause |
-|---|---|
-| \`000\` | Network error or ODNI site down |
-| \`301\` / \`302\` | Page moved — check for redirect destination |
-| \`403\` | Access control change |
-| \`404\` | Page removed — find new location |
-
-### Action required
-
-1. Manually verify the ODNI ISM page is accessible
-2. If the URL has changed, update \`ODNI_ISM_PAGE\` in \`.github/workflows/check-ism-schema.yml\`
-3. Close this issue once resolved
-
----
-*Raised by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
-EOF
-)
-
-          gh issue create \
-            --title "ISM schema check failed: ODNI page unreachable (HTTP ${HTTP_STATUS})" \
-            --label "schema-check-failure" \
-            --body "${BODY}"
-
-      # -----------------------------------------------------------------------
-      # Page reachable but link pattern not found — URL structure may have changed
-      # -----------------------------------------------------------------------
-      - name: Open issue for parse failure
-        if: >
-          steps.fetch.outputs.fetch_ok == 'true' &&
-          steps.extract.outputs.found == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAGE_URL: ${{ env.ODNI_ISM_PAGE }}
-          PATTERN: ${{ env.LINK_PATTERN }}
-        run: |
-          EXISTING=$(gh issue list \
-            --label "schema-check-failure" \
-            --state open \
-            --json number \
-            --jq length)
-
-          if [ "${EXISTING}" != "0" ]; then
-            echo "Failure issue already open. Skipping."
-            exit 0
-          fi
-
-          BODY=$(cat <<EOF
-## ISM Schema Check: Parse Failure
-
-The monthly ISM schema check reached the ODNI page (HTTP 200) but could not
-find a download link matching the expected pattern.
-
-**Monitored URL:**
-\`\`\`
-${PAGE_URL}
-\`\`\`
-
-**Expected link pattern:**
-\`\`\`
-${PATTERN}
-\`\`\`
-
-**Date:** $(date -u '+%Y-%m-%d')
-
-### What this means
-
-ODNI may have changed the download URL structure or page layout.
-The page is accessible but the automated check can no longer parse the version.
-
-### Action required
-
-1. Visit the [ODNI ISM page](${PAGE_URL}) manually and find the current download link
-2. If the URL pattern has changed, update \`LINK_PATTERN\` in \`.github/workflows/check-ism-schema.yml\`
-3. If a newer schema version is available, follow the update checklist (see schema-update issue template)
-4. Close this issue once resolved
-
----
-*Raised by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
-EOF
-)
-
-          gh issue create \
-            --title "ISM schema check failed: download link not found on ODNI page" \
-            --label "schema-check-failure" \
-            --body "${BODY}"
+          ## ODNI ISM Schema Update Detected
+          
+          A new version of the ISM specification has been published on the ODNI page.
+          
+          | | Version |
+          |---|---|
+          | **Pinned in repo** | \`${OLD_VERSION}\` |
+          | **Available**      | \`${NEW_VERSION}\` |
+          
+          ### Download
+          
+          ${DOWNLOAD_URL}
+          
+          ### Update checklist
+          
+          - [ ] Download and extract the schema ZIP
+          - [ ] Create \`crates/marque-capco/schemas/ISM-v${NEW_VERSION}/\` and populate from the ZIP (which extracts to an \`ISM/\` root):
+            - \`ISM/CVE/ISM/\`              → \`CVE_ISM/\`
+            - \`ISM/CVE/CveSchema/ISMCAT/\` → \`CVE_ISMCAT/\`
+            - \`ISM/Schema/ISM/\`           → \`Schema/\`
+            - \`ISM/Schematron/ISM/\`       → \`Schematron/\`
+          - [ ] Update \`crates/marque-capco/schemas/CURRENT_VERSION\` → \`${NEW_VERSION}\`
+          - [ ] Update \`[package.metadata.marque] ism-schema-version\` in \`crates/marque-capco/Cargo.toml\`
+          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/src/lib.rs\`
+          - [ ] Update default \`capco.version\` in \`crates/marque-config/src/lib.rs\`
+          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/build.rs\`
+          - [ ] Run \`cargo build -p marque-capco\` and review \`build.rs\` output diffs
+          - [ ] Update migration rules for any newly deprecated or renamed markings
+          - [ ] Bump \`marque-capco\` crate version and update changelog
+          - [ ] Update pinned schema version in integration tests
+          
+          ### Notes
+          
+          Review the ISM release notes for:
+          - New SCI controls or SAR identifiers added to CVE
+          - Deprecated markings and their canonical replacements
+          - Changes to block ordering rules
+          - Changes to CAB (Classification Authority Block) requirements
+          
+          ---
+          *Detected by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
+          EOF
+          )
+          
+                    gh issue create \
+                      --title "ISM schema update available: ${NEW_VERSION}" \
+                      --label "schema-update" \
+                      --body "${BODY}"
+          
+                    echo "Issue created for schema update: ${OLD_VERSION} → ${NEW_VERSION}"
+          
+                # -----------------------------------------------------------------------
+                # Page unreachable after retries — open an issue if one isn't already open.
+                # This signals either site downtime OR the URL has moved.
+                # -----------------------------------------------------------------------
+                - name: Open issue for fetch failure
+                  if: steps.fetch.outputs.fetch_ok == 'false'
+                  env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    HTTP_STATUS: ${{ steps.fetch.outputs.http_status }}
+                    PAGE_URL: ${{ env.ODNI_ISM_PAGE }}
+                  run: |
+                    EXISTING=$(gh issue list \
+                      --label "schema-check-failure" \
+                      --state open \
+                      --json number \
+                      --jq length)
+          
+                    if [ "${EXISTING}" != "0" ]; then
+                      echo "Failure issue already open. Skipping."
+                      exit 0
+                    fi
+          
+                    BODY=$(cat <<EOF
+          ## ISM Schema Check: Fetch Failure
+          
+          The monthly ISM schema check could not reach the ODNI page after 3 attempts.
+          
+          **Monitored URL:**
+          \`\`\`
+          ${PAGE_URL}
+          \`\`\`
+          
+          **HTTP status received:** \`${HTTP_STATUS}\`
+          **Date:** $(date -u '+%Y-%m-%d')
+          
+          ### Possible causes
+          
+          | HTTP Status | Likely cause |
+          |---|---|
+          | \`000\` | Network error or ODNI site down |
+          | \`301\` / \`302\` | Page moved — check for redirect destination |
+          | \`403\` | Access control change |
+          | \`404\` | Page removed — find new location |
+          
+          ### Action required
+          
+          1. Manually verify the ODNI ISM page is accessible
+          2. If the URL has changed, update \`ODNI_ISM_PAGE\` in \`.github/workflows/check-ism-schema.yml\`
+          3. Close this issue once resolved
+          
+          ---
+          *Raised by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
+          EOF
+          )
+          
+                    gh issue create \
+                      --title "ISM schema check failed: ODNI page unreachable (HTTP ${HTTP_STATUS})" \
+                      --label "schema-check-failure" \
+                      --body "${BODY}"
+          
+                # -----------------------------------------------------------------------
+                # Page reachable but link pattern not found — URL structure may have changed
+                # -----------------------------------------------------------------------
+                - name: Open issue for parse failure
+                  if: >
+                    steps.fetch.outputs.fetch_ok == 'true' &&
+                    steps.extract.outputs.found == 'false'
+                  env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    PAGE_URL: ${{ env.ODNI_ISM_PAGE }}
+                    PATTERN: ${{ env.LINK_PATTERN }}
+                  run: |
+                    EXISTING=$(gh issue list \
+                      --label "schema-check-failure" \
+                      --state open \
+                      --json number \
+                      --jq length)
+          
+                    if [ "${EXISTING}" != "0" ]; then
+                      echo "Failure issue already open. Skipping."
+                      exit 0
+                    fi
+          
+                    BODY=$(cat <<EOF
+          ## ISM Schema Check: Parse Failure
+          
+          The monthly ISM schema check reached the ODNI page (HTTP 200) but could not
+          find a download link matching the expected pattern.
+          
+          **Monitored URL:**
+          \`\`\`
+          ${PAGE_URL}
+          \`\`\`
+          
+          **Expected link pattern:**
+          \`\`\`
+          ${PATTERN}
+          \`\`\`
+          
+          **Date:** $(date -u '+%Y-%m-%d')
+          
+          ### What this means
+          
+          ODNI may have changed the download URL structure or page layout.
+          The page is accessible but the automated check can no longer parse the version.
+          
+          ### Action required
+          
+          1. Visit the [ODNI ISM page](${PAGE_URL}) manually and find the current download link
+          2. If the URL pattern has changed, update \`LINK_PATTERN\` in \`.github/workflows/check-ism-schema.yml\`
+          3. If a newer schema version is available, follow the update checklist (see schema-update issue template)
+          4. Close this issue once resolved
+          
+          ---
+          *Raised by the [ISM schema update checker](.github/workflows/check-ism-schema.yml)*
+          EOF
+          )
+          
+                    gh issue create \
+                      --title "ISM schema check failed: download link not found on ODNI page" \
+                      --label "schema-check-failure" \
+                      --body "${BODY}"
