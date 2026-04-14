@@ -27,6 +27,7 @@ jobs:
   release:
     name: Publish to crates.io
     runs-on: ubuntu-latest
+    environment: cargo
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,10 +47,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
       - name: Publish crates
         env:
-            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+            CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
         run: |
@@ -57,7 +59,7 @@ jobs:
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run-cargo-publish"
           fi
-          cargo smart-release -u --auto-publish-of-stable-crates --execute $FLAGS \
+          cargo smart-release -u --execute $FLAGS \
             marque-ism marque-rules marque-core marque-config \
             marque-extract marque-capco marque-engine \
             marque-wasm marque-server marque
