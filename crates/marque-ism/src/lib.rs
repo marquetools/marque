@@ -17,7 +17,7 @@ pub mod token_set;
 
 // Re-export primary types at crate root for convenience.
 pub use attrs::{
-    Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
+    AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
     NatoClassification, NatoLevel, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan,
     Trigraph,

@@ -17,7 +17,7 @@
 
 use crate::error::CoreError;
 use marque_ism::attrs::{
-    Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
+    AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
 };
@@ -180,6 +180,7 @@ impl<'t> Parser<'t> {
 
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
+        let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut non_ic: Vec<NonIcDissem> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
@@ -294,6 +295,13 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+            } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
+                aea.push(aea_marking);
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::AeaMarking,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if let Some(exemption) = DeclassExemption::parse(trimmed) {
                 attrs.declass_exemption = Some(exemption);
                 token_spans.push(TokenSpan {
@@ -346,6 +354,7 @@ impl<'t> Parser<'t> {
 
         attrs.sci_controls = sci.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
+        attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.non_ic_dissem = non_ic.into_boxed_slice();
         attrs.rel_to = rel_to.into_boxed_slice();
@@ -1161,5 +1170,78 @@ mod tests {
         let parsed = parse_portion("(C//NF//DS)");
         assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);   // DS = LIMDIS
+    }
+
+    // -----------------------------------------------------------------------
+    // Atomic Energy Act markings
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn aea_rd_parses() {
+        let parsed = parse_banner("TOP SECRET//RD//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Rd);
+    }
+
+    #[test]
+    fn aea_rd_cnwdi_parses() {
+        let parsed = parse_banner("TOP SECRET//RD//CNWDI//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 2);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Rd);
+        assert_eq!(parsed.attrs.aea_markings[1], AeaMarking::Cnwdi);
+    }
+
+    #[test]
+    fn aea_frd_parses() {
+        let parsed = parse_portion("(S//FRD//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Frd);
+    }
+
+    #[test]
+    fn aea_sigma_banner_parses() {
+        let parsed = parse_banner("TOP SECRET//RD//SIGMA 14//NOFORN");
+        let sigmas: Vec<_> = parsed
+            .attrs
+            .aea_markings
+            .iter()
+            .filter(|a| matches!(a, AeaMarking::Sigma(_)))
+            .collect();
+        assert_eq!(sigmas.len(), 1);
+        assert_eq!(*sigmas[0], AeaMarking::Sigma(14));
+    }
+
+    #[test]
+    fn aea_sigma_portion_parses() {
+        let parsed = parse_portion("(TS//RD//SG 14//NF)");
+        let sigmas: Vec<_> = parsed
+            .attrs
+            .aea_markings
+            .iter()
+            .filter(|a| matches!(a, AeaMarking::Sigma(_)))
+            .collect();
+        assert_eq!(sigmas.len(), 1);
+        assert_eq!(*sigmas[0], AeaMarking::Sigma(14));
+    }
+
+    #[test]
+    fn aea_dod_ucni_parses() {
+        let parsed = parse_banner("UNCLASSIFIED//DOD UCNI");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::DodUcni);
+    }
+
+    #[test]
+    fn aea_dcni_portion_parses() {
+        let parsed = parse_portion("(U//DCNI)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::DodUcni);
+    }
+
+    #[test]
+    fn aea_tfni_parses() {
+        let parsed = parse_banner("SECRET//TFNI//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Tfni);
     }
 }

@@ -51,6 +51,12 @@ pub struct IsmAttributes {
     /// Special Access Required identifiers.
     pub sar_identifiers: Box<[SarIdentifier]>,
 
+    /// Atomic Energy Act markings (CAPCO Register §6).
+    ///
+    /// Includes RD, FRD, CNWDI, TFNI, SIGMA, and UCNI variants.
+    /// Positioned between SAR and FGI in CAPCO block ordering.
+    pub aea_markings: Box<[AeaMarking]>,
+
     /// FGI block in US-classified markings: `FGI` or `FGI [LIST]`.
     ///
     /// Present when a US-classified document references foreign government
@@ -142,6 +148,8 @@ pub enum TokenKind {
     SciControl,
     /// SAR identifier token.
     SarIdentifier,
+    /// Atomic Energy Act marking token (RD, FRD, CNWDI, TFNI, SIGMA ##, etc.).
+    AeaMarking,
     /// FGI marker token (`FGI`, `FGI DEU`, `FGI DEU GBR`).
     FgiMarker,
     /// Dissemination control token (NOFORN, NF, ORCON, OC, RELIDO, ...).
@@ -416,6 +424,114 @@ pub struct JointClassification {
     pub level: Classification,
     /// Co-owning countries (space-delimited in source). Must include USA.
     pub countries: Box<[Trigraph]>,
+}
+
+// ---------------------------------------------------------------------------
+// Atomic Energy Act markings
+// ---------------------------------------------------------------------------
+
+/// Atomic Energy Act information markings (CAPCO Register §6).
+///
+/// These markings identify nuclear-related information controlled under the
+/// Atomic Energy Act of 1954. They sit between SAR and FGI in CAPCO block
+/// ordering.
+///
+/// # Categories
+///
+/// - **RD** (Restricted Data): Nuclear weapon design, production, or use.
+/// - **CNWDI** (Critical Nuclear Weapon Design Information): Subset of RD
+///   revealing critical design theory/features. Always accompanied by RD.
+/// - **SIGMA [##]** (under RD): Specific RD compartments (numbered).
+///   Banner: `SIGMA 14`, Portion: `SG 14`.
+/// - **FRD** (Formerly Restricted Data): Nuclear info transferred to DoD.
+/// - **SIGMA [##]** (under FRD): FRD compartments use the same SIGMA scheme.
+/// - **DOD UCNI** (DoD Unclassified Controlled Nuclear Information): Portion `DCNI`.
+/// - **DOE UCNI** (DOE Unclassified Controlled Nuclear Information): Portion `UCNI`.
+/// - **TFNI** (Transclassified Foreign Nuclear Information).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum AeaMarking {
+    /// RESTRICTED DATA / RD / RD
+    Rd,
+    /// CRITICAL NUCLEAR WEAPON DESIGN INFORMATION / CNWDI / CNWDI
+    /// Always accompanied by RD.
+    Cnwdi,
+    /// SIGMA [##] under RD / SIGMA [##] / SG [##]
+    Sigma(u8),
+    /// FORMERLY RESTRICTED DATA / FRD / FRD
+    Frd,
+    /// SIGMA [##] under FRD / SIGMA [##] / SG [##]
+    SigmaFrd(u8),
+    /// DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION / DOD UCNI / DCNI
+    DodUcni,
+    /// DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION / DOE UCNI / UCNI
+    DoeUcni,
+    /// TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION / TFNI / TFNI
+    Tfni,
+}
+
+impl AeaMarking {
+    /// Banner-line abbreviation form.
+    pub fn banner_str(&self) -> String {
+        match self {
+            Self::Rd => "RD".to_owned(),
+            Self::Cnwdi => "CNWDI".to_owned(),
+            Self::Sigma(n) => format!("SIGMA {n}"),
+            Self::Frd => "FRD".to_owned(),
+            Self::SigmaFrd(n) => format!("SIGMA {n}"),
+            Self::DodUcni => "DOD UCNI".to_owned(),
+            Self::DoeUcni => "DOE UCNI".to_owned(),
+            Self::Tfni => "TFNI".to_owned(),
+        }
+    }
+
+    /// Portion mark abbreviation.
+    pub fn portion_str(&self) -> String {
+        match self {
+            Self::Rd => "RD".to_owned(),
+            Self::Cnwdi => "CNWDI".to_owned(),
+            Self::Sigma(n) => format!("SG {n}"),
+            Self::Frd => "FRD".to_owned(),
+            Self::SigmaFrd(n) => format!("SG {n}"),
+            Self::DodUcni => "DCNI".to_owned(),
+            Self::DoeUcni => "UCNI".to_owned(),
+            Self::Tfni => "TFNI".to_owned(),
+        }
+    }
+
+    /// Parse from either banner or portion form.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "RD" | "RESTRICTED DATA" => Some(Self::Rd),
+            "CNWDI" | "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION" => Some(Self::Cnwdi),
+            "FRD" | "FORMERLY RESTRICTED DATA" => Some(Self::Frd),
+            "DOD UCNI" | "DCNI" => Some(Self::DodUcni),
+            "DOE UCNI" | "UCNI" => Some(Self::DoeUcni),
+            "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => Some(Self::Tfni),
+            _ => Self::parse_sigma(s),
+        }
+    }
+
+    /// Parse SIGMA variants: `SIGMA ##` (banner) or `SG ##` (portion).
+    ///
+    /// Returns `Sigma(n)` by default. The caller must determine from
+    /// context (presence of RD vs FRD in the same marking) whether this
+    /// is `Sigma` or `SigmaFrd`.
+    fn parse_sigma(s: &str) -> Option<Self> {
+        if let Some(rest) = s.strip_prefix("SIGMA ") {
+            rest.trim().parse::<u8>().ok().map(Self::Sigma)
+        } else if let Some(rest) = s.strip_prefix("SG ") {
+            rest.trim().parse::<u8>().ok().map(Self::Sigma)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::fmt::Display for AeaMarking {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.portion_str())
+    }
 }
 
 // ---------------------------------------------------------------------------
