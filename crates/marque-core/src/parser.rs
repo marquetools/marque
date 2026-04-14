@@ -353,72 +353,185 @@ impl<'t> Parser<'t> {
                 }
             } else if trimmed.contains('/') && !trimmed.starts_with("REL") {
                 // Multi-token block per CAPCO §D.1: multiple entries within a
-                // category are separated by a single `/` (e.g., "SI/TK", "NF/RD").
-                // Split on `/` and attempt to parse each sub-token individually.
-                // Compute per-sub-token absolute spans from the block's abs_start.
-                let mut any_parsed = false;
+                // **single category** are separated by `/` (e.g., "SI/TK", "NF/RD").
+                // First, speculatively parse all sub-tokens. If all recognized sub-tokens
+                // belong to the same category, commit them. If categories are mixed
+                // (e.g., "SI/NF" — SCI + dissem in one block), the `/` is a stray
+                // separator that should have been `//`; emit the whole block as Unknown
+                // so E004 can detect and fix the missing `//`.
+
+                #[derive(Clone, Copy, PartialEq, Eq)]
+                enum SubKind {
+                    Sci,
+                    Dissem,
+                    NonIc,
+                    Sar,
+                    Aea,
+                    Unknown,
+                }
+
+                struct SubResult<'a> {
+                    kind: SubKind,
+                    tok: &'a str,
+                    span: Span,
+                    // Parsed values — stored here before committing.
+                    sci: Option<SciControl>,
+                    dissem: Option<DissemControl>,
+                    nic: Option<NonIcDissem>,
+                    sar: Option<SarIdentifier>,
+                    aea: Option<AeaMarking>,
+                }
+
+                let mut results: Vec<SubResult<'_>> = Vec::new();
                 for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
                     if let Some(ctrl) = SciControl::parse(sub_tok) {
-                        sci.push(ctrl);
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::SciControl,
+                        results.push(SubResult {
+                            kind: SubKind::Sci,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: Some(ctrl),
+                            dissem: None,
+                            nic: None,
+                            sar: None,
+                            aea: None,
                         });
-                        any_parsed = true;
                     } else if let Some(ctrl) = DissemControl::parse(sub_tok)
                         .or_else(|| parse_dissem_full_form(sub_tok))
                     {
-                        dissem.push(ctrl);
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::DissemControl,
+                        results.push(SubResult {
+                            kind: SubKind::Dissem,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: None,
+                            dissem: Some(ctrl),
+                            nic: None,
+                            sar: None,
+                            aea: None,
                         });
-                        any_parsed = true;
                     } else if let Some(nic) = NonIcDissem::parse(sub_tok) {
-                        non_ic.push(nic);
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::NonIcDissem,
+                        results.push(SubResult {
+                            kind: SubKind::NonIc,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: None,
+                            dissem: None,
+                            nic: Some(nic),
+                            sar: None,
+                            aea: None,
                         });
-                        any_parsed = true;
                     } else if let Some(sar_id) = SarIdentifier::parse(sub_tok) {
-                        sar.push(sar_id);
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::SarIdentifier,
+                        results.push(SubResult {
+                            kind: SubKind::Sar,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: None,
+                            dissem: None,
+                            nic: None,
+                            sar: Some(sar_id),
+                            aea: None,
                         });
-                        any_parsed = true;
                     } else if let Some(aea_marking) = AeaMarking::parse(sub_tok) {
-                        aea.push(aea_marking);
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::AeaMarking,
+                        results.push(SubResult {
+                            kind: SubKind::Aea,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: None,
+                            dissem: None,
+                            nic: None,
+                            sar: None,
+                            aea: Some(aea_marking),
                         });
-                        any_parsed = true;
                     } else {
-                        // Unrecognized sub-token: emit Unknown for diagnostic.
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::Unknown,
+                        results.push(SubResult {
+                            kind: SubKind::Unknown,
+                            tok: sub_tok,
                             span: sub_span,
-                            text: sub_tok.into(),
+                            sci: None,
+                            dissem: None,
+                            nic: None,
+                            sar: None,
+                            aea: None,
                         });
                     }
                 }
-                // If nothing parsed and the whole block is Unknown, also emit
-                // a block-level Unknown so E008 fires on the right span.
-                if !any_parsed {
+
+                // Check category consistency: all parsed (non-Unknown) sub-tokens
+                // must share the same category for `/` to be a valid intra-block
+                // separator. Mixed categories (e.g., SCI + dissem) mean the `/`
+                // is a stray single-slash separator that should have been `//`.
+                let parsed_kinds: Vec<SubKind> = results
+                    .iter()
+                    .filter(|r| r.kind != SubKind::Unknown)
+                    .map(|r| r.kind)
+                    .collect();
+                let all_same_category = !parsed_kinds.is_empty()
+                    && parsed_kinds.windows(2).all(|w| w[0] == w[1]);
+
+                if !parsed_kinds.is_empty() && !all_same_category {
+                    // Mixed categories: the `/` is a stray separator.
+                    // Emit the whole block as Unknown so E004 can detect it.
                     token_spans.push(TokenSpan {
                         kind: TokenKind::Unknown,
                         span,
                         text: trimmed.into(),
                     });
+                } else {
+                    // Same category (or all unknown): commit sub-token results.
+                    for r in results {
+                        match r.kind {
+                            SubKind::Sci => {
+                                sci.push(r.sci.unwrap());
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::SciControl,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                            SubKind::Dissem => {
+                                dissem.push(r.dissem.unwrap());
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::DissemControl,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                            SubKind::NonIc => {
+                                non_ic.push(r.nic.unwrap());
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::NonIcDissem,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                            SubKind::Sar => {
+                                sar.push(r.sar.unwrap());
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::SarIdentifier,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                            SubKind::Aea => {
+                                aea.push(r.aea.unwrap());
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::AeaMarking,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                            SubKind::Unknown => {
+                                // Unrecognized sub-token within a same-category block.
+                                // E008 fires one diagnostic per Unknown span.
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::Unknown,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                            }
+                        }
+                    }
                 }
             } else {
                 token_spans.push(TokenSpan {

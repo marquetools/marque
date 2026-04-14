@@ -39,7 +39,18 @@ wasm-pack build crates/marque-wasm --target web --profile release-wasm
 | CAB generation | `generate_cab()` on button click |
 | Playground | Raw NDJSON output from `lint()` |
 
-## No build step required for the demo
+## Vendor bundle (CodeMirror)
 
-The demo uses ES module imports from `esm.sh` (CodeMirror 6) and loads the
-WASM package directly. No npm, no bundler.
+The demo uses a pre-built `vendor.js` bundle containing CodeMirror 6 modules.
+This bundle is checked in, so you don't need npm for normal use. To rebuild it
+(e.g., after upgrading CodeMirror):
+
+```sh
+cd demo
+npm install
+node bundle-vendor.js
+```
+
+The bundle entry point is `demo/bundle-vendor.js` and is built with esbuild.
+`vendor.js` is the output artifact — it is committed so the demo works without
+any build step after cloning.

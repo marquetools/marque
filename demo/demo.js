@@ -108,7 +108,7 @@ function updateIssues(diagList, issuesList, issuesHeader) {
   issuesList.innerHTML = '';
 
   if (diagList.length === 0) {
-    issuesList.innerHTML = '<div class="issues-empty">No issues found.</div>';
+    issuesList.innerHTML = '<li class="issues-empty">No issues found.</li>';
     issuesHeader.querySelector('.badge').textContent = '✓';
     issuesHeader.querySelector('.badge').className = 'badge badge-ok';
     return;
@@ -231,7 +231,7 @@ async function main() {
   // Build a simpler tooltip that reads from view._marqueDiagData
   const simpleTip = hoverTooltip((view, pos) => {
     const diags = view._marqueDiagData || [];
-    const match = diags.find(d => pos >= d.from && pos <= d.to);
+    const match = diags.find(d => pos >= d.from && pos < d.to);
     if (!match) return null;
     return {
       pos: match.from,
