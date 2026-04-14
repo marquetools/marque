@@ -1,7 +1,15 @@
 # Changelog
 
 All notable changes to the marque workspace are documented in this file.
-## [Unreleased]
+## [0.1.0] - 2026-04-14
+
+### Bug Fixes
+
+- Replace deprecated Criterion black_box uses with std::hint::black_box([add91ba](https://github.com/marquetools/marque/commit/add91bafc9645097104c256ac878505970fb1cfb))
+- Replace deprecated Criterion black_box uses with std::hint::black_box([ffed6a0](https://github.com/marquetools/marque/commit/ffed6a04a1ea4b723bf3719b68fde987ae6c7b10))
+- Spelling corrections and config exemptions([f90ab0d](https://github.com/marquetools/marque/commit/f90ab0da894be888b3cc7e3fcba2f3b72a84b46d))
+- **versioning**: Fixed formating and linting issues in multiple places; corrected an issue where the release action did not generate a workspace version or changelog([d0d7b2d](https://github.com/marquetools/marque/commit/d0d7b2df50a4c62167f7b0b4d5c8914a0c8400d7))
+- **versioning**: Fixed formating and linting issues in multiple places; corrected an issue where the release action did not generate a workspace version or changelog([f211cea](https://github.com/marquetools/marque/commit/f211cea82893ab678cbd7f01f47e47f41697a0d1))
 
 ### Features
 
@@ -9,7 +17,7 @@ All notable changes to the marque workspace are documented in this file.
 - PageContext banner rollup per ISM-Rollup spec (#13)([4e27e46](https://github.com/marquetools/marque/commit/4e27e46c618e78f63a7cf9db7b69d2e6abdb374e))
 - Non-IC dissemination controls (LIMDIS, SBU, LES, SSI) (#12)([314d905](https://github.com/marquetools/marque/commit/314d9055cf311a4a5b45347a400482ca843c75d0))
 - Non-US classification support (FGI, NATO, JOINT) (#11)([e28b2b1](https://github.com/marquetools/marque/commit/e28b2b1642acf4a3e854476499917e0d02ea96f5))
-## [0.1.0] - 2026-04-13
+## [marque-rules-v0.1.0] - 2026-04-13
 
 ### Bug Fixes
 
