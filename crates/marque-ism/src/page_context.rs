@@ -535,6 +535,100 @@ impl PageContext {
 
         (seen.into_iter().collect(), needs_nf_from_split)
     }
+
+    /// Assemble a CAPCO banner string from all accumulated portion markings.
+    ///
+    /// Per CAPCO §D.1:
+    /// - Categories are separated by `//` (double forward slash).
+    /// - Multiple entries **within** a category are separated by `/` (single slash).
+    ///
+    /// Example: `"TOP SECRET//SI/TK//NOFORN"` (SI and TK are both SCI controls
+    /// sharing one block; NOFORN is a dissem control in its own block).
+    ///
+    /// Returns `None` if no portions have been accumulated.
+    /// Returns `"UNCLASSIFIED"` if portions exist but none carry a classification.
+    pub fn render_expected_banner(&self) -> Option<String> {
+        if self.portions.is_empty() {
+            return None;
+        }
+        let classification = self
+            .expected_classification()
+            .map(|c| c.banner_str().to_owned())
+            .unwrap_or_else(|| "UNCLASSIFIED".to_owned());
+
+        let mut blocks: Vec<String> = vec![classification];
+
+        // SCI controls — all in ONE block, `/`-separated per CAPCO §D.1.
+        let sci = self.expected_sci_controls();
+        if !sci.is_empty() {
+            blocks.push(sci.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+        }
+
+        // SAR identifiers — all in ONE block, `/`-separated.
+        let sar = self.expected_sar_identifiers();
+        if !sar.is_empty() {
+            blocks.push(sar.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+        }
+
+        // AEA markings — all in ONE block, `/`-separated.
+        let aea = self.expected_aea_markings();
+        if !aea.is_empty() {
+            blocks.push(
+                aea.iter()
+                    .map(|a| a.banner_str())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+        }
+
+        // Dissem controls + REL TO — dissem controls and REL TO together, each
+        // category already collected by expected_dissem_controls().
+        // DissemControl::as_str() returns the portion abbreviation ("NF", "RELIDO"),
+        // so convert to banner form via marking_forms::portion_to_banner().
+        let rel_to = self.expected_rel_to();
+        let (non_ic, needs_nf_from_non_ic) = self.expected_non_ic_dissem();
+        let dissem = self.expected_dissem_controls();
+
+        let mut dissem_parts: Vec<String> = Vec::new();
+        for d in &dissem {
+            let portion = d.as_str();
+            // Convert portion form to banner form (e.g. "NF" → "NOFORN").
+            // Fall back to portion form if no banner mapping exists.
+            let banner = crate::marking_forms::portion_to_banner(portion).unwrap_or(portion);
+            // Skip bare "REL" token if we're going to emit "REL TO ..." below.
+            if banner == "REL" && !rel_to.is_empty() {
+                continue;
+            }
+            dissem_parts.push(banner.to_owned());
+        }
+        // If non-IC SBU-NF/LES-NF split injected NOFORN, add it.
+        if needs_nf_from_non_ic && !dissem_parts.iter().any(|p| p == "NOFORN") {
+            dissem_parts.push("NOFORN".to_owned());
+        }
+        // REL TO list (comma-delimited countries with "REL TO " prefix).
+        if !rel_to.is_empty() {
+            let trigraphs = rel_to.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", ");
+            dissem_parts.push(format!("REL TO {trigraphs}"));
+        }
+        if !dissem_parts.is_empty() {
+            blocks.push(dissem_parts.join("/"));
+        }
+
+        // Non-IC dissem controls (only appear in UNCLASSIFIED banners per CAPCO;
+        // in classified docs most are stripped, per expected_non_ic_dissem()).
+        // These use banner_str() which returns the full-form name.
+        if !non_ic.is_empty() {
+            blocks.push(
+                non_ic
+                    .iter()
+                    .map(|n| n.banner_str())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+        }
+
+        Some(blocks.join("//"))
+    }
 }
 
 /// Expand known tetragraphs into their constituent trigraphs.
@@ -988,6 +1082,83 @@ mod tests {
         assert!(
             dissem.contains(&DissemControl::Nf),
             "NF should be injected from SBU-NF split: {dissem:?}"
+        );
+    }
+
+    // --- render_expected_banner ---
+
+    #[test]
+    fn render_banner_empty_returns_none() {
+        assert_eq!(PageContext::new().render_expected_banner(), None);
+    }
+
+    #[test]
+    fn render_banner_ts_si_tk_noforn() {
+        // The canonical demo banner: TOP SECRET//SI/TK//NOFORN
+        // SI and TK are both SCI controls → one block `/`-joined
+        // NOFORN is a dissem control → its own block
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
+            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI/TK//NOFORN")
+        );
+    }
+
+    #[test]
+    fn render_banner_rollup_from_multiple_portions() {
+        // (TS//SI/TK//NF) + (S//NF) + (U) → TOP SECRET//SI/TK//NOFORN
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
+            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI/TK//NOFORN")
+        );
+    }
+
+    #[test]
+    fn render_banner_secret_noforn() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("SECRET//NOFORN")
+        );
+    }
+
+    #[test]
+    fn render_banner_unclassified_with_no_dissem() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("UNCLASSIFIED")
         );
     }
 }
