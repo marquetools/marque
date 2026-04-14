@@ -183,10 +183,11 @@ impl<'t> Parser<'t> {
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
 
-        // When the marking starts with `//`, block 0 is empty and the
+        // When the marking starts with `//` (after trimming any incidental
+        // leading whitespace inside the candidate), block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
         // the foreign classification.
-        let is_non_us = s.starts_with("//");
+        let is_non_us = s.trim_start().starts_with("//");
 
         for (idx, &(rel_start, rel_end)) in block_ranges.iter().enumerate() {
             let raw = &s[rel_start..rel_end];
@@ -248,6 +249,12 @@ impl<'t> Parser<'t> {
                 let parsed_trigraphs =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
                 rel_to.extend(parsed_trigraphs);
+                // Record the full block text so E013 can inspect delimiter style.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::RelToBlock,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
                 token_spans.push(TokenSpan {
