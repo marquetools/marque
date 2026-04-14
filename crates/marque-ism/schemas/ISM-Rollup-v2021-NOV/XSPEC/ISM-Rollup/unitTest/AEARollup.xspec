@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notices - Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+       -->
+
+<!-- All classification marks in this example are   -->
+<!-- for illustrative purposes only, there are no   -->
+<!-- actual classified data contained in this example -->
+<x:description xmlns:x="http://www.jenitennison.com/xslt/xspec"
+    stylesheet="../../../XSL/ISM-Rollup/ISM-Rollup-forXSpec.xsl"
+    xmlns:ism="urn:us:gov:ic:ism"
+    xmlns:util="urn:us:gov:ic:ism-rollup:xsl:util" 
+    xmlns:ism-func="urn:us:gov:ic:ism:functions" 
+    version="2">
+   
+    <x:scenario label="AEARollup testMultipleSigma+RDPass">
+        <x:context>
+            <wrapper>
+                <resourceElement 
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"
+                    ism:declassException="AEA"
+                    ism:ownerProducer="USA"
+                    ism:classification="TS"
+                    ism:derivativelyClassifiedBy="Bob"
+                    ism:derivedFrom="Some guide"
+                    ism:atomicEnergyMarkings="bad wrong"/>
+                <sampleAttributes ism:classification="S"
+                    ism:ownerProducer="USA"
+                    ism:atomicEnergyMarkings="RD RD-SG-14 RD-SG-15 RD-SG-20">
+                    <sampleAttributes ism:classification="TS"
+                        ism:ownerProducer="USA"
+                        ism:atomicEnergyMarkings="RD"/>
+                    <sampleAttributes ism:classification="S"
+                        ism:ownerProducer="USA"
+                        ism:atomicEnergyMarkings="RD RD-SG-18"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:noticeType="RD"/>
+                <sampleAttributes ism:classification="C" ism:ownerProducer="USA"/>
+            </wrapper>
+        </x:context>
+
+        <x:expect label="resourceElement" test=".//resourceElement">
+            <resourceElement xmlns:ism="urn:us:gov:ic:ism"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                ism:DESVersion="202111.202211"
+                ism:compliesWith="USGov"
+                ism:resourceElement="true"
+                ism:createDate="2018-08-10"
+                ism:ISMCATCESVersion="202211"
+                ism:declassException="AEA"
+                ism:ownerProducer="USA"
+                ism:classification="TS"
+                ism:derivativelyClassifiedBy="Human who accredited use of rollup tool in production"
+                ism:derivedFrom="Portion markings of document sent to rollup Tool"
+                ism:atomicEnergyMarkings="RD RD-SG-14 RD-SG-15 RD-SG-18 RD-SG-20">...</resourceElement>
+        </x:expect>
+        <x:expect label="ism:classification is TS" test="count(.//resourceElement[@ism:classification='TS'])=1"/>
+        <x:expect label="ism:atomicEnergyMarkings is RD RD-SG-14 RD-SG-15 RD-SG-18 RD-SG-20" test="count(.//resourceElement[@ism:atomicEnergyMarkings='RD RD-SG-14 RD-SG-15 RD-SG-18 RD-SG-20'])=1"/>
+        <x:expect label="ism:declassException contains AEA" test="count(.//resourceElement[@ism:declassException and  xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('AEA')])=1"/>
+    </x:scenario>
+
+   
+    <x:scenario label="AEARollup Ensure AEA U marks drop in classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:atomicEnergyMarkings="RD-BOBOB"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="DCNI"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="UCNI"/>
+                </sampleAttributes>
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" />
+            </wrapper>
+        </x:context>
+        <x:expect label="ism:classification is S" test="count(.//resourceElement[@ism:classification='S'])=1"/>
+        <x:expect label="ism:atomicEnergyMarkings is not present" test="count(.//resourceElement[@ism:atomicEnergyMarkings])=0"/>
+        <x:expect label="ism:declassException does not contains AEA" test="count(.//resourceElement[@ism:declassException and  xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('AEA') ])=0"/>
+    </x:scenario>
+    
+    <x:scenario label="AEARollup ensure we don't get multiple AEA Declass exemptions, when source had multiple AEA in a classified doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:atomicEnergyMarkings="RD-BOBOB"/>
+                <sampleAttributes ism:classification="TS"
+                    ism:ownerProducer="USA"
+                    ism:atomicEnergyMarkings="RD"
+                    ism:declassException="AEA"/>
+                <sampleAttributes ism:classification="S"
+                    ism:ownerProducer="USA"
+                    ism:atomicEnergyMarkings="RD RD-SG-18"
+                    ism:declassException="AEA" />
+                <sampleAttributes ism:classification="S" ism:ownerProducer="USA" />
+            </wrapper>
+        </x:context>
+        <x:expect label="ism:declassException contains AEA" test="count(.//resourceElement[@ism:declassException and  xs:NMTOKENS(@ism:declassException) = xs:NMTOKENS('AEA') ])=1"/>
+        <x:expect label="ism:declassException distinct count equals count" test="count(tokenize(.//resourceElement/@ism:declassException[1],' ')) = count(distinct-values(tokenize(.//resourceElement/@ism:declassException[1],' ')))"/>
+    </x:scenario>
+    
+    <x:scenario label="AEARollup Ensure AEA U marks don't drop in a U doc.">
+        <x:context>
+            <wrapper>
+                <resourceElement
+                    xmlns:ism="urn:us:gov:ic:ism"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="../../../Schema/unitTest.xsd"
+                    ism:DESVersion="202111.202211"
+                    ism:compliesWith="USGov"
+                    ism:resourceElement="true"
+                    ism:createDate="2018-08-10"
+                    ism:ISMCATCESVersion="202211"                
+                    ism:ownerProducer="USA"
+                    ism:classification="U"
+                    ism:atomicEnergyMarkings="RD-BOBOB"/>
+                <sampleAttributes ism:classification="U" ism:ownerProducer="USA" >
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="DCNI"/>
+                    <sampleAttributes ism:classification="U" ism:ownerProducer="USA" ism:atomicEnergyMarkings="UCNI"/>
+                </sampleAttributes>
+            </wrapper>
+        </x:context>
+        <x:expect label="ism:atomicEnergyMarkings is present" test="count(.//resourceElement[@ism:atomicEnergyMarkings])=1"/>
+    </x:scenario>
+   
+    <x:scenario label="AEARollup-Functions sort Function AEA"  >
+        <x:call function="ism-func:sortAtomicenergymarkings">
+            <x:param name="values" select="'RD RD-SG-14 RD-SG-15 RD-SG-20 RD-SG-18'"/>
+        </x:call>
+        <x:expect label="Ordered RD RD-SG-14 RD-SG-15 RD-SG-18 RD-SG-20">RD RD-SG-14 RD-SG-15 RD-SG-18 RD-SG-20</x:expect>
+    </x:scenario>
+    
+</x:description>
