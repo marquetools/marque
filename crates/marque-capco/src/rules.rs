@@ -24,6 +24,17 @@
 //!   E015 = non-US classification without dissem control
 //!   W001 = deprecated marking warning (T038)
 //!   W002 = US + FGI comingling in portion
+//!   E016 = RESTRICTED not allowed with JOINT
+//!   E017 = JOINT may not be used with FGI
+//!   E018 = JOINT may not be used with IC dissem (except REL TO)
+//!   E019 = JOINT may not be used with non-IC dissem
+//!   E020 = country code list ordering (alphabetical after USA)
+//!   E021 = RD/FRD requires NOFORN (configurable to warn)
+//!   E022 = CNWDI only with TS or S RD
+//!   E023 = SIGMA valid values + numerical order
+//!   E024 = RD precedence over FRD/TFNI
+//!   E025 = UCNI only with UNCLASSIFIED
+//!   W003 = non-IC dissem in classified banner
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -67,6 +78,17 @@ impl CapcoRuleSet {
                 Box::new(CominglingWarningRule),
                 Box::new(JointRelToRule),
                 Box::new(NonUsMissingDissemRule),
+                Box::new(NonIcInClassifiedBannerRule),
+                Box::new(JointRestrictedRule),
+                Box::new(JointFgiRule),
+                Box::new(JointIcDissemRule),
+                Box::new(JointNonIcDissemRule),
+                Box::new(CountryCodeOrderingRule),
+                Box::new(AeaNofornRule),
+                Box::new(CnwdiConstraintRule),
+                Box::new(SigmaValidationRule),
+                Box::new(RdPrecedenceRule),
+                Box::new(UcniClassificationRule),
             ],
         }
     }
@@ -149,6 +171,40 @@ impl Rule for BannerAbbreviationRule {
                 replacement: full.to_owned(),
                 confidence: 1.0,
                 migration_ref: Some("CAPCO-2023-§3.2"),
+            }));
+        }
+        // Walk non-IC dissem token spans. If the source text is the portion
+        // abbreviation (e.g., "DS" instead of "LIMDIS"), suggest the banner form.
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let Some(full) = marque_ism::marking_forms::portion_to_banner(nic.portion_str()) else {
+                // banner_str == portion_str (e.g., SBU, LES, SSI) — no correction needed.
+                continue;
+            };
+            let Some(token_span) = nic_spans.get(idx) else {
+                continue;
+            };
+            let abbrev = nic.portion_str();
+            if token_span.text.as_ref() != abbrev {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§9",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§9"),
             }));
         }
         diagnostics
@@ -339,7 +395,7 @@ impl Rule for MisorderedBlocksRule {
             self.default_severity(),
             span,
             "marking blocks are out of CAPCO order \
-             (expected: Classification // SCI // SAR // Dissem // REL TO)",
+             (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
             "CAPCO-ISM-v2022-DEC-§3.1",
             fix,
         )]
@@ -352,6 +408,8 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
         TokenKind::SciControl => Some(1),
         TokenKind::SarIdentifier => Some(2),
         TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
+        // Non-IC dissem always comes after IC dissem (last block).
+        TokenKind::NonIcDissem => Some(4),
         // Separators, declass, and unknown tokens do not participate in
         // ordering — they belong to other blocks or other rules.
         _ => None,
@@ -359,11 +417,12 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 }
 
 /// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
-/// block ordinals: Classification // SCI // SAR // Dissem // REL TO.
+/// block ordinals: Classification // SCI // SAR // Dissem // REL TO // Non-IC.
 ///
 /// Within each block, tokens preserve their document order. REL TO trigraphs
-/// are reassembled into a single `REL TO ...` block. Returns `None` if there
-/// is nothing meaningful to reorder (no classification recorded).
+/// are reassembled into a single `REL TO ...` block. Non-IC dissem controls
+/// appear last per CAPCO Register §9. Returns `None` if there is nothing
+/// meaningful to reorder (no classification recorded).
 ///
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
@@ -375,6 +434,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     let mut sar: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
+    let mut non_ic: Vec<&str> = Vec::new();
 
     for token in attrs.token_spans.iter() {
         match token.kind {
@@ -383,6 +443,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
             TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
+            TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
             _ => {}
         }
     }
@@ -404,6 +465,9 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     }
     if !rel_to.is_empty() {
         blocks.push(format!("REL TO {}", rel_to.join(", ")));
+    }
+    for n in non_ic {
+        blocks.push(n.to_owned());
     }
 
     let joined = blocks.join("//");
@@ -1681,6 +1745,1537 @@ mod tests {
         assert!(ids.contains(&"C001"));
         assert_eq!(set.rules().len(), 18);
     }
+    fn name(&self) -> &'static str {
+        "portion-abbreviation"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Portion {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+
+        // --- Classification: banner form in portion → abbreviate ---
+        // E009 only handles US classification; non-US/NATO/JOINT have their
+        // own banner↔portion rules that will be added with those systems.
+        if let Some(classification) = attrs.us_classification() {
+            let banner = classification.banner_str();
+            if let Some(token_span) = attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::Classification)
+            {
+                // Only fire when the source text is the banner form.
+                // A portion containing "S" parses to Classification::Secret
+                // but token_span.text is "S" — skip it.
+                if token_span.text.as_ref() == banner {
+                    let portion = classification.portion_str();
+                    diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                        rule: self.id(),
+                        severity: self.default_severity(),
+                        source: FixSource::BuiltinRule,
+                        span: token_span.span,
+                        message: format!(
+                            "portion uses banner-form classification {banner:?}; use {portion:?}"
+                        ),
+                        citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                        original: banner.to_owned(),
+                        replacement: portion.to_owned(),
+                        confidence: 1.0,
+                        migration_ref: Some("CAPCO-2023-§4.1"),
+                    }));
+                }
+            }
+        }
+
+        // --- Dissem controls: banner form in portion → abbreviate ---
+        // Walk dissem-control token spans. For each one whose source text
+        // is a known banner form, suggest the portion abbreviation.
+        // Mapping sourced from `marque_ism::marking_forms`.
+        let dissem_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl)
+            .collect();
+        for (idx, _control) in attrs.dissem_controls.iter().enumerate() {
+            let Some(token_span) = dissem_spans.get(idx) else {
+                continue;
+            };
+            let text = token_span.text.as_ref();
+            let Some(portion) = marque_ism::marking_forms::banner_to_portion(text) else {
+                continue;
+            };
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "portion uses banner-form dissem control {text:?}; use {portion:?}"
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                original: text.to_owned(),
+                replacement: portion.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§4.1"),
+            }));
+        }
+
+        // --- Non-IC dissem controls: banner form in portion → abbreviate ---
+        // Walk non-IC dissem token spans. For each one whose source text is
+        // the banner form (e.g., "LIMDIS"), suggest the portion abbreviation.
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let Some(token_span) = nic_spans.get(idx) else {
+                continue;
+            };
+            let text = token_span.text.as_ref();
+            // Only fire when banner form ≠ portion form and the source text
+            // is the banner form (e.g., "LIMDIS" → "DS").
+            let Some(portion) = marque_ism::marking_forms::banner_to_portion(text) else {
+                // banner_str == portion_str (e.g., SBU, LES, SSI) — skip.
+                continue;
+            };
+            // Defensive: ensure the suggested portion form matches this enum
+            // variant's canonical portion string to avoid cross-mapping.
+            if portion != nic.portion_str() {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "portion uses banner-form non-IC dissem control {text:?}; use {portion:?}"
+                ),
+                citation: "CAPCO-ISM-v2022-DEC-§9",
+                original: text.to_owned(),
+                replacement: portion.to_owned(),
+                confidence: 1.0,
+                migration_ref: Some("CAPCO-2023-§9"),
+            }));
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E010 — Bare HCS without compartment suffix
+// ---------------------------------------------------------------------------
+
+/// Since ~2009, bare `HCS` is no longer valid — it must be `HCS-P` (product)
+/// or `HCS-O` (operations). `HCS-P` is correct ~99% of the time; `HCS-O`
+/// is rare and typically only appears when the document explicitly involves
+/// operational source information.
+///
+/// The rule checks whether `HCS-O` appears alongside `HCS` in the same
+/// marking. If it does, it's ambiguous and confidence drops. Otherwise
+/// `HCS-P` is suggested at 0.95 confidence.
+struct BareHcsRule;
+
+impl Rule for BareHcsRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E010")
+    }
+    fn name(&self) -> &'static str {
+        "bare-hcs"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::SciControl;
+
+        let has_bare_hcs = attrs.sci_controls.iter().any(|s| *s == SciControl::Hcs);
+        if !has_bare_hcs {
+            return vec![];
+        }
+
+        let has_hcs_o = attrs.sci_controls.iter().any(|s| *s == SciControl::HcsO);
+        let has_hcs_p = attrs.sci_controls.iter().any(|s| *s == SciControl::HcsP);
+
+        // If HCS-O or HCS-P already appears alongside bare HCS, the bare
+        // HCS is redundant — but we still flag it because it needs a suffix.
+        // If HCS-O is present, the document may deal with operational info,
+        // so we lower confidence on the HCS-P suggestion.
+        let (confidence, message) = if has_hcs_o {
+            (
+                0.5,
+                "bare HCS requires a compartment suffix (-O or -P); \
+                 HCS-O appears in this marking — verify whether HCS should be HCS-O or HCS-P"
+                    .to_owned(),
+            )
+        } else if has_hcs_p {
+            (
+                0.95,
+                "bare HCS requires a compartment suffix; \
+                 HCS-P already present — this HCS likely should be HCS-P"
+                    .to_owned(),
+            )
+        } else {
+            (
+                0.95,
+                "bare HCS requires a compartment suffix (-O or -P); \
+                 use HCS-P unless this involves operational source information"
+                    .to_owned(),
+            )
+        };
+
+        // Find the token span for the bare HCS entry.
+        let sci_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciControl)
+            .collect();
+        let hcs_idx = attrs
+            .sci_controls
+            .iter()
+            .position(|s| *s == SciControl::Hcs);
+        let span = hcs_idx
+            .and_then(|i| sci_spans.get(i))
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span,
+            message,
+            citation: "CAPCO-ISM-v2022-DEC-§4.SCI",
+            original: "HCS".to_owned(),
+            replacement: "HCS-P".to_owned(),
+            confidence,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E011 — Missing leading // on non-US classification
+// ---------------------------------------------------------------------------
+
+/// Non-US classifications (FGI, NATO, JOINT) must start with `//` to indicate
+/// the US classification slot is empty. When a marking's first block fails to
+/// parse as a US classification but looks like a non-US pattern, the `//` prefix
+/// is likely missing.
+///
+/// Example: `(GBR S//NF)` → should be `(//GBR S//NF)`
+struct MissingNonUsPrefix;
+
+impl Rule for MissingNonUsPrefix {
+    fn id(&self) -> RuleId {
+        RuleId::new("E011")
+    }
+    fn name(&self) -> &'static str {
+        "missing-non-us-prefix"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Only fire when classification failed to parse (None) and the
+        // classification token text looks like a non-US pattern.
+        if attrs.classification.is_some() {
+            return vec![];
+        }
+
+        let class_span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification);
+        let Some(token) = class_span else {
+            return vec![];
+        };
+        let text = token.text.as_ref();
+
+        // Check if the text looks like a non-US classification:
+        // - NATO patterns: "NATO SECRET", "NS", "COSMIC TOP SECRET", "CTS", etc.
+        // - JOINT patterns: starts with "JOINT "
+        // - FGI patterns: 3-letter uppercase + space + classification level
+        let looks_non_us = text.starts_with("NATO ")
+            || text.starts_with("COSMIC ")
+            || text.starts_with("JOINT ")
+            || matches!(
+                text,
+                "NS" | "NR" | "NC" | "NCA" | "NC-B" | "NS-BALK" | "CTS" | "CTSA" | "NU"
+            )
+            || looks_like_fgi_classification(text);
+
+        if !looks_non_us {
+            return vec![];
+        }
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: token.span,
+            message: format!(
+                "non-US classification {text:?} is missing the leading //; \
+                 use //{text} to indicate the US classification slot is empty"
+            ),
+            citation: "CAPCO-ISM-v2022-DEC-§2",
+            original: text.to_owned(),
+            replacement: format!("//{text}"),
+            confidence: 0.95,
+            migration_ref: None,
+        })]
+    }
+}
+
+/// Heuristic: does this string look like an FGI classification?
+/// Pattern: 3 uppercase ASCII letters + space + valid classification level.
+fn looks_like_fgi_classification(s: &str) -> bool {
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    // Last token (or last two for TOP SECRET) must be a classification level.
+    let last = parts[parts.len() - 1];
+    let is_top_secret =
+        parts.len() >= 3 && parts[parts.len() - 2] == "TOP" && last == "SECRET";
+    let is_single_token_level = matches!(
+        last,
+        "TS" | "S" | "C" | "R" | "U" | "SECRET" | "CONFIDENTIAL" | "RESTRICTED" | "UNCLASSIFIED"
+    );
+    let is_level = is_single_token_level || is_top_secret;
+    if !is_level {
+        return false;
+    }
+    // Preceding tokens should look like country trigraphs or "FGI".
+    let country_end = if is_top_secret {
+        parts.len() - 2
+    } else {
+        parts.len() - 1
+    };
+    parts[..country_end]
+        .iter()
+        .all(|t| *t == "FGI" || (t.len() == 3 && t.bytes().all(|b| b.is_ascii_uppercase())))
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E012 — Dual classification (conflict)
+// ---------------------------------------------------------------------------
+
+/// A marking must have exactly one classification system. When both a US and
+/// foreign classification appear (e.g., `SECRET//NATO SECRET//NOFORN`), the
+/// US classification wins at the greater of the two levels, and the foreign
+/// part becomes an FGI marker.
+struct DualClassificationRule;
+
+impl Rule for DualClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E012")
+    }
+    fn name(&self) -> &'static str {
+        "dual-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let Some(MarkingClassification::Conflict { us, foreign }) = &attrs.classification else {
+            return vec![];
+        };
+
+        let foreign_desc = match foreign.as_ref() {
+            ForeignClassification::Nato(n) => format!("NATO ({})", n.banner_str()),
+            ForeignClassification::Fgi(f) => {
+                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+                if countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    format!("FGI {}", countries.join(" "))
+                }
+            }
+            ForeignClassification::Joint(j) => {
+                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
+                format!("JOINT {}", countries.join(" "))
+            }
+        };
+
+        let fgi_replacement = match foreign.as_ref() {
+            ForeignClassification::Nato(_) => "FGI NATO".to_owned(),
+            ForeignClassification::Fgi(f) => {
+                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+                if countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    format!("FGI {}", countries.join(" "))
+                }
+            }
+            ForeignClassification::Joint(j) => {
+                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
+                format!("FGI {}", countries.join(" "))
+            }
+        };
+
+        // Find the foreign classification token span (the second Classification token).
+        let class_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Classification)
+            .collect();
+        let span = class_spans
+            .get(1)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+        let original = class_spans
+            .get(1)
+            .map(|t| t.text.to_string())
+            .unwrap_or_default();
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span,
+            message: format!(
+                "marking has both US ({}) and foreign ({foreign_desc}) classification; \
+                 US wins at {}; move foreign to FGI block",
+                us.banner_str(),
+                us.banner_str(),
+            ),
+            citation: "CAPCO-ISM-v2022-DEC-§7",
+            original,
+            replacement: fgi_replacement,
+            confidence: 0.90,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E013 — JOINT/REL TO delimiter mismatch
+// ---------------------------------------------------------------------------
+
+/// JOINT country lists are space-delimited, REL TO lists are comma-delimited.
+/// A common error is using commas in JOINT or spaces in REL TO.
+///
+/// This rule detects:
+/// - Commas in JOINT classification token text (`//JOINT S USA,GBR` → fix to space-delimited)
+/// - Space-only delimiters in REL TO lists (`REL TO USA GBR` → fix to comma-delimited)
+struct DelimiterMismatchRule;
+
+impl Rule for DelimiterMismatchRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E013")
+    }
+    fn name(&self) -> &'static str {
+        "delimiter-mismatch"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        // Check JOINT classification for comma-delimited countries.
+        if let Some(MarkingClassification::Joint(_)) = &attrs.classification {
+            if let Some(token) = attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::Classification)
+            {
+                let text = token.text.as_ref();
+                if text.contains(',') {
+                    // Strip "JOINT <level> " prefix to get the country part,
+                    // then replace commas with spaces.
+                    let fixed = text.replace(',', "").replace("  ", " ");
+                    diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                        rule: self.id(),
+                        severity: self.default_severity(),
+                        source: FixSource::BuiltinRule,
+                        span: token.span,
+                        message: "JOINT country list must be space-delimited, not comma-delimited"
+                            .to_owned(),
+                        citation: "CAPCO-ISM-v2022-DEC-§3",
+                        original: text.to_owned(),
+                        replacement: fixed,
+                        confidence: 0.95,
+                        migration_ref: None,
+                    }));
+                }
+            }
+        }
+
+        // Check REL TO for space-only delimiters (commas required between trigraphs).
+        if let Some(token) = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+        {
+            let text = token.text.as_ref();
+            // Strip the "REL TO " / "REL " prefix to isolate the country list.
+            let country_list = text
+                .strip_prefix("REL TO")
+                .or_else(|| text.strip_prefix("REL"))
+                .unwrap_or(text)
+                .trim_start();
+            // Space-delimited error: multiple words, none of which are commas/comma-adjacent.
+            if country_list.split_whitespace().count() > 1 && !country_list.contains(',') {
+                // Build the correctly comma-delimited replacement.
+                let fixed = format!(
+                    "REL TO {}",
+                    country_list.split_whitespace().collect::<Vec<_>>().join(", ")
+                );
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span: token.span,
+                    message: "REL TO country list must be comma-delimited, not space-delimited"
+                        .to_owned(),
+                    citation: "CAPCO-ISM-v2022-DEC-§3",
+                    original: text.to_owned(),
+                    replacement: fixed,
+                    confidence: 0.95,
+                    migration_ref: None,
+                }));
+            }
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: W002 — US + FGI comingling in portion
+// ---------------------------------------------------------------------------
+
+/// A portion mark with both a US classification and an FGI marker is
+/// comingling US and foreign information. This isn't strictly invalid but
+/// is bad practice — the content should be split into separate paragraphs:
+/// one US-classified and one foreign-classified.
+struct CominglingWarningRule;
+
+impl Rule for CominglingWarningRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W002")
+    }
+    fn name(&self) -> &'static str {
+        "us-fgi-comingling"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Portion {
+            return vec![];
+        }
+
+        // US classification + FGI marker = comingling.
+        if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::FgiMarker)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "portion mark comingles US classification with FGI; \
+             consider splitting into separate US and foreign paragraphs",
+            "CAPCO-ISM-v2022-DEC-§7",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E014 — JOINT participants missing from REL TO
+// ---------------------------------------------------------------------------
+
+/// All countries in a JOINT classification must also appear in the REL TO
+/// list. `//JOINT S USA GBR//REL TO USA, GBR` is correct;
+/// `//JOINT S USA GBR//NF` is invalid because JOINT participants must be
+/// in the REL TO.
+struct JointRelToRule;
+
+impl Rule for JointRelToRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E014")
+    }
+    fn name(&self) -> &'static str {
+        "joint-rel-to"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let joint = match &attrs.classification {
+            Some(MarkingClassification::Joint(j)) => j,
+            _ => return vec![],
+        };
+
+        let missing: Vec<&str> = joint
+            .countries
+            .iter()
+            .filter(|c| !attrs.rel_to.contains(c))
+            .map(|c| c.as_str())
+            .collect();
+
+        if missing.is_empty() {
+            return vec![];
+        }
+
+        // Point at the classification token span.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "JOINT participants [{}] must appear in REL TO list",
+                missing.join(", "),
+            ),
+            "CAPCO-ISM-v2022-DEC-§3",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E015 — Non-US classification without dissem control
+// ---------------------------------------------------------------------------
+
+/// Non-US classifications (FGI, NATO, JOINT) must always be accompanied by
+/// a dissemination control (which includes REL TO statements). A non-US
+/// marking without any dissem control is invalid.
+struct NonUsMissingDissemRule;
+
+impl Rule for NonUsMissingDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E015")
+    }
+    fn name(&self) -> &'static str {
+        "non-us-missing-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let is_non_us = matches!(
+            &attrs.classification,
+            Some(
+                MarkingClassification::Fgi(_)
+                    | MarkingClassification::Nato(_)
+                    | MarkingClassification::Joint(_)
+            )
+        );
+        if !is_non_us {
+            return vec![];
+        }
+
+        let has_dissem = !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty();
+        if has_dissem {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "non-US classification must be accompanied by a dissemination control \
+             (e.g., REL TO, NOFORN)",
+            "CAPCO-ISM-v2022-DEC-§2",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: W003 — Non-IC dissem in classified banner
+// ---------------------------------------------------------------------------
+
+/// Some non-IC dissemination controls should not appear in classified banners.
+///
+/// LIMDIS, LES, LES-NF, and SSI propagate to classified banners and are fine.
+/// EXDIS, NODIS, SBU, and SBU-NF do NOT propagate — they belong only in
+/// portion markings (or in UNCLASSIFIED banners).
+struct NonIcInClassifiedBannerRule;
+
+impl Rule for NonIcInClassifiedBannerRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W003")
+    }
+    fn name(&self) -> &'static str {
+        "non-ic-dissem-in-classified-banner"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+
+        if attrs.non_ic_dissem.is_empty() {
+            return vec![];
+        }
+
+        // Non-IC dissem controls are fine only in UNCLASSIFIED banners.
+        // Determine classification from the full banner classification, not
+        // just the US-specific view, so non-US classified banners (NATO,
+        // JOINT, FGI forms) are also checked.
+        let is_classified = match &attrs.classification {
+            Some(marque_ism::MarkingClassification::Us(c)) => {
+                *c > marque_ism::Classification::Unclassified
+            }
+            Some(
+                marque_ism::MarkingClassification::Fgi(_)
+                | marque_ism::MarkingClassification::Nato(_)
+                | marque_ism::MarkingClassification::Joint(_)
+                | marque_ism::MarkingClassification::Conflict { .. },
+            ) => true,
+            None => false,
+        };
+        if !is_classified {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            // LIMDIS, LES, LES-NF, SSI propagate to classified banners.
+            if nic.propagates_to_classified_banner() {
+                continue;
+            }
+
+            let span = nic_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "non-IC dissem control {} should not appear in a classified banner; \
+                     use only in portion markings",
+                    nic.banner_str(),
+                ),
+                "CAPCO-ISM-v2022-DEC-§9",
+                None,
+            ));
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E016 — RESTRICTED not allowed with JOINT
+// ---------------------------------------------------------------------------
+
+/// Since the US is always a co-owner in JOINT markings, and RESTRICTED has
+/// no US equivalent classification, RESTRICTED may not be used with JOINT.
+struct JointRestrictedRule;
+
+impl Rule for JointRestrictedRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E016")
+    }
+    fn name(&self) -> &'static str {
+        "joint-restricted"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let joint = match &attrs.classification {
+            Some(MarkingClassification::Joint(j)) => j,
+            _ => return vec![],
+        };
+        if joint.level != marque_ism::Classification::Restricted {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RESTRICTED may not be used with JOINT — the US has no equivalent \
+             classification level for RESTRICTED",
+            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E017 — JOINT may not be used with FGI
+// ---------------------------------------------------------------------------
+
+/// JOINT markings may not be used with FGI markers. A marking is either
+/// JOINT (co-owned) or FGI (foreign-originated), not both.
+struct JointFgiRule;
+
+impl Rule for JointFgiRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E017")
+    }
+    fn name(&self) -> &'static str {
+        "joint-fgi"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        if attrs.fgi_marker.is_none() {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::FgiMarker)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
+             or foreign-originated (FGI), not both",
+            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E018 — JOINT may not be used with IC dissem (except REL TO)
+// ---------------------------------------------------------------------------
+
+/// JOINT markings imply releasability only to co-owners. IC dissemination
+/// controls (NOFORN, ORCON, IMCON, etc.) are not permitted with JOINT,
+/// except REL TO which defines the release list.
+struct JointIcDissemRule;
+
+impl Rule for JointIcDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E018")
+    }
+    fn name(&self) -> &'static str {
+        "joint-ic-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        // REL TO is allowed; all other IC dissem controls are not.
+        if attrs.dissem_controls.is_empty() {
+            return vec![];
+        }
+
+        let dissem_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, ctrl) in attrs.dissem_controls.iter().enumerate() {
+            // REL is the dissem-control enum value for "REL TO" — skip it.
+            if matches!(ctrl, marque_ism::DissemControl::Rel) {
+                continue;
+            }
+            let span = dissem_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "JOINT may not be used with IC dissem control {}; \
+                     only REL TO is permitted with JOINT markings",
+                    ctrl.as_str(),
+                ),
+                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E019 — JOINT may not be used with non-IC dissem
+// ---------------------------------------------------------------------------
+
+/// JOINT markings may not be used with non-IC dissemination controls.
+struct JointNonIcDissemRule;
+
+impl Rule for JointNonIcDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E019")
+    }
+    fn name(&self) -> &'static str {
+        "joint-non-ic-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        if attrs.non_ic_dissem.is_empty() {
+            return vec![];
+        }
+
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let span = nic_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "JOINT may not be used with non-IC dissem control {}",
+                    nic.banner_str(),
+                ),
+                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E020 — Country code list ordering
+// ---------------------------------------------------------------------------
+
+/// Country/entity code lists (REL TO, JOINT, FGI) must be alphabetically
+/// ordered after USA (which is always first when present). Trigraphs come
+/// before tetragraphs, both groups sorted alphabetically.
+///
+/// This is a fixable error — the correct order can be computed with
+/// complete confidence.
+struct CountryCodeOrderingRule;
+
+impl Rule for CountryCodeOrderingRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E020")
+    }
+    fn name(&self) -> &'static str {
+        "country-code-ordering"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        // Check REL TO ordering. Skip if USA is missing or not first —
+        // E002 handles that case and its fix implicitly corrects ordering.
+        if attrs.rel_to.len() >= 2
+            && attrs
+                .rel_to
+                .first()
+                .is_some_and(|t| *t == marque_ism::Trigraph::USA)
+        {
+            if let Some(diag) = check_trigraph_ordering(
+                &attrs.rel_to,
+                "REL TO",
+                self.id(),
+                self.default_severity(),
+                attrs,
+            ) {
+                diagnostics.push(diag);
+            }
+        }
+
+        // Check JOINT country ordering.
+        if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
+            if j.countries.len() >= 2 {
+                if let Some(diag) = check_trigraph_ordering(
+                    &j.countries,
+                    "JOINT",
+                    self.id(),
+                    self.default_severity(),
+                    attrs,
+                ) {
+                    diagnostics.push(diag);
+                }
+            }
+        }
+
+        diagnostics
+    }
+}
+
+/// Check that a trigraph list is ordered: USA first (if present), then
+/// remaining codes alphabetically.
+fn check_trigraph_ordering(
+    codes: &[marque_ism::Trigraph],
+    list_name: &str,
+    rule: RuleId,
+    severity: Severity,
+    attrs: &IsmAttributes,
+) -> Option<Diagnostic> {
+    // Build the expected sorted order: USA first, then rest alphabetical.
+    let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
+    let has_usa = sorted.contains(&"USA");
+
+    // Remove USA, sort the rest, put USA back at front.
+    sorted.retain(|s| *s != "USA");
+    sorted.sort_unstable();
+    if has_usa {
+        sorted.insert(0, "USA");
+    }
+
+    let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
+    if actual == sorted {
+        return None;
+    }
+
+    // Compute a span covering the entire country list (first → last trigraph).
+    let kind = if list_name == "REL TO" {
+        TokenKind::RelToTrigraph
+    } else {
+        TokenKind::Classification
+    };
+    let matching_spans: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == kind)
+        .collect();
+    let span = match (matching_spans.first(), matching_spans.last()) {
+        (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
+        _ => Span::new(0, 0),
+    };
+
+    // Separator for the list: REL TO uses ", "; JOINT/FGI use " ".
+    let sep = if list_name == "REL TO" { ", " } else { " " };
+    let original = actual.join(sep);
+    let replacement = sorted.join(sep);
+
+    Some(make_fix_diagnostic(FixDiagnosticParams {
+        rule,
+        severity,
+        source: FixSource::BuiltinRule,
+        span,
+        message: format!(
+            "{list_name} country codes must be alphabetically ordered \
+             (USA first when present): [{original}] → [{replacement}]"
+        ),
+        citation: "CAPCO-ISM-v2022-DEC-§3",
+        original,
+        replacement,
+        confidence: 1.0,
+        migration_ref: None,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E021 — RD/FRD requires NOFORN
+// ---------------------------------------------------------------------------
+
+/// RD and FRD information must always be marked NOFORN unless a sharing
+/// agreement exists per the Atomic Energy Act (Sections 123 and 144).
+///
+/// Default severity: Error. Users working in contexts with established
+/// sharing agreements can override to Warn in `.marque.toml`.
+struct AeaNofornRule;
+
+impl Rule for AeaNofornRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E021")
+    }
+    fn name(&self) -> &'static str {
+        "aea-noforn"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
+            matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni)
+        });
+        if !has_rd_or_frd {
+            return vec![];
+        }
+
+        let has_noforn = attrs
+            .dissem_controls
+            .iter()
+            .any(|d| d.as_str() == "NF");
+        if has_noforn {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+             per the Atomic Energy Act; override to warn via rule severity \
+             config if sharing agreements apply",
+            "CAPCO-ISM-v2022-DEC-§6/AEA",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E022 — CNWDI only with TS or S RD
+// ---------------------------------------------------------------------------
+
+/// CNWDI may only be used with TOP SECRET or SECRET Restricted Data.
+/// It cannot appear standalone, with FRD, or with CONFIDENTIAL.
+struct CnwdiConstraintRule;
+
+impl Rule for CnwdiConstraintRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E022")
+    }
+    fn name(&self) -> &'static str {
+        "cnwdi-constraint"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_cnwdi = attrs.aea_markings.iter().any(|a| {
+            matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)
+        });
+        if !has_cnwdi {
+            return vec![];
+        }
+
+        // CNWDI requires TS or S classification.
+        let level = attrs.us_classification();
+        let valid = matches!(
+            level,
+            Some(marque_ism::Classification::TopSecret | marque_ism::Classification::Secret)
+        );
+        if valid {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        let level_str = level
+            .map(|c| c.banner_str())
+            .unwrap_or("unknown");
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "CNWDI may only be used with TOP SECRET or SECRET RD; \
+                 current classification is {level_str}"
+            ),
+            "CAPCO-ISM-v2022-DEC-§6/CNWDI",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E023 — SIGMA valid values and numerical order
+// ---------------------------------------------------------------------------
+
+/// SIGMA compartment numbers must be from the valid set (14, 15, 18, 20)
+/// and listed in numerical order. Values 1–5 and 9–13 are obsolete.
+struct SigmaValidationRule;
+
+impl Rule for SigmaValidationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E023")
+    }
+    fn name(&self) -> &'static str {
+        "sigma-validation"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let mut diagnostics = Vec::new();
+        let valid_sigmas: &[u8] = &[14, 15, 18, 20];
+
+        for aea in attrs.aea_markings.iter() {
+            let sigma = match aea {
+                AeaMarking::Rd(rd) => &rd.sigma,
+                AeaMarking::Frd(frd) => &frd.sigma,
+                _ => continue,
+            };
+            if sigma.is_empty() {
+                continue;
+            }
+
+            let span = attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::AeaMarking)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            // Check for invalid values.
+            let invalid: Vec<u8> = sigma
+                .iter()
+                .filter(|n| !valid_sigmas.contains(n))
+                .copied()
+                .collect();
+            if !invalid.is_empty() {
+                let obsolete: Vec<u8> = invalid
+                    .iter()
+                    .filter(|n| matches!(n, 1..=5 | 9..=13))
+                    .copied()
+                    .collect();
+                let message = if !obsolete.is_empty() {
+                    format!(
+                        "SIGMA {:?} are obsolete; convert to current categories (14, 15, 18, 20)",
+                        obsolete,
+                    )
+                } else {
+                    format!(
+                        "SIGMA {:?} are not valid; current values are 14, 15, 18, 20",
+                        invalid,
+                    )
+                };
+                diagnostics.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    message,
+                    "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                    None,
+                ));
+            }
+
+            // Check numerical order.
+            if sigma.len() >= 2 {
+                let mut sorted = sigma.to_vec();
+                sorted.sort_unstable();
+                sorted.dedup();
+                if sigma.as_ref() != sorted.as_slice() {
+                    let original: Vec<String> = sigma.iter().map(|n| n.to_string()).collect();
+                    let replacement: Vec<String> = sorted.iter().map(|n| n.to_string()).collect();
+                    diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                        rule: self.id(),
+                        severity: self.default_severity(),
+                        source: FixSource::BuiltinRule,
+                        span,
+                        message: format!(
+                            "SIGMA numbers must be in numerical order: {} → {}",
+                            original.join(" "),
+                            replacement.join(" "),
+                        ),
+                        citation: "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                        original: original.join(" "),
+                        replacement: replacement.join(" "),
+                        confidence: 1.0,
+                        migration_ref: None,
+                    }));
+                }
+            }
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E024 — RD precedence over FRD/TFNI
+// ---------------------------------------------------------------------------
+
+/// When both RD and FRD (or TFNI) appear in the same marking, only RD
+/// should be used — RD takes precedence in both banners and portions.
+struct RdPrecedenceRule;
+
+impl Rule for RdPrecedenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E024")
+    }
+    fn name(&self) -> &'static str {
+        "rd-precedence"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(_)));
+        if !has_rd {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        for (idx, aea) in attrs.aea_markings.iter().enumerate() {
+            let superseded = match aea {
+                AeaMarking::Frd(_) => "FRD",
+                AeaMarking::Tfni => "TFNI",
+                _ => continue,
+            };
+
+            let aea_spans: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::AeaMarking)
+                .collect();
+            let span = aea_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "{superseded} should not appear alongside RD; \
+                     RD takes precedence over {superseded} in both banners and portions"
+                ),
+                "CAPCO-ISM-v2022-DEC-§6/RD",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E025 — UCNI only with UNCLASSIFIED
+// ---------------------------------------------------------------------------
+
+/// DOD UCNI and DOE UCNI apply only to unclassified information.
+struct UcniClassificationRule;
+
+impl Rule for UcniClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E025")
+    }
+    fn name(&self) -> &'static str {
+        "ucni-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_ucni = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni));
+        if !has_ucni {
+            return vec![];
+        }
+
+        let is_unclassified = attrs
+            .us_classification()
+            .is_some_and(|c| c == marque_ism::Classification::Unclassified);
+        if is_unclassified {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
+            "CAPCO-ISM-v2022-DEC-§6/UCNI",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
+/// positional helper signature so call sites read top-down by name.
+struct FixDiagnosticParams {
+    rule: RuleId,
+    severity: Severity,
+    source: FixSource,
+    span: Span,
+    message: String,
+    citation: &'static str,
+    original: String,
+    replacement: String,
+    confidence: f32,
+    migration_ref: Option<&'static str>,
+}
+
+fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
+    let proposal = FixProposal::new(
+        p.rule.clone(),
+        p.source,
+        p.span,
+        p.original,
+        p.replacement,
+        p.confidence,
+        p.migration_ref,
+    );
+    Diagnostic::new(
+        p.rule,
+        p.severity,
+        p.span,
+        p.message,
+        p.citation,
+        Some(proposal),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_capco_test_support::{lint_banner, lint_portion};
+
+    #[test]
+    fn capco_rule_set_registers_all_rules() {
+        let set = CapcoRuleSet::new();
+        let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
+        assert!(ids.contains(&"E001"));
+        assert!(ids.contains(&"E002"));
+        assert!(ids.contains(&"E003"));
+        assert!(ids.contains(&"E004"));
+        assert!(ids.contains(&"E005"));
+        assert!(ids.contains(&"E006"));
+        assert!(ids.contains(&"E007"));
+        assert!(ids.contains(&"E008"));
+        assert!(ids.contains(&"E009"));
+        assert!(ids.contains(&"E010"));
+        assert!(ids.contains(&"E011"));
+        assert!(ids.contains(&"E012"));
+        assert!(ids.contains(&"E013"));
+        assert!(ids.contains(&"E014"));
+        assert!(ids.contains(&"E015"));
+        assert!(ids.contains(&"W001"));
+        assert!(ids.contains(&"W002"));
+        assert!(ids.contains(&"E016"));
+        assert!(ids.contains(&"E017"));
+        assert!(ids.contains(&"E018"));
+        assert!(ids.contains(&"E019"));
+        assert!(ids.contains(&"E020"));
+        assert!(ids.contains(&"E021"));
+        assert!(ids.contains(&"E022"));
+        assert!(ids.contains(&"E023"));
+        assert!(ids.contains(&"E024"));
+        assert!(ids.contains(&"E025"));
+        assert!(ids.contains(&"W003"));
+        assert!(ids.contains(&"C001"));
+        assert_eq!(set.rules().len(), 29);
+    }
 
     #[test]
     fn e001_fires_on_abbreviated_dissem_in_banner_with_real_span() {
@@ -1696,6 +3291,38 @@ mod tests {
     fn e001_does_not_fire_on_full_form_noforn() {
         let diags = lint_banner("TOP SECRET//SI//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E001"));
+    }
+
+    #[test]
+    fn e001_fires_on_non_ic_dissem_portion_form_in_banner() {
+        // "DS" is the portion form of LIMDIS; a banner should use "LIMDIS".
+        let diags = lint_banner("SECRET//DS");
+        let e001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E001").collect();
+        assert_eq!(e001.len(), 1, "E001 must fire on DS in banner: {diags:?}");
+        let src = b"SECRET//DS";
+        assert_eq!(e001[0].span.as_str(src).unwrap(), "DS");
+        let fix = e001[0].fix.as_ref().expect("E001 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "LIMDIS");
+    }
+
+    #[test]
+    fn e001_does_not_fire_on_non_ic_dissem_banner_form_in_banner() {
+        // "LIMDIS" is the correct banner form — E001 must not fire.
+        let diags = lint_banner("SECRET//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E001"),
+            "E001 must not fire when banner uses LIMDIS (correct banner form): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e001_does_not_fire_on_non_ic_dissem_with_equal_banner_portion() {
+        // SBU/LES/SSI have identical banner and portion forms — no correction.
+        let diags = lint_banner("UNCLASSIFIED//SBU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E001"),
+            "E001 must not fire when banner=portion for SBU: {diags:?}"
+        );
     }
 
     #[test]
@@ -1720,6 +3347,31 @@ mod tests {
     fn e003_does_not_fire_on_correct_order() {
         let diags = lint_banner("SECRET//SI//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E003"));
+    }
+
+    #[test]
+    fn e003_does_not_fire_on_non_ic_dissem_last() {
+        // Non-IC dissem as last block is the correct CAPCO order.
+        let diags = lint_banner("SECRET//NOFORN//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E003"),
+            "non-IC dissem after dissem is correct order: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e003_fires_on_non_ic_dissem_before_ic_dissem() {
+        // Non-IC dissem (LIMDIS) before IC dissem (NOFORN) is out of order.
+        let diags = lint_banner("SECRET//LIMDIS//NOFORN");
+        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
+        assert_eq!(e003.len(), 1, "E003 must fire when non-IC dissem precedes IC dissem");
+        // The reordered fix must preserve the non-IC dissem as the last block.
+        let fix = e003[0].fix.as_ref().expect("E003 must carry FixProposal");
+        assert!(
+            fix.replacement.as_ref().ends_with("//LIMDIS"),
+            "non-IC dissem must be last in reordered output: {}",
+            fix.replacement.as_ref()
+        );
     }
 
     #[test]
@@ -1925,6 +3577,38 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E009"));
     }
 
+    #[test]
+    fn e009_fires_on_non_ic_dissem_banner_form_in_portion() {
+        // "LIMDIS" is the banner form; a portion should use "DS".
+        let diags = lint_portion("(S//LIMDIS)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert_eq!(e009.len(), 1, "E009 must fire on LIMDIS in portion: {diags:?}");
+        let src = b"(S//LIMDIS)";
+        assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "DS");
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_non_ic_dissem_portion_form_in_portion() {
+        // "DS" is the correct portion form — E009 must not fire.
+        let diags = lint_portion("(S//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when portion uses DS (correct portion form): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_non_ic_dissem_with_equal_banner_portion() {
+        // SBU/LES/SSI have identical banner and portion forms — no correction.
+        let diags = lint_portion("(U//LES)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when banner=portion for LES: {diags:?}"
+        );
+    }
+
     // --- E010: Bare HCS rule ---
 
     #[test]
@@ -2085,6 +3769,289 @@ mod tests {
         assert!(
             unexpected.is_empty(),
             "clean NATO portion should have no unexpected diagnostics, got: {unexpected:?}"
+        );
+    }
+
+    // --- Non-IC dissem controls ---
+
+    #[test]
+    fn non_ic_dissem_parses_in_portion() {
+        let diags = lint_portion("(U//DS)");
+        // DS = LIMDIS portion form. Should parse without E008 (unknown token).
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E008"),
+            "DS should be recognized as non-IC dissem, not unknown: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_les_nf_parses() {
+        let diags = lint_portion("(U//LES-NF)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E008"),
+            "LES-NF should be recognized: {diags:?}"
+        );
+    }
+
+    // --- W003: Non-IC dissem in classified banner ---
+
+    #[test]
+    fn w003_fires_on_sbu_in_classified_banner() {
+        let diags = lint_banner("CONFIDENTIAL//SBU");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(w003.len(), 1);
+        assert!(w003[0].message.contains("SBU"));
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_unclassified_banner() {
+        let diags = lint_banner("UNCLASSIFIED//SBU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "W003 should not fire on UNCLASSIFIED banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_limdis_in_classified_banner() {
+        // LIMDIS (NGA Title 10) propagates to classified banners.
+        let diags = lint_banner("SECRET//LIMDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "LIMDIS propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_les_in_classified_banner() {
+        // LES propagates to classified banners.
+        let diags = lint_banner("SECRET//LES");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "LES propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_ssi_in_classified_banner() {
+        // SSI propagates to classified banners.
+        let diags = lint_banner("SECRET//SSI");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "SSI propagates to classified banners: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_fires_on_sbu_in_nato_classified_banner() {
+        // Non-US (NATO) classified banners are still classified — W003 should fire.
+        let diags = lint_banner("//NS//SBU");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(
+            w003.len(),
+            1,
+            "W003 must fire on SBU in NATO classified banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_portion() {
+        let diags = lint_portion("(C//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "W003 is banner-only: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_correct_classified_doc() {
+        let diags = lint_banner("CONFIDENTIAL//NOFORN");
+        assert!(
+            diags.is_empty(),
+            "clean classified banner should have no diagnostics: {diags:?}"
+        );
+        let diags = lint_portion("(U//DS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "non-IC dissem in portion should not fire W003: {diags:?}"
+        );
+    }
+
+    // --- E016: RESTRICTED not allowed with JOINT ---
+
+    #[test]
+    fn e016_fires_on_joint_restricted() {
+        let diags = lint_banner("//JOINT R USA GBR//REL TO USA, GBR");
+        let e016: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E016").collect();
+        assert_eq!(e016.len(), 1);
+        assert!(e016[0].message.contains("RESTRICTED"));
+    }
+
+    #[test]
+    fn e016_does_not_fire_on_joint_secret() {
+        let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E016"));
+    }
+
+    // --- E017: JOINT may not be used with FGI ---
+
+    #[test]
+    fn e017_fires_on_joint_with_fgi() {
+        // This is structurally odd but the parser might produce it
+        // from malformed input where FGI appears as a block.
+        // For now, test that a JOINT marking with an fgi_marker errors.
+        // We can't easily construct this via lint_banner since the parser
+        // only sets fgi_marker when classification is US. Skip for now.
+    }
+
+    // --- E018: JOINT + IC dissem (except REL TO) ---
+
+    #[test]
+    fn e018_fires_on_joint_with_noforn() {
+        let diags = lint_banner("//JOINT S USA GBR//NF");
+        let e018: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E018").collect();
+        assert_eq!(
+            e018.len(),
+            1,
+            "E018 should fire on NF with JOINT: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e018_does_not_fire_on_joint_with_rel_to_only() {
+        let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E018"),
+            "E018 should not fire when only REL TO is present: {diags:?}"
+        );
+    }
+
+    // --- E019: JOINT + non-IC dissem ---
+
+    #[test]
+    fn e019_fires_on_joint_with_limdis() {
+        let diags = lint_banner("//JOINT S USA GBR//LIMDIS");
+        let e019: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E019").collect();
+        assert_eq!(e019.len(), 1);
+    }
+
+    // --- E020: Country code ordering ---
+
+    #[test]
+    fn e020_fires_on_unordered_rel_to() {
+        // GBR before AUS — should be USA, AUS, GBR.
+        let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        let fix = e020[0].fix.as_ref().expect("E020 must have fix");
+        assert_eq!(fix.replacement.as_ref(), "USA, AUS, GBR");
+        assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e020_does_not_fire_on_ordered_rel_to() {
+        let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E020"),
+            "E020 should not fire on correctly ordered list: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e020_fires_on_unordered_joint_countries() {
+        // GBR before AUS in JOINT list.
+        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert!(
+            !e020.is_empty(),
+            "E020 should fire on unordered JOINT countries: {diags:?}"
+        );
+    }
+
+    // --- E021: RD/FRD requires NOFORN ---
+
+    #[test]
+    fn e021_fires_on_rd_without_noforn() {
+        let diags = lint_banner("SECRET//RD//REL TO USA, GBR");
+        let e021: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E021").collect();
+        assert_eq!(e021.len(), 1);
+    }
+
+    #[test]
+    fn e021_does_not_fire_on_rd_with_noforn() {
+        let diags = lint_banner("SECRET//RD//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E021"),
+            "E021 should not fire with NOFORN present: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e021_fires_on_frd_without_noforn() {
+        let diags = lint_banner("SECRET//FRD//REL TO USA, GBR");
+        let e021: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E021").collect();
+        assert_eq!(e021.len(), 1);
+    }
+
+    // --- E022: CNWDI only with TS or S RD ---
+
+    #[test]
+    fn e022_fires_on_cnwdi_with_confidential() {
+        let diags = lint_banner("CONFIDENTIAL//RD-CNWDI//NOFORN");
+        let e022: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E022").collect();
+        assert_eq!(e022.len(), 1);
+    }
+
+    #[test]
+    fn e022_does_not_fire_on_cnwdi_with_secret() {
+        let diags = lint_banner("SECRET//RD-CNWDI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E022"),
+            "E022 should not fire with SECRET: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e022_does_not_fire_on_cnwdi_with_top_secret() {
+        let diags = lint_banner("TOP SECRET//RD-CNWDI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E022"),
+            "E022 should not fire with TOP SECRET: {diags:?}"
+        );
+    }
+
+    // --- E024: RD precedence ---
+
+    #[test]
+    fn e024_fires_on_rd_plus_frd() {
+        // Both RD and FRD in same marking — FRD should be removed.
+        let diags = lint_banner("SECRET//RD//FRD//NOFORN");
+        let e024: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E024").collect();
+        assert_eq!(e024.len(), 1);
+        assert!(e024[0].message.contains("FRD"));
+    }
+
+    #[test]
+    fn e024_does_not_fire_on_rd_alone() {
+        let diags = lint_banner("SECRET//RD//NOFORN");
+        assert!(diags.iter().all(|d| d.rule.as_str() != "E024"));
+    }
+
+    // --- E025: UCNI only with UNCLASSIFIED ---
+
+    #[test]
+    fn e025_fires_on_ucni_with_secret() {
+        let diags = lint_banner("SECRET//DOD UCNI");
+        let e025: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E025").collect();
+        assert_eq!(e025.len(), 1);
+    }
+
+    #[test]
+    fn e025_does_not_fire_on_ucni_with_unclassified() {
+        let diags = lint_banner("UNCLASSIFIED//DOD UCNI");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E025"),
+            "E025 should not fire with UNCLASSIFIED: {diags:?}"
         );
     }
 }

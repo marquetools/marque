@@ -17,9 +17,10 @@
 
 use crate::error::CoreError;
 use marque_ism::attrs::{
-    Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
-    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
+    ForeignClassification, FrdBlock, IsmAttributes, JointClassification, MarkingClassification,
+    NatoClassification, NonIcDissem, RdBlock, SarIdentifier, SciControl, TokenKind, TokenSpan,
+    Trigraph,
 };
 // Note: unused import warnings for SarIdentifier are expected until the SAR CVE
 // has entries. The type is used in from_str() which returns None for now.
@@ -180,7 +181,9 @@ impl<'t> Parser<'t> {
 
         let mut sci: Vec<SciControl> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
+        let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
+        let mut non_ic: Vec<NonIcDissem> = Vec::new();
         let mut rel_to: Vec<Trigraph> = Vec::new();
 
         // When the marking starts with `//` (after trimming any incidental
@@ -287,10 +290,24 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+            } else if let Some(nic) = NonIcDissem::parse(trimmed) {
+                non_ic.push(nic);
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::NonIcDissem,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if let Some(sar_id) = SarIdentifier::parse(trimmed) {
                 sar.push(sar_id);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::SarIdentifier,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
+                aea.push(aea_marking);
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::AeaMarking,
                     span,
                     text: trimmed.into(),
                 });
@@ -346,7 +363,9 @@ impl<'t> Parser<'t> {
 
         attrs.sci_controls = sci.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
+        attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
+        attrs.non_ic_dissem = non_ic.into_boxed_slice();
         attrs.rel_to = rel_to.into_boxed_slice();
         // Record separator spans (Phase 3 needs them for E004). Push them
         // here alongside block tokens, then sort by start offset so the
@@ -397,23 +416,25 @@ fn parse_classification(s: &str) -> Option<Classification> {
 fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
     // Check longer patterns first to avoid prefix matches.
     match s {
-        // Banner forms (full words)
+        // Banner forms (full words) — longer patterns first
         "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "COSMIC TOP SECRET-BOHEMIA" => Some(NatoClassification::CosmicTopSecretBohemia),
+        "COSMIC TOP SECRET-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
         "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
-        "NATO SECRET-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NATO SECRET ATOMAL" => Some(NatoClassification::NatoSecretAtomal),
         "NATO SECRET" => Some(NatoClassification::NatoSecret),
         "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NATO CONFIDENTIAL-BOHEMIA" => Some(NatoClassification::NatoConfidentialBohemia),
         "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
         "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
         "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
-        // Portion forms (abbreviations)
-        "CTSA" => Some(NatoClassification::CosmicTopSecretAtomal),
+        // Portion forms — primary (CAPCO Register)
+        "CTSA" | "CTS-A" => Some(NatoClassification::CosmicTopSecretAtomal),
+        "CTS-B" => Some(NatoClassification::CosmicTopSecretBohemia),
+        "CTS-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
         "CTS" => Some(NatoClassification::CosmicTopSecret),
-        "NS-BALK" => Some(NatoClassification::NatoSecretBalk),
+        "NSAT" | "NS-A" => Some(NatoClassification::NatoSecretAtomal),
         "NS" => Some(NatoClassification::NatoSecret),
-        "NCA" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NC-B" => Some(NatoClassification::NatoConfidentialBohemia),
+        "NCA" | "NC-A" => Some(NatoClassification::NatoConfidentialAtomal),
         "NC" => Some(NatoClassification::NatoConfidential),
         "NR" => Some(NatoClassification::NatoRestricted),
         "NU" => Some(NatoClassification::NatoUnclassified),
@@ -896,16 +917,20 @@ mod tests {
                 "//NATO CONFIDENTIAL ATOMAL",
                 NatoClassification::NatoConfidentialAtomal,
             ),
-            (
-                "//NATO CONFIDENTIAL-BOHEMIA",
-                NatoClassification::NatoConfidentialBohemia,
-            ),
             ("//NATO SECRET", NatoClassification::NatoSecret),
-            ("//NATO SECRET-BALK", NatoClassification::NatoSecretBalk),
+            ("//NATO SECRET ATOMAL", NatoClassification::NatoSecretAtomal),
             ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
             (
                 "//COSMIC TOP SECRET ATOMAL",
                 NatoClassification::CosmicTopSecretAtomal,
+            ),
+            (
+                "//COSMIC TOP SECRET-BOHEMIA",
+                NatoClassification::CosmicTopSecretBohemia,
+            ),
+            (
+                "//COSMIC TOP SECRET-BALK",
+                NatoClassification::CosmicTopSecretBalk,
             ),
         ] {
             let parsed = parse_banner(input);
@@ -924,11 +949,15 @@ mod tests {
             ("(//NR)", NatoClassification::NatoRestricted),
             ("(//NC)", NatoClassification::NatoConfidential),
             ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NC-B)", NatoClassification::NatoConfidentialBohemia),
+            ("(//NC-A)", NatoClassification::NatoConfidentialAtomal),
             ("(//NS)", NatoClassification::NatoSecret),
-            ("(//NS-BALK)", NatoClassification::NatoSecretBalk),
+            ("(//NSAT)", NatoClassification::NatoSecretAtomal),
+            ("(//NS-A)", NatoClassification::NatoSecretAtomal),
             ("(//CTS)", NatoClassification::CosmicTopSecret),
             ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
+            ("(//CTS-A)", NatoClassification::CosmicTopSecretAtomal),
+            ("(//CTS-B)", NatoClassification::CosmicTopSecretBohemia),
+            ("(//CTS-BALK)", NatoClassification::CosmicTopSecretBalk),
         ] {
             let parsed = parse_portion(input);
             assert_eq!(
@@ -1097,5 +1126,180 @@ mod tests {
             parsed.attrs.classification,
             Some(MarkingClassification::Us(Classification::Restricted)),
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Non-IC dissemination controls
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn non_ic_dissem_limdis_banner_form() {
+        let parsed = parse_banner("UNCLASSIFIED//LIMDIS");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(
+            parsed.attrs.non_ic_dissem[0],
+            NonIcDissem::Limdis,
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_ds_portion_form() {
+        let parsed = parse_portion("(U//DS)");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Limdis);
+    }
+
+    #[test]
+    fn non_ic_dissem_les_nf() {
+        let parsed = parse_portion("(U//LES-NF)");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::LesNf);
+        assert!(parsed.attrs.non_ic_dissem[0].carries_noforn());
+    }
+
+    #[test]
+    fn non_ic_dissem_sbu_nf_banner() {
+        let parsed = parse_banner("UNCLASSIFIED//SBU NOFORN");
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::SbuNf);
+    }
+
+    #[test]
+    fn non_ic_dissem_not_confused_with_ic_dissem() {
+        // SSI should be non-IC, not IC.
+        let parsed = parse_portion("(U//SSI)");
+        assert!(parsed.attrs.dissem_controls.is_empty());
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
+        assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Ssi);
+    }
+
+    #[test]
+    fn non_ic_dissem_alongside_ic_dissem() {
+        // Classified portion with both IC and non-IC dissem.
+        let parsed = parse_portion("(C//NF//DS)");
+        assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
+        assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);   // DS = LIMDIS
+    }
+
+    // -----------------------------------------------------------------------
+    // Atomic Energy Act markings
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn aea_rd_parses() {
+        let parsed = parse_banner("TOP SECRET//RD//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(
+            parsed.attrs.aea_markings[0],
+            AeaMarking::Rd(RdBlock::default()),
+        );
+    }
+
+    #[test]
+    fn aea_rd_cnwdi_compound() {
+        // CNWDI is a hyphen-modifier of RD, not a separate // block.
+        let parsed = parse_banner("SECRET//RD-CNWDI//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(rd.cnwdi);
+                assert!(rd.sigma.is_empty());
+            }
+            other => panic!("expected Rd with CNWDI, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_sigma_compound() {
+        // SIGMA is a hyphen-modifier: RD-SIGMA 20
+        let parsed = parse_banner("SECRET//RD-SIGMA 20//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(!rd.cnwdi);
+                assert_eq!(&*rd.sigma, &[20]);
+            }
+            other => panic!("expected Rd with SIGMA, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_cnwdi_sigma_compound() {
+        let parsed = parse_banner("SECRET//RD-CNWDI-SIGMA 18 20//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert!(rd.cnwdi);
+                assert_eq!(&*rd.sigma, &[18, 20]);
+            }
+            other => panic!("expected Rd with CNWDI+SIGMA, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_rd_sigma_portion() {
+        // Portion form uses SG instead of SIGMA.
+        let parsed = parse_portion("(TS//RD-SG 14//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => {
+                assert_eq!(&*rd.sigma, &[14]);
+            }
+            other => panic!("expected Rd with SG, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_frd_parses() {
+        let parsed = parse_portion("(S//FRD//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(
+            parsed.attrs.aea_markings[0],
+            AeaMarking::Frd(FrdBlock::default()),
+        );
+    }
+
+    #[test]
+    fn aea_frd_sigma_compound() {
+        let parsed = parse_banner("SECRET//FRD-SIGMA 14//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Frd(frd) => {
+                assert_eq!(&*frd.sigma, &[14]);
+            }
+            other => panic!("expected Frd with SIGMA, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aea_dod_ucni_parses() {
+        let parsed = parse_banner("UNCLASSIFIED//DOD UCNI");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::DodUcni);
+    }
+
+    #[test]
+    fn aea_dcni_portion_parses() {
+        let parsed = parse_portion("(U//DCNI)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::DodUcni);
+    }
+
+    #[test]
+    fn aea_tfni_parses() {
+        let parsed = parse_banner("SECRET//TFNI//NOFORN");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        assert_eq!(parsed.attrs.aea_markings[0], AeaMarking::Tfni);
+    }
+
+    #[test]
+    fn aea_rd_n_shorthand() {
+        // DoD shorthand: RD-N means RD-CNWDI
+        let parsed = parse_portion("(S//RD-N//NF)");
+        assert_eq!(parsed.attrs.aea_markings.len(), 1);
+        match &parsed.attrs.aea_markings[0] {
+            AeaMarking::Rd(rd) => assert!(rd.cnwdi),
+            other => panic!("expected Rd with CNWDI from RD-N, got: {other:?}"),
+        }
     }
 }

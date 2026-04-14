@@ -51,6 +51,12 @@ pub struct IsmAttributes {
     /// Special Access Required identifiers.
     pub sar_identifiers: Box<[SarIdentifier]>,
 
+    /// Atomic Energy Act markings (CAPCO Register §6).
+    ///
+    /// Includes RD, FRD, CNWDI, TFNI, SIGMA, and UCNI variants.
+    /// Positioned between SAR and FGI in CAPCO block ordering.
+    pub aea_markings: Box<[AeaMarking]>,
+
     /// FGI block in US-classified markings: `FGI` or `FGI [LIST]`.
     ///
     /// Present when a US-classified document references foreign government
@@ -63,6 +69,17 @@ pub struct IsmAttributes {
 
     /// Dissemination controls (e.g., NOFORN, RELIDO, ORCON, FISA).
     pub dissem_controls: Box<[DissemControl]>,
+
+    /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
+    ///
+    /// Separate authority framework (CAPCO Register §9), distinct from IC
+    /// dissem controls. In classified documents these are generally portion-
+    /// only and stripped from banners, but some values propagate to the
+    /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
+    /// for the authoritative rule. On unclassified pages they propagate to
+    /// the banner. LES-NF and SBU-NF carry NOFORN treatment even when
+    /// stripped.
+    pub non_ic_dissem: Box<[NonIcDissem]>,
 
     /// REL TO country trigraphs. USA must be present and first if non-empty.
     ///
@@ -133,10 +150,14 @@ pub enum TokenKind {
     SciControl,
     /// SAR identifier token.
     SarIdentifier,
+    /// Atomic Energy Act marking token (RD, FRD, CNWDI, TFNI, SIGMA ##, etc.).
+    AeaMarking,
     /// FGI marker token (`FGI`, `FGI DEU`, `FGI DEU GBR`).
     FgiMarker,
     /// Dissemination control token (NOFORN, NF, ORCON, OC, RELIDO, ...).
     DissemControl,
+    /// Non-IC dissemination control token (LIMDIS, DS, SBU, LES, SSI, ...).
+    NonIcDissem,
     /// REL TO country trigraph (USA, GBR, AUS, ...). One per token, not the
     /// whole REL TO list.
     RelToTrigraph,
@@ -274,15 +295,29 @@ impl Classification {
 // FGI classification (non-US, country-prefixed)
 // ---------------------------------------------------------------------------
 
-/// Non-US (FGI) classification: country-prefixed, e.g., `//GBR S//...`.
+/// Non-US (FGI) classification.
+///
+/// Two forms exist:
+///
+/// - **Source-acknowledged**: country trigraph(s) identify the originator.
+///   `//GBR S//REL TO USA, GBR`
+/// - **Source-concealed**: `FGI` replaces the country trigraph(s) when
+///   the originating country is sensitive. `//FGI S//REL TO USA, GBR`
+///   An empty `countries` list indicates source-concealed FGI.
 ///
 /// Countries are space-delimited in the source marking.
-/// An empty `countries` list represents pure `//FGI//` — used when the
-/// originating country is sensitive (almost always NOFORN).
+///
+/// # Banner aggregation
+///
+/// If a document contains **any** source-concealed FGI portions alongside
+/// source-acknowledged FGI portions, the banner must use `FGI` without
+/// country codes — revealing the country list would compromise the
+/// concealed source. This rule is enforced at the `PageContext` level
+/// during banner validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiClassification {
     /// Originating countries (space-delimited in source).
-    /// Empty for pure FGI (sensitive originator).
+    /// Empty for source-concealed FGI (`//FGI S//...`).
     pub countries: Box<[Trigraph]>,
     /// Classification level (includes RESTRICTED).
     pub level: Classification,
@@ -298,24 +333,31 @@ pub struct FgiClassification {
 /// Not everyone with a US clearance is cleared for NATO; many US systems
 /// are not approved for NATO information.
 ///
-/// NATO SAP markings (ATOMAL, BOHEMIA, BALK) are structurally part of the
-/// classification — appended with system-specific formatting:
-/// - ATOMAL: no hyphen (`NATO CONFIDENTIAL ATOMAL` → `NCA`)
-/// - BOHEMIA: hyphenated (`NATO CONFIDENTIAL-BOHEMIA` → `NC-B`)
-/// - BALK: hyphenated (`NATO SECRET-BALK` → `NS-BALK`)
+/// # NATO SAP markings
 ///
-/// BALK is the exercise-only form of BOHEMIA.
+/// Three NATO SAP programs exist, each with specific constraints:
+///
+/// - **ATOMAL**: Applies to CTS, NS, and NC levels. Space-separated in
+///   banner (`COSMIC TOP SECRET ATOMAL`). Portion marks: CTSA, NSAT, NCA.
+///   Alternative portion forms CTS-A, NS-A, NC-A also appear in practice.
+/// - **BOHEMIA**: CTS-only. Hyphenated (`COSMIC TOP SECRET-BOHEMIA` → `CTS-B`).
+/// - **BALK**: CTS-only, exercise replacement for BOHEMIA.
+///   Hyphenated (`COSMIC TOP SECRET-BALK` → `CTS-BALK`).
+///
+/// Per the CAPCO Register, bare `COSMIC TOP SECRET` requires either
+/// BOHEMIA or BALK — standalone CTS without a SAP suffix is an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
-    NatoUnclassified,          // NU
-    NatoRestricted,            // NR
-    NatoConfidential,          // NC
-    NatoConfidentialAtomal,    // NCA
-    NatoConfidentialBohemia,   // NC-B
-    NatoSecret,                // NS
-    NatoSecretBalk,            // NS-BALK
-    CosmicTopSecret,           // CTS
-    CosmicTopSecretAtomal,     // CTSA
+    NatoUnclassified,                // NU
+    NatoRestricted,                  // NR
+    NatoConfidential,                // NC
+    NatoConfidentialAtomal,          // NCA (alt: NC-A)
+    NatoSecret,                      // NS
+    NatoSecretAtomal,                // NSAT (alt: NS-A)
+    CosmicTopSecret,                 // CTS (requires BOHEMIA or BALK)
+    CosmicTopSecretAtomal,           // CTSA (alt: CTS-A)
+    CosmicTopSecretBohemia,          // CTS-B
+    CosmicTopSecretBalk,             // CTS-BALK
 }
 
 impl NatoClassification {
@@ -326,26 +368,28 @@ impl NatoClassification {
             Self::NatoRestricted => "NATO RESTRICTED",
             Self::NatoConfidential => "NATO CONFIDENTIAL",
             Self::NatoConfidentialAtomal => "NATO CONFIDENTIAL ATOMAL",
-            Self::NatoConfidentialBohemia => "NATO CONFIDENTIAL-BOHEMIA",
             Self::NatoSecret => "NATO SECRET",
-            Self::NatoSecretBalk => "NATO SECRET-BALK",
+            Self::NatoSecretAtomal => "NATO SECRET ATOMAL",
             Self::CosmicTopSecret => "COSMIC TOP SECRET",
             Self::CosmicTopSecretAtomal => "COSMIC TOP SECRET ATOMAL",
+            Self::CosmicTopSecretBohemia => "COSMIC TOP SECRET-BOHEMIA",
+            Self::CosmicTopSecretBalk => "COSMIC TOP SECRET-BALK",
         }
     }
 
-    /// Portion form (abbreviation used in portion markings).
+    /// Portion form (primary abbreviation from the CAPCO Register).
     pub fn portion_str(self) -> &'static str {
         match self {
             Self::NatoUnclassified => "NU",
             Self::NatoRestricted => "NR",
             Self::NatoConfidential => "NC",
             Self::NatoConfidentialAtomal => "NCA",
-            Self::NatoConfidentialBohemia => "NC-B",
             Self::NatoSecret => "NS",
-            Self::NatoSecretBalk => "NS-BALK",
+            Self::NatoSecretAtomal => "NSAT",
             Self::CosmicTopSecret => "CTS",
             Self::CosmicTopSecretAtomal => "CTSA",
+            Self::CosmicTopSecretBohemia => "CTS-B",
+            Self::CosmicTopSecretBalk => "CTS-BALK",
         }
     }
 
@@ -354,11 +398,14 @@ impl NatoClassification {
         match self {
             Self::NatoUnclassified => NatoLevel::NatoUnclassified,
             Self::NatoRestricted => NatoLevel::NatoRestricted,
-            Self::NatoConfidential
-            | Self::NatoConfidentialAtomal
-            | Self::NatoConfidentialBohemia => NatoLevel::NatoConfidential,
-            Self::NatoSecret | Self::NatoSecretBalk => NatoLevel::NatoSecret,
-            Self::CosmicTopSecret | Self::CosmicTopSecretAtomal => NatoLevel::CosmicTopSecret,
+            Self::NatoConfidential | Self::NatoConfidentialAtomal => {
+                NatoLevel::NatoConfidential
+            }
+            Self::NatoSecret | Self::NatoSecretAtomal => NatoLevel::NatoSecret,
+            Self::CosmicTopSecret
+            | Self::CosmicTopSecretAtomal
+            | Self::CosmicTopSecretBohemia
+            | Self::CosmicTopSecretBalk => NatoLevel::CosmicTopSecret,
         }
     }
 
@@ -404,6 +451,250 @@ pub struct JointClassification {
 }
 
 // ---------------------------------------------------------------------------
+// Atomic Energy Act markings
+// ---------------------------------------------------------------------------
+
+/// Atomic Energy Act information markings (CAPCO Register §6).
+///
+/// AEA markings appear as a single `//`-delimited block in the marking string,
+/// using hyphen separators for compound forms:
+/// - `SECRET//RD//NOFORN` — RD alone
+/// - `SECRET//RD-CNWDI//NOFORN` — RD with CNWDI modifier
+/// - `SECRET//RD-SIGMA 20//NOFORN` — RD with SIGMA compartment
+/// - `SECRET//RD-SIGMA 18 20//NOFORN` — RD with multiple SIGMAs
+/// - `SECRET//FRD//NOFORN` — FRD alone
+/// - `SECRET//FRD-SIGMA 14//NOFORN` — FRD with SIGMA
+///
+/// Standalone (non-compound) markings:
+/// - `UNCLASSIFIED//DOD UCNI` / `(U//DCNI)`
+/// - `UNCLASSIFIED//DOE UCNI` / `(U//UCNI)`
+/// - `SECRET//TFNI//NOFORN` / `(S//TFNI//NF)`
+///
+/// # Key rules (CAPCO-2016)
+///
+/// - RD and FRD always require NOFORN unless a sharing agreement exists
+///   (default severity: Error, configurable to Warn via `.marque.toml`)
+/// - CNWDI may only be used with TS or S RD (not standalone, not with FRD)
+/// - SIGMA 14, 15, 18, 20 may only be used with TS or S RD or FRD
+/// - RD takes precedence over FRD and TFNI in both banners and portions
+/// - SIGMA numbers must be in numerical order, space-separated
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AeaMarking {
+    /// Compound RD block: `RD`, `RD-CNWDI`, `RD-SIGMA 20`, `RD-CNWDI-SIGMA 18 20`
+    Rd(RdBlock),
+    /// Compound FRD block: `FRD`, `FRD-SIGMA 14`
+    Frd(FrdBlock),
+    /// DOD UCNI / DCNI — standalone, unclassified only
+    DodUcni,
+    /// DOE UCNI / UCNI — standalone, unclassified only
+    DoeUcni,
+    /// TFNI — standalone
+    Tfni,
+}
+
+/// Restricted Data block with optional modifiers.
+///
+/// Rendered as `RD`, `RD-CNWDI`, `RD-SIGMA 20`, or `RD-CNWDI-SIGMA 18 20`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RdBlock {
+    /// Whether CNWDI is present. Only valid with TS or S classification.
+    pub cnwdi: bool,
+    /// SIGMA compartment numbers (14, 15, 18, 20). Must be in numerical order.
+    /// Empty if no SIGMA designation.
+    pub sigma: Box<[u8]>,
+}
+
+impl Default for RdBlock {
+    fn default() -> Self {
+        Self {
+            cnwdi: false,
+            sigma: Box::new([]),
+        }
+    }
+}
+
+/// Formerly Restricted Data block with optional SIGMA modifier.
+///
+/// Rendered as `FRD` or `FRD-SIGMA 14`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FrdBlock {
+    /// SIGMA compartment numbers. Must be in numerical order.
+    /// Empty if no SIGMA designation.
+    pub sigma: Box<[u8]>,
+}
+
+impl Default for FrdBlock {
+    fn default() -> Self {
+        Self {
+            sigma: Box::new([]),
+        }
+    }
+}
+
+impl AeaMarking {
+    /// Banner-line form.
+    pub fn banner_str(&self) -> String {
+        match self {
+            Self::Rd(rd) => {
+                let mut s = "RD".to_owned();
+                if rd.cnwdi {
+                    s.push_str("-CNWDI");
+                }
+                if !rd.sigma.is_empty() {
+                    s.push_str("-SIGMA ");
+                    let nums: Vec<String> = rd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::Frd(frd) => {
+                let mut s = "FRD".to_owned();
+                if !frd.sigma.is_empty() {
+                    s.push_str("-SIGMA ");
+                    let nums: Vec<String> = frd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::DodUcni => "DOD UCNI".to_owned(),
+            Self::DoeUcni => "DOE UCNI".to_owned(),
+            Self::Tfni => "TFNI".to_owned(),
+        }
+    }
+
+    /// Portion mark form.
+    pub fn portion_str(&self) -> String {
+        match self {
+            Self::Rd(rd) => {
+                let mut s = "RD".to_owned();
+                if rd.cnwdi {
+                    s.push_str("-CNWDI");
+                }
+                if !rd.sigma.is_empty() {
+                    s.push_str("-SG ");
+                    let nums: Vec<String> = rd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::Frd(frd) => {
+                let mut s = "FRD".to_owned();
+                if !frd.sigma.is_empty() {
+                    s.push_str("-SG ");
+                    let nums: Vec<String> = frd.sigma.iter().map(|n| n.to_string()).collect();
+                    s.push_str(&nums.join(" "));
+                }
+                s
+            }
+            Self::DodUcni => "DCNI".to_owned(),
+            Self::DoeUcni => "UCNI".to_owned(),
+            Self::Tfni => "TFNI".to_owned(),
+        }
+    }
+
+    /// Parse a `//`-delimited AEA block from either banner or portion form.
+    ///
+    /// Handles compound tokens: `RD`, `RD-CNWDI`, `RD-SIGMA 20`,
+    /// `RD-CNWDI-SIGMA 18 20`, `FRD`, `FRD-SIGMA 14`, etc.
+    pub fn parse(s: &str) -> Option<Self> {
+        // Standalone non-compound markings.
+        match s {
+            "DOD UCNI" | "DCNI" => return Some(Self::DodUcni),
+            "DOE UCNI" | "UCNI" => return Some(Self::DoeUcni),
+            "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => return Some(Self::Tfni),
+            _ => {}
+        }
+
+        // RD compound block: RD, RD-CNWDI, RD-SIGMA ##, RD-CNWDI-SIGMA ##,
+        // RESTRICTED DATA, RESTRICTED DATA-CNWDI, etc.
+        if s == "RD" || s == "RESTRICTED DATA" {
+            return Some(Self::Rd(RdBlock::default()));
+        }
+        if let Some(rest) = s.strip_prefix("RD-").or_else(|| s.strip_prefix("RESTRICTED DATA-")) {
+            return Self::parse_rd_modifiers(rest);
+        }
+
+        // FRD compound block: FRD, FRD-SIGMA ##,
+        // FORMERLY RESTRICTED DATA, etc.
+        if s == "FRD" || s == "FORMERLY RESTRICTED DATA" {
+            return Some(Self::Frd(FrdBlock::default()));
+        }
+        if let Some(rest) =
+            s.strip_prefix("FRD-").or_else(|| s.strip_prefix("FORMERLY RESTRICTED DATA-"))
+        {
+            return Self::parse_frd_modifiers(rest);
+        }
+
+        None
+    }
+
+    /// Parse RD modifiers after the `RD-` prefix.
+    /// Handles: `CNWDI`, `SIGMA ##`, `CNWDI-SIGMA ##`, `SG ##`, `CNWDI-SG ##`.
+    fn parse_rd_modifiers(s: &str) -> Option<Self> {
+        let mut cnwdi = false;
+        let mut rest = s;
+
+        // Check for CNWDI prefix.
+        if let Some(after) = rest.strip_prefix("CNWDI") {
+            cnwdi = true;
+            rest = after.strip_prefix('-').unwrap_or(after);
+        } else if rest == "N" {
+            // DoD shorthand: RD-N means RD-CNWDI (per CAPCO-2016 §6)
+            return Some(Self::Rd(RdBlock {
+                cnwdi: true,
+                sigma: Box::new([]),
+            }));
+        }
+
+        // Check for SIGMA/SG.
+        let sigma = parse_sigma_numbers(rest);
+
+        if rest.is_empty() || !sigma.is_empty() {
+            Some(Self::Rd(RdBlock {
+                cnwdi,
+                sigma: sigma.into(),
+            }))
+        } else {
+            None
+        }
+    }
+
+    /// Parse FRD modifiers after the `FRD-` prefix.
+    /// Handles: `SIGMA ##`, `SG ##`.
+    fn parse_frd_modifiers(s: &str) -> Option<Self> {
+        let sigma = parse_sigma_numbers(s);
+        if !sigma.is_empty() {
+            Some(Self::Frd(FrdBlock {
+                sigma: sigma.into(),
+            }))
+        } else {
+            None
+        }
+    }
+}
+
+/// Parse SIGMA/SG numbers from a string like `SIGMA 18 20` or `SG 14`.
+fn parse_sigma_numbers(s: &str) -> Vec<u8> {
+    let rest = s
+        .strip_prefix("SIGMA ")
+        .or_else(|| s.strip_prefix("SG "))
+        .unwrap_or("");
+    if rest.is_empty() {
+        return vec![];
+    }
+    rest.split_whitespace()
+        .filter_map(|n| n.parse::<u8>().ok())
+        .collect()
+}
+
+impl std::fmt::Display for AeaMarking {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.portion_str())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FGI marker (in US-classified markings)
 // ---------------------------------------------------------------------------
 
@@ -416,12 +707,138 @@ pub struct JointClassification {
 /// marking where the classification itself IS foreign. This marker says
 /// "this US-classified marking contains foreign government information."
 ///
-/// An empty `countries` list represents pure `FGI` with no country
-/// attribution (sensitive originator — almost always NOFORN).
+/// An empty `countries` list represents source-concealed FGI (no country
+/// attribution). If a document mixes source-concealed and source-acknowledged
+/// FGI portions, the banner must use the bare `FGI` form without countries
+/// to avoid compromising the concealed source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiMarker {
-    /// Countries (space-delimited in source). Empty for pure `FGI`.
+    /// Countries (space-delimited in source).
+    /// Empty for source-concealed FGI.
     pub countries: Box<[Trigraph]>,
+}
+
+// ===========================================================================
+// Non-IC dissemination controls
+// ===========================================================================
+
+/// Non-Intelligence Community dissemination control markings (CAPCO Register §9).
+///
+/// These operate under a separate authority framework from IC dissem controls.
+/// In classified documents, most non-IC dissem controls appear **only in portion
+/// markings** — they are stripped from banners. However, some controls propagate
+/// to classified banners: LIMDIS (NGA Title 10), LES, LES-NF, and SSI. See
+/// [`NonIcDissem::propagates_to_classified_banner`] for the authoritative list.
+/// When the page is **unclassified**, all non-IC dissem controls propagate to
+/// the banner.
+///
+/// LES-NF and SBU-NF carry NOFORN treatment even when stripped from the banner.
+///
+/// # CUI note
+///
+/// CUI (Controlled Unclassified Information) is recognized but not validated.
+/// Full CUI rule support is planned for a dedicated crate. The IC equivalent
+/// (FOUO) remains in active use in the `DissemControl` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum NonIcDissem {
+    /// LIMITED DISTRIBUTION / LIMDIS / DS
+    Limdis,
+    /// EXCLUSIVE DISTRIBUTION / EXDIS / XD
+    Exdis,
+    /// NO DISTRIBUTION / NODIS / ND
+    Nodis,
+    /// SENSITIVE BUT UNCLASSIFIED / SBU / SBU
+    Sbu,
+    /// SENSITIVE BUT UNCLASSIFIED NOFORN / SBU NOFORN / SBU-NF
+    /// Carries NOFORN treatment even when stripped from banner.
+    SbuNf,
+    /// LAW ENFORCEMENT SENSITIVE / LES / LES
+    Les,
+    /// LAW ENFORCEMENT SENSITIVE NOFORN / LES NOFORN / LES-NF
+    /// Carries NOFORN treatment even when stripped from banner.
+    LesNf,
+    /// SENSITIVE SECURITY INFORMATION / SSI / SSI
+    Ssi,
+}
+
+impl NonIcDissem {
+    /// Banner-line abbreviation form.
+    pub fn banner_str(self) -> &'static str {
+        match self {
+            Self::Limdis => "LIMDIS",
+            Self::Exdis => "EXDIS",
+            Self::Nodis => "NODIS",
+            Self::Sbu => "SBU",
+            Self::SbuNf => "SBU NOFORN",
+            Self::Les => "LES",
+            Self::LesNf => "LES NOFORN",
+            Self::Ssi => "SSI",
+        }
+    }
+
+    /// Portion mark abbreviation.
+    pub fn portion_str(self) -> &'static str {
+        match self {
+            Self::Limdis => "DS",
+            Self::Exdis => "XD",
+            Self::Nodis => "ND",
+            Self::Sbu => "SBU",
+            Self::SbuNf => "SBU-NF",
+            Self::Les => "LES",
+            Self::LesNf => "LES-NF",
+            Self::Ssi => "SSI",
+        }
+    }
+
+    /// Parse from either banner or portion form.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "LIMDIS" | "DS" => Some(Self::Limdis),
+            "EXDIS" | "XD" => Some(Self::Exdis),
+            "NODIS" | "ND" => Some(Self::Nodis),
+            "SBU" => Some(Self::Sbu),
+            "SBU NOFORN" | "SBU-NF" => Some(Self::SbuNf),
+            "LES" => Some(Self::Les),
+            "LES NOFORN" | "LES-NF" => Some(Self::LesNf),
+            "SSI" => Some(Self::Ssi),
+            _ => None,
+        }
+    }
+
+    /// Returns true if this control carries NOFORN treatment.
+    pub fn carries_noforn(self) -> bool {
+        matches!(self, Self::SbuNf | Self::LesNf)
+    }
+
+    /// Returns true if this control propagates to classified banners.
+    ///
+    /// Most non-IC dissem controls are stripped from banners in classified
+    /// documents. These exceptions propagate:
+    /// - LIMDIS: NGA Title 10 marking, appears in classified banners
+    /// - LES: propagates to banners; LES-NF propagates as NOFORN//LES
+    /// - SSI: propagates to banners
+    pub fn propagates_to_classified_banner(self) -> bool {
+        matches!(self, Self::Limdis | Self::Les | Self::LesNf | Self::Ssi)
+    }
+
+    /// All valid values.
+    pub const ALL: &[NonIcDissem] = &[
+        Self::Limdis,
+        Self::Exdis,
+        Self::Nodis,
+        Self::Sbu,
+        Self::SbuNf,
+        Self::Les,
+        Self::LesNf,
+        Self::Ssi,
+    ];
+}
+
+impl std::fmt::Display for NonIcDissem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.portion_str())
+    }
 }
 
 // ===========================================================================
@@ -560,11 +977,12 @@ mod tests {
             NatoClassification::NatoRestricted,
             NatoClassification::NatoConfidential,
             NatoClassification::NatoConfidentialAtomal,
-            NatoClassification::NatoConfidentialBohemia,
             NatoClassification::NatoSecret,
-            NatoClassification::NatoSecretBalk,
+            NatoClassification::NatoSecretAtomal,
             NatoClassification::CosmicTopSecret,
             NatoClassification::CosmicTopSecretAtomal,
+            NatoClassification::CosmicTopSecretBohemia,
+            NatoClassification::CosmicTopSecretBalk,
         ] {
             assert!(!n.banner_str().is_empty());
             assert!(!n.portion_str().is_empty());

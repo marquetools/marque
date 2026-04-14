@@ -674,12 +674,8 @@ pub struct MigrationEntry {
 /// All entries have confidence >= 0.95 per FR-004a.
 pub static MIGRATIONS: &[MigrationEntry] = &[
     // Dissemination control deprecations
-    MigrationEntry {
-        deprecated: "LIMDIS",
-        replacement: "RELIDO",
-        confidence: 0.97,
-        reference: "CAPCO-2019-§3.4",
-    },
+    // Note: LIMDIS is NOT deprecated — it is a current non-IC dissem control
+    // (CAPCO Register §9). A prior entry mapping LIMDIS→RELIDO was incorrect.
     MigrationEntry {
         deprecated: "FOUO",
         replacement: "CUI",

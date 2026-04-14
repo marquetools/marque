@@ -206,6 +206,16 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
         tokens.insert(*s);
     }
 
+    // Non-IC dissem controls (CAPCO Register §9)
+    for s in &[
+        "LIMDIS", "DS", "EXDIS", "XD", "NODIS", "ND",
+        "SBU", "SBU NOFORN", "SBU-NF",
+        "LES", "LES NOFORN", "LES-NF",
+        "SSI",
+    ] {
+        tokens.insert(*s);
+    }
+
     // REL TO, trigraphs, and structural elements
     for s in &[
         "REL TO", "USA", "GBR", "CAN", "AUS", "NZL", "FVEY", "//", "/",
