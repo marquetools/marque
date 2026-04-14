@@ -398,8 +398,9 @@ pub fn generate_cab_native(
         // use the current year as a conservative base (the user should
         // supply a known origination date via a future API parameter when
         // precision matters).
+        // Format as YYYYMMDD (December 31, conventional end-of-year date).
         let base_year = current_year();
-        format!("{}", base_year + 25)
+        format!("{}1231", base_year + 25)
     };
 
     Ok(format!(
@@ -407,10 +408,14 @@ pub fn generate_cab_native(
     ))
 }
 
+/// Seconds in a Julian year (365.25 × 24 × 3600), used to approximate the
+/// current calendar year from a UNIX timestamp.
+const SECONDS_PER_JULIAN_YEAR: u64 = 31_557_600;
+
 /// Returns the current calendar year, usable in both native and WASM contexts.
 ///
 /// Uses `std::time::SystemTime` (available since Rust 1.85 in `wasm32-unknown-unknown`).
-/// Falls back to 2025 in the unlikely event the system clock is unavailable.
+/// Falls back gracefully if the system clock is unavailable.
 fn current_year() -> u32 {
     use std::time::{SystemTime, UNIX_EPOCH};
     // Approximate: 1970 + elapsed_seconds / seconds_per_year (Julian year ≈ 365.25 days)
@@ -418,7 +423,7 @@ fn current_year() -> u32 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    1970 + (secs / 31_557_600) as u32
+    1970 + (secs / SECONDS_PER_JULIAN_YEAR) as u32
 }
 
 /// Generate a Classification Authority Block (CAB) text block.

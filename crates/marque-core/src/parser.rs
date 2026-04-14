@@ -461,15 +461,18 @@ impl<'t> Parser<'t> {
                 // must share the same category for `/` to be a valid intra-block
                 // separator. Mixed categories (e.g., SCI + dissem) mean the `/`
                 // is a stray single-slash separator that should have been `//`.
-                let parsed_kinds: Vec<SubKind> = results
+                let first_parsed_kind = results
                     .iter()
-                    .filter(|r| r.kind != SubKind::Unknown)
-                    .map(|r| r.kind)
-                    .collect();
-                let all_same_category = !parsed_kinds.is_empty()
-                    && parsed_kinds.windows(2).all(|w| w[0] == w[1]);
+                    .find(|r| r.kind != SubKind::Unknown)
+                    .map(|r| r.kind);
+                let all_same_category = first_parsed_kind.is_some_and(|first| {
+                    results
+                        .iter()
+                        .filter(|r| r.kind != SubKind::Unknown)
+                        .all(|r| r.kind == first)
+                });
 
-                if !parsed_kinds.is_empty() && !all_same_category {
+                if first_parsed_kind.is_some() && !all_same_category {
                     // Mixed categories: the `/` is a stray separator.
                     // Emit the whole block as Unknown so E004 can detect it.
                     token_spans.push(TokenSpan {

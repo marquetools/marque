@@ -454,20 +454,20 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
 
     let mut blocks: Vec<String> = Vec::with_capacity(8);
     blocks.push(classification.join(" "));
-    for s in sci {
-        blocks.push(s.to_owned());
+    if !sci.is_empty() {
+        blocks.push(sci.join("/"));
     }
-    for s in sar {
-        blocks.push(s.to_owned());
+    if !sar.is_empty() {
+        blocks.push(sar.join("/"));
     }
-    for d in dissem {
-        blocks.push(d.to_owned());
+    if !dissem.is_empty() {
+        blocks.push(dissem.join("/"));
     }
     if !rel_to.is_empty() {
         blocks.push(format!("REL TO {}", rel_to.join(", ")));
     }
-    for n in non_ic {
-        blocks.push(n.to_owned());
+    if !non_ic.is_empty() {
+        blocks.push(non_ic.join("/"));
     }
 
     let joined = blocks.join("//");
