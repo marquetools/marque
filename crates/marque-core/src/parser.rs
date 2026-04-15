@@ -544,8 +544,8 @@ impl<'t> Parser<'t> {
         attrs.sci_controls = sci.into_boxed_slice();
         // `attrs.sar_markings` is populated inline by the SAR branch above
         // when the first SAR category block is encountered; otherwise it
-        // defaults to `None` from `IsmAttributes::default()`.
-        let _ = sar_captured; // silence unused if no SAR block was found
+        // defaults to `None` from `IsmAttributes::default()`. `sar_captured`
+        // is read in that branch to gate duplicate-block detection.
         attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.non_ic_dissem = non_ic.into_boxed_slice();
@@ -964,34 +964,12 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
         }
         let program_base = base + chunk_offset;
 
-        match indicator {
-            SarIndicator::Abbrev => {
-                if let Some(program) =
-                    parse_sar_abbrev_program(prog_chunk, program_base, &mut spans)
-                {
-                    programs.push(program);
-                } else {
-                    return None;
-                }
-            }
-            SarIndicator::Full => {
-                // Full form: the entire chunk is the program identifier
-                // (spaces are allowed). Grammar per spec: PROG_ID := [A-Z ]+.
-                let ident = prog_chunk;
-                if ident.is_empty()
-                    || !ident
-                        .bytes()
-                        .all(|b| b == b' ' || b.is_ascii_uppercase())
-                {
-                    return None;
-                }
-                spans.push(TokenSpan {
-                    kind: TokenKind::SarProgram,
-                    span: Span::new(program_base, program_base + ident.len()),
-                    text: ident.into(),
-                });
-                programs.push(SarProgram::new(ident.into(), Box::new([])));
-            }
+        if let Some(program) =
+            parse_sar_program(prog_chunk, program_base, indicator, &mut spans)
+        {
+            programs.push(program);
+        } else {
+            return None;
         }
         chunk_offset += prog_chunk.len();
     }
@@ -1006,32 +984,31 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
     ))
 }
 
-/// Parse a single `PROGRAM` production for the abbreviated (`SAR-`) form.
+/// Parse a single `PROGRAM` production.
 ///
 /// `chunk` is everything between adjacent `/` separators (or between the
 /// indicator and the next `/`, or the tail of the block). `base` is the
-/// absolute offset of `chunk[0]` in the source buffer.
+/// absolute offset of `chunk[0]` in the source buffer. `indicator` drives
+/// the shape of the program identifier only; compartment and
+/// sub-compartment parsing is identical for both indicator forms.
 ///
-/// Grammar: `PROG_ID ( "-" COMPARTMENT )?`, where `PROG_ID` is 2–3
-/// alphanumeric characters and `COMPARTMENT` is `COMP_ID (" " SUB_COMP)*`.
+/// Grammar: `PROG_ID ( "-" COMPARTMENT )? ( "-" COMPARTMENT )* `, where
+/// `COMPARTMENT` is `COMP_ID (" " SUB_COMP)*`. `PROG_ID` shape is:
 ///
-/// The first `-` inside `chunk` (if any) separates the program identifier
-/// from its compartment list. Subsequent compartments are space-separated
-/// only when attached as sub-compartments of the preceding compartment;
-/// additional compartments within the same program are separated by
-/// another `-` (e.g., `BP-J12-K15` — two compartments, no sub-compartments)
-/// per §H.5 Figure 2.
+/// - **Abbrev** (`SAR-`): 2–3 alphanumeric characters.
+/// - **Full** (`SPECIAL ACCESS REQUIRED-`): one or more uppercase ASCII
+///   letters, optionally with spaces. Hyphens are NOT permitted inside
+///   the program identifier for the full form — the first `-` always
+///   marks the program/compartment boundary (CAPCO-2016 §H.5 p100).
 ///
-/// Wait — review: actually the canonical example is
-/// `SAR-BP-J12 J54-K15/CD-...`, which the spec decomposes as two
-/// compartments of BP: `J12` (with sub-compartment `J54`) and `K15`. The
-/// space separates J12 from its sub-compartment J54, and the hyphen
-/// between `J54` and `K15` starts a new compartment of the same program.
-/// So within one program the sequence alternates:
-///   PROG `-` COMP (` ` SUB)* (`-` COMP (` ` SUB)*)*
-fn parse_sar_abbrev_program(
+/// Canonical example per §H.5 p100: `SAR-BP-J12 J54-K15/CD-...` decomposes
+/// BP as two compartments `J12` (with sub-compartment `J54`) and `K15`.
+/// Within one program the sequence alternates:
+///   `PROG "-" COMP (" " SUB)* ( "-" COMP (" " SUB)* )*`
+fn parse_sar_program(
     chunk: &str,
     base: usize,
+    indicator: SarIndicator,
     spans: &mut Vec<TokenSpan>,
 ) -> Option<SarProgram> {
     if chunk.is_empty() {
@@ -1046,13 +1023,25 @@ fn parse_sar_abbrev_program(
         return None;
     }
 
-    // Program identifier: first segment.
+    // Program identifier: first segment. Shape check depends on indicator.
     let (prog_off, prog_id) = segments.remove(0);
     if prog_id.is_empty() {
         return None;
     }
-    // Shape check: 2–3 alphanumeric characters.
-    if !(2..=3).contains(&prog_id.len()) || !prog_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+    let prog_shape_ok = match indicator {
+        // 2–3 alphanumeric chars.
+        SarIndicator::Abbrev => {
+            (2..=3).contains(&prog_id.len())
+                && prog_id.bytes().all(|b| b.is_ascii_alphanumeric())
+        }
+        // Uppercase ASCII letters with optional spaces; no digits, no
+        // hyphens. Must contain at least one non-space byte.
+        SarIndicator::Full => {
+            prog_id.bytes().all(|b| b == b' ' || b.is_ascii_uppercase())
+                && prog_id.bytes().any(|b| b != b' ')
+        }
+    };
+    if !prog_shape_ok {
         return None;
     }
     spans.push(TokenSpan {
@@ -1981,6 +1970,34 @@ mod sar_parse_tests {
             .unwrap();
         assert_eq!(&*indicator.text, "SPECIAL ACCESS REQUIRED-");
         assert_eq!(indicator.span, Span::new(0, 24));
+    }
+
+    #[test]
+    fn full_form_with_compartment_and_sub() {
+        // The grammar permits compartments under a full-form program
+        // identically to the abbreviated form. Program nickname may
+        // contain spaces; compartments and sub-compartments are still
+        // alphanumeric without spaces.
+        let (marking, _spans) =
+            parse_sar_category("SPECIAL ACCESS REQUIRED-BUTTER POPCORN-J12 J54", 0)
+                .expect("grammar accepts full form with compartment");
+        assert_eq!(marking.indicator, SarIndicator::Full);
+        assert_eq!(marking.programs.len(), 1);
+        let prog = &marking.programs[0];
+        assert_eq!(&*prog.identifier, "BUTTER POPCORN");
+        assert_eq!(prog.compartments.len(), 1);
+        assert_eq!(&*prog.compartments[0].identifier, "J12");
+        assert_eq!(prog.compartments[0].sub_compartments.len(), 1);
+        assert_eq!(&*prog.compartments[0].sub_compartments[0], "J54");
+    }
+
+    #[test]
+    fn full_form_rejects_digits_or_hyphens_in_nickname() {
+        // Full-form nickname may only contain uppercase letters and
+        // spaces; digits or hyphens inside the nickname are parsed as
+        // compartment boundaries (hyphen) or as a shape violation
+        // (digits).
+        assert!(parse_sar_category("SPECIAL ACCESS REQUIRED-123", 0).is_none());
     }
 
     #[test]

@@ -2856,7 +2856,9 @@ impl Rule for SarIndicatorRepeatRule {
             return vec![];
         }
         let mut diagnostics = Vec::new();
-        for tok in attrs.token_spans.iter() {
+        // Walk token_spans by index so we can look back for the
+        // Separator token that introduced the repeated SAR block.
+        for (idx, tok) in attrs.token_spans.iter().enumerate() {
             if tok.kind != TokenKind::Unknown {
                 continue;
             }
@@ -2871,13 +2873,29 @@ impl Rule for SarIndicatorRepeatRule {
             if stripped.is_empty() {
                 continue;
             }
-            // Extend the span backward by the preceding `//` separator
-            // so the fix can collapse `//SAR-CD` → `/CD`.
-            let orig_start = tok.span.start;
-            let fix_start = orig_start.saturating_sub(2);
-            let fix_span = Span::new(fix_start, tok.span.end);
+            // Find the closest preceding Separator token. The parser
+            // trims leading whitespace per block, so the token's own
+            // span does not necessarily sit flush against the `//`;
+            // anchoring on the actual Separator span keeps the fix
+            // correct even when the source has whitespace after the
+            // separator (e.g., `SECRET// SAR-CD`).
+            let Some(sep_tok) = attrs.token_spans[..idx]
+                .iter()
+                .rev()
+                .find(|t| t.kind == TokenKind::Separator)
+            else {
+                // No preceding separator — shouldn't happen for a valid
+                // SAR-prefixed Unknown token, but skip defensively.
+                continue;
+            };
+            // Collapse from the separator start through the repeated
+            // block's end. `original` reproduces what the engine will
+            // see in the source at that span so splicing remains safe.
+            let fix_span = Span::new(sep_tok.span.start, tok.span.end);
             let replacement = format!("/{stripped}");
-            let original = format!("//{text}");
+            let sep_text = sep_tok.text.as_ref();
+            let gap = tok.span.start.saturating_sub(sep_tok.span.end);
+            let original = format!("{sep_text}{spaces}{text}", spaces = " ".repeat(gap));
 
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                 rule: self.id(),
