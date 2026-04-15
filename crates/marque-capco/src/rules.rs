@@ -943,17 +943,24 @@ impl Rule for UnknownTokenRule {
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::Unknown)
-            // Skip entries that E006/E007 will pick up. Two paths to check,
-            // in lockstep with E007's emit logic:
+            // Skip entries that E006/E007/E030 will pick up. Three paths:
             //   1. Migration-table hit (covers LIMDIS/FOUO for E006 and
             //      25X1-/50X1- for E007).
             //   2. Pattern-matched X-shorthand with a trailing `-` for
             //      forms not in the seed table (25X2-, 25X9-, etc.).
-            // An Unknown that hits either path is not "unrecognized" — it
-            // is a deprecated form that another rule will surface.
+            //   3. A second/subsequent SAR category block that the parser
+            //      tagged Unknown precisely so E030 can flag the repeated
+            //      indicator (§H.5 p100: the SAR indicator must not be
+            //      repeated). E008 steps aside; E030 owns this shape.
+            // An Unknown that hits any path is not "unrecognized" — it
+            // is a deprecated or structurally-owned form another rule
+            // will surface.
             .filter(|t| {
                 let text = t.text.as_ref();
-                find_migration(text).is_none() && !looks_like_deprecated_x_shorthand(text)
+                find_migration(text).is_none()
+                    && !looks_like_deprecated_x_shorthand(text)
+                    && !text.starts_with("SAR-")
+                    && !text.starts_with("SPECIAL ACCESS REQUIRED-")
             })
             .map(|t| {
                 Diagnostic::new(
