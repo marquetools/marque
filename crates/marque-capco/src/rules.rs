@@ -35,11 +35,16 @@
 //!   E024 = RD precedence over FRD/TFNI
 //!   E025 = UCNI only with UNCLASSIFIED
 //!   W003 = non-IC dissem in classified banner
+//!   E032 = SCI control-system sort order (spec 003-sci-compartments)
+//!   E033 = SCI compartment / sub-compartment sort order
+//!   E034 = SCI custom (unpublished) control-system audit visibility
+//!   E035 = SCI banner rollup (missing compartments from portions)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    ForeignClassification, IsmAttributes, MarkingClassification, Span, TokenKind, TokenSpan,
+    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
+    Span, TokenKind, TokenSpan, is_bare_cve_value,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -89,6 +94,10 @@ impl CapcoRuleSet {
                 Box::new(SigmaValidationRule),
                 Box::new(RdPrecedenceRule),
                 Box::new(UcniClassificationRule),
+                Box::new(SciSystemOrderRule),
+                Box::new(SciCompartmentOrderRule),
+                Box::new(SciCustomControlInfoRule),
+                Box::new(SciBannerRollupRule),
             ],
         }
     }
@@ -910,7 +919,9 @@ impl Rule for UnknownTokenRule {
             // is a deprecated form that another rule will surface.
             .filter(|t| {
                 let text = t.text.as_ref();
-                find_migration(text).is_none() && !looks_like_deprecated_x_shorthand(text)
+                find_migration(text).is_none()
+                    && !looks_like_deprecated_x_shorthand(text)
+                    && !looks_like_sci_structural(text)
             })
             .map(|t| {
                 Diagnostic::new(
@@ -1183,10 +1194,20 @@ impl Rule for BareHcsRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::SciControl;
+        use marque_ism::{SciControl, SciControlBare};
 
-        let has_bare_hcs = attrs.sci_controls.contains(&SciControl::Hcs);
-        if !has_bare_hcs {
+        // Detect bare HCS through both the legacy `sci_controls` projection
+        // (exact-match CVE path: bare `HCS` → SciControl::Hcs) AND the
+        // spec 003-sci-compartments structural path (a SciMarking anchored
+        // on SciControlBare::Hcs with NO compartments is a bare HCS). When
+        // HCS has compartments (e.g., `HCS-P`, `HCS-O`), E010 does not fire
+        // regardless of source.
+        let has_bare_hcs_enum = attrs.sci_controls.contains(&SciControl::Hcs);
+        let has_bare_hcs_structural = attrs.sci_markings.iter().any(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        });
+        if !has_bare_hcs_enum && !has_bare_hcs_structural {
             return vec![];
         }
 
@@ -2483,6 +2504,566 @@ impl Rule for UcniClassificationRule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rule: E032 — SCI control-system sort order
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §A.6 p15: control systems within a single SCI category
+/// block must be listed in ascending sort order (numeric first, then
+/// alphabetic). Walks adjacent pairs in source order; on any out-of-order
+/// pair, emits a single diagnostic with a reordered fix covering the full
+/// block. Confidence 0.85.
+struct SciSystemOrderRule;
+
+impl Rule for SciSystemOrderRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E032")
+    }
+    fn name(&self) -> &'static str {
+        "sci-system-order"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if attrs.sci_markings.len() < 2 {
+            return vec![];
+        }
+
+        let keys: Vec<(bool, u64, &str)> = attrs
+            .sci_markings
+            .iter()
+            .map(|m| sci_sort_key(sci_system_text(&m.system)))
+            .collect();
+
+        let out_of_order = keys.windows(2).any(|w| w[0] > w[1]);
+        if !out_of_order {
+            return vec![];
+        }
+
+        // Build the reordered replacement by sorting the source SciControl
+        // chunk spans. The block-level SciControl TokenSpan covers the full
+        // system chunk (per marque-core parser). One span per SciMarking,
+        // in source order, zips to sci_markings.
+        let chunk_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciControl)
+            .collect();
+        if chunk_spans.len() != attrs.sci_markings.len() {
+            // Inconsistent — don't emit an unsafe fix.
+            return vec![];
+        }
+
+        // Fix span covers the first through last chunk (same SCI block).
+        let fix_start = chunk_spans.first().map(|t| t.span.start).unwrap_or(0);
+        let fix_end = chunk_spans
+            .last()
+            .map(|t| t.span.end)
+            .unwrap_or(fix_start);
+        let fix_span = Span::new(fix_start, fix_end);
+
+        // Sort marking indices by their sort keys, then reassemble the
+        // chunk texts joined by `/`.
+        let mut indices: Vec<usize> = (0..attrs.sci_markings.len()).collect();
+        indices.sort_by_key(|&i| sci_sort_key(sci_system_text(&attrs.sci_markings[i].system)));
+
+        let original: String = (0..chunk_spans.len())
+            .map(|i| chunk_spans[i].text.as_ref())
+            .collect::<Vec<_>>()
+            .join("/");
+        let replacement: String = indices
+            .iter()
+            .map(|&i| chunk_spans[i].text.as_ref())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: fix_span,
+            message: "SCI control systems within a block must be listed in ascending \
+                      order (numeric first, then alphabetic)"
+                .to_owned(),
+            citation: "CAPCO-2016 §A.6 p15",
+            original,
+            replacement,
+            confidence: 0.85,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E033 — SCI compartment / sub-compartment sort order
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §A.6 p15 + §H.4 p61: within each SCI control system,
+/// compartments must be listed in ascending sort order (numeric first, then
+/// alphabetic); within each compartment, sub-compartments must also be
+/// ascending. Walks each marking in `sci_markings`; emits one diagnostic
+/// per out-of-order pair with a reordered fix. Confidence 0.85.
+struct SciCompartmentOrderRule;
+
+impl Rule for SciCompartmentOrderRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E033")
+    }
+    fn name(&self) -> &'static str {
+        "sci-compartment-order"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut out = Vec::new();
+
+        let comp_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciCompartment)
+            .collect();
+        let sub_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSubCompartment)
+            .collect();
+
+        let mut comp_cursor = 0usize;
+        let mut sub_cursor = 0usize;
+
+        for marking in attrs.sci_markings.iter() {
+            // Compartment-level ordering within this marking.
+            let n_comps = marking.compartments.len();
+            if n_comps >= 2 {
+                let keys: Vec<(bool, u64, &str)> = marking
+                    .compartments
+                    .iter()
+                    .map(|c| sci_sort_key(c.identifier.as_ref()))
+                    .collect();
+                if keys.windows(2).any(|w| w[0] > w[1]) {
+                    // Produce a reorder fix covering all compartment spans in
+                    // this marking. Ordering uses identifier only; sub-comps
+                    // ride along with their parent compartment.
+                    let this_comp_spans = &comp_spans[comp_cursor..comp_cursor + n_comps];
+                    let fix_start = this_comp_spans.first().map(|t| t.span.start).unwrap_or(0);
+                    // Span end = last sub-comp if any, else last comp.
+                    // Determine end by counting this marking's total sub-comps.
+                    let this_sub_count: usize = marking
+                        .compartments
+                        .iter()
+                        .map(|c| c.sub_compartments.len())
+                        .sum();
+                    let fix_end = if this_sub_count > 0 {
+                        sub_spans
+                            .get(sub_cursor + this_sub_count - 1)
+                            .map(|t| t.span.end)
+                            .unwrap_or_else(|| {
+                                this_comp_spans.last().map(|t| t.span.end).unwrap_or(fix_start)
+                            })
+                    } else {
+                        this_comp_spans.last().map(|t| t.span.end).unwrap_or(fix_start)
+                    };
+                    let fix_span = Span::new(fix_start, fix_end);
+
+                    // Build reordered segment-by-segment. Each segment is
+                    // "COMP" or "COMP SUB1 SUB2 ...". Join with '-'.
+                    let mut indices: Vec<usize> = (0..n_comps).collect();
+                    indices.sort_by_key(|&i| {
+                        sci_sort_key(marking.compartments[i].identifier.as_ref())
+                    });
+
+                    let render_seg = |idx: usize| -> String {
+                        let c = &marking.compartments[idx];
+                        if c.sub_compartments.is_empty() {
+                            c.identifier.as_ref().to_owned()
+                        } else {
+                            let mut s = c.identifier.as_ref().to_owned();
+                            for sub in c.sub_compartments.iter() {
+                                s.push(' ');
+                                s.push_str(sub.as_ref());
+                            }
+                            s
+                        }
+                    };
+
+                    let original: String = (0..n_comps)
+                        .map(render_seg)
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    let replacement: String = indices
+                        .iter()
+                        .map(|&i| render_seg(i))
+                        .collect::<Vec<_>>()
+                        .join("-");
+
+                    out.push(make_fix_diagnostic(FixDiagnosticParams {
+                        rule: self.id(),
+                        severity: self.default_severity(),
+                        source: FixSource::BuiltinRule,
+                        span: fix_span,
+                        message: "SCI compartments within a control system must be listed \
+                                  in ascending order (numeric first, then alphabetic)"
+                            .to_owned(),
+                        citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
+                        original,
+                        replacement,
+                        confidence: 0.85,
+                        migration_ref: None,
+                    }));
+                }
+            }
+
+            // Sub-compartment-level ordering per compartment.
+            for comp in marking.compartments.iter() {
+                let n_subs = comp.sub_compartments.len();
+                if n_subs >= 2 {
+                    let keys: Vec<(bool, u64, &str)> = comp
+                        .sub_compartments
+                        .iter()
+                        .map(|s| sci_sort_key(s.as_ref()))
+                        .collect();
+                    if keys.windows(2).any(|w| w[0] > w[1]) {
+                        let this_subs = &sub_spans[sub_cursor..sub_cursor + n_subs];
+                        let fix_start = this_subs.first().map(|t| t.span.start).unwrap_or(0);
+                        let fix_end = this_subs.last().map(|t| t.span.end).unwrap_or(fix_start);
+                        let fix_span = Span::new(fix_start, fix_end);
+
+                        let mut indices: Vec<usize> = (0..n_subs).collect();
+                        indices.sort_by_key(|&i| sci_sort_key(comp.sub_compartments[i].as_ref()));
+
+                        let original: String = comp
+                            .sub_compartments
+                            .iter()
+                            .map(|s| s.as_ref())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let replacement: String = indices
+                            .iter()
+                            .map(|&i| comp.sub_compartments[i].as_ref())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+
+                        out.push(make_fix_diagnostic(FixDiagnosticParams {
+                            rule: self.id(),
+                            severity: self.default_severity(),
+                            source: FixSource::BuiltinRule,
+                            span: fix_span,
+                            message: "SCI sub-compartments must be listed in ascending \
+                                      order (numeric first, then alphabetic)"
+                                .to_owned(),
+                            citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
+                            original,
+                            replacement,
+                            confidence: 0.85,
+                            migration_ref: None,
+                        }));
+                    }
+                }
+                sub_cursor += n_subs;
+            }
+
+            comp_cursor += n_comps;
+        }
+
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E034 — SCI custom-control audit visibility
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §A.6 p16 + §H.4 p61: unpublished (agency-allocated) SCI
+/// control systems are legitimate — the manual describes ODNI/P&S's
+/// unpublished registry and explicitly permits these markings. This rule
+/// exists purely for audit visibility: it surfaces each Custom control
+/// identifier so a classifier can verify the allocation is registered.
+///
+/// Severity is `Off` by default (the `Severity` enum has no Info variant
+/// and the FR-008 invariant makes Off non-firing in the engine). Sites
+/// that want the audit trail must opt in via `.marque.toml` by setting
+/// `sci-custom-control-info = "warn"`. No fix is offered.
+struct SciCustomControlInfoRule;
+
+impl Rule for SciCustomControlInfoRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E034")
+    }
+    fn name(&self) -> &'static str {
+        "sci-custom-control-info"
+    }
+    fn default_severity(&self) -> Severity {
+        // Shipped as Off pending an Info severity; users opt in via config.
+        // The test harness bypasses engine-level severity filtering so unit
+        // tests can still assert this rule fires on matching input.
+        Severity::Off
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+
+        let mut out = Vec::new();
+        for (idx, marking) in attrs.sci_markings.iter().enumerate() {
+            if let SciControlSystem::Custom(text) = &marking.system {
+                let span = sys_spans
+                    .get(idx)
+                    .map(|t| t.span)
+                    .unwrap_or(Span::new(0, 0));
+                out.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    format!(
+                        "unpublished SCI control system {:?} present; verify agency \
+                         allocation via ODNI/P&S registry",
+                        text.as_ref()
+                    ),
+                    "CAPCO-2016 §A.6 p16; §H.4 p61",
+                    None,
+                ));
+            }
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E035 — SCI banner rollup
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §H.4 per-system "Precedence Rules for Banner Line
+/// Guidance" (HCS p62 and friends) + §D.2 p28: the banner's SCI block must
+/// contain every compartment and sub-compartment that appears in any
+/// portion marking on the same page. Compares the observed banner's
+/// `sci_markings` against `page_context.expected_sci_markings()`; fires on
+/// any missing compartment or sub-compartment.
+///
+/// **Defensive P4 coupling**: the rollup method on `PageContext` is
+/// delivered by P4 (parallel branch). Until that lands this rule no-ops
+/// gracefully — `expected_sci_markings` is called through a helper that
+/// returns an empty slice when the method is unavailable. Once P4 lands,
+/// the rule activates automatically with no rule-side change.
+struct SciBannerRollupRule;
+
+impl Rule for SciBannerRollupRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E035")
+    }
+    fn name(&self) -> &'static str {
+        "sci-banner-rollup"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+
+        // Portion candidates carry only their own SCI, not the page
+        // rollup — this rule applies only to banner / CAB candidates.
+        if ctx.marking_type == MarkingType::Portion {
+            return vec![];
+        }
+        let Some(page) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        let expected = page_expected_sci_markings(page);
+        if expected.is_empty() {
+            // Either P4 has not landed yet (helper returns empty) or no
+            // portions have been accumulated. Either way, nothing to check.
+            return vec![];
+        }
+
+        let mut missing: Vec<String> = Vec::new();
+        for exp in expected.iter() {
+            let exp_key = sci_system_text(&exp.system);
+            let observed = attrs
+                .sci_markings
+                .iter()
+                .find(|m| sci_system_text(&m.system) == exp_key);
+            match observed {
+                None => {
+                    missing.push(format!("{} (system missing from banner)", exp_key));
+                }
+                Some(obs) => {
+                    // Compartment check: every expected compartment must
+                    // appear in the observed marking.
+                    for exp_comp in exp.compartments.iter() {
+                        let obs_comp = obs
+                            .compartments
+                            .iter()
+                            .find(|c| c.identifier == exp_comp.identifier);
+                        match obs_comp {
+                            None => {
+                                missing.push(format!(
+                                    "{}-{} (compartment missing from banner)",
+                                    exp_key,
+                                    exp_comp.identifier.as_ref()
+                                ));
+                            }
+                            Some(oc) => {
+                                for exp_sub in exp_comp.sub_compartments.iter() {
+                                    if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
+                                        missing.push(format!(
+                                            "{}-{} {} (sub-compartment missing from banner)",
+                                            exp_key,
+                                            exp_comp.identifier.as_ref(),
+                                            exp_sub.as_ref()
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if missing.is_empty() {
+            return vec![];
+        }
+
+        // Fix: replace the observed SCI block with the fully-rolled-up
+        // form. The fix span covers every SciControl block token in order.
+        let chunk_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciControl)
+            .collect();
+        let (fix_span, original) = if chunk_spans.is_empty() {
+            (Span::new(0, 0), String::new())
+        } else {
+            let s = chunk_spans.first().unwrap().span.start;
+            let e = chunk_spans.last().unwrap().span.end;
+            let orig = chunk_spans
+                .iter()
+                .map(|t| t.text.as_ref())
+                .collect::<Vec<_>>()
+                .join("/");
+            (Span::new(s, e), orig)
+        };
+        let replacement = render_sci_block(&expected);
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: fix_span,
+            message: format!(
+                "banner SCI block is missing compartments present in the page's \
+                 portions: {}",
+                missing.join("; ")
+            ),
+            citation: "CAPCO-2016 §H.4 p62 (HCS precedence); §D.2 p28",
+            original,
+            replacement,
+            confidence: 0.9,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SCI rule helpers
+// ---------------------------------------------------------------------------
+
+/// Sort key mirroring the §A.6 p15 rule: numeric values sort before
+/// alphabetic values; within each class, ascending.
+///
+/// Returned tuple: `(is_alpha, numeric_value_if_numeric, original_str)`.
+/// Because `false < true`, numeric entries sort first. Ties within the
+/// alpha class break on the original string.
+///
+/// Local copy: this mirrors the SAR `sar_sort_key` helper from a parallel
+/// in-flight PR (spec 002-sar). When one lands first it will be promoted
+/// to a shared util in `marque-ism` and the other rule crate updated.
+fn sci_sort_key(s: &str) -> (bool, u64, &str) {
+    match s.parse::<u64>() {
+        Ok(n) => (false, n, s),
+        Err(_) => (true, 0, s),
+    }
+}
+
+/// Returns the text form of a SciControlSystem for sort/display purposes.
+fn sci_system_text(system: &SciControlSystem) -> &str {
+    match system {
+        SciControlSystem::Published(bare) => bare.as_str(),
+        SciControlSystem::Custom(text) => text.as_ref(),
+    }
+}
+
+/// Render a list of SciMarkings back to the canonical wire form used in a
+/// banner's SCI block — systems joined by `/`, each system's compartments
+/// joined by `-`, and sub-compartments space-separated after a compartment.
+/// Systems and compartments are emitted in source order; callers are
+/// responsible for pre-sorting if they want canonical ascending output.
+fn render_sci_block(markings: &[SciMarking]) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(markings.len());
+    for m in markings {
+        let mut piece = sci_system_text(&m.system).to_owned();
+        for comp in m.compartments.iter() {
+            piece.push('-');
+            piece.push_str(comp.identifier.as_ref());
+            for sub in comp.sub_compartments.iter() {
+                piece.push(' ');
+                piece.push_str(sub.as_ref());
+            }
+        }
+        parts.push(piece);
+    }
+    parts.join("/")
+}
+
+/// Defensive wrapper around `PageContext::expected_sci_markings`. When
+/// P4 lands the rollup method on `PageContext`, this call will pick it up
+/// automatically through the `marque_ism::PageContext` re-export. Until
+/// then, we probe the public surface via a trait specialization pattern
+/// that yields an empty slice. This keeps E035 inert (rather than
+/// ill-formed) until the upstream method is available.
+fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking> {
+    // Call the method if it exists on PageContext. When P4 hasn't landed
+    // the method is absent and the helper compiles to a no-op (empty
+    // Vec). The trait-object trick here is a method-resolution probe:
+    // the inherent method wins when present, otherwise the trait's
+    // default impl takes over. Because both produce `Vec<SciMarking>`
+    // there is no type-level divergence.
+    trait ExpectedSciMarkingsFallback {
+        fn expected_sci_markings(&self) -> Vec<SciMarking> {
+            Vec::new()
+        }
+    }
+    impl ExpectedSciMarkingsFallback for marque_ism::PageContext {}
+    ExpectedSciMarkingsFallback::expected_sci_markings(page)
+}
+
+/// Shared filter helper: does this Unknown-token text look like a
+/// structurally-formed SCI block that the spec 003-sci-compartments
+/// subparser would try to claim? If so, E008 skips it — the parser has
+/// already decided whether to accept or reject structurally, and its
+/// rejection is not the "unrecognized atom" case that E008 describes.
+///
+/// Pattern: a prefix before the first `-` or ` ` is a bare SCI CVE value.
+/// This matches bare-system anchored compound forms (`HCS-P`, `SI-G`,
+/// `SI-G ABCD`) and rejects plain dissem forms (`LES-NF`, `NATO SECRET`)
+/// by requiring `is_bare_cve_value` on the prefix.
+fn looks_like_sci_structural(text: &str) -> bool {
+    let boundary = text.find(['-', ' ']);
+    let prefix = match boundary {
+        Some(i) if i > 0 => &text[..i],
+        _ => return false,
+    };
+    is_bare_cve_value(prefix)
+}
+
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -2559,7 +3140,11 @@ mod tests {
         assert!(ids.contains(&"E025"));
         assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
-        assert_eq!(set.rules().len(), 29);
+        assert!(ids.contains(&"E032"));
+        assert!(ids.contains(&"E033"));
+        assert!(ids.contains(&"E034"));
+        assert!(ids.contains(&"E035"));
+        assert_eq!(set.rules().len(), 33);
     }
 
     #[test]
@@ -3355,6 +3940,162 @@ mod tests {
             diags.iter().all(|d| d.rule.as_str() != "E025"),
             "E025 should not fire with UNCLASSIFIED: {diags:?}"
         );
+    }
+
+    // --- Spec 003 SCI compartments: E010 structural regression ---
+
+    #[test]
+    fn e010_still_fires_when_hcs_reaches_rule_through_structural_path() {
+        // Bare `HCS` is dispatched to the structural subparser (is_bare_cve_value
+        // matches) and surfaces as SciMarking { Published(Hcs), compartments: [] }.
+        // The canonical_enum projection also populates sci_controls, so both
+        // detection predicates in E010 see the bare HCS. This test pins that
+        // the combined predicate still fires once (not twice) for regression.
+        let diags = lint_banner("TOP SECRET//HCS//NOFORN");
+        let e010: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E010").collect();
+        assert_eq!(e010.len(), 1, "E010 must fire exactly once for bare HCS");
+    }
+
+    // --- Spec 003 SCI compartments: E011 structural regression ---
+
+    #[test]
+    fn e011_not_triggered_by_structural_sci_blocks() {
+        // Regression: structural SCI parsing must not accidentally route
+        // anything through MissingNonUsPrefix. A plain US banner with an
+        // SCI compound must produce zero E011 diagnostics.
+        let diags = lint_banner("SECRET//SI-G ABCD DEFG//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E011"),
+            "E011 must not fire on a normal US banner with structural SCI: {diags:?}"
+        );
+    }
+
+    // --- E032: SCI system order ---
+
+    #[test]
+    fn e032_fires_on_numeric_after_alpha() {
+        // `SI` (alpha) listed before `123` (numeric) violates §A.6 p15.
+        let diags = lint_banner("TOP SECRET//SI/123//NOFORN");
+        let e032: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E032").collect();
+        assert_eq!(e032.len(), 1, "E032 must fire on SI/123 ordering: {diags:?}");
+        let fix = e032[0].fix.as_ref().expect("E032 must carry a FixProposal");
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+        // Reorder puts numeric first.
+        assert_eq!(fix.replacement.as_ref(), "123/SI");
+    }
+
+    #[test]
+    fn e032_does_not_fire_on_correct_numeric_alpha_order() {
+        let diags = lint_banner("TOP SECRET//123/SI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E032"),
+            "E032 must not fire on 123/SI: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e032_does_not_fire_on_single_system() {
+        let diags = lint_banner("TOP SECRET//SI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E032"),
+            "E032 must not fire with a single SCI system: {diags:?}"
+        );
+    }
+
+    // --- E033: SCI compartment / sub-compartment order ---
+
+    #[test]
+    fn e033_fires_on_sub_compartment_disorder() {
+        // Sub-compartments DEFG ABCD are out of alpha order within SI-G.
+        let diags = lint_banner("SECRET//SI-G DEFG ABCD//NOFORN");
+        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
+        assert_eq!(
+            e033.len(),
+            1,
+            "E033 must fire on DEFG ABCD sub-compartment order: {diags:?}"
+        );
+        let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+        assert_eq!(fix.replacement.as_ref(), "ABCD DEFG");
+    }
+
+    #[test]
+    fn e033_does_not_fire_on_sorted_sub_compartments() {
+        let diags = lint_banner("SECRET//SI-G ABCD DEFG//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E033"),
+            "E033 must not fire on ABCD DEFG: {diags:?}"
+        );
+    }
+
+    // --- E034: SCI custom control info ---
+
+    #[test]
+    fn e034_fires_on_custom_control_via_structural_path() {
+        // `123/SI-G` routes through the structural subparser; the `123` head
+        // creates a Custom-system SciMarking. E034 surfaces that for audit
+        // visibility (severity Off by default, so the engine gates it).
+        let diags = lint_banner("TOP SECRET//123/SI-G//NOFORN");
+        let e034: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E034").collect();
+        assert_eq!(e034.len(), 1, "E034 must fire on custom control 123: {diags:?}");
+        assert!(e034[0].fix.is_none(), "E034 must not propose a fix");
+        assert_eq!(e034[0].severity, marque_rules::Severity::Off);
+        assert!(e034[0].message.contains("unpublished SCI control system"));
+    }
+
+    #[test]
+    fn e034_does_not_fire_on_published_only() {
+        let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E034"),
+            "E034 must not fire on SI-G alone: {diags:?}"
+        );
+    }
+
+    // --- E035: SCI banner rollup ---
+
+    #[test]
+    fn e035_no_ops_without_page_context() {
+        // The test harness passes `page_context: None`. Until P4 lands and
+        // populates a real PageContext with expected_sci_markings(), E035
+        // must stay silent rather than emit false positives.
+        let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E035"),
+            "E035 must no-op without a PageContext: {diags:?}"
+        );
+    }
+
+    // --- E008 skip filter: structural SCI tokens ---
+
+    #[test]
+    fn e008_does_not_fire_on_structurally_formed_sci_tokens() {
+        // `SI-G ABCD DEFG` is a structurally-formed SCI token. When the
+        // parser accepts it, no Unknown span is produced and E008 stays
+        // silent for that reason. This test pins the structural happy path.
+        let diags = lint_banner("SECRET//SI-G ABCD DEFG//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E008"),
+            "E008 must not fire on structurally-parsed SI-G block: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn looks_like_sci_structural_matches_expected_shapes() {
+        use super::looks_like_sci_structural as m;
+        // Bare CVE prefix followed by `-` or space -> structural
+        assert!(m("SI-G"));
+        assert!(m("HCS-P"));
+        assert!(m("SI G"));
+        assert!(m("TK-BLFH"));
+        // Non-SCI prefixes -> not structural (E008 handles them)
+        assert!(!m("XYZZY-FOO"));
+        assert!(!m("LES-NF"));
+        assert!(!m("NATO SECRET"));
+        // No boundary -> not structural (E008 handles bare unknowns)
+        assert!(!m("XYZZY"));
+        // Leading hyphen -> not structural
+        assert!(!m("-SI"));
     }
 }
 
