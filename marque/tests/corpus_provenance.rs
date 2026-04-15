@@ -280,6 +280,11 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
                 if block.starts_with("REL TO") || block.starts_with("REL ") {
                     continue;
                 }
+                // Skip SAR blocks — program identifiers are agency-assigned
+                // codewords (not in any CVE enumeration) per CAPCO-2016 §H.5.
+                if block.starts_with("SAR-") || block.starts_with("SPECIAL ACCESS REQUIRED-") {
+                    continue;
+                }
                 // Skip date-like tokens (YYYYMMDD or Xn patterns)
                 if block.len() == 8 && block.chars().all(|c| c.is_ascii_digit()) {
                     continue;
