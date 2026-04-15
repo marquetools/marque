@@ -310,7 +310,8 @@ pub struct Diagnostic {
     pub span: Span,
     /// Human-readable description of the violation.
     pub message: Box<str>,
-    /// CAPCO section citation, e.g., "CAPCO-2023-§3.1".
+    /// CAPCO section citation, e.g., "CAPCO-2016 §A.6"
+    /// (refers to the CAPCO Register and Manual, 2016).
     pub citation: &'static str,
     /// Proposed fix, if the rule can generate one.
     pub fix: Option<FixProposal>,

@@ -1,11 +1,10 @@
 ---
 source: crates/marque-engine/tests/lint_pipeline.rs
-assertion_line: 203
 expression: json
 ---
 [
   {
-    "citation": "CAPCO-ISM-v2022-DEC-§3.1",
+    "citation": "CAPCO-2016 §G.1",
     "fix": null,
     "message": "unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph",
     "rule": "E008",

@@ -26,7 +26,7 @@
 //!  1 | TOP SECRET//SI//NF
 //!    |                 ^^ replace with "NOFORN"
 //!    |
-//!    = citation: CAPCO-ISM-v2022-DEC-§3.2
+//!    = citation: CAPCO-2016 §A.6
 //! ```
 //!
 //! The line-number gutter width auto-sizes to the largest line number in
@@ -444,7 +444,7 @@ mod tests {
             Severity::Fix,
             span,
             message,
-            "CAPCO-ISM-v2022-DEC-§3.2",
+            "CAPCO-2016 §A.6",
             fix,
         )
     }
@@ -492,7 +492,7 @@ mod tests {
             "NF".to_owned(),
             "NOFORN".to_owned(),
             1.0,
-            Some("CAPCO-2023-§3.2"),
+            None,
         );
         let diag = make_diagnostic(
             "E001",
@@ -522,7 +522,7 @@ mod tests {
         assert!(rendered.contains("replace with \"NOFORN\""));
         assert!(rendered.contains("(confidence 100%)"));
         // Citation footer
-        assert!(rendered.contains("= citation: CAPCO-ISM-v2022-DEC-§3.2"));
+        assert!(rendered.contains("= citation: CAPCO-2016 §A.6"));
     }
 
     #[test]
@@ -565,7 +565,7 @@ mod tests {
             Severity::Error,
             span,
             "unrecognized token",
-            "CAPCO-ISM-v2022-DEC-§3.1",
+            "CAPCO-2016 §A.6",
             None,
         );
 
@@ -616,7 +616,7 @@ mod tests {
             "NF",
             "NOFORN",
             1.0,
-            Some("CAPCO-2023-§3.2"),
+            Some("CAPCO-2016 §A.6"),
         );
         // Intentional test-only exception to the engine-only __engine_promote
         // contract: the renderer test needs a concrete AppliedFix to verify
@@ -643,7 +643,7 @@ mod tests {
         assert_eq!(v["original"], "NF");
         assert_eq!(v["replacement"], "NOFORN");
         assert_eq!(v["confidence"], 1.0);
-        assert_eq!(v["migration_ref"], "CAPCO-2023-§3.2");
+        assert_eq!(v["migration_ref"], "CAPCO-2016 §A.6");
         assert_eq!(v["classifier_id"], "classifier-42");
         assert_eq!(v["dry_run"], false);
         assert_eq!(v["input"], "test.txt");

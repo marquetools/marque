@@ -83,14 +83,14 @@ banner.txt:1:1 error[E001] banner uses abbreviated dissem control "NF"; use "NOF
   --> banner.txt:1:18-20
    |
  1 | TOP SECRET//SI//NF
-   |                  ^^ replace with NOFORN  (CAPCO-2023-§3.2)
+   |                  ^^ replace with NOFORN  (CAPCO-2016 §A.6)
    |
 
 banner.txt:1:1 error[E002] REL TO list missing required USA trigraph
   --> banner.txt:1:24-32
    |
  1 | TOP SECRET//REL TO GBR, AUS
-   |                    ^^^^^^^^ insert USA at start  (CAPCO-2023-§4.1)
+   |                    ^^^^^^^^ insert USA at start  (CAPCO-2016 §A.6)
    |
 
 2 diagnostics (2 errors, 0 warnings)
@@ -98,8 +98,8 @@ banner.txt:1:1 error[E002] REL TO list missing required USA trigraph
 
 ```
 $ cat banner.txt | marque check - --format json
-{"rule":"E001","severity":"error","span":{"start":17,"end":19},"message":"banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"","citation":"CAPCO-2023-§3.2","fix":{"source":"BuiltinRule","replacement":"NOFORN","confidence":1.0,"migration_ref":"CAPCO-2023-§3.2"}}
-{"rule":"E002","severity":"error","span":{"start":23,"end":31},"message":"REL TO list missing required USA trigraph","citation":"CAPCO-2023-§4.1","fix":{"source":"BuiltinRule","replacement":"USA, GBR, AUS","confidence":0.97,"migration_ref":"CAPCO-2023-§4.1"}}
+{"rule":"E001","severity":"error","span":{"start":17,"end":19},"message":"banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"NOFORN","confidence":1.0,"migration_ref":"CAPCO-2016 §A.6"}}
+{"rule":"E002","severity":"error","span":{"start":23,"end":31},"message":"REL TO list missing required USA trigraph","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"USA, GBR, AUS","confidence":0.97,"migration_ref":"CAPCO-2016 §A.6"}}
 ```
 
 ```
@@ -844,7 +844,7 @@ creep in. They belong to later phases or future work.
 - **GOTCHA 1**: Each fixture must contain ZERO classifier-id-shaped
   strings. The Phase-5 audit test (T055) will fail if any 5-digit number
   resembling a classifier ID slips in. Use citation strings like
-  `"CAPCO-2023-§3.2"` and avoid lone 5-digit numbers anywhere in the
+  `"CAPCO-2016 §A.6"` and avoid lone 5-digit numbers anywhere in the
   fixture text.
 - **GOTCHA 2**: Each `.expected.json` file is self-contained and
   uses `additionalProperties: false` semantics — no comment field, no

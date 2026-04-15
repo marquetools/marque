@@ -166,11 +166,11 @@ impl Rule for BannerAbbreviationRule {
                 source: FixSource::BuiltinRule,
                 span: token_span.span,
                 message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
-                citation: "CAPCO-ISM-v2022-DEC-§3.2",
+                citation: "CAPCO-2016 §A.6",
                 original: abbrev.to_owned(),
                 replacement: full.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§3.2"),
+                migration_ref: None,
             }));
         }
         // Walk non-IC dissem token spans. If the source text is the portion
@@ -200,11 +200,11 @@ impl Rule for BannerAbbreviationRule {
                 message: format!(
                     "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§9",
+                citation: "CAPCO-2016 §A.6",
                 original: abbrev.to_owned(),
                 replacement: full.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§9"),
+                migration_ref: None,
             }));
         }
         diagnostics
@@ -283,11 +283,11 @@ impl Rule for MissingUsaTrigraphRule {
             source: FixSource::BuiltinRule,
             span,
             message: message.to_owned(),
-            citation: "CAPCO-ISM-v2022-DEC-§4.1",
+            citation: "CAPCO-2016 §H.8",
             original: current,
             replacement: fixed,
             confidence: 0.97, // per spec T031
-            migration_ref: Some("CAPCO-2023-§4.1"),
+            migration_ref: None,
         })]
     }
 }
@@ -386,7 +386,7 @@ impl Rule for MisorderedBlocksRule {
                 String::new(),
                 replacement,
                 0.6,
-                Some("CAPCO-2023-§3.1"),
+                None,
             )
         });
 
@@ -396,7 +396,7 @@ impl Rule for MisorderedBlocksRule {
             span,
             "marking blocks are out of CAPCO order \
              (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
-            "CAPCO-ISM-v2022-DEC-§3.1",
+            "CAPCO-2016 §A.6",
             fix,
         )]
     }
@@ -519,7 +519,7 @@ impl Rule for SeparatorCountRule {
                     source: FixSource::BuiltinRule,
                     span,
                     message: "redundant block separator: collapse to a single `//`".to_owned(),
-                    citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                    citation: "CAPCO-2016 §A.6",
                     original,
                     replacement: "//".to_owned(),
                     confidence: 0.99,
@@ -560,7 +560,7 @@ impl Rule for SeparatorCountRule {
                             span,
                             message: "missing block separator: single `/` should be `//`"
                                 .to_owned(),
-                            citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                            citation: "CAPCO-2016 §A.6",
                             original: "/".to_owned(),
                             replacement: "//".to_owned(),
                             confidence: 0.99,
@@ -616,7 +616,7 @@ impl Rule for DeclassifyInBannerRule {
             span,
             "declassification marking belongs in Classification Authority Block \
              (Declassify On:), not in the banner — remove from banner and add to CAB",
-            "CAPCO-ISM-v2022-DEC-§6.1",
+            "CAPCO-2016 §E",
             None, // Fix requires document-level context (multi-span);
                   // confidence 0.55 per T034 — suggestion only.
         )]
@@ -683,7 +683,7 @@ impl Rule for DeprecatedDissemRule {
                     "{:?} is a deprecated dissemination control; replace with {:?}",
                     token.text, entry.replacement
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§3.4",
+                citation: "CAPCO-2016 §F",
                 original: token.text.to_string(),
                 replacement: entry.replacement.to_owned(),
                 confidence: entry.confidence,
@@ -773,7 +773,7 @@ impl Rule for XShorthandDateRule {
                          use {:?}",
                         entry.replacement
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
                     replacement: entry.replacement.to_owned(),
                     confidence: entry.confidence,
@@ -799,14 +799,14 @@ impl Rule for XShorthandDateRule {
                         "X-shorthand declassification code {text:?} is deprecated; \
                          use {replacement:?}"
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
                     replacement,
                     // 0.95: slightly below table-backed 0.97 because
                     // the canonical form is derived by pattern stripping
                     // rather than an authoritative CVE mapping.
                     confidence: 0.95,
-                    migration_ref: Some("CAPCO-2023-§5.1-X-shorthand-pattern"),
+                    migration_ref: None,
                 }));
             }
         }
@@ -919,7 +919,7 @@ impl Rule for UnknownTokenRule {
                     t.span,
                     "unrecognized token inside marking — does not match any \
                      known CAPCO classification, control, or trigraph",
-                    "CAPCO-ISM-v2022-DEC-§3.1",
+                    "CAPCO-2016 §G.1",
                     None, // FR-012: no fix offered
                 )
             })
@@ -1077,11 +1077,11 @@ impl Rule for PortionAbbreviationRule {
                         message: format!(
                             "portion uses banner-form classification {banner:?}; use {portion:?}"
                         ),
-                        citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                        citation: "CAPCO-2016 §C.1",
                         original: banner.to_owned(),
                         replacement: portion.to_owned(),
                         confidence: 1.0,
-                        migration_ref: Some("CAPCO-2023-§4.1"),
+                        migration_ref: None,
                     }));
                 }
             }
@@ -1112,11 +1112,11 @@ impl Rule for PortionAbbreviationRule {
                 message: format!(
                     "portion uses banner-form dissem control {text:?}; use {portion:?}"
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                citation: "CAPCO-2016 §C.1",
                 original: text.to_owned(),
                 replacement: portion.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§4.1"),
+                migration_ref: None,
             }));
         }
 
@@ -1144,7 +1144,7 @@ impl Rule for PortionAbbreviationRule {
                     message: format!(
                         "portion uses banner-form non-IC dissem {text:?}; use {portion:?}"
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§9",
+                    citation: "CAPCO-2016 §C.1",
                     original: text.to_owned(),
                     replacement: portion.to_owned(),
                     confidence: 1.0,
@@ -1241,7 +1241,7 @@ impl Rule for BareHcsRule {
             source: FixSource::BuiltinRule,
             span,
             message,
-            citation: "CAPCO-ISM-v2022-DEC-§4.SCI",
+            citation: "CAPCO-2016 §H.4",
             original: "HCS".to_owned(),
             replacement: "HCS-P".to_owned(),
             confidence,
@@ -1315,7 +1315,7 @@ impl Rule for MissingNonUsPrefix {
                 "non-US classification {text:?} is missing the leading //; \
                  use //{text} to indicate the US classification slot is empty"
             ),
-            citation: "CAPCO-ISM-v2022-DEC-§2",
+            citation: "CAPCO-2016 §H.4",
             original: text.to_owned(),
             replacement: format!("//{text}"),
             confidence: 0.95,
@@ -1437,7 +1437,7 @@ impl Rule for DualClassificationRule {
                 us.banner_str(),
                 us.banner_str(),
             ),
-            citation: "CAPCO-ISM-v2022-DEC-§7",
+            citation: "CAPCO-2016 §B.1",
             original,
             replacement: fgi_replacement,
             confidence: 0.90,
@@ -1491,7 +1491,7 @@ impl Rule for DelimiterMismatchRule {
                         span: token.span,
                         message: "JOINT country list must be space-delimited, not comma-delimited"
                             .to_owned(),
-                        citation: "CAPCO-ISM-v2022-DEC-§3",
+                        citation: "CAPCO-2016 §A.6",
                         original: text.to_owned(),
                         replacement: fixed,
                         confidence: 0.95,
@@ -1531,7 +1531,7 @@ impl Rule for DelimiterMismatchRule {
                     span: token.span,
                     message: "REL TO country list must be comma-delimited, not space-delimited"
                         .to_owned(),
-                    citation: "CAPCO-ISM-v2022-DEC-§3",
+                    citation: "CAPCO-2016 §A.6",
                     original: text.to_owned(),
                     replacement: fixed,
                     confidence: 0.95,
@@ -1589,7 +1589,7 @@ impl Rule for CominglingWarningRule {
             span,
             "portion mark comingles US classification with FGI; \
              consider splitting into separate US and foreign paragraphs",
-            "CAPCO-ISM-v2022-DEC-§7",
+            "CAPCO-2016 §H.7",
             None,
         )]
     }
@@ -1649,7 +1649,7 @@ impl Rule for JointRelToRule {
                 "JOINT participants [{}] must appear in REL TO list",
                 missing.join(", "),
             ),
-            "CAPCO-ISM-v2022-DEC-§3",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1706,7 +1706,7 @@ impl Rule for NonUsMissingDissemRule {
             span,
             "non-US classification must be accompanied by a dissemination control \
              (e.g., REL TO, NOFORN)",
-            "CAPCO-ISM-v2022-DEC-§2",
+            "CAPCO-2016 §B.3",
             None,
         )]
     }
@@ -1791,7 +1791,7 @@ impl Rule for NonIcInClassifiedBannerRule {
                      use only in portion markings",
                     nic.banner_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§9",
+                "CAPCO-2016 §H.9",
                 None,
             ));
         }
@@ -1841,7 +1841,7 @@ impl Rule for JointRestrictedRule {
             span,
             "RESTRICTED may not be used with JOINT — the US has no equivalent \
              classification level for RESTRICTED",
-            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1887,7 +1887,7 @@ impl Rule for JointFgiRule {
             span,
             "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
              or foreign-originated (FGI), not both",
-            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1948,7 +1948,7 @@ impl Rule for JointIcDissemRule {
                      only REL TO is permitted with JOINT markings",
                     ctrl.as_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                "CAPCO-2016 §H.3",
                 None,
             ));
         }
@@ -2003,7 +2003,7 @@ impl Rule for JointNonIcDissemRule {
                     "JOINT may not be used with non-IC dissem control {}",
                     nic.banner_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                "CAPCO-2016 §H.3",
                 None,
             ));
         }
@@ -2130,7 +2130,7 @@ fn check_trigraph_ordering(
             "{list_name} country codes must be alphabetically ordered \
              (USA first when present): [{original}] → [{replacement}]"
         ),
-        citation: "CAPCO-ISM-v2022-DEC-§3",
+        citation: "CAPCO-2016 §H.8",
         original,
         replacement,
         confidence: 1.0,
@@ -2190,7 +2190,7 @@ impl Rule for AeaNofornRule {
             "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
              per the Atomic Energy Act; override to warn via rule severity \
              config if sharing agreements apply",
-            "CAPCO-ISM-v2022-DEC-§6/AEA",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
@@ -2253,7 +2253,7 @@ impl Rule for CnwdiConstraintRule {
                 "CNWDI may only be used with TOP SECRET or SECRET RD; \
                  current classification is {level_str}"
             ),
-            "CAPCO-ISM-v2022-DEC-§6/CNWDI",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
@@ -2329,7 +2329,7 @@ impl Rule for SigmaValidationRule {
                     self.default_severity(),
                     span,
                     message,
-                    "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                    "CAPCO-2016 §H.6",
                     None,
                 ));
             }
@@ -2352,7 +2352,7 @@ impl Rule for SigmaValidationRule {
                             original.join(" "),
                             replacement.join(" "),
                         ),
-                        citation: "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                        citation: "CAPCO-2016 §H.6",
                         original: original.join(" "),
                         replacement: replacement.join(" "),
                         confidence: 1.0,
@@ -2421,7 +2421,7 @@ impl Rule for RdPrecedenceRule {
                     "{superseded} should not appear alongside RD; \
                      RD takes precedence over {superseded} in both banners and portions"
                 ),
-                "CAPCO-ISM-v2022-DEC-§6/RD",
+                "CAPCO-2016 §H.6",
                 None,
             ));
         }
@@ -2477,7 +2477,7 @@ impl Rule for UcniClassificationRule {
             self.default_severity(),
             span,
             "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
-            "CAPCO-ISM-v2022-DEC-§6/UCNI",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
