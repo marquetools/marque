@@ -32,7 +32,7 @@
     },
     "citation": {
       "type": "string",
-      "description": "CAPCO section reference, e.g. 'CAPCO-2023-§3.1'. Stable across MVP-1; consumers may use it for cross-linking."
+      "description": "CAPCO section reference (CAPCO Register and Manual, 2016), e.g. 'CAPCO-2016 §A.6'. Stable across MVP-1; consumers may use it for cross-linking."
     },
     "fix": {
       "description": "Optional FixProposal attached to this diagnostic. Pure data — no timestamp, no classifier identity. A proposal is only promoted to an AppliedFix (see audit-record.json) when Engine::fix runs and its confidence >= the configured threshold. Whether a given proposal was actually applied in a run is observable by correlating the diagnostic stream (stdout) with the AppliedFix stream (stderr) by rule + span.",

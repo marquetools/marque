@@ -250,7 +250,7 @@ pub struct Fix {
     pub replacement: String,
     pub confidence: f32,              // 0.0–1.0
     pub audit: AuditRecord,           // always generated, even for 1.0 confidence
-    pub migration_ref: Option<&'static str>,   // e.g. "CAPCO-2023-§3.1"
+    pub migration_ref: Option<&'static str>,   // e.g. "CAPCO-2016 §A.6" (CAPCO Register and Manual, 2016)
 }
 
 pub struct AuditRecord {

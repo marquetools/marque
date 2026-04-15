@@ -25,12 +25,12 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let parser = Parser::new(&token_set);
     let candidates = Scanner::scan(source);
     let rule_set = CapcoRuleSet::new();
+    let mut out = Vec::new();
     // Mirror the engine's PageContext accumulation so banner-rollup rules
     // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets at
     // scanner-emitted PageBreak candidates per the engine's invariant.
     let mut page_context = PageContext::new();
     let mut page_context_arc: Option<Arc<PageContext>> = None;
-    let mut out = Vec::new();
     for candidate in &candidates {
         if candidate.kind == MarkingType::PageBreak {
             page_context = PageContext::new();

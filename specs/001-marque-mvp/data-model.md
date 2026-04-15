@@ -132,7 +132,7 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub span: Span,
     pub message: Box<str>,
-    pub citation: &'static str, // CAPCO section, e.g. "CAPCO-2023-§3.1"
+    pub citation: &'static str, // CAPCO section, e.g. "CAPCO-2016 §A.6" (CAPCO Register and Manual, 2016)
     pub fix: Option<FixProposal>,
 }
 

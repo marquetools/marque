@@ -33,7 +33,7 @@ Source XML/XSD files consumed:
 - `CVE_ISM/CVEnumISMClassificationAll.xml` — classification levels
 - `CVE_ISM/CVEnumISMSCIControls.xml` — SCI controls
 - `CVE_ISM/CVEnumISMDissem.xml` — dissemination controls (with deprecation markers)
-- `CVE_ISM/CVEnumISMSAR.xml` — SAR identifiers
+- `CVE_ISM/CVEnumISMSAR.xml` — SAR identifiers (intentionally empty in public ODNI packages; see migration note)
 - `CVE_ISM/CVEnumISMExemptFrom.xml` — declassification exemptions
 - `CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` — country trigraphs
 
@@ -48,7 +48,8 @@ The active schema version is pinned in `Cargo.toml` under `[package.metadata.mar
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
 | `Zone`, `DocumentPosition` | Structural context. Both are `Option`-typed in `RuleContext`. |
 | `PageContext` | Page-level aggregation: `max()` for classification, union for SCI/SAR/dissem, intersection (with NOFORN supersession) for `REL TO`. Reset at scanner-emitted page-break candidates. |
-| `Classification`, `SciControl`, `DissemControl`, `SarIdentifier`, `Trigraph`, … | Generated CVE enums. |
+| `Classification`, `SciControl`, `DissemControl`, `Trigraph`, … | Generated CVE enums. |
+| `SarMarking`, `SarIndicator`, `SarProgram`, `SarCompartment` | Structural SAR types (not CVE-derived — see migration note below). |
 | `CapcoTokenSet` | Aho-Corasick automaton over CVE token list. |
 
 ## Usage
@@ -74,7 +75,15 @@ WASM-safe. No runtime I/O. All schema work runs in `build.rs` on the host.
 
 ## Migration Notes
 
-- `0.x.0` (SCI) — additive. New `sci_markings: Box<[SciMarking]>` field on `IsmAttributes` provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
+### 0.3.0: `SarIdentifier` → `SarMarking`
+
+Prior versions exposed `SarIdentifier` as a CVE-derived enum re-exported from `attrs`. The ODNI `CVEnumISMSAR.xml` is empty in all published ISM packages because SAR program identifiers are agency-assigned codewords, not centrally registered. The enum was therefore a typed placeholder that never matched anything at runtime.
+
+`0.3.0` replaces the enum with a structural `SarMarking` type carrying programs, compartments, and sub-compartments per CAPCO-2016 §H.5 syntax. `IsmAttributes.sar_identifiers: Box<[SarIdentifier]>` is now `IsmAttributes.sar_markings: Option<SarMarking>`. The `SarIdentifier` enum has been removed from code generation; `TokenKind::SarIdentifier` remains as a `#[deprecated]` back-compat variant that the parser no longer emits, joined by new `TokenKind::SarIndicator`, `SarProgram`, `SarCompartment`, and `SarSubCompartment` variants.
+
+### 0.x.0 (SCI compartments)
+
+Additive. New `sci_markings: Box<[SciMarking]>` field on `IsmAttributes` provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
 
 ## License
 

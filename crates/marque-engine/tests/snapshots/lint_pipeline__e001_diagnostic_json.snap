@@ -1,14 +1,13 @@
 ---
 source: crates/marque-engine/tests/lint_pipeline.rs
-assertion_line: 191
 expression: json
 ---
 [
   {
-    "citation": "CAPCO-ISM-v2022-DEC-§3.2",
+    "citation": "CAPCO-2016 §A.6",
     "fix": {
       "confidence": 1.0,
-      "migration_ref": "CAPCO-2023-§3.2",
+      "migration_ref": null,
       "replacement": "NOFORN",
       "source": "BuiltinRule"
     },

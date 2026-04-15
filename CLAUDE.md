@@ -107,6 +107,10 @@ The hybrid approach: the CVE vocabulary generated from `CVEnumISMSCIControls.xml
 
 Banner roll-up for SCI (E035) uses `PageContext::expected_sci_markings()`, which unions compartments and sub-compartments across all portions on the page and sorts per §A.6 p15 (numeric first, alpha after). Authority: CAPCO-2016 §A.6 (grammar, canonical example p16) + §H.4 (per-system banner precedence).
 
+### SAR (Special Access Required)
+
+SAR (Special Access Required) markings are modeled structurally, not as a CVE-derived enum. The ODNI public `CVEnumISMSAR.xml` is empty because SAR program identifiers are agency-assigned codewords not centrally registered. `marque-ism::SarMarking` captures the full hierarchy — programs, compartments, sub-compartments — parsed by a hand-written subparser in `marque-core` (see `parse_sar_category`). The six SAR rules (E026–E031) validate syntax, ordering, classification constraints, and banner roll-up per CAPCO-2016 §H.5.
+
 ### Key Types
 
 - `IsmAttributes` (`marque-ism`) — the pivot type. Every source format normalizes to this struct before rule validation. Fields use `Box<[T]>` (not `Vec`) to avoid over-allocation. Field types (`SciControl`, `DissemControl`, etc.) are generated enums from ODNI CVE XML.
@@ -209,7 +213,7 @@ Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch
 
 ## Current Status
 
-MVP complete. Full lint → fix → audit pipeline for raw text with 33 CAPCO rules (E001–E025, E032–E035, W001–W003, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
+MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO rules (E001–E035, W001–W003, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
@@ -224,6 +228,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 33 CAPCO ru
 - Phase 7: Criterion benchmarks (lint_latency, linear_scaling), corpus accuracy harness, WASM parity scaling to full corpus, cargo-fuzz target, bench-check regression gate
 - Phase 6: WASM web worker build with SC-008 parity, `batch` feature flag, CachedAhoCorasick optimization
 - Phase 5: Configurable severity overrides, corrections map with AhoCorasick pre-scanner
-- SCI compartments (#003): structural subparser + `SciMarking` data model, E032–E035 rules, banner roll-up via `PageContext::expected_sci_markings()` (rule count 29 → 33)
+- SCI compartments (#003): structural subparser + `SciMarking` data model, E032–E035 rules, banner roll-up via `PageContext::expected_sci_markings()` (rule count 35 → 39)
+- Phase 8: SAR implementation — structural `SarMarking` type (replaces empty `SarIdentifier` CVE enum), six new rules E026–E031 covering portion form, classification constraint, ordering, indicator-repeat coalescing, and banner roll-up per CAPCO-2016 §H.5
 - Phase 3-4: Full lint/fix/audit pipeline, 29 CAPCO rules (E001–E025, W001–W003, C001), CLI with check/fix subcommands
 - Phase 1-2: marque-ism crate extraction, test corpus scaffolding, benchmark stubs
