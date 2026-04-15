@@ -1,6 +1,6 @@
 # marque
 
-**A fast, rule-driven text linter, formatter, and transformer.** Ships with CAPCO/ISM classification-marking rules.
+**A fast, rule-driven text linter, formatter, and transformer.** 
 
 `marque` is a general-purpose rule engine for fast text processing — rules
 produce warnings, errors, fixes, and transformations, each with a confidence
@@ -9,11 +9,26 @@ suggestion. Built in the style of [`ruff`](https://github.com/astral-sh/ruff):
 designed for perceptual instantaneity at any scale, operating on raw byte
 buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
 
+That's a fancy way of saying it's *extremely fast*.
+It can scan and fix a page faster than you can perceive it.
+
 The MVP ships a CAPCO/ISM classification-marking rule set targeting ODNI
-ISM-v2022-DEC — but that's **one application** of the engine, not its
-identity. The roadmap expands into other U.S. Government control markings
-(CUI), foreign and multinational classification systems (NATO, FGI, JOINT),
+ISM-v2022-DEC (marque-ism and marque-capco crates). That's **one application** of the engine. 
+
+The roadmap expands into other U.S. Government control markings
+(CUI), foreign and multinational classification systems (e.g. NATO),
 and general-purpose text lint/transformation domains.
+
+The next big feature upgrade will bring metadata curation, correction, extraction, and removal.
+
+## Design Philosophy
+
+**marque must be**:
+
+- **exceptionally fast**
+- **hardened and secure by design**
+- **correct**
+- **helpful**
 
 ## Demo
 
@@ -80,29 +95,28 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | [`marque-server`](./crates/marque-server/) | axum REST microservice wrapping `marque-engine`. |
 
 **Domain scoping:** `marque-ism` and `marque-capco` are the only crates that
-are ISM/CAPCO-specific. Everything else is general-purpose infrastructure and
-is designed to host additional rule sets (CUI, NATO, FGI, JOINT, …) without
+are ISM/CAPCO-specific. Everything else is general-purpose infrastructure
+designed to host additional rule sets (CUI, NATO, …) without
 changes.
 
 ## Status
 
-MVP complete. Full lint → fix → audit pipeline for raw text with 29 CAPCO
+**MVP complete**. Full lint → fix → audit pipeline for raw text with 29 CAPCO
 rules. CLI and WASM produce byte-identical NDJSON diagnostics. Configurable
 severity overrides, corrections map, and confidence thresholds. Batch
 processing via `BatchEngine` with concurrency control. Criterion benchmarks
 validate p95 ≤16ms on 10KB inputs.
 
-Not yet built: `marque-extract` (Kreuzberg integration for 75+ formats), the
+Not yet built: `marque-extract` (extraction from a wide range of media), the
 `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth
 middleware.
-
-## For maintainers
-
-See [`CLAUDE.md`](./CLAUDE.md) at the workspace root for architecture, the
-processing pipeline, and the architectural invariants that govern the
-engine/rules contract. AI-agent maintainers are primary contributors;
-framing and invariants there are load-bearing.
 
 ## License
 
 Apache-2.0.
+
+## Why... Classification Markings?
+
+Because I lived them for 18.5 years, and I'm unusually encyclopedic about them.
+
+I'm building what I wanted for 18.5 years everytime I used a poorly designed classification tool that slowed me down without helping me. I believe classifying a document correctly should take milliseconds, not 15+ minutes, and  `marque` is living proof. I can give that time back to the millions of people who have to classify or add control markings to documents every day.
