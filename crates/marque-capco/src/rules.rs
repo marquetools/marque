@@ -528,51 +528,88 @@ impl Rule for SeparatorCountRule {
             }
         }
 
-        // === Missing separators (single `/` not part of `//`) ===
-        // When a user writes `SECRET/NOFORN` (one slash) the parser cannot
-        // split on `//`, so the entire marking lands in one block whose
-        // text contains a stray `/`. The block is recorded as either a
-        // `Classification` token (if it's the first/only block) or an
-        // `Unknown` token (if a partial split happened, e.g.
-        // `SECRET//SI/NF` → blocks `SECRET`, `SI/NF`). E004 walks both and
-        // emits one diagnostic per single-slash position.
-        for token in attrs.token_spans.iter() {
-            if !matches!(token.kind, TokenKind::Classification | TokenKind::Unknown) {
+        // === Same-category `//` between sibling values ===
+        // Per CAPCO-2016 §A.6 Figure 2, `/` is the within-category separator
+        // and `//` is the between-category separator. When a user writes
+        // `SECRET//SI//TK//NOFORN`, SI and TK are both SCI controls and must
+        // be joined with `/` (→ `SECRET//SI/TK//NOFORN`). We detect this by
+        // walking each `Separator` and checking whether the token
+        // immediately before and immediately after resolve to the same
+        // CAPCO category. If either side is Unknown/unclassifiable or they
+        // belong to different categories, we do not fire — that avoids
+        // double-flagging legitimately different blocks.
+        let spans = &attrs.token_spans;
+        for (idx, tok) in spans.iter().enumerate() {
+            if tok.kind != TokenKind::Separator {
                 continue;
             }
-            let bytes = token.text.as_bytes();
-            // Find every `/` that is NOT adjacent to another `/`. A doubled
-            // `/` is a separator and would have been recognized by the
-            // outer `//` split, so any `/` we see here in a non-Separator
-            // token is by construction a stray single slash.
-            let mut i = 0;
-            while i < bytes.len() {
-                if bytes[i] == b'/' {
-                    let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
-                    let next_is_slash = bytes.get(i + 1) == Some(&b'/');
-                    if !prev_is_slash && !next_is_slash {
-                        let abs_pos = token.span.start + i;
-                        let span = Span::new(abs_pos, abs_pos + 1);
-                        diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                            rule: self.id(),
-                            severity: self.default_severity(),
-                            source: FixSource::BuiltinRule,
-                            span,
-                            message: "missing block separator: single `/` should be `//`"
-                                .to_owned(),
-                            citation: "CAPCO-2016 §A.6",
-                            original: "/".to_owned(),
-                            replacement: "//".to_owned(),
-                            confidence: 0.99,
-                            migration_ref: None,
-                        }));
-                    }
-                }
-                i += 1;
+            // Previous non-separator token.
+            let prev = spans[..idx]
+                .iter()
+                .rev()
+                .find(|t| t.kind != TokenKind::Separator);
+            // Next non-separator token.
+            let next = spans[idx + 1..]
+                .iter()
+                .find(|t| t.kind != TokenKind::Separator);
+            let (Some(prev), Some(next)) = (prev, next) else {
+                continue;
+            };
+            let Some(a) = category_of(prev.kind) else {
+                continue;
+            };
+            let Some(b) = category_of(next.kind) else {
+                continue;
+            };
+            if a != b {
+                continue;
             }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: tok.span,
+                message: "redundant block separator: consecutive same-category \
+                         values must be joined with `/`, not `//`"
+                    .to_owned(),
+                citation: "CAPCO-2016 §A.6",
+                original: "//".to_owned(),
+                replacement: "/".to_owned(),
+                confidence: 0.95,
+                migration_ref: None,
+            }));
         }
 
         diagnostics
+    }
+}
+
+/// CAPCO marking category — used by E004 to detect `//` between values that
+/// belong to the same category and should have been joined with `/`.
+///
+/// Categories that can legitimately contain multiple values joined by `/`
+/// within a single block are represented; TokenKinds that never appear as
+/// multi-value blocks (e.g., `Classification`, `FgiMarker`, `DeclassDate`)
+/// return `None` from [`category_of`] so the rule declines to fire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeparatorCategory {
+    Sci,
+    Dissem,
+    NonIcDissem,
+    Aea,
+    Sar,
+    RelTo,
+}
+
+fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
+    match kind {
+        TokenKind::SciControl => Some(SeparatorCategory::Sci),
+        TokenKind::DissemControl => Some(SeparatorCategory::Dissem),
+        TokenKind::NonIcDissem => Some(SeparatorCategory::NonIcDissem),
+        TokenKind::AeaMarking => Some(SeparatorCategory::Aea),
+        TokenKind::SarIdentifier => Some(SeparatorCategory::Sar),
+        TokenKind::RelToTrigraph | TokenKind::RelToBlock => Some(SeparatorCategory::RelTo),
+        _ => None,
     }
 }
 
@@ -2698,27 +2735,63 @@ mod tests {
     }
 
     #[test]
-    fn e004_fires_on_missing_separator_single_slash() {
-        // T033: E004 must detect missing separators (single `/`).
-        let diags = lint_banner("SECRET/NOFORN");
+    fn e004_fires_on_same_category_sci_double_slash() {
+        // Per CAPCO-2016 §A.6 Figure 2: SI and TK are both SCI controls and
+        // must be joined with `/` within one block, not `//` across blocks.
+        let diags = lint_banner("SECRET//SI//TK//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1);
-        // The fix replaces the single `/` at byte 6 with `//`.
-        assert_eq!(e004[0].span.start, 6);
-        assert_eq!(e004[0].span.end, 7);
-        let fix = e004[0].fix.as_ref().unwrap();
-        assert_eq!(fix.original.as_ref(), "/");
-        assert_eq!(fix.replacement.as_ref(), "//");
+        assert_eq!(e004.len(), 1, "exactly one E004 on the SI//TK boundary: {diags:?}");
+        let src = b"SECRET//SI//TK//NOFORN";
+        // The span must point at the `//` between SI and TK (bytes 10..12).
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
+        assert_eq!(e004[0].span.start, 10);
+        assert_eq!(e004[0].span.end, 12);
+        let fix = e004[0].fix.as_ref().expect("E004 must carry a FixProposal");
+        assert_eq!(fix.original.as_ref(), "//");
+        assert_eq!(fix.replacement.as_ref(), "/");
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn e004_fires_on_missing_separator_in_later_block() {
-        // The parser splits on `//` so the partial split puts `SI/NF` into
-        // an Unknown block. E004's stray-slash walk catches it.
-        let diags = lint_banner("SECRET//SI/NF");
+    fn e004_fires_on_same_category_dissem_double_slash() {
+        // ORCON and NOFORN are both dissem controls — must be joined with `/`.
+        let diags = lint_banner("SECRET//ORCON//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1);
-        assert_eq!(e004[0].span.start, 10);
+        assert_eq!(e004.len(), 1, "exactly one E004 on ORCON//NOFORN: {diags:?}");
+        let src = b"SECRET//ORCON//NOFORN";
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
+        let fix = e004[0].fix.as_ref().unwrap();
+        assert_eq!(fix.replacement.as_ref(), "/");
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_different_categories() {
+        // SCI (SI) and Dissem (NOFORN) are different categories — `//` is correct.
+        let diags = lint_banner("SECRET//SI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire between different categories: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_correct_within_category_slash() {
+        // `SI/TK` — already correct within-category form.
+        let diags = lint_banner("SECRET//SI/TK//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire on correct `/` between same-category values: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_when_one_side_is_unknown() {
+        // XYZZY is unclassifiable; we can't prove same-category so do not fire.
+        let diags = lint_banner("SECRET//XYZZY//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire when either side is Unknown: {diags:?}"
+        );
     }
 
     #[test]
