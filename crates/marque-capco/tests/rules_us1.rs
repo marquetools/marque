@@ -10,6 +10,8 @@
 //! `marque-capco` and would create a circular dev-dep). It re-uses the
 //! parser/scanner/rule-set wiring directly.
 
+use std::sync::Arc;
+
 use marque_capco::CapcoRuleSet;
 use marque_core::{Parser, Scanner};
 use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
@@ -17,7 +19,6 @@ use marque_rules::{RuleContext, RuleSet};
 use marque_test_utils::{
     ExpectedFixture, invalid_fixtures, load_expected, load_fixture, valid_fixtures,
 };
-use std::sync::Arc;
 
 fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let token_set = CapcoTokenSet;
@@ -25,8 +26,9 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let candidates = Scanner::scan(source);
     let rule_set = CapcoRuleSet::new();
     let mut out = Vec::new();
-    // Accumulate a PageContext across portions the same way the engine does,
-    // so banner-roll-up rules (E031) receive the context they need.
+    // Mirror the engine's PageContext accumulation so banner-rollup rules
+    // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets at
+    // scanner-emitted PageBreak candidates per the engine's invariant.
     let mut page_context = PageContext::new();
     let mut page_context_arc: Option<Arc<PageContext>> = None;
     for candidate in &candidates {

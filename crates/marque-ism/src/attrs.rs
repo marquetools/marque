@@ -31,7 +31,7 @@ use crate::generated::values;
 use crate::span::Span;
 
 // Re-export generated enum types for convenience.
-pub use values::{DeclassExemption, DissemControl, SciControl};
+pub use values::{DeclassExemption, DissemControl, SciControl, SciControlBare};
 
 /// Canonical in-memory representation of a classification marking.
 ///
@@ -50,7 +50,21 @@ pub struct IsmAttributes {
     pub classification: Option<MarkingClassification>,
 
     /// SCI controls (e.g., SI, TK, HCS-P). Ordered per CAPCO block ordering.
+    ///
+    /// This is the *enum projection* populated by the parser's CVE exact-match
+    /// path. Retained for back-compat with existing rules (E010, E011). New
+    /// rules that need compartment / sub-compartment structure should read
+    /// [`IsmAttributes::sci_markings`] instead.
     pub sci_controls: Box<[SciControl]>,
+
+    /// Structural view of SCI category-block entries.
+    ///
+    /// Each entry corresponds to one `/`-separated marking within an SCI
+    /// category block (e.g., `//SI-G/TK-BLFH//` yields two `SciMarking`
+    /// entries). Populated alongside `sci_controls`; `sci_markings` is the
+    /// authoritative source for rules that inspect compartments or
+    /// sub-compartments. See spec 003-sci-compartments.
+    pub sci_markings: Box<[SciMarking]>,
 
     /// Special Access Required block, if present. Only one SAR block is
     /// permitted per marking per §A.6; cardinality is `Option`, not `Vec`.
@@ -153,7 +167,21 @@ pub enum TokenKind {
     /// Classification level token (S, SECRET, TS, TOP SECRET, ...).
     Classification,
     /// SCI control token (SI, TK, HCS, ...).
+    ///
+    /// Emitted by the existing CVE exact-match path. For new structural
+    /// parsing (spec 003-sci-compartments) see [`TokenKind::SciSystem`],
+    /// [`TokenKind::SciCompartment`], and [`TokenKind::SciSubCompartment`].
     SciControl,
+    /// Structural SCI control-system anchor (e.g., `SI`, `TK`, `123`).
+    ///
+    /// Emitted by the structural SCI parser introduced in spec
+    /// 003-sci-compartments alongside the existing [`TokenKind::SciControl`]
+    /// token for exact-CVE matches.
+    SciSystem,
+    /// Structural SCI compartment identifier (e.g., `G` in `SI-G`).
+    SciCompartment,
+    /// Structural SCI sub-compartment identifier (e.g., `ABCD` in `SI-G ABCD`).
+    SciSubCompartment,
     /// Legacy SAR identifier token. Superseded by `SarIndicator` +
     /// `SarProgram` + `SarCompartment` + `SarSubCompartment` after the
     /// structural SAR model landed. No longer emitted by the parser.
@@ -1014,6 +1042,96 @@ impl Trigraph {
 impl std::fmt::Display for Trigraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+// ===========================================================================
+// SCI structural types (spec 003-sci-compartments)
+// ===========================================================================
+
+/// A fully-parsed SCI category-block entry.
+///
+/// A banner or portion may carry multiple `SciMarking` entries separated by
+/// `/` within one SCI category block (e.g., `//SI-G/TK-BLFH//`).
+///
+/// Construction is restricted to [`SciMarking::new`] (the struct is
+/// `#[non_exhaustive]`) so new fields can be added without breaking the
+/// parser.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SciMarking {
+    /// The control-system anchor. One of the published bare control
+    /// systems (see [`SciControlBare`]) or a structurally-parsed custom
+    /// value.
+    pub system: SciControlSystem,
+
+    /// Compartments in source order. Sort-order validation is the concern
+    /// of CAPCO rule E033 (not the parser).
+    pub compartments: Box<[SciCompartment]>,
+
+    /// If the `{system}-{first_compartment}` composite exactly matches an
+    /// ODNI CVE value (e.g., `SI-G`, `HCS-P`, `TK-BLFH`), this records the
+    /// matching [`SciControl`] variant. Only populated when the matching
+    /// compartment has NO sub-compartments — sub-compartments imply the
+    /// compound is a structural anchor rather than a CVE atom. `None`
+    /// otherwise.
+    pub canonical_enum: Option<SciControl>,
+}
+
+impl SciMarking {
+    /// Construct a new `SciMarking`. Used by the parser (`marque-core`) to
+    /// populate [`IsmAttributes::sci_markings`].
+    pub fn new(
+        system: SciControlSystem,
+        compartments: Box<[SciCompartment]>,
+        canonical_enum: Option<SciControl>,
+    ) -> Self {
+        Self {
+            system,
+            compartments,
+            canonical_enum,
+        }
+    }
+}
+
+/// Which kind of SCI control system a [`SciMarking`] anchors on.
+///
+/// This is a closed set of two variants: either a published bare system
+/// drawn from the live ODNI CVE, or an agency-allocated custom identifier
+/// (per CAPCO-2016 §A.6 p15).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SciControlSystem {
+    /// One of the published bare control systems.
+    Published(SciControlBare),
+    /// An agency-allocated system matching `[A-Z0-9]{2,5}` (per CAPCO-2016
+    /// §A.6 p15 `123` example). Stores the raw text exactly as it appeared
+    /// in the source.
+    Custom(Box<str>),
+}
+
+/// A single compartment under an SCI control system.
+///
+/// Compartments carry an identifier plus zero or more sub-compartments in
+/// source order. Construction is restricted to [`SciCompartment::new`]
+/// (the struct is `#[non_exhaustive]`).
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SciCompartment {
+    /// Compartment identifier (alphanumeric). Example: `G` in `SI-G`.
+    pub identifier: Box<str>,
+    /// Sub-compartments in source order. Example: `ABCD`, `DEFG` in
+    /// `SI-G ABCD DEFG`.
+    pub sub_compartments: Box<[Box<str>]>,
+}
+
+impl SciCompartment {
+    /// Construct a new `SciCompartment`. Used by the parser to populate
+    /// [`SciMarking::compartments`].
+    pub fn new(identifier: Box<str>, sub_compartments: Box<[Box<str>]>) -> Self {
+        Self {
+            identifier,
+            sub_compartments,
+        }
     }
 }
 

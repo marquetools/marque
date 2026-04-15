@@ -81,6 +81,10 @@ Prior versions exposed `SarIdentifier` as a CVE-derived enum re-exported from `a
 
 `0.3.0` replaces the enum with a structural `SarMarking` type carrying programs, compartments, and sub-compartments per CAPCO-2016 §H.5 syntax. `IsmAttributes.sar_identifiers: Box<[SarIdentifier]>` is now `IsmAttributes.sar_markings: Option<SarMarking>`. The `SarIdentifier` enum has been removed from code generation; `TokenKind::SarIdentifier` remains as a `#[deprecated]` back-compat variant that the parser no longer emits, joined by new `TokenKind::SarIndicator`, `SarProgram`, `SarCompartment`, and `SarSubCompartment` variants.
 
+### 0.x.0 (SCI compartments)
+
+Additive. New `sci_markings: Box<[SciMarking]>` field on `IsmAttributes` provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
+
 ## License
 
 Apache-2.0

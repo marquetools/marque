@@ -59,7 +59,7 @@ missing-usa-trigraph = "warn"
 
 ```toml
 [user]
-classifier_id = "12345"
+classifier_id = "TEST-12345"
 classification_authority = "EO 13526"
 default_reason = "1.4(c)"              # optional
 derived_from_default = "Multiple Sources"  # optional
