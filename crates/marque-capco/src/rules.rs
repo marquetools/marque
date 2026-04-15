@@ -557,43 +557,90 @@ impl Rule for SeparatorCountRule {
         // belong to different categories, we do not fire — that avoids
         // double-flagging legitimately different blocks.
         let spans = &attrs.token_spans;
-        for tok in spans.iter() {
+        for (idx, tok) in spans.iter().enumerate() {
             if tok.kind != TokenKind::Separator {
                 continue;
             }
-            let bytes = tok.text.as_bytes();
-            // Find every `/` that is NOT adjacent to another `/`. A doubled
-            // `/` is a separator and would have been recognized by the
-            // outer `//` split, so any `/` we see here in a non-Separator
-            // token is by construction a stray single slash.
-            let mut i = 0;
-            while i < bytes.len() {
-                if bytes[i] == b'/' {
-                    let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
-                    let next_is_slash = bytes.get(i + 1) == Some(&b'/');
-                    if !prev_is_slash && !next_is_slash {
-                        let abs_pos = tok.span.start + i;
-                        let span = Span::new(abs_pos, abs_pos + 1);
-                        diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                            rule: self.id(),
-                            severity: self.default_severity(),
-                            source: FixSource::BuiltinRule,
-                            span,
-                            message: "missing block separator: single `/` should be `//`"
-                                .to_owned(),
-                            citation: "CAPCO-2016 §A.6",
-                            original: "/".to_owned(),
-                            replacement: "//".to_owned(),
-                            confidence: 0.99,
-                            migration_ref: None,
-                        }));
-                    }
-                }
-                i += 1;
+            // Skip separators that are part of a `////+` run — those are
+            // owned by the redundant-separator branch above, and emitting
+            // a same-category diagnostic here would double-fire.
+            let prev_sep_adjacent = idx > 0
+                && spans[idx - 1].kind == TokenKind::Separator
+                && spans[idx - 1].span.end == tok.span.start;
+            let next_sep_adjacent = spans
+                .get(idx + 1)
+                .is_some_and(|n| n.kind == TokenKind::Separator && n.span.start == tok.span.end);
+            if prev_sep_adjacent || next_sep_adjacent {
+                continue;
             }
+            // Previous non-separator token.
+            let prev = spans[..idx]
+                .iter()
+                .rev()
+                .find(|t| t.kind != TokenKind::Separator);
+            // Next non-separator token.
+            let next = spans[idx + 1..]
+                .iter()
+                .find(|t| t.kind != TokenKind::Separator);
+            let (Some(prev), Some(next)) = (prev, next) else {
+                continue;
+            };
+            let Some(a) = category_of(prev.kind) else {
+                continue;
+            };
+            let Some(b) = category_of(next.kind) else {
+                continue;
+            };
+            if a != b {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: tok.span,
+                message: "redundant block separator: consecutive same-category \
+                         values must be joined with `/`, not `//`"
+                    .to_owned(),
+                citation: "CAPCO-2016 §A.6",
+                original: "//".to_owned(),
+                replacement: "/".to_owned(),
+                confidence: 0.95,
+                migration_ref: None,
+            }));
         }
 
         diagnostics
+    }
+}
+
+/// CAPCO marking category — used by E004 to detect `//` between values that
+/// belong to the same category and should have been joined with `/`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeparatorCategory {
+    Sci,
+    Dissem,
+    NonIcDissem,
+    Aea,
+    Sar,
+    RelTo,
+}
+
+fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
+    match kind {
+        TokenKind::SciControl
+        | TokenKind::SciSystem
+        | TokenKind::SciCompartment
+        | TokenKind::SciSubCompartment => Some(SeparatorCategory::Sci),
+        TokenKind::DissemControl => Some(SeparatorCategory::Dissem),
+        TokenKind::NonIcDissem => Some(SeparatorCategory::NonIcDissem),
+        TokenKind::AeaMarking => Some(SeparatorCategory::Aea),
+        TokenKind::SarProgram
+        | TokenKind::SarCompartment
+        | TokenKind::SarSubCompartment
+        | TokenKind::SarIndicator => Some(SeparatorCategory::Sar),
+        TokenKind::RelToTrigraph | TokenKind::RelToBlock => Some(SeparatorCategory::RelTo),
+        _ => None,
     }
 }
 
