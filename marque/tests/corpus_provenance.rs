@@ -240,6 +240,30 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
     tokens
 }
 
+/// Detects structurally-formed SCI tokens (spec 003-sci-compartments) like
+/// `SI-G ABCD`, `HCS-P INTEL OPS`, `SI-G ABCD DEFG-MMM AACD`. These are
+/// structurally parsed rather than CVE-matched, so the vocabulary-bounded
+/// token check does not apply. A token qualifies when its first
+/// hyphen-separated segment is a known bare SCI control system and the
+/// remaining text contains only uppercase alphanumeric identifiers,
+/// spaces, and hyphens.
+fn is_structural_sci_token(token: &str) -> bool {
+    const BARE_SCI_SYSTEMS: &[&str] =
+        &["BUR", "HCS", "KLM", "MVL", "RSV", "SI", "TK"];
+    let Some(first_segment_end) = token.find(|c: char| c == '-' || c == ' ') else {
+        return false;
+    };
+    let head = &token[..first_segment_end];
+    if !BARE_SCI_SYSTEMS.contains(&head) {
+        return false;
+    }
+    // Remaining characters must be uppercase alphanumerics, spaces, or
+    // hyphens — the structural SCI grammar alphabet.
+    token
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-' || c == ' ')
+}
+
 #[test]
 fn sc002a_fixture_tokens_within_known_vocabulary() {
     // Only validate valid/ fixtures — invalid/ fixtures intentionally
@@ -306,6 +330,13 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 
                 for token in sub_tokens {
                     if token.is_empty() {
+                        continue;
+                    }
+                    // Skip structural SCI blocks (spec 003-sci-compartments):
+                    // `SYS-COMP [SUB ...]` / `SYS-COMP-COMP2 ...` forms are
+                    // structurally parsed rather than CVE-matched. Detect by
+                    // a leading bare SCI system followed by `-`.
+                    if is_structural_sci_token(token) {
                         continue;
                     }
                     if !known.contains(token) {
