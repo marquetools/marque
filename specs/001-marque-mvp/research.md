@@ -130,7 +130,7 @@ explicitly asked us to preserve.
 **Decision**: Adopt a flat JSON object per diagnostic with stable field names,
 emitted one-per-line (NDJSON) for stream friendliness. Fields:
 `{ "rule": "E001", "severity": "error", "span": { "start": 12, "end": 18 },
-"message": "...", "citation": "CAPCO-2023-§3.1", "fix": null | { ... } }`. The
+"message": "...", "citation": "CAPCO-2016 §A.6", "fix": null | { ... } }` (citation refers to the CAPCO Register and Manual, 2016). The
 `fix` sub-object uses: `{ "replacement": "...", "confidence": 0.98,
 "migration_ref": "...", "audit": { ... } }`. The audit sub-object uses:
 `{ "rule": "E001", "original": "...", "replacement": "...", "confidence": 0.98,

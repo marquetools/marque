@@ -39,7 +39,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    ForeignClassification, IsmAttributes, MarkingClassification, Span, TokenKind, TokenSpan,
+    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, Span, TokenKind,
+    TokenSpan,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -89,6 +90,12 @@ impl CapcoRuleSet {
                 Box::new(SigmaValidationRule),
                 Box::new(RdPrecedenceRule),
                 Box::new(UcniClassificationRule),
+                Box::new(SarPortionFormRule),
+                Box::new(SarClassificationRule),
+                Box::new(SarProgramOrderRule),
+                Box::new(SarCompartmentOrderRule),
+                Box::new(SarIndicatorRepeatRule),
+                Box::new(SarBannerRollupRule),
             ],
         }
     }
@@ -166,11 +173,11 @@ impl Rule for BannerAbbreviationRule {
                 source: FixSource::BuiltinRule,
                 span: token_span.span,
                 message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
-                citation: "CAPCO-ISM-v2022-DEC-§3.2",
+                citation: "CAPCO-2016 §A.6",
                 original: abbrev.to_owned(),
                 replacement: full.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§3.2"),
+                migration_ref: None,
             }));
         }
         // Walk non-IC dissem token spans. If the source text is the portion
@@ -200,11 +207,11 @@ impl Rule for BannerAbbreviationRule {
                 message: format!(
                     "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§9",
+                citation: "CAPCO-2016 §A.6",
                 original: abbrev.to_owned(),
                 replacement: full.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§9"),
+                migration_ref: None,
             }));
         }
         diagnostics
@@ -283,11 +290,11 @@ impl Rule for MissingUsaTrigraphRule {
             source: FixSource::BuiltinRule,
             span,
             message: message.to_owned(),
-            citation: "CAPCO-ISM-v2022-DEC-§4.1",
+            citation: "CAPCO-2016 §H.8",
             original: current,
             replacement: fixed,
             confidence: 0.97, // per spec T031
-            migration_ref: Some("CAPCO-2023-§4.1"),
+            migration_ref: None,
         })]
     }
 }
@@ -386,7 +393,7 @@ impl Rule for MisorderedBlocksRule {
                 String::new(),
                 replacement,
                 0.6,
-                Some("CAPCO-2023-§3.1"),
+                None,
             )
         });
 
@@ -396,7 +403,7 @@ impl Rule for MisorderedBlocksRule {
             span,
             "marking blocks are out of CAPCO order \
              (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
-            "CAPCO-ISM-v2022-DEC-§3.1",
+            "CAPCO-2016 §A.6",
             fix,
         )]
     }
@@ -406,7 +413,7 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
     match kind {
         TokenKind::Classification => Some(0),
         TokenKind::SciControl => Some(1),
-        TokenKind::SarIdentifier => Some(2),
+        TokenKind::SarIndicator => Some(2),
         TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
         // Non-IC dissem always comes after IC dissem (last block).
         TokenKind::NonIcDissem => Some(4),
@@ -431,7 +438,6 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
-    let mut sar: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
     let mut non_ic: Vec<&str> = Vec::new();
@@ -440,10 +446,12 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
         match token.kind {
             TokenKind::Classification => classification.push(token.text.as_ref()),
             TokenKind::SciControl => sci.push(token.text.as_ref()),
-            TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
             TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
+            // SAR tokens are collected via attrs.sar_markings below; skip
+            // individual SAR token kinds to avoid duplicating or truncating
+            // compartment/sub-compartment data.
             _ => {}
         }
     }
@@ -457,8 +465,10 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     if !sci.is_empty() {
         blocks.push(sci.join("/"));
     }
-    if !sar.is_empty() {
-        blocks.push(sar.join("/"));
+    // Build the SAR block from the parsed structure so that program
+    // identifiers, compartments, and sub-compartments are all preserved.
+    if let Some(sar) = attrs.sar_markings.as_ref() {
+        blocks.push(render_sar_block(sar.indicator, &sar.programs));
     }
     if !dissem.is_empty() {
         blocks.push(dissem.join("/"));
@@ -519,7 +529,7 @@ impl Rule for SeparatorCountRule {
                     source: FixSource::BuiltinRule,
                     span,
                     message: "redundant block separator: collapse to a single `//`".to_owned(),
-                    citation: "CAPCO-ISM-v2022-DEC-§3.1",
+                    citation: "CAPCO-2016 §A.6",
                     original,
                     replacement: "//".to_owned(),
                     confidence: 0.99,
@@ -528,51 +538,99 @@ impl Rule for SeparatorCountRule {
             }
         }
 
-        // === Missing separators (single `/` not part of `//`) ===
-        // When a user writes `SECRET/NOFORN` (one slash) the parser cannot
-        // split on `//`, so the entire marking lands in one block whose
-        // text contains a stray `/`. The block is recorded as either a
-        // `Classification` token (if it's the first/only block) or an
-        // `Unknown` token (if a partial split happened, e.g.
-        // `SECRET//SI/NF` → blocks `SECRET`, `SI/NF`). E004 walks both and
-        // emits one diagnostic per single-slash position.
-        for token in attrs.token_spans.iter() {
-            if !matches!(token.kind, TokenKind::Classification | TokenKind::Unknown) {
+        // === Same-category `//` between sibling values ===
+        // Per CAPCO-2016 §A.6 Figure 2, `/` is the within-category separator
+        // and `//` is the between-category separator. When a user writes
+        // `SECRET//SI//TK//NOFORN`, SI and TK are both SCI controls and must
+        // be joined with `/` (→ `SECRET//SI/TK//NOFORN`). We detect this by
+        // walking each `Separator` and checking whether the token
+        // immediately before and immediately after resolve to the same
+        // CAPCO category. If either side is Unknown/unclassifiable or they
+        // belong to different categories, we do not fire — that avoids
+        // double-flagging legitimately different blocks.
+        let spans = &attrs.token_spans;
+        for (idx, tok) in spans.iter().enumerate() {
+            if tok.kind != TokenKind::Separator {
                 continue;
             }
-            let bytes = token.text.as_bytes();
-            // Find every `/` that is NOT adjacent to another `/`. A doubled
-            // `/` is a separator and would have been recognized by the
-            // outer `//` split, so any `/` we see here in a non-Separator
-            // token is by construction a stray single slash.
-            let mut i = 0;
-            while i < bytes.len() {
-                if bytes[i] == b'/' {
-                    let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
-                    let next_is_slash = bytes.get(i + 1) == Some(&b'/');
-                    if !prev_is_slash && !next_is_slash {
-                        let abs_pos = token.span.start + i;
-                        let span = Span::new(abs_pos, abs_pos + 1);
-                        diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                            rule: self.id(),
-                            severity: self.default_severity(),
-                            source: FixSource::BuiltinRule,
-                            span,
-                            message: "missing block separator: single `/` should be `//`"
-                                .to_owned(),
-                            citation: "CAPCO-ISM-v2022-DEC-§3.1",
-                            original: "/".to_owned(),
-                            replacement: "//".to_owned(),
-                            confidence: 0.99,
-                            migration_ref: None,
-                        }));
-                    }
-                }
-                i += 1;
+            // Skip separators that are part of a `////` run — the first
+            // branch above already owns those spans. A separator is in a
+            // run when it is immediately adjacent (no gap) to another
+            // separator in either direction.
+            let prev_sep = spans[..idx].iter().rev().find(|t| t.kind == TokenKind::Separator);
+            let next_sep = spans[idx + 1..].iter().find(|t| t.kind == TokenKind::Separator);
+            let in_run = prev_sep.is_some_and(|s| s.span.end == tok.span.start)
+                || next_sep.is_some_and(|s| tok.span.end == s.span.start);
+            if in_run {
+                continue;
             }
+            // Previous non-separator token.
+            let prev = spans[..idx]
+                .iter()
+                .rev()
+                .find(|t| t.kind != TokenKind::Separator);
+            // Next non-separator token.
+            let next = spans[idx + 1..]
+                .iter()
+                .find(|t| t.kind != TokenKind::Separator);
+            let (Some(prev), Some(next)) = (prev, next) else {
+                continue;
+            };
+            let Some(a) = category_of(prev.kind) else {
+                continue;
+            };
+            let Some(b) = category_of(next.kind) else {
+                continue;
+            };
+            if a != b {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: tok.span,
+                message: "redundant block separator: consecutive same-category \
+                         values must be joined with `/`, not `//`"
+                    .to_owned(),
+                citation: "CAPCO-2016 §A.6",
+                original: "//".to_owned(),
+                replacement: "/".to_owned(),
+                confidence: 0.95,
+                migration_ref: None,
+            }));
         }
 
         diagnostics
+    }
+}
+
+/// CAPCO marking category — used by E004 to detect `//` between values that
+/// belong to the same category and should have been joined with `/`.
+///
+/// Categories that can legitimately contain multiple values joined by `/`
+/// within a single block are represented; TokenKinds that never appear as
+/// multi-value blocks (e.g., `Classification`, `FgiMarker`, `DeclassDate`)
+/// return `None` from [`category_of`] so the rule declines to fire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeparatorCategory {
+    Sci,
+    Dissem,
+    NonIcDissem,
+    Aea,
+    Sar,
+    RelTo,
+}
+
+fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
+    match kind {
+        TokenKind::SciControl => Some(SeparatorCategory::Sci),
+        TokenKind::DissemControl => Some(SeparatorCategory::Dissem),
+        TokenKind::NonIcDissem => Some(SeparatorCategory::NonIcDissem),
+        TokenKind::AeaMarking => Some(SeparatorCategory::Aea),
+        TokenKind::SarIndicator => Some(SeparatorCategory::Sar),
+        TokenKind::RelToTrigraph | TokenKind::RelToBlock => Some(SeparatorCategory::RelTo),
+        _ => None,
     }
 }
 
@@ -616,7 +674,7 @@ impl Rule for DeclassifyInBannerRule {
             span,
             "declassification marking belongs in Classification Authority Block \
              (Declassify On:), not in the banner — remove from banner and add to CAB",
-            "CAPCO-ISM-v2022-DEC-§6.1",
+            "CAPCO-2016 §E",
             None, // Fix requires document-level context (multi-span);
                   // confidence 0.55 per T034 — suggestion only.
         )]
@@ -683,7 +741,7 @@ impl Rule for DeprecatedDissemRule {
                     "{:?} is a deprecated dissemination control; replace with {:?}",
                     token.text, entry.replacement
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§3.4",
+                citation: "CAPCO-2016 §F",
                 original: token.text.to_string(),
                 replacement: entry.replacement.to_owned(),
                 confidence: entry.confidence,
@@ -773,7 +831,7 @@ impl Rule for XShorthandDateRule {
                          use {:?}",
                         entry.replacement
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
                     replacement: entry.replacement.to_owned(),
                     confidence: entry.confidence,
@@ -799,14 +857,14 @@ impl Rule for XShorthandDateRule {
                         "X-shorthand declassification code {text:?} is deprecated; \
                          use {replacement:?}"
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§5.1",
+                    citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
                     replacement,
                     // 0.95: slightly below table-backed 0.97 because
                     // the canonical form is derived by pattern stripping
                     // rather than an authoritative CVE mapping.
                     confidence: 0.95,
-                    migration_ref: Some("CAPCO-2023-§5.1-X-shorthand-pattern"),
+                    migration_ref: None,
                 }));
             }
         }
@@ -900,17 +958,24 @@ impl Rule for UnknownTokenRule {
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::Unknown)
-            // Skip entries that E006/E007 will pick up. Two paths to check,
-            // in lockstep with E007's emit logic:
+            // Skip entries that E006/E007/E030 will pick up. Three paths:
             //   1. Migration-table hit (covers LIMDIS/FOUO for E006 and
             //      25X1-/50X1- for E007).
             //   2. Pattern-matched X-shorthand with a trailing `-` for
             //      forms not in the seed table (25X2-, 25X9-, etc.).
-            // An Unknown that hits either path is not "unrecognized" — it
-            // is a deprecated form that another rule will surface.
+            //   3. A second/subsequent SAR category block that the parser
+            //      tagged Unknown precisely so E030 can flag the repeated
+            //      indicator (§H.5 p100: the SAR indicator must not be
+            //      repeated). E008 steps aside; E030 owns this shape.
+            // An Unknown that hits any path is not "unrecognized" — it
+            // is a deprecated or structurally-owned form another rule
+            // will surface.
             .filter(|t| {
                 let text = t.text.as_ref();
-                find_migration(text).is_none() && !looks_like_deprecated_x_shorthand(text)
+                find_migration(text).is_none()
+                    && !looks_like_deprecated_x_shorthand(text)
+                    && !text.starts_with("SAR-")
+                    && !text.starts_with("SPECIAL ACCESS REQUIRED-")
             })
             .map(|t| {
                 Diagnostic::new(
@@ -919,7 +984,7 @@ impl Rule for UnknownTokenRule {
                     t.span,
                     "unrecognized token inside marking — does not match any \
                      known CAPCO classification, control, or trigraph",
-                    "CAPCO-ISM-v2022-DEC-§3.1",
+                    "CAPCO-2016 §G.1",
                     None, // FR-012: no fix offered
                 )
             })
@@ -1077,11 +1142,11 @@ impl Rule for PortionAbbreviationRule {
                         message: format!(
                             "portion uses banner-form classification {banner:?}; use {portion:?}"
                         ),
-                        citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                        citation: "CAPCO-2016 §C.1",
                         original: banner.to_owned(),
                         replacement: portion.to_owned(),
                         confidence: 1.0,
-                        migration_ref: Some("CAPCO-2023-§4.1"),
+                        migration_ref: None,
                     }));
                 }
             }
@@ -1112,11 +1177,11 @@ impl Rule for PortionAbbreviationRule {
                 message: format!(
                     "portion uses banner-form dissem control {text:?}; use {portion:?}"
                 ),
-                citation: "CAPCO-ISM-v2022-DEC-§4.1",
+                citation: "CAPCO-2016 §C.1",
                 original: text.to_owned(),
                 replacement: portion.to_owned(),
                 confidence: 1.0,
-                migration_ref: Some("CAPCO-2023-§4.1"),
+                migration_ref: None,
             }));
         }
 
@@ -1144,7 +1209,7 @@ impl Rule for PortionAbbreviationRule {
                     message: format!(
                         "portion uses banner-form non-IC dissem {text:?}; use {portion:?}"
                     ),
-                    citation: "CAPCO-ISM-v2022-DEC-§9",
+                    citation: "CAPCO-2016 §C.1",
                     original: text.to_owned(),
                     replacement: portion.to_owned(),
                     confidence: 1.0,
@@ -1241,7 +1306,7 @@ impl Rule for BareHcsRule {
             source: FixSource::BuiltinRule,
             span,
             message,
-            citation: "CAPCO-ISM-v2022-DEC-§4.SCI",
+            citation: "CAPCO-2016 §H.4",
             original: "HCS".to_owned(),
             replacement: "HCS-P".to_owned(),
             confidence,
@@ -1315,7 +1380,7 @@ impl Rule for MissingNonUsPrefix {
                 "non-US classification {text:?} is missing the leading //; \
                  use //{text} to indicate the US classification slot is empty"
             ),
-            citation: "CAPCO-ISM-v2022-DEC-§2",
+            citation: "CAPCO-2016 §H.4",
             original: text.to_owned(),
             replacement: format!("//{text}"),
             confidence: 0.95,
@@ -1437,7 +1502,7 @@ impl Rule for DualClassificationRule {
                 us.banner_str(),
                 us.banner_str(),
             ),
-            citation: "CAPCO-ISM-v2022-DEC-§7",
+            citation: "CAPCO-2016 §B.1",
             original,
             replacement: fgi_replacement,
             confidence: 0.90,
@@ -1491,7 +1556,7 @@ impl Rule for DelimiterMismatchRule {
                         span: token.span,
                         message: "JOINT country list must be space-delimited, not comma-delimited"
                             .to_owned(),
-                        citation: "CAPCO-ISM-v2022-DEC-§3",
+                        citation: "CAPCO-2016 §A.6",
                         original: text.to_owned(),
                         replacement: fixed,
                         confidence: 0.95,
@@ -1531,7 +1596,7 @@ impl Rule for DelimiterMismatchRule {
                     span: token.span,
                     message: "REL TO country list must be comma-delimited, not space-delimited"
                         .to_owned(),
-                    citation: "CAPCO-ISM-v2022-DEC-§3",
+                    citation: "CAPCO-2016 §A.6",
                     original: text.to_owned(),
                     replacement: fixed,
                     confidence: 0.95,
@@ -1589,7 +1654,7 @@ impl Rule for CominglingWarningRule {
             span,
             "portion mark comingles US classification with FGI; \
              consider splitting into separate US and foreign paragraphs",
-            "CAPCO-ISM-v2022-DEC-§7",
+            "CAPCO-2016 §H.7",
             None,
         )]
     }
@@ -1649,7 +1714,7 @@ impl Rule for JointRelToRule {
                 "JOINT participants [{}] must appear in REL TO list",
                 missing.join(", "),
             ),
-            "CAPCO-ISM-v2022-DEC-§3",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1706,7 +1771,7 @@ impl Rule for NonUsMissingDissemRule {
             span,
             "non-US classification must be accompanied by a dissemination control \
              (e.g., REL TO, NOFORN)",
-            "CAPCO-ISM-v2022-DEC-§2",
+            "CAPCO-2016 §B.3",
             None,
         )]
     }
@@ -1791,7 +1856,7 @@ impl Rule for NonIcInClassifiedBannerRule {
                      use only in portion markings",
                     nic.banner_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§9",
+                "CAPCO-2016 §H.9",
                 None,
             ));
         }
@@ -1841,7 +1906,7 @@ impl Rule for JointRestrictedRule {
             span,
             "RESTRICTED may not be used with JOINT — the US has no equivalent \
              classification level for RESTRICTED",
-            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1887,7 +1952,7 @@ impl Rule for JointFgiRule {
             span,
             "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
              or foreign-originated (FGI), not both",
-            "CAPCO-ISM-v2022-DEC-§3.JOINT",
+            "CAPCO-2016 §H.3",
             None,
         )]
     }
@@ -1948,7 +2013,7 @@ impl Rule for JointIcDissemRule {
                      only REL TO is permitted with JOINT markings",
                     ctrl.as_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                "CAPCO-2016 §H.3",
                 None,
             ));
         }
@@ -2003,7 +2068,7 @@ impl Rule for JointNonIcDissemRule {
                     "JOINT may not be used with non-IC dissem control {}",
                     nic.banner_str(),
                 ),
-                "CAPCO-ISM-v2022-DEC-§3.JOINT",
+                "CAPCO-2016 §H.3",
                 None,
             ));
         }
@@ -2130,7 +2195,7 @@ fn check_trigraph_ordering(
             "{list_name} country codes must be alphabetically ordered \
              (USA first when present): [{original}] → [{replacement}]"
         ),
-        citation: "CAPCO-ISM-v2022-DEC-§3",
+        citation: "CAPCO-2016 §H.8",
         original,
         replacement,
         confidence: 1.0,
@@ -2190,7 +2255,7 @@ impl Rule for AeaNofornRule {
             "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
              per the Atomic Energy Act; override to warn via rule severity \
              config if sharing agreements apply",
-            "CAPCO-ISM-v2022-DEC-§6/AEA",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
@@ -2253,7 +2318,7 @@ impl Rule for CnwdiConstraintRule {
                 "CNWDI may only be used with TOP SECRET or SECRET RD; \
                  current classification is {level_str}"
             ),
-            "CAPCO-ISM-v2022-DEC-§6/CNWDI",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
@@ -2329,7 +2394,7 @@ impl Rule for SigmaValidationRule {
                     self.default_severity(),
                     span,
                     message,
-                    "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                    "CAPCO-2016 §H.6",
                     None,
                 ));
             }
@@ -2352,7 +2417,7 @@ impl Rule for SigmaValidationRule {
                             original.join(" "),
                             replacement.join(" "),
                         ),
-                        citation: "CAPCO-ISM-v2022-DEC-§6/SIGMA",
+                        citation: "CAPCO-2016 §H.6",
                         original: original.join(" "),
                         replacement: replacement.join(" "),
                         confidence: 1.0,
@@ -2421,7 +2486,7 @@ impl Rule for RdPrecedenceRule {
                     "{superseded} should not appear alongside RD; \
                      RD takes precedence over {superseded} in both banners and portions"
                 ),
-                "CAPCO-ISM-v2022-DEC-§6/RD",
+                "CAPCO-2016 §H.6",
                 None,
             ));
         }
@@ -2477,14 +2542,783 @@ impl Rule for UcniClassificationRule {
             self.default_severity(),
             span,
             "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
-            "CAPCO-ISM-v2022-DEC-§6/UCNI",
+            "CAPCO-2016 §H.6",
             None,
         )]
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rule: E026 — SAR portion must use `SAR-` abbreviation
+// ---------------------------------------------------------------------------
+
+/// Portion marks must use the `SAR-` abbreviation, not the full
+/// `SPECIAL ACCESS REQUIRED-` form (CAPCO-2016 §H.5 p101 "Authorized
+/// Portion Mark"). When all program identifiers are already abbrev-shaped
+/// (2–3 alphanumeric characters), a low-confidence (0.35) suggestion is
+/// proposed to replace the full indicator with the `SAR-` prefix.
+/// Otherwise no fix is proposed because abbreviating an arbitrary
+/// program nickname requires human judgment.
+struct SarPortionFormRule;
+
+impl Rule for SarPortionFormRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E026")
+    }
+    fn name(&self) -> &'static str {
+        "sar-portion-form"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{MarkingType, SarIndicator};
+        if ctx.marking_type != MarkingType::Portion {
+            return vec![];
+        }
+        let Some(sar) = attrs.sar_markings.as_ref() else {
+            return vec![];
+        };
+        if !matches!(sar.indicator, SarIndicator::Full) {
+            return vec![];
+        }
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SarIndicator)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        // When all program identifiers are already abbrev-shaped (2–3
+        // alphanumeric chars), propose a low-confidence suggestion to replace
+        // the full indicator with `SAR-`. Otherwise the fix requires human
+        // judgment and no proposal is emitted.
+        let all_programs_abbreviated = sar.programs.iter().all(|p| {
+            let id = p.identifier.as_ref();
+            (2..=3).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric())
+        });
+
+        let fix = if all_programs_abbreviated {
+            let block_span = sar_block_span(attrs).unwrap_or(span);
+            let original = sar_block_source(attrs, block_span).unwrap_or_default();
+            let replacement = render_sar_block(SarIndicator::Abbrev, &sar.programs);
+            Some(FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                block_span,
+                original,
+                replacement,
+                0.35,
+                None,
+            ))
+        } else {
+            None
+        };
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "portion marks must use the SAR- abbreviation, not the \
+             SPECIAL ACCESS REQUIRED- full form",
+            "CAPCO-2016 §H.5",
+            fix,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E027 — SAR requires TS, S, or C classification
+// ---------------------------------------------------------------------------
+
+/// SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL
+/// classifications (CAPCO-2016 §H.5 p101 "Relationship(s) to Other
+/// Markings"). `UNCLASSIFIED//SAR-*` is invalid and requires human review.
+struct SarClassificationRule;
+
+impl Rule for SarClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E027")
+    }
+    fn name(&self) -> &'static str {
+        "sar-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{Classification, MarkingClassification};
+        if attrs.sar_markings.is_none() {
+            return vec![];
+        }
+        let invalid = matches!(
+            &attrs.classification,
+            None | Some(MarkingClassification::Us(Classification::Unclassified))
+        );
+        if !invalid {
+            return vec![];
+        }
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SarIndicator)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "SAR markings may only be used with TOP SECRET, SECRET, or \
+             CONFIDENTIAL classifications",
+            "CAPCO-2016 §H.5",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E028 — SAR programs must be in ascending order
+// ---------------------------------------------------------------------------
+
+/// Programs within a SAR block must be listed in ascending sort order
+/// with numbered values first, followed by alphabetic values (CAPCO-2016
+/// §H.5 p99).
+///
+/// When programs are out of order, the fix also sorts compartments and
+/// sub-compartments within each program in a single whole-block rewrite
+/// — so when E028 and E029 both detect violations on the same marking,
+/// applying E028's fix fully normalizes the block and the E029 fixes
+/// (which cover per-program sub-spans) become redundant. The engine's
+/// overlap guard will retain E028 and drop E029 for that run; a
+/// subsequent lint will confirm zero residual violations.
+struct SarProgramOrderRule;
+
+impl Rule for SarProgramOrderRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E028")
+    }
+    fn name(&self) -> &'static str {
+        "sar-program-order"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let Some(sar) = attrs.sar_markings.as_ref() else {
+            return vec![];
+        };
+        if sar.programs.len() < 2 {
+            return vec![];
+        }
+        let in_order = sar
+            .programs
+            .windows(2)
+            .all(|w| sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier));
+        if in_order {
+            return vec![];
+        }
+        let Some(span) = sar_block_span(attrs) else {
+            return vec![];
+        };
+        let original = render_sar_block(sar.indicator, &sar.programs);
+
+        // Sort programs and also normalize compartments/subs within each program
+        // in the same pass. This ensures applying the E028 fix alone fully
+        // normalizes the block even when E029 violations are present.
+        let mut sorted = sar.programs.to_vec();
+        for prog in sorted.iter_mut() {
+            let mut comps = prog.compartments.to_vec();
+            for comp in comps.iter_mut() {
+                let mut subs = comp.sub_compartments.to_vec();
+                subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+                *comp = marque_ism::SarCompartment::new(
+                    comp.identifier.clone(),
+                    subs.into_boxed_slice(),
+                );
+            }
+            comps.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+            *prog = marque_ism::SarProgram::new(prog.identifier.clone(), comps.into_boxed_slice());
+        }
+        sorted.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+        let replacement = render_sar_block(sar.indicator, &sorted);
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span,
+            message: "SAR programs must be in ascending order (numeric first, \
+                 then alphabetic)"
+                .to_owned(),
+            citation: "CAPCO-2016 §H.5",
+            original,
+            replacement,
+            confidence: 0.85,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E029 — SAR compartments and sub-compartments must be in order
+// ---------------------------------------------------------------------------
+
+/// Compartments within a program — and sub-compartments within a
+/// compartment — must be in ascending sort order per CAPCO-2016 §H.5 p99.
+///
+/// One diagnostic is emitted **per out-of-order program** (not one for the
+/// whole SAR block). This gives each program a non-overlapping fix span so
+/// all compartment-ordering fixes can be applied in a single pass, and so
+/// the fix spans don't overlap with E028's whole-block span when both rules
+/// fire on the same marking.
+struct SarCompartmentOrderRule;
+
+impl Rule for SarCompartmentOrderRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E029")
+    }
+    fn name(&self) -> &'static str {
+        "sar-compartment-order"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let Some(sar) = attrs.sar_markings.as_ref() else {
+            return vec![];
+        };
+
+        // Pre-compute SarProgram token positions once for per-program span
+        // lookups via `sar_program_span`.
+        let prog_positions: Vec<usize> = attrs
+            .token_spans
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| {
+                if t.kind == TokenKind::SarProgram {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut diagnostics = Vec::new();
+
+        for (prog_idx, prog) in sar.programs.iter().enumerate() {
+            let comps_ok = prog.compartments.len() < 2
+                || prog.compartments.windows(2).all(|w| {
+                    sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier)
+                });
+            let subs_ok = prog.compartments.iter().all(|comp| {
+                comp.sub_compartments.len() < 2
+                    || comp
+                        .sub_compartments
+                        .windows(2)
+                        .all(|w| sar_sort_key(&w[0]) <= sar_sort_key(&w[1]))
+            });
+            if comps_ok && subs_ok {
+                continue;
+            }
+
+            let Some(span) =
+                sar_program_span(&attrs.token_spans, &prog_positions, prog_idx)
+            else {
+                continue;
+            };
+
+            let original = render_single_program(prog);
+
+            // Sort compartments and sub-compartments within this program.
+            let mut sorted_comps = prog.compartments.to_vec();
+            for comp in sorted_comps.iter_mut() {
+                let mut subs = comp.sub_compartments.to_vec();
+                subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+                *comp = marque_ism::SarCompartment::new(
+                    comp.identifier.clone(),
+                    subs.into_boxed_slice(),
+                );
+            }
+            sorted_comps
+                .sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+            let sorted_prog = marque_ism::SarProgram::new(
+                prog.identifier.clone(),
+                sorted_comps.into_boxed_slice(),
+            );
+            let replacement = render_single_program(&sorted_prog);
+
+            let level = if !comps_ok {
+                "compartments"
+            } else {
+                "sub-compartments"
+            };
+
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span,
+                message: format!(
+                    "SAR {level} must be in ascending order (numeric first, \
+                     then alphabetic)"
+                ),
+                citation: "CAPCO-2016 §H.5",
+                original,
+                replacement,
+                confidence: 0.85,
+                migration_ref: None,
+            }));
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E030 — SAR category indicator must not be repeated
+// ---------------------------------------------------------------------------
+
+/// The SAR category indicator must not be repeated when multiple
+/// programs apply; multiple programs use a single indicator with `/`
+/// separator (CAPCO-2016 §H.5 p100 Syntax Rules bullet 5; see also §A.6).
+///
+/// The parser captures the first SAR block into `attrs.sar_markings` and
+/// emits every subsequent same-marking SAR block as an `Unknown` token
+/// whose text still starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
+/// This rule finds those Unknown tokens, extends the fix span backward
+/// over the preceding `//` category separator, and coalesces the
+/// repeated block into the preceding block.
+struct SarIndicatorRepeatRule;
+
+impl Rule for SarIndicatorRepeatRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E030")
+    }
+    fn name(&self) -> &'static str {
+        "sar-indicator-repeat"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Fast exit: no SAR block at all.
+        if attrs.sar_markings.is_none() {
+            return vec![];
+        }
+        let mut diagnostics = Vec::new();
+        // Walk token_spans by index so we can look back for the
+        // Separator token that introduced the repeated SAR block.
+        for (idx, tok) in attrs.token_spans.iter().enumerate() {
+            if tok.kind != TokenKind::Unknown {
+                continue;
+            }
+            let text = tok.text.as_ref();
+            let stripped = if let Some(rest) = text.strip_prefix("SAR-") {
+                rest
+            } else if let Some(rest) = text.strip_prefix("SPECIAL ACCESS REQUIRED-") {
+                rest
+            } else {
+                continue;
+            };
+            if stripped.is_empty() {
+                continue;
+            }
+            // Find the closest preceding Separator token. The parser
+            // trims leading whitespace per block, so the token's own
+            // span does not necessarily sit flush against the `//`.
+            let Some(sep_tok) = attrs.token_spans[..idx]
+                .iter()
+                .rev()
+                .find(|t| t.kind == TokenKind::Separator)
+            else {
+                // No preceding separator — shouldn't happen for a valid
+                // SAR-prefixed Unknown token, but skip defensively.
+                continue;
+            };
+            // Only emit a fix when the separator and the Unknown token are
+            // byte-contiguous (no whitespace gap between them). If there is
+            // a gap we cannot honestly reconstruct the original bytes in
+            // `FixProposal.original` without preserving the raw source, so
+            // we skip to avoid fabricating `original` content.
+            if sep_tok.span.end != tok.span.start {
+                continue;
+            }
+            let fix_span = Span::new(sep_tok.span.start, tok.span.end);
+            let replacement = format!("/{stripped}");
+            let sep_text = sep_tok.text.as_ref();
+            let original = format!("{sep_text}{text}");
+
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: fix_span,
+                message: "SAR category indicator must not be repeated; \
+                     multiple programs use a single indicator with '/' separator"
+                    .to_owned(),
+                citation: "CAPCO-2016 §H.5",
+                original,
+                replacement,
+                confidence: 0.9,
+                migration_ref: None,
+            }));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E031 — SAR banner roll-up
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §H.5 p101 Precedence Rules for Banner Line Guidance:
+/// "Unique SAPs contained in portion marks must always appear in the banner
+/// line." The banner's SAR block must therefore contain every SAR program,
+/// compartment, and sub-compartment present in any portion marking on the
+/// page.
+///
+/// This rule consumes [`PageContext::expected_sar_marking`] (P4a) to compute
+/// the required composite and compares it with the banner's observed SAR
+/// block. Any program / compartment / sub-compartment present in the
+/// expected set but absent from the observed banner is flagged.
+///
+/// Fix semantics:
+/// - If the banner has a SAR block, replace it in-place with the rolled-up
+///   form at confidence 0.9 (severity `Fix`).
+/// - If the banner has no SAR block at all, emit at severity `Error` with
+///   no fix — inserting a new block requires byte-positioning between the
+///   SCI and AEA blocks, which the engine's single-pass architecture does
+///   not reliably support from rule-level information alone.
+struct SarBannerRollupRule;
+
+impl Rule for SarBannerRollupRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E031")
+    }
+    fn name(&self) -> &'static str {
+        "sar-banner-rollup"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+
+        // Banner / CAB markings only; portions are the input to the rollup,
+        // not the subject of it.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        let Some(page_context) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+        let Some(expected) = page_context.expected_sar_marking() else {
+            return vec![];
+        };
+        if expected.programs.is_empty() {
+            return vec![];
+        }
+
+        // Compute the missing set against the observed banner.
+        let missing = sar_missing_identifiers(attrs.sar_markings.as_ref(), &expected);
+        if missing.is_empty() {
+            return vec![];
+        }
+
+        let message = format!(
+            "banner SAR block is missing programs/compartments present in portions: {}",
+            missing.join(", "),
+        );
+
+        match attrs.sar_markings.as_ref() {
+            Some(observed) => {
+                // Banner has a SAR block — replace it in place with the
+                // rolled-up form. Preserve the observed indicator form
+                // (abbreviated vs full) so we don't gratuitously rewrite
+                // `SPECIAL ACCESS REQUIRED-` into `SAR-`.
+                let Some(span) = sar_block_span(attrs) else {
+                    return vec![];
+                };
+                let original_bytes = attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::SarIndicator)
+                    .map(|_| ())
+                    .and_then(|_| sar_block_source(attrs, span))
+                    .unwrap_or_else(|| render_sar_block(observed.indicator, &observed.programs));
+                let replacement = render_sar_block(observed.indicator, &expected.programs);
+                if replacement == original_bytes {
+                    // Indicator-form-only difference, missing set was
+                    // computed from identifiers; shouldn't happen, but be
+                    // defensive.
+                    return vec![];
+                }
+                vec![make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span,
+                    message,
+                    citation: "CAPCO-2016 §H.5",
+                    original: original_bytes,
+                    replacement,
+                    confidence: 0.9,
+                    migration_ref: None,
+                })]
+            }
+            None => {
+                // No SAR block in the banner at all. Byte-positioning a new
+                // block between SCI and AEA from rule context alone is
+                // unsafe — report at Error severity with no fix and let a
+                // human place the block.
+                let span = attrs
+                    .token_spans
+                    .first()
+                    .map(|t| t.span)
+                    .unwrap_or(Span::new(0, 0));
+                vec![Diagnostic::new(
+                    self.id(),
+                    Severity::Error,
+                    span,
+                    message,
+                    "CAPCO-2016 §H.5",
+                    None,
+                )]
+            }
+        }
+    }
+}
+
+/// Collect identifiers that appear in `expected` but not in `observed`.
+///
+/// Returns a flat human-readable list in `program` / `program-comp` /
+/// `program-comp sub` form so the diagnostic message is actionable.
+fn sar_missing_identifiers(
+    observed: Option<&marque_ism::SarMarking>,
+    expected: &marque_ism::SarMarking,
+) -> Vec<String> {
+    use std::collections::HashMap;
+
+    // Build a lookup into observed: program_id -> (comp_id -> set of sub ids).
+    let mut obs_map: HashMap<&str, HashMap<&str, std::collections::HashSet<&str>>> = HashMap::new();
+    if let Some(obs) = observed {
+        for prog in obs.programs.iter() {
+            let comps = obs_map.entry(prog.identifier.as_ref()).or_default();
+            for comp in prog.compartments.iter() {
+                let subs = comps.entry(comp.identifier.as_ref()).or_default();
+                for sub in comp.sub_compartments.iter() {
+                    subs.insert(sub.as_ref());
+                }
+            }
+        }
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for prog in expected.programs.iter() {
+        match obs_map.get(prog.identifier.as_ref()) {
+            None => {
+                // Entire program missing — report it (plus its compartments
+                // inline so the reader sees the full shape).
+                let rendered = render_single_program(prog);
+                missing.push(rendered);
+            }
+            Some(obs_comps) => {
+                for comp in prog.compartments.iter() {
+                    match obs_comps.get(comp.identifier.as_ref()) {
+                        None => {
+                            let mut s = format!("{}-{}", prog.identifier, comp.identifier);
+                            for sub in comp.sub_compartments.iter() {
+                                s.push(' ');
+                                s.push_str(sub);
+                            }
+                            missing.push(s);
+                        }
+                        Some(obs_subs) => {
+                            for sub in comp.sub_compartments.iter() {
+                                if !obs_subs.contains(sub.as_ref()) {
+                                    missing.push(format!(
+                                        "{}-{} {}",
+                                        prog.identifier, comp.identifier, sub,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    missing
+}
+
+/// Render a single SAR program to its banner-block fragment form (without
+/// the leading indicator prefix). Used to describe missing programs in
+/// diagnostic messages.
+fn render_single_program(prog: &marque_ism::SarProgram) -> String {
+    let mut s = String::from(prog.identifier.as_ref());
+    for comp in prog.compartments.iter() {
+        s.push('-');
+        s.push_str(&comp.identifier);
+        for sub in comp.sub_compartments.iter() {
+            s.push(' ');
+            s.push_str(sub);
+        }
+    }
+    s
+}
+
+/// Return a normalized SAR block string for use as the
+/// `FixProposal::original` field when `span` covers SAR tokens.
+///
+/// This helper does not reconstruct the exact original source bytes or
+/// preserve original formatting; it renders the parsed SAR structure via
+/// `render_sar_block(...)`. Returns `None` when the attributes have no SAR
+/// markings or when the provided span does not contain SAR tokens.
+fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
+    // We do not have enough information here to recover exact original source
+    // bytes. Instead, gate on whether the requested span contains SAR tokens
+    // and then return the canonical rendering of the parsed SAR block.
+    let Some(sar) = attrs.sar_markings.as_ref() else {
+        return None;
+    };
+    // Sanity: ensure there is at least one SAR token within span.
+    let has_in_span = attrs.token_spans.iter().any(|t| {
+        matches!(
+            t.kind,
+            TokenKind::SarIndicator
+                | TokenKind::SarProgram
+                | TokenKind::SarCompartment
+                | TokenKind::SarSubCompartment
+        ) && t.span.start >= span.start
+            && t.span.end <= span.end
+    });
+    if !has_in_span {
+        return None;
+    }
+    Some(render_sar_block(sar.indicator, &sar.programs))
+}
+
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Compute the byte span covering the full SAR block: from the start of
+/// its `SarIndicator` token through the end of the last SAR-constituent
+/// token (`SarProgram` / `SarCompartment` / `SarSubCompartment`).
+fn sar_block_span(attrs: &IsmAttributes) -> Option<Span> {
+    let mut start: Option<usize> = None;
+    let mut end: Option<usize> = None;
+    for tok in attrs.token_spans.iter() {
+        let is_sar = matches!(
+            tok.kind,
+            TokenKind::SarIndicator
+                | TokenKind::SarProgram
+                | TokenKind::SarCompartment
+                | TokenKind::SarSubCompartment
+        );
+        if !is_sar {
+            continue;
+        }
+        if tok.kind == TokenKind::SarIndicator && start.is_none() {
+            start = Some(tok.span.start);
+        }
+        let new_end = tok.span.end;
+        end = Some(end.map_or(new_end, |e| e.max(new_end)));
+    }
+    match (start, end) {
+        (Some(s), Some(e)) if e >= s => Some(Span::new(s, e)),
+        _ => None,
+    }
+}
+
+/// Compute the span of a single program (at index `prog_idx` in
+/// `sar.programs`) within the SAR block's token spans.
+///
+/// Returns the span from the `SarProgram` token's start to the end of the
+/// last compartment/sub-compartment token belonging to that program (or just
+/// the `SarProgram` token's end when the program has no compartments).
+/// `prog_positions` must be a pre-computed, index-ordered list of positions
+/// of `SarProgram` tokens within `token_spans`.
+///
+/// This is used by E029 (`sar-compartment-order`) to emit per-program fix
+/// spans rather than whole-block spans, ensuring E028 and E029 fixes are
+/// non-overlapping when a SAR block has both out-of-order programs and
+/// out-of-order compartments.
+fn sar_program_span(
+    token_spans: &[marque_ism::TokenSpan],
+    prog_positions: &[usize],
+    prog_idx: usize,
+) -> Option<Span> {
+    let tok_idx = *prog_positions.get(prog_idx)?;
+    let start = token_spans[tok_idx].span.start;
+
+    // Slice from this program's SarProgram token up to (but not including)
+    // the next program's SarProgram token (or to the end of all tokens if
+    // this is the last program).
+    let end_range = match prog_positions.get(prog_idx + 1).copied() {
+        Some(next_idx) => &token_spans[tok_idx..next_idx],
+        None => &token_spans[tok_idx..],
+    };
+
+    // The program span ends at the last SAR sub-token in this program's range.
+    let end = end_range
+        .iter()
+        .rev()
+        .find(|t| {
+            matches!(
+                t.kind,
+                TokenKind::SarProgram
+                    | TokenKind::SarCompartment
+                    | TokenKind::SarSubCompartment
+            )
+        })
+        .map(|t| t.span.end)
+        .unwrap_or(token_spans[tok_idx].span.end);
+
+    Some(Span::new(start, end))
+}
+
+
+/// Render a SAR block back to source form for fix replacements.
+///
+/// Abbreviated form: `SAR-<PROG>[-<COMP>[ <SUB>...]]{/<PROG>...}`.
+/// Full form: `SPECIAL ACCESS REQUIRED-<PROG>[-<COMP>[ <SUB>...]]{/<PROG>...}`.
+/// The renderer preserves any compartments and sub-compartments
+/// attached to each program for either indicator form.
+fn render_sar_block(
+    indicator: marque_ism::SarIndicator,
+    programs: &[marque_ism::SarProgram],
+) -> String {
+    use marque_ism::SarIndicator;
+    let prefix = match indicator {
+        SarIndicator::Abbrev => "SAR-",
+        SarIndicator::Full => "SPECIAL ACCESS REQUIRED-",
+    };
+    let mut out = String::with_capacity(prefix.len() + programs.len() * 8);
+    out.push_str(prefix);
+    for (i, prog) in programs.iter().enumerate() {
+        if i > 0 {
+            out.push('/');
+        }
+        out.push_str(&prog.identifier);
+        for comp in prog.compartments.iter() {
+            out.push('-');
+            out.push_str(&comp.identifier);
+            for sub in comp.sub_compartments.iter() {
+                out.push(' ');
+                out.push_str(sub);
+            }
+        }
+    }
+    out
+}
 
 /// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
 /// positional helper signature so call sites read top-down by name.
@@ -2559,7 +3393,13 @@ mod tests {
         assert!(ids.contains(&"E025"));
         assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
-        assert_eq!(set.rules().len(), 29);
+        assert!(ids.contains(&"E026"));
+        assert!(ids.contains(&"E027"));
+        assert!(ids.contains(&"E028"));
+        assert!(ids.contains(&"E029"));
+        assert!(ids.contains(&"E030"));
+        assert!(ids.contains(&"E031"));
+        assert_eq!(set.rules().len(), 35);
     }
 
     #[test]
@@ -2692,33 +3532,85 @@ mod tests {
     }
 
     #[test]
+    fn e004_run_does_not_double_fire_same_category_check() {
+        // `SECRET//SI////TK//NOFORN` — SI and TK are both SCI, but the `////`
+        // run owns those separator spans. The same-category check must NOT fire
+        // on the adjacent separators, so exactly one E004 (for `////`) fires.
+        let diags = lint_banner("SECRET//SI////TK//NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(
+            e004.len(),
+            1,
+            "only the `////` run diagnostic must fire, not same-cat duplicates: {e004:?}"
+        );
+        let src = b"SECRET//SI////TK//NOFORN";
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "////");
+    }
+
+    #[test]
     fn e004_does_not_fire_on_clean_separator() {
         let diags = lint_banner("SECRET//NOFORN");
         assert!(diags.iter().all(|d| d.rule.as_str() != "E004"));
     }
 
     #[test]
-    fn e004_fires_on_missing_separator_single_slash() {
-        // T033: E004 must detect missing separators (single `/`).
-        let diags = lint_banner("SECRET/NOFORN");
+    fn e004_fires_on_same_category_sci_double_slash() {
+        // Per CAPCO-2016 §A.6 Figure 2: SI and TK are both SCI controls and
+        // must be joined with `/` within one block, not `//` across blocks.
+        let diags = lint_banner("SECRET//SI//TK//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1);
-        // The fix replaces the single `/` at byte 6 with `//`.
-        assert_eq!(e004[0].span.start, 6);
-        assert_eq!(e004[0].span.end, 7);
-        let fix = e004[0].fix.as_ref().unwrap();
-        assert_eq!(fix.original.as_ref(), "/");
-        assert_eq!(fix.replacement.as_ref(), "//");
+        assert_eq!(e004.len(), 1, "exactly one E004 on the SI//TK boundary: {diags:?}");
+        let src = b"SECRET//SI//TK//NOFORN";
+        // The span must point at the `//` between SI and TK (bytes 10..12).
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
+        assert_eq!(e004[0].span.start, 10);
+        assert_eq!(e004[0].span.end, 12);
+        let fix = e004[0].fix.as_ref().expect("E004 must carry a FixProposal");
+        assert_eq!(fix.original.as_ref(), "//");
+        assert_eq!(fix.replacement.as_ref(), "/");
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn e004_fires_on_missing_separator_in_later_block() {
-        // The parser splits on `//` so the partial split puts `SI/NF` into
-        // an Unknown block. E004's stray-slash walk catches it.
-        let diags = lint_banner("SECRET//SI/NF");
+    fn e004_fires_on_same_category_dissem_double_slash() {
+        // ORCON and NOFORN are both dissem controls — must be joined with `/`.
+        let diags = lint_banner("SECRET//ORCON//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1);
-        assert_eq!(e004[0].span.start, 10);
+        assert_eq!(e004.len(), 1, "exactly one E004 on ORCON//NOFORN: {diags:?}");
+        let src = b"SECRET//ORCON//NOFORN";
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
+        let fix = e004[0].fix.as_ref().unwrap();
+        assert_eq!(fix.replacement.as_ref(), "/");
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_different_categories() {
+        // SCI (SI) and Dissem (NOFORN) are different categories — `//` is correct.
+        let diags = lint_banner("SECRET//SI//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire between different categories: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_correct_within_category_slash() {
+        // `SI/TK` — already correct within-category form.
+        let diags = lint_banner("SECRET//SI/TK//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire on correct `/` between same-category values: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_when_one_side_is_unknown() {
+        // XYZZY is unclassifiable; we can't prove same-category so do not fire.
+        let diags = lint_banner("SECRET//XYZZY//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire when either side is Unknown: {diags:?}"
+        );
     }
 
     #[test]
@@ -3356,6 +4248,295 @@ mod tests {
             "E025 should not fire with UNCLASSIFIED: {diags:?}"
         );
     }
+
+    // --- Shared sort key ---
+
+    #[test]
+    fn sar_sort_key_numeric_before_alpha() {
+        // Numeric-prefixed sorts before pure alpha.
+        assert!(sar_sort_key("12") < sar_sort_key("BP"));
+        assert!(sar_sort_key("7ALPHA") < sar_sort_key("BP"));
+    }
+
+    #[test]
+    fn sar_sort_key_numeric_by_value() {
+        // Numeric prefixes compare as integers, not bytewise.
+        assert!(sar_sort_key("9") < sar_sort_key("12"));
+        assert!(sar_sort_key("J12") < sar_sort_key("J54"));
+    }
+
+    #[test]
+    fn sar_sort_key_alpha_by_bytelex() {
+        assert!(sar_sort_key("BP") < sar_sort_key("CD"));
+        assert!(sar_sort_key("CD") < sar_sort_key("XR"));
+    }
+
+    // --- E026: sar-portion-form ---
+
+    #[test]
+    fn e026_fires_on_full_form_in_portion() {
+        let diags = lint_portion("(TS//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NF)");
+        let e026: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E026").collect();
+        assert_eq!(e026.len(), 1, "E026 must fire on full form in portion: {diags:?}");
+        assert!(e026[0].fix.is_none(), "E026 does not propose a fix");
+    }
+
+    #[test]
+    fn e026_does_not_fire_on_abbrev_in_portion() {
+        let diags = lint_portion("(TS//SAR-BP//NF)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E026"),
+            "E026 must not fire on SAR- abbrev portion: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e026_does_not_fire_on_full_form_in_banner() {
+        // Banner lines may use the full form per §H.5 p101.
+        let diags = lint_banner("TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E026"),
+            "E026 is portion-only: {diags:?}"
+        );
+    }
+
+    // --- E027: sar-classification ---
+
+    #[test]
+    fn e027_fires_on_unclassified_banner_with_sar() {
+        let diags = lint_banner("UNCLASSIFIED//SAR-BP");
+        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
+        assert_eq!(e027.len(), 1, "E027 must fire on U//SAR-*: {diags:?}");
+        assert!(e027[0].fix.is_none(), "E027 requires human review, no fix");
+    }
+
+    #[test]
+    fn e027_does_not_fire_on_secret_with_sar() {
+        let diags = lint_banner("SECRET//SAR-BP//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E027"),
+            "E027 must not fire on SECRET//SAR-*: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e027_does_not_fire_on_top_secret_with_sar() {
+        let diags = lint_banner("TOP SECRET//SAR-BP//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E027"),
+            "E027 must not fire on TS//SAR-*: {diags:?}"
+        );
+    }
+
+    // --- E028: sar-program-order ---
+
+    #[test]
+    fn e028_fires_on_out_of_order_programs() {
+        let diags = lint_banner("SECRET//SAR-CD/BP//NOFORN");
+        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        assert_eq!(e028.len(), 1, "E028 must fire on CD/BP: {diags:?}");
+        let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e028_fix_also_sorts_compartments_and_subs() {
+        // Programs out of order AND compartments out of order.  E028's fix
+        // must normalize both so that when the engine drops E029 (overlap
+        // guard), the block is fully normalized in one pass.
+        let diags = lint_banner("SECRET//SAR-CD-K15-J12/BP//NOFORN");
+        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        assert_eq!(e028.len(), 1, "E028 must fire: {diags:?}");
+        let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
+        // Programs sorted (BP before CD), compartments sorted (J12 before K15).
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD-J12-K15");
+    }
+
+    #[test]
+    fn e028_does_not_fire_on_sorted_programs() {
+        let diags = lint_banner("SECRET//SAR-BP/CD//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E028"),
+            "E028 must not fire on BP/CD (sorted): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e028_does_not_fire_on_single_program() {
+        let diags = lint_banner("SECRET//SAR-BP//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E028"),
+            "E028 must not fire on single program: {diags:?}"
+        );
+    }
+
+    // --- E029: sar-compartment-order ---
+
+    #[test]
+    fn e029_fires_on_out_of_order_sub_compartments() {
+        // Compartment J12 with sub-compartments [Z9, A3] — A3 should come
+        // first (alpha-by-bytelex: A < Z).
+        // E029 now emits per-program spans: the fix covers only the program
+        // text (identifier + compartments), not the whole SAR block.
+        let diags = lint_banner("SECRET//SAR-BP-J12 Z9 A3//NOFORN");
+        let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
+        assert_eq!(
+            e029.len(),
+            1,
+            "E029 must fire on subs [Z9, A3] (out of order): {diags:?}"
+        );
+        let fix = e029[0].fix.as_ref().expect("E029 must carry a FixProposal");
+        // Per-program replacement: "PROG_ID-COMP SUB..." (no SAR- prefix).
+        assert_eq!(fix.replacement.as_ref(), "BP-J12 A3 Z9");
+        assert!(
+            e029[0].message.contains("sub-compartments"),
+            "E029 message should mention sub-compartments: {}",
+            e029[0].message
+        );
+    }
+
+    #[test]
+    fn e029_fires_on_out_of_order_compartments() {
+        // Compartments `K15-J12` — J before K (two compartments, so split by `-`).
+        // BP has compartments [K15, J12] — out of order.
+        // E029 now emits per-program spans: the fix covers only the program
+        // text (identifier + compartments), not the whole SAR block.
+        let diags = lint_banner("SECRET//SAR-BP-K15-J12//NOFORN");
+        let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
+        assert_eq!(
+            e029.len(),
+            1,
+            "E029 must fire on compartments K15 then J12: {diags:?}"
+        );
+        let fix = e029[0].fix.as_ref().unwrap();
+        // Per-program replacement: "PROG_ID-COMP..." (no SAR- prefix).
+        assert_eq!(fix.replacement.as_ref(), "BP-J12-K15");
+    }
+
+    #[test]
+    fn e029_does_not_fire_on_sorted_sub_compartments() {
+        let diags = lint_banner("SECRET//SAR-BP-J12 K15//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E029"),
+            "E029 must not fire on J12 K15 (sorted): {diags:?}"
+        );
+    }
+
+    // --- E030: sar-indicator-repeat ---
+
+    #[test]
+    fn e030_fires_on_repeated_abbrev_indicator() {
+        let diags = lint_banner("SECRET//SAR-BP//SAR-CD//NOFORN");
+        let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
+        assert_eq!(
+            e030.len(),
+            1,
+            "E030 must fire on repeated SAR- indicator: {diags:?}"
+        );
+        let fix = e030[0].fix.as_ref().expect("E030 must carry a FixProposal");
+        // The fix extends backward over `//` so the replacement is `/CD`.
+        assert_eq!(fix.original.as_ref(), "//SAR-CD");
+        assert_eq!(fix.replacement.as_ref(), "/CD");
+        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e030_does_not_fire_on_single_sar_block() {
+        let diags = lint_banner("SECRET//SAR-BP/CD//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E030"),
+            "E030 must not fire when programs coalesce in one block: {diags:?}"
+        );
+    }
+
+    // --- E031: sar-banner-rollup ---
+
+    #[test]
+    fn e031_fires_when_banner_missing_program_from_portion() {
+        // Portions introduce SAR-BP and SAR-CD; banner only mentions BP.
+        let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner omits CD: {diags:?}"
+        );
+        let d = e031[0];
+        assert!(
+            d.message.contains("CD"),
+            "message must name the missing program: {}",
+            d.message
+        );
+        let fix = d.fix.as_ref().expect("E031 must carry a fix when banner has SAR block");
+        // Expected rolled-up form: programs sorted per CAPCO ascending order
+        // (alpha: BP before CD).
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
+        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e031_fires_when_banner_missing_compartment_from_portion() {
+        // Portion has SAR-BP-J12; banner has only SAR-BP.
+        let source = "(S//SAR-BP-J12//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner omits compartment J12: {diags:?}"
+        );
+        assert!(
+            e031[0].message.contains("J12"),
+            "message must name missing compartment: {}",
+            e031[0].message
+        );
+        let fix = e031[0].fix.as_ref().expect("fix expected");
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP-J12");
+    }
+
+    #[test]
+    fn e031_fires_when_banner_has_no_sar_block_but_portion_does() {
+        // Portion has SAR-BP; banner has no SAR block at all.
+        let source = "(S//SAR-BP//NF)\nSECRET//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner lacks any SAR block: {diags:?}"
+        );
+        // No fix when banner has no SAR block (byte-positioning is unsafe).
+        assert!(
+            e031[0].fix.is_none(),
+            "E031 must not propose a fix when no SAR block exists"
+        );
+        // And severity escalates to Error for this variant.
+        assert_eq!(e031[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn e031_does_not_fire_when_banner_matches_portions() {
+        let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP/CD//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must not fire when banner SAR block covers all portions: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e031_does_not_fire_when_no_portions_have_sar() {
+        // Banner has a SAR block but no portions carry SAR — the rollup
+        // produces None and nothing is missing.
+        let source = "(S//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must not fire without any SAR portions: {diags:?}"
+        );
+    }
 }
 
 /// Internal test support module — drives the parser and rules directly,
@@ -3365,8 +4546,9 @@ mod tests {
 mod marque_capco_test_support {
     use super::CapcoRuleSet;
     use marque_core::{Parser, Scanner};
-    use marque_ism::{CapcoTokenSet, MarkingType};
+    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
     use marque_rules::{Diagnostic, RuleContext, RuleSet};
+    use std::sync::Arc;
 
     fn run(source: &[u8]) -> Vec<Diagnostic> {
         let token_set = CapcoTokenSet;
@@ -3374,18 +4556,38 @@ mod marque_capco_test_support {
         let candidates = Scanner::scan(source);
         let rule_set = CapcoRuleSet::new();
         let mut out = Vec::new();
+        // Accumulate a PageContext across portions so banner/CAB rules that
+        // read `ctx.page_context` (E031) behave the same here as in the
+        // real engine. Reset on scanner-emitted PageBreak candidates.
+        let mut page_context = PageContext::new();
+        let mut page_context_arc: Option<Arc<PageContext>> = None;
         for candidate in &candidates {
             if candidate.kind == MarkingType::PageBreak {
+                page_context = PageContext::new();
+                page_context_arc = None;
                 continue;
             }
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
+            if parsed.kind == MarkingType::Portion {
+                page_context.add_portion(parsed.attrs.clone());
+                page_context_arc = None;
+            }
+            let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+                Some(
+                    page_context_arc
+                        .get_or_insert_with(|| Arc::new(page_context.clone()))
+                        .clone(),
+                )
+            } else {
+                None
+            };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
-                page_context: None,
+                page_context: ctx_page,
                 corrections: None,
             };
             for rule in rule_set.rules() {

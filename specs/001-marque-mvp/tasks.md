@@ -82,7 +82,7 @@
 
 **Goal**: A reviewer runs `marque check <file>` (or `cat file | marque check -`) and receives precise diagnostics — rule ID, span, message, CAPCO citation, optional fix suggestion — for every marking violation in the document.
 
-**Independent Test**: Feed `tests/corpus/invalid/banner_abbrev.txt` (a banner using `S//NF`) to `marque check`; verify the output contains rule `E001`, the exact byte span of `S//NF`, the human message, the citation `CAPCO-ISM-v2022-DEC-§3.x`, and a suggested expansion. Run against `tests/corpus/valid/clean.txt` and verify zero diagnostics + exit `0`.
+**Independent Test**: Feed `tests/corpus/invalid/banner_abbrev.txt` (a banner using `S//NF`) to `marque check`; verify the output contains rule `E001`, the exact byte span of `S//NF`, the human message, the citation `CAPCO-2016 §A.6` (CAPCO Register and Manual, 2016), and a suggested expansion. Run against `tests/corpus/valid/clean.txt` and verify zero diagnostics + exit `0`.
 
 ### Tests for User Story 1
 

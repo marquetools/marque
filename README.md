@@ -94,7 +94,7 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | [`marque-engine`](./crates/marque-engine/) | Pipeline orchestration. `Engine` (sync) + `BatchEngine` (async concurrent). Confidence gate + audit log live here. |
 | [`marque-config`](./crates/marque-config/) | Layered config loading (CLI > env > `.marque.local.toml` > `.marque.toml`) with hard-fail validators. |
 | [`marque-ism`](./crates/marque-ism/) | ISM vocabulary types + generated CVE enums from ODNI schemas. Build-time codegen, no runtime I/O. |
-| [`marque-capco`](./crates/marque-capco/) | 29 hand-written CAPCO rules (E001–E025, W001–W003, C001) consuming `marque-ism` predicates. |
+| [`marque-capco`](./crates/marque-capco/) | 35 hand-written CAPCO rules (E001–E031, W001–W003, C001) consuming `marque-ism` predicates, including SAR (Special Access Required) validation per CAPCO-2016 §H.5. |
 | [`marque-extract`](./crates/marque-extract/) | Document text + metadata extraction. **Stub** — Kreuzberg integration pending. |
 | [`marque-wasm`](./crates/marque-wasm/) | WASM target via `wasm-pack`. Byte-identical NDJSON output to the CLI. |
 | [`marque-server`](./crates/marque-server/) | axum REST microservice wrapping `marque-engine`. |
@@ -106,8 +106,8 @@ changes.
 
 ## Status
 
-**MVP complete**. Full lint → fix → audit pipeline for raw text with 29 CAPCO
-rules. CLI and WASM produce byte-identical NDJSON diagnostics. Configurable
+**MVP complete**. Full lint → fix → audit pipeline for raw text with 35 CAPCO
+rules (including structural SAR validation per §H.5). CLI and WASM produce byte-identical NDJSON diagnostics. Configurable
 severity overrides, corrections map, and confidence thresholds. Batch
 processing via `BatchEngine` with concurrency control. Criterion benchmarks
 validate p95 ≤16ms on 10KB inputs.

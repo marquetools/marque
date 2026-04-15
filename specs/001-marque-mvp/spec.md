@@ -30,7 +30,7 @@ the correct rule ID, span, message, and CAPCO reference. No fix application requ
    **When** the user lints the document with default configuration,
    **Then** the system reports exactly one diagnostic
    `{ rule: "E001", severity: "error", span: { start: 0, end: 5 }, citation:
-   "CAPCO-ISM-v2022-DEC-§banner-abbreviation", fix: { replacement: "SECRET//NOFORN",
+   "CAPCO-2016 §A.6", fix: { replacement: "SECRET//NOFORN",
    confidence: 1.0 } }`, and the exit code is `1`.
 2. **Given** the literal input bytes `SECRET//REL TO FVEY\n` (a REL TO list
    missing the `USA` trigraph at the leading ordinal position),

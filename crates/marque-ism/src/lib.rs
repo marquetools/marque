@@ -19,10 +19,10 @@ pub mod token_set;
 pub use attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, FrdBlock, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarIdentifier, SciControl, TokenKind,
-    TokenSpan, Trigraph,
+    NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarCompartment, SarIndicator, SarMarking,
+    SarProgram, SciControl, TokenKind, TokenSpan, Trigraph,
 };
 pub use generated::values::SCHEMA_VERSION;
-pub use page_context::PageContext;
+pub use page_context::{sar_sort_key, PageContext};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
 pub use token_set::{CapcoTokenSet, TokenSet};

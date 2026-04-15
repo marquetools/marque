@@ -1,6 +1,5 @@
 ---
 source: crates/marque-engine/tests/fix_pipeline.rs
-assertion_line: 212
 expression: json
 ---
 [
@@ -9,7 +8,7 @@ expression: json
     "confidence": 1.0,
     "dry_run": false,
     "input": null,
-    "migration_ref": "CAPCO-2023-§3.2",
+    "migration_ref": null,
     "original": "NF",
     "replacement": "NOFORN",
     "rule": "E001",
