@@ -72,6 +72,10 @@ assert_eq!(attrs.classification, Classification::Unclassified);
 
 WASM-safe. No runtime I/O. All schema work runs in `build.rs` on the host.
 
+## Migration Notes
+
+- `0.x.0` (SCI) — additive. New `sci_markings: Box<[SciMarking]>` field on `IsmAttributes` provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
+
 ## License
 
 Apache-2.0
