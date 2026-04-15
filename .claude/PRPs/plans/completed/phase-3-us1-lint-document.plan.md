@@ -98,8 +98,8 @@ banner.txt:1:1 error[E002] REL TO list missing required USA trigraph
 
 ```
 $ cat banner.txt | marque check - --format json
-{"rule":"E001","severity":"error","span":{"start":17,"end":19},"message":"banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"NOFORN","confidence":1.0,"migration_ref":"CAPCO-2016 §A.6"}}
-{"rule":"E002","severity":"error","span":{"start":23,"end":31},"message":"REL TO list missing required USA trigraph","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"USA, GBR, AUS","confidence":0.97,"migration_ref":"CAPCO-2016 §A.6"}}
+{"rule":"E001","severity":"error","span":{"start":17,"end":19},"message":"banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"NOFORN","confidence":1.0,"migration_ref":null}}
+{"rule":"E002","severity":"error","span":{"start":23,"end":31},"message":"REL TO list missing required USA trigraph","citation":"CAPCO-2016 §A.6","fix":{"source":"BuiltinRule","replacement":"USA, GBR, AUS","confidence":0.97,"migration_ref":null}}
 ```
 
 ```

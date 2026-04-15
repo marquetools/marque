@@ -52,9 +52,10 @@ use crate::attrs::{
 /// parsed as `u64` and the tuple `(false, n, rest)` is returned (with `false`
 /// sorting before `true`). Pure-alpha identifiers return `(true, 0, s)`.
 ///
-/// The P3 parallel copy in `marque-capco` MUST return identical tuples — this
-/// semantic is load-bearing for the E031 `sar-banner-rollup` rule.
-fn sar_sort_key(s: &str) -> (bool, u64, &str) {
+/// This helper is the canonical SAR sort-key implementation; both
+/// `marque-ism` (banner roll-up) and `marque-capco` (rules E028/E029) use it
+/// via the crate re-export.
+pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
     let prefix_len = s.bytes().take_while(|b| b.is_ascii_digit()).count();
     if prefix_len == 0 {
         (true, 0, s)

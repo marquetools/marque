@@ -39,7 +39,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    ForeignClassification, IsmAttributes, MarkingClassification, Span, TokenKind, TokenSpan,
+    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, Span, TokenKind,
+    TokenSpan,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -2685,6 +2686,14 @@ impl Rule for SarClassificationRule {
 /// Programs within a SAR block must be listed in ascending sort order
 /// with numbered values first, followed by alphabetic values (CAPCO-2016
 /// §H.5 p99).
+///
+/// When programs are out of order, the fix also sorts compartments and
+/// sub-compartments within each program in a single whole-block rewrite
+/// — so when E028 and E029 both detect violations on the same marking,
+/// applying E028's fix fully normalizes the block and the E029 fixes
+/// (which cover per-program sub-spans) become redundant. The engine's
+/// overlap guard will retain E028 and drop E029 for that run; a
+/// subsequent lint will confirm zero residual violations.
 struct SarProgramOrderRule;
 
 impl Rule for SarProgramOrderRule {
@@ -2716,7 +2725,24 @@ impl Rule for SarProgramOrderRule {
             return vec![];
         };
         let original = render_sar_block(sar.indicator, &sar.programs);
+
+        // Sort programs and also normalize compartments/subs within each program
+        // in the same pass. This ensures applying the E028 fix alone fully
+        // normalizes the block even when E029 violations are present.
         let mut sorted = sar.programs.to_vec();
+        for prog in sorted.iter_mut() {
+            let mut comps = prog.compartments.to_vec();
+            for comp in comps.iter_mut() {
+                let mut subs = comp.sub_compartments.to_vec();
+                subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+                *comp = marque_ism::SarCompartment::new(
+                    comp.identifier.clone(),
+                    subs.into_boxed_slice(),
+                );
+            }
+            comps.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+            *prog = marque_ism::SarProgram::new(prog.identifier.clone(), comps.into_boxed_slice());
+        }
         sorted.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
         let replacement = render_sar_block(sar.indicator, &sorted);
 
@@ -2905,10 +2931,7 @@ impl Rule for SarIndicatorRepeatRule {
             }
             // Find the closest preceding Separator token. The parser
             // trims leading whitespace per block, so the token's own
-            // span does not necessarily sit flush against the `//`;
-            // anchoring on the actual Separator span keeps the fix
-            // correct even when the source has whitespace after the
-            // separator (e.g., `SECRET// SAR-CD`).
+            // span does not necessarily sit flush against the `//`.
             let Some(sep_tok) = attrs.token_spans[..idx]
                 .iter()
                 .rev()
@@ -2918,14 +2941,18 @@ impl Rule for SarIndicatorRepeatRule {
                 // SAR-prefixed Unknown token, but skip defensively.
                 continue;
             };
-            // Collapse from the separator start through the repeated
-            // block's end. `original` reproduces what the engine will
-            // see in the source at that span so splicing remains safe.
+            // Only emit a fix when the separator and the Unknown token are
+            // byte-contiguous (no whitespace gap between them). If there is
+            // a gap we cannot honestly reconstruct the original bytes in
+            // `FixProposal.original` without preserving the raw source, so
+            // we skip to avoid fabricating `original` content.
+            if sep_tok.span.end != tok.span.start {
+                continue;
+            }
             let fix_span = Span::new(sep_tok.span.start, tok.span.end);
             let replacement = format!("/{stripped}");
             let sep_text = sep_tok.text.as_ref();
-            let gap = tok.span.start.saturating_sub(sep_tok.span.end);
-            let original = format!("{sep_text}{spaces}{text}", spaces = " ".repeat(gap));
+            let original = format!("{sep_text}{text}");
 
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                 rule: self.id(),
@@ -3181,29 +3208,6 @@ fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
 
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Sort key for CAPCO ascending order within a SAR block:
-/// numeric-prefixed values sort before pure-alpha values, numeric
-/// prefixes compare as `u64`, and ties break on byte-lex of the
-/// remainder (CAPCO-2016 §H.5 p99, §A.6 p16 SAP bullet 5).
-///
-/// Returns `(is_alpha_only, numeric_prefix, remainder)`. The leading
-/// bool sorts `false` (numeric-prefixed) before `true` (pure alpha).
-fn sar_sort_key(s: &str) -> (bool, u64, &str) {
-    let bytes = s.as_bytes();
-    let mut digits_end = 0;
-    while digits_end < bytes.len() && bytes[digits_end].is_ascii_digit() {
-        digits_end += 1;
-    }
-    if digits_end == 0 {
-        // Pure alpha (or starts with alpha) — sort after all numeric-prefixed.
-        return (true, 0, s);
-    }
-    // Parse the leading digit run; overflow falls back to u64::MAX so
-    // pathologically long numbers still compare deterministically.
-    let num: u64 = s[..digits_end].parse().unwrap_or(u64::MAX);
-    (false, num, &s[digits_end..])
-}
 
 /// Compute the byte span covering the full SAR block: from the start of
 /// its `SarIndicator` token through the end of the last SAR-constituent
@@ -4334,6 +4338,19 @@ mod tests {
         let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
         assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e028_fix_also_sorts_compartments_and_subs() {
+        // Programs out of order AND compartments out of order.  E028's fix
+        // must normalize both so that when the engine drops E029 (overlap
+        // guard), the block is fully normalized in one pass.
+        let diags = lint_banner("SECRET//SAR-CD-K15-J12/BP//NOFORN");
+        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        assert_eq!(e028.len(), 1, "E028 must fire: {diags:?}");
+        let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
+        // Programs sorted (BP before CD), compartments sorted (J12 before K15).
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD-J12-K15");
     }
 
     #[test]
