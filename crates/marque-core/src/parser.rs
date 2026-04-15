@@ -20,8 +20,8 @@ use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
-    SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind,
-    TokenSpan, Trigraph,
+    SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
+    Trigraph,
 };
 use marque_ism::is_bare_cve_value;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
@@ -306,8 +306,7 @@ impl<'t> Parser<'t> {
                     && trimmed.bytes().any(|b| b.is_ascii_digit())
                     && !is_known_non_sci_token(trimmed)
                     && !is_declass_date(trimmed)))
-                && let Some(markings) =
-                    parse_sci_block(trimmed, abs_start, &mut token_spans)
+                && let Some(markings) = parse_sci_block(trimmed, abs_start, &mut token_spans)
             {
                 // Structural SCI path (spec 003-sci-compartments §R2). Runs
                 // before the exact-match path so compound/sub-compartment
@@ -787,10 +786,7 @@ fn parse_sci_block(
                     sub_cursor += sub.len() + 1;
                 }
 
-                compartments.push(SciCompartment::new(
-                    comp_id.into(),
-                    subs.into_boxed_slice(),
-                ));
+                compartments.push(SciCompartment::new(comp_id.into(), subs.into_boxed_slice()));
             }
         }
 
@@ -1225,9 +1221,7 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
         }
         let program_base = base + chunk_offset;
 
-        if let Some(program) =
-            parse_sar_program(prog_chunk, program_base, indicator, &mut spans)
-        {
+        if let Some(program) = parse_sar_program(prog_chunk, program_base, indicator, &mut spans) {
             programs.push(program);
         } else {
             return None;
@@ -1292,8 +1286,7 @@ fn parse_sar_program(
     let prog_shape_ok = match indicator {
         // 2–3 alphanumeric chars.
         SarIndicator::Abbrev => {
-            (2..=3).contains(&prog_id.len())
-                && prog_id.bytes().all(|b| b.is_ascii_alphanumeric())
+            (2..=3).contains(&prog_id.len()) && prog_id.bytes().all(|b| b.is_ascii_alphanumeric())
         }
         // Uppercase ASCII letters with optional spaces; no digits, no
         // hyphens. Must contain at least one non-space byte.
@@ -1345,10 +1338,7 @@ fn parse_sar_program(
             subs.push(sub_id.into());
         }
 
-        compartments.push(SarCompartment::new(
-            comp_id.into(),
-            subs.into_boxed_slice(),
-        ));
+        compartments.push(SarCompartment::new(comp_id.into(), subs.into_boxed_slice()));
     }
 
     Some(SarProgram::new(
@@ -2301,11 +2291,7 @@ mod sar_parse_tests {
         let (marking, _) =
             parse_sar_category("SAR-BP/CD/XR", 0).expect("grammar accepts three programs");
         assert_eq!(marking.programs.len(), 3);
-        let ids: Vec<&str> = marking
-            .programs
-            .iter()
-            .map(|p| &*p.identifier)
-            .collect();
+        let ids: Vec<&str> = marking.programs.iter().map(|p| &*p.identifier).collect();
         assert_eq!(ids, vec!["BP", "CD", "XR"]);
         for p in marking.programs.iter() {
             assert_eq!(p.compartments.len(), 0);
@@ -2521,8 +2507,7 @@ mod sar_parse_tests {
         assert_eq!(&*sar.programs[0].identifier, "BP");
 
         // Token-span mix must include both the indicator and program token.
-        let kinds: Vec<TokenKind> =
-            parsed.attrs.token_spans.iter().map(|t| t.kind).collect();
+        let kinds: Vec<TokenKind> = parsed.attrs.token_spans.iter().map(|t| t.kind).collect();
         assert!(kinds.contains(&TokenKind::SarIndicator));
         assert!(kinds.contains(&TokenKind::SarProgram));
 
@@ -2540,9 +2525,7 @@ mod sar_parse_tests {
     #[test]
     fn banner_dispatch_multi_program_canonical() {
         // The §H.5 p100 canonical line as a full banner.
-        let parsed = make_banner(
-            "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
-        );
+        let parsed = make_banner("SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN");
         let sar = parsed.attrs.sar_markings.as_ref().expect("sar present");
         assert_eq!(sar.programs.len(), 3);
         let ids: Vec<&str> = sar.programs.iter().map(|p| &*p.identifier).collect();

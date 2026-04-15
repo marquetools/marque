@@ -43,8 +43,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem,
-    SciMarking, Span, TokenKind, TokenSpan,
+    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
+    Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -557,11 +557,11 @@ impl Rule for SeparatorCountRule {
         // belong to different categories, we do not fire — that avoids
         // double-flagging legitimately different blocks.
         let spans = &attrs.token_spans;
-        for (idx, tok) in spans.iter().enumerate() {
+        for tok in spans.iter() {
             if tok.kind != TokenKind::Separator {
                 continue;
             }
-            let bytes = token.text.as_bytes();
+            let bytes = tok.text.as_bytes();
             // Find every `/` that is NOT adjacent to another `/`. A doubled
             // `/` is a separator and would have been recognized by the
             // outer `//` split, so any `/` we see here in a non-Separator
@@ -572,7 +572,7 @@ impl Rule for SeparatorCountRule {
                     let prev_is_slash = i > 0 && bytes[i - 1] == b'/';
                     let next_is_slash = bytes.get(i + 1) == Some(&b'/');
                     if !prev_is_slash && !next_is_slash {
-                        let abs_pos = token.span.start + i;
+                        let abs_pos = tok.span.start + i;
                         let span = Span::new(abs_pos, abs_pos + 1);
                         diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                             rule: self.id(),
@@ -2790,9 +2790,10 @@ impl Rule for SarCompartmentOrderRule {
 
         for (prog_idx, prog) in sar.programs.iter().enumerate() {
             let comps_ok = prog.compartments.len() < 2
-                || prog.compartments.windows(2).all(|w| {
-                    sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier)
-                });
+                || prog
+                    .compartments
+                    .windows(2)
+                    .all(|w| sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier));
             let subs_ok = prog.compartments.iter().all(|comp| {
                 comp.sub_compartments.len() < 2
                     || comp
@@ -2804,9 +2805,7 @@ impl Rule for SarCompartmentOrderRule {
                 continue;
             }
 
-            let Some(span) =
-                sar_program_span(&attrs.token_spans, &prog_positions, prog_idx)
-            else {
+            let Some(span) = sar_program_span(&attrs.token_spans, &prog_positions, prog_idx) else {
                 continue;
             };
 
@@ -3164,9 +3163,7 @@ fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
     // We do not have enough information here to recover exact original source
     // bytes. Instead, gate on whether the requested span contains SAR tokens
     // and then return the canonical rendering of the parsed SAR block.
-    let Some(sar) = attrs.sar_markings.as_ref() else {
-        return None;
-    };
+    let sar = attrs.sar_markings.as_ref()?;
     // Sanity: ensure there is at least one SAR token within span.
     let has_in_span = attrs.token_spans.iter().any(|t| {
         matches!(
@@ -3183,7 +3180,6 @@ fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
     }
     Some(render_sar_block(sar.indicator, &sar.programs))
 }
-
 
 // Rule: E032 — SCI control-system sort order
 // ---------------------------------------------------------------------------
@@ -3238,10 +3234,7 @@ impl Rule for SciSystemOrderRule {
 
         // Fix span covers the first through last chunk (same SCI block).
         let fix_start = chunk_spans.first().map(|t| t.span.start).unwrap_or(0);
-        let fix_end = chunk_spans
-            .last()
-            .map(|t| t.span.end)
-            .unwrap_or(fix_start);
+        let fix_end = chunk_spans.last().map(|t| t.span.end).unwrap_or(fix_start);
         let fix_span = Span::new(fix_start, fix_end);
 
         // Build the replacement by also sorting compartments and
@@ -3358,14 +3351,13 @@ impl Rule for SciCompartmentOrderRule {
 
             let comps_ok = n_comps < 2
                 || marking.compartments.windows(2).all(|w| {
-                    sar_sort_key(w[0].identifier.as_ref())
-                        <= sar_sort_key(w[1].identifier.as_ref())
+                    sar_sort_key(w[0].identifier.as_ref()) <= sar_sort_key(w[1].identifier.as_ref())
                 });
             let subs_ok = marking.compartments.iter().all(|c| {
                 c.sub_compartments.len() < 2
-                    || c.sub_compartments.windows(2).all(|w| {
-                        sar_sort_key(w[0].as_ref()) <= sar_sort_key(w[1].as_ref())
-                    })
+                    || c.sub_compartments
+                        .windows(2)
+                        .all(|w| sar_sort_key(w[0].as_ref()) <= sar_sort_key(w[1].as_ref()))
             });
 
             if comps_ok && subs_ok {
@@ -3395,10 +3387,7 @@ impl Rule for SciCompartmentOrderRule {
                     }
                 }
             };
-            let fix_start = this_comp_spans
-                .first()
-                .map(|t| t.span.start)
-                .unwrap_or(0);
+            let fix_start = this_comp_spans.first().map(|t| t.span.start).unwrap_or(0);
             let fix_end = if this_sub_count > 0 {
                 sub_spans
                     .get(sub_cursor + this_sub_count - 1)
@@ -3809,9 +3798,7 @@ fn sar_program_span(
         .find(|t| {
             matches!(
                 t.kind,
-                TokenKind::SarProgram
-                    | TokenKind::SarCompartment
-                    | TokenKind::SarSubCompartment
+                TokenKind::SarProgram | TokenKind::SarCompartment | TokenKind::SarSubCompartment
             )
         })
         .map(|t| t.span.end)
@@ -3819,7 +3806,6 @@ fn sar_program_span(
 
     Some(Span::new(start, end))
 }
-
 
 /// Render a SAR block back to source form for fix replacements.
 ///
@@ -4098,7 +4084,11 @@ mod tests {
         // must be joined with `/` within one block, not `//` across blocks.
         let diags = lint_banner("SECRET//SI//TK//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1, "exactly one E004 on the SI//TK boundary: {diags:?}");
+        assert_eq!(
+            e004.len(),
+            1,
+            "exactly one E004 on the SI//TK boundary: {diags:?}"
+        );
         let src = b"SECRET//SI//TK//NOFORN";
         // The span must point at the `//` between SI and TK (bytes 10..12).
         assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
@@ -4115,7 +4105,11 @@ mod tests {
         // ORCON and NOFORN are both dissem controls — must be joined with `/`.
         let diags = lint_banner("SECRET//ORCON//NOFORN");
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
-        assert_eq!(e004.len(), 1, "exactly one E004 on ORCON//NOFORN: {diags:?}");
+        assert_eq!(
+            e004.len(),
+            1,
+            "exactly one E004 on ORCON//NOFORN: {diags:?}"
+        );
         let src = b"SECRET//ORCON//NOFORN";
         assert_eq!(e004[0].span.as_str(src).unwrap(), "//");
         let fix = e004[0].fix.as_ref().unwrap();
@@ -4823,7 +4817,11 @@ mod tests {
         // `SI` (alpha) listed before `123` (numeric) violates §A.6 p15.
         let diags = lint_banner("TOP SECRET//SI/123//NOFORN");
         let e032: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E032").collect();
-        assert_eq!(e032.len(), 1, "E032 must fire on SI/123 ordering: {diags:?}");
+        assert_eq!(
+            e032.len(),
+            1,
+            "E032 must fire on SI/123 ordering: {diags:?}"
+        );
         let fix = e032[0].fix.as_ref().expect("E032 must carry a FixProposal");
         assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
         // Reorder puts numeric first.
@@ -4867,7 +4865,11 @@ mod tests {
     fn e026_fires_on_full_form_in_portion() {
         let diags = lint_portion("(TS//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NF)");
         let e026: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E026").collect();
-        assert_eq!(e026.len(), 1, "E026 must fire on full form in portion: {diags:?}");
+        assert_eq!(
+            e026.len(),
+            1,
+            "E026 must fire on full form in portion: {diags:?}"
+        );
         assert!(e026[0].fix.is_none(), "E026 does not propose a fix");
     }
 
@@ -5027,7 +5029,11 @@ mod tests {
         // visibility (severity Off by default, so the engine gates it).
         let diags = lint_banner("TOP SECRET//123/SI-G//NOFORN");
         let e034: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E034").collect();
-        assert_eq!(e034.len(), 1, "E034 must fire on custom control 123: {diags:?}");
+        assert_eq!(
+            e034.len(),
+            1,
+            "E034 must fire on custom control 123: {diags:?}"
+        );
         assert!(e034[0].fix.is_none(), "E034 must not propose a fix");
         assert_eq!(e034[0].severity, marque_rules::Severity::Off);
         assert!(e034[0].message.contains("unpublished SCI control system"));
@@ -5177,7 +5183,10 @@ mod tests {
             "message must name the missing program: {}",
             d.message
         );
-        let fix = d.fix.as_ref().expect("E031 must carry a fix when banner has SAR block");
+        let fix = d
+            .fix
+            .as_ref()
+            .expect("E031 must carry a fix when banner has SAR block");
         // Expected rolled-up form: programs sorted per CAPCO ascending order
         // (alpha: BP before CD).
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");

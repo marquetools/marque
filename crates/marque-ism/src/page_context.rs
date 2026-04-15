@@ -164,9 +164,7 @@ impl PageContext {
 
         // Now produce sorted output per §A.6 p15: numeric first, alpha after.
         let mut systems: Vec<(SystemKey, _)> = acc.into_iter().collect();
-        systems.sort_by(|a, b| {
-            sar_sort_key(a.0.text()).cmp(&sar_sort_key(b.0.text()))
-        });
+        systems.sort_by(|a, b| sar_sort_key(a.0.text()).cmp(&sar_sort_key(b.0.text())));
 
         let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
@@ -251,9 +249,7 @@ impl PageContext {
                 let built_compartments: Vec<SarCompartment> = comp_keys
                     .into_iter()
                     .map(|cid| {
-                        let subs = comp_map
-                            .get(&cid)
-                            .expect("key enumerated above");
+                        let subs = comp_map.get(&cid).expect("key enumerated above");
                         let mut sub_vec: Vec<String> = subs.iter().cloned().collect();
                         sub_vec.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
                         let boxed: Box<[Box<str>]> = sub_vec
@@ -265,10 +261,7 @@ impl PageContext {
                     })
                     .collect();
 
-                SarProgram::new(
-                    pid.into_boxed_str(),
-                    built_compartments.into_boxed_slice(),
-                )
+                SarProgram::new(pid.into_boxed_str(), built_compartments.into_boxed_slice())
             })
             .collect();
 
@@ -860,12 +853,8 @@ fn render_sci_markings_block(markings: &[SciMarking]) -> String {
         }
         // system-COMP1[ sub..]-COMP2[ sub..] ...
         let mut rendered = sys_text;
-        for (i, comp) in m.compartments.iter().enumerate() {
-            if i == 0 {
-                rendered.push('-');
-            } else {
-                rendered.push('-');
-            }
+        for comp in m.compartments.iter() {
+            rendered.push('-');
             rendered.push_str(&comp.identifier);
             for sub in comp.sub_compartments.iter() {
                 rendered.push(' ');
@@ -1758,8 +1747,7 @@ mod tests {
             sci_controls: vec![SciControl::Si].into_boxed_slice(),
             sar_markings: Some(SarMarking::new(
                 SarIndicator::Abbrev,
-                vec![sar_prog("BP", vec![sar_comp("J12", &["J54"])])]
-                    .into_boxed_slice(),
+                vec![sar_prog("BP", vec![sar_comp("J12", &["J54"])])].into_boxed_slice(),
             )),
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
@@ -1776,10 +1764,7 @@ mod tests {
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             vec![
-                sar_prog(
-                    "BP",
-                    vec![sar_comp("J12", &["J54"]), sar_comp("K15", &[])],
-                ),
+                sar_prog("BP", vec![sar_comp("J12", &["J54"]), sar_comp("K15", &[])]),
                 sar_prog("CD", vec![sar_comp("YYY", &["456", "689"])]),
                 sar_prog("XR", vec![sar_comp("XRA", &["RB"])]),
             ]
