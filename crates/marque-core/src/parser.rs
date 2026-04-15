@@ -976,10 +976,13 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
             }
             SarIndicator::Full => {
                 // Full form: the entire chunk is the program identifier
-                // (spaces are allowed). No compartment parsing at the
-                // lexical level — see spec §R2 ambiguity note.
+                // (spaces are allowed). Grammar per spec: PROG_ID := [A-Z ]+.
                 let ident = prog_chunk;
-                if ident.is_empty() {
+                if ident.is_empty()
+                    || !ident
+                        .bytes()
+                        .all(|b| b == b' ' || b.is_ascii_uppercase())
+                {
                     return None;
                 }
                 spans.push(TokenSpan {

@@ -139,8 +139,8 @@ impl PageContext {
     ///
     /// The rollup does NOT flag disagreements between portions and the
     /// observed banner — it just produces the expected composite marking.
-    /// Rule E031 (`sar-banner-rollup`, landing next wave) compares this
-    /// expected value against what actually appears on the page banner.
+    /// Rule E031 (`sar-banner-rollup`) consumes this roll-up and compares
+    /// the expected value against what actually appears on the page banner.
     pub fn expected_sar_marking(&self) -> Option<SarMarking> {
         use std::collections::{BTreeMap, BTreeSet};
 

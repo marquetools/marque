@@ -437,7 +437,6 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
-    let mut sar: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
     let mut non_ic: Vec<&str> = Vec::new();
@@ -446,10 +445,12 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
         match token.kind {
             TokenKind::Classification => classification.push(token.text.as_ref()),
             TokenKind::SciControl => sci.push(token.text.as_ref()),
-            TokenKind::SarIndicator => sar.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
             TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
+            // SAR tokens are collected via attrs.sar_markings below; skip
+            // individual SAR token kinds to avoid duplicating or truncating
+            // compartment/sub-compartment data.
             _ => {}
         }
     }
@@ -463,8 +464,10 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     if !sci.is_empty() {
         blocks.push(sci.join("/"));
     }
-    if !sar.is_empty() {
-        blocks.push(sar.join("/"));
+    // Build the SAR block from the parsed structure so that program
+    // identifiers, compartments, and sub-compartments are all preserved.
+    if let Some(sar) = attrs.sar_markings.as_ref() {
+        blocks.push(render_sar_block(sar.indicator, &sar.programs));
     }
     if !dissem.is_empty() {
         blocks.push(dissem.join("/"));
@@ -2539,7 +2542,10 @@ impl Rule for UcniClassificationRule {
 
 /// Portion marks must use the `SAR-` abbreviation, not the full
 /// `SPECIAL ACCESS REQUIRED-` form (CAPCO-2016 §H.5 p101 "Authorized
-/// Portion Mark"). No fix is proposed because abbreviating an arbitrary
+/// Portion Mark"). When all program identifiers are already abbrev-shaped
+/// (2–3 alphanumeric characters), a low-confidence (0.35) suggestion is
+/// proposed to replace the full indicator with the `SAR-` prefix.
+/// Otherwise no fix is proposed because abbreviating an arbitrary
 /// program nickname requires human judgment.
 struct SarPortionFormRule;
 
@@ -2572,6 +2578,32 @@ impl Rule for SarPortionFormRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
+        // When all program identifiers are already abbrev-shaped (2–3
+        // alphanumeric chars), propose a low-confidence suggestion to replace
+        // the full indicator with `SAR-`. Otherwise the fix requires human
+        // judgment and no proposal is emitted.
+        let all_programs_abbreviated = sar.programs.iter().all(|p| {
+            let id = p.identifier.as_ref();
+            (2..=3).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric())
+        });
+
+        let fix = if all_programs_abbreviated {
+            let block_span = sar_block_span(attrs).unwrap_or(span);
+            let original = sar_block_source(attrs, block_span).unwrap_or_default();
+            let replacement = render_sar_block(SarIndicator::Abbrev, &sar.programs);
+            Some(FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                block_span,
+                original,
+                replacement,
+                0.35,
+                None,
+            ))
+        } else {
+            None
+        };
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
@@ -2579,7 +2611,7 @@ impl Rule for SarPortionFormRule {
             "portion marks must use the SAR- abbreviation, not the \
              SPECIAL ACCESS REQUIRED- full form",
             "CAPCO-2016 §H.5",
-            None,
+            fix,
         )]
     }
 }
@@ -3068,15 +3100,17 @@ fn render_single_program(prog: &marque_ism::SarProgram) -> String {
     s
 }
 
-/// Recover the original source bytes covering the SAR block for use as the
-/// `FixProposal::original` field. Returns `None` if any token text is not
-/// positioned as expected. Falls back to rendering from the parsed structure.
+/// Return a normalized SAR block string for use as the
+/// `FixProposal::original` field when `span` covers SAR tokens.
+///
+/// This helper does not reconstruct the exact original source bytes or
+/// preserve original formatting; it renders the parsed SAR structure via
+/// `render_sar_block(...)`. Returns `None` when the attributes have no SAR
+/// markings or when the provided span does not contain SAR tokens.
 fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
-    // The parser records each token's source bytes in `text`. We reconstruct
-    // the original block from the token spans within `span`, using them to
-    // derive the exact source bytes. Since we don't have the raw source here,
-    // fall back to rendering from the parsed structure (which is identical to
-    // the source for abbreviated form without ordering issues).
+    // We do not have enough information here to recover exact original source
+    // bytes. Instead, gate on whether the requested span contains SAR tokens
+    // and then return the canonical rendering of the parsed SAR block.
     let Some(sar) = attrs.sar_markings.as_ref() else {
         return None;
     };
