@@ -10,9 +10,11 @@
 //! `marque-capco` and would create a circular dev-dep). It re-uses the
 //! parser/scanner/rule-set wiring directly.
 
+use std::sync::Arc;
+
 use marque_capco::CapcoRuleSet;
 use marque_core::{Parser, Scanner};
-use marque_ism::{CapcoTokenSet, MarkingType};
+use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
 use marque_rules::{RuleContext, RuleSet};
 use marque_test_utils::{
     ExpectedFixture, invalid_fixtures, load_expected, load_fixture, valid_fixtures,
@@ -23,19 +25,39 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let parser = Parser::new(&token_set);
     let candidates = Scanner::scan(source);
     let rule_set = CapcoRuleSet::new();
+    // Mirror the engine's PageContext accumulation so banner-rollup rules
+    // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets at
+    // scanner-emitted PageBreak candidates per the engine's invariant.
+    let mut page_context = PageContext::new();
+    let mut page_context_arc: Option<Arc<PageContext>> = None;
     let mut out = Vec::new();
     for candidate in &candidates {
         if candidate.kind == MarkingType::PageBreak {
+            page_context = PageContext::new();
+            page_context_arc = None;
             continue;
         }
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
+        if parsed.kind == MarkingType::Portion {
+            page_context.add_portion(parsed.attrs.clone());
+            page_context_arc = None;
+        }
+        let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+            Some(
+                page_context_arc
+                    .get_or_insert_with(|| Arc::new(page_context.clone()))
+                    .clone(),
+            )
+        } else {
+            None
+        };
         let ctx = RuleContext {
             marking_type: candidate.kind,
             zone: None,
             position: None,
-            page_context: None,
+            page_context: ctx_page,
             corrections: None,
         };
         for rule in rule_set.rules() {
