@@ -1,0 +1,6 @@
+{
+  "_note": "E035 fires on banner missing sub-compartment ABCD that is present in the preceding portion's SI-G marking. Fix rolls up the portion's sub-compartments into the banner SCI block.",
+  "diagnostics": [
+    {"rule": "E035", "span": {"start": 40, "end": 44}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "diagnostics": [
+    {"rule": "E031", "span": {"start": 24, "end": 30}}
+  ],
+  "_note": "E031 banner roll-up: portion on line 1 carries SAR-CD; banner on line 2 has only SAR-BP. Expect E031 on the banner SAR block."
+}

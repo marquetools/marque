@@ -40,8 +40,30 @@
 
 use crate::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiMarker, IsmAttributes,
-    MarkingClassification, NonIcDissem, SarIdentifier, SciControl, Trigraph,
+    MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    SciCompartment, SciControl, SciControlSystem, SciMarking, Trigraph,
 };
+
+/// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
+/// with numbered values first, followed by alphabetic values" at each hierarchical
+/// level.
+///
+/// Splits the identifier at its leading digit run. If present, the digits are
+/// parsed as `u64` and the tuple `(false, n, rest)` is returned (with `false`
+/// sorting before `true`). Pure-alpha identifiers return `(true, 0, s)`.
+///
+/// This helper is the canonical SAR sort-key implementation; both
+/// `marque-ism` (banner roll-up) and `marque-capco` (rules E028/E029) use it
+/// via the crate re-export.
+pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
+    let prefix_len = s.bytes().take_while(|b| b.is_ascii_digit()).count();
+    if prefix_len == 0 {
+        (true, 0, s)
+    } else {
+        let n: u64 = s[..prefix_len].parse().unwrap_or(u64::MAX);
+        (false, n, &s[prefix_len..])
+    }
+}
 
 /// Page-level aggregation context, built by the engine as it processes portion
 /// markings on a page.
@@ -108,15 +130,152 @@ impl PageContext {
         seen.into_iter().collect()
     }
 
-    /// All SAR identifiers that must appear on the banner (union of all portions).
-    pub fn expected_sar_identifiers(&self) -> Vec<SarIdentifier> {
-        let mut seen = std::collections::BTreeSet::new();
+    /// Structural SCI markings the banner must carry, unioned across all
+    /// portions and sorted per CAPCO-2016 §A.6 p15 (numeric first, alpha after).
+    ///
+    /// Compartments for each system are merged: a compartment identifier that
+    /// appears on multiple portions contributes the union of its
+    /// sub-compartments. A system with no compartments on any portion appears
+    /// as a bare-system entry (empty `compartments`). A compartment with no
+    /// sub-compartments on any portion appears with an empty
+    /// `sub_compartments`.
+    ///
+    /// `canonical_enum` is always `None` on roll-up output — the CVE compound
+    /// form is per-portion only; the banner is a structural projection.
+    pub fn expected_sci_markings(&self) -> Box<[SciMarking]> {
+        // system → compartment_id → set of sub_compartments
+        let mut acc: std::collections::BTreeMap<
+            SystemKey,
+            std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+        > = std::collections::BTreeMap::new();
+
         for attrs in &self.portions {
-            for &sar in attrs.sar_identifiers.iter() {
-                seen.insert(sar);
+            for marking in attrs.sci_markings.iter() {
+                let key = SystemKey::from_system(&marking.system);
+                let comp_map = acc.entry(key).or_default();
+                for comp in marking.compartments.iter() {
+                    let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
+                    for sub in comp.sub_compartments.iter() {
+                        sub_set.insert(sub.to_string());
+                    }
+                }
             }
         }
-        seen.into_iter().collect()
+
+        // Now produce sorted output per §A.6 p15: numeric first, alpha after.
+        let mut systems: Vec<(SystemKey, _)> = acc.into_iter().collect();
+        systems.sort_by(|a, b| {
+            sar_sort_key(a.0.text()).cmp(&sar_sort_key(b.0.text()))
+        });
+
+        let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
+        for (sys_key, comp_map) in systems {
+            let mut comps: Vec<(String, std::collections::BTreeSet<String>)> =
+                comp_map.into_iter().collect();
+            comps.sort_by(|a, b| sar_sort_key(&a.0).cmp(&sar_sort_key(&b.0)));
+
+            let compartments: Vec<SciCompartment> = comps
+                .into_iter()
+                .map(|(id, sub_set)| {
+                    let mut subs: Vec<String> = sub_set.into_iter().collect();
+                    subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+                    let sub_boxes: Box<[Box<str>]> = subs
+                        .into_iter()
+                        .map(|s| s.into_boxed_str())
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice();
+                    SciCompartment::new(id.into_boxed_str(), sub_boxes)
+                })
+                .collect();
+
+            out.push(SciMarking::new(
+                sys_key.into_system(),
+                compartments.into_boxed_slice(),
+                None,
+            ));
+        }
+        out.into_boxed_slice()
+    }
+
+    /// Expected SAR marking rolled up from all accumulated portions.
+    ///
+    /// Returns `None` if no portion carries a SAR marking. Otherwise returns a
+    /// [`SarMarking`] with `indicator = SarIndicator::Abbrev` and
+    /// programs / compartments / sub-compartments unioned across portions,
+    /// each hierarchical level sorted per CAPCO §H.5 ascending order
+    /// (numeric-prefixed values first as `u64`, then alphabetic).
+    ///
+    /// The rollup does NOT flag disagreements between portions and the
+    /// observed banner — it just produces the expected composite marking.
+    /// Rule E031 (`sar-banner-rollup`) consumes this roll-up and compares
+    /// the expected value against what actually appears on the page banner.
+    pub fn expected_sar_marking(&self) -> Option<SarMarking> {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        // program identifier → compartment identifier → set of sub-compartment
+        // identifiers. BTreeMap/BTreeSet give deterministic ordering but we
+        // re-sort per CAPCO semantics below (BTree's lexicographic order puts
+        // "12A" before "2" — wrong for §H.5).
+        let mut programs: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+
+        for attrs in &self.portions {
+            let Some(sar) = attrs.sar_markings.as_ref() else {
+                continue;
+            };
+            for prog in sar.programs.iter() {
+                let comps = programs.entry(prog.identifier.to_string()).or_default();
+                for comp in prog.compartments.iter() {
+                    let subs = comps.entry(comp.identifier.to_string()).or_default();
+                    for sub in comp.sub_compartments.iter() {
+                        subs.insert(sub.to_string());
+                    }
+                }
+            }
+        }
+
+        if programs.is_empty() {
+            return None;
+        }
+
+        // Sort each hierarchical level per CAPCO §H.5 (numeric-first, then alpha).
+        let mut prog_keys: Vec<String> = programs.keys().cloned().collect();
+        prog_keys.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+
+        let built_programs: Vec<SarProgram> = prog_keys
+            .into_iter()
+            .map(|pid| {
+                let comp_map = programs.remove(&pid).expect("key enumerated above");
+                let mut comp_keys: Vec<String> = comp_map.keys().cloned().collect();
+                comp_keys.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+
+                let built_compartments: Vec<SarCompartment> = comp_keys
+                    .into_iter()
+                    .map(|cid| {
+                        let subs = comp_map
+                            .get(&cid)
+                            .expect("key enumerated above");
+                        let mut sub_vec: Vec<String> = subs.iter().cloned().collect();
+                        sub_vec.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+                        let boxed: Box<[Box<str>]> = sub_vec
+                            .into_iter()
+                            .map(|s| s.into_boxed_str())
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice();
+                        SarCompartment::new(cid.into_boxed_str(), boxed)
+                    })
+                    .collect();
+
+                SarProgram::new(
+                    pid.into_boxed_str(),
+                    built_compartments.into_boxed_slice(),
+                )
+            })
+            .collect();
+
+        Some(SarMarking::new(
+            SarIndicator::Abbrev,
+            built_programs.into_boxed_slice(),
+        ))
     }
 
     /// All dissemination controls that must appear on the banner.
@@ -561,16 +720,28 @@ impl PageContext {
 
         let mut blocks: Vec<String> = vec![classification];
 
-        // SCI controls — all in ONE block, `/`-separated per CAPCO §D.1.
-        let sci = self.expected_sci_controls();
-        if !sci.is_empty() {
-            blocks.push(sci.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+        // SCI block — prefer the structural `sci_markings` projection
+        // (which honors compartments and sub-compartments per §A.6) when any
+        // portion produced one. Fall back to the enum-projection
+        // `sci_controls` path for back-compat when no structural markings
+        // exist (e.g., pre-P2 inputs with only enum-form data).
+        let sci_markings = self.expected_sci_markings();
+        if !sci_markings.is_empty() {
+            blocks.push(render_sci_markings_block(&sci_markings));
+        } else {
+            let sci = self.expected_sci_controls();
+            if !sci.is_empty() {
+                blocks.push(sci.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+            }
         }
 
-        // SAR identifiers — all in ONE block, `/`-separated.
-        let sar = self.expected_sar_identifiers();
-        if !sar.is_empty() {
-            blocks.push(sar.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+        // SAR block — rendered per CAPCO §H.5 p100 canonical form:
+        //   SAR-{prog1}[-{comp1}[ {sub}...][-{comp2}...]][/{prog2}-...]
+        // Programs are `/`-separated; compartments within a program are
+        // `-`-separated; sub-compartments within a compartment are
+        // space-separated (e.g., `SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB`).
+        if let Some(sar) = self.expected_sar_marking() {
+            blocks.push(render_sar_block(&sar));
         }
 
         // AEA markings — all in ONE block, `/`-separated.
@@ -636,6 +807,103 @@ impl PageContext {
 
         Some(blocks.join("//"))
     }
+}
+
+/// Normalized ordering key for an `SciControlSystem` in the page-context
+/// accumulator. Published variants hash/compare by their canonical CVE
+/// string; custom variants by their raw text. We keep `Ord`/`Eq` derived
+/// on the text form so BTreeMap keys have a stable, readable order (final
+/// emission order is re-sorted via [`sar_sort_key`] per §A.6 p15).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum SystemKey {
+    Published(crate::attrs::SciControlBare),
+    Custom(String),
+}
+
+impl SystemKey {
+    fn from_system(sys: &SciControlSystem) -> Self {
+        match sys {
+            SciControlSystem::Published(b) => SystemKey::Published(*b),
+            SciControlSystem::Custom(s) => SystemKey::Custom(s.to_string()),
+        }
+    }
+
+    fn text(&self) -> &str {
+        match self {
+            SystemKey::Published(b) => b.as_str(),
+            SystemKey::Custom(s) => s.as_str(),
+        }
+    }
+
+    fn into_system(self) -> SciControlSystem {
+        match self {
+            SystemKey::Published(b) => SciControlSystem::Published(b),
+            SystemKey::Custom(s) => SciControlSystem::Custom(s.into_boxed_str()),
+        }
+    }
+}
+
+/// Render the structural SCI block per §A.6 Figure 2:
+/// `SYSTEM[-COMP[ SUB...][-COMP[ SUB...]]...]` with `/` between distinct
+/// systems. A bare system emits `SYSTEM`; a system with compartments emits
+/// `SYSTEM-COMP[ SUBS...]` with each additional compartment joined by `-`.
+fn render_sci_markings_block(markings: &[SciMarking]) -> String {
+    let mut systems: Vec<String> = Vec::with_capacity(markings.len());
+    for m in markings {
+        let sys_text = match &m.system {
+            SciControlSystem::Published(b) => b.as_str().to_owned(),
+            SciControlSystem::Custom(s) => s.to_string(),
+        };
+        if m.compartments.is_empty() {
+            systems.push(sys_text);
+            continue;
+        }
+        // system-COMP1[ sub..]-COMP2[ sub..] ...
+        let mut rendered = sys_text;
+        for (i, comp) in m.compartments.iter().enumerate() {
+            if i == 0 {
+                rendered.push('-');
+            } else {
+                rendered.push('-');
+            }
+            rendered.push_str(&comp.identifier);
+            for sub in comp.sub_compartments.iter() {
+                rendered.push(' ');
+                rendered.push_str(sub);
+            }
+        }
+        systems.push(rendered);
+    }
+    systems.join("/")
+}
+
+/// Render a rolled-up [`SarMarking`] to its canonical §H.5 banner block form
+/// (without the leading `//` category separator).
+///
+/// Format: `SAR-{prog1}[-{comp1}[ {sub} ...][-{comp2}...]][/{prog2}-...]`
+///
+/// The indicator is always rendered as the abbreviated `SAR-` form because
+/// [`PageContext::expected_sar_marking`] normalizes to [`SarIndicator::Abbrev`]
+/// per §H.5 p100.
+fn render_sar_block(sar: &SarMarking) -> String {
+    let mut out = String::from("SAR-");
+    let mut first_prog = true;
+    for prog in sar.programs.iter() {
+        if !first_prog {
+            out.push('/');
+        }
+        first_prog = false;
+        out.push_str(&prog.identifier);
+        for comp in prog.compartments.iter() {
+            out.push('-');
+            out.push_str(&comp.identifier);
+            for sub in comp.sub_compartments.iter() {
+                out.push(' ');
+                out.push_str(sub);
+            }
+        }
+    }
+    out
 }
 
 /// Expand known tetragraphs into their constituent trigraphs.
@@ -1159,5 +1427,377 @@ mod tests {
             ctx.render_expected_banner().as_deref(),
             Some("UNCLASSIFIED")
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // SCI structural roll-up (P4 of #003)
+    // -----------------------------------------------------------------------
+
+    use crate::attrs::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    fn sci_sys_pub(b: SciControlBare) -> SciControlSystem {
+        SciControlSystem::Published(b)
+    }
+
+    fn sci_sys_custom(s: &str) -> SciControlSystem {
+        SciControlSystem::Custom(s.to_owned().into_boxed_str())
+    }
+
+    fn comp(id: &str, subs: &[&str]) -> SciCompartment {
+        let sub_box: Box<[Box<str>]> = subs
+            .iter()
+            .map(|s| (*s).to_owned().into_boxed_str())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        SciCompartment::new(id.to_owned().into_boxed_str(), sub_box)
+    }
+
+    fn attrs_with_sci_markings(markings: Vec<SciMarking>) -> IsmAttributes {
+        IsmAttributes {
+            sci_markings: markings.into_boxed_slice(),
+            ..Default::default()
+        }
+    }
+
+    // --- expected_sar_marking (P4a) ---
+
+    use crate::attrs::{SarCompartment, SarIndicator, SarMarking, SarProgram};
+
+    fn sar_prog(id: &str, comps: Vec<SarCompartment>) -> SarProgram {
+        SarProgram::new(id.into(), comps.into_boxed_slice())
+    }
+
+    fn sar_comp(id: &str, subs: &[&str]) -> SarCompartment {
+        let subs: Box<[Box<str>]> = subs
+            .iter()
+            .map(|s| (*s).into())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        SarCompartment::new(id.into(), subs)
+    }
+
+    fn attrs_with_sar(sar: SarMarking) -> IsmAttributes {
+        IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sar_markings: Some(sar),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn sci_markings_single_portion_identity() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([comp("G", &["ABCD"])]),
+            None,
+        )]));
+        let out = ctx.expected_sci_markings();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].system, sci_sys_pub(SciControlBare::Si));
+        assert_eq!(out[0].compartments.len(), 1);
+        assert_eq!(&*out[0].compartments[0].identifier, "G");
+        assert_eq!(out[0].compartments[0].sub_compartments.len(), 1);
+        assert_eq!(&*out[0].compartments[0].sub_compartments[0], "ABCD");
+        assert_eq!(out[0].canonical_enum, None);
+    }
+
+    #[test]
+    fn sci_markings_merge_subs_within_same_system_same_compartment() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([comp("G", &["ABCD"])]),
+            None,
+        )]));
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([comp("G", &["DEFG"])]),
+            None,
+        )]));
+        let out = ctx.expected_sci_markings();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].compartments.len(), 1);
+        let subs: Vec<&str> = out[0].compartments[0]
+            .sub_compartments
+            .iter()
+            .map(|s| s.as_ref())
+            .collect();
+        assert_eq!(subs, vec!["ABCD", "DEFG"]);
+    }
+
+    #[test]
+    fn sci_markings_two_distinct_systems_sorted_alpha() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([]),
+            None,
+        )]));
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Hcs),
+            Box::new([]),
+            None,
+        )]));
+        let out = ctx.expected_sci_markings();
+        assert_eq!(out.len(), 2);
+        // HCS before SI alphabetically (both alpha partition)
+        assert_eq!(out[0].system, sci_sys_pub(SciControlBare::Hcs));
+        assert_eq!(out[1].system, sci_sys_pub(SciControlBare::Si));
+    }
+
+    #[test]
+    fn sci_markings_numeric_sorts_before_alpha() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([]),
+            None,
+        )]));
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_custom("123"),
+            Box::new([]),
+            None,
+        )]));
+        let out = ctx.expected_sci_markings();
+        assert_eq!(out.len(), 2);
+        // Numeric 123 first, SI second (per §A.6 p15)
+        assert_eq!(out[0].system, sci_sys_custom("123"));
+        assert_eq!(out[1].system, sci_sys_pub(SciControlBare::Si));
+    }
+
+    #[test]
+    fn sci_markings_sub_compartments_sorted() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([comp("G", &["DEFG", "ABCD"])]),
+            None,
+        )]));
+        let out = ctx.expected_sci_markings();
+        let subs: Vec<&str> = out[0].compartments[0]
+            .sub_compartments
+            .iter()
+            .map(|s| s.as_ref())
+            .collect();
+        assert_eq!(subs, vec!["ABCD", "DEFG"]);
+    }
+
+    #[test]
+    fn sci_markings_canonical_enum_never_populated_on_rollup() {
+        // Even if a portion recorded canonical_enum = Some(SiG), the rollup
+        // output must be structural-only (None), per spec.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sci_markings(vec![SciMarking::new(
+            sci_sys_pub(SciControlBare::Si),
+            Box::new([comp("G", &[])]),
+            Some(SciControl::SiG),
+        )]));
+        let out = ctx.expected_sci_markings();
+        assert_eq!(out[0].canonical_enum, None);
+    }
+
+    #[test]
+    fn render_banner_uses_structural_sci_block_bare() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_markings: vec![SciMarking::new(
+                sci_sys_pub(SciControlBare::Si),
+                Box::new([]),
+                None,
+            )]
+            .into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI")
+        );
+    }
+
+    #[test]
+    fn render_banner_uses_structural_sci_block_with_compartments() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_markings: vec![SciMarking::new(
+                sci_sys_pub(SciControlBare::Si),
+                Box::new([comp("G", &["ABCD", "DEFG"])]),
+                None,
+            )]
+            .into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI-G ABCD DEFG")
+        );
+    }
+
+    #[test]
+    fn render_banner_structural_sci_multi_compartment() {
+        // §A.6 p16 canonical decomposition: SI-G ABCD DEFG-MMM AACD
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_markings: vec![SciMarking::new(
+                sci_sys_pub(SciControlBare::Si),
+                Box::new([comp("G", &["ABCD", "DEFG"]), comp("MMM", &["AACD"])]),
+                None,
+            )]
+            .into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI-G ABCD DEFG-MMM AACD")
+        );
+    }
+
+    #[test]
+    fn rollup_empty_portions_returns_none() {
+        assert!(PageContext::new().expected_sar_marking().is_none());
+    }
+
+    #[test]
+    fn rollup_no_sar_portions_returns_none() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+        assert!(ctx.expected_sar_marking().is_none());
+    }
+
+    #[test]
+    fn rollup_single_program_no_compartments() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("BP", vec![])].into_boxed_slice(),
+        )));
+        let got = ctx.expected_sar_marking().expect("one program");
+        assert_eq!(got.indicator, SarIndicator::Abbrev);
+        assert_eq!(got.programs.len(), 1);
+        assert_eq!(&*got.programs[0].identifier, "BP");
+        assert!(got.programs[0].compartments.is_empty());
+    }
+
+    #[test]
+    fn rollup_two_portions_merge_programs() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("BP", vec![])].into_boxed_slice(),
+        )));
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Full, // indicator on portion irrelevant — banner normalizes to Abbrev
+            vec![sar_prog("CD", vec![])].into_boxed_slice(),
+        )));
+        let got = ctx.expected_sar_marking().expect("merged");
+        assert_eq!(got.indicator, SarIndicator::Abbrev);
+        let ids: Vec<&str> = got.programs.iter().map(|p| &*p.identifier).collect();
+        assert_eq!(ids, vec!["BP", "CD"]);
+    }
+
+    #[test]
+    fn rollup_merges_compartments_under_same_program() {
+        // Two portions with same program, different single compartments.
+        // The canonical §H.5 form uses `-` between compartments within a
+        // program (see `SAR-BP-J12 J54-K15` where `-K15` is a second
+        // compartment, not a sub of J54). Sub-compartments use spaces.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("BP", vec![sar_comp("J12", &[])])].into_boxed_slice(),
+        )));
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("BP", vec![sar_comp("K15", &[])])].into_boxed_slice(),
+        )));
+        let got = ctx.expected_sar_marking().expect("merged");
+        assert_eq!(got.programs.len(), 1);
+        let prog = &got.programs[0];
+        assert_eq!(&*prog.identifier, "BP");
+        let comps: Vec<&str> = prog.compartments.iter().map(|c| &*c.identifier).collect();
+        assert_eq!(comps, vec!["J12", "K15"]);
+    }
+
+    #[test]
+    fn rollup_numeric_before_alpha() {
+        // Per CAPCO §H.5 sort rule: numbered values sort before alphabetic at
+        // each hierarchical level. Programs [BP, AC-12A, 99] → [99, AC, BP]
+        // once sorted. (Note: `sar_sort_key` splits leading digits, so `AC`
+        // sorts alpha-key `(true, 0, "AC")` which is after `99`'s
+        // `(false, 99, "")`.)
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("BP", vec![])].into_boxed_slice(),
+        )));
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("AC", vec![sar_comp("12A", &[])])].into_boxed_slice(),
+        )));
+        ctx.add_portion(attrs_with_sar(SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![sar_prog("99", vec![])].into_boxed_slice(),
+        )));
+        let got = ctx.expected_sar_marking().expect("merged");
+        let ids: Vec<&str> = got.programs.iter().map(|p| &*p.identifier).collect();
+        assert_eq!(ids, vec!["99", "AC", "BP"]);
+    }
+
+    #[test]
+    fn render_expected_banner_with_sar_between_sci_and_aea() {
+        // End-to-end: one portion with SCI + SAR + Dissem on a TS doc.
+        // The SAR block slots between the SCI block and the Dissem block
+        // (AEA is omitted here). Category separator is `//`.
+        use crate::attrs::{DissemControl, SciControl};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Us(Classification::TopSecret)),
+            sci_controls: vec![SciControl::Si].into_boxed_slice(),
+            sar_markings: Some(SarMarking::new(
+                SarIndicator::Abbrev,
+                vec![sar_prog("BP", vec![sar_comp("J12", &["J54"])])]
+                    .into_boxed_slice(),
+            )),
+            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.render_expected_banner().as_deref(),
+            Some("TOP SECRET//SI//SAR-BP-J12 J54//NOFORN")
+        );
+    }
+
+    #[test]
+    fn render_sar_block_canonical_example() {
+        // §H.5 p100 canonical: SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![
+                sar_prog(
+                    "BP",
+                    vec![sar_comp("J12", &["J54"]), sar_comp("K15", &[])],
+                ),
+                sar_prog("CD", vec![sar_comp("YYY", &["456", "689"])]),
+                sar_prog("XR", vec![sar_comp("XRA", &["RB"])]),
+            ]
+            .into_boxed_slice(),
+        );
+        assert_eq!(
+            render_sar_block(&sar),
+            "SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB"
+        );
+    }
+
+    #[test]
+    fn sar_sort_key_numeric_before_alpha() {
+        // Ensures the P3 agent's parallel copy can be checked for parity.
+        assert!(sar_sort_key("99") < sar_sort_key("AC"));
+        assert!(sar_sort_key("12A") < sar_sort_key("AC"));
+        assert!(sar_sort_key("AC") < sar_sort_key("BP"));
+        // Numeric ordering by value, not lex: "2" < "10" despite lex.
+        assert!(sar_sort_key("2") < sar_sort_key("10"));
     }
 }

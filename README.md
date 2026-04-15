@@ -1,6 +1,10 @@
-# marque
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark.svg">
+  <img alt="marque logo" src="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark.svg" height="150px">
+</picture>
 
-**A fast, rule-driven text linter, formatter, and transformer.** 
+## **A fast, rule-driven text linter, formatter, and transformer.** 
 
 `marque` is a general-purpose rule engine for fast text processing — rules
 produce warnings, errors, fixes, and transformations, each with a confidence
@@ -10,7 +14,7 @@ designed for perceptual instantaneity at any scale, operating on raw byte
 buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
 
 That's a fancy way of saying it's *extremely fast*.
-It can scan and fix a page faster than you can perceive it.
+It can scan and fix a page faster than you can perceive the change.
 
 The MVP ships a CAPCO/ISM classification-marking rule set targeting ODNI
 ISM-v2022-DEC (marque-ism and marque-capco crates). That's **one application** of the engine. 
@@ -28,6 +32,7 @@ The next big feature upgrade will bring metadata curation, correction, extractio
 - **exceptionally fast**
 - **hardened and secure by design**
 - **correct**
+- **completely auditable**
 - **helpful**
 
 ## Demo
@@ -69,7 +74,7 @@ Configuration lives in `.marque.toml` (project, committed) and
 
 ## Workspace
 
-```
+```text
 marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
                                     ↓
                              marque-engine  ←  marque-config
@@ -89,20 +94,22 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | [`marque-engine`](./crates/marque-engine/) | Pipeline orchestration. `Engine` (sync) + `BatchEngine` (async concurrent). Confidence gate + audit log live here. |
 | [`marque-config`](./crates/marque-config/) | Layered config loading (CLI > env > `.marque.local.toml` > `.marque.toml`) with hard-fail validators. |
 | [`marque-ism`](./crates/marque-ism/) | ISM vocabulary types + generated CVE enums from ODNI schemas. Build-time codegen, no runtime I/O. |
-| [`marque-capco`](./crates/marque-capco/) | 29 hand-written CAPCO rules (E001–E025, W001–W003, C001) consuming `marque-ism` predicates. |
+| [`marque-capco`](./crates/marque-capco/) | 39 hand-written CAPCO rules (E001–E035, W001–W003, C001) consuming `marque-ism` predicates. Includes SAR (Special Access Required) validation per §H.5 and structural SCI compartment + sub-compartment support per §A.6. |
 | [`marque-extract`](./crates/marque-extract/) | Document text + metadata extraction. **Stub** — Kreuzberg integration pending. |
 | [`marque-wasm`](./crates/marque-wasm/) | WASM target via `wasm-pack`. Byte-identical NDJSON output to the CLI. |
 | [`marque-server`](./crates/marque-server/) | axum REST microservice wrapping `marque-engine`. |
 
 **Domain scoping:** `marque-ism` and `marque-capco` are the only crates that
 are ISM/CAPCO-specific. Everything else is general-purpose infrastructure
-designed to host additional rule sets (CUI, NATO, …) without
+designed to host additional rule sets (CUI, NATO, KFC recipe) without
 changes.
 
 ## Status
 
-**MVP complete**. Full lint → fix → audit pipeline for raw text with 29 CAPCO
-rules. CLI and WASM produce byte-identical NDJSON diagnostics. Configurable
+**MVP complete**. Full lint → fix → audit pipeline for raw text with 39 CAPCO
+rules, including structural SAR validation per §H.5 and structural SCI
+compartment + sub-compartment validation per §A.6. CLI and WASM produce
+byte-identical NDJSON diagnostics. Configurable
 severity overrides, corrections map, and confidence thresholds. Batch
 processing via `BatchEngine` with concurrency control. Criterion benchmarks
 validate p95 ≤16ms on 10KB inputs.
@@ -113,10 +120,14 @@ middleware.
 
 ## License
 
-Apache-2.0.
+Apache-2.0. Copright 2026, Knitli Inc.
 
 ## Why... Classification Markings?
 
 Because I lived them for 18.5 years, and I'm unusually encyclopedic about them.
 
 I'm building what I wanted for 18.5 years everytime I used a poorly designed classification tool that slowed me down without helping me. I believe classifying a document correctly should take milliseconds, not 15+ minutes, and  `marque` is living proof. I can give that time back to the millions of people who have to classify or add control markings to documents every day.
+
+### It should go without saying, but all classification markings are for testing and illustration purposes
+
+Some folks need to hear that, it seems.

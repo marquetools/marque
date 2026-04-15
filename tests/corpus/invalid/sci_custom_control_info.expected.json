@@ -1,0 +1,6 @@
+{
+  "_note": "E034 sci-custom-control-info is Severity::Off by default; this fixture exercises the rule via harnesses that bypass severity gating. Users enable it in .marque.toml.",
+  "diagnostics": [
+    {"rule": "E034", "span": {"start": 12, "end": 14}}
+  ]
+}

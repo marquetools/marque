@@ -84,12 +84,14 @@ banner.txt:1:1 error[E001] banner uses abbreviated dissem control "NF"; use "NOF
    |
  1 | TOP SECRET//SI//NF
    |                  ^^ replace with NOFORN  (CAPCO-2016 §A.6)
+   |                  ^^ replace with NOFORN  (CAPCO-2016 §A.6)
    |
 
 banner.txt:1:1 error[E002] REL TO list missing required USA trigraph
   --> banner.txt:1:24-32
    |
  1 | TOP SECRET//REL TO GBR, AUS
+   |                    ^^^^^^^^ insert USA at start  (CAPCO-2016 §A.6)
    |                    ^^^^^^^^ insert USA at start  (CAPCO-2016 §A.6)
    |
 
@@ -844,6 +846,7 @@ creep in. They belong to later phases or future work.
 - **GOTCHA 1**: Each fixture must contain ZERO classifier-id-shaped
   strings. The Phase-5 audit test (T055) will fail if any 5-digit number
   resembling a classifier ID slips in. Use citation strings like
+  `"CAPCO-2016 §A.6"` and avoid lone 5-digit numbers anywhere in the
   `"CAPCO-2016 §A.6"` and avoid lone 5-digit numbers anywhere in the
   fixture text.
 - **GOTCHA 2**: Each `.expected.json` file is self-contained and
