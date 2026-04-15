@@ -8,7 +8,7 @@ Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one 
 - [ ] Add `IsmAttributes.sci_markings: Box<[SciMarking]>` alongside the existing `sci_controls: Box<[SciControl]>`. Do NOT remove or deprecate `sci_controls`.
 - [ ] Add `TokenKind::SciSystem` and `TokenKind::SciSubCompartment`. Audit whether `TokenKind::SciCompartment` exists already; if so, reuse; if not, add it.
 - [ ] Re-export new types from `crates/marque-ism/src/lib.rs`.
-- [ ] Decide: is `SciControlBare` derived from CVE via `build.rs`, or hand-written? Recommendation: hand-written const-array that mirrors the seven bare values, with a build-time assert that the CVE contains all seven. Keeps the structural anchor list decoupled from `SciControl`'s generated shape.
+- [ ] Derive `SciControlBare` from the CVE at build time (per QA review: the 2016 manual publishes only 4 systems, the 2022 CVE has 7 — the recognition set must follow the live CVE, not a hardcoded list). `build.rs` emits a `SciControlBare` enum containing every CVE value whose text contains no `-`. Provides a `fn is_bare_cve_value(s: &str) -> bool` helper for the structural anchor check.
 - [ ] `cargo check --workspace` green with no changes to `marque-core` or `marque-capco` consumers yet (P2 wires them).
 
 ## P2 — Subparser (`marque-core`)
@@ -37,8 +37,8 @@ Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one 
 - [ ] **E011 `missing-non-us-prefix`** audit: no behavioral change expected. Add a regression test exercising the structural path to confirm.
 - [ ] **E032 `sci-system-order`** (new): walk `sci_markings`, detect out-of-order adjacent pairs (reuse SAR's `sar_sort_key` semantics — numeric first, alpha after — either via shared helper if SAR landed, or a local copy). Fix: reorder, confidence 0.85. Cite `CAPCO-2016 §A.6`.
 - [ ] **E033 `sci-compartment-order`** (new): per marking, check compartments ascending; per compartment, check sub-compartments ascending. Fix: reorder, confidence 0.85. Cite `CAPCO-2016 §A.6`.
-- [ ] **E034 `sci-custom-control-warning`** (new): emit Warn (no fix) for each `SciMarking` with `system: Custom(_)`. Message notes verification with the agency's allocation list. Cite `CAPCO-2016 §A.6 p15`.
-- [ ] **E035 `sci-banner-rollup`** (new): consume `ctx.page_context.expected_sci_markings()`, compare against `attrs.sci_markings`, fire on missing compartments/sub-compartments per system. Fix: rebuild the SCI block. Confidence 0.9. Cite `CAPCO-2016 §D.2`.
+- [ ] **E034 `sci-custom-control-info`** (new): emit Info (no fix) for each `SciMarking` with `system: Custom(_)`. Per QA review, the 2016 manual treats unpublished systems as legitimate; this rule is **informational** for audit visibility, not a suggestion that the marking is incorrect. Cite `CAPCO-2016 §A.6 p16; §H.4 p61`. Default severity: `Info` (or `Off` if the severity enum doesn't distinguish Info from Warn — in that case, ship it `Off` by default and require `--include-info` to enable).
+- [ ] **E035 `sci-banner-rollup`** (new): consume `ctx.page_context.expected_sci_markings()`, compare against `attrs.sci_markings`, fire on missing compartments/sub-compartments per system. Fix: rebuild the SCI block. Confidence 0.9. Cite `CAPCO-2016 §H.4` per-system Precedence Rules (e.g., p62, p64, p66, p68) as primary; `§D.2 p28` as supporting.
 - [ ] **E008 skip filter** extension: tokens starting with a bare SCI system name followed by `-` or space are claimed by the structural parser; if the parser didn't claim them (returned None), they remain Unknown and E008 fires as before.
 - [ ] Register E032–E035 in `CapcoRuleSet::new()`. Rule count: 35 (with SAR) + 4 = 39, or 29 + 4 = 33 (without SAR) — pick whichever the base branch has at merge time.
 - [ ] Unit tests per new rule with positive and negative cases. Positive for E033 sub-compartment: `SECRET//SI-G DEFG ABCD//NOFORN` (should reorder DEFG, ABCD → ABCD, DEFG).
@@ -58,7 +58,7 @@ Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one 
 - [ ] `invalid/sci_system_order.txt` — `TOP SECRET//SI/123//NOFORN` → E032
 - [ ] `invalid/sci_compartment_order.txt` — `SECRET//SI-NK-G//NOFORN` → E033 (NK then G — alpha out of order)
 - [ ] `invalid/sci_subcompartment_order.txt` — `SECRET//SI-G DEFG ABCD//NOFORN` → E033
-- [ ] `invalid/sci_custom_control_warning.txt` — `SECRET//999//NOFORN` → E034
+- [ ] `invalid/sci_custom_control_info.txt` — `SECRET//999//NOFORN` → E034 (Info severity; only fires if info-level diagnostics are enabled in the harness config). Rename fixture to match the rule's final name.
 - [ ] `invalid/sci_banner_missing_compartment.txt` — multi-line; portion has SI-G ABCD, banner has SI-G only → E035
 - [ ] Harness: if SC-003 harness already auto-discovers, no changes needed (cf. SAR P5 report). Confirm per-rule accuracy gating catches E032–E035.
 - [ ] **Regression check**: enumerate all existing SCI fixtures and confirm they still produce the same diagnostics (or absence thereof) after this branch.

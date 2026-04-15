@@ -2,14 +2,15 @@
 
 **Status**: Draft
 **Branch**: `feat/sci-compartments`
-**Authority**: CAPCO Register and Manual (31 December 2016), §A.6 (pp 15–17) and §H.4 (pp 60–98)
+**Authority**: CAPCO Register and Manual (31 December 2016), §A.6 (pp 15–17; Figure 2 on p17; canonical example on p16) and §H.4 (pp 60–98).
+**Schema reference**: `CVEnumISMSCIControls.xml` from ISM-v2022-DEC (17 enumerated values). Diverges from the 2016 manual — see §R1 below.
 **Related**: `feat/sar-implementation` (#18) introduced the same structural approach for SAR; SCI shares the pattern but must coexist with a partially-populated ODNI CVE.
 
 ## Problem
 
-`marque-core`'s parser recognizes only exact matches of the ODNI `CVEnumISMSCIControls.xml` values (`SciControl::parse(trimmed)`). That CVE enumerates 17 values: 7 bare control systems (`BUR, HCS, KLM, MVL, RSV, SI, TK`) and 10 pre-registered compound forms (`HCS-O, HCS-P, HCS-X, KLM-R, SI-EU, SI-G, SI-NK, TK-BLFH, TK-IDIT, TK-KAND`).
+`marque-core`'s parser recognizes only exact matches of the ODNI `CVEnumISMSCIControls.xml` values (`SciControl::parse(trimmed)`). The current 2022-DEC CVE enumerates 17 values — 7 bare control systems (`BUR, HCS, KLM, MVL, RSV, SI, TK`) and 10 pre-registered compound forms (`HCS-O, HCS-P, HCS-X, KLM-R, SI-EU, SI-G, SI-NK, TK-BLFH, TK-IDIT, TK-KAND`). The 2016 manual published only four control systems (HCS, RSV, SI, TK — see p60: *"Four SCI control systems are published in the Register: HCS, RESERVE (RSV), Special Intelligence (SI), TALENT KEYHOLE (TK)"*). The parser consumes the live CVE as its vocabulary; the 2016 manual is authoritative for the **grammar** but the CVE superset determines what tokens the tool recognizes at runtime.
 
-Probe against CAPCO-2016 §A.6 p15 canonical example:
+Probe against CAPCO-2016 §A.6 p16 canonical example:
 
 | Input | Expected | Actual |
 |-------|----------|--------|
@@ -19,7 +20,7 @@ Probe against CAPCO-2016 §A.6 p15 canonical example:
 | `HCS-P SOMECOMP` | HCS-P with sub-compartment `SOMECOMP` | ❌ Unknown |
 | `123/SI-G ABCD DEFG-MMM AACD` (manual's literal example) | `123` (bare SCI system) and `SI` with two compartments, G with subs ABCD/DEFG and MMM with sub AACD | ❌❌ both whole blocks Unknown |
 
-The parser has no grammar for the CAPCO §A.6 p15 specification:
+The parser has no grammar for the CAPCO §A.6 p16 specification:
 
 > TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN — where 123 and SI are SCI control systems, G and MMM are SI compartments, ABCD and DEFG are sub-compartments of G, and AACD is a sub-compartment of MMM.
 
@@ -51,9 +52,11 @@ This spec covers full §A.6 SCI grammar support for banner and portion markings:
 
 ### R1 — Control system recognition
 
-The parser MUST recognize the bare control systems from the CVE as structural anchors for the grammar: `BUR, HCS, KLM, MVL, RSV, SI, TK`.
+The parser MUST recognize the bare control systems enumerated in the live CVE (`CVEnumISMSCIControls.xml`) as structural anchors for the grammar. The **authoritative vocabulary is the live CVE at build time**, not a hardcoded list — the tool's recognition set evolves as ODNI publishes updates. At the time of writing, the 2022-DEC CVE's bare set is `BUR, HCS, KLM, MVL, RSV, SI, TK`; the 2016 manual published only `HCS, RSV, SI, TK`. Locking the grammar to either fixed set would guarantee future staleness.
 
-Additionally, the parser MUST accept unpublished control systems that match the alphanumeric shape `[A-Z0-9]{2,5}` (per the manual's `123` example on p15) — these are recognized structurally but carry a separate `CustomControl` tag so rules can warn if needed.
+Implementation note: derive `SciControlBare` from the CVE via `build.rs` rather than hand-writing the enum. The structural anchor check asks "is this token a bare CVE value?" without caring which specific ones are present in this revision.
+
+Additionally, the parser MUST accept unpublished control systems that match an alphanumeric shape — these are legitimate per the manual (p16 `123` example; p61 describes ODNI/P&S's registry of "registered but unpublished" systems). Such tokens are recognized structurally and tagged `CustomControl`. The exact shape constraint (`[A-Z0-9]{2,5}` as a starting point) is a spec-author choice: the 2016 manual does not specify length or character-class bounds on unpublished identifiers. The implementing agent should confirm the shape works for real corpus inputs and widen if needed.
 
 ### R2 — Grammar
 
@@ -72,7 +75,11 @@ Multiple control systems in one SCI block are `/`-separated (per §A.6: "Multipl
 
 ### R3 — Sort order
 
-Within each hierarchical level (control systems, compartments, sub-compartments), values MUST be listed in ascending order with numbered values first, followed by alphabetic values (§A.6 p15). Out-of-order is a rule violation (E032, see below), not a parser error.
+Within each hierarchical level (control systems, compartments, sub-compartments), values MUST be listed in ascending order with numbered values first, followed by alphabetic values. Out-of-order is a rule violation (E032, see below), not a parser error.
+
+Direct citation (§A.6 p15):
+
+> All SCI control systems, their compartments, and sub-compartments, must be listed within each hierarchical level in ascending sort order with all numbered values first, then followed by alphabetic values (this ordering guidance applies for both published and unpublished markings).
 
 ### R4 — Pre-registered compound preservation
 
@@ -154,9 +161,9 @@ TokenKind::SciSubCompartment,  // "ABCD" in "SI-G ABCD"
 | E010 (existing) | `bare-hcs` | §H.4 | Bare `HCS` requires `-O`/`-P`/`-X`. Logic unchanged; consume either `sci_controls` (enum path) or `sci_markings` (structural path — flag when `system == Hcs && compartments.is_empty()`). |
 | E011 (existing) | `missing-non-us-prefix` | §H.4 | No behavior change; continues to read the enum projection. |
 | E032 (new) | `sci-system-order` | §A.6 p15 | Control systems within one block must be ascending (numeric first, then alpha). Fix: reorder. Confidence 0.85. |
-| E033 (new) | `sci-compartment-order` | §A.6 p15 | Compartments within a system ascending; sub-compartments within a compartment ascending. Fix: reorder. Confidence 0.85. |
-| E034 (new) | `sci-custom-control-warning` | §A.6 p15 | Warns when a CustomControl shape appears (e.g., `123`). Not an error — unpublished controls are legal — but warrants human review that it matches the agency's allocation. Severity: Warn. No fix. |
-| E035 (new) | `sci-banner-rollup` | §D.2 + §A.6 | Banner SCI block must contain every compartment/sub-compartment present in preceding portions for each control system. Mirror of SAR's E031. Fix: replace banner SCI block with rolled-up form. Confidence 0.9. |
+| E033 (new) | `sci-compartment-order` | §A.6 p15; §H.4 p61 | Compartments within a system ascending; sub-compartments within a compartment ascending. Fix: reorder. Confidence 0.85. §H.4 p61 explicitly states: *"Multiple compartments within an SCI control system must be listed in ascending sort order... separated by a hyphen, i.e., a hyphen will precede each compartment"*. |
+| E034 (new) | `sci-custom-control-info` | §A.6 p16; §H.4 p61 | **Informational**, not a warning. The manual treats unpublished control systems as legitimate (p27: *"Unpublished SCI and SAP markings should be listed alphanumerically along with any other applicable control markings"*; p61 describes ODNI/P&S's unpublished registry). The rule records the presence of a CustomControl token for audit visibility but does not suggest it is incorrect. Severity: Info (or Off by default; flag via `--include-info`). No fix. |
+| E035 (new) | `sci-banner-rollup` | §H.4 per-system (e.g., p62, p64, p66, p68) + §D.2 p28 | Banner SCI block must contain every compartment/sub-compartment present in preceding portions for each control system. Primary authority: §H.4's per-system "Precedence Rules for Banner Line Guidance" (HCS p62, OPERATIONS p64, PRODUCT p66, etc., each stating: *"All unique SCI markings contained in the portion marks must always appear in the banner line"*). Supporting: §D.2 p28 bullet (*"Repeating in the banner line, all unique SCI, SAP, and/or AEA markings used in the portions"*). Mirror of SAR's E031 in shape. Fix: replace banner SCI block with rolled-up form. Confidence 0.9. |
 
 E008 (`unrecognized-token`) gets a skip filter extension: Unknown tokens whose structural form matches the SCI grammar are handled by the new parser path, not E008.
 
