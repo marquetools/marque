@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-`marque` is a linter, formatter, and auto-fixer for U.S. Government control markings. Currently it only supports IC classification markings (ISM): portion markings, banner markings, and Classification Authority Blocks (CABs) — in the style of `ruff`. It targets CAPCO/ODNI ISM specifications (currently ISM-v2022-DEC). The tool operates on raw text, and is designed for perceptual instantaneity at any scale. Support for a wide range of document formats using existing libraries (possibly Kruezberg) planned.
+`marque` is a **general-purpose rule engine for fast text processing** — rules produce warnings, errors, fixes, and transformations, each with a confidence score the engine uses to decide what to apply vs. surface as a suggestion. Built in the style of `ruff`: designed for perceptual instantaneity at any scale, operating on raw byte buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
+
+The MVP ships a CAPCO/ISM classification-marking rule set (`marque-ism` + `marque-capco`) targeting ODNI ISM-v2022-DEC, but that is **one application** of the engine, not its identity. The roadmap expands into other U.S. Government control markings (CUI), foreign and multinational classification/control systems (NATO, FGI, JOINT), and general-purpose text lint/transformation domains. Any crate named `marque-*` other than `marque-ism`/`marque-capco` is domain-neutral infrastructure and should stay that way.
+
+Support for a wide range of document formats via `marque-extract` (Kreuzberg wrapper) is in progress.
 
 ## Build Commands
 
@@ -187,15 +191,15 @@ The active schema version is pinned in `crates/marque-ism/Cargo.toml` under `[pa
 ```
 POST /v1/lint       → diagnostics
 POST /v1/fix        → fixed text + audit log
-POST /v1/metadata   → metadata report
-POST /v1/batch      → batch results
 GET  /v1/health
 GET  /v1/schema/version
 ```
 
+Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch`, auth + structured logging middleware.
+
 ## Current Status
 
-MVP complete. Full lint → fix → audit pipeline for raw text with 10 CAPCO rules (E001–E008, W001, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
+MVP complete. Full lint → fix → audit pipeline for raw text with 29 CAPCO rules (E001–E025, W001–W003, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
@@ -210,5 +214,5 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 10 CAPCO ru
 - Phase 7: Criterion benchmarks (lint_latency, linear_scaling), corpus accuracy harness, WASM parity scaling to full corpus, cargo-fuzz target, bench-check regression gate
 - Phase 6: WASM web worker build with SC-008 parity, `batch` feature flag, CachedAhoCorasick optimization
 - Phase 5: Configurable severity overrides, corrections map with AhoCorasick pre-scanner
-- Phase 3-4: Full lint/fix/audit pipeline, 10 CAPCO rules, CLI with check/fix subcommands
+- Phase 3-4: Full lint/fix/audit pipeline, 29 CAPCO rules (E001–E025, W001–W003, C001), CLI with check/fix subcommands
 - Phase 1-2: marque-ism crate extraction, test corpus scaffolding, benchmark stubs

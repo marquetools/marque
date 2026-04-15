@@ -3,7 +3,7 @@ name = "marque"
 version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Classification marking linter, formatter, and fixer"
+description = "A fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules."
 repository.workspace = true
 license.workspace = true
 
