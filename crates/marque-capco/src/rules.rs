@@ -552,6 +552,17 @@ impl Rule for SeparatorCountRule {
             if tok.kind != TokenKind::Separator {
                 continue;
             }
+            // Skip separators that are part of a `////` run — the first
+            // branch above already owns those spans. A separator is in a
+            // run when it is immediately adjacent (no gap) to another
+            // separator in either direction.
+            let prev_sep = spans[..idx].iter().rev().find(|t| t.kind == TokenKind::Separator);
+            let next_sep = spans[idx + 1..].iter().find(|t| t.kind == TokenKind::Separator);
+            let in_run = prev_sep.is_some_and(|s| s.span.end == tok.span.start)
+                || next_sep.is_some_and(|s| tok.span.end == s.span.start);
+            if in_run {
+                continue;
+            }
             // Previous non-separator token.
             let prev = spans[..idx]
                 .iter()
@@ -2732,6 +2743,12 @@ impl Rule for SarProgramOrderRule {
 
 /// Compartments within a program — and sub-compartments within a
 /// compartment — must be in ascending sort order per CAPCO-2016 §H.5 p99.
+///
+/// One diagnostic is emitted **per out-of-order program** (not one for the
+/// whole SAR block). This gives each program a non-overlapping fix span so
+/// all compartment-ordering fixes can be applied in a single pass, and so
+/// the fix spans don't overlap with E028's whole-block span when both rules
+/// fire on the same marking.
 struct SarCompartmentOrderRule;
 
 impl Rule for SarCompartmentOrderRule {
@@ -2750,49 +2767,50 @@ impl Rule for SarCompartmentOrderRule {
             return vec![];
         };
 
-        // Detect any out-of-order level. We emit at most one diagnostic
-        // per SAR block (the fix reorders every level at once); the
-        // message mentions whichever level tripped first so the author
-        // sees the specific violation.
-        let mut offending_level: Option<&'static str> = None;
-        for prog in sar.programs.iter() {
-            if prog.compartments.len() >= 2
-                && !prog.compartments.windows(2).all(|w| {
+        // Pre-compute SarProgram token positions once for per-program span
+        // lookups via `sar_program_span`.
+        let prog_positions: Vec<usize> = attrs
+            .token_spans
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| {
+                if t.kind == TokenKind::SarProgram {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut diagnostics = Vec::new();
+
+        for (prog_idx, prog) in sar.programs.iter().enumerate() {
+            let comps_ok = prog.compartments.len() < 2
+                || prog.compartments.windows(2).all(|w| {
                     sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier)
-                })
-            {
-                offending_level = Some("compartments");
-                break;
-            }
-            for comp in prog.compartments.iter() {
-                if comp.sub_compartments.len() >= 2
-                    && !comp
+                });
+            let subs_ok = prog.compartments.iter().all(|comp| {
+                comp.sub_compartments.len() < 2
+                    || comp
                         .sub_compartments
                         .windows(2)
                         .all(|w| sar_sort_key(&w[0]) <= sar_sort_key(&w[1]))
-                {
-                    offending_level = Some("sub-compartments");
-                    break;
-                }
+            });
+            if comps_ok && subs_ok {
+                continue;
             }
-            if offending_level.is_some() {
-                break;
-            }
-        }
-        let Some(level) = offending_level else {
-            return vec![];
-        };
-        let Some(span) = sar_block_span(attrs) else {
-            return vec![];
-        };
 
-        let original = render_sar_block(sar.indicator, &sar.programs);
+            let Some(span) =
+                sar_program_span(&attrs.token_spans, &prog_positions, prog_idx)
+            else {
+                continue;
+            };
 
-        // Sort every level in place.
-        let mut sorted_programs = sar.programs.to_vec();
-        for prog in sorted_programs.iter_mut() {
-            let mut comps = prog.compartments.to_vec();
-            for comp in comps.iter_mut() {
+            let original = render_single_program(prog);
+
+            // Sort compartments and sub-compartments within this program.
+            let mut sorted_comps = prog.compartments.to_vec();
+            for comp in sorted_comps.iter_mut() {
                 let mut subs = comp.sub_compartments.to_vec();
                 subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
                 *comp = marque_ism::SarCompartment::new(
@@ -2800,26 +2818,38 @@ impl Rule for SarCompartmentOrderRule {
                     subs.into_boxed_slice(),
                 );
             }
-            comps.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
-            *prog = marque_ism::SarProgram::new(prog.identifier.clone(), comps.into_boxed_slice());
-        }
-        let replacement = render_sar_block(sar.indicator, &sorted_programs);
+            sorted_comps
+                .sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+            let sorted_prog = marque_ism::SarProgram::new(
+                prog.identifier.clone(),
+                sorted_comps.into_boxed_slice(),
+            );
+            let replacement = render_single_program(&sorted_prog);
 
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span,
-            message: format!(
-                "SAR {level} must be in ascending order (numeric first, \
-                 then alphabetic)"
-            ),
-            citation: "CAPCO-2016 §H.5",
-            original,
-            replacement,
-            confidence: 0.85,
-            migration_ref: None,
-        })]
+            let level = if !comps_ok {
+                "compartments"
+            } else {
+                "sub-compartments"
+            };
+
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span,
+                message: format!(
+                    "SAR {level} must be in ascending order (numeric first, \
+                     then alphabetic)"
+                ),
+                citation: "CAPCO-2016 §H.5",
+                original,
+                replacement,
+                confidence: 0.85,
+                migration_ref: None,
+            }));
+        }
+
+        diagnostics
     }
 }
 
@@ -3204,12 +3234,60 @@ fn sar_block_span(attrs: &IsmAttributes) -> Option<Span> {
     }
 }
 
+/// Compute the span of a single program (at index `prog_idx` in
+/// `sar.programs`) within the SAR block's token spans.
+///
+/// Returns the span from the `SarProgram` token's start to the end of the
+/// last compartment/sub-compartment token belonging to that program (or just
+/// the `SarProgram` token's end when the program has no compartments).
+/// `prog_positions` must be a pre-computed, index-ordered list of positions
+/// of `SarProgram` tokens within `token_spans`.
+///
+/// This is used by E029 (`sar-compartment-order`) to emit per-program fix
+/// spans rather than whole-block spans, ensuring E028 and E029 fixes are
+/// non-overlapping when a SAR block has both out-of-order programs and
+/// out-of-order compartments.
+fn sar_program_span(
+    token_spans: &[marque_ism::TokenSpan],
+    prog_positions: &[usize],
+    prog_idx: usize,
+) -> Option<Span> {
+    let tok_idx = *prog_positions.get(prog_idx)?;
+    let start = token_spans[tok_idx].span.start;
+
+    // Slice from this program's SarProgram token up to (but not including)
+    // the next program's SarProgram token (or to the end of all tokens if
+    // this is the last program).
+    let end_range = match prog_positions.get(prog_idx + 1).copied() {
+        Some(next_idx) => &token_spans[tok_idx..next_idx],
+        None => &token_spans[tok_idx..],
+    };
+
+    // The program span ends at the last SAR sub-token in this program's range.
+    let end = end_range
+        .iter()
+        .rev()
+        .find(|t| {
+            matches!(
+                t.kind,
+                TokenKind::SarProgram
+                    | TokenKind::SarCompartment
+                    | TokenKind::SarSubCompartment
+            )
+        })
+        .map(|t| t.span.end)
+        .unwrap_or(token_spans[tok_idx].span.end);
+
+    Some(Span::new(start, end))
+}
+
+
 /// Render a SAR block back to source form for fix replacements.
 ///
 /// Abbreviated form: `SAR-<PROG>[-<COMP>[ <SUB>...]]{/<PROG>...}`.
-/// Full form: `SPECIAL ACCESS REQUIRED-<PROG>{/<PROG>...}` — per §H.5
-/// the parser keeps compartments empty for the full form, so this is a
-/// simple join.
+/// Full form: `SPECIAL ACCESS REQUIRED-<PROG>[-<COMP>[ <SUB>...]]{/<PROG>...}`.
+/// The renderer preserves any compartments and sub-compartments
+/// attached to each program for either indicator form.
 fn render_sar_block(
     indicator: marque_ism::SarIndicator,
     programs: &[marque_ism::SarProgram],
@@ -3446,6 +3524,22 @@ mod tests {
         let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
         assert_eq!(e004.len(), 1);
         let src = b"SECRET////NOFORN";
+        assert_eq!(e004[0].span.as_str(src).unwrap(), "////");
+    }
+
+    #[test]
+    fn e004_run_does_not_double_fire_same_category_check() {
+        // `SECRET//SI////TK//NOFORN` — SI and TK are both SCI, but the `////`
+        // run owns those separator spans. The same-category check must NOT fire
+        // on the adjacent separators, so exactly one E004 (for `////`) fires.
+        let diags = lint_banner("SECRET//SI////TK//NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert_eq!(
+            e004.len(),
+            1,
+            "only the `////` run diagnostic must fire, not same-cat duplicates: {e004:?}"
+        );
+        let src = b"SECRET//SI////TK//NOFORN";
         assert_eq!(e004[0].span.as_str(src).unwrap(), "////");
     }
 
@@ -4266,6 +4360,8 @@ mod tests {
     fn e029_fires_on_out_of_order_sub_compartments() {
         // Compartment J12 with sub-compartments [Z9, A3] — A3 should come
         // first (alpha-by-bytelex: A < Z).
+        // E029 now emits per-program spans: the fix covers only the program
+        // text (identifier + compartments), not the whole SAR block.
         let diags = lint_banner("SECRET//SAR-BP-J12 Z9 A3//NOFORN");
         let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
         assert_eq!(
@@ -4274,7 +4370,8 @@ mod tests {
             "E029 must fire on subs [Z9, A3] (out of order): {diags:?}"
         );
         let fix = e029[0].fix.as_ref().expect("E029 must carry a FixProposal");
-        assert_eq!(fix.replacement.as_ref(), "SAR-BP-J12 A3 Z9");
+        // Per-program replacement: "PROG_ID-COMP SUB..." (no SAR- prefix).
+        assert_eq!(fix.replacement.as_ref(), "BP-J12 A3 Z9");
         assert!(
             e029[0].message.contains("sub-compartments"),
             "E029 message should mention sub-compartments: {}",
@@ -4286,6 +4383,8 @@ mod tests {
     fn e029_fires_on_out_of_order_compartments() {
         // Compartments `K15-J12` — J before K (two compartments, so split by `-`).
         // BP has compartments [K15, J12] — out of order.
+        // E029 now emits per-program spans: the fix covers only the program
+        // text (identifier + compartments), not the whole SAR block.
         let diags = lint_banner("SECRET//SAR-BP-K15-J12//NOFORN");
         let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
         assert_eq!(
@@ -4294,7 +4393,8 @@ mod tests {
             "E029 must fire on compartments K15 then J12: {diags:?}"
         );
         let fix = e029[0].fix.as_ref().unwrap();
-        assert_eq!(fix.replacement.as_ref(), "SAR-BP-J12-K15");
+        // Per-program replacement: "PROG_ID-COMP..." (no SAR- prefix).
+        assert_eq!(fix.replacement.as_ref(), "BP-J12-K15");
     }
 
     #[test]
