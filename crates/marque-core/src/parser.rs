@@ -19,7 +19,7 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    NatoClassification, NonIcDissem, SciControl, TokenKind, TokenSpan, Trigraph,
 };
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
@@ -177,7 +177,9 @@ impl<'t> Parser<'t> {
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
         let mut sci: Vec<SciControl> = Vec::new();
-        let mut sar: Vec<SarIdentifier> = Vec::new();
+        // SAR: intentionally not accumulated here. P1 removed the CVE-backed
+        // `SarIdentifier` enum; P2 will add a structural subparser emitting a
+        // `SarMarking`. Until then, `attrs.sar_markings` stays `None`.
         let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut non_ic: Vec<NonIcDissem> = Vec::new();
@@ -289,13 +291,6 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
-            } else if let Some(sar_id) = SarIdentifier::parse(trimmed) {
-                sar.push(sar_id);
-                token_spans.push(TokenSpan {
-                    kind: TokenKind::SarIdentifier,
-                    span,
-                    text: trimmed.into(),
-                });
             } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
                 aea.push(aea_marking);
                 token_spans.push(TokenSpan {
@@ -358,7 +353,6 @@ impl<'t> Parser<'t> {
                     Sci,
                     Dissem,
                     NonIc,
-                    Sar,
                     Aea,
                     Unknown,
                 }
@@ -371,7 +365,6 @@ impl<'t> Parser<'t> {
                     sci: Option<SciControl>,
                     dissem: Option<DissemControl>,
                     nic: Option<NonIcDissem>,
-                    sar: Option<SarIdentifier>,
                     aea: Option<AeaMarking>,
                 }
 
@@ -387,7 +380,6 @@ impl<'t> Parser<'t> {
                             sci: Some(ctrl),
                             dissem: None,
                             nic: None,
-                            sar: None,
                             aea: None,
                         });
                     } else if let Some(ctrl) =
@@ -400,7 +392,6 @@ impl<'t> Parser<'t> {
                             sci: None,
                             dissem: Some(ctrl),
                             nic: None,
-                            sar: None,
                             aea: None,
                         });
                     } else if let Some(nic) = NonIcDissem::parse(sub_tok) {
@@ -411,18 +402,6 @@ impl<'t> Parser<'t> {
                             sci: None,
                             dissem: None,
                             nic: Some(nic),
-                            sar: None,
-                            aea: None,
-                        });
-                    } else if let Some(sar_id) = SarIdentifier::parse(sub_tok) {
-                        results.push(SubResult {
-                            kind: SubKind::Sar,
-                            tok: sub_tok,
-                            span: sub_span,
-                            sci: None,
-                            dissem: None,
-                            nic: None,
-                            sar: Some(sar_id),
                             aea: None,
                         });
                     } else if let Some(aea_marking) = AeaMarking::parse(sub_tok) {
@@ -433,7 +412,6 @@ impl<'t> Parser<'t> {
                             sci: None,
                             dissem: None,
                             nic: None,
-                            sar: None,
                             aea: Some(aea_marking),
                         });
                     } else {
@@ -444,7 +422,6 @@ impl<'t> Parser<'t> {
                             sci: None,
                             dissem: None,
                             nic: None,
-                            sar: None,
                             aea: None,
                         });
                     }
@@ -501,14 +478,6 @@ impl<'t> Parser<'t> {
                                     text: r.tok.into(),
                                 });
                             }
-                            SubKind::Sar => {
-                                sar.push(r.sar.unwrap());
-                                token_spans.push(TokenSpan {
-                                    kind: TokenKind::SarIdentifier,
-                                    span: r.span,
-                                    text: r.tok.into(),
-                                });
-                            }
                             SubKind::Aea => {
                                 aea.push(r.aea.unwrap());
                                 token_spans.push(TokenSpan {
@@ -539,7 +508,8 @@ impl<'t> Parser<'t> {
         }
 
         attrs.sci_controls = sci.into_boxed_slice();
-        attrs.sar_identifiers = sar.into_boxed_slice();
+        // SAR: intentionally unpopulated until P2 wires the subparser.
+        attrs.sar_markings = None;
         attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.non_ic_dissem = non_ic.into_boxed_slice();
@@ -571,8 +541,8 @@ impl<'t> Parser<'t> {
 /// Note: `Classification` is hand-written in `marque-ism::attrs` rather than
 /// generated from the CVE because the CVE only ships single-letter abbreviations
 /// and the tool needs both forms. Other CVE-derived enums (`SciControl`,
-/// `DissemControl`, `SarIdentifier`, `DeclassExemption`) go through their
-/// generated `parse()` methods.
+/// `DissemControl`, `DeclassExemption`) go through their generated `parse()`
+/// methods. SAR is structural (not CVE-backed) and handled separately.
 fn parse_classification(s: &str) -> Option<Classification> {
     match s {
         "TS" | "TOP SECRET" => Some(Classification::TopSecret),

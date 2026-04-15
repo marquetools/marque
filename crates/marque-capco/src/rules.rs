@@ -406,7 +406,7 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
     match kind {
         TokenKind::Classification => Some(0),
         TokenKind::SciControl => Some(1),
-        TokenKind::SarIdentifier => Some(2),
+        TokenKind::SarIndicator => Some(2),
         TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
         // Non-IC dissem always comes after IC dissem (last block).
         TokenKind::NonIcDissem => Some(4),
@@ -440,7 +440,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
         match token.kind {
             TokenKind::Classification => classification.push(token.text.as_ref()),
             TokenKind::SciControl => sci.push(token.text.as_ref()),
-            TokenKind::SarIdentifier => sar.push(token.text.as_ref()),
+            TokenKind::SarIndicator => sar.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
             TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
@@ -607,7 +607,7 @@ fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
         TokenKind::DissemControl => Some(SeparatorCategory::Dissem),
         TokenKind::NonIcDissem => Some(SeparatorCategory::NonIcDissem),
         TokenKind::AeaMarking => Some(SeparatorCategory::Aea),
-        TokenKind::SarIdentifier => Some(SeparatorCategory::Sar),
+        TokenKind::SarIndicator => Some(SeparatorCategory::Sar),
         TokenKind::RelToTrigraph | TokenKind::RelToBlock => Some(SeparatorCategory::RelTo),
         _ => None,
     }

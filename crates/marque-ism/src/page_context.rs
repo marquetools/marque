@@ -40,7 +40,7 @@
 
 use crate::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiMarker, IsmAttributes,
-    MarkingClassification, NonIcDissem, SarIdentifier, SciControl, Trigraph,
+    MarkingClassification, NonIcDissem, SarMarking, SciControl, Trigraph,
 };
 
 /// Page-level aggregation context, built by the engine as it processes portion
@@ -108,15 +108,13 @@ impl PageContext {
         seen.into_iter().collect()
     }
 
-    /// All SAR identifiers that must appear on the banner (union of all portions).
-    pub fn expected_sar_identifiers(&self) -> Vec<SarIdentifier> {
-        let mut seen = std::collections::BTreeSet::new();
-        for attrs in &self.portions {
-            for &sar in attrs.sar_identifiers.iter() {
-                seen.insert(sar);
-            }
-        }
-        seen.into_iter().collect()
+    /// Expected SAR marking for this page, merged from all portions.
+    ///
+    /// Stub implementation (P1): returns `None`. P4 will implement union
+    /// semantics (program-id keyed, compartments and sub-compartments merged)
+    /// per CAPCO §H.5 banner roll-up rules.
+    pub fn expected_sar_marking(&self) -> Option<SarMarking> {
+        None
     }
 
     /// All dissemination controls that must appear on the banner.
@@ -567,10 +565,11 @@ impl PageContext {
             blocks.push(sci.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
         }
 
-        // SAR identifiers — all in ONE block, `/`-separated.
-        let sar = self.expected_sar_identifiers();
-        if !sar.is_empty() {
-            blocks.push(sar.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("/"));
+        // SAR block — stub. `expected_sar_marking()` currently returns
+        // `None`; P4 will render the full `SarMarking` into a canonical
+        // `SAR-BP-J12 J54/CD-YYY` string here.
+        if let Some(_sar) = self.expected_sar_marking() {
+            // P4: render SarMarking to its canonical block form.
         }
 
         // AEA markings — all in ONE block, `/`-separated.

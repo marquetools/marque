@@ -295,6 +295,7 @@ fn emit_enum(out: &mut String, name: &str, entries: &[(String, String)], doc: &s
 }
 
 /// Emit a minimal enum for CVE types that have zero entries in the public spec.
+#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR removed per specs/002-sar-implementation.
 fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
     use std::fmt::Write;
 
@@ -400,25 +401,16 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     );
 
     // --- SAR Identifiers ---
-    // Note: the CVEnumISMSAR.xml in ISM-v2022-DEC contains zero entries
-    // (SAR identifiers are classified and not published in the public CVE).
-    // We emit the enum anyway for type-system completeness.
-    let sar_entries = parse_cve_xml(&cve_dir.join("CVEnumISMSAR.xml"));
-    if sar_entries.is_empty() {
-        // Emit a minimal enum with a placeholder variant so it's usable
-        emit_empty_enum(
-            &mut content,
-            "SarIdentifier",
-            "Special Access Required identifiers. Empty in ISM-v2022-DEC public CVE.",
-        );
-    } else {
-        emit_enum(
-            &mut content,
-            "SarIdentifier",
-            &sar_entries,
-            "Special Access Required identifiers from CVEnumISMSAR.xml.",
-        );
-    }
+    // Intentionally NOT emitted as a CVE enum.
+    //
+    // `CVEnumISMSAR.xml` is empty in the public ODNI ISM package (and will
+    // remain so): SAR program identifiers are agency-assigned codewords, not
+    // a centrally registered closed vocabulary. Code-generation is the wrong
+    // tool for a category whose membership is not enumerable.
+    //
+    // SAR is modeled structurally via `attrs::SarMarking` / `SarProgram` /
+    // `SarCompartment` and validated by syntactic rules (E026–E031) rather
+    // than membership checks. See `specs/002-sar-implementation/spec.md`.
 
     // --- Declass Exemptions (25X codes) ---
     let declass_entries = parse_cve_xml(&cve_dir.join("CVEnumISM25X.xml"));
@@ -500,9 +492,9 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     for (value, _) in &dissem_entries {
         all_tokens.insert(value.clone());
     }
-    for (value, _) in &sar_entries {
-        all_tokens.insert(value.clone());
-    }
+    // SAR tokens intentionally absent: SAR identifiers are agency-assigned
+    // codewords, not a closed CVE vocabulary. SAR is matched structurally by
+    // the parser rather than via `ALL_CVE_TOKENS`.
     // Common expanded forms not in any CVE block. NOFORN/ORCON/PROPIN/
     // IMCON would normally live here, but the dissem CVE already covers
     // them, so the BTreeSet drops the duplicates automatically.
