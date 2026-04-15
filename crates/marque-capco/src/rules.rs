@@ -94,6 +94,7 @@ impl CapcoRuleSet {
                 Box::new(SarProgramOrderRule),
                 Box::new(SarCompartmentOrderRule),
                 Box::new(SarIndicatorRepeatRule),
+                Box::new(SarBannerRollupRule),
             ],
         }
     }
@@ -2858,6 +2859,237 @@ impl Rule for SarIndicatorRepeatRule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rule: E031 — SAR banner roll-up
+// ---------------------------------------------------------------------------
+
+/// Per CAPCO-2016 §H.5 p101 Precedence Rules for Banner Line Guidance:
+/// "Unique SAPs contained in portion marks must always appear in the banner
+/// line." The banner's SAR block must therefore contain every SAR program,
+/// compartment, and sub-compartment present in any portion marking on the
+/// page.
+///
+/// This rule consumes [`PageContext::expected_sar_marking`] (P4a) to compute
+/// the required composite and compares it with the banner's observed SAR
+/// block. Any program / compartment / sub-compartment present in the
+/// expected set but absent from the observed banner is flagged.
+///
+/// Fix semantics:
+/// - If the banner has a SAR block, replace it in-place with the rolled-up
+///   form at confidence 0.9 (severity `Fix`).
+/// - If the banner has no SAR block at all, emit at severity `Error` with
+///   no fix — inserting a new block requires byte-positioning between the
+///   SCI and AEA blocks, which the engine's single-pass architecture does
+///   not reliably support from rule-level information alone.
+struct SarBannerRollupRule;
+
+impl Rule for SarBannerRollupRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E031")
+    }
+    fn name(&self) -> &'static str {
+        "sar-banner-rollup"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+
+        // Banner / CAB markings only; portions are the input to the rollup,
+        // not the subject of it.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        let Some(page_context) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+        let Some(expected) = page_context.expected_sar_marking() else {
+            return vec![];
+        };
+        if expected.programs.is_empty() {
+            return vec![];
+        }
+
+        // Compute the missing set against the observed banner.
+        let missing = sar_missing_identifiers(attrs.sar_markings.as_ref(), &expected);
+        if missing.is_empty() {
+            return vec![];
+        }
+
+        let message = format!(
+            "banner SAR block is missing programs/compartments present in portions: {}",
+            missing.join(", "),
+        );
+
+        match attrs.sar_markings.as_ref() {
+            Some(observed) => {
+                // Banner has a SAR block — replace it in place with the
+                // rolled-up form. Preserve the observed indicator form
+                // (abbreviated vs full) so we don't gratuitously rewrite
+                // `SPECIAL ACCESS REQUIRED-` into `SAR-`.
+                let Some(span) = sar_block_span(attrs) else {
+                    return vec![];
+                };
+                let original_bytes = attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::SarIndicator)
+                    .map(|_| ())
+                    .and_then(|_| sar_block_source(attrs, span))
+                    .unwrap_or_else(|| render_sar_block(observed.indicator, &observed.programs));
+                let replacement = render_sar_block(observed.indicator, &expected.programs);
+                if replacement == original_bytes {
+                    // Indicator-form-only difference, missing set was
+                    // computed from identifiers; shouldn't happen, but be
+                    // defensive.
+                    return vec![];
+                }
+                vec![make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span,
+                    message,
+                    citation: "CAPCO-2016 §H.5",
+                    original: original_bytes,
+                    replacement,
+                    confidence: 0.9,
+                    migration_ref: None,
+                })]
+            }
+            None => {
+                // No SAR block in the banner at all. Byte-positioning a new
+                // block between SCI and AEA from rule context alone is
+                // unsafe — report at Error severity with no fix and let a
+                // human place the block.
+                let span = attrs
+                    .token_spans
+                    .first()
+                    .map(|t| t.span)
+                    .unwrap_or(Span::new(0, 0));
+                vec![Diagnostic::new(
+                    self.id(),
+                    Severity::Error,
+                    span,
+                    message,
+                    "CAPCO-2016 §H.5",
+                    None,
+                )]
+            }
+        }
+    }
+}
+
+/// Collect identifiers that appear in `expected` but not in `observed`.
+///
+/// Returns a flat human-readable list in `program` / `program-comp` /
+/// `program-comp sub` form so the diagnostic message is actionable.
+fn sar_missing_identifiers(
+    observed: Option<&marque_ism::SarMarking>,
+    expected: &marque_ism::SarMarking,
+) -> Vec<String> {
+    use std::collections::HashMap;
+
+    // Build a lookup into observed: program_id -> (comp_id -> set of sub ids).
+    let mut obs_map: HashMap<&str, HashMap<&str, std::collections::HashSet<&str>>> = HashMap::new();
+    if let Some(obs) = observed {
+        for prog in obs.programs.iter() {
+            let comps = obs_map.entry(prog.identifier.as_ref()).or_default();
+            for comp in prog.compartments.iter() {
+                let subs = comps.entry(comp.identifier.as_ref()).or_default();
+                for sub in comp.sub_compartments.iter() {
+                    subs.insert(sub.as_ref());
+                }
+            }
+        }
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for prog in expected.programs.iter() {
+        match obs_map.get(prog.identifier.as_ref()) {
+            None => {
+                // Entire program missing — report it (plus its compartments
+                // inline so the reader sees the full shape).
+                let rendered = render_single_program(prog);
+                missing.push(rendered);
+            }
+            Some(obs_comps) => {
+                for comp in prog.compartments.iter() {
+                    match obs_comps.get(comp.identifier.as_ref()) {
+                        None => {
+                            let mut s = format!("{}-{}", prog.identifier, comp.identifier);
+                            for sub in comp.sub_compartments.iter() {
+                                s.push(' ');
+                                s.push_str(sub);
+                            }
+                            missing.push(s);
+                        }
+                        Some(obs_subs) => {
+                            for sub in comp.sub_compartments.iter() {
+                                if !obs_subs.contains(sub.as_ref()) {
+                                    missing.push(format!(
+                                        "{}-{} {}",
+                                        prog.identifier, comp.identifier, sub,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    missing
+}
+
+/// Render a single SAR program to its banner-block fragment form (without
+/// the leading indicator prefix). Used to describe missing programs in
+/// diagnostic messages.
+fn render_single_program(prog: &marque_ism::SarProgram) -> String {
+    let mut s = String::from(prog.identifier.as_ref());
+    for comp in prog.compartments.iter() {
+        s.push('-');
+        s.push_str(&comp.identifier);
+        for sub in comp.sub_compartments.iter() {
+            s.push(' ');
+            s.push_str(sub);
+        }
+    }
+    s
+}
+
+/// Recover the original source bytes covering the SAR block for use as the
+/// `FixProposal::original` field. Returns `None` if any token text is not
+/// positioned as expected. Falls back to rendering from the parsed structure.
+fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
+    // The parser records each token's source bytes in `text`. We reconstruct
+    // the original block from the token spans within `span`, using them to
+    // derive the exact source bytes. Since we don't have the raw source here,
+    // fall back to rendering from the parsed structure (which is identical to
+    // the source for abbreviated form without ordering issues).
+    let Some(sar) = attrs.sar_markings.as_ref() else {
+        return None;
+    };
+    // Sanity: ensure there is at least one SAR token within span.
+    let has_in_span = attrs.token_spans.iter().any(|t| {
+        matches!(
+            t.kind,
+            TokenKind::SarIndicator
+                | TokenKind::SarProgram
+                | TokenKind::SarCompartment
+                | TokenKind::SarSubCompartment
+        ) && t.span.start >= span.start
+            && t.span.end <= span.end
+    });
+    if !has_in_span {
+        return None;
+    }
+    Some(render_sar_block(sar.indicator, &sar.programs))
+}
+
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -3025,7 +3257,8 @@ mod tests {
         assert!(ids.contains(&"E028"));
         assert!(ids.contains(&"E029"));
         assert!(ids.contains(&"E030"));
-        assert_eq!(set.rules().len(), 34);
+        assert!(ids.contains(&"E031"));
+        assert_eq!(set.rules().len(), 35);
     }
 
     #[test]
@@ -4040,6 +4273,94 @@ mod tests {
             "E030 must not fire when programs coalesce in one block: {diags:?}"
         );
     }
+
+    // --- E031: sar-banner-rollup ---
+
+    #[test]
+    fn e031_fires_when_banner_missing_program_from_portion() {
+        // Portions introduce SAR-BP and SAR-CD; banner only mentions BP.
+        let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner omits CD: {diags:?}"
+        );
+        let d = e031[0];
+        assert!(
+            d.message.contains("CD"),
+            "message must name the missing program: {}",
+            d.message
+        );
+        let fix = d.fix.as_ref().expect("E031 must carry a fix when banner has SAR block");
+        // Expected rolled-up form: programs sorted per CAPCO ascending order
+        // (alpha: BP before CD).
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
+        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn e031_fires_when_banner_missing_compartment_from_portion() {
+        // Portion has SAR-BP-J12; banner has only SAR-BP.
+        let source = "(S//SAR-BP-J12//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner omits compartment J12: {diags:?}"
+        );
+        assert!(
+            e031[0].message.contains("J12"),
+            "message must name missing compartment: {}",
+            e031[0].message
+        );
+        let fix = e031[0].fix.as_ref().expect("fix expected");
+        assert_eq!(fix.replacement.as_ref(), "SAR-BP-J12");
+    }
+
+    #[test]
+    fn e031_fires_when_banner_has_no_sar_block_but_portion_does() {
+        // Portion has SAR-BP; banner has no SAR block at all.
+        let source = "(S//SAR-BP//NF)\nSECRET//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire when banner lacks any SAR block: {diags:?}"
+        );
+        // No fix when banner has no SAR block (byte-positioning is unsafe).
+        assert!(
+            e031[0].fix.is_none(),
+            "E031 must not propose a fix when no SAR block exists"
+        );
+        // And severity escalates to Error for this variant.
+        assert_eq!(e031[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn e031_does_not_fire_when_banner_matches_portions() {
+        let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP/CD//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must not fire when banner SAR block covers all portions: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e031_does_not_fire_when_no_portions_have_sar() {
+        // Banner has a SAR block but no portions carry SAR — the rollup
+        // produces None and nothing is missing.
+        let source = "(S//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must not fire without any SAR portions: {diags:?}"
+        );
+    }
 }
 
 /// Internal test support module — drives the parser and rules directly,
@@ -4049,8 +4370,9 @@ mod tests {
 mod marque_capco_test_support {
     use super::CapcoRuleSet;
     use marque_core::{Parser, Scanner};
-    use marque_ism::{CapcoTokenSet, MarkingType};
+    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
     use marque_rules::{Diagnostic, RuleContext, RuleSet};
+    use std::sync::Arc;
 
     fn run(source: &[u8]) -> Vec<Diagnostic> {
         let token_set = CapcoTokenSet;
@@ -4058,18 +4380,38 @@ mod marque_capco_test_support {
         let candidates = Scanner::scan(source);
         let rule_set = CapcoRuleSet::new();
         let mut out = Vec::new();
+        // Accumulate a PageContext across portions so banner/CAB rules that
+        // read `ctx.page_context` (E031) behave the same here as in the
+        // real engine. Reset on scanner-emitted PageBreak candidates.
+        let mut page_context = PageContext::new();
+        let mut page_context_arc: Option<Arc<PageContext>> = None;
         for candidate in &candidates {
             if candidate.kind == MarkingType::PageBreak {
+                page_context = PageContext::new();
+                page_context_arc = None;
                 continue;
             }
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
+            if parsed.kind == MarkingType::Portion {
+                page_context.add_portion(parsed.attrs.clone());
+                page_context_arc = None;
+            }
+            let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+                Some(
+                    page_context_arc
+                        .get_or_insert_with(|| Arc::new(page_context.clone()))
+                        .clone(),
+                )
+            } else {
+                None
+            };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
-                page_context: None,
+                page_context: ctx_page,
                 corrections: None,
             };
             for rule in rule_set.rules() {
