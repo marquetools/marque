@@ -19,8 +19,10 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarIdentifier, SciControl, TokenKind, TokenSpan, Trigraph,
+    NatoClassification, NonIcDissem, SarIdentifier, SciCompartment, SciControl, SciControlBare,
+    SciControlSystem, SciMarking, TokenKind, TokenSpan, Trigraph,
 };
+use marque_ism::is_bare_cve_value;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 
@@ -177,6 +179,7 @@ impl<'t> Parser<'t> {
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
         let mut sci: Vec<SciControl> = Vec::new();
+        let mut sci_markings: Vec<SciMarking> = Vec::new();
         let mut sar: Vec<SarIdentifier> = Vec::new();
         let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
@@ -254,6 +257,24 @@ impl<'t> Parser<'t> {
                 let parsed_trigraphs =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
                 rel_to.extend(parsed_trigraphs);
+            } else if (trimmed.contains('-')
+                || trimmed.contains('/')
+                || is_bare_cve_value(trimmed))
+                && let Some(markings) =
+                    parse_sci_block(trimmed, abs_start, &mut token_spans)
+            {
+                // Structural SCI path (spec 003-sci-compartments §R2). Runs
+                // before the exact-match path so compound/sub-compartment
+                // forms like `SI-G ABCD` and `123/SI-G ABCD DEFG-MMM AACD`
+                // are recognized. Projects canonical enum values into
+                // `sci_controls` for back-compat with rules that read the
+                // flat enum view (E010, E011).
+                for marking in &markings {
+                    if let Some(ctrl) = marking.canonical_enum {
+                        sci.push(ctrl);
+                    }
+                }
+                sci_markings.extend(markings);
             } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
                 token_spans.push(TokenSpan {
@@ -539,6 +560,7 @@ impl<'t> Parser<'t> {
         }
 
         attrs.sci_controls = sci.into_boxed_slice();
+        attrs.sci_markings = sci_markings.into_boxed_slice();
         attrs.sar_identifiers = sar.into_boxed_slice();
         attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
@@ -582,6 +604,236 @@ fn parse_classification(s: &str) -> Option<Classification> {
         "U" | "UNCLASSIFIED" => Some(Classification::Unclassified),
         _ => None,
     }
+}
+
+/// Structural subparser for the SCI category block per CAPCO-2016 §A.6.
+///
+/// Grammar (spec 003-sci-compartments §R2):
+///
+/// ```text
+/// SCI_BLOCK      := SCI_SYSTEM ("/" SCI_SYSTEM)*
+/// SCI_SYSTEM     := CONTROL (-COMPARTMENT)*
+/// CONTROL        := BARE_CONTROL | CUSTOM_CONTROL
+/// BARE_CONTROL   := any bare CVE value (via is_bare_cve_value)
+/// CUSTOM_CONTROL := [A-Z0-9]{2,5} (not matching a BARE_CONTROL)
+/// COMPARTMENT    := COMP_ID (SPACE SUB_COMP)*
+/// COMP_ID        := [A-Z0-9]+
+/// SUB_COMP       := [A-Z0-9]+
+/// ```
+///
+/// Returns `Some(markings)` on successful structural parse, `None` on any
+/// grammar violation (dangling hyphens, leading hyphens, lowercase,
+/// empty compartments, invalid custom shape). On `None`, the caller falls
+/// back to the existing `SciControl::parse` exact-match path.
+///
+/// `canonical_enum` is populated via `format!("{ctrl}-{first_comp}").parse::<SciControl>()`
+/// ONLY when the matching compartment has no sub-compartments — sub-comps
+/// imply the compound is a structural anchor, not an atomic CVE value.
+///
+/// On success, emits TokenSpan entries (SciSystem / SciCompartment /
+/// SciSubCompartment) at byte-precise offsets relative to `base`.
+fn parse_sci_block(
+    text: &str,
+    base: usize,
+    tokens: &mut Vec<TokenSpan>,
+) -> Option<Vec<SciMarking>> {
+    if text.is_empty() {
+        return None;
+    }
+
+    // Buffer tokens into a local vec so we can discard them if any system
+    // fails to parse (all-or-nothing success semantics per spec).
+    let mut local_tokens: Vec<TokenSpan> = Vec::new();
+    let mut markings: Vec<SciMarking> = Vec::new();
+
+    // Split on `/` into per-system chunks, tracking byte offsets so each
+    // TokenSpan's `span` is accurate relative to the original source.
+    let mut chunk_start = 0usize;
+    let chunks: Vec<(usize, &str)> = {
+        let mut v = Vec::new();
+        for (i, ch) in text.char_indices() {
+            if ch == '/' {
+                v.push((chunk_start, &text[chunk_start..i]));
+                chunk_start = i + 1;
+            }
+        }
+        v.push((chunk_start, &text[chunk_start..]));
+        v
+    };
+
+    for (chunk_off, chunk) in chunks {
+        // No trim — grammar is strict; whitespace inside a chunk is
+        // meaningful only between sub-compartments (see below).
+        if chunk.is_empty() {
+            return None;
+        }
+        // Leading hyphen rejects immediately (e.g., `-SI`).
+        if chunk.starts_with('-') {
+            return None;
+        }
+
+        // Split chunk on first `-` into (control, rest). If no `-`, the
+        // whole chunk is the control with no compartments.
+        let (ctrl_str, rest_opt) = match chunk.find('-') {
+            Some(i) => (&chunk[..i], Some(&chunk[i + 1..])),
+            None => (chunk, None),
+        };
+
+        if ctrl_str.is_empty() {
+            return None;
+        }
+
+        // Recognize control: bare CVE first, then custom [A-Z0-9]{2,5}.
+        // A custom control must not collide with any other known category
+        // (Dissem / NonIcDissem / Sar / Aea / DeclassExemption) — otherwise
+        // a block like `SI/NF` would be mis-claimed as SCI instead of
+        // flagged as a stray `/` by E004.
+        let system: SciControlSystem = if let Some(bare) = SciControlBare::parse(ctrl_str) {
+            SciControlSystem::Published(bare)
+        } else if is_valid_custom_control(ctrl_str) && !is_known_non_sci_token(ctrl_str) {
+            SciControlSystem::Custom(ctrl_str.into())
+        } else {
+            return None;
+        };
+
+        // Emit a block-level SciControl span covering the full system
+        // chunk (control + compartments + sub-compartments), mirroring the
+        // existing exact-match path so rule consumers (E010, E011, and
+        // audit tooling that reads TokenKind::SciControl) continue to see
+        // one span per marking. The granular SciSystem/SciCompartment/
+        // SciSubCompartment spans below provide finer-grained structure
+        // for spec 003 rules (E032–E035).
+        let chunk_abs = base + chunk_off;
+        local_tokens.push(TokenSpan {
+            kind: TokenKind::SciControl,
+            span: Span::new(chunk_abs, chunk_abs + chunk.len()),
+            text: chunk.into(),
+        });
+        // Emit SciSystem token for the control identifier itself.
+        let ctrl_abs = base + chunk_off;
+        local_tokens.push(TokenSpan {
+            kind: TokenKind::SciSystem,
+            span: Span::new(ctrl_abs, ctrl_abs + ctrl_str.len()),
+            text: ctrl_str.into(),
+        });
+
+        // Parse compartments. `rest` is the substring after the first `-`.
+        // Each additional compartment is preceded by another `-`, and
+        // sub-compartments within a compartment are space-separated.
+        let mut compartments: Vec<SciCompartment> = Vec::new();
+        if let Some(rest) = rest_opt {
+            // Split `rest` on `-` into compartment segments. Strict grammar:
+            // empty segment (trailing or consecutive hyphen) → reject.
+            let rest_abs_base = base + chunk_off + ctrl_str.len() + 1; // +1 skips the `-`
+            let mut seg_start = 0usize;
+            let mut seg_offs: Vec<(usize, &str)> = Vec::new();
+            for (i, ch) in rest.char_indices() {
+                if ch == '-' {
+                    seg_offs.push((seg_start, &rest[seg_start..i]));
+                    seg_start = i + 1;
+                }
+            }
+            seg_offs.push((seg_start, &rest[seg_start..]));
+
+            for (seg_off, seg) in seg_offs {
+                if seg.is_empty() {
+                    return None; // dangling `-` or consecutive `--`
+                }
+                // Each compartment segment = COMP_ID (SPACE SUB_COMP)*
+                // Split on space.
+                let mut parts = seg.split(' ');
+                let comp_id = parts.next().unwrap(); // at least one part
+                if comp_id.is_empty() || !is_alnum_upper(comp_id) {
+                    return None;
+                }
+
+                let comp_abs = rest_abs_base + seg_off;
+                local_tokens.push(TokenSpan {
+                    kind: TokenKind::SciCompartment,
+                    span: Span::new(comp_abs, comp_abs + comp_id.len()),
+                    text: comp_id.into(),
+                });
+
+                let mut subs: Vec<Box<str>> = Vec::new();
+                // Track cursor within segment for sub-compartment offsets.
+                let mut sub_cursor = comp_id.len() + 1; // +1 skips the space
+                for sub in parts {
+                    if sub.is_empty() || !is_alnum_upper(sub) {
+                        return None;
+                    }
+                    let sub_abs = rest_abs_base + seg_off + sub_cursor;
+                    local_tokens.push(TokenSpan {
+                        kind: TokenKind::SciSubCompartment,
+                        span: Span::new(sub_abs, sub_abs + sub.len()),
+                        text: sub.into(),
+                    });
+                    subs.push(sub.into());
+                    sub_cursor += sub.len() + 1;
+                }
+
+                compartments.push(SciCompartment::new(
+                    comp_id.into(),
+                    subs.into_boxed_slice(),
+                ));
+            }
+        }
+
+        // canonical_enum population (per data-model §canonical_enum):
+        // - No compartments → the bare control itself may be a CVE value
+        //   (e.g., `SI`, `TK`, `HCS`). Preserves pre-spec behaviour.
+        // - One or more compartments → try `{ctrl}-{first_comp}` ONLY when
+        //   the first compartment has no sub-compartments. Sub-comps mean
+        //   the compound is a structural anchor, not an atomic CVE atom.
+        let canonical_enum = if compartments.is_empty() {
+            SciControl::parse(ctrl_str)
+        } else {
+            compartments
+                .first()
+                .filter(|c| c.sub_compartments.is_empty())
+                .and_then(|c| {
+                    let composite = format!("{}-{}", ctrl_str, c.identifier);
+                    SciControl::parse(&composite)
+                })
+        };
+
+        markings.push(SciMarking::new(
+            system,
+            compartments.into_boxed_slice(),
+            canonical_enum,
+        ));
+    }
+
+    tokens.extend(local_tokens);
+    Some(markings)
+}
+
+/// Custom control shape check: `[A-Z0-9]{2,5}` per spec §R1. Must not match
+/// a bare CVE value (caller dispatches to Published first, so this check is
+/// strictly the shape constraint).
+fn is_valid_custom_control(s: &str) -> bool {
+    let len = s.len();
+    (2..=5).contains(&len) && is_alnum_upper(s)
+}
+
+/// Returns true if `s` is non-empty and every byte is ASCII uppercase or digit.
+fn is_alnum_upper(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+/// Guard for the SCI structural subparser: returns true if `s` is a known
+/// non-SCI token (dissem, non-IC dissem, SAR identifier, AEA marking, or
+/// declass exemption). Prevents `parse_sci_block` from claiming mixed-
+/// category slash blocks like `SI/NF` that should surface as stray-slash
+/// errors.
+fn is_known_non_sci_token(s: &str) -> bool {
+    DissemControl::parse(s).is_some()
+        || parse_dissem_full_form(s).is_some()
+        || NonIcDissem::parse(s).is_some()
+        || SarIdentifier::parse(s).is_some()
+        || AeaMarking::parse(s).is_some()
+        || DeclassExemption::parse(s).is_some()
 }
 
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
@@ -1566,5 +1818,199 @@ mod tests {
                 .any(|t| t.kind == TokenKind::Unknown),
             "XYZZY must produce Unknown span"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // SCI structural subparser (spec 003-sci-compartments §R2 / P2)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sci_bare_single_still_parses_via_structural_path() {
+        // Regression: `(U//SI//NF)` existing happy path. Structural parser
+        // claims `SI` (bare CVE) and projects to sci_controls for
+        // back-compat with E010/E011.
+        use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+        let parsed = parse_portion("(U//SI//NF)");
+        assert_eq!(parsed.attrs.sci_controls.as_ref(), &[SciControl::Si]);
+        assert_eq!(parsed.attrs.sci_markings.len(), 1);
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
+        assert!(m.compartments.is_empty());
+        assert_eq!(m.canonical_enum, Some(SciControl::Si));
+    }
+
+    #[test]
+    fn sci_published_compound_si_g_parses() {
+        // `SI-G` is a pre-registered CVE composite; canonical_enum must be Some(SiG).
+        use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+        let parsed = parse_banner("SECRET//SI-G//NOFORN");
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
+        assert_eq!(m.compartments.len(), 1);
+        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert!(m.compartments[0].sub_compartments.is_empty());
+        assert_eq!(m.canonical_enum, Some(SciControl::SiG));
+        assert_eq!(parsed.attrs.sci_controls.as_ref(), &[SciControl::SiG]);
+    }
+
+    #[test]
+    fn sci_published_compound_hcs_p_parses() {
+        use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+        let parsed = parse_banner("TOP SECRET//HCS-P//NOFORN");
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Hcs));
+        assert_eq!(m.compartments[0].identifier.as_ref(), "P");
+        assert_eq!(m.canonical_enum, Some(SciControl::HcsP));
+    }
+
+    #[test]
+    fn sci_bare_tk_parses() {
+        use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+        let parsed = parse_banner("SECRET//TK//NOFORN");
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Tk));
+        assert!(m.compartments.is_empty());
+        assert_eq!(m.canonical_enum, Some(SciControl::Tk));
+    }
+
+    #[test]
+    fn sci_multi_system_si_tk_parses() {
+        // `SI/TK` — two bare systems in one SCI block. Existing behaviour.
+        use marque_ism::SciControl;
+        let parsed = parse_portion("(TS//SI/TK//NF)");
+        assert_eq!(
+            parsed.attrs.sci_controls.as_ref(),
+            &[SciControl::Si, SciControl::Tk]
+        );
+        assert_eq!(parsed.attrs.sci_markings.len(), 2);
+    }
+
+    #[test]
+    fn sci_compound_with_sub_compartment_sets_canonical_none() {
+        // `SI-G ABCD`: published system SI with compartment G and sub-comp
+        // ABCD. Because the first compartment has sub-comps, canonical_enum
+        // is None (the compound is a structural anchor, not an atomic CVE).
+        use marque_ism::{SciControlBare, SciControlSystem};
+        let parsed = parse_banner("SECRET//SI-G ABCD//NOFORN");
+        assert_eq!(parsed.attrs.sci_markings.len(), 1);
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
+        assert_eq!(m.compartments.len(), 1);
+        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m.compartments[0].sub_compartments.len(), 1);
+        assert_eq!(m.compartments[0].sub_compartments[0].as_ref(), "ABCD");
+        assert_eq!(m.canonical_enum, None);
+        // sci_controls projection: no canonical_enum → no entry
+        assert!(parsed.attrs.sci_controls.is_empty());
+    }
+
+    #[test]
+    fn sci_capco_canonical_example_parses() {
+        // CAPCO-2016 §A.6 p16 canonical example:
+        //   TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN
+        use marque_ism::{SciControlBare, SciControlSystem};
+        let parsed = parse_banner("TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN");
+        assert_eq!(parsed.attrs.sci_markings.len(), 2);
+        // Marking 0: Custom("123"), no compartments.
+        let m0 = &parsed.attrs.sci_markings[0];
+        assert!(matches!(&m0.system, SciControlSystem::Custom(s) if s.as_ref() == "123"));
+        assert!(m0.compartments.is_empty());
+        assert_eq!(m0.canonical_enum, None);
+        // Marking 1: Published(SI) with compartments G[ABCD, DEFG] and MMM[AACD].
+        let m1 = &parsed.attrs.sci_markings[1];
+        assert_eq!(m1.system, SciControlSystem::Published(SciControlBare::Si));
+        assert_eq!(m1.compartments.len(), 2);
+        assert_eq!(m1.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m1.compartments[0].sub_compartments.len(), 2);
+        assert_eq!(m1.compartments[0].sub_compartments[0].as_ref(), "ABCD");
+        assert_eq!(m1.compartments[0].sub_compartments[1].as_ref(), "DEFG");
+        assert_eq!(m1.compartments[1].identifier.as_ref(), "MMM");
+        assert_eq!(m1.compartments[1].sub_compartments.len(), 1);
+        assert_eq!(m1.compartments[1].sub_compartments[0].as_ref(), "AACD");
+        // First compartment has sub-comps → canonical_enum is None.
+        assert_eq!(m1.canonical_enum, None);
+        // No Unknown spans in the SCI block.
+        let sci_block_has_unknown = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .any(|t| t.kind == TokenKind::Unknown);
+        assert!(
+            !sci_block_has_unknown,
+            "canonical example must not produce Unknown tokens; got: {:?}",
+            parsed.attrs.token_spans
+        );
+    }
+
+    #[test]
+    fn sci_custom_numeric_99_direct_parse() {
+        // Direct unit test of parse_sci_block: `99` → Custom("99").
+        // In dispatch, `99` alone wouldn't pass the containment gate; this
+        // exercises the parser's custom-only happy path.
+        use marque_ism::SciControlSystem;
+        let mut tokens = Vec::new();
+        let result = parse_sci_block("99", 0, &mut tokens).expect("99 must parse");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(&result[0].system, SciControlSystem::Custom(s) if s.as_ref() == "99"));
+        assert!(result[0].compartments.is_empty());
+        assert_eq!(result[0].canonical_enum, None);
+    }
+
+    #[test]
+    fn sci_structural_rejections_return_none() {
+        // Dangling hyphen.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("SI-", 0, &mut tokens).is_none());
+        // Leading hyphen.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("-SI", 0, &mut tokens).is_none());
+        // Empty.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("", 0, &mut tokens).is_none());
+        // Lowercase.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("si-g", 0, &mut tokens).is_none());
+        // Consecutive hyphens.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("SI--G", 0, &mut tokens).is_none());
+        // Empty slash chunk.
+        let mut tokens = Vec::new();
+        assert!(parse_sci_block("SI/", 0, &mut tokens).is_none());
+    }
+
+    #[test]
+    fn sci_mixed_category_slash_block_falls_through() {
+        // `SI/NF` has `/` and gate passes, but parse_sci_block must reject
+        // because NF is a known dissem control — otherwise E004's
+        // stray-slash detection would stop working.
+        let parsed = parse_banner("SECRET//SI/NF");
+        // The SI/NF block should NOT be claimed by structural SCI; it must
+        // fall through to the existing intra-block `/` splitter which in
+        // turn flags the mixed-category slash as Unknown.
+        let has_unknown_block = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .any(|t| t.kind == TokenKind::Unknown);
+        assert!(
+            has_unknown_block,
+            "SI/NF must surface as Unknown for E004; got: {:?}",
+            parsed.attrs.token_spans
+        );
+    }
+
+    #[test]
+    fn sci_weird_sub_compartment_parses() {
+        // `SI-G WEIRD FOO` — WEIRD and FOO both match [A-Z0-9]+ so the
+        // grammar treats them as sub-compartments of G.
+        use marque_ism::{SciControlBare, SciControlSystem};
+        let parsed = parse_banner("SECRET//SI-G WEIRD FOO//NOFORN");
+        let m = &parsed.attrs.sci_markings[0];
+        assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
+        assert_eq!(m.compartments.len(), 1);
+        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m.compartments[0].sub_compartments.len(), 2);
+        assert_eq!(m.compartments[0].sub_compartments[0].as_ref(), "WEIRD");
+        assert_eq!(m.compartments[0].sub_compartments[1].as_ref(), "FOO");
     }
 }

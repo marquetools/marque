@@ -22,7 +22,7 @@ pub use attrs::{
     NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarIdentifier, SciCompartment,
     SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan, Trigraph,
 };
-pub use generated::values::SCHEMA_VERSION;
+pub use generated::values::{is_bare_cve_value, SCHEMA_VERSION};
 pub use page_context::PageContext;
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
 pub use token_set::{CapcoTokenSet, TokenSet};
