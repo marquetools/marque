@@ -2564,20 +2564,39 @@ impl Rule for SciSystemOrderRule {
             .unwrap_or(fix_start);
         let fix_span = Span::new(fix_start, fix_end);
 
-        // Sort marking indices by their sort keys, then reassemble the
-        // chunk texts joined by `/`.
-        let mut indices: Vec<usize> = (0..attrs.sci_markings.len()).collect();
-        indices.sort_by_key(|&i| sci_sort_key(sci_system_text(&attrs.sci_markings[i].system)));
+        // Build the replacement by also sorting compartments and
+        // sub-compartments within each marking (mirrors SAR E028's
+        // all-levels fix). This way, when E032 and E033 both fire on the
+        // same block, the engine's overlap guard can drop E033 and this
+        // single E032 fix fully normalizes the block — no residual
+        // ordering violations after one apply pass.
+        let mut sorted = attrs.sci_markings.to_vec();
+        for m in sorted.iter_mut() {
+            let mut comps = m.compartments.to_vec();
+            for c in comps.iter_mut() {
+                let mut subs = c.sub_compartments.to_vec();
+                subs.sort_by(|a, b| sci_sort_key(a.as_ref()).cmp(&sci_sort_key(b.as_ref())));
+                *c = marque_ism::SciCompartment::new(c.identifier.clone(), subs.into_boxed_slice());
+            }
+            comps.sort_by(|a, b| {
+                sci_sort_key(a.identifier.as_ref()).cmp(&sci_sort_key(b.identifier.as_ref()))
+            });
+            *m = marque_ism::SciMarking::new(
+                m.system.clone(),
+                comps.into_boxed_slice(),
+                m.canonical_enum,
+            );
+        }
+        sorted.sort_by(|a, b| {
+            sci_sort_key(sci_system_text(&a.system)).cmp(&sci_sort_key(sci_system_text(&b.system)))
+        });
 
-        let original: String = (0..chunk_spans.len())
-            .map(|i| chunk_spans[i].text.as_ref())
-            .collect::<Vec<_>>()
-            .join("/");
-        let replacement: String = indices
+        let original: String = chunk_spans
             .iter()
-            .map(|&i| chunk_spans[i].text.as_ref())
+            .map(|t| t.text.as_ref())
             .collect::<Vec<_>>()
             .join("/");
+        let replacement = render_sci_block(&sorted);
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -2603,8 +2622,22 @@ impl Rule for SciSystemOrderRule {
 /// Per CAPCO-2016 §A.6 p15 + §H.4 p61: within each SCI control system,
 /// compartments must be listed in ascending sort order (numeric first, then
 /// alphabetic); within each compartment, sub-compartments must also be
-/// ascending. Walks each marking in `sci_markings`; emits one diagnostic
-/// per out-of-order pair with a reordered fix. Confidence 0.85.
+/// ascending.
+///
+/// Emits **one diagnostic per out-of-order marking** (not one per level).
+/// The fix sorts compartments AND sub-compartments together in a single
+/// rewrite, matching SAR E029's shape. This guarantees:
+///
+///   * Comp-order and sub-order violations on the same marking don't
+///     produce overlapping fix spans that the engine's C-1 guard would
+///     have to drop (one would apply, the other would not, and the next
+///     lint would re-fire the dropped one).
+///   * When E032 (system-order) also fires on the same block, its
+///     whole-block span supersedes every per-marking E033 span under
+///     FR-016 ordering, and E032's all-levels fix fully normalizes —
+///     so dropping E033 is safe.
+///
+/// Confidence 0.85.
 struct SciCompartmentOrderRule;
 
 impl Rule for SciCompartmentOrderRule {
@@ -2636,48 +2669,81 @@ impl Rule for SciCompartmentOrderRule {
         let mut sub_cursor = 0usize;
 
         for marking in attrs.sci_markings.iter() {
-            // Compartment-level ordering within this marking.
             let n_comps = marking.compartments.len();
-            if n_comps >= 2 {
-                let keys: Vec<(bool, u64, &str)> = marking
-                    .compartments
-                    .iter()
-                    .map(|c| sci_sort_key(c.identifier.as_ref()))
-                    .collect();
-                if keys.windows(2).any(|w| w[0] > w[1]) {
-                    // Produce a reorder fix covering all compartment spans in
-                    // this marking. Ordering uses identifier only; sub-comps
-                    // ride along with their parent compartment.
-                    let this_comp_spans = &comp_spans[comp_cursor..comp_cursor + n_comps];
-                    let fix_start = this_comp_spans.first().map(|t| t.span.start).unwrap_or(0);
-                    // Span end = last sub-comp if any, else last comp.
-                    // Determine end by counting this marking's total sub-comps.
-                    let this_sub_count: usize = marking
-                        .compartments
-                        .iter()
-                        .map(|c| c.sub_compartments.len())
-                        .sum();
-                    let fix_end = if this_sub_count > 0 {
-                        sub_spans
-                            .get(sub_cursor + this_sub_count - 1)
+            let this_sub_count: usize = marking
+                .compartments
+                .iter()
+                .map(|c| c.sub_compartments.len())
+                .sum();
+
+            let comps_ok = n_comps < 2
+                || marking.compartments.windows(2).all(|w| {
+                    sci_sort_key(w[0].identifier.as_ref())
+                        <= sci_sort_key(w[1].identifier.as_ref())
+                });
+            let subs_ok = marking.compartments.iter().all(|c| {
+                c.sub_compartments.len() < 2
+                    || c.sub_compartments.windows(2).all(|w| {
+                        sci_sort_key(w[0].as_ref()) <= sci_sort_key(w[1].as_ref())
+                    })
+            });
+
+            if comps_ok && subs_ok {
+                comp_cursor += n_comps;
+                sub_cursor += this_sub_count;
+                continue;
+            }
+
+            // Span covers the whole compartment+sub-compartment region
+            // for this marking: from the first compartment token through
+            // the last sub-compartment token (or the last compartment
+            // token when the marking has no sub-compartments).
+            let this_comp_spans = if n_comps == 0 {
+                &[][..]
+            } else {
+                &comp_spans[comp_cursor..comp_cursor + n_comps]
+            };
+            let fix_start = this_comp_spans
+                .first()
+                .map(|t| t.span.start)
+                .unwrap_or(0);
+            let fix_end = if this_sub_count > 0 {
+                sub_spans
+                    .get(sub_cursor + this_sub_count - 1)
+                    .map(|t| t.span.end)
+                    .unwrap_or_else(|| {
+                        this_comp_spans
+                            .last()
                             .map(|t| t.span.end)
-                            .unwrap_or_else(|| {
-                                this_comp_spans.last().map(|t| t.span.end).unwrap_or(fix_start)
-                            })
-                    } else {
-                        this_comp_spans.last().map(|t| t.span.end).unwrap_or(fix_start)
-                    };
-                    let fix_span = Span::new(fix_start, fix_end);
+                            .unwrap_or(fix_start)
+                    })
+            } else {
+                this_comp_spans
+                    .last()
+                    .map(|t| t.span.end)
+                    .unwrap_or(fix_start)
+            };
+            let fix_span = Span::new(fix_start, fix_end);
 
-                    // Build reordered segment-by-segment. Each segment is
-                    // "COMP" or "COMP SUB1 SUB2 ...". Join with '-'.
-                    let mut indices: Vec<usize> = (0..n_comps).collect();
-                    indices.sort_by_key(|&i| {
-                        sci_sort_key(marking.compartments[i].identifier.as_ref())
-                    });
+            // Build the sorted marking: sort sub-compartments within
+            // each compartment, then sort compartments by identifier.
+            // Sub-comps ride along with their parent compartment.
+            let mut sorted_comps = marking.compartments.to_vec();
+            for c in sorted_comps.iter_mut() {
+                let mut subs = c.sub_compartments.to_vec();
+                subs.sort_by(|a, b| sci_sort_key(a.as_ref()).cmp(&sci_sort_key(b.as_ref())));
+                *c = marque_ism::SciCompartment::new(c.identifier.clone(), subs.into_boxed_slice());
+            }
+            sorted_comps.sort_by(|a, b| {
+                sci_sort_key(a.identifier.as_ref()).cmp(&sci_sort_key(b.identifier.as_ref()))
+            });
 
-                    let render_seg = |idx: usize| -> String {
-                        let c = &marking.compartments[idx];
+            // Render this marking's compartment region (no system prefix —
+            // the span only covers compartments+subs, not the system head).
+            let render_comps = |comps: &[marque_ism::SciCompartment]| -> String {
+                let parts: Vec<String> = comps
+                    .iter()
+                    .map(|c| {
                         if c.sub_compartments.is_empty() {
                             c.identifier.as_ref().to_owned()
                         } else {
@@ -2688,85 +2754,37 @@ impl Rule for SciCompartmentOrderRule {
                             }
                             s
                         }
-                    };
+                    })
+                    .collect();
+                parts.join("-")
+            };
+            let original = render_comps(&marking.compartments);
+            let replacement = render_comps(&sorted_comps);
 
-                    let original: String = (0..n_comps)
-                        .map(render_seg)
-                        .collect::<Vec<_>>()
-                        .join("-");
-                    let replacement: String = indices
-                        .iter()
-                        .map(|&i| render_seg(i))
-                        .collect::<Vec<_>>()
-                        .join("-");
+            let level = if !comps_ok {
+                "compartments"
+            } else {
+                "sub-compartments"
+            };
 
-                    out.push(make_fix_diagnostic(FixDiagnosticParams {
-                        rule: self.id(),
-                        severity: self.default_severity(),
-                        source: FixSource::BuiltinRule,
-                        span: fix_span,
-                        message: "SCI compartments within a control system must be listed \
-                                  in ascending order (numeric first, then alphabetic)"
-                            .to_owned(),
-                        citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
-                        original,
-                        replacement,
-                        confidence: 0.85,
-                        migration_ref: None,
-                    }));
-                }
-            }
-
-            // Sub-compartment-level ordering per compartment.
-            for comp in marking.compartments.iter() {
-                let n_subs = comp.sub_compartments.len();
-                if n_subs >= 2 {
-                    let keys: Vec<(bool, u64, &str)> = comp
-                        .sub_compartments
-                        .iter()
-                        .map(|s| sci_sort_key(s.as_ref()))
-                        .collect();
-                    if keys.windows(2).any(|w| w[0] > w[1]) {
-                        let this_subs = &sub_spans[sub_cursor..sub_cursor + n_subs];
-                        let fix_start = this_subs.first().map(|t| t.span.start).unwrap_or(0);
-                        let fix_end = this_subs.last().map(|t| t.span.end).unwrap_or(fix_start);
-                        let fix_span = Span::new(fix_start, fix_end);
-
-                        let mut indices: Vec<usize> = (0..n_subs).collect();
-                        indices.sort_by_key(|&i| sci_sort_key(comp.sub_compartments[i].as_ref()));
-
-                        let original: String = comp
-                            .sub_compartments
-                            .iter()
-                            .map(|s| s.as_ref())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let replacement: String = indices
-                            .iter()
-                            .map(|&i| comp.sub_compartments[i].as_ref())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-
-                        out.push(make_fix_diagnostic(FixDiagnosticParams {
-                            rule: self.id(),
-                            severity: self.default_severity(),
-                            source: FixSource::BuiltinRule,
-                            span: fix_span,
-                            message: "SCI sub-compartments must be listed in ascending \
-                                      order (numeric first, then alphabetic)"
-                                .to_owned(),
-                            citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
-                            original,
-                            replacement,
-                            confidence: 0.85,
-                            migration_ref: None,
-                        }));
-                    }
-                }
-                sub_cursor += n_subs;
-            }
+            out.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: fix_span,
+                message: format!(
+                    "SCI {level} must be listed in ascending order (numeric first, \
+                     then alphabetic)"
+                ),
+                citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
+                original,
+                replacement,
+                confidence: 0.85,
+                migration_ref: None,
+            }));
 
             comp_cursor += n_comps;
+            sub_cursor += this_sub_count;
         }
 
         out
@@ -3992,16 +4010,47 @@ mod tests {
     #[test]
     fn e033_fires_on_sub_compartment_disorder() {
         // Sub-compartments DEFG ABCD are out of alpha order within SI-G.
+        // One diagnostic per out-of-order marking; fix covers the whole
+        // compartment+sub-compartment region of that marking (matches
+        // SAR E029 shape).
         let diags = lint_banner("SECRET//SI-G DEFG ABCD//NOFORN");
         let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
         assert_eq!(
             e033.len(),
             1,
-            "E033 must fire on DEFG ABCD sub-compartment order: {diags:?}"
+            "E033 must fire once on the out-of-order marking: {diags:?}"
         );
         let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
         assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
-        assert_eq!(fix.replacement.as_ref(), "ABCD DEFG");
+        assert_eq!(fix.replacement.as_ref(), "G ABCD DEFG");
+    }
+
+    #[test]
+    fn e033_fix_sorts_comp_and_sub_levels_in_one_pass() {
+        // Compartments AND sub-compartments both out of order in the
+        // same marking. A single E033 diagnostic must carry a fix that
+        // normalizes both levels — no second diagnostic, no overlap.
+        let diags = lint_banner("SECRET//SI-NK-G DEFG ABCD//NOFORN");
+        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
+        assert_eq!(e033.len(), 1, "E033 must fire once: {diags:?}");
+        let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
+        // Parse: SI has compartments NK (no subs) and G (subs DEFG ABCD).
+        // Sort compartments: G < NK. Sort subs of G: ABCD < DEFG.
+        // NK had no subs; it trails.
+        assert_eq!(fix.replacement.as_ref(), "G ABCD DEFG-NK");
+    }
+
+    #[test]
+    fn e032_fix_also_sorts_compartments_and_subs() {
+        // Systems out of order (SI/123 — numeric should come first)
+        // AND compartments out of order within SI. Applying E032's
+        // whole-block fix alone must produce a fully-normalized block
+        // so the engine's overlap guard can safely drop E033.
+        let diags = lint_banner("SECRET//SI-NK-G DEFG ABCD/123//NOFORN");
+        let e032: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E032").collect();
+        assert_eq!(e032.len(), 1, "E032 must fire: {diags:?}");
+        let fix = e032[0].fix.as_ref().expect("E032 must carry a FixProposal");
+        assert_eq!(fix.replacement.as_ref(), "123/SI-G ABCD DEFG-NK");
     }
 
     #[test]
