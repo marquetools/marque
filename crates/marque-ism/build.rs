@@ -389,6 +389,45 @@ fn generate_values(out: &Path, schema_dir: &Path) {
         "SCI control markings from CVEnumISMSCIControls.xml.",
     );
 
+    // --- SCI Control Bare (subset of SCI Controls whose CVE value has no '-') ---
+    // Spec: 003-sci-compartments / data-model §Types.
+    // SciControlBare is the structural-anchor enum. It includes only CVE
+    // values that are themselves a bare control system (no compound
+    // composite). For 2022-DEC this yields the 7 variants
+    // Bur, Hcs, Klm, Mvl, Rsv, Si, Tk. Generated from the live CVE so it
+    // tracks future ODNI revisions automatically.
+    let sci_bare_entries: Vec<(String, String)> = sci_entries
+        .iter()
+        .filter(|(value, _)| !value.contains('-'))
+        .cloned()
+        .collect();
+    assert_required(
+        "SciControlBare",
+        &sci_bare_entries,
+        "CVEnumISMSCIControls.xml (bare subset)",
+    );
+    emit_enum(
+        &mut content,
+        "SciControlBare",
+        &sci_bare_entries,
+        "Bare SCI control systems (CVE values with no '-') from CVEnumISMSCIControls.xml.",
+    );
+
+    // Helper: is_bare_cve_value — reports whether `s` is one of the bare
+    // control-system CVE values. Used by the parser's structural path to
+    // dispatch to `SciControlSystem::Published` vs `Custom`.
+    writeln!(
+        content,
+        "/// Returns true if `s` is exactly a bare SCI control system CVE value.\n\
+         /// Equivalent to `SciControlBare::parse(s).is_some()` but spelled out\n\
+         /// for ergonomics at parser call sites."
+    )
+    .unwrap();
+    writeln!(content, "pub fn is_bare_cve_value(s: &str) -> bool {{").unwrap();
+    writeln!(content, "    SciControlBare::parse(s).is_some()").unwrap();
+    writeln!(content, "}}").unwrap();
+    writeln!(content).unwrap();
+
     // --- Dissemination Controls ---
     let dissem_entries = parse_cve_xml(&cve_dir.join("CVEnumISMDissem.xml"));
     assert_required("DissemControl", &dissem_entries, "CVEnumISMDissem.xml");
