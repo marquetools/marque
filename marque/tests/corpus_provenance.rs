@@ -248,13 +248,11 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
 /// remaining text contains only uppercase alphanumeric identifiers,
 /// spaces, and hyphens.
 fn is_structural_sci_token(token: &str) -> bool {
-    const BARE_SCI_SYSTEMS: &[&str] =
-        &["BUR", "HCS", "KLM", "MVL", "RSV", "SI", "TK"];
     let Some(first_segment_end) = token.find(|c: char| c == '-' || c == ' ') else {
         return false;
     };
     let head = &token[..first_segment_end];
-    if !BARE_SCI_SYSTEMS.contains(&head) {
+    if !marque_ism::is_bare_cve_value(head) {
         return false;
     }
     // Remaining characters must be uppercase alphanumerics, spaces, or

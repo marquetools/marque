@@ -43,8 +43,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    is_bare_cve_value, sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification,
-    SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
+    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem,
+    SciMarking, Span, TokenKind, TokenSpan,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -980,9 +980,12 @@ impl Rule for UnknownTokenRule {
             // will surface.
             .filter(|t| {
                 let text = t.text.as_ref();
+                // Note: malformed SCI-shaped tokens (e.g., `SI-`, `SI--G`)
+                // that the structural subparser rejected DO fire E008 —
+                // the user sees a real diagnostic instead of a silent
+                // fallback. Only suppress well-known specialized paths.
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
-                    && !looks_like_sci_structural(text)
                     && !text.starts_with("SAR-")
                     && !text.starts_with("SPECIAL ACCESS REQUIRED-")
             })
@@ -3420,10 +3423,22 @@ impl Rule for SciCompartmentOrderRule {
             // for this marking: from the first compartment token through
             // the last sub-compartment token (or the last compartment
             // token when the marking has no sub-compartments).
+            //
+            // Use `.get()` defensively: if the token stream doesn't carry
+            // the expected number of SciCompartment / SciSubCompartment
+            // tokens (attrs built outside the parser, or future parser
+            // changes), skip the fix instead of panicking.
             let this_comp_spans = if n_comps == 0 {
                 &[][..]
             } else {
-                &comp_spans[comp_cursor..comp_cursor + n_comps]
+                match comp_spans.get(comp_cursor..comp_cursor + n_comps) {
+                    Some(s) => s,
+                    None => {
+                        comp_cursor += n_comps;
+                        sub_cursor += this_sub_count;
+                        continue;
+                    }
+                }
             };
             let fix_start = this_comp_spans
                 .first()
@@ -3679,18 +3694,35 @@ impl Rule for SciBannerRollupRule {
             .iter()
             .filter(|t| t.kind == TokenKind::SciControl)
             .collect();
-        let (fix_span, original) = if chunk_spans.is_empty() {
-            (Span::new(0, 0), String::new())
-        } else {
-            let s = chunk_spans.first().unwrap().span.start;
-            let e = chunk_spans.last().unwrap().span.end;
-            let orig = chunk_spans
-                .iter()
-                .map(|t| t.text.as_ref())
-                .collect::<Vec<_>>()
-                .join("/");
-            (Span::new(s, e), orig)
-        };
+
+        if chunk_spans.is_empty() {
+            // Banner has no SCI block at all. Byte-positioning a new
+            // block between classification and the next category from
+            // rule context alone is unsafe (requires knowing the
+            // separator offsets and the downstream block boundaries).
+            // Escalate severity and emit a diagnostic without a fix
+            // so the author inserts the block by hand.
+            return vec![Diagnostic::new(
+                self.id(),
+                Severity::Error,
+                Span::new(0, 0),
+                format!(
+                    "banner is missing an SCI block that portions require: {}",
+                    missing.join("; ")
+                ),
+                "CAPCO-2016 §H.4 p62 (HCS precedence); §D.2 p28",
+                None,
+            )];
+        }
+
+        let fix_start = chunk_spans.first().unwrap().span.start;
+        let fix_end = chunk_spans.last().unwrap().span.end;
+        let original: String = chunk_spans
+            .iter()
+            .map(|t| t.text.as_ref())
+            .collect::<Vec<_>>()
+            .join("/");
+        let fix_span = Span::new(fix_start, fix_end);
         let replacement = render_sci_block(&expected);
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
@@ -3753,26 +3785,6 @@ fn render_sci_block(markings: &[SciMarking]) -> String {
 fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking> {
     page.expected_sci_markings().into_vec()
 }
-
-/// Shared filter helper: does this Unknown-token text look like a
-/// structurally-formed SCI block that the spec 003-sci-compartments
-/// subparser would try to claim? If so, E008 skips it — the parser has
-/// already decided whether to accept or reject structurally, and its
-/// rejection is not the "unrecognized atom" case that E008 describes.
-///
-/// Pattern: a prefix before the first `-` or ` ` is a bare SCI CVE value.
-/// This matches bare-system anchored compound forms (`HCS-P`, `SI-G`,
-/// `SI-G ABCD`) and rejects plain dissem forms (`LES-NF`, `NATO SECRET`)
-/// by requiring `is_bare_cve_value` on the prefix.
-fn looks_like_sci_structural(text: &str) -> bool {
-    let boundary = text.find(['-', ' ']);
-    let prefix = match boundary {
-        Some(i) if i > 0 => &text[..i],
-        _ => return false,
-    };
-    is_bare_cve_value(prefix)
-}
-
 
 // Helpers
 // ---------------------------------------------------------------------------
@@ -5280,21 +5292,15 @@ mod tests {
     }
 
     #[test]
-    fn looks_like_sci_structural_matches_expected_shapes() {
-        use super::looks_like_sci_structural as m;
-        // Bare CVE prefix followed by `-` or space -> structural
-        assert!(m("SI-G"));
-        assert!(m("HCS-P"));
-        assert!(m("SI G"));
-        assert!(m("TK-BLFH"));
-        // Non-SCI prefixes -> not structural (E008 handles them)
-        assert!(!m("XYZZY-FOO"));
-        assert!(!m("LES-NF"));
-        assert!(!m("NATO SECRET"));
-        // No boundary -> not structural (E008 handles bare unknowns)
-        assert!(!m("XYZZY"));
-        // Leading hyphen -> not structural
-        assert!(!m("-SI"));
+    fn e008_fires_on_malformed_sci_shape() {
+        // `SI-` is SCI-shaped but invalid (dangling hyphen). The structural
+        // subparser rejects it, so it falls through as Unknown and E008
+        // correctly fires — no silent suppression.
+        let diags = lint_banner("SECRET//SI-//NOFORN");
+        assert!(
+            diags.iter().any(|d| d.rule.as_str() == "E008"),
+            "E008 must fire on malformed SCI-shaped token: {diags:?}"
+        );
     }
 }
 

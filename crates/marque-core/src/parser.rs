@@ -295,7 +295,17 @@ impl<'t> Parser<'t> {
                 rel_to.extend(parsed_trigraphs);
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
-                || is_bare_cve_value(trimmed))
+                || is_bare_cve_value(trimmed)
+                // Standalone custom SCI control (e.g., `99` in §A.6 p16).
+                // Require at least one digit so pure-alpha tokens (which
+                // are far more likely to be typos, other-category markers
+                // like `FGI`, or scanner-test garbage like `XYZZY`) keep
+                // falling through to Unknown. Declass dates (4/8 digit)
+                // and known non-SCI markers are also excluded.
+                || (is_valid_custom_control(trimmed)
+                    && trimmed.bytes().any(|b| b.is_ascii_digit())
+                    && !is_known_non_sci_token(trimmed)
+                    && !is_declass_date(trimmed)))
                 && let Some(markings) =
                     parse_sci_block(trimmed, abs_start, &mut token_spans)
             {
