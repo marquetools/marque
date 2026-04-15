@@ -4,9 +4,7 @@
   <img alt="marque logo" src="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark.svg" height="150px">
 </picture>
 
-# marque
-
-**A fast, rule-driven text linter, formatter, and transformer.** 
+## **A fast, rule-driven text linter, formatter, and transformer.** 
 
 `marque` is a general-purpose rule engine for fast text processing — rules
 produce warnings, errors, fixes, and transformations, each with a confidence
