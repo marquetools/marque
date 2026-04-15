@@ -3023,26 +3023,11 @@ fn render_sci_block(markings: &[SciMarking]) -> String {
     parts.join("/")
 }
 
-/// Defensive wrapper around `PageContext::expected_sci_markings`. When
-/// P4 lands the rollup method on `PageContext`, this call will pick it up
-/// automatically through the `marque_ism::PageContext` re-export. Until
-/// then, we probe the public surface via a trait specialization pattern
-/// that yields an empty slice. This keeps E035 inert (rather than
-/// ill-formed) until the upstream method is available.
+/// Thin wrapper around `PageContext::expected_sci_markings()` that returns
+/// a `Vec<SciMarking>` for E035's internal use. P4 landed the inherent
+/// method returning `Box<[SciMarking]>`; this helper normalizes to `Vec`.
 fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking> {
-    // Call the method if it exists on PageContext. When P4 hasn't landed
-    // the method is absent and the helper compiles to a no-op (empty
-    // Vec). The trait-object trick here is a method-resolution probe:
-    // the inherent method wins when present, otherwise the trait's
-    // default impl takes over. Because both produce `Vec<SciMarking>`
-    // there is no type-level divergence.
-    trait ExpectedSciMarkingsFallback {
-        fn expected_sci_markings(&self) -> Vec<SciMarking> {
-            Vec::new()
-        }
-    }
-    impl ExpectedSciMarkingsFallback for marque_ism::PageContext {}
-    ExpectedSciMarkingsFallback::expected_sci_markings(page)
+    page.expected_sci_markings().into_vec()
 }
 
 /// Shared filter helper: does this Unknown-token text look like a
