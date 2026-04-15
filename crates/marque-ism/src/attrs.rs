@@ -257,6 +257,38 @@ pub struct SarCompartment {
     pub sub_compartments: Box<[Box<str>]>,
 }
 
+impl SarMarking {
+    /// Construct a [`SarMarking`] from an indicator form and a list of
+    /// programs. `programs` SHOULD be in source order — sort validation is
+    /// performed by rule E028, not here.
+    pub fn new(indicator: SarIndicator, programs: Box<[SarProgram]>) -> Self {
+        Self {
+            indicator,
+            programs,
+        }
+    }
+}
+
+impl SarProgram {
+    /// Construct a [`SarProgram`] with an optional compartment list.
+    pub fn new(identifier: Box<str>, compartments: Box<[SarCompartment]>) -> Self {
+        Self {
+            identifier,
+            compartments,
+        }
+    }
+}
+
+impl SarCompartment {
+    /// Construct a [`SarCompartment`] with an optional sub-compartment list.
+    pub fn new(identifier: Box<str>, sub_compartments: Box<[Box<str>]>) -> Self {
+        Self {
+            identifier,
+            sub_compartments,
+        }
+    }
+}
+
 // ===========================================================================
 // Classification types
 // ===========================================================================

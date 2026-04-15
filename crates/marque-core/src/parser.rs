@@ -19,7 +19,8 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
     ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SciControl, TokenKind, TokenSpan, Trigraph,
+    NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    SciControl, TokenKind, TokenSpan, Trigraph,
 };
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
@@ -177,9 +178,11 @@ impl<'t> Parser<'t> {
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
         let mut sci: Vec<SciControl> = Vec::new();
-        // SAR: intentionally not accumulated here. P1 removed the CVE-backed
-        // `SarIdentifier` enum; P2 will add a structural subparser emitting a
-        // `SarMarking`. Until then, `attrs.sar_markings` stays `None`.
+        // SAR: P2 wires the hand-written subparser. Only the FIRST SAR block
+        // encountered populates `attrs.sar_markings`; any subsequent SAR block
+        // is emitted as `TokenKind::Unknown` so rule E030 (indicator-repeat)
+        // can flag the duplicate.
+        let mut sar_captured = false;
         let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut non_ic: Vec<NonIcDissem> = Vec::new();
@@ -244,6 +247,37 @@ impl<'t> Parser<'t> {
             // ---------------------------------------------------------------
             // Remaining blocks: controls, markers, and fallbacks
             // ---------------------------------------------------------------
+
+            // SAR category block (must precede the other branches because a
+            // SAR block such as `SAR-BP-J12/CD` contains `/` and would be
+            // misrouted to the multi-slash fallback). §H.5 / §A.6.
+            if trimmed.starts_with("SAR-") || trimmed.starts_with("SPECIAL ACCESS REQUIRED-") {
+                if sar_captured {
+                    // Second (or later) SAR block in this marking. Leave the
+                    // whole block as Unknown so E030 (sar-indicator-repeat)
+                    // can surface it in P3.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
+                    continue;
+                }
+                if let Some((marking, sar_spans)) = parse_sar_category(trimmed, abs_start) {
+                    attrs.sar_markings = Some(marking);
+                    token_spans.extend(sar_spans);
+                    sar_captured = true;
+                    continue;
+                }
+                // Grammar rejection (e.g., `SAR-` with nothing after): fall
+                // through to the normal Unknown handling below.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::Unknown,
+                    span,
+                    text: trimmed.into(),
+                });
+                continue;
+            }
 
             if trimmed.starts_with("REL TO") || trimmed.starts_with("REL ") {
                 // Record the full block text before the individual trigraph tokens
@@ -508,8 +542,10 @@ impl<'t> Parser<'t> {
         }
 
         attrs.sci_controls = sci.into_boxed_slice();
-        // SAR: intentionally unpopulated until P2 wires the subparser.
-        attrs.sar_markings = None;
+        // `attrs.sar_markings` is populated inline by the SAR branch above
+        // when the first SAR category block is encountered; otherwise it
+        // defaults to `None` from `IsmAttributes::default()`.
+        let _ = sar_captured; // silence unused if no SAR block was found
         attrs.aea_markings = aea.into_boxed_slice();
         attrs.dissem_controls = dissem.into_boxed_slice();
         attrs.non_ic_dissem = non_ic.into_boxed_slice();
@@ -841,6 +877,243 @@ fn split_slash_with_offsets(s: &str) -> Vec<(usize, &str)> {
             result.push((pos + trim_lead, trimmed));
         }
         pos += part.len() + 1; // +1 for the `/` separator
+    }
+    result
+}
+
+// ===========================================================================
+// SAR subparser (§H.5 / §A.6)
+// ===========================================================================
+
+/// Parse a single SAR category block.
+///
+/// `block_text` is the full block text (everything between `//` separators)
+/// INCLUDING the `SAR-` or `SPECIAL ACCESS REQUIRED-` indicator prefix.
+/// `base` is the absolute byte offset in the original source where
+/// `block_text` starts.
+///
+/// Returns `Some((marking, spans))` when `block_text` starts with a recognized
+/// SAR indicator AND the remainder is grammatically non-empty. Each returned
+/// [`TokenSpan`] carries absolute byte offsets into the source.
+///
+/// Grammar (see spec `specs/002-sar-implementation/spec.md` §R2):
+///
+/// ```text
+/// SAR_BLOCK    := INDICATOR PROGRAM ("/" PROGRAM)*
+/// INDICATOR    := "SAR-" | "SPECIAL ACCESS REQUIRED-"
+/// PROGRAM      := PROG_ID ( "-" COMPARTMENT )?
+/// COMPARTMENT  := COMP_ID (" " SUB_COMP)*
+/// PROG_ID      := [A-Z0-9]{2,3}           (SAR- form)
+///               | [A-Z ]+                  (full-indicator form)
+/// COMP_ID      := [A-Z0-9]+
+/// SUB_COMP     := [A-Z0-9]+
+/// ```
+///
+/// Rejection returns `None`:
+/// - `SAR` without trailing hyphen.
+/// - `SAR-` with an empty program identifier.
+/// - A `//` sequence inside `block_text` (should not happen — the outer
+///   category-block splitter would have handed us two separate blocks —
+///   but we reject defensively).
+/// - Empty string.
+///
+/// Ordering, classification, and roll-up constraints are NOT enforced here;
+/// they are rule-layer (P3/P4) concerns.
+fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<TokenSpan>)> {
+    // Defensive: `//` would mean the outer splitter gave us more than one
+    // block. Refuse so the caller can record the text as Unknown and let
+    // E030 handle it separately.
+    if block_text.contains("//") {
+        return None;
+    }
+
+    // Identify the indicator variant. Longer prefix first so `SPECIAL
+    // ACCESS REQUIRED-` wins over any putative `SAR-` substring.
+    let (indicator, indicator_lit) = if block_text.starts_with("SPECIAL ACCESS REQUIRED-") {
+        (SarIndicator::Full, "SPECIAL ACCESS REQUIRED-")
+    } else if block_text.starts_with("SAR-") {
+        (SarIndicator::Abbrev, "SAR-")
+    } else {
+        return None;
+    };
+    let rest_offset = indicator_lit.len();
+    let rest = &block_text[rest_offset..];
+    if rest.is_empty() {
+        return None;
+    }
+
+    let mut spans: Vec<TokenSpan> = Vec::new();
+
+    // Record the indicator span (does NOT include the first character of
+    // the program identifier — only the literal `SAR-` / `SPECIAL ACCESS
+    // REQUIRED-` including the trailing hyphen).
+    spans.push(TokenSpan {
+        kind: TokenKind::SarIndicator,
+        span: Span::new(base, base + indicator_lit.len()),
+        text: indicator_lit.into(),
+    });
+
+    let mut programs: Vec<SarProgram> = Vec::new();
+
+    // Split the remainder on `/` into program chunks. Each chunk is a
+    // `PROGRAM` production: `PROG_ID` optionally followed by `-COMPARTMENT`.
+    let mut chunk_offset = rest_offset; // offset within block_text
+    for (i, prog_chunk) in rest.split('/').enumerate() {
+        if i > 0 {
+            chunk_offset += 1; // account for the `/` just consumed
+        }
+        let program_base = base + chunk_offset;
+
+        match indicator {
+            SarIndicator::Abbrev => {
+                if let Some(program) =
+                    parse_sar_abbrev_program(prog_chunk, program_base, &mut spans)
+                {
+                    programs.push(program);
+                } else {
+                    return None;
+                }
+            }
+            SarIndicator::Full => {
+                // Full form: the entire chunk is the program identifier
+                // (spaces are allowed). No compartment parsing at the
+                // lexical level — see spec §R2 ambiguity note.
+                let ident = prog_chunk;
+                if ident.is_empty() {
+                    return None;
+                }
+                spans.push(TokenSpan {
+                    kind: TokenKind::SarProgram,
+                    span: Span::new(program_base, program_base + ident.len()),
+                    text: ident.into(),
+                });
+                programs.push(SarProgram::new(ident.into(), Box::new([])));
+            }
+        }
+        chunk_offset += prog_chunk.len();
+    }
+
+    if programs.is_empty() {
+        return None;
+    }
+
+    Some((
+        SarMarking::new(indicator, programs.into_boxed_slice()),
+        spans,
+    ))
+}
+
+/// Parse a single `PROGRAM` production for the abbreviated (`SAR-`) form.
+///
+/// `chunk` is everything between adjacent `/` separators (or between the
+/// indicator and the next `/`, or the tail of the block). `base` is the
+/// absolute offset of `chunk[0]` in the source buffer.
+///
+/// Grammar: `PROG_ID ( "-" COMPARTMENT )?`, where `PROG_ID` is 2–3
+/// alphanumeric characters and `COMPARTMENT` is `COMP_ID (" " SUB_COMP)*`.
+///
+/// The first `-` inside `chunk` (if any) separates the program identifier
+/// from its compartment list. Subsequent compartments are space-separated
+/// only when attached as sub-compartments of the preceding compartment;
+/// additional compartments within the same program are separated by
+/// another `-` (e.g., `BP-J12-K15` — two compartments, no sub-compartments)
+/// per §H.5 Figure 2.
+///
+/// Wait — review: actually the canonical example is
+/// `SAR-BP-J12 J54-K15/CD-...`, which the spec decomposes as two
+/// compartments of BP: `J12` (with sub-compartment `J54`) and `K15`. The
+/// space separates J12 from its sub-compartment J54, and the hyphen
+/// between `J54` and `K15` starts a new compartment of the same program.
+/// So within one program the sequence alternates:
+///   PROG `-` COMP (` ` SUB)* (`-` COMP (` ` SUB)*)*
+fn parse_sar_abbrev_program(
+    chunk: &str,
+    base: usize,
+    spans: &mut Vec<TokenSpan>,
+) -> Option<SarProgram> {
+    if chunk.is_empty() {
+        return None;
+    }
+
+    // Split the chunk on `-`. The first segment is the program identifier;
+    // each subsequent segment is a compartment (with optional space-joined
+    // sub-compartments).
+    let mut segments = split_with_offsets(chunk, '-');
+    if segments.is_empty() {
+        return None;
+    }
+
+    // Program identifier: first segment.
+    let (prog_off, prog_id) = segments.remove(0);
+    if prog_id.is_empty() {
+        return None;
+    }
+    // Shape check: 2–3 alphanumeric characters.
+    if !(2..=3).contains(&prog_id.len()) || !prog_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return None;
+    }
+    spans.push(TokenSpan {
+        kind: TokenKind::SarProgram,
+        span: Span::new(base + prog_off, base + prog_off + prog_id.len()),
+        text: prog_id.into(),
+    });
+
+    // Remaining segments: each is a compartment, possibly with
+    // space-separated sub-compartments.
+    let mut compartments: Vec<SarCompartment> = Vec::with_capacity(segments.len());
+    for (seg_off, seg) in segments {
+        if seg.is_empty() {
+            return None;
+        }
+        // Split segment on ` ` — first token is compartment, rest are subs.
+        let mut parts = split_with_offsets(seg, ' ');
+        let (comp_rel_off, comp_id) = parts.remove(0);
+        if comp_id.is_empty() || !comp_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return None;
+        }
+        let comp_abs_off = seg_off + comp_rel_off;
+        spans.push(TokenSpan {
+            kind: TokenKind::SarCompartment,
+            span: Span::new(base + comp_abs_off, base + comp_abs_off + comp_id.len()),
+            text: comp_id.into(),
+        });
+
+        let mut subs: Vec<Box<str>> = Vec::with_capacity(parts.len());
+        for (sub_rel_off, sub_id) in parts {
+            if sub_id.is_empty() || !sub_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                return None;
+            }
+            let sub_abs_off = seg_off + sub_rel_off;
+            spans.push(TokenSpan {
+                kind: TokenKind::SarSubCompartment,
+                span: Span::new(base + sub_abs_off, base + sub_abs_off + sub_id.len()),
+                text: sub_id.into(),
+            });
+            subs.push(sub_id.into());
+        }
+
+        compartments.push(SarCompartment::new(
+            comp_id.into(),
+            subs.into_boxed_slice(),
+        ));
+    }
+
+    Some(SarProgram::new(
+        prog_id.into(),
+        compartments.into_boxed_slice(),
+    ))
+}
+
+/// Split `s` on `delim`, returning `(offset_in_s, token)` pairs. Unlike
+/// [`split_slash_with_offsets`], this preserves empty tokens so callers can
+/// detect malformed input (e.g., `SAR--BP` → two segments, the first empty).
+fn split_with_offsets(s: &str, delim: char) -> Vec<(usize, &str)> {
+    let mut result = Vec::new();
+    let mut pos = 0usize;
+    let delim_len = delim.len_utf8();
+    for part in s.split(delim) {
+        result.push((pos, part));
+        pos += part.len() + delim_len;
     }
     result
 }
@@ -1535,6 +1808,308 @@ mod tests {
                 .iter()
                 .any(|t| t.kind == TokenKind::Unknown),
             "XYZZY must produce Unknown span"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sar_parse_tests {
+    //! Direct unit tests for [`parse_sar_category`] plus integration-level
+    //! tests that exercise the dispatch from `parse_marking_string`.
+
+    use super::*;
+    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::token_set::CapcoTokenSet;
+
+    // ---------------------------------------------------------------------
+    // Direct subparser tests
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn single_program_no_compartments() {
+        let (marking, spans) = parse_sar_category("SAR-BP", 0).expect("grammar accepts SAR-BP");
+        assert_eq!(marking.indicator, SarIndicator::Abbrev);
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(&*marking.programs[0].identifier, "BP");
+        assert_eq!(marking.programs[0].compartments.len(), 0);
+        // Spans: one indicator + one program.
+        assert_eq!(
+            spans
+                .iter()
+                .filter(|s| s.kind == TokenKind::SarIndicator)
+                .count(),
+            1
+        );
+        assert_eq!(
+            spans
+                .iter()
+                .filter(|s| s.kind == TokenKind::SarProgram)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn three_programs_no_compartments() {
+        let (marking, _) =
+            parse_sar_category("SAR-BP/CD/XR", 0).expect("grammar accepts three programs");
+        assert_eq!(marking.programs.len(), 3);
+        let ids: Vec<&str> = marking
+            .programs
+            .iter()
+            .map(|p| &*p.identifier)
+            .collect();
+        assert_eq!(ids, vec!["BP", "CD", "XR"]);
+        for p in marking.programs.iter() {
+            assert_eq!(p.compartments.len(), 0);
+        }
+    }
+
+    #[test]
+    fn program_with_single_compartment() {
+        let (marking, _) = parse_sar_category("SAR-BP-J12", 0).expect("grammar accepts");
+        assert_eq!(marking.programs.len(), 1);
+        let p = &marking.programs[0];
+        assert_eq!(&*p.identifier, "BP");
+        assert_eq!(p.compartments.len(), 1);
+        assert_eq!(&*p.compartments[0].identifier, "J12");
+        assert_eq!(p.compartments[0].sub_compartments.len(), 0);
+    }
+
+    #[test]
+    fn program_with_compartment_and_sub_compartment() {
+        let (marking, _) = parse_sar_category("SAR-BP-J12 J54", 0).expect("grammar accepts");
+        let p = &marking.programs[0];
+        assert_eq!(p.compartments.len(), 1);
+        let c = &p.compartments[0];
+        assert_eq!(&*c.identifier, "J12");
+        assert_eq!(c.sub_compartments.len(), 1);
+        assert_eq!(&*c.sub_compartments[0], "J54");
+    }
+
+    #[test]
+    fn canonical_h5_p100_multi_program_example() {
+        // The §H.5 p100 canonical decomposition:
+        //   BP → [J12 (+ J54), K15]
+        //   CD → [YYY (+ 456, 689)]
+        //   XR → [XRA (+ RB)]
+        let block = "SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB";
+        let (marking, spans) = parse_sar_category(block, 0).expect("grammar accepts");
+
+        assert_eq!(marking.indicator, SarIndicator::Abbrev);
+        assert_eq!(marking.programs.len(), 3);
+
+        // BP
+        let bp = &marking.programs[0];
+        assert_eq!(&*bp.identifier, "BP");
+        assert_eq!(bp.compartments.len(), 2);
+        assert_eq!(&*bp.compartments[0].identifier, "J12");
+        assert_eq!(
+            bp.compartments[0]
+                .sub_compartments
+                .iter()
+                .map(|s| &**s)
+                .collect::<Vec<_>>(),
+            vec!["J54"]
+        );
+        assert_eq!(&*bp.compartments[1].identifier, "K15");
+        assert_eq!(bp.compartments[1].sub_compartments.len(), 0);
+
+        // CD
+        let cd = &marking.programs[1];
+        assert_eq!(&*cd.identifier, "CD");
+        assert_eq!(cd.compartments.len(), 1);
+        assert_eq!(&*cd.compartments[0].identifier, "YYY");
+        assert_eq!(
+            cd.compartments[0]
+                .sub_compartments
+                .iter()
+                .map(|s| &**s)
+                .collect::<Vec<_>>(),
+            vec!["456", "689"]
+        );
+
+        // XR
+        let xr = &marking.programs[2];
+        assert_eq!(&*xr.identifier, "XR");
+        assert_eq!(xr.compartments.len(), 1);
+        assert_eq!(&*xr.compartments[0].identifier, "XRA");
+        assert_eq!(
+            xr.compartments[0]
+                .sub_compartments
+                .iter()
+                .map(|s| &**s)
+                .collect::<Vec<_>>(),
+            vec!["RB"]
+        );
+
+        // Spot-check span offsets: the indicator is at [0, 4) and the first
+        // program "BP" is at [4, 6).
+        let indicator = spans
+            .iter()
+            .find(|s| s.kind == TokenKind::SarIndicator)
+            .unwrap();
+        assert_eq!(indicator.span, Span::new(0, 4));
+        assert_eq!(&*indicator.text, "SAR-");
+        let first_prog = spans
+            .iter()
+            .find(|s| s.kind == TokenKind::SarProgram)
+            .unwrap();
+        assert_eq!(first_prog.span, Span::new(4, 6));
+        assert_eq!(&*first_prog.text, "BP");
+    }
+
+    #[test]
+    fn full_form_single_program_with_space() {
+        // `SPECIAL ACCESS REQUIRED-BUTTER POPCORN` — full form allows spaces
+        // inside the nickname. No compartment decomposition at the lexical
+        // level (see spec §R2 ambiguity note).
+        let (marking, spans) =
+            parse_sar_category("SPECIAL ACCESS REQUIRED-BUTTER POPCORN", 0).unwrap();
+        assert_eq!(marking.indicator, SarIndicator::Full);
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(&*marking.programs[0].identifier, "BUTTER POPCORN");
+        assert_eq!(marking.programs[0].compartments.len(), 0);
+
+        // Indicator span is 24 bytes: `SPECIAL ACCESS REQUIRED-`.
+        let indicator = spans
+            .iter()
+            .find(|s| s.kind == TokenKind::SarIndicator)
+            .unwrap();
+        assert_eq!(&*indicator.text, "SPECIAL ACCESS REQUIRED-");
+        assert_eq!(indicator.span, Span::new(0, 24));
+    }
+
+    #[test]
+    fn rejects_double_slash_inside_block() {
+        // Defensive: the outer category-block splitter wouldn't hand us
+        // `SAR-BP//CD` (it splits on `//` first). But if it somehow did,
+        // `parse_sar_category` refuses because `//` is a category separator
+        // that should never appear inside a single block. The caller
+        // records the text as Unknown so E030 can flag the repeat form.
+        assert!(parse_sar_category("SAR-BP//CD", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_missing_hyphen() {
+        assert!(parse_sar_category("SAR", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_empty_program() {
+        assert!(parse_sar_category("SAR-", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_empty_string() {
+        assert!(parse_sar_category("", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_non_sar_prefix() {
+        assert!(parse_sar_category("NOFORN", 0).is_none());
+        assert!(parse_sar_category("SI", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_program_id_out_of_2_3_length() {
+        // Single-char program id.
+        assert!(parse_sar_category("SAR-B", 0).is_none());
+        // Four-char program id.
+        assert!(parse_sar_category("SAR-BPCD", 0).is_none());
+    }
+
+    // ---------------------------------------------------------------------
+    // Dispatch tests (through `parse_marking_string`)
+    // ---------------------------------------------------------------------
+
+    fn make_banner(text: &str) -> ParsedMarking {
+        let source = text.as_bytes();
+        let tokens = CapcoTokenSet;
+        let parser = Parser::new(&tokens);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, source.len()),
+            kind: MarkingType::Banner,
+        };
+        parser.parse(&candidate, source).expect("parse succeeds")
+    }
+
+    #[test]
+    fn banner_dispatch_populates_sar_markings() {
+        let parsed = make_banner("TOP SECRET//SAR-BP//NOFORN");
+        let sar = parsed
+            .attrs
+            .sar_markings
+            .as_ref()
+            .expect("SAR block must populate sar_markings");
+        assert_eq!(sar.programs.len(), 1);
+        assert_eq!(&*sar.programs[0].identifier, "BP");
+
+        // Token-span mix must include both the indicator and program token.
+        let kinds: Vec<TokenKind> =
+            parsed.attrs.token_spans.iter().map(|t| t.kind).collect();
+        assert!(kinds.contains(&TokenKind::SarIndicator));
+        assert!(kinds.contains(&TokenKind::SarProgram));
+
+        // Dissem accumulator still populated: NOFORN is present.
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .iter()
+                .any(|d| *d == marque_ism::DissemControl::Nf),
+            "NOFORN must still be recognized after the SAR block"
+        );
+    }
+
+    #[test]
+    fn banner_dispatch_multi_program_canonical() {
+        // The §H.5 p100 canonical line as a full banner.
+        let parsed = make_banner(
+            "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
+        );
+        let sar = parsed.attrs.sar_markings.as_ref().expect("sar present");
+        assert_eq!(sar.programs.len(), 3);
+        let ids: Vec<&str> = sar.programs.iter().map(|p| &*p.identifier).collect();
+        assert_eq!(ids, vec!["BP", "CD", "XR"]);
+
+        // Token-span offsets are absolute into the banner string. Find the
+        // SarIndicator and verify its byte slice.
+        let src = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SarIndicator)
+            .expect("SarIndicator span present");
+        assert_eq!(&*src.text, "SAR-");
+        // `SECRET//` is 8 bytes, so `SAR-` starts at offset 8.
+        assert_eq!(src.span, Span::new(8, 12));
+    }
+
+    #[test]
+    fn second_sar_block_becomes_unknown() {
+        // Two SAR category blocks: the first populates `sar_markings`; the
+        // second is left as `Unknown` so rule E030 can flag the repeat.
+        let parsed = make_banner("SECRET//SAR-BP//SAR-CD//NOFORN");
+        let sar = parsed
+            .attrs
+            .sar_markings
+            .as_ref()
+            .expect("first SAR block populates sar_markings");
+        assert_eq!(sar.programs.len(), 1);
+        assert_eq!(&*sar.programs[0].identifier, "BP");
+
+        // The `SAR-CD` block must appear as an Unknown span.
+        let unknown_texts: Vec<&str> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .map(|t| &*t.text)
+            .collect();
+        assert!(
+            unknown_texts.iter().any(|t| *t == "SAR-CD"),
+            "duplicate SAR block must be recorded as Unknown, got: {unknown_texts:?}",
         );
     }
 }
