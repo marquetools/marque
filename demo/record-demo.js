@@ -2,18 +2,22 @@
 /**
  * record-demo.js — Playwright demo video producer for marque
  *
- * Starts the demo server, records a narrated walkthrough via browser automation,
- * and saves a .webm video alongside a .mp4 transcode (if ffmpeg is available).
+ * Records a scripted walkthrough of the Marque interactive demo:
+ *   Scene 1  — (U/FOUO) typo → auto-corrects to (U//FOUO)
+ *   Scene 2  — (DEU C//REL TO NATO) → (//DEU C//REL TO USA, NATO)
+ *   Scene 3  — (SERCET//NF) → (S//NF)  — typo + abbreviation
+ *   Scene 4  — (TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK) — complex reorder + abbreviation
+ *   Outro    — scroll to audit log
  *
  * Usage:
- *   node record-demo.js [--port 4242] [--output demo.webm] [--headed]
+ *   node record-demo.js [--port 4343] [--output demo.webm] [--headed]
  *
  * Requirements:
  *   npm install playwright
  *   npx playwright install chromium
  *
  * Optional (for MP4 transcode):
- *   apt install ffmpeg  (or brew install ffmpeg)
+ *   ffmpeg  (apt install ffmpeg / brew install ffmpeg)
  */
 
 'use strict';
@@ -29,7 +33,7 @@ const { spawn, execSync } = require('child_process');
 // ---------------------------------------------------------------------------
 
 const argv = process.argv.slice(2);
-let port    = 4343; // different from default dev port to avoid conflicts
+let port    = 4343;
 let outFile = path.resolve(__dirname, 'demo.webm');
 let headed  = false;
 
@@ -45,161 +49,198 @@ const BASE_URL = `http://localhost:${port}`;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Wait until the server is accepting connections. */
-function waitForServer(url, timeoutMs = 10_000) {
+function waitForServer(url, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     function attempt() {
-      http.get(url, res => {
-        res.resume();
-        resolve();
-      }).on('error', () => {
-        if (Date.now() > deadline) reject(new Error(`Server at ${url} did not start in time`));
-        else setTimeout(attempt, 200);
-      });
+      http.get(url, res => { res.resume(); resolve(); })
+        .on('error', () => {
+          if (Date.now() > deadline) reject(new Error(`Server at ${url} did not start`));
+          else setTimeout(attempt, 200);
+        });
     }
     attempt();
   });
 }
 
-/** Type text character by character with a realistic delay. */
-async function typeSlowly(page, selector, text, { delay = 80 } = {}) {
-  const el = page.locator(selector);
-  await el.click();
-  for (const ch of text) {
-    await page.keyboard.type(ch);
-    await page.waitForTimeout(delay + Math.random() * 40);
-  }
-}
-
-/** Type into the CodeMirror editor (which isn't a real textarea). */
-async function typeIntoEditor(page, text, { delay = 80 } = {}) {
-  // The CodeMirror content div is contenteditable
-  const editor = page.locator('.cm-content');
-  await editor.click({ position: { x: 5, y: 5 } });
-  for (const ch of text) {
-    await page.keyboard.type(ch);
-    await page.waitForTimeout(delay + Math.random() * 30);
-  }
-}
-
-/** Move the CM cursor to the end of the document. */
-async function goToEditorEnd(page) {
-  const editor = page.locator('.cm-content');
-  await editor.click();
-  await page.keyboard.press('Control+End');
-  await page.waitForTimeout(200);
-}
-
-/** Pause for a beat (hold on a frame for the viewer). */
 const hold = (page, ms) => page.waitForTimeout(ms);
 
-// ---------------------------------------------------------------------------
-// Script scenes
-// ---------------------------------------------------------------------------
+/** Jitter ±40 % around a base delay (keeps typing looking human). */
+const jitter = base => base * 0.6 + Math.random() * base * 0.8;
 
 /**
- * Scene 1: Initial load — show the document with the SERCET typo autocorrecting
- * in the seed text.  The correction fires immediately after WASM loads.
+ * Type text into the CodeMirror editor character by character.
+ * Handles special chars like newlines via keyboard.press.
  */
-async function sceneInitialLoad(page) {
-  console.log('  Scene 1: initial load');
-  await page.goto(BASE_URL);
-
-  // Wait for the CodeMirror editor to mount
-  await page.waitForSelector('.cm-content', { timeout: 15_000 });
-
-  // Wait a moment for the WASM engine to initialise and auto-correct the seed typo
-  await hold(page, 2000);
-
-  // Hold on the corrected document so the viewer can read it
-  await hold(page, 3000);
-}
-
-/**
- * Scene 2: Show the audit trail entry that appeared from the SERCET→SECRET fix.
- */
-async function sceneShowAudit(page) {
-  console.log('  Scene 2: audit trail');
-  // Scroll gently to reveal the audit stream below the document
-  await page.evaluate(() => {
-    const stream = document.getElementById('audit-stream');
-    if (stream) stream.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
-  await hold(page, 2500);
-
-  // Scroll back up
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  await hold(page, 1000);
-}
-
-/**
- * Scene 3: User types a new TS//SCI paragraph with a banner-change effect.
- */
-async function sceneTypeTsSci(page) {
-  console.log('  Scene 3: type TS//SI paragraph');
-  await goToEditorEnd(page);
-
-  // Add two blank lines then a TS//SI//NF portion
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter');
-  await hold(page, 400);
-  await typeIntoEditor(page, '(TS//SI//NF) ', { delay: 90 });
-  await hold(page, 800); // let banner update animate
-  await typeIntoEditor(page, 'Sensitive compartmented reporting confirms the assessment.', { delay: 55 });
-  await hold(page, 1500);
-}
-
-/**
- * Scene 4: Deliberately type a typo, watch it self-correct.
- */
-async function sceneTypoCorrection(page) {
-  console.log('  Scene 4: typo self-correction');
-  await goToEditorEnd(page);
-
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter');
-  await hold(page, 300);
-
-  // Type a paragraph with another known typo — the corrections-map will catch it
-  await typeIntoEditor(page, '(SERCET//NF) ', { delay: 100 });
-  // Pause — let the debounce fire and show the correction mid-word
-  await hold(page, 600);
-  await typeIntoEditor(page, 'This line had a typo in the portion marking.', { delay: 60 });
-  await hold(page, 1800);
-}
-
-/**
- * Scene 5: Hover a squiggly underline to show the tooltip.
- */
-async function sceneTooltip(page) {
-  console.log('  Scene 5: tooltip hover');
-  // Find any element with the marque-warn or marque-error class
-  const diagnostic = page.locator('.marque-error, .marque-warn').first();
-  const exists = await diagnostic.count();
-  if (exists > 0) {
-    await diagnostic.hover();
-    await hold(page, 2500);
-    // Move away
-    await page.mouse.move(100, 100);
-    await hold(page, 500);
+async function type(page, text, { charMs = 95 } = {}) {
+  for (const ch of text) {
+    if (ch === '\n') {
+      await page.keyboard.press('Enter');
+    } else {
+      await page.keyboard.type(ch);
+    }
+    await page.waitForTimeout(jitter(charMs));
   }
 }
 
+/** Focus the editor and place cursor at the end of document. */
+async function focusEnd(page) {
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+End');
+  await page.waitForTimeout(150);
+}
+
 /**
- * Scene 6: Scroll through the audit log — show it's been building up.
+ * Wait for a visible correction — polls until the editor text no longer
+ * contains `errorText`.  Timeout after `ms` millis (returns without error).
  */
-async function sceneAuditScroll(page) {
-  console.log('  Scene 6: scroll audit log');
-  await page.evaluate(() => {
-    const stream = document.getElementById('audit-stream');
-    if (stream) stream.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-  await hold(page, 1000);
-  await page.evaluate(() => window.scrollBy({ top: 300, behavior: 'smooth' }));
+async function waitForCorrection(page, errorText, ms = 2000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const content = await page.locator('.cm-content').innerText();
+    if (!content.includes(errorText)) return;
+    await page.waitForTimeout(50);
+  }
+}
+
+/** Hold after a correction so the viewer can absorb the change. */
+const afterCorrection = page => hold(page, 1400);
+/** Short beat between paragraphs. */
+const betweenParagraphs = page => hold(page, 900);
+
+// ---------------------------------------------------------------------------
+// Scene runners
+// ---------------------------------------------------------------------------
+
+/**
+ * Scene 0 — Blank document reveal.
+ * Navigate, wait for WASM, clear any seed content, hold on empty state.
+ */
+async function scene0_blank(page) {
+  console.log('  Scene 0: blank document reveal');
+  await page.goto(BASE_URL);
+
+  // Wait for CodeMirror and WASM engine
+  await page.waitForSelector('.cm-content', { timeout: 20_000 });
+  await hold(page, 2200); // WASM init + configure()
+
+  // Clear any seed content so we start from a clean slate
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await hold(page, 400);
+
+  // Hold on the blank document — UNCLASSIFIED banners visible
   await hold(page, 2000);
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+}
+
+/**
+ * Scene 1 — FOUO: type (U/FOUO), watch it correct to (U//FOUO).
+ * Banner updates to UNCLASSIFIED//FOR OFFICIAL USE ONLY.
+ */
+async function scene1_fouo(page) {
+  console.log('  Scene 1: U/FOUO → U//FOUO');
+  await focusEnd(page);
+
+  // Type the marking with the deliberate single-slash mistake
+  await type(page, '(U/FOUO) ');
+
+  // Pause — let the debounce fire and the correction animate
+  await waitForCorrection(page, 'U/FOUO', 2000);
+  await afterCorrection(page);
+
+  // Type body text
+  await type(page, 'Initial assessment prepared for authorized recipients under appropriate handling controls.', { charMs: 55 });
   await hold(page, 800);
+
+  // New paragraph
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await betweenParagraphs(page);
+}
+
+/**
+ * Scene 2 — FGI: type (DEU C//REL TO NATO), watch it correct to
+ * (//DEU C//REL TO USA, NATO).
+ * Banner updates to //DEU CONFIDENTIAL//REL TO USA, NATO.
+ */
+async function scene2_fgi(page) {
+  console.log('  Scene 2: DEU C//REL TO NATO → FGI corrected form');
+  await focusEnd(page);
+
+  await type(page, '(DEU C//REL TO NATO)');
+
+  await waitForCorrection(page, 'DEU C//REL TO NATO', 2000);
+  await afterCorrection(page);
+
+  await type(page, ' Allied partners have provided supporting analysis consistent with ongoing bilateral sharing agreements.', { charMs: 50 });
+  await hold(page, 800);
+
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await betweenParagraphs(page);
+}
+
+/**
+ * Scene 3 — Typo: type (SERCET//NF), watch it correct to (S//NF).
+ * Banner updates to SECRET//FGI DEU//NOFORN.
+ */
+async function scene3_typo(page) {
+  console.log('  Scene 3: SERCET//NF → S//NF');
+  await focusEnd(page);
+
+  await type(page, '(SERCET//NF) ');
+
+  await waitForCorrection(page, 'SERCET', 2000);
+  await afterCorrection(page);
+
+  await type(page, 'Sensitive source reporting confirms the threat assessment with high confidence.', { charMs: 52 });
+  await hold(page, 800);
+
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await betweenParagraphs(page);
+}
+
+/**
+ * Scene 4 — Complex TS marking: type the disordered/verbose form, watch the
+ * engine reorder, strip FOUO, and abbreviate SAR program names.
+ * Input:   (TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK)
+ * Output:  (TS//SI/TK//SAR-BP/SDA)
+ * Banner:  TOP SECRET//SI/TK//SAR-BUTTER POPCORN/SODA//FGI DEU//NOFORN
+ */
+async function scene4_ts_complex(page) {
+  console.log('  Scene 4: TS complex reorder + SAR abbreviation');
+  await focusEnd(page);
+
+  // Type slowly — this is the climax scene, give the viewer time to read it
+  await type(page, '(TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK)', { charMs: 110 });
+
+  // Longer hold — many fixes fire simultaneously; let the viewer absorb the
+  // input text before the correction snaps it into canonical form
+  await hold(page, 800);
+  await waitForCorrection(page, 'FOUO', 3000);
+  await hold(page, 2200); // extra hold on corrected form + banner
+
+  // Brief sentence to complete the last paragraph
+  await type(page, ' Special access reporting corroborates the assessment.', { charMs: 55 });
+  await hold(page, 1200);
+}
+
+/**
+ * Outro — scroll down to reveal the audit log, then back up.
+ */
+async function outro(page) {
+  console.log('  Outro: audit log reveal');
+  await hold(page, 800);
+
+  await page.evaluate(() => {
+    document.getElementById('audit-stream')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  await hold(page, 3500);
+
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  await hold(page, 1500);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,8 +248,8 @@ async function sceneAuditScroll(page) {
 // ---------------------------------------------------------------------------
 
 (async () => {
-  // ── 1. Start the demo server ────────────────────────────────────────────
-  console.log(`Starting demo server on port ${port}…`);
+  // ── Start the demo server ──────────────────────────────────────────────────
+  console.log(`\nStarting demo server on port ${port}…`);
   const serverProc = spawn(
     process.execPath,
     [path.join(__dirname, 'bin', 'serve.js'), '--port', String(port), '--no-open'],
@@ -221,7 +262,7 @@ async function sceneAuditScroll(page) {
     await waitForServer(BASE_URL);
     console.log('Server ready.\n');
 
-    // ── 2. Launch browser with video recording ──────────────────────────
+    // ── Launch browser with video recording ────────────────────────────────
     const videoDir = path.join(__dirname, '.video-tmp');
     fs.mkdirSync(videoDir, { recursive: true });
 
@@ -231,42 +272,42 @@ async function sceneAuditScroll(page) {
     });
 
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      deviceScaleFactor: 2, // HiDPI — crisp text in the recording
+      viewport:        { width: 1280, height: 800 },
+      deviceScaleFactor: 2,       // HiDPI — crisp text in the recording
       recordVideo: {
-        dir: videoDir,
+        dir:  videoDir,
         size: { width: 1280, height: 800 },
       },
     });
 
     const page = await context.newPage();
 
-    // ── 3. Run the demo script ──────────────────────────────────────────
+    // ── Run the script ─────────────────────────────────────────────────────
     console.log('Recording…\n');
-    await sceneInitialLoad(page);
-    await sceneShowAudit(page);
-    await sceneTypeTsSci(page);
-    await sceneTypoCorrection(page);
-    await sceneTooltip(page);
-    await sceneAuditScroll(page);
+    await scene0_blank(page);
+    await scene1_fouo(page);
+    await scene2_fgi(page);
+    await scene3_typo(page);
+    await scene4_ts_complex(page);
+    await outro(page);
 
-    // Final hold — let the viewer absorb the finished state
-    await hold(page, 3000);
+    // Final hold on the completed document
+    await hold(page, 2500);
 
-    // ── 4. Save video ───────────────────────────────────────────────────
+    // ── Save video ─────────────────────────────────────────────────────────
     const videoPath = await page.video()?.path();
-    await context.close(); // triggers video finalisation
+    await context.close();   // finalises the .webm
     await browser.close();
 
     if (videoPath && fs.existsSync(videoPath)) {
       fs.renameSync(videoPath, outFile);
       console.log(`\nVideo saved: ${outFile}`);
 
-      // Optional: transcode to MP4 with ffmpeg
       const mp4Out = outFile.replace(/\.webm$/i, '.mp4');
       try {
         execSync(
-          `ffmpeg -y -i "${outFile}" -c:v libx264 -preset fast -crf 18 -movflags +faststart "${mp4Out}"`,
+          `ffmpeg -y -loglevel error -i "${outFile}" ` +
+          `-c:v libx264 -preset fast -crf 18 -movflags +faststart "${mp4Out}"`,
           { stdio: 'pipe' }
         );
         console.log(`MP4 saved:   ${mp4Out}`);
@@ -275,11 +316,11 @@ async function sceneAuditScroll(page) {
       }
     } else {
       console.error('Video file not found after recording.');
+      process.exitCode = 1;
     }
 
   } finally {
     serverProc.kill();
-    // Clean up temp dir
     fs.rmSync(path.join(__dirname, '.video-tmp'), { recursive: true, force: true });
   }
 })().catch(err => {

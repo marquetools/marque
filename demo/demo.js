@@ -32,13 +32,7 @@ import {
 // Pre-loaded document body
 // ---------------------------------------------------------------------------
 
-const INITIAL_BODY = `(TS//SI/TK//NF) This paragraph covers the program's overall status and top-line findings from the most recent collection cycle.
-
-(S//NF) Supporting analysis has been coordinated across the relevant agencies and is reflected in the assessment below.
-
-(U) This paragraph contains general background information and does not require special handling.
-
-(SERCET//NF) This paragraph contains a classification typo — watch it correct automatically.`;
+const INITIAL_BODY = ``;
 
 // ---------------------------------------------------------------------------
 // CodeMirror decoration effects and state field
