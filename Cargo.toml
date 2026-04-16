@@ -36,7 +36,7 @@ marque-test-utils = { path = "crates/marque-test-utils" }
 async-trait = "0.1.89"
 futures = "0.3.32"
 # Async
-tokio = { version = "1.51.1", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 
 aho-corasick = "1.1.4"
 # Text processing / scanning
@@ -49,7 +49,7 @@ thiserror = "2.0.18"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.149"
-toml = "1.1.2+spec-1.1.0"
+toml = "1.1.2"
 
 # HTTP / server
 axum = { version = "0.8.9", features = ["json"] }

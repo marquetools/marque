@@ -16,12 +16,71 @@
 //! `contracts/diagnostic.json`).
 
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{Clock, Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_arch = "wasm32")]
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
+
+// ---------------------------------------------------------------------------
+// WASM-compatible clock — Date.now() via wasm_bindgen extern
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen]
+extern "C" {
+    /// JavaScript `Date.now()` — returns milliseconds since Unix epoch.
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    fn date_now_ms() -> f64;
+}
+
+/// Clock implementation for WASM that calls JavaScript's `Date.now()`.
+///
+/// `SystemTime::now()` is not available on `wasm32-unknown-unknown` (panics
+/// with "time not implemented on this platform"). This clock converts the
+/// JS millisecond timestamp into a `SystemTime` that the engine's audit
+/// records expect.
+struct WasmClock;
+
+impl Clock for WasmClock {
+    fn now(&self) -> SystemTime {
+        // date_now_ms() is only available in WASM context. In native test
+        // context this struct is never constructed — native tests use
+        // Engine::new() which injects SystemClock.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let millis = date_now_ms() as u64;
+            UNIX_EPOCH + Duration::from_millis(millis)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            SystemTime::now()
+        }
+    }
+}
+
+/// Returns the current calendar year, usable in both native and WASM contexts.
+///
+/// In WASM, uses `Date.now()` via wasm_bindgen. In native, uses `SystemTime`.
+fn current_year() -> u32 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let millis = date_now_ms() as u64;
+        let secs = millis / 1000;
+        1970 + (secs / SECONDS_PER_JULIAN_YEAR) as u32
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        1970 + (secs / SECONDS_PER_JULIAN_YEAR) as u32
+    }
+}
 
 // ---------------------------------------------------------------------------
 // JSON serialization types — duplicated from CLI render.rs for SC-008 parity.
@@ -205,12 +264,18 @@ thread_local! {
 ///
 /// The hot path (same config across calls) is an `Option<String>` comparison
 /// and a `RefCell` borrow — no allocations, no AhoCorasick rebuild.
+///
+/// Uses `try_borrow_mut` to recover gracefully if a prior WASM trap left the
+/// RefCell in a borrowed state (WASM traps don't unwind, so `borrow_mut`
+/// guards are never released on panic).
 fn with_engine<T>(
     config_json: &Option<String>,
     f: impl FnOnce(&Engine) -> Result<T, String>,
 ) -> Result<T, String> {
     ENGINE_CACHE.with(|cell| {
-        let mut cache = cell.borrow_mut();
+        let mut cache = cell.try_borrow_mut().map_err(|_| {
+            "engine cache is locked (likely a prior WASM panic poisoned the RefCell)".to_string()
+        })?;
 
         let needs_rebuild = match &*cache {
             None => true,
@@ -220,7 +285,11 @@ fn with_engine<T>(
         if needs_rebuild {
             let config = parse_config(config_json)?;
             *cache = Some(CachedEngine {
-                engine: Engine::new(config, marque_engine::default_ruleset()),
+                engine: Engine::with_clock(
+                    config,
+                    marque_engine::default_ruleset(),
+                    Box::new(WasmClock),
+                ),
                 config_key: config_json.clone(),
             });
         }
@@ -249,8 +318,7 @@ pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, St
         // String allocation that serde_json::to_string produces per diagnostic.
         let mut buf = Vec::with_capacity(result.diagnostics.len() * 256);
         for d in &result.diagnostics {
-            serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
-                .map_err(|e| e.to_string())?;
+            serde_json::to_writer(&mut buf, &diagnostic_to_json(d)).map_err(|e| e.to_string())?;
             buf.push(b'\n');
         }
         // serde_json always produces valid UTF-8.
@@ -332,8 +400,7 @@ pub fn lint_batch_native(
     entries_json: &str,
     config_json: Option<String>,
 ) -> Result<String, String> {
-    let entries: Vec<BatchEntry> =
-        serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
+    let entries: Vec<BatchEntry> = serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
 
     with_engine(&config_json, |engine| {
         let results: Vec<BatchResultEntry<'_>> = entries
@@ -348,8 +415,7 @@ pub fn lint_batch_native(
                         serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
                             .map_err(|e| e.to_string())?;
                         let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
-                        serde_json::value::RawValue::from_string(json)
-                            .map_err(|e| e.to_string())
+                        serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
                     })
                     .collect::<Result<_, String>>()?;
 
@@ -437,10 +503,7 @@ pub fn fix(text: &str, threshold: f32, config_json: Option<String>) -> Result<St
 /// - `entries_json`: JSON array of `{"id": string, "text": string}` objects
 /// - `config_json`: optional JSON config (same as `lint`)
 #[wasm_bindgen]
-pub fn lint_batch(
-    entries_json: &str,
-    config_json: Option<String>,
-) -> Result<String, JsValue> {
+pub fn lint_batch(entries_json: &str, config_json: Option<String>) -> Result<String, JsValue> {
     lint_batch_native(entries_json, config_json).map_err(|e| JsValue::from_str(&e))
 }
 
@@ -586,20 +649,6 @@ pub fn generate_cab_native(
 /// Seconds in a Julian year (365.25 × 24 × 3600), used to approximate the
 /// current calendar year from a UNIX timestamp.
 const SECONDS_PER_JULIAN_YEAR: u64 = 31_557_600;
-
-/// Returns the current calendar year, usable in both native and WASM contexts.
-///
-/// Uses `std::time::SystemTime` (available since Rust 1.85 in `wasm32-unknown-unknown`).
-/// Falls back gracefully if the system clock is unavailable.
-fn current_year() -> u32 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    // Approximate: 1970 + elapsed_seconds / seconds_per_year (Julian year ≈ 365.25 days)
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    1970 + (secs / SECONDS_PER_JULIAN_YEAR) as u32
-}
 
 /// Generate a Classification Authority Block (CAB) text block.
 ///

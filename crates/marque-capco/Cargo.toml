@@ -21,5 +21,5 @@ marque-core = { workspace = true }
 # path-only (no version) so `cargo publish` strips these dev-deps from the
 # uploaded manifest: marque-engine depends on marque-capco (cycle at publish
 # time), and marque-test-utils is publish=false.
-marque-engine = { path = "../marque-engine" }
-marque-test-utils = { path = "../marque-test-utils" }
+marque-engine = { workspace = true }
+marque-test-utils = { workspace = true }

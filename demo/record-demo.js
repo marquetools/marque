@@ -3,10 +3,10 @@
  * record-demo.js — Playwright demo video producer for marque
  *
  * Records a scripted walkthrough of the Marque interactive demo:
- *   Scene 1  — (U/FOUO) typo → auto-corrects to (U//FOUO)
- *   Scene 2  — (DEU C//REL TO NATO) → (//DEU C//REL TO USA, NATO)
- *   Scene 3  — (SERCET//NF) → (S//NF)  — typo + abbreviation
- *   Scene 4  — (TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK) — complex reorder + abbreviation
+ *   Scene 1  — (U//FOUO) → (U//CUI) — deprecated control migration
+ *   Scene 2  — (SECRET//NOFORN) → (S//NF) — abbreviation enforcement
+ *   Scene 3  — (SERCET//NF) → (S//NF) — typo correction + abbreviation
+ *   Scene 4  — (TS//SI-G//NOFORN) → (TS//SI-G//NF) — TS/SCI + banner escalation
  *   Outro    — scroll to audit log
  *
  * Usage:
@@ -135,18 +135,18 @@ async function scene0_blank(page) {
 }
 
 /**
- * Scene 1 — FOUO: type (U/FOUO), watch it correct to (U//FOUO).
- * Banner updates to UNCLASSIFIED//FOR OFFICIAL USE ONLY.
+ * Scene 1 — Deprecated control: type (U//FOUO), watch it auto-correct to (U//CUI).
+ * FOUO is deprecated per CAPCO-2016 §F; the migration table replaces it with CUI.
+ * Banner: UNCLASSIFIED (U-level marking doesn't elevate the banner).
  */
 async function scene1_fouo(page) {
-  console.log('  Scene 1: U/FOUO → U//FOUO');
+  console.log('  Scene 1: (U//FOUO) → (U//CUI)');
   await focusEnd(page);
 
-  // Type the marking with the deliberate single-slash mistake
-  await type(page, '(U/FOUO) ');
+  await type(page, '(U//FOUO) ');
 
   // Pause — let the debounce fire and the correction animate
-  await waitForCorrection(page, 'U/FOUO', 2000);
+  await waitForCorrection(page, 'FOUO', 2000);
   await afterCorrection(page);
 
   // Type body text
@@ -160,20 +160,21 @@ async function scene1_fouo(page) {
 }
 
 /**
- * Scene 2 — FGI: type (DEU C//REL TO NATO), watch it correct to
- * (//DEU C//REL TO USA, NATO).
- * Banner updates to //DEU CONFIDENTIAL//REL TO USA, NATO.
+ * Scene 2 — Abbreviation enforcement: type (SECRET//NOFORN), watch it correct
+ * to (S//NF). Rule E009 enforces abbreviated forms in portion markings per
+ * CAPCO-2016 §C.1.
+ * Banner updates to SECRET//NOFORN.
  */
-async function scene2_fgi(page) {
-  console.log('  Scene 2: DEU C//REL TO NATO → FGI corrected form');
+async function scene2_abbreviation(page) {
+  console.log('  Scene 2: (SECRET//NOFORN) → (S//NF)');
   await focusEnd(page);
 
-  await type(page, '(DEU C//REL TO NATO)');
+  await type(page, '(SECRET//NOFORN) ');
 
-  await waitForCorrection(page, 'DEU C//REL TO NATO', 2000);
+  await waitForCorrection(page, 'NOFORN', 2000);
   await afterCorrection(page);
 
-  await type(page, ' Allied partners have provided supporting analysis consistent with ongoing bilateral sharing agreements.', { charMs: 50 });
+  await type(page, 'Classified source material confirms the operational assessment with high confidence.', { charMs: 50 });
   await hold(page, 800);
 
   await page.keyboard.press('Enter');
@@ -182,11 +183,13 @@ async function scene2_fgi(page) {
 }
 
 /**
- * Scene 3 — Typo: type (SERCET//NF), watch it correct to (S//NF).
- * Banner updates to SECRET//FGI DEU//NOFORN.
+ * Scene 3 — Typo correction: type (SERCET//NF), watch the two-pass pipeline
+ * correct the typo via the corrections map (C001: SERCET → SECRET) then
+ * abbreviate (E009: SECRET → S), yielding (S//NF).
+ * Banner remains SECRET//NOFORN (same classification level as scene 2).
  */
 async function scene3_typo(page) {
-  console.log('  Scene 3: SERCET//NF → S//NF');
+  console.log('  Scene 3: (SERCET//NF) → (S//NF)');
   await focusEnd(page);
 
   await type(page, '(SERCET//NF) ');
@@ -194,7 +197,7 @@ async function scene3_typo(page) {
   await waitForCorrection(page, 'SERCET', 2000);
   await afterCorrection(page);
 
-  await type(page, 'Sensitive source reporting confirms the threat assessment with high confidence.', { charMs: 52 });
+  await type(page, 'Sensitive reporting corroborates the threat assessment.', { charMs: 52 });
   await hold(page, 800);
 
   await page.keyboard.press('Enter');
@@ -203,27 +206,24 @@ async function scene3_typo(page) {
 }
 
 /**
- * Scene 4 — Complex TS marking: type the disordered/verbose form, watch the
- * engine reorder, strip FOUO, and abbreviate SAR program names.
- * Input:   (TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK)
- * Output:  (TS//SI/TK//SAR-BP/SDA)
- * Banner:  TOP SECRET//SI/TK//SAR-BUTTER POPCORN/SODA//FGI DEU//NOFORN
+ * Scene 4 — TS/SCI escalation: type (TS//SI-G//NOFORN), watch the engine
+ * abbreviate NOFORN → NF (E009).
+ * Banner escalates to TOP SECRET//SI-G//NOFORN — the climax of the demo.
  */
-async function scene4_ts_complex(page) {
-  console.log('  Scene 4: TS complex reorder + SAR abbreviation');
+async function scene4_ts_sci(page) {
+  console.log('  Scene 4: (TS//SI-G//NOFORN) → (TS//SI-G//NF)');
   await focusEnd(page);
 
   // Type slowly — this is the climax scene, give the viewer time to read it
-  await type(page, '(TS//FOUO//SAR-BUTTER POPCORN/SODA//SI-TK)', { charMs: 110 });
+  await type(page, '(TS//SI-G//NOFORN)', { charMs: 100 });
 
-  // Longer hold — many fixes fire simultaneously; let the viewer absorb the
-  // input text before the correction snaps it into canonical form
+  // Hold to let the viewer see the marking before correction fires
   await hold(page, 800);
-  await waitForCorrection(page, 'FOUO', 3000);
+  await waitForCorrection(page, 'NOFORN', 3000);
   await hold(page, 2200); // extra hold on corrected form + banner
 
   // Brief sentence to complete the last paragraph
-  await type(page, ' Special access reporting corroborates the assessment.', { charMs: 55 });
+  await type(page, ' Compartmented analysis supports the assessment.', { charMs: 55 });
   await hold(page, 1200);
 }
 
@@ -286,9 +286,9 @@ async function outro(page) {
     console.log('Recording…\n');
     await scene0_blank(page);
     await scene1_fouo(page);
-    await scene2_fgi(page);
+    await scene2_abbreviation(page);
     await scene3_typo(page);
-    await scene4_ts_complex(page);
+    await scene4_ts_sci(page);
     await outro(page);
 
     // Final hold on the completed document

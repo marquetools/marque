@@ -16,7 +16,7 @@
  * running from an npm-installed package).
  */
 
-import init, { configure, lint, fix, compute_banner }
+import initWasm, { configure, lint, fix, compute_banner }
   from '/wasm/marque_wasm.js';
 
 import {
@@ -27,6 +27,35 @@ import {
   StateField,
   EditorState,
 } from './vendor.js';
+
+// ---------------------------------------------------------------------------
+// WASM engine configuration
+// ---------------------------------------------------------------------------
+
+/**
+ * Corrections map: common typos and misspellings of classification terms.
+ * The engine's pre-scanner AhoCorasick automaton detects these in raw text
+ * and emits C001 diagnostics before the scanner/parser even runs, enabling
+ * the two-pass fix pipeline to correct typos AND apply downstream rules
+ * (e.g., SERCET → SECRET → S in a portion).
+ */
+const DEMO_CONFIG = JSON.stringify({
+  corrections: {
+    'SERCET':        'SECRET',
+    'SECERT':        'SECRET',
+    'SECRECT':       'SECRET',
+    'SCERET':        'SECRET',
+    'SECRTE':        'SECRET',
+    'CONFIDETIAL':   'CONFIDENTIAL',
+    'CONFIENTIAL':   'CONFIDENTIAL',
+    'CONFIDENTAL':   'CONFIDENTIAL',
+    'UNCALSSIFIED':  'UNCLASSIFIED',
+    'UNCLASSFIED':   'UNCLASSIFIED',
+    'UNCLASSIFED':   'UNCLASSIFIED',
+    'NOFON':         'NOFORN',
+    'NOFRON':        'NOFORN',
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Pre-loaded document body
@@ -206,8 +235,9 @@ function runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty) {
   // 1. Call fix() — threshold 0.0 applies every suggestion.
   let fixResult;
   try {
-    fixResult = JSON.parse(fix(text, 0.0, null));
-  } catch {
+    fixResult = JSON.parse(fix(text, 0.0, DEMO_CONFIG));
+  } catch (err) {
+    console.error('[marque] fix() failed:', err);
     fixResult = null;
   }
 
@@ -215,8 +245,19 @@ function runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty) {
 
   if (fixResult && fixResult.applied && fixResult.applied.length > 0) {
     // Build targeted CodeMirror changes from the applied-fix spans.
-    // Positions are byte offsets into `text` (pre-fix). Sort ascending.
-    const changes = fixResult.applied
+    //
+    // The engine's two-pass fix pipeline may produce multiple applied fixes
+    // targeting the same span (e.g., pass-1 C001 "SERCET"→"SECRET" at span
+    // 52..58, then pass-2 E009 "SECRET"→"S" at the same span). CodeMirror
+    // cannot apply two changes at the same range in one transaction, so we
+    // deduplicate by span key, keeping only the LAST fix per span. The last
+    // fix represents the final state (e.g., the net effect is "SERCET"→"S").
+    const bySpan = new Map();
+    for (const f of fixResult.applied) {
+      const key = `${f.span.start}:${f.span.end}`;
+      bySpan.set(key, f);
+    }
+    const changes = [...bySpan.values()]
       .map(f => ({ from: f.span.start, to: f.span.end, insert: f.replacement }))
       .sort((a, b) => a.from - b.from);
 
@@ -226,9 +267,10 @@ function runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty) {
     // After patching the document, re-lint the fixed text for accurate spans.
     const fixedText = view.state.doc.toString();
     try {
-      const ndjson = lint(fixedText, null);
+      const ndjson = lint(fixedText, DEMO_CONFIG);
       diagList = ndjson ? parseNdjson(ndjson) : [];
-    } catch {
+    } catch (err) {
+      console.error('[marque] lint() failed:', err);
       diagList = [];
     }
 
@@ -297,11 +339,11 @@ function parseNdjson(ndjson) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  await init();
+  await initWasm();
 
-  // Pre-warm the engine cache — pays AhoCorasick + rule-set construction cost
-  // here, not on the first keystroke.
-  configure(null);
+  // Pre-warm the engine cache with the corrections map — pays AhoCorasick +
+  // rule-set construction cost here, not on the first keystroke.
+  configure(DEMO_CONFIG);
 
   const topBanner    = document.getElementById('banner-top');
   const bottomBanner = document.getElementById('banner-bottom');

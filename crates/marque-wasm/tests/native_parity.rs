@@ -418,10 +418,8 @@ fn lint_batch_parity_with_single_lint() {
             .map(|l| serde_json::from_str(l).unwrap())
             .collect();
 
-        let batch_diags: Vec<serde_json::Value> = batch_parsed[i]["diagnostics"]
-            .as_array()
-            .unwrap()
-            .to_vec();
+        let batch_diags: Vec<serde_json::Value> =
+            batch_parsed[i]["diagnostics"].as_array().unwrap().to_vec();
 
         assert_eq!(
             batch_parsed[i]["id"], *id,
