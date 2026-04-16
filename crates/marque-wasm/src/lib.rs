@@ -257,8 +257,8 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
 /// ```json
 /// {
 ///   "fixed_text": "SECRET//NOFORN\n",
-///   "applied": [ /* audit records per contracts/audit-record.json */ ],
-///   "remaining": [ /* diagnostics per contracts/diagnostic.json */ ]
+///   "applied": [ /* audit records per contracts/audit-record.json *\/ ],
+///   "remaining": [ /* diagnostics per contracts/diagnostic.json *\/ ]
 /// }
 /// ```
 ///

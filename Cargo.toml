@@ -23,10 +23,10 @@ repository = "https://github.com/marquetools/marque"
 license = "Apache-2.0"
 
 [workspace.dependencies]
-marque-capco = { path = "crates/marque-capco", version="0.2.0" }
-marque-config = { path = "crates/marque-config", version="0.2.0" }
+marque-capco = { path = "crates/marque-capco", version = "0.2.0" }
+marque-config = { path = "crates/marque-config", version = "0.2.0" }
 marque-core = { path = "crates/marque-core", version = "0.2.0" }
-marque-engine = { path = "crates/marque-engine", default-features = false, version="0.2.0" }
+marque-engine = { path = "crates/marque-engine", version = "0.2.0", default-features = false }
 marque-extract = { path = "crates/marque-extract", version = "0.2.0" }
 # Internal crates
 marque-ism = { path = "crates/marque-ism", version = "0.2.0" }
@@ -93,8 +93,23 @@ wasm-bindgen = "0.2.118"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
+[profile.bench]
+inherits = "release"
+debug = true
+debug-assertions = true
+overflow-checks = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "packed"
+debug-assertions = true
+overflow-checks = true
+incremental = true
+
 [profile.release]
 opt-level = 3
+debug = false
 strip = "symbols"
 lto = "fat"
 panic = "abort"

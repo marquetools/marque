@@ -7,21 +7,48 @@ description = "WASM target for marque — web worker and browser integration"
 repository.workspace = true
 license.workspace = true
 
-[package.metadata.wasm-pack.profile.release]
-# wasm-opt disabled: the bundled wasm-opt binary has a compatibility issue
-# with the WASM memory.copy instruction. The unoptimized artifact is ~252KB
-# (well under the 1MB target), so this is acceptable for the MVP.
-# Re-enable once wasm-opt is updated: wasm-opt = ["-Os"]
+[package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [
+  # tool options:
+  "--enable-bulk-memory-opt",
+  "--enable-bulk-memory",
+  "--enable-extended-const",
+  "--enable-gc",
+  "--enable-multi-value",
+  "--enable-mutable-globals",
+  "--enable-nontrapping-float-to-int",
+  "--enable-reference-types",
+  "--enable-sign-ext",
+  "--enable-simd",
+  "--enable-tail-call",
+  "--enable-threads",
+  "--enable-typed-function-references",
+
+  # optimization passes:
+  "--type-refining-gufa",
+  "--generate-global-effects",
+  "-O3",
+  "--monomorphize",
+  "--precompute-propagate",
+  "--low-memory-unused",
+  "--gufa",
+  "-O3",
+  "--converge",
+  "--strip-toolchain-annotations",
+]
+
+# alias for release
 [package.metadata.wasm-pack.profile.release-wasm]
-wasm-opt = false
+inherits = "release"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-console_error_panic_hook = { version = "0.1", optional = true }
+console_error_panic_hook = { version = "0.1.7", optional = true }
 humantime = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
