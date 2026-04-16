@@ -10,17 +10,15 @@
 
 <nav>
   <a class="logo" href="#">mar<span>que</span></a>
-  <span class="nav-hint">Classification marking linter &amp; auto-fixer</span>
+  <span class="nav-hint">CAPCO classification-marking linter &amp; auto-fixer</span>
 </nav>
 
 <div class="page-wrapper">
 
   <!-- Document card -->
-  <p class="section-heading">Live Document Preview</p>
+  <div class="document" id="document-card">
 
-  <div class="document">
-
-    <!-- Top banner (auto-updated) -->
+    <!-- Top banner (auto-updated from portion markings) -->
     <div class="banner level-empty" id="banner-top">Loading…</div>
 
     <!-- Memo header (non-editable) -->
@@ -54,58 +52,16 @@
     <!-- Bottom banner (mirrors top) -->
     <div class="banner level-empty" id="banner-bottom">Loading…</div>
 
-    <!-- CAB section -->
-    <div class="doc-cab">
-      <div class="cab-label">
-        Classification Authority Block
-        <button class="btn-generate-cab" id="btn-generate-cab">Generate CAB</button>
-      </div>
-      <pre id="cab-content" class="cab-placeholder">Click "Generate CAB" to populate from document markings.</pre>
-    </div>
-
   </div>
 
-  <!-- Issues panel -->
-  <p class="section-heading">Diagnostics</p>
-
-  <div class="issues-panel">
-    <div class="issues-header" id="issues-header">
-      <span>Issues</span>
-      <span class="badge badge-ok">✓</span>
-    </div>
-    <ul class="issues-list" id="issues-list">
-      <div class="issues-empty">Loading…</div>
-    </ul>
-  </div>
-
-  <!-- Playground -->
-  <p class="section-heading">Playground — Paste any text</p>
-
-  <div class="playground-section">
-    <div class="playground-header">
-      <span>Raw lint output (NDJSON)</span>
-    </div>
-    <div class="playground-body">
-      <div>
-        <div class="playground-input-label">Input</div>
-        <textarea
-          class="playground-textarea"
-          id="playground-input"
-          placeholder="Paste any text containing classification markings…"
-          spellcheck="false"
-        ></textarea>
-      </div>
-      <div>
-        <div class="playground-output-label">Diagnostics (NDJSON)</div>
-        <div class="playground-output" id="playground-output"></div>
-      </div>
-    </div>
+  <!-- Audit stream — blends with page background, prepends entries as fixes fire -->
+  <div class="audit-stream" id="audit-stream" aria-label="Correction audit log">
+    <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
   </div>
 
 </div>
 
 <script>
-  // Set today's date in memo header
   const d = new Date();
   document.getElementById('doc-date').textContent =
     d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });

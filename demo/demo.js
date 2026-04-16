@@ -3,15 +3,21 @@
  *
  * Loads the Marque WASM module and wires up the classified-memo editor:
  * - Real-time banner rollup from portion markings (compute_banner)
- * - Auto-fix via fix() at threshold 0.0 (applies all suggestions)
+ * - Correct-as-you-type via fix() at threshold 0.0 — applies targeted CodeMirror
+ *   changes (one per applied fix) rather than a full-document replacement, so
+ *   the cursor never jumps.
  * - Squiggly underlines via CodeMirror 6 Decoration API
  * - Hover tooltips showing rule ID, message, CAPCO citation
- * - CAB generation on demand (generate_cab)
- * - Playground section for ad-hoc testing with lint_batch
+ * - Inline audit stream: each fix produces a stylized entry prepended below the
+ *   document, blending into the page background.
+ *
+ * WASM path: served at /wasm/ by the dev server (bin/serve.js routes that prefix
+ * to crates/marque-wasm/pkg/ in the monorepo, or to the bundled wasm/ dir when
+ * running from an npm-installed package).
  */
 
-import init, { configure, lint, lint_batch, fix, compute_banner, generate_cab }
-  from '../crates/marque-wasm/pkg/marque_wasm.js';
+import init, { configure, lint, fix, compute_banner }
+  from '/wasm/marque_wasm.js';
 
 import {
   EditorView,
@@ -54,7 +60,6 @@ const diagnosticsField = StateField.define({
   provide: f => EditorView.decorations.from(f),
 });
 
-
 // ---------------------------------------------------------------------------
 // Classification level → CSS class
 // ---------------------------------------------------------------------------
@@ -69,7 +74,6 @@ function classificationClass(banner) {
   const b = banner.toUpperCase();
   for (const [prefix, cls] of LEVEL_CLASSES) {
     if (b.startsWith(prefix)) {
-      // TS with SCI controls (anything after //)
       if (prefix === 'TOP SECRET' && b.includes('//') && b.length > 10) {
         return 'level-ts-sci';
       }
@@ -110,47 +114,71 @@ function updateBanners(text, topEl, bottomEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Issues panel update — uses DocumentFragment for batched DOM insertion
+// Audit stream
 // ---------------------------------------------------------------------------
 
-function updateIssues(diagList, issuesList, issuesHeader) {
-  const badge = issuesHeader.querySelector('.badge');
+let auditEntryCount = 0;
 
-  if (diagList.length === 0) {
-    issuesList.innerHTML = '<li class="issues-empty">No issues found.</li>';
-    badge.textContent = '✓';
-    badge.className = 'badge badge-ok';
-    return;
+/**
+ * Prepend a styled entry into the audit stream for one applied fix.
+ *
+ * @param {object} fix  - An entry from fixResult.applied (AuditRecordJson)
+ * @param {Element} stream - The #audit-stream container
+ * @param {Element} emptyEl - The #audit-empty placeholder element
+ */
+function prependAuditEntry(fix, stream, emptyEl) {
+  if (emptyEl && emptyEl.parentNode === stream) {
+    stream.removeChild(emptyEl);
   }
 
-  let errorCount = 0;
-  let warnCount = 0;
-  const fragment = document.createDocumentFragment();
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const timeStr = `${hh}:${mm}:${ss}`;
 
-  for (const d of diagList) {
-    if (d.severity === 'error') errorCount++;
-    else if (d.severity === 'warn') warnCount++;
+  const sourceLabel = fix.source === 'CorrectionsMap' ? 'corrections-map'
+    : fix.source === 'BuiltinRule' ? 'rule'
+    : fix.source === 'MigrationTable' ? 'migration'
+    : fix.source.toLowerCase();
 
-    const li = document.createElement('li');
-    const ruleSpan = document.createElement('span');
-    ruleSpan.className = `issue-rule severity-${d.severity}`;
-    ruleSpan.textContent = d.rule;
+  const pct = Math.round((fix.confidence ?? 1) * 100);
 
-    const msgSpan = document.createElement('span');
-    msgSpan.className = 'issue-message';
-    msgSpan.textContent = d.message;
+  const entry = document.createElement('div');
+  entry.className = 'audit-entry';
+  entry.setAttribute('role', 'log');
+  entry.innerHTML = `
+    <span class="audit-time">${timeStr}</span>
+    <span class="audit-rule">${escapeHtml(fix.rule)}</span>
+    <span class="audit-original">${escapeHtml(fix.original)}</span>
+    <span class="audit-arrow">→</span>
+    <span class="audit-replacement">${escapeHtml(fix.replacement)}</span>
+    <span class="audit-source">${escapeHtml(sourceLabel)}</span>
+    <span class="audit-confidence">${pct}%</span>
+  `;
 
-    li.appendChild(ruleSpan);
-    li.appendChild(msgSpan);
-    fragment.appendChild(li);
+  // Prepend: insert before the first child (or append if empty)
+  if (stream.firstChild) {
+    stream.insertBefore(entry, stream.firstChild);
+  } else {
+    stream.appendChild(entry);
   }
 
-  badge.textContent = String(errorCount + warnCount);
-  badge.className = errorCount > 0 ? 'badge badge-error' : 'badge badge-warn';
+  auditEntryCount++;
+}
 
-  // Single DOM mutation: clear + append
-  issuesList.textContent = '';
-  issuesList.appendChild(fragment);
+/**
+ * Insert a thin separator rule between correction batches (keystroke groups).
+ */
+function prependAuditSeparator(stream) {
+  if (auditEntryCount === 0) return;
+  const hr = document.createElement('hr');
+  hr.className = 'audit-separator';
+  if (stream.firstChild) {
+    stream.insertBefore(hr, stream.firstChild);
+  } else {
+    stream.appendChild(hr);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,18 +186,30 @@ function updateIssues(diagList, issuesList, issuesHeader) {
 // ---------------------------------------------------------------------------
 
 let debounceTimer = null;
-const DEBOUNCE_MS = 50;
+const DEBOUNCE_MS = 80;
 
-/** Track last-processed text to skip redundant work on focus changes. */
+/** Track last-processed text to skip redundant work. */
 let lastProcessedText = null;
 
-function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
-  let text = view.state.doc.toString();
+/**
+ * runUpdate — called after each debounce interval.
+ *
+ * Fix strategy: instead of replacing the whole document (which moves the
+ * cursor), we apply each fix as a targeted CodeMirror change using the byte
+ * offsets returned by fix().  All changes in one transaction means one undo
+ * step and correct cursor remapping.
+ *
+ * CodeMirror 6 ChangeSet.of() requires changes sorted by ascending `from`
+ * position and expects all positions relative to the ORIGINAL document — the
+ * engine already guarantees non-overlapping spans, so we just sort and pass.
+ */
+function runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty) {
+  const text = view.state.doc.toString();
 
-  // Skip work if text hasn't changed (e.g., focus/blur with no edits).
   if (text === lastProcessedText) return;
+  lastProcessedText = text;
 
-  // 1. Apply all fixes (threshold 0.0 → apply everything including E003 reorders)
+  // 1. Call fix() — threshold 0.0 applies every suggestion.
   let fixResult;
   try {
     fixResult = JSON.parse(fix(text, 0.0, null));
@@ -180,40 +220,47 @@ function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
   let diagList;
 
   if (fixResult && fixResult.applied && fixResult.applied.length > 0) {
-    const fixed = fixResult.fixed_text;
-    if (fixed !== text) {
-      // Replace editor contents, preserving undo history
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: fixed },
-      });
-      text = fixed;
-    }
-    // Fixes were applied — remaining diagnostic spans reference the pre-fix
-    // text, so re-lint the fixed text for accurate byte offsets.
+    // Build targeted CodeMirror changes from the applied-fix spans.
+    // Positions are byte offsets into `text` (pre-fix). Sort ascending.
+    const changes = fixResult.applied
+      .map(f => ({ from: f.span.start, to: f.span.end, insert: f.replacement }))
+      .sort((a, b) => a.from - b.from);
+
+    // Dispatch as a single transaction — cursor is remapped naturally by CM.
+    view.dispatch({ changes });
+
+    // After patching the document, re-lint the fixed text for accurate spans.
+    const fixedText = view.state.doc.toString();
     try {
-      const ndjson = lint(text, null);
+      const ndjson = lint(fixedText, null);
       diagList = ndjson ? parseNdjson(ndjson) : [];
     } catch {
       diagList = [];
     }
+
+    // Update lastProcessedText so the change-listener doesn't loop.
+    lastProcessedText = fixedText;
+
+    // Append audit entries for each applied fix (newest first).
+    prependAuditSeparator(auditStream);
+    for (const f of fixResult.applied) {
+      prependAuditEntry(f, auditStream, auditEmpty);
+    }
   } else if (fixResult) {
-    // No fixes applied — remaining diagnostics have valid spans against
-    // the unchanged text. Skip the redundant lint() WASM call.
     diagList = fixResult.remaining || [];
   } else {
     diagList = [];
   }
 
-  lastProcessedText = text;
-
-  // 2. Build CodeMirror decorations from span info
+  // 2. Build CodeMirror decorations from remaining diagnostic spans.
+  const currentText = view.state.doc.toString();
   const decorationRanges = [];
   const diagData = [];
 
   for (const d of diagList) {
     const from = d.span?.start ?? 0;
     const to   = d.span?.end   ?? from;
-    if (from >= to || to > text.length) continue;
+    if (from >= to || to > currentText.length) continue;
 
     const cls = d.severity === 'error' ? 'marque-error' : 'marque-warn';
     decorationRanges.push(Decoration.mark({ class: cls }).range(from, to));
@@ -221,21 +268,15 @@ function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
   }
 
   decorationRanges.sort((a, b) => a.from - b.from);
-  const decos = Decoration.set(decorationRanges);
 
-  // Dispatch decoration update to CodeMirror
   view.dispatch({
-    effects: setDiagnosticsEffect.of(decos),
+    effects: setDiagnosticsEffect.of(Decoration.set(decorationRanges)),
   });
 
-  // Store diagnostic data on the view instance for tooltip access.
   view._marqueDiagData = diagData;
 
-  // 3. Update banners
-  updateBanners(text, topBanner, bottomBanner);
-
-  // 4. Update issues panel
-  updateIssues(diagList, issuesList, issuesHeader);
+  // 3. Update banners from whatever text is now in the editor.
+  updateBanners(currentText, topBanner, bottomBanner);
 }
 
 // ---------------------------------------------------------------------------
@@ -264,18 +305,16 @@ function parseNdjson(ndjson) {
 async function main() {
   await init();
 
-  // Pre-warm the engine cache — pays AhoCorasick + rule-set construction
-  // cost here instead of on the first user keystroke.
+  // Pre-warm the engine cache — pays AhoCorasick + rule-set construction cost
+  // here, not on the first keystroke.
   configure(null);
 
   const topBanner    = document.getElementById('banner-top');
   const bottomBanner = document.getElementById('banner-bottom');
-  const issuesList   = document.getElementById('issues-list');
-  const issuesHeader = document.getElementById('issues-header');
-  const cabContent   = document.getElementById('cab-content');
-  const btnCab       = document.getElementById('btn-generate-cab');
+  const auditStream  = document.getElementById('audit-stream');
+  const auditEmpty   = document.getElementById('audit-empty');
 
-  // Build a simpler tooltip that reads from view._marqueDiagData
+  // Tooltip that reads from view._marqueDiagData.
   const simpleTip = hoverTooltip((view, pos) => {
     const diags = view._marqueDiagData || [];
     const match = diags.find(d => pos >= d.from && pos < d.to);
@@ -297,7 +336,7 @@ async function main() {
     };
   });
 
-  // Create CodeMirror editor with document-style theme
+  // Create CodeMirror editor.
   const startState = EditorState.create({
     doc: INITIAL_BODY,
     extensions: [
@@ -324,9 +363,14 @@ async function main() {
       }, { dark: false }),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
+          // Skip the synthetic change dispatched by runUpdate itself —
+          // lastProcessedText is already set to the fixed text at that point.
+          const newText = update.view.state.doc.toString();
+          if (newText === lastProcessedText) return;
+
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            runUpdate(update.view, topBanner, bottomBanner, issuesList, issuesHeader);
+            runUpdate(update.view, topBanner, bottomBanner, auditStream, auditEmpty);
           }, DEBOUNCE_MS);
         }
       }),
@@ -338,74 +382,8 @@ async function main() {
     parent: document.getElementById('editor-mount'),
   });
 
-  // Run initial update
-  runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader);
-
-  // CAB button handler
-  btnCab.addEventListener('click', () => {
-    const text = view.state.doc.toString();
-    let cabText;
-    try {
-      cabText = generate_cab(text, null, null);
-    } catch {
-      cabText = 'Error generating CAB.';
-    }
-    if (cabText) {
-      cabContent.textContent = cabText;
-      cabContent.classList.remove('cab-placeholder');
-    } else {
-      cabContent.textContent = 'No Classification Authority Block required for UNCLASSIFIED documents.';
-      cabContent.classList.add('cab-placeholder');
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // Playground section — uses lint_batch for demonstration
-  // ---------------------------------------------------------------------------
-  const playgroundInput  = document.getElementById('playground-input');
-  const playgroundOutput = document.getElementById('playground-output');
-  let playgroundTimer = null;
-
-  function runPlayground() {
-    const text = playgroundInput.value;
-    if (!text.trim()) {
-      playgroundOutput.textContent = '';
-      return;
-    }
-    try {
-      // Split input into paragraphs and batch-lint them.
-      const paragraphs = text.split(/\n\n+/).filter(Boolean);
-      if (paragraphs.length > 1) {
-        const entries = paragraphs.map((p, i) => ({ id: `para-${i + 1}`, text: p }));
-        const result = lint_batch(JSON.stringify(entries), null);
-        const parsed = JSON.parse(result);
-        // Format batch results as readable output.
-        const lines = [];
-        for (const entry of parsed) {
-          if (entry.diagnostics.length > 0) {
-            lines.push(`── ${entry.id} (${entry.diagnostics.length} issue${entry.diagnostics.length > 1 ? 's' : ''}) ──`);
-            for (const d of entry.diagnostics) {
-              lines.push(JSON.stringify(d));
-            }
-          }
-        }
-        playgroundOutput.textContent = lines.length > 0
-          ? lines.join('\n')
-          : '(no diagnostics)';
-      } else {
-        // Single block — use regular lint for raw NDJSON output.
-        const ndjson = lint(text, null);
-        playgroundOutput.textContent = ndjson || '(no diagnostics)';
-      }
-    } catch (e) {
-      playgroundOutput.textContent = `Error: ${e.message || e}`;
-    }
-  }
-
-  playgroundInput.addEventListener('input', () => {
-    clearTimeout(playgroundTimer);
-    playgroundTimer = setTimeout(runPlayground, 150);
-  });
+  // Run the initial pass immediately (catches the SERCET typo in the seed text).
+  runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty);
 }
 
 main().catch(console.error);

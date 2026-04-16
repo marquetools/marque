@@ -13,12 +13,13 @@
   --font-body: Georgia, 'Times New Roman', serif;
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --doc-width: 760px;
+  --page-bg: #e8e8e8;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background: #e8e8e8;
+  background: var(--page-bg);
   font-family: var(--font-ui);
   color: #222;
   min-height: 100vh;
@@ -64,21 +65,12 @@ nav .nav-hint {
   padding: 0 16px 64px;
 }
 
-.section-heading {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #666;
-  margin: 0 0 12px;
-}
-
 /* Document card */
 .document {
   background: #fff;
   box-shadow: 0 2px 16px rgba(0,0,0,0.18);
   border: 1px solid #ccc;
-  margin-bottom: 32px;
+  margin-bottom: 0;
 }
 
 /* Classification banner */
@@ -174,136 +166,6 @@ nav .nav-hint {
   cursor: help;
 }
 
-/* CAB section */
-.doc-cab {
-  border-top: 1px solid #ddd;
-  padding: 12px 40px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  line-height: 1.75;
-  color: #444;
-  background: #fafafa;
-}
-
-.doc-cab .cab-label {
-  font-weight: bold;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #888;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.doc-cab pre {
-  margin: 0;
-  font-family: var(--font-body);
-  font-size: 13px;
-  white-space: pre-wrap;
-  color: #333;
-}
-
-.doc-cab .cab-placeholder {
-  color: #aaa;
-  font-style: italic;
-}
-
-.btn-generate-cab {
-  font-size: 12px;
-  font-family: var(--font-ui);
-  background: #fff;
-  border: 1px solid #bbb;
-  border-radius: 4px;
-  padding: 3px 10px;
-  cursor: pointer;
-  color: #555;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.btn-generate-cab:hover {
-  border-color: #555;
-  color: #222;
-}
-
-/* Issues panel */
-.issues-panel {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 0;
-  overflow: hidden;
-  margin-bottom: 32px;
-}
-
-.issues-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
-  font-size: 13px;
-  font-weight: 600;
-  color: #444;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  padding: 2px 7px;
-  font-size: 12px;
-  font-weight: 600;
-  min-width: 22px;
-}
-
-.badge-error { background: #ffebee; color: #c62828; }
-.badge-warn  { background: #fff3e0; color: #e65100; }
-.badge-ok    { background: #e8f5e9; color: #2e7d32; }
-
-.issues-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.issues-list li {
-  padding: 8px 16px;
-  font-size: 13px;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-
-.issues-list li:last-child {
-  border-bottom: none;
-}
-
-.issue-rule {
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #c62828;
-  white-space: nowrap;
-  min-width: 48px;
-}
-
-.issue-rule.severity-warn { color: #e65100; }
-.issue-rule.severity-fix  { color: #1565c0; }
-
-.issue-message { color: #555; }
-
-.issues-empty {
-  padding: 16px;
-  text-align: center;
-  color: #aaa;
-  font-size: 13px;
-  font-style: italic;
-}
-
 /* Tooltip */
 .cm-tooltip {
   background: #1a1a2e !important;
@@ -342,79 +204,122 @@ nav .nav-hint {
   font-size: 11px;
 }
 
-/* Playground section */
-.playground-section {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 32px;
+/* ─── Audit Stream ──────────────────────────────────────────────────────────── */
+
+/*
+ * The audit stream sits directly below the document card and blends into the
+ * page background — no card border, no panel chrome. It reads as a quiet
+ * trail of corrections building up beneath the document as you type.
+ */
+.audit-stream {
+  padding: 28px 0 0;
+  min-height: 80px;
 }
 
-.playground-header {
-  padding: 12px 16px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
-  font-size: 13px;
-  font-weight: 600;
-  color: #444;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.audit-empty {
+  font-size: 12px;
+  color: #bbb;
+  font-style: italic;
+  text-align: center;
+  padding: 20px 0;
+  font-family: var(--font-ui);
 }
 
-.playground-body {
-  padding: 16px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-@media (max-width: 600px) {
-  .playground-body {
-    grid-template-columns: 1fr;
+/* Each audit entry fades and slides in from above */
+@keyframes auditIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.playground-input-label,
-.playground-output-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #888;
-  margin-bottom: 6px;
+.audit-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 4px;
+  margin-bottom: 2px;
+  animation: auditIn 0.25s ease forwards;
+  max-width: var(--doc-width);
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.playground-textarea {
-  width: 100%;
-  height: 140px;
-  padding: 10px;
+/* Subtle left rule — barely visible against background */
+.audit-entry::before {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 14px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 1px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.audit-time {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #bbb;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.audit-rule {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #8fa8d0;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.audit-arrow {
+  font-size: 12px;
+  color: #bbb;
+  flex-shrink: 0;
+}
+
+.audit-original {
   font-family: 'Courier New', monospace;
   font-size: 12px;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  resize: vertical;
-  background: #fafafa;
-  color: #333;
-  line-height: 1.5;
+  color: #c0392b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(192, 57, 43, 0.5);
+  white-space: nowrap;
 }
 
-.playground-textarea:focus {
-  outline: none;
-  border-color: #888;
+.audit-replacement {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #27ae60;
+  white-space: nowrap;
 }
 
-.playground-output {
-  height: 140px;
-  padding: 10px;
+.audit-source {
+  font-size: 11px;
+  color: #ccc;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.audit-confidence {
   font-family: 'Courier New', monospace;
   font-size: 11px;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  background: #f8f8f8;
-  color: #333;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  line-height: 1.4;
+  color: #ccc;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Separator between groups of corrections from the same keystroke */
+.audit-separator {
+  max-width: var(--doc-width);
+  margin: 4px auto;
+  border: none;
+  border-top: 1px solid rgba(0,0,0,0.06);
 }

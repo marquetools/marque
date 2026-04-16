@@ -1,9 +1,47 @@
 {
-  "dependencies": {
-    "@codemirror/state": "^6.6.0",
-    "@codemirror/view": "^6.41.0"
+  "name": "@marque/marque-demo",
+  "version": "0.1.0",
+  "description": "Interactive CAPCO classification-marking demo powered by marque-wasm. Lint and auto-fix classification markings in real time.",
+  "keywords": [
+    "capco",
+    "classification",
+    "ism",
+    "noforn",
+    "linter",
+    "wasm"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marquetools/marque"
   },
+  "bin": {
+    "marque-demo": "./bin/serve.js"
+  },
+  "scripts": {
+    "start": "node bin/serve.js",
+    "dev": "node bin/serve.js",
+    "bundle": "node bundle-vendor.js",
+    "record": "node record-demo.js"
+  },
+  "files": [
+    "bin/",
+    "index.html",
+    "demo.js",
+    "style.css",
+    "vendor.js",
+    "wasm/",
+    "record-demo.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
+    "esbuild": "^0.28.0",
+    "playwright": "^1.50.0"
   }
 }
