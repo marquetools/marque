@@ -19,6 +19,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -80,50 +81,73 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
 }
 
 /// JSON projection of an `AppliedFix` conforming to `contracts/audit-record.json`.
+///
+/// Borrows from the `AppliedFix` to avoid per-field heap allocations.
+/// Only `timestamp` is owned — `humantime::format_rfc3339` returns a
+/// temporary that cannot be borrowed across the struct boundary.
 #[derive(Debug, Serialize)]
-struct AuditRecordJson {
+struct AuditRecordJson<'a> {
     schema: &'static str,
-    rule: String,
+    rule: &'a str,
     source: &'static str,
     span: SpanJson,
-    original: String,
-    replacement: String,
+    original: &'a str,
+    replacement: &'a str,
     confidence: f32,
-    migration_ref: Option<String>,
+    migration_ref: Option<&'a str>,
     timestamp: String,
-    classifier_id: Option<String>,
+    classifier_id: Option<&'a str>,
     dry_run: bool,
-    input: Option<String>,
+    input: Option<&'a str>,
 }
 
 const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
 
-fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
+fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson<'_> {
     AuditRecordJson {
         schema: AUDIT_SCHEMA_VERSION,
-        rule: fix.proposal.rule.as_str().to_owned(),
+        rule: fix.proposal.rule.as_str(),
         source: fix_source_str(fix.proposal.source),
         span: SpanJson {
             start: fix.proposal.span.start,
             end: fix.proposal.span.end,
         },
-        original: fix.proposal.original.to_string(),
-        replacement: fix.proposal.replacement.to_string(),
+        original: &fix.proposal.original,
+        replacement: &fix.proposal.replacement,
         confidence: fix.proposal.confidence,
-        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
+        migration_ref: fix.proposal.migration_ref,
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
+        classifier_id: fix.classifier_id.as_deref(),
         dry_run: fix.dry_run,
-        input: fix.input.as_ref().map(|s| s.to_string()),
+        input: fix.input.as_deref(),
     }
 }
 
 /// Wrapper for `fix()` output.
 #[derive(Debug, Serialize)]
-struct FixResultJson {
+struct FixResultJson<'a> {
     fixed_text: String,
-    applied: Vec<AuditRecordJson>,
-    remaining: Vec<serde_json::Value>,
+    applied: Vec<AuditRecordJson<'a>>,
+    remaining: Vec<Box<serde_json::value::RawValue>>,
+}
+
+// ---------------------------------------------------------------------------
+// Batch types — lint_batch accepts an array of {id, text} entries and returns
+// an array of {id, diagnostics} results in a single WASM boundary crossing.
+// ---------------------------------------------------------------------------
+
+/// One entry in a `lint_batch` request.
+#[derive(Deserialize)]
+struct BatchEntry {
+    id: String,
+    text: String,
+}
+
+/// One result in a `lint_batch` response.
+#[derive(Serialize)]
+struct BatchResultEntry<'a> {
+    id: &'a str,
+    diagnostics: Vec<Box<serde_json::value::RawValue>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -140,9 +164,9 @@ struct WasmConfig {
     corrections: Option<HashMap<String, String>>,
 }
 
-fn parse_config(json: Option<String>) -> Result<Config, String> {
+fn parse_config(json: &Option<String>) -> Result<Config, String> {
     let wasm_cfg: WasmConfig = match json {
-        Some(s) => serde_json::from_str(&s).map_err(|e| e.to_string())?,
+        Some(s) => serde_json::from_str(s).map_err(|e| e.to_string())?,
         None => WasmConfig::default(),
     };
 
@@ -159,29 +183,79 @@ fn parse_config(json: Option<String>) -> Result<Config, String> {
     Ok(config)
 }
 
-fn build_engine(config: Config) -> Engine {
-    Engine::new(config, marque_engine::default_ruleset())
+// ---------------------------------------------------------------------------
+// Engine cache — avoids rebuilding the Engine (AhoCorasick, rule set, config)
+// on every lint/fix call. WASM is single-threaded so thread_local + RefCell
+// is safe and lock-free.
+// ---------------------------------------------------------------------------
+
+struct CachedEngine {
+    engine: Engine,
+    /// The raw config JSON used to build this engine. Byte-equal comparison
+    /// for cache invalidation. `None` = default config.
+    config_key: Option<String>,
+}
+
+thread_local! {
+    static ENGINE_CACHE: RefCell<Option<CachedEngine>> = const { RefCell::new(None) };
+}
+
+/// Execute `f` against a cached `Engine`, rebuilding only when `config_json`
+/// differs from the previously cached configuration.
+///
+/// The hot path (same config across calls) is an `Option<String>` comparison
+/// and a `RefCell` borrow — no allocations, no AhoCorasick rebuild.
+fn with_engine<T>(
+    config_json: &Option<String>,
+    f: impl FnOnce(&Engine) -> Result<T, String>,
+) -> Result<T, String> {
+    ENGINE_CACHE.with(|cell| {
+        let mut cache = cell.borrow_mut();
+
+        let needs_rebuild = match &*cache {
+            None => true,
+            Some(cached) => cached.config_key.as_deref() != config_json.as_deref(),
+        };
+
+        if needs_rebuild {
+            let config = parse_config(config_json)?;
+            *cache = Some(CachedEngine {
+                engine: Engine::new(config, marque_engine::default_ruleset()),
+                config_key: config_json.clone(),
+            });
+        }
+
+        f(&cache.as_ref().unwrap().engine)
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Native-callable entry points (for parity tests — no JsValue dependency).
 // ---------------------------------------------------------------------------
 
+/// Pre-warm the engine cache (native entry point for tests).
+pub fn configure_native(config_json: Option<String>) -> Result<(), String> {
+    with_engine(&config_json, |_| Ok(()))
+}
+
 /// Lint text, returning NDJSON conforming to `contracts/diagnostic.json`.
 /// One diagnostic per line, newline-terminated. Byte-identical to the CLI's
 /// `--format json` output (SC-008).
 pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, String> {
-    let config = parse_config(config_json)?;
-    let engine = build_engine(config);
-    let result = engine.lint(text.as_bytes());
+    with_engine(&config_json, |engine| {
+        let result = engine.lint(text.as_bytes());
 
-    let mut out = String::new();
-    for d in &result.diagnostics {
-        let json = serde_json::to_string(&diagnostic_to_json(d)).map_err(|e| e.to_string())?;
-        out.push_str(&json);
-        out.push('\n');
-    }
-    Ok(out)
+        // Write NDJSON directly into a byte buffer — avoids the intermediate
+        // String allocation that serde_json::to_string produces per diagnostic.
+        let mut buf = Vec::with_capacity(result.diagnostics.len() * 256);
+        for d in &result.diagnostics {
+            serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                .map_err(|e| e.to_string())?;
+            buf.push(b'\n');
+        }
+        // serde_json always produces valid UTF-8.
+        String::from_utf8(buf).map_err(|e| e.to_string())
+    })
 }
 
 /// Fix text, returning a JSON object with `fixed_text`, `applied` audit records,
@@ -194,36 +268,102 @@ pub fn fix_native(
     threshold: f32,
     config_json: Option<String>,
 ) -> Result<String, String> {
-    let mut config = parse_config(config_json)?;
-    config
-        .set_confidence_threshold(threshold)
-        .map_err(|e| e.to_string())?;
-    let engine = build_engine(config);
-    let result = engine.fix(text.as_bytes(), FixMode::Apply);
+    with_engine(&config_json, |engine| {
+        let result = engine
+            .fix_with_threshold(text.as_bytes(), FixMode::Apply, Some(threshold))
+            .map_err(|e| e.to_string())?;
 
-    let fixed_text = String::from_utf8(result.source)
-        .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
+        let fixed_text = String::from_utf8(result.source)
+            .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
-    let applied: Vec<AuditRecordJson> = result
-        .applied
-        .iter()
-        .map(applied_fix_to_audit_json)
-        .collect();
+        let applied: Vec<AuditRecordJson> = result
+            .applied
+            .iter()
+            .map(applied_fix_to_audit_json)
+            .collect();
 
-    // Remaining diagnostics as contract-conformant JSON values.
-    let remaining: Vec<serde_json::Value> = result
-        .remaining_diagnostics
-        .iter()
-        .map(|d| serde_json::to_value(diagnostic_to_json(d)).map_err(|e| e.to_string()))
-        .collect::<Result<_, _>>()?;
+        // Remaining diagnostics as pre-serialized raw JSON. Each diagnostic
+        // is serialized once into a byte buffer and wrapped as RawValue so
+        // the parent FixResultJson serialization embeds it verbatim — no
+        // intermediate serde_json::Value tree, no double serialization.
+        let remaining: Vec<Box<serde_json::value::RawValue>> = result
+            .remaining_diagnostics
+            .iter()
+            .map(|d| {
+                let mut buf = Vec::with_capacity(256);
+                serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                    .map_err(|e| e.to_string())?;
+                let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
+                serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
+            })
+            .collect::<Result<_, _>>()?;
 
-    let fix_result = FixResultJson {
-        fixed_text,
-        applied,
-        remaining,
-    };
+        let fix_result = FixResultJson {
+            fixed_text,
+            applied,
+            remaining,
+        };
 
-    serde_json::to_string(&fix_result).map_err(|e| e.to_string())
+        // Serialize directly into a byte buffer to avoid serde_json::to_string's
+        // intermediate String allocation.
+        let mut buf = Vec::with_capacity(1024);
+        serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
+        String::from_utf8(buf).map_err(|e| e.to_string())
+    })
+}
+
+/// Lint multiple text entries in a single WASM boundary crossing.
+///
+/// Accepts a JSON array of `{"id": "...", "text": "..."}` objects and returns
+/// a JSON array of `{"id": "...", "diagnostics": [...]}` results. All entries
+/// are linted against the same cached engine.
+///
+/// Designed for as-you-type feedback: the JS caller debounces keystrokes,
+/// extracts the changed paragraphs or marking regions, and sends them as a
+/// batch. One boundary crossing, one engine, N lints.
+///
+/// ```js
+/// const results = lint_batch(JSON.stringify([
+///   { id: "para-1", text: "(S//NF) First paragraph..." },
+///   { id: "para-2", text: "(TS//SI) Second paragraph..." },
+/// ]));
+/// ```
+pub fn lint_batch_native(
+    entries_json: &str,
+    config_json: Option<String>,
+) -> Result<String, String> {
+    let entries: Vec<BatchEntry> =
+        serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
+
+    with_engine(&config_json, |engine| {
+        let results: Vec<BatchResultEntry<'_>> = entries
+            .iter()
+            .map(|entry| {
+                let result = engine.lint(entry.text.as_bytes());
+                let diagnostics = result
+                    .diagnostics
+                    .iter()
+                    .map(|d| {
+                        let mut buf = Vec::with_capacity(256);
+                        serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                            .map_err(|e| e.to_string())?;
+                        let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
+                        serde_json::value::RawValue::from_string(json)
+                            .map_err(|e| e.to_string())
+                    })
+                    .collect::<Result<_, String>>()?;
+
+                Ok(BatchResultEntry {
+                    id: &entry.id,
+                    diagnostics,
+                })
+            })
+            .collect::<Result<_, String>>()?;
+
+        let mut buf = Vec::with_capacity(results.len() * 512);
+        serde_json::to_writer(&mut buf, &results).map_err(|e| e.to_string())?;
+        String::from_utf8(buf).map_err(|e| e.to_string())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +376,20 @@ pub fn fix_native(
 pub fn init() {
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
+}
+
+/// Pre-warm the engine cache with the given configuration.
+///
+/// Optional — the engine is lazily constructed on the first `lint`/`fix` call.
+/// Use this from a web worker's `onmessage` init handler to pay the
+/// AhoCorasick + rule-set construction cost up front rather than on the
+/// first lint request.
+///
+/// Passing `None` (or omitting the argument from JS) pre-warms with the
+/// default configuration.
+#[wasm_bindgen]
+pub fn configure(config_json: Option<String>) -> Result<(), JsValue> {
+    with_engine(&config_json, |_| Ok(())).map_err(|e| JsValue::from_str(&e))
 }
 
 /// Lint a text string for classification marking violations.
@@ -269,6 +423,25 @@ pub fn lint(text: &str, config_json: Option<String>) -> Result<String, JsValue> 
 #[wasm_bindgen]
 pub fn fix(text: &str, threshold: f32, config_json: Option<String>) -> Result<String, JsValue> {
     fix_native(text, threshold, config_json).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Lint multiple text entries in a single WASM call.
+///
+/// Accepts a JSON array of `[{"id":"…","text":"…"}, …]` and returns a JSON
+/// array of `[{"id":"…","diagnostics":[…]}, …]`.
+///
+/// Designed for as-you-type feedback: the JS caller debounces input, extracts
+/// the changed paragraphs or marking regions, and sends them as one batch.
+///
+/// # Arguments
+/// - `entries_json`: JSON array of `{"id": string, "text": string}` objects
+/// - `config_json`: optional JSON config (same as `lint`)
+#[wasm_bindgen]
+pub fn lint_batch(
+    entries_json: &str,
+    config_json: Option<String>,
+) -> Result<String, JsValue> {
+    lint_batch_native(entries_json, config_json).map_err(|e| JsValue::from_str(&e))
 }
 
 // ---------------------------------------------------------------------------

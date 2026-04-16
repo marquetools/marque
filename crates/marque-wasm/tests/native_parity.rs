@@ -353,3 +353,89 @@ fn config_with_classifier_id() {
         "classifier_id should appear in audit records, got: {result}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// lint_batch
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_batch_returns_results_for_each_entry() {
+    let entries = r#"[
+        {"id": "a", "text": "SECRET//NF\n"},
+        {"id": "b", "text": "SECRET//NOFORN\n"}
+    ]"#;
+    let result = marque_wasm::lint_batch_native(entries, None).expect("lint_batch");
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+
+    assert_eq!(parsed.len(), 2, "should return one result per entry");
+    assert_eq!(parsed[0]["id"], "a");
+    assert_eq!(parsed[1]["id"], "b");
+    // "a" has NF (abbreviated) → should have diagnostics
+    assert!(
+        !parsed[0]["diagnostics"].as_array().unwrap().is_empty(),
+        "SECRET//NF should produce diagnostics"
+    );
+    // "b" is clean → empty diagnostics
+    assert!(
+        parsed[1]["diagnostics"].as_array().unwrap().is_empty(),
+        "SECRET//NOFORN should be clean"
+    );
+}
+
+#[test]
+fn lint_batch_empty_array() {
+    let result = marque_wasm::lint_batch_native("[]", None).expect("lint_batch empty");
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+    assert!(parsed.is_empty());
+}
+
+#[test]
+fn lint_batch_parity_with_single_lint() {
+    // Each batch entry should produce the same diagnostics as a standalone lint call.
+    let texts = [
+        ("inv1", "SECRET//NF\n"),
+        ("inv2", "TOP SECRET//SI//NF\n"),
+        ("clean", "SECRET//NOFORN\n"),
+    ];
+
+    let entries_json = serde_json::to_string(
+        &texts
+            .iter()
+            .map(|(id, text)| serde_json::json!({"id": id, "text": text}))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+
+    let batch_result = marque_wasm::lint_batch_native(&entries_json, None).expect("batch");
+    let batch_parsed: Vec<serde_json::Value> = serde_json::from_str(&batch_result).unwrap();
+
+    for (i, (id, text)) in texts.iter().enumerate() {
+        let single_ndjson = marque_wasm::lint_native(text, None).expect("single lint");
+        // Parse NDJSON lines into a JSON array for comparison.
+        let single_diags: Vec<serde_json::Value> = single_ndjson
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+
+        let batch_diags: Vec<serde_json::Value> = batch_parsed[i]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .to_vec();
+
+        assert_eq!(
+            batch_parsed[i]["id"], *id,
+            "batch result {i} should have id={id}"
+        );
+        assert_eq!(
+            single_diags, batch_diags,
+            "batch diagnostics for {id} should match single lint"
+        );
+    }
+}
+
+#[test]
+fn lint_batch_invalid_json_returns_error() {
+    let result = marque_wasm::lint_batch_native("not json", None);
+    assert!(result.is_err());
+}

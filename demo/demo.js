@@ -4,13 +4,13 @@
  * Loads the Marque WASM module and wires up the classified-memo editor:
  * - Real-time banner rollup from portion markings (compute_banner)
  * - Auto-fix via fix() at threshold 0.0 (applies all suggestions)
- * - Squiggly underlines via CodeMirror 6 Decoration API (lint)
+ * - Squiggly underlines via CodeMirror 6 Decoration API
  * - Hover tooltips showing rule ID, message, CAPCO citation
  * - CAB generation on demand (generate_cab)
- * - Playground section for ad-hoc testing
+ * - Playground section for ad-hoc testing with lint_batch
  */
 
-import init, { lint, fix, compute_banner, generate_cab }
+import init, { configure, lint, lint_batch, fix, compute_banner, generate_cab }
   from '../crates/marque-wasm/pkg/marque_wasm.js';
 
 import {
@@ -59,16 +59,23 @@ const diagnosticsField = StateField.define({
 // Classification level → CSS class
 // ---------------------------------------------------------------------------
 
+const LEVEL_CLASSES = [
+  ['TOP SECRET', 'level-ts'],
+  ['SECRET', 'level-secret'],
+  ['CONFIDENTIAL', 'level-confidential'],
+];
+
 function classificationClass(banner) {
   const b = banner.toUpperCase();
-  if (b.startsWith('TOP SECRET') && (b.includes('//') && !b.endsWith('TOP SECRET'))) {
-    // TS with SCI
-    return 'level-ts-sci';
+  for (const [prefix, cls] of LEVEL_CLASSES) {
+    if (b.startsWith(prefix)) {
+      // TS with SCI controls (anything after //)
+      if (prefix === 'TOP SECRET' && b.includes('//') && b.length > 10) {
+        return 'level-ts-sci';
+      }
+      return cls;
+    }
   }
-  if (b.startsWith('TOP SECRET')) return 'level-ts';
-  if (b.startsWith('SECRET')) return 'level-secret';
-  if (b.startsWith('CONFIDENTIAL')) return 'level-confidential';
-  if (b === 'UNCLASSIFIED') return 'level-unclassified';
   return 'level-unclassified';
 }
 
@@ -80,20 +87,22 @@ function escapeHtml(s) {
 // Banner update
 // ---------------------------------------------------------------------------
 
+const ALL_LEVEL_CLASSES = [
+  'level-unclassified', 'level-confidential', 'level-secret',
+  'level-ts', 'level-ts-sci', 'level-empty',
+];
+
 function updateBanners(text, topEl, bottomEl) {
   let banner;
   try {
     banner = compute_banner(text);
-  } catch (e) {
+  } catch {
     banner = 'UNCLASSIFIED';
   }
   const cls = classificationClass(banner);
 
-  // Remove old level classes
-  const levels = ['level-unclassified','level-confidential','level-secret','level-ts','level-ts-sci','level-empty'];
-  topEl.classList.remove(...levels);
-  bottomEl.classList.remove(...levels);
-
+  topEl.classList.remove(...ALL_LEVEL_CLASSES);
+  bottomEl.classList.remove(...ALL_LEVEL_CLASSES);
   topEl.classList.add(cls);
   bottomEl.classList.add(cls);
   topEl.textContent = banner;
@@ -101,27 +110,27 @@ function updateBanners(text, topEl, bottomEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Issues panel update
+// Issues panel update — uses DocumentFragment for batched DOM insertion
 // ---------------------------------------------------------------------------
 
 function updateIssues(diagList, issuesList, issuesHeader) {
-  issuesList.innerHTML = '';
+  const badge = issuesHeader.querySelector('.badge');
 
   if (diagList.length === 0) {
     issuesList.innerHTML = '<li class="issues-empty">No issues found.</li>';
-    issuesHeader.querySelector('.badge').textContent = '✓';
-    issuesHeader.querySelector('.badge').className = 'badge badge-ok';
+    badge.textContent = '✓';
+    badge.className = 'badge badge-ok';
     return;
   }
 
-  const errorCount = diagList.filter(d => d.severity === 'error').length;
-  const warnCount  = diagList.filter(d => d.severity === 'warning').length;
-
-  const badge = issuesHeader.querySelector('.badge');
-  badge.textContent = String(errorCount + warnCount);
-  badge.className = errorCount > 0 ? 'badge badge-error' : 'badge badge-warn';
+  let errorCount = 0;
+  let warnCount = 0;
+  const fragment = document.createDocumentFragment();
 
   for (const d of diagList) {
+    if (d.severity === 'error') errorCount++;
+    else if (d.severity === 'warn') warnCount++;
+
     const li = document.createElement('li');
     const ruleSpan = document.createElement('span');
     ruleSpan.className = `issue-rule severity-${d.severity}`;
@@ -133,8 +142,15 @@ function updateIssues(diagList, issuesList, issuesHeader) {
 
     li.appendChild(ruleSpan);
     li.appendChild(msgSpan);
-    issuesList.appendChild(li);
+    fragment.appendChild(li);
   }
+
+  badge.textContent = String(errorCount + warnCount);
+  badge.className = errorCount > 0 ? 'badge badge-error' : 'badge badge-warn';
+
+  // Single DOM mutation: clear + append
+  issuesList.textContent = '';
+  issuesList.appendChild(fragment);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,23 +160,24 @@ function updateIssues(diagList, issuesList, issuesHeader) {
 let debounceTimer = null;
 const DEBOUNCE_MS = 50;
 
-function parseNdjson(ndjson) {
-  return ndjson.trim().split('\n')
-    .filter(Boolean)
-    .map(line => { try { return JSON.parse(line); } catch { return null; } })
-    .filter(Boolean);
-}
+/** Track last-processed text to skip redundant work on focus changes. */
+let lastProcessedText = null;
 
 function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
   let text = view.state.doc.toString();
+
+  // Skip work if text hasn't changed (e.g., focus/blur with no edits).
+  if (text === lastProcessedText) return;
 
   // 1. Apply all fixes (threshold 0.0 → apply everything including E003 reorders)
   let fixResult;
   try {
     fixResult = JSON.parse(fix(text, 0.0, null));
-  } catch (e) {
+  } catch {
     fixResult = null;
   }
+
+  let diagList;
 
   if (fixResult && fixResult.applied && fixResult.applied.length > 0) {
     const fixed = fixResult.fixed_text;
@@ -171,17 +188,25 @@ function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
       });
       text = fixed;
     }
-  }
-
-  // 2. Lint for remaining diagnostics (squiggles)
-  let diagList = [];
-  try {
-    diagList = parseNdjson(lint(text, null));
-  } catch (e) {
+    // Fixes were applied — remaining diagnostic spans reference the pre-fix
+    // text, so re-lint the fixed text for accurate byte offsets.
+    try {
+      const ndjson = lint(text, null);
+      diagList = ndjson ? parseNdjson(ndjson) : [];
+    } catch {
+      diagList = [];
+    }
+  } else if (fixResult) {
+    // No fixes applied — remaining diagnostics have valid spans against
+    // the unchanged text. Skip the redundant lint() WASM call.
+    diagList = fixResult.remaining || [];
+  } else {
     diagList = [];
   }
 
-  // 3. Build CodeMirror decorations from span info
+  lastProcessedText = text;
+
+  // 2. Build CodeMirror decorations from span info
   const decorationRanges = [];
   const diagData = [];
 
@@ -204,14 +229,32 @@ function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
   });
 
   // Store diagnostic data on the view instance for tooltip access.
-  // The hoverTooltip callback reads view._marqueDiagData directly.
   view._marqueDiagData = diagData;
 
-  // 4. Update banners
+  // 3. Update banners
   updateBanners(text, topBanner, bottomBanner);
 
-  // 5. Update issues panel
+  // 4. Update issues panel
   updateIssues(diagList, issuesList, issuesHeader);
+}
+
+// ---------------------------------------------------------------------------
+// NDJSON parser
+// ---------------------------------------------------------------------------
+
+function parseNdjson(ndjson) {
+  const results = [];
+  let start = 0;
+  const len = ndjson.length;
+  while (start < len) {
+    let end = ndjson.indexOf('\n', start);
+    if (end === -1) end = len;
+    if (end > start) {
+      try { results.push(JSON.parse(ndjson.substring(start, end))); } catch { /* skip */ }
+    }
+    start = end + 1;
+  }
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +263,10 @@ function runUpdate(view, topBanner, bottomBanner, issuesList, issuesHeader) {
 
 async function main() {
   await init();
+
+  // Pre-warm the engine cache — pays AhoCorasick + rule-set construction
+  // cost here instead of on the first user keystroke.
+  configure(null);
 
   const topBanner    = document.getElementById('banner-top');
   const bottomBanner = document.getElementById('banner-bottom');
@@ -276,7 +323,7 @@ async function main() {
         '.cm-activeLineGutter': { background: 'transparent' },
       }, { dark: false }),
       EditorView.updateListener.of(update => {
-        if (update.docChanged || update.focusChanged) {
+        if (update.docChanged) {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             runUpdate(update.view, topBanner, bottomBanner, issuesList, issuesHeader);
@@ -300,24 +347,24 @@ async function main() {
     let cabText;
     try {
       cabText = generate_cab(text, null, null);
-    } catch (e) {
+    } catch {
       cabText = 'Error generating CAB.';
     }
     if (cabText) {
       cabContent.textContent = cabText;
       cabContent.classList.remove('cab-placeholder');
     } else {
-      // UNCLASSIFIED document — no CAB required.
       cabContent.textContent = 'No Classification Authority Block required for UNCLASSIFIED documents.';
       cabContent.classList.add('cab-placeholder');
     }
   });
 
   // ---------------------------------------------------------------------------
-  // Playground section
+  // Playground section — uses lint_batch for demonstration
   // ---------------------------------------------------------------------------
   const playgroundInput  = document.getElementById('playground-input');
   const playgroundOutput = document.getElementById('playground-output');
+  let playgroundTimer = null;
 
   function runPlayground() {
     const text = playgroundInput.value;
@@ -326,16 +373,38 @@ async function main() {
       return;
     }
     try {
-      const ndjson = lint(text, null);
-      playgroundOutput.textContent = ndjson || '(no diagnostics)';
+      // Split input into paragraphs and batch-lint them.
+      const paragraphs = text.split(/\n\n+/).filter(Boolean);
+      if (paragraphs.length > 1) {
+        const entries = paragraphs.map((p, i) => ({ id: `para-${i + 1}`, text: p }));
+        const result = lint_batch(JSON.stringify(entries), null);
+        const parsed = JSON.parse(result);
+        // Format batch results as readable output.
+        const lines = [];
+        for (const entry of parsed) {
+          if (entry.diagnostics.length > 0) {
+            lines.push(`── ${entry.id} (${entry.diagnostics.length} issue${entry.diagnostics.length > 1 ? 's' : ''}) ──`);
+            for (const d of entry.diagnostics) {
+              lines.push(JSON.stringify(d));
+            }
+          }
+        }
+        playgroundOutput.textContent = lines.length > 0
+          ? lines.join('\n')
+          : '(no diagnostics)';
+      } else {
+        // Single block — use regular lint for raw NDJSON output.
+        const ndjson = lint(text, null);
+        playgroundOutput.textContent = ndjson || '(no diagnostics)';
+      }
     } catch (e) {
       playgroundOutput.textContent = `Error: ${e.message || e}`;
     }
   }
 
   playgroundInput.addEventListener('input', () => {
-    clearTimeout(playgroundInput._timer);
-    playgroundInput._timer = setTimeout(runPlayground, 150);
+    clearTimeout(playgroundTimer);
+    playgroundTimer = setTimeout(runPlayground, 150);
   });
 }
 
