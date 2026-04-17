@@ -98,8 +98,9 @@ pub enum AggregationOp {
 
 /// Expansion function for composite tokens (tetragraphs → member
 /// trigraphs). Returning `None` means "not a composite; leave the
-/// token alone."
-pub type ExpansionFn = fn(TokenId) -> Option<Vec<TokenId>>;
+/// token alone." Composite expansions are returned as borrowed
+/// static slices to avoid per-call heap allocation in hot paths.
+pub type ExpansionFn = fn(TokenId) -> Option<&'static [TokenId]>;
 
 /// A category of tokens within a marking scheme.
 #[derive(Debug, Clone)]
