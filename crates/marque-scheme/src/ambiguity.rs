@@ -102,10 +102,13 @@ mod tests {
 
     #[test]
     fn candidate_log_odds_sum_is_associative() {
-        // The resolver scores candidates by summing log-odds over
-        // evidence features. Summation is associative by f32 arithmetic,
-        // but we pin it explicitly to catch a future change that
-        // introduces e.g. weighted averaging.
+        // The resolver scores candidates by additively summing log-odds
+        // over evidence features. f32 addition is not generally
+        // associative — rounding makes order matter — so this test
+        // uses a tolerance and pins the intended order-independent
+        // scoring model for these representative values. It's
+        // protection against a future change that introduces e.g.
+        // weighted averaging or another non-associative combinator.
         let features = [
             EvidenceFeature {
                 label: "year_nearby",

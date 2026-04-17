@@ -1,13 +1,25 @@
 //! Declarative constraints between tokens.
 //!
-//! A constraint is a predicate over a marking. Most CAPCO constraints
-//! are dyadic (NOFORN ∦ REL TO; HCS ⇒ NOFORN; RD ⇒ NOFORN by default);
-//! a handful are not (SIGMA compartments must appear in numeric order;
-//! CNWDI requires classification ≥ S). The dyadic ones land in the
-//! enumerated variants; the rest use `Custom`.
+//! A constraint is a declaration the scheme makes about its marking
+//! type. Most CAPCO constraints are dyadic (NOFORN ∦ REL TO; HCS ⇒
+//! NOFORN; RD ⇒ NOFORN by default) and land in the enumerated
+//! variants — those are fully evaluable by a generic engine that only
+//! knows how to check token/category presence.
+//!
+//! Some constraints are not dyadic (SIGMA compartments must appear in
+//! numeric order; CNWDI requires classification ≥ S). Those land as
+//! [`Constraint::Custom`] — a label identifying a scheme-specific rule
+//! that the scheme's own [`crate::MarkingScheme::validate`]
+//! implementation is responsible for evaluating. The enum variant
+//! carries only a label because `Constraint` is a `&[…]`-returned
+//! value; schemes own the actual predicate logic privately. The label
+//! is what surfaces in diagnostics, docs, and the constraint catalog.
 //!
 //! The engine iterates `MarkingScheme::constraints()` after parsing /
-//! joining and produces one `ConstraintViolation` per failing predicate.
+//! joining to display the catalog; a full evaluator calls
+//! `MarkingScheme::validate`, which dispatches dyadic variants
+//! directly and routes `Custom` variants into the scheme's own
+//! predicate.
 
 use crate::category::TokenId;
 
@@ -38,10 +50,22 @@ pub enum Constraint {
     /// drops out of the banner if the left is present. Example:
     /// NOFORN ⊐ REL TO at banner scope.
     Supersedes(TokenRef, TokenRef),
-    /// Escape hatch for constraints that can't be expressed dyadically.
-    /// Phase A does not use this variant; future work moves n-ary rules
-    /// (SIGMA ordering, CNWDI classification floor, JOINT participant
-    /// membership) to `Custom` predicates parameterised by the scheme.
+    /// A scheme-specific constraint identified by a stable label.
+    ///
+    /// The payload is just the label (what appears in diagnostics and
+    /// the declared-constraint catalog). The actual predicate lives
+    /// inside the scheme's [`crate::MarkingScheme::validate`]
+    /// implementation, which matches on the label and runs the
+    /// scheme-specific check. This is the escape hatch for n-ary rules
+    /// that can't be expressed as a pair of token references — SIGMA
+    /// must sort numerically, CNWDI requires classification ≥ S, JOINT
+    /// participants must appear in REL TO, etc.
+    ///
+    /// Keeping the predicate out of the variant lets `Constraint`
+    /// stay `'static` and returnable as `&[Constraint]`; a future
+    /// variant that carries `Arc<dyn Fn(&Marking) -> ...>` can be
+    /// added alongside if an engine-side generic evaluator becomes
+    /// valuable.
     Custom(&'static str),
 }
 
