@@ -877,6 +877,7 @@ dependencies = [
  "marque-engine",
  "marque-ism",
  "marque-rules",
+ "marque-scheme",
  "marque-test-utils",
  "phf",
  "thiserror",
@@ -959,6 +960,13 @@ dependencies = [
  "marque-ism",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "marque-scheme"
+version = "0.2.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

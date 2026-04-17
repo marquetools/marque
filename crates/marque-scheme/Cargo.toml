@@ -1,0 +1,23 @@
+[package]
+name = "marque-scheme"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Domain-neutral trait surface for structured marking schemes (lattice + constraints + projection + local ambiguity)."
+repository.workspace = true
+license.workspace = true
+
+# Published tarball contents — strictly the source and docs.
+include = [
+    "src/**/*.rs",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE*",
+]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
