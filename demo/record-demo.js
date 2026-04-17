@@ -296,7 +296,7 @@ async function outro(page) {
 
     // ── Save video ─────────────────────────────────────────────────────────
     const videoPath = await page.video()?.path();
-    await context.close();   // finalises the .webm
+    await context.close();   // finalizes the .webm
     await browser.close();
 
     if (videoPath && fs.existsSync(videoPath)) {

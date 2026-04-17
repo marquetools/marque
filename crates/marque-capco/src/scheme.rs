@@ -74,22 +74,22 @@ impl From<IsmAttributes> for CapcoMarking {
 // absorption) is NOT fully guaranteed by this Phase A impl:
 //
 // - `join` delegates to [`PageContext`], which applies non-invertible
-//   normalisation (DSEN overrides FOUO in classified docs; OC-USGOV
+//   normalization (DSEN overrides FOUO in classified docs; OC-USGOV
 //   drops when not present on every OC-carrying portion; UCNI drops
 //   in classified docs; NOFORN clears REL TO). These rules are
 //   correct CAPCO semantics but they're the *projection*, not a pure
 //   component-wise product-lattice join. Markings that touch those
-//   normalisations can violate absorption.
+//   normalizations can violate absorption.
 // - `meet` is a partial component-wise implementation on
 //   classification + SCI + dissem (enough to satisfy the trait bound
 //   and pass the narrow test inputs); all other fields reset to their
 //   `Default`, so `meet` is not useful outside tests and is not
 //   law-consistent with `join` in edge cases.
 //
-// Phase A's equivalence tests exercise the narrow, non-normalising
+// Phase A's equivalence tests exercise the narrow, non-normalizing
 // subset of inputs where the laws do hold. Phase B replaces this impl
 // with a pure product-lattice `join` (component-wise aggregation of
-// each category's `AggregationOp`), leaving CAPCO's normalising
+// each category's `AggregationOp`), leaving CAPCO's normalizing
 // projection in `project_banner` where it belongs. At that point
 // `meet` becomes well-defined across every category.
 //
@@ -103,7 +103,7 @@ impl Lattice for CapcoMarking {
     /// aggregation on the inputs exercised by Phase A's tests. Phase B
     /// inverts this dependency — `PageContext` will be implemented in
     /// terms of component-wise aggregation, and this method will stop
-    /// applying the projection's non-invertible normalisations.
+    /// applying the projection's non-invertible normalizations.
     ///
     /// See the module-level "Phase A caveat" note above for the
     /// specific laws this impl does not satisfy.
