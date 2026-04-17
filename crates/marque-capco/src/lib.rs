@@ -11,9 +11,11 @@
 //! publishes spec updates.
 
 pub mod rules;
+pub mod scheme;
 
 pub use marque_ism::CapcoTokenSet;
 pub use rules::CapcoRuleSet;
+pub use scheme::{CapcoMarking, CapcoScheme};
 
 use marque_rules::RuleSet;
 
