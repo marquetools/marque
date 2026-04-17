@@ -98,8 +98,15 @@ pub enum AggregationOp {
 
 /// Expansion function for composite tokens (tetragraphs → member
 /// trigraphs). Returning `None` means "not a composite; leave the
-/// token alone." Composite expansions are returned as borrowed
-/// static slices to avoid per-call heap allocation in hot paths.
+/// token alone."
+///
+/// Returns a borrowed `&'static [TokenId]` rather than an owned
+/// `Vec<TokenId>` so the hot path (projection, render) can expand
+/// without heap allocation. Composite membership is expected to be a
+/// compile-time static table (e.g., FVEY = `&[USA, GBR, CAN, AUS,
+/// NZL]` as a `const`). A scheme that needs dynamic expansion at
+/// runtime should model that through a category-level escape hatch
+/// instead.
 pub type ExpansionFn = fn(TokenId) -> Option<&'static [TokenId]>;
 
 /// A category of tokens within a marking scheme.
