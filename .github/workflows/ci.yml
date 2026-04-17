@@ -100,7 +100,7 @@ jobs:
 
       - uses: taiki-e/install-action@b2022afd587ede019f0fcaa03f8fbdbe6c33f2fd
         with:
-          tool: cargo-llvm-cov@2f2812ee6d87fc3a05d73e1a56ac3c7bc0a87c3a
+          tool: cargo-llvm-cov
 
       - name: Generate coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
