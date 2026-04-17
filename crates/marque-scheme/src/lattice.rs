@@ -5,11 +5,23 @@
 //! lower bound (*meet*, `⊓`). "Bounded" means there's a top (⊤) and
 //! bottom (⊥) element.
 //!
-//! This crate's marking types obey lattice laws:
+//! # Contract for implementors
+//!
+//! Implementors are **expected** to satisfy the standard lattice laws
+//! on their marking type. The crate cannot enforce this from the trait
+//! definition alone; the expectation is documented here as the
+//! contract every `Lattice` / `BoundedLattice` impl must uphold:
 //!
 //! - `join` / `meet` are commutative, associative, idempotent.
 //! - `top ⊔ a = top`, `bottom ⊔ a = a` (symmetric for `meet`).
 //! - Absorption: `a ⊔ (a ⊓ b) = a`.
+//!
+//! A scheme-specific adapter that applies lossy normalisation during
+//! `join` (for example, CAPCO's projection which strips FOUO in
+//! classified banners) will not satisfy these laws on every input and
+//! should either (a) keep normalisation out of `join` and put it in a
+//! separate `project_banner` method, or (b) document explicitly which
+//! laws fail and on which inputs.
 //!
 //! See Denning, *A Lattice Model of Secure Information Flow* (1976).
 
