@@ -78,8 +78,13 @@ pub enum AggregationOp {
     /// superseding token on the same set. Each pair `(superseding,
     /// superseded)` means "if `superseding` appears, drop `superseded`."
     ///
+    /// Stored as `Box<[...]>` (rather than `Vec`) so schemes can
+    /// define category tables without resizable-allocation overhead;
+    /// the boxed slice is constructed once at scheme build time and
+    /// then treated as immutable.
+    ///
     /// Used for NOFORN ⊐ REL TO at the banner level.
-    UnionWithSupersession(Vec<(TokenId, TokenId)>),
+    UnionWithSupersession(Box<[(TokenId, TokenId)]>),
     /// Max over date-typed values. Separate from `Max` because the
     /// engine's lookup path differs.
     MaxDate,
@@ -128,10 +133,17 @@ pub fn reduce_max<T: Ord + Clone>(values: &[T]) -> Option<T> {
 /// order and discarding duplicates. Kept stable rather than sorted so
 /// that callers who want a particular intra-category order can post-
 /// sort with the category's `IntraOrdering`.
-pub fn reduce_union<T: Eq + Clone>(values: &[T]) -> Vec<T> {
+///
+/// Uses a [`HashSet`](std::collections::HashSet) for O(n) dedup
+/// tracking (the output is still ordered). Tokens must be `Hash + Eq`
+/// — which covers every token shape the existing schemes use
+/// (`TokenId`, `&str`, owned strings, enum variants).
+pub fn reduce_union<T: Eq + std::hash::Hash + Clone>(values: &[T]) -> Vec<T> {
     let mut out: Vec<T> = Vec::with_capacity(values.len());
+    let mut seen: std::collections::HashSet<&T> =
+        std::collections::HashSet::with_capacity(values.len());
     for v in values {
-        if !out.iter().any(|existing| existing == v) {
+        if seen.insert(v) {
             out.push(v.clone());
         }
     }
@@ -158,17 +170,21 @@ pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
 /// Apply `AggregationOp::UnionWithSupersession`. Unions the values, then
 /// drops any token appearing on the right side of a pair whose left
 /// side is present in the union.
-pub fn reduce_union_with_supersession<T: Eq + Clone>(
+///
+/// Precomputes a `HashSet` of the unioned tokens so the supersession
+/// filter is O(n + k) rather than O(n·k) over the supersession pairs.
+pub fn reduce_union_with_supersession<T: Eq + std::hash::Hash + Clone>(
     values: &[T],
     supersession: &[(T, T)],
 ) -> Vec<T> {
     let unioned = reduce_union(values);
+    let present: std::collections::HashSet<&T> = unioned.iter().collect();
     unioned
         .iter()
         .filter(|t| {
             !supersession
                 .iter()
-                .any(|(superseding, superseded)| superseded == *t && unioned.contains(superseding))
+                .any(|(superseding, superseded)| superseded == *t && present.contains(superseding))
         })
         .cloned()
         .collect()
