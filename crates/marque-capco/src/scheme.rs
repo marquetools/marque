@@ -46,7 +46,6 @@ pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(8);
 // sample constraints that the equivalence tests exercise.
 
 pub const TOK_NOFORN: TokenId = TokenId(100);
-pub const TOK_HCS: TokenId = TokenId(101);
 pub const TOK_JOINT: TokenId = TokenId(103);
 pub const TOK_USA: TokenId = TokenId(104);
 
@@ -343,8 +342,16 @@ impl CapcoScheme {
                 TokenRef::Token(TOK_NOFORN),
                 TokenRef::AnyInCategory(CAT_REL_TO),
             ),
-            // Sample constraint 2: HCS requires NOFORN.
-            Constraint::Requires(TokenRef::Token(TOK_HCS), TokenRef::Token(TOK_NOFORN)),
+            // Sample constraint 2: HCS handling per CAPCO 2016 §4
+            // (p62). Expressed as `Custom` because the rule set is
+            // n-ary — bare HCS is legacy and requires document-level
+            // remarking; HCS-O requires ORCON and forbids ORCON-USGOV;
+            // HCS-P requires ORCON or ORCON-USGOV; and HCS-O / HCS-P
+            // are only authorized for SECRET and TOP SECRET. The
+            // scheme's `validate` matches the label and dispatches the
+            // scheme-specific predicate (see
+            // [`CapcoScheme::validate`]).
+            Constraint::Custom("HCS-system-constraints"),
             // Sample constraint 3: JOINT always requires USA in both
             // the JOINT classification country list and the REL TO
             // list. The declarative `Requires(JOINT, USA)` above is
@@ -431,23 +438,8 @@ impl MarkingScheme for CapcoScheme {
                         });
                     }
                 }
-                Constraint::Requires(TokenRef::Token(a), TokenRef::Token(b))
-                    if *a == TOK_HCS && *b == TOK_NOFORN =>
-                {
-                    let has_hcs = attrs
-                        .sci_controls
-                        .iter()
-                        .any(|s| matches!(s, marque_ism::SciControl::Hcs));
-                    let has_nf = attrs
-                        .dissem_controls
-                        .iter()
-                        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
-                    if has_hcs && !has_nf {
-                        out.push(ConstraintViolation {
-                            constraint_label: "HCS⇒NOFORN",
-                            message: "HCS must be accompanied by NOFORN".to_owned(),
-                        });
-                    }
+                Constraint::Custom(label) if *label == "HCS-system-constraints" => {
+                    out.extend(hcs_system_constraints(attrs));
                 }
                 Constraint::Requires(TokenRef::Token(a), TokenRef::Token(b))
                     if *a == TOK_JOINT && *b == TOK_USA =>
@@ -497,6 +489,165 @@ impl MarkingScheme for CapcoScheme {
             None => String::new(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// HCS constraint handler (CAPCO 2016 §4 p62)
+// ---------------------------------------------------------------------------
+
+/// Evaluate the `Constraint::Custom("HCS-system-constraints")` sample.
+///
+/// CAPCO 2016 §4 (p62) defines four interlocking HCS rules:
+///
+/// 1. **Bare `HCS` (no compartment)** is a legacy form. It must be
+///    remarked to `HCS-P`, `HCS-O`, or `HCS-O-P`, which requires
+///    document-level analysis (the correct variant depends on whether
+///    the content is HUMINT product, operations, or both). Legacy
+///    `C//HCS` (CONFIDENTIAL with bare HCS) must additionally be
+///    identified to the originator for correction.
+/// 2. **`HCS-O`** requires ORCON and must **not** include ORCON-USGOV.
+/// 3. **`HCS-P`** requires **either** ORCON or ORCON-USGOV.
+/// 4. **`HCS-O` / `HCS-P`** are only authorized for SECRET and TOP
+///    SECRET classifications.
+///
+/// This helper inspects both `sci_controls` (the CVE-projection for
+/// legacy-shape bare HCS tokens) and `sci_markings` (the structural
+/// view that carries compartment identifiers). Emits one
+/// `ConstraintViolation` per failing rule per offending HCS entry.
+fn hcs_system_constraints(
+    attrs: &marque_ism::IsmAttributes,
+) -> Vec<marque_scheme::ConstraintViolation> {
+    use marque_ism::{DissemControl, SciControl, SciControlBare, SciControlSystem};
+
+    let mut out = Vec::new();
+
+    let classification = attrs.us_classification();
+    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc);
+    let has_orcon_usgov = attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let high_enough = matches!(
+        classification,
+        Some(Classification::Secret) | Some(Classification::TopSecret)
+    );
+
+    // Walk structural sci_markings for HCS systems. This is the
+    // authoritative source for the compartment identifier.
+    for marking in attrs.sci_markings.iter() {
+        let is_hcs = matches!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Hcs)
+        );
+        if !is_hcs {
+            continue;
+        }
+
+        if marking.compartments.is_empty() {
+            // Bare HCS — legacy per CAPCO 2016 §4 p62.
+            out.push(marque_scheme::ConstraintViolation {
+                constraint_label: "HCS-legacy-bare",
+                message:
+                    "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
+                     p62 (requires document-level analysis)."
+                        .to_owned(),
+            });
+            if classification == Some(Classification::Confidential) {
+                out.push(marque_scheme::ConstraintViolation {
+                    constraint_label: "HCS-legacy-confidential",
+                    message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction \
+                              per CAPCO 2016 §4."
+                        .to_owned(),
+                });
+            }
+            continue;
+        }
+
+        // For each HCS-{first compartment} variant, apply the O/P
+        // specific rules and the SECRET / TOP SECRET floor.
+        for comp in marking.compartments.iter() {
+            let id = comp.identifier.as_ref();
+            match id {
+                "O" => {
+                    if !high_enough {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-O-classification-floor",
+                            message: "HCS-O is only authorized for SECRET and TOP SECRET per \
+                                      CAPCO 2016 §4."
+                                .to_owned(),
+                        });
+                    }
+                    if !has_orcon {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-O-requires-ORCON",
+                            message: "HCS-O requires ORCON per CAPCO 2016 §4.".to_owned(),
+                        });
+                    }
+                    if has_orcon_usgov {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-O-forbids-ORCON-USGOV",
+                            message: "HCS-O must not be used with ORCON-USGOV per CAPCO \
+                                      2016 §4."
+                                .to_owned(),
+                        });
+                    }
+                }
+                "P" => {
+                    if !high_enough {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-P-classification-floor",
+                            message: "HCS-P is only authorized for SECRET and TOP SECRET per \
+                                      CAPCO 2016 §4."
+                                .to_owned(),
+                        });
+                    }
+                    if !has_orcon && !has_orcon_usgov {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-P-requires-ORCON-or-ORCON-USGOV",
+                            message: "HCS-P requires either ORCON or ORCON-USGOV per CAPCO \
+                                      2016 §4."
+                                .to_owned(),
+                        });
+                    }
+                }
+                _ => {
+                    // Other HCS compartments (e.g., agency-specific
+                    // extensions not yet in this sample) fall through.
+                }
+            }
+        }
+    }
+
+    // Back-compat: a portion may carry `SciControl::Hcs` (the CVE
+    // projection for bare HCS) without producing a `sci_markings`
+    // entry in every test path. Treat a bare `SciControl::Hcs` in the
+    // projection but no corresponding `sci_markings` entry as legacy
+    // bare HCS too. This keeps the handler robust to the two-path
+    // storage (CVE enum vs structural) that `IsmAttributes` carries
+    // for back-compat — see crate-level docs on the hybrid SCI model.
+    let structural_has_hcs = attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs)));
+    let projection_has_bare_hcs = attrs
+        .sci_controls
+        .iter()
+        .any(|s| matches!(s, SciControl::Hcs));
+    if projection_has_bare_hcs && !structural_has_hcs {
+        out.push(marque_scheme::ConstraintViolation {
+            constraint_label: "HCS-legacy-bare",
+            message: "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
+                 p62 (requires document-level analysis)."
+                .to_owned(),
+        });
+        if classification == Some(Classification::Confidential) {
+            out.push(marque_scheme::ConstraintViolation {
+                constraint_label: "HCS-legacy-confidential",
+                message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction per \
+                          CAPCO 2016 §4."
+                    .to_owned(),
+            });
+        }
+    }
+
+    out
 }
 
 // ---------------------------------------------------------------------------

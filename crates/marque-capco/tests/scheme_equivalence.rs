@@ -224,35 +224,228 @@ fn constraint_noforn_rel_to_conflict_is_silent_when_separate() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// HCS constraint tests (CAPCO 2016 §4 p62)
+// ---------------------------------------------------------------------------
+//
+// The HCS sample constraint is `Constraint::Custom("HCS-system-constraints")`,
+// dispatched inside `CapcoScheme::validate`. These tests pin each rule in
+// the handler:
+//
+//   - bare HCS (no compartment) is legacy; requires remarking.
+//   - CONFIDENTIAL//HCS additionally requires originator correction.
+//   - HCS-O requires ORCON and must not include ORCON-USGOV.
+//   - HCS-P requires ORCON or ORCON-USGOV.
+//   - HCS-O / HCS-P are only authorized for SECRET and TOP SECRET.
+//
+// Helper: build an IsmAttributes with a single structural SCI marking
+// `HCS-{compartment}` at the requested classification.
+fn hcs_structural(level: Classification, compartment: Option<&str>) -> IsmAttributes {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    let mut attrs = portion(level);
+    let compartments: Box<[SciCompartment]> = match compartment {
+        Some(id) => vec![SciCompartment::new(
+            id.to_owned().into_boxed_str(),
+            Box::new([]),
+        )]
+        .into_boxed_slice(),
+        None => Box::new([]),
+    };
+    attrs.sci_markings = vec![SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Hcs),
+        compartments,
+        None,
+    )]
+    .into_boxed_slice();
+    attrs
+}
+
 #[test]
-fn constraint_hcs_requires_noforn_fires_when_noforn_absent() {
-    let mut attrs = portion(Classification::TopSecret);
-    attrs.sci_controls = vec![SciControl::Hcs].into();
-    // No NOFORN set.
+fn hcs_bare_is_flagged_as_legacy() {
+    // Bare HCS without compartment: CAPCO 2016 §4 p62 requires
+    // remarking to HCS-P / HCS-O / HCS-O-P.
+    let attrs = hcs_structural(Classification::TopSecret, None);
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS⇒NOFORN"),
-        "expected HCS⇒NOFORN violation, got: {violations:?}"
+            .any(|v| v.constraint_label == "HCS-legacy-bare"),
+        "expected HCS-legacy-bare, got: {violations:?}"
     );
 }
 
 #[test]
-fn constraint_hcs_requires_noforn_silent_when_noforn_present() {
-    let mut attrs = portion(Classification::TopSecret);
-    attrs.sci_controls = vec![SciControl::Hcs].into();
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+fn hcs_legacy_confidential_flags_originator_correction() {
+    // Legacy `C//HCS`: per CAPCO 2016 §4, identify to originator.
+    let attrs = hcs_structural(Classification::Confidential, None);
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        !violations
+        violations
             .iter()
-            .any(|v| v.constraint_label == "HCS⇒NOFORN"),
-        "no HCS⇒NOFORN violation expected: {violations:?}"
+            .any(|v| v.constraint_label == "HCS-legacy-bare"),
+        "expected HCS-legacy-bare alongside the confidential flag: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-legacy-confidential"),
+        "expected HCS-legacy-confidential: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_projection_only_bare_still_fires_legacy() {
+    // Back-compat path: a portion carrying `SciControl::Hcs` in the
+    // projection but no structural entry still gets flagged.
+    let mut attrs = portion(Classification::TopSecret);
+    attrs.sci_controls = vec![SciControl::Hcs].into();
+    // sci_markings intentionally empty.
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-legacy-bare"),
+        "expected HCS-legacy-bare from projection-only path: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_without_orcon_fires() {
+    // HCS-O on TS without ORCON — ORCON is required.
+    let attrs = hcs_structural(Classification::TopSecret, Some("O"));
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-O-requires-ORCON"),
+        "expected HCS-O-requires-ORCON: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_with_orcon_usgov_fires() {
+    // HCS-O with ORCON-USGOV is forbidden — must be ORCON only.
+    let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
+    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-O-forbids-ORCON-USGOV"),
+        "expected HCS-O-forbids-ORCON-USGOV: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_on_confidential_fires_classification_floor() {
+    // HCS-O requires SECRET or TOP SECRET.
+    let mut attrs = hcs_structural(Classification::Confidential, Some("O"));
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-O-classification-floor"),
+        "expected HCS-O-classification-floor: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_with_orcon_on_top_secret_is_silent() {
+    // All HCS-O rules satisfied: TS classification, ORCON present, no
+    // ORCON-USGOV.
+    let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    let hcs_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .collect();
+    assert!(
+        hcs_violations.is_empty(),
+        "no HCS violations expected: {hcs_violations:?}"
+    );
+}
+
+#[test]
+fn hcs_p_without_orcon_or_orcon_usgov_fires() {
+    // HCS-P requires at least one of ORCON / ORCON-USGOV.
+    let attrs = hcs_structural(Classification::Secret, Some("P"));
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-P-requires-ORCON-or-ORCON-USGOV"),
+        "expected HCS-P-requires-ORCON-or-ORCON-USGOV: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_p_with_orcon_is_silent() {
+    // HCS-P with plain ORCON is valid.
+    let mut attrs = hcs_structural(Classification::Secret, Some("P"));
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    let hcs_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .collect();
+    assert!(
+        hcs_violations.is_empty(),
+        "no HCS violations expected: {hcs_violations:?}"
+    );
+}
+
+#[test]
+fn hcs_p_with_orcon_usgov_is_silent() {
+    // HCS-P with ORCON-USGOV (no plain ORCON) is valid per CAPCO 2016 §4.
+    let mut attrs = hcs_structural(Classification::TopSecret, Some("P"));
+    attrs.dissem_controls = vec![DissemControl::OcUsgov].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    let hcs_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .collect();
+    assert!(
+        hcs_violations.is_empty(),
+        "no HCS violations expected: {hcs_violations:?}"
+    );
+}
+
+#[test]
+fn hcs_p_on_confidential_fires_classification_floor() {
+    // HCS-P requires SECRET or TOP SECRET.
+    let mut attrs = hcs_structural(Classification::Confidential, Some("P"));
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS-P-classification-floor"),
+        "expected HCS-P-classification-floor: {violations:?}"
     );
 }
 
