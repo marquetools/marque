@@ -28,8 +28,8 @@
 /// A lattice: a type with `join` (least upper bound) and `meet`
 /// (greatest lower bound).
 ///
-/// Implementors must obey the standard lattice laws. The `law_checks`
-/// module in the test suite verifies these on an example lattice.
+/// Implementors must obey the standard lattice laws. The `tests`
+/// module in this file verifies these on an example lattice.
 pub trait Lattice: Sized + Clone + Eq {
     /// Least upper bound: the smallest element that dominates both inputs.
     fn join(&self, other: &Self) -> Self;
