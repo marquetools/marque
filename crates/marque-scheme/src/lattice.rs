@@ -16,10 +16,10 @@
 //! - `top ⊔ a = top`, `bottom ⊔ a = a` (symmetric for `meet`).
 //! - Absorption: `a ⊔ (a ⊓ b) = a`.
 //!
-//! A scheme-specific adapter that applies lossy normalisation during
+//! A scheme-specific adapter that applies lossy normalization during
 //! `join` (for example, CAPCO's projection which strips FOUO in
 //! classified banners) will not satisfy these laws on every input and
-//! should either (a) keep normalisation out of `join` and put it in a
+//! should either (a) keep normalization out of `join` and put it in a
 //! separate `project_banner` method, or (b) document explicitly which
 //! laws fail and on which inputs.
 //!
@@ -55,7 +55,7 @@ pub trait BoundedLattice: Lattice {
 mod tests {
     use super::*;
 
-    /// A tiny four-element classification lattice, modelling the US
+    /// A tiny four-element classification lattice, modeling the US
     /// classification ladder `U < C < S < TS`. Used throughout this
     /// module to verify lattice laws without pulling in `marque-ism`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
