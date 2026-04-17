@@ -792,7 +792,7 @@ fn parse_sci_block(
 
         // canonical_enum population (per data-model §canonical_enum):
         // - No compartments → the bare control itself may be a CVE value
-        //   (e.g., `SI`, `TK`, `HCS`). Preserves pre-spec behaviour.
+        //   (e.g., `SI`, `TK`, `HCS`). Preserves pre-spec behavior.
         // - One or more compartments → try `{ctrl}-{first_comp}` ONLY when
         //   the first compartment has no sub-compartments. Sub-comps mean
         //   the compound is a structural anchor, not an atomic CVE atom.
@@ -2109,7 +2109,7 @@ mod tests {
 
     #[test]
     fn sci_multi_system_si_tk_parses() {
-        // `SI/TK` — two bare systems in one SCI block. Existing behaviour.
+        // `SI/TK` — two bare systems in one SCI block. Existing behavior.
         use marque_ism::SciControl;
         let parsed = parse_portion("(TS//SI/TK//NF)");
         assert_eq!(
@@ -2516,8 +2516,7 @@ mod sar_parse_tests {
             parsed
                 .attrs
                 .dissem_controls
-                .iter()
-                .any(|d| *d == marque_ism::DissemControl::Nf),
+                .contains(&marque_ism::DissemControl::Nf),
             "NOFORN must still be recognized after the SAR block"
         );
     }
@@ -2566,7 +2565,7 @@ mod sar_parse_tests {
             .map(|t| &*t.text)
             .collect();
         assert!(
-            unknown_texts.iter().any(|t| *t == "SAR-CD"),
+            unknown_texts.contains(&"SAR-CD"),
             "duplicate SAR block must be recorded as Unknown, got: {unknown_texts:?}",
         );
     }

@@ -73,7 +73,8 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. Owns `build.rs` + ODNI schemas. |
 | `marque-core` | Scanner + parser. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. Produces `IsmAttributes` from byte buffers. |
 | `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `Severity`, `AppliedFix`. No implementations. |
-| `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. |
+| `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`, `Constraint`, `Parsed<M>`. Zero runtime deps; no dependency on `marque-ism`. Phase A scaffolding — see `docs/plans/2026-04-17-marking-scheme-lattice-design.md`. |
+| `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. Also hosts `CapcoScheme`, the `marque-scheme` adapter over `IsmAttributes`. |
 | `marque-engine` | Pipeline orchestration: `Engine` (single doc) and `BatchEngine` (async concurrent). |
 | `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. **Not in WASM.** |
 | `marque-config` | Layered config loading from `.marque.toml` → `.marque.local.toml` → env vars. |

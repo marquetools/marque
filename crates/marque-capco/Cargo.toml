@@ -11,6 +11,7 @@ license.workspace = true
 aho-corasick = { workspace = true }
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
 phf = { workspace = true }
 thiserror = { workspace = true }
 

@@ -120,7 +120,7 @@ middleware.
 
 ## License
 
-Apache-2.0. Copright 2026, Knitli Inc.
+Apache-2.0. Copyright 2026, Knitli Inc.
 
 ## Why... Classification Markings?
 
