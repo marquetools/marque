@@ -158,19 +158,19 @@ pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
 /// Apply `AggregationOp::UnionWithSupersession`. Unions the values, then
 /// drops any token appearing on the right side of a pair whose left
 /// side is present in the union.
-pub fn reduce_union_with_supersession<T: Eq + Clone + Copy>(
+pub fn reduce_union_with_supersession<T: Eq + Clone>(
     values: &[T],
     supersession: &[(T, T)],
 ) -> Vec<T> {
     let unioned = reduce_union(values);
     unioned
         .iter()
-        .copied()
         .filter(|t| {
             !supersession
                 .iter()
-                .any(|(superseding, superseded)| superseded == t && unioned.contains(superseding))
+                .any(|(superseding, superseded)| superseded == *t && unioned.contains(superseding))
         })
+        .cloned()
         .collect()
 }
 

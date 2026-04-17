@@ -101,30 +101,39 @@ mod tests {
     }
 
     #[test]
-    fn candidate_log_odds_sum_is_associative() {
-        // The resolver scores candidates by additively summing log-odds
-        // over evidence features. f32 addition is not generally
-        // associative — rounding makes order matter — so this test
-        // uses a tolerance and pins the intended order-independent
-        // scoring model for these representative values. It's
-        // protection against a future change that introduces e.g.
-        // weighted averaging or another non-associative combinator.
-        let features = [
-            EvidenceFeature {
-                label: "year_nearby",
-                log_odds: -2.0,
-            },
-            EvidenceFeature {
-                label: "high_prior_classification",
-                log_odds: 1.5,
-            },
-            EvidenceFeature {
-                label: "list_marker_context",
-                log_odds: -0.8,
-            },
-        ];
-        let left = (features[0].log_odds + features[1].log_odds) + features[2].log_odds;
-        let right = features[0].log_odds + (features[1].log_odds + features[2].log_odds);
-        assert!((left - right).abs() < 1e-6);
+    fn candidate_score_adds_prior_and_feature_log_odds() {
+        // The resolver scores candidates by adding the prior log-odds
+        // to the sum of all observed evidence feature log-odds. This
+        // test pins that scoring algorithm directly — a future change
+        // that introduces e.g. weighted averaging or another
+        // combinator will make the assertion fail.
+        let candidate = Candidate {
+            marking: "classification",
+            evidence: vec![
+                EvidenceFeature {
+                    label: "year_nearby",
+                    log_odds: -2.0,
+                },
+                EvidenceFeature {
+                    label: "high_prior_classification",
+                    log_odds: 1.5,
+                },
+                EvidenceFeature {
+                    label: "list_marker_context",
+                    log_odds: -0.8,
+                },
+            ],
+            prior_log_odds: 0.7,
+        };
+
+        let score = candidate.prior_log_odds
+            + candidate
+                .evidence
+                .iter()
+                .map(|feature| feature.log_odds)
+                .sum::<f32>();
+
+        // 0.7 + (-2.0 + 1.5 - 0.8) = -0.6
+        assert!((score - (-0.6)).abs() < 1e-6);
     }
 }
