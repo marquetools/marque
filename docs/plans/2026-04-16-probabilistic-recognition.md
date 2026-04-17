@@ -134,34 +134,68 @@ The corpus must be **non-IC** to establish the background rate. Good candidates:
 - Wikipedia English text
 - Business correspondence datasets
 
-### Tool requirements
+### Tool: `tools/corpus-analysis/`
 
-The corpus analysis tool should be:
+Built and validated. Python tool that accepts a token vocabulary (JSON) and a corpus directory, producing a frequency table with per-token counts, contextual signals, and co-occurrence data. Enron corpus (510K emails, 134M words) is the default. See `tools/corpus-analysis/README.md` for usage.
 
-- **A factory, not a one-off**: Given a corpus and a token list, produce a frequency table. Today the tokens are CAPCO vocabulary. Tomorrow they're CUI controls, French classifications, or NATO markings.
-- **Language-agnostic in design**: The tool doesn't need to understand what the tokens mean, just how often they appear in context.
-- **Probably Python**: Token frequency analysis, corpus processing, and NLP are Python's home turf. The output is a static frequency table that Rust consumes at build time (like the ISM schemas in `build.rs`).
-- **Potentially already exists**: TF-IDF, PMI, corpus frequency tools are standard NLP. We may need a thin wrapper, not a new tool.
+### Empirical Results: Enron Corpus (510,596 docs, 134M words, 22.4M lines)
+
+**Finding 1: 58 of 93 CAPCO tokens are effectively marking-exclusive.**
+NOFORN, ORCON, PROPIN, IMCON, RSEN, DSEN, FISA, DISPLAYONLY, NOCON, all SCI compounds (SI-G, TK-BLFH, etc.), all declass exemptions (25X1, 50X1-HUM, etc.), FVEY, ACGU, DEU, DNK — all have <0.1 occurrences per million words. Any appearance of these tokens is very strong marking evidence by itself.
+
+**Finding 2: `//` outside URLs is a near-perfect discriminator.**
+532K total `//` occurrences, but 331K (62%) are in URLs. Non-URL `//` rate: ~1500/M words. But `(classification//control)` — a `//` inside parens preceded by a known classification token — has **zero** false positives in the entire corpus for `(S//`, `(C//`, `(TS//`, and only 2 for `(U//` (one of which was an actual leaked classified email subject line in Enron).
+
+**Finding 3: The ambiguous tokens are only ambiguous in isolation.**
+
+| Token | Hits/M words | Context | Notes |
+|-------|-------------|---------|-------|
+| `C` | 61.4 | 5,180 after `(`, but only 36 near `//` | `(C)` = copyright/phone. `(C//` = zero in corpus. |
+| `S` | 36.4 | 1,589 after `(`, but only 4 near `//` | `(S)` = reservation codes, pluralization |
+| `R` | 43.2 | 4,682 after `(`, but only 3 near `//` | `(R)` = registered trademark |
+| `U` | 15.4 | 1,174 after `(`, but only 3 near `//` | `(U)` = decorative text |
+| `PR` | 41.4 | Common | Public Relations, Puerto Rico |
+| `USA` | 107.9 | Common | Country name in normal text |
+| `SECRET` | 1.4 | 13 at line start caps | Email disclaimers, "trade secret" |
+| `CONFIDENTIAL` | 14.5 | 522 at line start caps | Email confidentiality notices (Enron used these heavily) |
+
+The `CONFIDENTIAL` number is a feature of the dataset, not a bug — Enron, like many companies, slapped "CONFIDENTIAL" on email disclaimers. This is exactly the real-world noise the engine encounters: the word exists in normal business English but almost never in `(X//Y)` structure.
+
+**Finding 4: `(X)` exact patterns — the copyright collision.**
+
+| Pattern | Count | What it is |
+|---------|-------|-----------|
+| `(C)` | 4,766 | Copyright, phone "(C)" for cell, list markers |
+| `(R)` | 2,208 | Registered trademark |
+| `(S)` | 925 | Reservation numbers, pluralization |
+| `(U)` | 9 | Decorative text |
+| `(TS)` | 12 | "Terminal Server", deal codes |
+| `(C//` | 0 | — |
+
+**`(C)` is the one genuinely ambiguous case.** In an otherwise UNCLASSIFIED document, `(C)` could be a copyright symbol or a CONFIDENTIAL portion marking. These have opposite implications: one means "this document is misclassified, escalate" and the other means "ignore it." The engine must surface this as a human-verification question, not auto-resolve. In a document that already has higher-classified portions, `(C)` is unambiguously CONFIDENTIAL (the document is already classified above C). See "Open Questions" §9 for design implications.
+
+**Finding 5: Single slash between tokens is extremely noisy without vocabulary confirmation.**
+`UPPER/UPPER` (any single slash between uppercase tokens): 780K hits — Enron email headers use `Name/OFFICE/COMPANY` notation. But `classification/control` where both sides resolve to *known CAPCO vocabulary entries* at word boundaries: the hits are all substrings of longer words (`S/SINGAPORE`, `TOPICS/PRACTICE`). A real token resolver that confirms both sides as vocabulary matches would eliminate these.
+
+**Finding 6: Co-occurrence of 2+ CAPCO tokens is near-zero.**
+The highest co-occurrence pair is `S+U` at 724 — the two noisiest single-char tokens. No IC-specific pairs (e.g., `SI+TK`, `NF+SECRET` near `//`) appeared at meaningful rates. **Two or more CAPCO tokens adjacent to each other, near `//`, is overwhelming marking evidence.**
+
+### Empirical confidence tiers
+
+| Signal | False positive rate (Enron) | Suggested prior |
+|--------|---------------------------|-----------------|
+| `(X//Y)` where X, Y are known tokens | 0 in 22M lines | ~1.0 |
+| `X//Y` at line start, both known tokens | 0 | ~1.0 |
+| `(TS` at line start | 0 in 22M lines | ~0.99 |
+| Marking-exclusive token (NOFORN, etc.) | <0.1/M words | ~0.95 standalone |
+| 2+ known tokens near `//` | ~0 in 134M words | ~0.99 |
+| `(C)` in UNCLASSIFIED document | 4,766 copyright vs 0 marking | Requires human verification |
+| Standalone `SECRET` or `CONFIDENTIAL` | 192 / 1,950 in 510K docs | Low without structural context |
+| `UPPER/UPPER` single slash | 780K in 510K docs | Very low — needs vocabulary confirmation |
 
 ### Output format
 
-A build-time-consumable table, probably JSON or TOML:
-
-```json
-{
-  "corpus": "enron-emails-v1",
-  "token_count": 517234,
-  "document_count": 500000,
-  "tokens": {
-    "SECRET": { "doc_freq": 0.0023, "context_freq": { "after_paren": 0.00001, "near_double_slash": 0.0 } },
-    "SI": { "doc_freq": 0.0089, "context_freq": { "after_paren": 0.0, "near_double_slash": 0.0 } },
-    "NOFORN": { "doc_freq": 0.0, "context_freq": { "after_paren": 0.0, "near_double_slash": 0.0 } },
-    "//": { "doc_freq": 0.015, "context_freq": { "inside_parens": 0.001, "in_url": 0.014 } }
-  }
-}
-```
-
-The Rust build.rs or a codegen step converts this into static lookup tables the engine uses at runtime.
+Full results in `tools/corpus-analysis/output/enron-full.json`. The Rust build.rs or a codegen step converts the token frequency tables into static lookup arrays the engine uses at runtime.
 
 ## 5. Proposed Crate Graph Evolution
 
@@ -285,3 +319,7 @@ The form-field path is simpler (skip Layer 1) and could ship earlier. The open-t
 4. **Should the VocabularyProvider include ordering rules?** Today ordering is enforced by rules (E003). But if the token resolver needs to distinguish "misordered known tokens" from "unknown tokens in expected positions," it needs ordering knowledge.
 
 5. **How does this interact with the corrections map?** The corrections map becomes a high-confidence override layer: if the user explicitly maps `SERCET → SECRET`, that's confidence 1.0 regardless of what fuzzy matching would produce. The map complements, not replaces, the probabilistic path.
+
+6. **The `(C)` problem: how does the engine express "I need human judgment"?** `(C)` in an UNCLASSIFIED document is genuinely ambiguous (copyright vs. CONFIDENTIAL portion). Corpus data: 4,766 copyright uses, 0 marking uses in Enron. But in a marque context (user is working with classified materials), the prior shifts. The engine needs a distinct output category — not a low-confidence fix, but a verification request: "Is this `(C)` a CONFIDENTIAL portion marking or a copyright symbol? If it's a portion marking, the document banner should be upgraded." This is different from a diagnostic (which reports a violation) and a fix (which proposes a correction). It's a question. In a document that already has portions at CONFIDENTIAL or above, the question resolves itself — `(C)` is unambiguously a marking because the document is already classified at that level or higher.
+
+7. **Single-slash tolerance.** The most common marking error is `S/NF` instead of `S//NF`. Corpus data: `UPPER/UPPER` single-slash is extremely noisy (780K hits in Enron — email header `Name/OFFICE` notation). But `classification/control` where both sides resolve to known CAPCO vocabulary at word boundaries would have near-zero false positives. The token resolver needs to handle `/` as a likely-malformed `//` when both adjacent tokens are vocabulary matches and context confidence is high.

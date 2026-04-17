@@ -1,0 +1,72 @@
+{
+  "vocabulary": "CAPCO-ISM-v2022-DEC",
+  "description": "CAPCO classification marking tokens from ODNI ISM schemas. Used as input to corpus frequency analysis.",
+  "categories": {
+    "classification_abbrev": {
+      "description": "Classification level abbreviations (portion marking form)",
+      "tokens": ["U", "C", "S", "TS", "R"]
+    },
+    "classification_full": {
+      "description": "Classification level full words (banner form)",
+      "tokens": ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET", "TOP SECRET", "RESTRICTED"]
+    },
+    "sci_bare": {
+      "description": "SCI control system bare identifiers",
+      "tokens": ["SI", "TK", "G", "HCS", "KLM", "RSV", "BUR", "MVL"]
+    },
+    "sci_compound": {
+      "description": "SCI control-compartment compounds",
+      "tokens": [
+        "SI-G", "SI-EU", "SI-NK",
+        "TK-BLFH", "TK-IDIT", "TK-KAND",
+        "HCS-O", "HCS-P", "HCS-X",
+        "KLM-R",
+        "BUR-BLG", "BUR-DTP", "BUR-WRG"
+      ]
+    },
+    "dissem": {
+      "description": "Dissemination controls",
+      "tokens": [
+        "NF", "NOFORN",
+        "REL", "REL TO", "RELIDO",
+        "FOUO",
+        "OC", "ORCON",
+        "IMC", "IMCON",
+        "PR", "PROPIN",
+        "RSEN", "RS",
+        "DSEN",
+        "FISA", "RAWFISA",
+        "DISPLAYONLY",
+        "EYES", "EYES ONLY",
+        "NOCON",
+        "AC", "AWP",
+        "DL_ONLY", "FED_ONLY", "FEDCON",
+        "OC-USGOV", "WAIVED"
+      ]
+    },
+    "sar_prefix": {
+      "description": "SAR program prefix",
+      "tokens": ["SAR"]
+    },
+    "declass_exemption": {
+      "description": "Declassification exemption markers",
+      "tokens": [
+        "25X1", "25X2", "25X3", "25X4", "25X5", "25X6", "25X7", "25X8", "25X9",
+        "50X1", "50X1-HUM", "50X2", "50X2-WMD",
+        "AEA"
+      ]
+    },
+    "structural": {
+      "description": "Structural delimiters and markers specific to classification markings",
+      "tokens": ["//"]
+    },
+    "trigraph_high_interest": {
+      "description": "Country/entity trigraphs most likely to appear in markings (FVEY + common partners). Full trigraph list is 340 entries; these are the ones worth measuring individually.",
+      "tokens": [
+        "USA", "GBR", "CAN", "AUS", "NZL",
+        "FVEY", "NATO", "ACGU",
+        "DEU", "FRA", "NOR", "NLD", "DNK", "ITA", "ESP", "JPN", "KOR", "ISR"
+      ]
+    }
+  }
+}

@@ -21,9 +21,9 @@ use marque_rules::{AppliedFix, Diagnostic, FixSource};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(target_arch = "wasm32")]
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use wasm_bindgen::prelude::*;
 
 // ---------------------------------------------------------------------------
