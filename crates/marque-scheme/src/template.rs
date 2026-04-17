@@ -31,7 +31,7 @@ pub enum TokenForm {
     Abbreviated,
     /// Banners: `SECRET`, `NOFORN`, `TOP SECRET`.
     Expanded,
-    /// Either form is accepted; don't normalise.
+    /// Either form is accepted; don't normalize.
     AsWritten,
 }
 

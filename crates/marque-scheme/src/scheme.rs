@@ -18,10 +18,10 @@ use crate::template::Template;
 /// Implementors bundle the scheme's data (`categories`, `constraints`,
 /// `templates`) with operations the engine invokes. The data-heavy
 /// methods are `&self` getters so adapters can return references into
-/// `static` tables; the behavioural methods take the concrete
+/// `static` tables; the behavioral methods take the concrete
 /// `Marking` type.
 pub trait MarkingScheme {
-    /// The scheme's token type. Kept associated (not parameterised) so
+    /// The scheme's token type. Kept associated (not parameterized) so
     /// schemes can use their own enum without leaking generics into the
     /// engine's call sites.
     type Token;
