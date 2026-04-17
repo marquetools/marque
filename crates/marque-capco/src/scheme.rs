@@ -67,14 +67,46 @@ impl From<IsmAttributes> for CapcoMarking {
     }
 }
 
+// Phase A caveat on the `Lattice` impl
+// -----------------------------------
+//
+// The `Lattice` contract (idempotency, associativity, commutativity,
+// absorption) is NOT fully guaranteed by this Phase A impl:
+//
+// - `join` delegates to [`PageContext`], which applies non-invertible
+//   normalisation (DSEN overrides FOUO in classified docs; OC-USGOV
+//   drops when not present on every OC-carrying portion; UCNI drops
+//   in classified docs; NOFORN clears REL TO). These rules are
+//   correct CAPCO semantics but they're the *projection*, not a pure
+//   component-wise product-lattice join. Markings that touch those
+//   normalisations can violate absorption.
+// - `meet` is a partial component-wise implementation on
+//   classification + SCI + dissem (enough to satisfy the trait bound
+//   and pass the narrow test inputs); all other fields reset to their
+//   `Default`, so `meet` is not useful outside tests and is not
+//   law-consistent with `join` in edge cases.
+//
+// Phase A's equivalence tests exercise the narrow, non-normalising
+// subset of inputs where the laws do hold. Phase B replaces this impl
+// with a pure product-lattice `join` (component-wise aggregation of
+// each category's `AggregationOp`), leaving CAPCO's normalising
+// projection in `project_banner` where it belongs. At that point
+// `meet` becomes well-defined across every category.
+//
+// Downstream code should treat `CapcoMarking`'s `Lattice` impl as an
+// expedient for Phase A tests — not a stable API surface.
 impl Lattice for CapcoMarking {
     /// Join = banner-aggregate both portions via `PageContext`.
     ///
-    /// Delegates to [`PageContext`] so the scheme's join is definitionally
-    /// equivalent to the existing hand-written aggregation. Phase B
+    /// Delegates to [`PageContext`] so the scheme's join is
+    /// definitionally equivalent to the existing hand-written
+    /// aggregation on the inputs exercised by Phase A's tests. Phase B
     /// inverts this dependency — `PageContext` will be implemented in
-    /// terms of `Lattice::join` — but in Phase A the delegation is
-    /// what lets the equivalence tests hold.
+    /// terms of component-wise aggregation, and this method will stop
+    /// applying the projection's non-invertible normalisations.
+    ///
+    /// See the module-level "Phase A caveat" note above for the
+    /// specific laws this impl does not satisfy.
     fn join(&self, other: &Self) -> Self {
         let mut ctx = PageContext::new();
         ctx.add_portion(self.0.clone());
@@ -82,11 +114,14 @@ impl Lattice for CapcoMarking {
         CapcoMarking(page_context_to_attrs(&ctx))
     }
 
-    /// Meet = the common-lower-bound. CAPCO doesn't use meet during
-    /// normal operation (no one asks "what's the most restrictive
-    /// marking dominated by both of these?"). The impl is provided to
-    /// satisfy the `Lattice` contract and is component-wise minimum
-    /// on classification plus set intersection on dissem / SCI.
+    /// Meet = partial component-wise minimum.
+    ///
+    /// Implemented only on classification, SCI, and dissem — enough to
+    /// satisfy the trait bound and serve Phase A's test inputs. All
+    /// other fields reset to `Default`. This is not a full
+    /// product-lattice meet; see the module-level "Phase A caveat"
+    /// note above. Phase B replaces it with a proper component-wise
+    /// meet across every category.
     fn meet(&self, other: &Self) -> Self {
         let a = &self.0;
         let b = &other.0;
@@ -201,7 +236,13 @@ impl CapcoScheme {
                 name: "sar",
                 ordering_rank: 20,
                 cardinality: Cardinality::Optional,
-                aggregation: AggregationOp::Union,
+                // SAR rollup is structural (programs carry
+                // compartments, compartments carry sub-compartments per
+                // §H.5) and not expressible as a flat token union. Flag
+                // as `Custom` so Phase B leaves
+                // `PageContext::expected_sar_marking` in place rather
+                // than substituting a naive union reducer.
+                aggregation: AggregationOp::Custom,
                 intra_ordering: IntraOrdering::NumericThenAlpha,
                 expansion: None,
             },
@@ -210,7 +251,14 @@ impl CapcoScheme {
                 name: "aea",
                 ordering_rank: 30,
                 cardinality: Cardinality::Many,
-                aggregation: AggregationOp::Union,
+                // AEA rollup is not a plain union: RD precedes FRD and
+                // TFNI (RD absorbs FRD when both are present), SIGMA
+                // compartments merge numerically across RD blocks, and
+                // UCNI drops in classified documents. Flag as `Custom`
+                // so Phase B does not silently replace
+                // `PageContext::expected_aea_markings` with a naive
+                // union reducer.
+                aggregation: AggregationOp::Custom,
                 intra_ordering: IntraOrdering::AsWritten,
                 expansion: None,
             },
@@ -219,7 +267,15 @@ impl CapcoScheme {
                 name: "fgi_marker",
                 ordering_rank: 40,
                 cardinality: Cardinality::Optional,
-                aggregation: AggregationOp::Union,
+                // FGI rollup has non-trivial semantics: source-concealed
+                // FGI supersedes source-acknowledged FGI (revealing the
+                // country list would compromise the concealed source),
+                // and the marker changes shape when multiple origin
+                // countries contribute. `AggregationOp::Custom` flags
+                // this for Phase B so the engine does not silently
+                // replace `PageContext::expected_fgi_marker` with a
+                // plain union.
+                aggregation: AggregationOp::Custom,
                 intra_ordering: IntraOrdering::Alphabetical,
                 expansion: None,
             },
@@ -228,14 +284,19 @@ impl CapcoScheme {
                 name: "dissem",
                 ordering_rank: 50,
                 cardinality: Cardinality::Many,
-                // NOFORN ⊐ REL TO. Represented here at category
-                // granularity; the real supersession table goes token-
-                // keyed when Phase C replaces the sentinel ids with
-                // generated CVE token ids.
-                aggregation: AggregationOp::UnionWithSupersession(vec![(
-                    TOK_NOFORN,
-                    TOK_REL_TO_ANY,
-                )]),
+                // Plain union at category granularity. NOFORN ⊐ REL TO
+                // is a *cross*-category supersession — NOFORN lives in
+                // dissem, REL TO in `rel_to` — and
+                // `UnionWithSupersession` is only expressive within a
+                // single category's token set. The cross-category
+                // supersession is enforced today by
+                // `PageContext::expected_rel_to()` (which clears REL TO
+                // when any NOFORN is present) and by the
+                // `Constraint::Conflicts(NOFORN, REL_TO)` check below.
+                // Phase C will model cross-category supersession
+                // explicitly (e.g. as a new `Constraint::Supersedes`
+                // variant that spans categories).
+                aggregation: AggregationOp::Union,
                 intra_ordering: IntraOrdering::Alphabetical,
                 expansion: None,
             },
@@ -280,13 +341,19 @@ impl CapcoScheme {
     }
 }
 
-/// Parse errors surfaced by `CapcoScheme::parse`. Phase A wraps
-/// `marque-core`'s `CoreError` directly.
+/// Parse errors surfaced by `CapcoScheme::parse`.
+///
+/// Phase A does not actually parse through the trait — callers continue
+/// to use `marque_core::Parser` directly — so `parse()` unconditionally
+/// returns [`CapcoParseError::NotImplemented`]. Phase B/E will wrap
+/// `marque-core`'s `CoreError` here once parsing is routed through the
+/// scheme trait (and the `(C)` ambiguity surface lands).
 #[derive(Debug)]
 pub enum CapcoParseError {
-    /// No marking recognised in input. Phase A does not yet attempt
-    /// ambiguity surfacing for the `(C)` case — unambiguous only.
-    NotRecognised,
+    /// `CapcoScheme::parse` is intentionally unimplemented in Phase A.
+    /// Use `marque_core::Parser` for actual parsing until Phase B/E
+    /// routes it through the scheme trait.
+    NotImplemented,
 }
 
 impl MarkingScheme for CapcoScheme {
@@ -319,7 +386,7 @@ impl MarkingScheme for CapcoScheme {
         // shape against CAPCO. Callers continue to use
         // `marque_core::Parser` directly. Phase B/E tie parse() into
         // the engine once the ambiguity resolver lands.
-        Err(CapcoParseError::NotRecognised)
+        Err(CapcoParseError::NotImplemented)
     }
 
     fn validate(&self, m: &Self::Marking) -> Vec<ConstraintViolation> {

@@ -199,16 +199,27 @@ pub enum Constraint {
     Requires(TokenRef, TokenRef),    // HCS ⇒ NOFORN
     Implies(TokenRef, TokenRef),     // RD ⇒ NOFORN (default)
     Supersedes(TokenRef, TokenRef),  // NOFORN ⊐ REL TO at banner level
-    Custom(fn(&Marking) -> Vec<ConstraintViolation>),
+    Custom(&'static str),            // label; scheme's validate() dispatches it
 }
 ```
 
-Custom is the escape hatch. CAPCO has a handful of rules that can't be
-expressed as a binary relation (SIGMA ordering requires numeric sort;
-CNWDI requires classification ≥ S). Those land as `Custom`. The design
-goal is that most of the 39 CAPCO rules become `Constraint` data; a
-minority stay as custom predicates. This PR doesn't do the migration —
-it proves the expressiveness on a three-constraint sample.
+The dyadic variants are fully evaluable by a generic engine that only
+knows how to check token/category presence. `Custom` is the escape
+hatch: its payload is a stable label, and the scheme's
+`MarkingScheme::validate` implementation matches on the label and runs
+the scheme-specific predicate. CAPCO has a handful of rules that can't
+be expressed as a binary relation (SIGMA ordering requires numeric
+sort; CNWDI requires classification ≥ S). Those land as `Custom`. The
+design goal is that most of the 39 CAPCO rules become dyadic
+`Constraint` data; a minority stay as `Custom` labels whose predicates
+live in the scheme. This PR doesn't do the migration — it proves the
+expressiveness on a three-constraint sample.
+
+A future alternative variant (e.g. `DynCustom(Arc<dyn Fn(&Marking) ->
+Vec<ConstraintViolation>>)`) can be added alongside when an
+engine-side generic evaluator becomes useful. Phase A keeps the
+`'static`-friendly shape so `constraints()` can return `&[Constraint]`
+without lifetime gymnastics.
 
 ## 4. Probabilistic disambiguation
 
