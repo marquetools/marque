@@ -77,8 +77,7 @@ fn project_banner_sci_union_matches_pagecontext() {
 
     let scheme = CapcoScheme::new();
     let banner = scheme.project_banner(&portions);
-    let actual: std::collections::BTreeSet<_> =
-        banner.0.sci_controls.iter().copied().collect();
+    let actual: std::collections::BTreeSet<_> = banner.0.sci_controls.iter().copied().collect();
 
     assert_eq!(actual, expected);
     assert!(actual.contains(&SciControl::Si));
@@ -202,7 +201,9 @@ fn constraint_noforn_rel_to_conflict_fires() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        violations.iter().any(|v| v.constraint_label == "NOFORN∥REL TO"),
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "NOFORN∥REL TO"),
         "expected NOFORN∥REL TO violation, got: {violations:?}"
     );
 }
@@ -216,7 +217,9 @@ fn constraint_noforn_rel_to_conflict_is_silent_when_separate() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        !violations.iter().any(|v| v.constraint_label == "NOFORN∥REL TO"),
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "NOFORN∥REL TO"),
         "no conflict expected when only NOFORN is present: {violations:?}"
     );
 }
@@ -230,7 +233,9 @@ fn constraint_hcs_requires_noforn_fires_when_noforn_absent() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        violations.iter().any(|v| v.constraint_label == "HCS⇒NOFORN"),
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS⇒NOFORN"),
         "expected HCS⇒NOFORN violation, got: {violations:?}"
     );
 }
@@ -244,7 +249,9 @@ fn constraint_hcs_requires_noforn_silent_when_noforn_present() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        !violations.iter().any(|v| v.constraint_label == "HCS⇒NOFORN"),
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "HCS⇒NOFORN"),
         "no HCS⇒NOFORN violation expected: {violations:?}"
     );
 }
@@ -301,7 +308,11 @@ fn scheme_categories_have_distinct_ids_and_ordered_ranks() {
 
     // Ranks are strictly increasing across our eight categories (so no
     // two categories collide at the same render position).
-    let mut ranks: Vec<u16> = scheme.categories().iter().map(|c| c.ordering_rank).collect();
+    let mut ranks: Vec<u16> = scheme
+        .categories()
+        .iter()
+        .map(|c| c.ordering_rank)
+        .collect();
     ranks.sort();
     for w in ranks.windows(2) {
         assert!(w[0] < w[1], "ordering_rank values collide: {ranks:?}");
