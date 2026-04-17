@@ -2516,8 +2516,7 @@ mod sar_parse_tests {
             parsed
                 .attrs
                 .dissem_controls
-                .iter()
-                .any(|d| *d == marque_ism::DissemControl::Nf),
+                .contains(&marque_ism::DissemControl::Nf),
             "NOFORN must still be recognized after the SAR block"
         );
     }
@@ -2566,7 +2565,7 @@ mod sar_parse_tests {
             .map(|t| &*t.text)
             .collect();
         assert!(
-            unknown_texts.iter().any(|t| *t == "SAR-CD"),
+            unknown_texts.contains(&"SAR-CD"),
             "duplicate SAR block must be recorded as Unknown, got: {unknown_texts:?}",
         );
     }

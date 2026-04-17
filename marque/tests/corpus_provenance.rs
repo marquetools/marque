@@ -248,7 +248,7 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
 /// remaining text contains only uppercase alphanumeric identifiers,
 /// spaces, and hyphens.
 fn is_structural_sci_token(token: &str) -> bool {
-    let Some(first_segment_end) = token.find(|c: char| c == '-' || c == ' ') else {
+    let Some(first_segment_end) = token.find(['-', ' ']) else {
         return false;
     };
     let head = &token[..first_segment_end];
