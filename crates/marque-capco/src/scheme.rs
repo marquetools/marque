@@ -47,7 +47,6 @@ pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(8);
 
 pub const TOK_NOFORN: TokenId = TokenId(100);
 pub const TOK_HCS: TokenId = TokenId(101);
-pub const TOK_REL_TO_ANY: TokenId = TokenId(102);
 pub const TOK_JOINT: TokenId = TokenId(103);
 pub const TOK_USA: TokenId = TokenId(104);
 
@@ -58,6 +57,17 @@ pub const TOK_USA: TokenId = TokenId(104);
 /// CAPCO marking as viewed through the `marque-scheme` lens. A thin
 /// newtype around [`IsmAttributes`] so we can hang trait impls on it
 /// without orphan-rule problems.
+///
+/// # ⚠️ Phase A scaffolding — do not use in production
+///
+/// `CapcoMarking` is exported publicly so the Phase A equivalence
+/// tests can construct it, but it **does not uphold the [`Lattice`]
+/// contract** on every input (see the caveat block on the `Lattice`
+/// impl below). Downstream consumers must not rely on `Lattice::join`
+/// / `Lattice::meet` of `CapcoMarking` producing law-abiding results
+/// until Phase B replaces the impl with a proper product-lattice
+/// aggregator. Use [`crate::capco_rules`] and `marque-core` directly
+/// for production paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapcoMarking(pub IsmAttributes);
 
@@ -335,7 +345,14 @@ impl CapcoScheme {
             ),
             // Sample constraint 2: HCS requires NOFORN.
             Constraint::Requires(TokenRef::Token(TOK_HCS), TokenRef::Token(TOK_NOFORN)),
-            // Sample constraint 3: JOINT requires USA in REL TO.
+            // Sample constraint 3: JOINT always requires USA in both
+            // the JOINT classification country list and the REL TO
+            // list. The declarative `Requires(JOINT, USA)` above is
+            // shorthand — the scheme's `validate` dispatches it to a
+            // predicate that checks both positions. Phase C will
+            // express this with a richer `TokenRef` that can target a
+            // specific category so the constraint is fully
+            // declarative.
             Constraint::Requires(TokenRef::Token(TOK_JOINT), TokenRef::Token(TOK_USA)),
         ]
     }
