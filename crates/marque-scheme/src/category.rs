@@ -146,6 +146,7 @@ pub fn reduce_max<T: Ord + Clone>(values: &[T]) -> Option<T> {
 /// tracking (the output is still ordered). Tokens must be `Hash + Eq`
 /// — which covers every token shape the existing schemes use
 /// (`TokenId`, `&str`, owned strings, enum variants).
+#[inline]
 pub fn reduce_union<T: Eq + std::hash::Hash + Clone>(values: &[T]) -> Vec<T> {
     let mut out: Vec<T> = Vec::with_capacity(values.len());
     let mut seen: std::collections::HashSet<&T> =
@@ -164,6 +165,7 @@ pub fn reduce_union<T: Eq + std::hash::Hash + Clone>(values: &[T]) -> Vec<T> {
 /// An empty input returns an empty result (vacuous truth does not help
 /// here — the caller should check `portions.is_empty()` before calling
 /// this on the empty case).
+#[inline]
 pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
     let Some((first, rest)) = sets.split_first() else {
         return Vec::new();
@@ -181,6 +183,7 @@ pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
 ///
 /// Precomputes a `HashSet` of the unioned tokens so the supersession
 /// filter is O(n + k) rather than O(n·k) over the supersession pairs.
+#[inline]
 pub fn reduce_union_with_supersession<T: Eq + std::hash::Hash + Clone>(
     values: &[T],
     supersession: &[(T, T)],

@@ -10,7 +10,7 @@
     "linter",
     "wasm"
   ],
-  "license": "MIT",
+  "license": "LicenseRef-MarqueLicense-1.0 AND Apache-2.0 AND MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/marquetools/marque"

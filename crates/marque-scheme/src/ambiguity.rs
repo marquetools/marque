@@ -44,11 +44,13 @@ pub struct EvidenceFeature {
 }
 
 impl<M> Parsed<M> {
+    #[inline]
     /// Convenience: is this a single unambiguous parse?
     pub fn is_unambiguous(&self) -> bool {
         matches!(self, Self::Unambiguous(_))
     }
 
+    #[inline]
     /// Map the underlying marking type while preserving the variant.
     pub fn map<N, F: Fn(M) -> N>(self, f: F) -> Parsed<N> {
         match self {

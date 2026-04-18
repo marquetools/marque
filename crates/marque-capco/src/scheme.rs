@@ -71,6 +71,7 @@ pub const TOK_USA: TokenId = TokenId(104);
 pub struct CapcoMarking(pub IsmAttributes);
 
 impl From<IsmAttributes> for CapcoMarking {
+    #[inline]
     fn from(attrs: IsmAttributes) -> Self {
         Self(attrs)
     }
@@ -116,6 +117,7 @@ impl Lattice for CapcoMarking {
     ///
     /// See the module-level "Phase A caveat" note above for the
     /// specific laws this impl does not satisfy.
+    #[inline]
     fn join(&self, other: &Self) -> Self {
         let mut ctx = PageContext::new();
         ctx.add_portion(self.0.clone());
@@ -131,6 +133,7 @@ impl Lattice for CapcoMarking {
     /// product-lattice meet; see the module-level "Phase A caveat"
     /// note above. Phase B replaces it with a proper component-wise
     /// meet across every category.
+    #[inline]
     fn meet(&self, other: &Self) -> Self {
         let a = &self.0;
         let b = &other.0;
@@ -169,6 +172,7 @@ impl Lattice for CapcoMarking {
 /// fields exercised by Phase A's equivalence tests. Other fields land
 /// at their defaults, which matches Phase B's goal of handing
 /// everything off to scheme-driven aggregation.
+#[inline]
 fn page_context_to_attrs(ctx: &PageContext) -> IsmAttributes {
     let mut out = IsmAttributes::default();
 
@@ -220,8 +224,39 @@ impl CapcoScheme {
         }
     }
 
+    /// Build the scheme's category table.
+    /// 
+    /// (U) The IC marking system has nine categories of classification and control markings:
+    /// 1. US Classification Markings
+    /// 2. Non-US Protective Markings
+    /// 3. Joint Classification Markings
+    /// 4. Sensitive Compartmented Information (SCI) Control System Markings – used by the IC to identify
+    /// information that has special access requirements not met by classification level, alone
+    /// 5. Special Access Program (SAP) Markings – used primarily by non-IC departments and agencies to identify
+    /// information that has special access requirements not met by classification level, alone
+    /// 6. Atomic Energy Act (AEA) Information Markings – used to identify information regarding nuclear matters
+    /// 7. Foreign Government Information (FGI) Markings – used to identify information from a foreign source
+    /// 8. Dissemination Control Marking – IC markings used to identify the expansion or limitation on distribution
+    /// 9. Non-Intelligence Community Dissemination Control Markings – non-IC markings used to identify the
+    /// expansion or limitation on further distribution
     fn build_categories() -> Vec<Category> {
         vec![
+            // US classifications are a core category with a well-defined hierarchy, so `Max` is the natural aggregation.
+            // NOTE: `Classification` includes 3 distinct categories that cannot co-occur in the same portion or banner:
+            //  - U.S. classification level (e.g. CONFIDENTIAL, SECRET, TOP SECRET) or UNCLASSIFIED (if no classification)
+            //  - Non-U.S. classification (e.g. //GBR SECRET, //CAN CONFIDENTIAL, //NATO UNCLASSIFIED etc.). 
+            //      Non-U.S. classification may also be `RESTRICTED`, between UNCLASSIFIED and CONFIDENTIAL.
+            //  - JOINT classification (e.g. //JOINT USA CAN SECRET, //JOINT USA DEU FRA CONFIDENTIAL, etc.)
+            //      JOINT must always include a REL TO dissemination control that minimally includes the JOINT members (e.g. //JOINT USA CAN SECRET must have at least USA and CAN in REL TO).
+            //      resulting in: `//JOINT USA CAN SECRET//REL TO USA, CAN` or as a portion `(//JOINT USA CAN S//REL TO USA, CAN)`
+            //
+            // **A marking can only include one of these three categories** -- they are mutually exclusive.
+            //
+            // In banner rollup (and rarely in portions), if any portion carries a U.S. classification, the non-U.S. JOINT members and non-U.S. origin countries
+            //  are moved to the FGI category in the banner as a flat union (with a caveat, see FGI)
+            // 
+            // A simple way to think about non-U.S. and JOINT classifications beginning with `//` is that it indicates the separation of the occluded U.S. classification category
+            // It's the category separator that is still required to separate from the 'invisible' U.S. classification category that precedes it.
             Category {
                 id: CAT_CLASSIFICATION,
                 name: "classification",
@@ -231,6 +266,39 @@ impl CapcoScheme {
                 intra_ordering: IntraOrdering::AsWritten,
                 expansion: None,
             },
+            // Non-US classification 
+            // NATO information falls into this category but has its own tokens
+            //   (e.g. //NATO COSMIC TOP SECRET, (//CTS), //NATO SECRET, (//NS), etc.)
+            Category {
+                id: CAT_NON_US_CLASSIFICATION,
+                name: "non_us_classification",
+                ordering_rank: 5,
+                cardinality: Cardinality::One,
+                aggregation: AggregationOp::Max,
+                intra_ordering: IntraOrdering::AsWritten,
+                expansion: None,
+            },
+            // JOINT classification connotes that each partner produced the information jointly and has a stake in its protection.
+            Category {
+                id: CAT_JOINT_CLASSIFICATION,
+                name: "joint_classification",
+                ordering_rank: 6,
+                cardinality: Cardinality::One,
+                aggregation: AggregationOp::Max,
+                intra_ordering: IntraOrdering::AsWritten,
+                expansion: None,
+            },
+            // SCI is plain union. It can be complicated by compartments
+            // and subcompartments. There can be multiple of both compartments and subcompartments.
+            // The relationships are hierarchical (i.e. SCI Control -> Compartment --> Subcompartment), and the rollup
+            // preserves that hierarchy.
+            // CAPCO names several Controls, some compartments and subcompartments. These are the most common ones,
+            // but all three levels can have agency or program specific extensions that the scheme must support without requiring code changes.
+            // There are some rules to these extensions:
+            //  - Controls in their most-common abbreviated form are never more than 3 characters (e.g. HCS, SI, TK, etc.)
+
+
+
             Category {
                 id: CAT_SCI,
                 name: "sci",
@@ -284,6 +352,17 @@ impl CapcoScheme {
                 // this for Phase B so the engine does not silently
                 // replace `PageContext::expected_fgi_marker` with a
                 // plain union.
+                //
+                // When multiple source-acknowledged FGIs combine, they
+                // are a space delimited union in alphabetical order.
+                // When a JOINT marker is superseded by a U.S. classification
+                // The non-U.S. JOINT members are moved to the FGI marker.
+                //
+                // NOTE: The FGI category indicates *origin* and says nothing
+                // about *releasability*. FGI should still propagate with NOFORN
+                // and some FGI *originates* as NOFORN. Meaning the country
+                // requested the information *not* get shared back to them 
+                // (i.e. to another part of their government)
                 aggregation: AggregationOp::Custom,
                 intra_ordering: IntraOrdering::Alphabetical,
                 expansion: None,
@@ -503,9 +582,9 @@ impl MarkingScheme for CapcoScheme {
 ///    remarked to `HCS-P`, `HCS-O`, or `HCS-O-P`, which requires
 ///    document-level analysis (the correct variant depends on whether
 ///    the content is HUMINT product, operations, or both). Legacy
-///    `C//HCS` (CONFIDENTIAL with bare HCS) must additionally be
+///    `C//HCS` (CONFIDENTIAL with bare HCS -- no compartment) must additionally be
 ///    identified to the originator for correction.
-/// 2. **`HCS-O`** requires ORCON and must **not** include ORCON-USGOV.
+/// 2. **`HCS-O`** requires ORCON and must **not** include ORCON-USGOV (banner would drop -USGOV).
 /// 3. **`HCS-P`** requires **either** ORCON or ORCON-USGOV.
 /// 4. **`HCS-O` / `HCS-P`** are only authorized for SECRET and TOP
 ///    SECRET classifications.
@@ -514,6 +593,10 @@ impl MarkingScheme for CapcoScheme {
 /// legacy-shape bare HCS tokens) and `sci_markings` (the structural
 /// view that carries compartment identifiers). Emits one
 /// `ConstraintViolation` per failing rule per offending HCS entry.
+/// 
+/// By far the most common HCS compartment is `HCS-P` (Product).
+/// HCS-O (Operations) is rarely encountered outside of CIA's walls.
+/// But for users in that environment, they may encounter all three variants routinely.
 fn hcs_system_constraints(
     attrs: &marque_ism::IsmAttributes,
 ) -> Vec<marque_scheme::ConstraintViolation> {
@@ -633,7 +716,8 @@ fn hcs_system_constraints(
     if projection_has_bare_hcs && !structural_has_hcs {
         out.push(marque_scheme::ConstraintViolation {
             constraint_label: "HCS-legacy-bare",
-            message: "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
+            // suggested fix should be HCS-P but we should expose a default override path for users in the HCS-O environment
+            message: "HCS requires a compartment (O or P); remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
                  p62 (requires document-level analysis)."
                 .to_owned(),
         });
@@ -657,6 +741,7 @@ fn hcs_system_constraints(
 impl CapcoMarking {
     /// The effective US classification level, if any. Thin shim over
     /// `IsmAttributes::us_classification` for test readability.
+    #[inline]
     pub fn classification(&self) -> Option<Classification> {
         self.0.us_classification()
     }

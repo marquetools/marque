@@ -1,0 +1,1 @@
+For U.S. markings related to NATO, see: https://www.northropgrumman.com/careers/clearance-documents/nato-refresher-briefing

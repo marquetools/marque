@@ -1,10 +1,82 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense)](./LICENSE) covers the project's source code.
 version = 1
 SPDX-PackageName = "marque"
-SPDX-PackageSupplier = "Knitli Inc. <knitli@knit.li>"
+SPDX-PackageSupplier = "Knitli Inc. <knitli@knitli.com>"
 SPDX-PackageDownloadLocation = "https://github.com/marquetools/marque"
 
 [[annotations]]
-path = ["crates/marque-ism/schemas/"]
-precedence = "override"
+path = [
+  "crates/marque-capco/docs/CAPCO*.md",
+  "crates/marque-capco/docs/ICMarkings*.md",
+  "crates/marque-capco/docs/original-refs/CAPCO*.pdf",
+  "crates/marque-capco/docs/original-refs/ICMarkings*.ppt",
+  "crates/marque-ism/schemas/",
+]
+precedence = "closest"
 SPDX-FileCopyrightText = "United States Government, Public Domain"
 SPDX-License-Identifier = "LicenseRef-PublicDomain"
+
+[[annotations]]
+path = [
+  "_typos.toml",
+  ".gitattributes",
+  ".github/workflows/",
+  ".github/ISSUE_TEMPLATE/",
+  ".github/PULL_REQUEST_TEMPLATE/",
+  ".github/actions/",
+  ".gitignore",
+  "cliff.toml",
+  "AGENTS.md",
+  "../AGENTS.md",
+  "GEMINI.md",
+  "../GEMINI.md",
+  "CLAUDE.md",
+  "../CLAUDE.md",
+  "CODE_OF_CONDUCT.md",
+  "CONTRIBUTING.md",
+  "CONTRIBUTORS_LICENSE_AGREEMENT.md",
+  "deny.toml",
+  "docs-site/src/content/",
+  "LICENSE",
+  "mise.toml",
+  "README.md",
+  "SECURITY.md",
+  "**/Cargo.toml",
+  "**/Cargo.lock",
+  "**/mise.toml",
+  "mise.toml",
+  "Cargo.toml",
+  "Cargo.lock",
+  "**/README.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "MIT OR Apache-2.0"
+
+[[annotations]]
+path = [
+  ".github/prompts/speckit*.md",
+  ".claude/commands/speckit*.md",
+  ".gemini/commands/speckit*.md",
+  ".specify/scripts/",
+  ".specify/templates/",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "GitHub Inc."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+  "**/docs/plans/",
+  "**/plans/",
+  "**/specs/",
+  "docs/plans/",
+  "plans/",
+  "specs/",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense"
