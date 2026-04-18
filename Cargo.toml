@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # NOTE: SPDX identifiers at the top of a file apply only to that file.
-# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense)](./LICENSE) covers the project's source code.
+# The [Marque License 1.0 (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE) covers the project's source code.
 [workspace]
 resolver = "2"
 members = [
@@ -25,7 +25,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 repository = "https://github.com/marquetools/marque"
-license = "Apache-2.0"
+license = "LicenseRef-MarqueLicense-1.0"
 
 [workspace.dependencies]
 marque-capco = { path = "crates/marque-capco", version = "0.2.0" }
