@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense)](./LICENSE) covers the project's source code.
 # deny.toml — cargo-deny configuration
 # https://embarkstudios.github.io/cargo-deny/
 
