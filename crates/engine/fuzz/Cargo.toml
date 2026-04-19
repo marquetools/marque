@@ -6,7 +6,7 @@
 name = "marque-engine-fuzz"
 version = "0.1.0"
 edition = "2024"
-license-file = "../../LICENSE"
+license-file = "../LICENSE.md"
 publish = false
 
 [package.metadata]

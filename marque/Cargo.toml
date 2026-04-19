@@ -9,7 +9,13 @@ edition.workspace = true
 rust-version.workspace = true
 description = "A fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules."
 repository.workspace = true
-license-file = "LICENSE"
+license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [[bin]]
 name = "marque"

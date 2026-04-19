@@ -120,7 +120,7 @@ middleware.
 
 ## License
 
-This project is licensed under the [Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`)](./LICENSE). Copyright 2026, Knitli Inc.
+This project is licensed under the [Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`)](./LICENSE.md). Copyright 2026, Knitli Inc.
 
 ## Why... Classification Markings?
 
