@@ -718,12 +718,13 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
     // Dissemination control deprecations
     // Note: LIMDIS is NOT deprecated — it is a current non-IC dissem control
     // (CAPCO Register §9). A prior entry mapping LIMDIS→RELIDO was incorrect.
-    MigrationEntry {
-        deprecated: "FOUO",
-        replacement: "CUI",
-        confidence: 0.97,
-        reference: "CAPCO-2022-§2.1",
-    },
+    //
+    // Note: FOUO → CUI is NOT a CAPCO-level migration. FOUO remains valid in
+    // CAPCO ISM (see DissemControl::FOUO, still enumerated in the active CVE);
+    // CUI is a separate marking system under NARA jurisdiction. A prior
+    // entry mapping FOUO→CUI was removed in Phase E of the recursive-lattice
+    // design (2026-04-19 plan). Any "suggest CUI on non-IC documents"
+    // behavior lives in a future CUI adapter, gated by [agency] / [cui] config.
     MigrationEntry {
         deprecated: "NF",
         replacement: "NOFORN",

@@ -5,12 +5,26 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Marque: recursive lattices, lossless tokens, and the probabilistic decoder
 
-**Date:** 2026-04-19
-**Status:** proposed — supersedes §5 (Migration sequence) of
-`2026-04-17-marking-scheme-lattice-design.md` and reframes §3 (Trait
-surface) and §4 (Probabilistic disambiguation).
-**Builds on:** `2026-04-17-marking-scheme-lattice-design.md` —
-problem statement, core algebra, and phase A scaffolding are unchanged.
+**Date:** 2026-04-19 (revised)
+**Status:** proposed — supersedes §§3–5 of
+`2026-04-17-marking-scheme-lattice-design.md` end-to-end (trait
+surface, probabilistic disambiguation, migration sequence). The phase
+letters in §12 below are re-scoped: old Phase D ("Implement CUI") is
+re-lettered to Phase F here, old Phase E ("Fuzzy resolver") is folded
+into Phase D here. Where this doc and the 2026-04-17 doc name the
+same phase letter, **this document wins**.
+**Builds on:** `2026-04-17-marking-scheme-lattice-design.md` §§0–2 —
+problem statement, core algebra, and Phase A scaffolding are
+unchanged.
+**Revision history:** 2026-04-19 initial draft; 2026-04-19 (this file)
+incorporates ultraplan review — fixes factual errors (F1–F4), adds
+§5.1a recognizer adapter, §6a threat model, §7a cross-category
+rewrites, pins `DiffInput` / `CabSuggestion` / `SciSet::meet` / `K=8`
+decoder bound / `Send + Sync` contract, reconciles perf budget,
+retracts schema-derived deprecation claim, adds `marque-extract`
+integration, `--deep-scan` authoring gate, agency/CUI config gates,
+Q8 (no WASM corpus override), and the `FOUO → CUI` migration
+correction.
 
 ## 0. Why another design doc
 
@@ -116,6 +130,13 @@ Sub-goals that drop out of the above but are worth naming:
 - **G1a.** The CAPCO corpus accuracy harness (SC-002/SC-003, ≥95% per
   rule) is preserved across every phase transition. Each phase's PR
   runs it as a gate.
+- **G7a. Authoring-mode latency envelope.** During interactive
+  keystroke authoring, the engine runs the strict path only. The
+  probabilistic decoder is opt-in per session (`--deep-scan` / server
+  config) or triggered by an explicit batch reconciliation entry
+  point. Interactive latency is bounded by the strict parser alone,
+  not by whatever the decoder costs on the hardest region in the
+  document.
 - **G9a.** Fix confidence is a product of recognition confidence,
   rule confidence, and (optionally) region confidence. The interaction
   is explicit in code, not implicit in rule severity.
@@ -123,6 +144,11 @@ Sub-goals that drop out of the above but are worth naming:
 ## 2. Architecture overview
 
 ```
+ ┌──────────────┐
+ │marque-extract│  (Kreuzberg wrapper — noisy by design: OCR, 75+ doc formats)
+ └──────┬───────┘
+        │ raw text bytes + provenance metadata (unchanged on the wire)
+        ▼
   ┌─────────────────────────────────────────────────────────────┐
   │                   marque-engine (grammar-agnostic)           │
   │   ┌────────┐   ┌────────┐   ┌────────────┐   ┌────────────┐ │
@@ -163,6 +189,40 @@ Three orthogonal axes:
 3. **Scope axis** (portion → page → document → diff). Reductions
    parameterized by scope; the same scheme describes how markings
    compose at each level.
+
+### 2.1 Input sources and the extract boundary
+
+`marque-extract` (Kreuzberg wrapper) is explicitly in-scope as a
+producer of noisy input — OCR, PDF text-layer extraction, scanned
+fax workflows. Its output feeds the engine unchanged; the engine
+decides strict-vs-decoder per candidate region. The decoder is
+precisely the failure-mode's target consumer: when OCR mangles a
+banner, the strict path fails on that region, the decoder takes
+over, and the aggregate document latency stays under budget because
+only the mangled regions pay the decoder cost.
+
+### 2.2 Performance budget (single source of truth)
+
+One number governs the regression gate:
+
+> **p95 lint latency ≤ 16 ms on 10 KB of strict-path input.**
+
+The decoder's cost is budgeted *into* that total, not on top of it.
+Concretely:
+
+- Strict-only path (no decoded regions): ≤ 16 ms — the G6 envelope.
+- With one decoded region: ≤ 18 ms total — a single decoder
+  invocation costs ≤ 2 ms end-to-end (candidate enumeration + feature
+  extraction + posterior ranking). The 18 ms number that appears in
+  Phase D (§12) is this worst-case total, not a separate target.
+- With N decoded regions: a soft upper bound of `16 + 2·N` ms. Beyond
+  three concurrent decoded regions in one document, the engine drops
+  remaining decoder invocations and marks them as `Parsed::Ambiguous`
+  without evidence — the strict path never sees the degradation.
+
+The regression gate runs against a strict-only corpus to avoid
+letting decoder tuning paper over strict-path regressions. The
+decoder has its own accuracy gate (Phase D, §12).
 
 ## 3. Recursive lattices with progressive disclosure
 
@@ -226,13 +286,22 @@ pub struct SciSet {
 }
 
 impl Lattice for SciSet {
+    /// Component-wise union. For each control system present in either
+    /// operand, include it in the result; within a system, union its
+    /// compartments; within a compartment, union its sub-compartments.
     fn join(&self, other: &Self) -> Self { /* union trees */ }
-    fn meet(&self, other: &Self) -> Self { /* intersect trees */ }
+
+    /// Component-wise intersection with explicit orphan semantics.
+    /// See the note below — CAPCO does not define an unambiguous meet
+    /// on arbitrary SCI trees, so this implementation picks a single
+    /// policy and the doc comment warns that it is not a lattice meet
+    /// in every usage.
+    fn meet(&self, other: &Self) -> Self { /* see §3.3a */ }
 }
 
 impl BoundedLattice for SciSet {
     fn bottom() -> Self { Self::empty() }
-    fn top() -> Self { Self::all_systems_all_compartments() /* if meaningful */ }
+    fn top() -> Self { Self::all_systems_all_compartments() /* scheme-defined */ }
 }
 ```
 
@@ -240,6 +309,34 @@ FGI concealment is a finite lattice with three ordered states
 (`Open ⊏ KnownProducers ⊏ Hidden`); SAR programs/compartments/sub-
 compartments mirror SCI's tree shape; CUI specified categories will
 grow their own tree when NARA's categorization is encoded.
+
+### 3.3a A note on `SciSet::meet`
+
+Tree intersection is not unique. Given `SI-G ABCD` on the left and
+plain `SI` on the right, the meet could reasonably be (a) `SI-G
+ABCD` (right's "SI" is the broadest ancestor and survives), (b) just
+`SI` (drop everything the right side doesn't explicitly name), or
+(c) empty (only identical leaves survive). CAPCO does not settle
+the question because it never describes a "meet" operation — the
+only operation the spec defines on SCI across portions is the join
+(roll-up, §A.6 p15).
+
+Phase B picks policy (b): meet keeps only elements present at the
+same depth in both operands. That gives `SI ⊓ SI-G ABCD = SI` (not
+`SI-G ABCD`), and is the interpretation closest to the plain lattice
+definition (`x ⊓ y ≤ x` and `x ⊓ y ≤ y`). The implementation's doc
+comment states the policy and names the two rejected alternatives.
+
+Callers that need a different interpretation (primarily the
+constraint-evaluator in Phase C, when asking "do these two portions
+share any SCI compartment?") use scheme-specific helpers
+(`SciSet::overlaps`, `SciSet::common_compartments`) rather than
+`Lattice::meet`. Naming is explicit about which semantics a caller
+is asking for.
+
+Same reasoning applies to `SarSet::meet` and `FgiMarker::meet`. The
+PR documents the policy in each type's doc comment and tests the
+boundary cases with property tests.
 
 ### 3.4 Why not keep `AggregationOp`
 
@@ -325,11 +422,20 @@ Once preserved, the metadata also unlocks:
   only loosely surfaced.
 - **Authority-scoped rules.** A rule can be gated to tokens owned by a
   specific producer (e.g., "CIA-originated SCI requires X").
-- **Deprecation provenance.** When a deprecated term is auto-replaced,
-  the audit record names the replacement source and date.
 - **Human-readable rendering.** `Description` gives the unabbreviated
   banner form directly from the source of record, not a hand-curated
   table that drifts from the spec.
+
+Deprecation *replacements* stay hand-maintained in
+`marque-ism/build.rs::MIGRATIONS`. The Schematron files encode
+validity predicates, not policy judgments about which successor
+codeword replaces which deprecated one at what confidence. That
+mapping is narrower than ODNI chooses to encode in the schema and
+needs editorial discretion (see `M-FouoBug` in §14 for a concrete
+example of why the policy layer must sit above the schema). The
+vocabulary surface exposes whether a term is deprecated and the URN
+of its replacement *when the build-time migration table knows one*
+— not by parsing deprecation XSD annotations.
 
 ### 4.3 Vocabulary surface
 
@@ -374,12 +480,26 @@ downcast via `Any` for scheme-specific fields.
 
 ### 4.4 Build-time generation, runtime immutability
 
-In the Phase E implementation, `marque-ism`'s `build.rs` will parse
-the ISM JSON and fall back to XML for source artifacts JSON does not
-cover, such as XSDs and Schematron. That pipeline will emit `const`
-tables of `TokenMetadataFull { ... }` values into `OUT_DIR`, included
-via `generated.rs`. The goal remains no runtime I/O, no allocation on
-vocabulary lookup, and no divergence from ODNI's source of truth.
+Phase E's `marque-ism/build.rs` uses two parallel codepaths because
+the ODNI distribution ships two parallel formats, not because one is
+a fallback for the other:
+
+- **JSON codepath** (`serde_json`) — parses the per-enumeration
+  `CVE_ISM/*.json` and `CVE_ISMCAT/*.json` files for term values,
+  descriptions, classification/owner metadata, IRM headers (URN,
+  authority, POC, created date, CVE/spec/DES versions), and
+  enumeration-level `multivalue` flags. This is the primary path
+  for per-term data.
+- **XML codepath** (`quick-xml`, as today) — parses the XSD
+  (`CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd`, `Schema/
+  IC-ISM.xsd`) and Schematron (`Schematron/ISM_XML.sch`,
+  `Schematron/Lib/*.sch`) files for validity predicates and
+  attribute structures. These files have no JSON equivalent.
+
+Both codepaths exist in the tree; no format switch. Output is `const`
+tables of `TokenMetadataFull { ... }` values in `OUT_DIR`, included
+via `generated.rs`. No runtime I/O, no allocation on vocabulary
+lookup.
 
 Each metadata field is `&'static str`, so lookups cost a direct array
 index. Aliases (portion vs banner vs description) live in a
@@ -430,6 +550,35 @@ Both paths emit `Parsed<Marking>`. The engine's downstream stages
 produced the parse; they branch on `Unambiguous` vs `Ambiguous` and
 on the attached confidence score.
 
+### 5.1a Integration with today's parser
+
+Today `marque_core::Parser::parse(candidate, source)` returns a
+`ParsedMarking` — not a `Parsed<M>`. The `Recognizer` trait is new
+and wrapping the existing parser requires an adapter. Design:
+
+- The adapter lives in **`marque-engine`**, not in `marque-core` or
+  `marque-scheme`. Rationale: the adapter depends on scheme +
+  recognizer + the existing parser simultaneously; only the engine
+  crate already sits at that intersection.
+- `pub struct StrictRecognizer<S: MarkingScheme> { core: marque_core::Parser, scheme: S }`
+  with `impl<S> Recognizer for StrictRecognizer<S>`. The `recognize`
+  method calls `core.parse(...)`, and on success converts the
+  `ParsedMarking` into `Parsed::Unambiguous(S::Marking)` via a
+  scheme-provided `from_parsed_marking` hook (Phase B adds this to
+  `MarkingScheme`).
+- `marque-core::Parser` stays unchanged — no crate sees a new
+  dependency on `marque-scheme` except the engine and adapters. G1
+  (grammar-agnostic engine) is preserved: the engine holds the
+  adapter; the parser does not know about schemes.
+- The existing `(C)` ambiguity path inside `marque-core` produces a
+  `ParsedMarking` with a flag we convert to `Parsed::Ambiguous`
+  before leaving the adapter. The scheme-level resolver never sees
+  `ParsedMarking`.
+
+Phase B lands the adapter and flips `Engine::lint_inner` to drive
+through `Recognizer::recognize`. The flip is invisible to rules —
+`Diagnostic` and `FixProposal` are unchanged on this axis.
+
 ### 5.2 Decoder mechanics
 
 Input to the decoder for a candidate region:
@@ -440,11 +589,39 @@ Input to the decoder for a candidate region:
   (line structure, CAB nearby, portion vs banner location).
 
 The decoder enumerates a small number of candidate markings seeded
-by the observed token set: each candidate is a scheme-legal marking
-that *could* have produced the observed tokens (under some set of
+by the observed token set. Each candidate is a scheme-legal marking
+that *could* have produced the observed tokens under some set of
 edits — wrong order, missing delimiter, spurious token, superseded
-token). Candidate generation is bounded — no unbounded search; the
-candidate factory is scheme-provided and declares its budget.
+token.
+
+**Candidate bounds (concrete, Phase D).**
+For each scheme-declared **template** (CAPCO: `Portion`, `Banner`,
+`JointPortion`, `JointBanner`, `NatoPortion`, `NatoBanner`,
+`FgiPortion`, `FgiBanner`, `NonUsPortion`, `NonUsBanner`), the
+candidate generator:
+
+1. Assigns observed tokens to the template's category slots in every
+   ordering consistent with the template's grammar.
+2. Scores each slot assignment by prior × per-slot compatibility.
+3. Retains at most **K = 8** top candidates per template, trims
+   across templates to the top `K` overall.
+
+If the observed token bag doesn't fit any template (e.g., tokens from
+two different schemes), the decoder returns `Parsed::Ambiguous` with
+zero candidates — explicitly "we see signal but can't resolve."
+Never a silent fallthrough to the strict-path error.
+
+`K = 8` is picked to keep per-region decoder work bounded (§2.2:
+≤ 2 ms budget) and is tunable at scheme level via
+`MarkingScheme::decoder_budget()`. Q2 (§13) settles the per-template
+edit-distance cutoffs against the corpus.
+
+**Concurrency.** `Recognizer` impls are `Send + Sync` and the decoder
+carries no mutable global state. Corpus tables are baked-in at
+compile time as `&'static` slices; feature extractors allocate
+only in per-invocation scratch space. G12 (parallelism) is
+preserved: `BatchEngine` can run N decoder invocations concurrently
+with no contention beyond allocator pressure.
 
 For each candidate, the decoder computes:
 
@@ -467,35 +644,54 @@ general fallback for any unparseable region.
 ### 5.3 When the decoder fires
 
 To preserve G6 (performance) and G7 (honor the common case), the
-decoder does **not** run on every region. Gates:
+decoder does **not** run on every region. Three execution modes:
 
-- The strict parser returned `Err` on this region.
-- OR a validate-stage rule flagged the region as low confidence
-  (e.g., banner doesn't cover portions, non-canonical token
-  adjacency).
-- OR the caller passed `--deep-scan` explicitly (batch mode).
+| Mode                  | Strict | Decoder | Trigger                                |
+| --------------------- | ------ | ------- | -------------------------------------- |
+| Interactive authoring | yes    | no      | default CLI / server / WASM            |
+| Batch reconciliation  | yes    | yes     | `--deep-scan` flag or batch API        |
+| Rule-escalated region | yes    | yes     | validate-stage rule flagged the region |
 
-For typical interactive authoring, the decoder runs on 0-3 regions
-per document. Latency budget: ≤2 ms per decoded region on 10 KB
-input.
+In interactive authoring, strict failure on a region produces a
+diagnostic (not a decoded fix); the user types and the author sees
+the strict-path error without the engine burning decoder time on
+every keystroke. G7a formalizes this.
+
+In batch reconciliation, the decoder fires on strict-path `Err`
+regions and on regions a rule explicitly escalates (e.g., "banner
+doesn't cover ⋁ portions" escalates the banner region for
+resolution).
+
+Latency budget per decoded region: ≤ 2 ms (§2.2). Per-document
+total under all modes respects the 16-ms regression gate.
 
 ### 5.4 Honoring the observed corpus
 
-The corpus analysis generated by the tooling in
-`tools/corpus-analysis/output/enron-full.json` gives us base rates
-when that analysis has been produced as part of the corpus workflow
-or build; see `tools/corpus-analysis/README.md` for the generation
-steps, or generate it directly with
-`python3 analyze.py --output output/enron-full.json` from
-`tools/corpus-analysis/`:
+Base rates for the decoder come from corpus analysis output, not
+from a committed fixture. `tools/corpus-analysis/output/` is
+`.gitignore`d — `enron-full.json` is a local artifact the author
+regenerates on demand via `python3 analyze.py --output
+output/enron-full.json` (see `tools/corpus-analysis/README.md`).
+The artifact is supplied by the author at Phase D build time, not
+shipped in-tree.
+
+Phase D's `marque-capco/build.rs` emits the baked frequency table
+from an author-supplied JSON path. The build fails closed if the
+JSON is missing: a Phase-D-and-later `cargo build -p marque-capco`
+without the corpus artifact errors with a clear message pointing at
+the regeneration command. The compiled-in tables live behind a
+const-or-`None` shape, and the decoder is enabled only when they are
+`Some`.
+
+Corpus content used:
 
 - Token unigrams, bigrams, trigrams.
 - Category co-occurrences.
 - Typical portion/banner shapes.
 
-The decoder's `log_prior` is derived from these. The build process
-bakes the frequency tables into the WASM binary by default, with an
-override path for deployments that want their own corpus.
+Frequency tables are baked into every build target (CLI, server,
+WASM) as `&'static` slices. Runtime override is limited per §6a; the
+WASM target never allows override (Q8).
 
 ### 5.5 Variants in the automaton: no
 
@@ -515,6 +711,31 @@ misspellings (`SERCET`, etc.) with high posterior and no ambiguity.
 
 ### 6.1 FixProposal + AppliedFix shape
 
+Today's `marque_rules::FixSource` (in
+`crates/rules/src/lib.rs:171`) has three variants:
+
+```rust
+pub enum FixSource {
+    BuiltinRule,
+    CorrectionsMap,
+    MigrationTable,
+}
+```
+
+Phase D extends `FixSource` to carry recognizer provenance **without
+removing existing variants**:
+
+```rust
+pub enum FixSource {
+    // Existing — retained for back-compat with marque-mvp-1 audit records.
+    BuiltinRule,
+    CorrectionsMap,
+    MigrationTable,
+    // New — decoder path landed with Phase D.
+    DecoderPosterior,
+}
+```
+
 `FixProposal` today carries `confidence: f32` and a `source` tag. It
 grows to carry explicit recognizer provenance:
 
@@ -522,7 +743,7 @@ grows to carry explicit recognizer provenance:
 pub struct FixProposal {
     pub span: Span,
     pub replacement: String,
-    pub confidence: Confidence,        // below
+    pub confidence: Confidence,        // below, replaces scalar f32
     pub source: FixSource,
     pub migration_ref: Option<&'static str>,
 }
@@ -534,19 +755,22 @@ pub struct Confidence {
     pub runner_up_ratio: Option<f32>,  // present when recognizer was the decoder
     pub features: Vec<FeatureContribution>, // present for decoder provenance
 }
-
-pub enum FixSource {
-    StrictParse,                       // exact grammar match
-    CorrectionsMap,                    // SERCET → SECRET
-    DecoderPosterior,                  // decoder's top candidate
-    RuleDerived { rule: &'static str },
-}
 ```
 
 The aggregate score `recognition × rule × region.unwrap_or(1.0)`
 drives the fix/threshold decision in `Engine::fix`. The `features`
 vec is the chain of evidence a compliance reviewer can walk to
 understand *why* a fix was chosen; it's the realization of G5.
+
+**Audit contract schema bump.** Replacing `confidence: f32` with the
+`Confidence` struct and adding `FixSource::DecoderPosterior` are
+both breaking changes to `contracts/audit-record.json` (today at
+`specs/001-marque-mvp/contracts/audit-record.json`, `schema:
+"marque-mvp-1"`). Phase D bumps the `schema` const to
+`"marque-mvp-2"` and ships a migration note in the phase PR. Readers
+of older records continue to parse `marque-mvp-1` records from
+before the bump; writers emit only `marque-mvp-2` after the bump.
+No two schema versions are emitted by the same engine build.
 
 ### 6.2 Audit record
 
@@ -556,9 +780,69 @@ classifier id, dry_run). A batch reviewer can set a policy
 ("accept fixes with aggregate confidence ≥ 0.85, surface the rest")
 and replay the corpus to measure actual error rates — then tune.
 
-Every field of `AppliedFix` is content-ignorant: spans, token
-canonicals, posterior scalars, feature labels, nothing from the
-source text. G13 remains intact.
+Every field of `AppliedFix` is content-ignorant *on the recognizer
+axis*: posterior scalars, feature labels, token canonicals — no new
+content leaks from the decoder. The pre-existing `original` field
+on the audit record continues to contain the exact source slice
+covered by the fix span; that predates this doc and is not expanded
+here. G13 remains intact on everything this phase adds.
+
+### 6a. Threat model
+
+Three surfaces become attackable when the decoder and richer
+provenance ship. Each has a specific mitigation:
+
+**T1. Prior-manipulation attacks on `(C)` and other local
+disambiguations.** An adversary drafts prose that statistically
+biases the decoder's prior toward a benign interpretation (e.g.,
+lots of copyright-flavored context around a `(C)` that is actually
+a CONFIDENTIAL portion marking) to suppress detection.
+
+Mitigation: the decoder never *downgrades* confidence in an
+already-strict-classified region. If the strict path finds any
+portion at CONFIDENTIAL or higher elsewhere in the document,
+`(C)` in the same document resolves to CONFIDENTIAL without
+consulting the decoder. Only documents with no classified
+context at all allow the decoder to consider copyright.
+
+This is a conservative rule — it may cost a small number of
+true copyright symbols flagged as portion markings on mixed
+documents — but the threat model inverts the error direction
+we can tolerate: false positives on classification are cheap to
+review, missed classifications are expensive.
+
+**T2. Content leakage through `features: Vec<FeatureContribution>`.**
+The decoder's evidence features are scheme vocabulary identifiers
+plus structural-context labels ("year-pattern-nearby",
+"list-marker-context") — emphatically *not* raw surface bytes.
+Feature labels are `&'static str` enumerated at scheme build time.
+
+Mitigation: `FeatureContribution::label` is typed as a
+`FeatureId` (enum) at compile time, not a free-form string.
+Scheme authors can add new features but cannot emit content
+through the label channel. A CI check verifies the audit
+record's `features[].label` field never exceeds a whitelisted
+length or character set.
+
+**T3. Runtime corpus override as a trust boundary.** If an
+operator supplies a custom `log_prior` table via `.marque.toml`,
+the decoder's posteriors are under operator control. In server
+deployments, a malicious table biases fixes toward a specific
+outcome. In WASM deployments, a custom table could arrive over
+a web postMessage and silently flip the decoder's behavior.
+
+Mitigation: `--corpus-override` is a CLI flag only, available
+in single-operator deployments (the user running `marque`
+locally chose the override). The server binary does not accept
+corpus overrides from HTTP requests. The WASM target has no
+filesystem and the build rejects any attempt to consume a
+corpus override at runtime — the only corpus table in WASM is
+the one baked at compile time. See Q8 in §13.
+
+T1 and T2 are enforced in the engine; T3 is enforced at the binary
+level (different CLI/server/WASM targets have different capability
+surfaces). All three are covered by explicit integration tests in
+Phase D.
 
 ## 7. Scope-parameterized projection
 
@@ -569,7 +853,7 @@ pub enum Scope {
     Portion,                           // individual marking
     Page,                              // page-level rollup (banner / CAB)
     Document,                          // document-level rollup
-    Diff { from: MarkingRef, to: MarkingRef },  // diff-rule context
+    Diff,                              // diff-rule context; see DiffInput below
 }
 
 pub trait MarkingScheme {
@@ -583,14 +867,98 @@ pub trait MarkingScheme {
 ```
 
 For CAPCO, `Scope::Page` and `Scope::Document` typically coincide on
-single-page documents and diverge on multi-page. `Scope::Diff` is
-how two-marking comparison rules (§8) ask the scheme to compute
-"from ⊔ to" or "from ⊓ to" in scheme-aware terms.
+single-page documents and diverge on multi-page.
+
+### 7.1 Diff rules: `DiffInput`
+
+Two-marking diff rules (reply-weakens-parent, banner-vs-portions,
+CUI re-disclosure) need a second marking the engine loads
+separately. We don't put references inside the `Scope` enum — that
+would force `Scope` to carry a lifetime, and most scopes have no
+second marking. Instead, a dedicated input type:
+
+```rust
+pub struct DiffInput<M: Lattice> {
+    pub from: Parsed<M>,
+    pub to: Parsed<M>,
+    pub relation: DiffRelation,
+}
+
+pub enum DiffRelation {
+    BannerOverPortions,                // one document, banner vs its portions
+    ReplyOverParent,                   // email thread, reply vs parent
+    DisclosureOverOriginal,            // CUI re-disclosure
+    Historical,                        // current marking vs historical equivalent
+    Custom(&'static str),              // scheme-specific
+}
+```
+
+The caller (CLI batch mode, server diff endpoint) constructs the
+`DiffInput` and passes it to the engine's diff rule entry point.
+The engine does not fetch second markings — it only evaluates the
+relation against the caller-supplied pair. This keeps the engine
+content-ignorant and lets the caller scope how "parent" is looked up
+(email thread traversal, version-control diff, etc.).
+
+`MarkingScheme::project(Scope::Diff, markings)` is defined as the
+scheme-specific reduction of the two markings in `DiffInput`. For
+most schemes, this is `markings[0].join(&markings[1])` — i.e., the
+composite marking that should cover both. Diff rules consult the
+comparison via the `<=` primitive in §10, not via `project`.
+
+### 7.2 PageContext migration
 
 `PageContext` in `marque-ism` remains the existing page-level
 aggregator; Phase B rewires its internals to drive through
 `scheme.project(Scope::Page, &portions)`. Its public API stays
 stable so rules don't change.
+
+### 7a. Cross-category rewrites
+
+One category of CAPCO aggregation can't be expressed as a single-
+category lattice join: **cross-category supersession**. NOFORN lives
+in `dissem`; REL TO lives in `rel_to`. When NOFORN is present in a
+page's dissem roll-up, the REL TO roll-up for the same page clears
+entirely. Today this lives inside `PageContext::expected_rel_to()`
+(see `crates/capco/src/scheme.rs` line 372, where the comment
+explicitly calls out that `AggregationOp::UnionWithSupersession` only
+works within a single category).
+
+Model this explicitly at `Scope::Page` time:
+
+```rust
+pub struct PageRewrite<S: MarkingScheme> {
+    pub id: &'static str,                             // "capco/noforn-clears-rel-to"
+    pub trigger: CategoryPredicate<S>,                // "NOFORN in dissem"
+    pub action: CategoryAction<S>,                    // "clear rel_to"
+    pub citation: &'static str,                       // "CAPCO-2016-§H.2"
+}
+
+pub enum CategoryPredicate<S: MarkingScheme> {
+    Contains { category: CategoryId, token: S::Token },
+    Empty    { category: CategoryId },
+    Custom(fn(&S::Marking) -> bool),
+}
+
+pub enum CategoryAction<S: MarkingScheme> {
+    Clear    { category: CategoryId },
+    Replace  { category: CategoryId, with: S::Marking },
+    Custom(fn(&mut S::Marking)),
+}
+```
+
+`MarkingScheme::page_rewrites() -> &[PageRewrite<Self>]` returns the
+scheme's post-aggregation rewrite table. The engine runs
+`project(Scope::Page, ...)` first (category-wise joins), then applies
+`page_rewrites()` in declaration order, then runs validate. The
+declaration is inspectable: tooling can render "this page will have
+NOFORN⇒REL-TO-cleared applied" without calling scheme code.
+
+Phase B declares `PageRewrite` for NOFORN⊐REL TO in CAPCO. Phase C
+reviews the 39 existing rules for any others that should be
+expressed as page rewrites rather than rules (e.g., FGI concealment
+transitions from open to known-producers when certain conditions
+apply).
 
 ## 8. Control blocks as a separate trait
 
@@ -634,6 +1002,34 @@ pub struct PartialCab<C> {
     pub filled: C,                          // fields we computed
     pub required: Vec<CabField>,            // fields the user must provide
     pub suggestions: Vec<CabSuggestion>,    // guesses with rationale
+}
+
+pub struct CabSuggestion {
+    /// Which field this suggestion addresses.
+    pub field: CabField,
+    /// The proposed value, rendered as a string the user can accept
+    /// verbatim. For structured fields (e.g., declassify-on dates),
+    /// the suggestion is a canonical form, not a parse tree.
+    pub value: String,
+    /// Why this suggestion was produced. Parallels a rule citation:
+    /// "CAPCO-2016-§D.3 derivative classification from ⋁ portions".
+    pub citation: &'static str,
+    /// Provenance in the same shape as a FixProposal's Confidence.
+    /// Rule-derived suggestions carry `recognition = 1.0` and the
+    /// rule ID; corpus-derived suggestions (rare in CABs) carry
+    /// decoder-style posteriors.
+    pub confidence: Confidence,
+    /// Whether accepting this suggestion unambiguously satisfies the
+    /// field's requirement, or whether the user must still confirm.
+    /// "Multiple sources" over a plain-text document is always
+    /// `NeedsConfirmation`; a citation list derived from XML metadata
+    /// is `Authoritative`.
+    pub disposition: SuggestionDisposition,
+}
+
+pub enum SuggestionDisposition {
+    Authoritative,                          // accept-as-is is correct
+    NeedsConfirmation,                      // best guess; user must confirm
 }
 ```
 
@@ -711,119 +1107,233 @@ modes where only correctness matters (CI gate, audit replay).
 ## 12. Revised phase sequence
 
 Each phase is a self-contained PR. Gate on equivalence tests +
-corpus accuracy harness. Prior phase names are retained where the
-intent matches.
+corpus accuracy harness. The phase letters below are re-scoped from
+the 2026-04-17 doc — see the header. Where letters collide, this
+document wins.
+
+| Letter | This doc                          | 2026-04-17 doc                  |
+| ------ | --------------------------------- | ------------------------------- |
+| A      | (shipped) scheme scaffolding      | (shipped) scheme scaffolding    |
+| B      | Recursive category lattices       | PageContext scheme-driven       |
+| C      | Declarative constraints + rewrites | Declarative constraints         |
+| D      | Probabilistic decoder             | CUI                             |
+| E      | Vocabulary + codec scaffolding    | Fuzzy resolver behind trait     |
+| F      | CUI as second scheme              | —                               |
+| G      | ControlBlock + CAB derivation     | —                               |
+| H      | Diff rules + proactive feedback   | —                               |
+
+Each phase block below lists: **Goal**, **Deliverables**,
+**Verification**, **Gate**.
 
 ### Phase B — Recursive category lattices
 
-Goal: every CAPCO category is a `Lattice`. `PageContext` internals
-are driven by `scheme.project(Scope::Page, ...)` dispatching through
-per-category `join`.
+- **Goal.** Every CAPCO category is a `Lattice`. `PageContext`
+  internals are driven by `scheme.project(Scope::Page, ...)`
+  dispatching through per-category `join`.
+- **Deliverables.**
+  - Built-in lattice constructors in `marque-scheme`: `OrdMax`,
+    `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`,
+    `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`.
+  - Category descriptors promoted to own an `impl Lattice` marking
+    (or a constructor for one).
+  - CAPCO structural types (`SciMarking`, `SarMarking`, `FgiMarker`)
+    ported to `impl Lattice` + `impl BoundedLattice`. Meet semantics
+    per §3.3a (policy (b): equal-depth intersection). Helpers
+    `SciSet::overlaps` and `SciSet::common_compartments` for
+    consumers who want alternative semantics.
+  - **SCI storage canonicalization.** Post-Phase-B, `SciSet`
+    (lattice form) is the canonical page-context storage.
+    `IsmAttributes::sci_controls` (flat CVE enum projection) stays
+    populated for rules that currently read it; a Phase-B migration
+    note in CLAUDE.md says "new rules read `sci_markings` /
+    `SciSet`; `sci_controls` is a compatibility view scheduled for
+    removal in Phase C or D when no rule references it."
+  - `PageContext::expected_*` methods rewired to call through
+    `scheme.project(Scope::Page, ...)`. Public API unchanged.
+  - `PageRewrite` table per §7a. CAPCO declares NOFORN⊐REL TO as
+    the first entry.
+  - Expansion tables (FVEY, ACGU, NATO tetragraph membership) live
+    in `marque-capco::vocab` as hand-curated `&'static [...]`
+    const tables. Not derived from ODNI XML (the membership data
+    is not in CVE files). Unit-tested with exhaustive fixtures.
+  - `AggregationOp::Custom` retired from the runtime path.
+- **Verification.** Full CAPCO corpus equivalence run + existing
+  Phase A equivalence tests pass byte-identical before/after. New
+  property tests for `SciSet` / `SarSet` / `FgiMarker` lattice laws
+  (modulo the §3.3a meet policy).
+- **Gate.** ≥95% per-rule accuracy (SC-002/SC-003) preserved.
+  Strict-path p95 ≤16 ms on 10 KB preserved.
 
-- Introduce built-in lattice constructors in `marque-scheme`:
-  `OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`,
-  `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`.
-- Promote the scheme's category descriptors to return a `Category`
-  that owns an `impl Lattice` marking (or a constructor for one).
-- Port CAPCO's structural types (`SciMarking`, `SarMarking`,
-  `FgiMarker`) to `impl Lattice` + `impl BoundedLattice` on a
-  `marque-capco`-local struct.
-- Rewire `PageContext::expected_*` to call through
-  `scheme.project(Scope::Page, ...)`. Public API unchanged.
-- Retire `AggregationOp::Custom`. Any remaining custom logic lives
-  in the per-category lattice impl.
-- Full CAPCO corpus equivalence run + existing Phase A equivalence
-  tests. Gate.
+### Phase C — Declarative constraints + rewrites
 
-### Phase C — Declarative constraints
+- **Goal.** Constraint-style CAPCO rules (NOFORN∥REL TO, RD⇒NOFORN,
+  JOINT⇔FGI, HCS system rules) move to declarative `Constraint`
+  data; page-level rewrites move to `PageRewrite`. Hand-written
+  constraint rules retire.
+- **Deliverables.**
+  - `Constraint` enum completed (Phase A sketch): `Conflicts`,
+    `Requires`, `Implies`, `Supersedes`, `Custom(&'static str)`.
+  - **Shared constraint evaluator** in `marque-scheme` (not
+    per-scheme): `fn evaluate(constraints: &[Constraint<S>], m:
+    &S::Marking) -> Vec<ConstraintViolation>`. Replaces the
+    per-variant match in `CapcoScheme::validate`.
+  - ~15 of the 39 CAPCO rules rewritten as `Constraint` + `PageRewrite`
+    entries (depending on shape). The remaining rules are
+    non-constraint rules (banner-abbreviation preference, etc.) and
+    stay as `Rule` impls.
+  - Cross-category supersession (NOFORN⊐REL TO) moves from
+    `PageContext::expected_rel_to` into a `PageRewrite` declaration.
+    The `TODO(Phase C)` comment in `crates/capco/src/scheme.rs`
+    line 380 is resolved.
+- **Verification.** Equivalence test: same diagnostics produced on
+  the corpus before/after the rule migration.
+- **Gate.** Rule count reduction does not introduce regression on
+  SC-002/SC-003.
 
-Goal: move the constraint-style CAPCO rules (NOFORN∥REL TO,
-RD⇒NOFORN, JOINT⇔FGI, HCS system rules, etc.) to declarative
-`Constraint` data consumed by a generic constraint-checker rule.
-Hand-written constraint rules retire.
+### Phase D — Probabilistic decoder (moved earlier than prior plan)
 
-- Complete the `Constraint` enum (already sketched Phase A):
-  `Conflicts`, `Requires`, `Implies`, `Supersedes`, and a
-  purpose-built `Custom(&'static str)` that dispatches to a
-  registered fn pointer.
-- Rewrite ~15 of the 39 CAPCO rules as `Constraint` entries.
-  Equivalence test: same diagnostics produced on the corpus.
-- Everything that can't express declaratively stays as `Rule`
-  (non-constraint rules, e.g., banner-abbreviation preference).
-
-### Phase D — Probabilistic decoder (moved earlier than Phase A doc)
-
-Goal: ship the decoder end-to-end so mangled inputs fix automatically
-with provenance. This is the `marque-detect` work the prior plan
-deferred to Phase E; promoting it here because CUI (Phase F) will
-exercise it heavily, and the `Parsed::Ambiguous` plumbing needs real
-end-to-end traffic to stabilize.
-
-- Add a `Recognizer` trait + strict and decoder implementors.
-- Build the candidate generator for CAPCO (bounded edits to observed
-  tokens). Scheme-specific.
-- Wire corpus-derived priors into the decoder. Frequency tables
-  baked into WASM by default; override path for custom corpora.
-- Extend `FixProposal::Confidence` per §6.1.
-- Latency budget: keep the existing G6 target of p95 ≤16 ms on 10 KB
-  for the strict/default lint path; allow p95 ≤18 ms on 10 KB only
-  when the probabilistic decoder is engaged for genuinely mangled
-  inputs (still perceptually instantaneous).
-- New accuracy metric on corpus: "mangled-marking resolution rate"
-  with per-confidence-bucket error rates.
+- **Goal.** Ship the decoder end-to-end so mangled inputs fix
+  automatically with provenance. This is the `marque-detect` work
+  the prior plan deferred to Phase E; promoting it here because CUI
+  (Phase F) will exercise it heavily, and the `Parsed::Ambiguous`
+  plumbing needs real end-to-end traffic to stabilize.
+- **Deliverables.**
+  - `Recognizer` trait + `StrictRecognizer` adapter in
+    `marque-engine` per §5.1a. `Engine::lint_inner` drives through
+    `Recognizer::recognize`.
+  - `DecoderRecognizer` with candidate generator for CAPCO: bounded
+    edits to observed tokens, K = 8 per template, `Send + Sync` per
+    §5.2. Corpus-derived priors baked into the build per §5.4.
+  - `--deep-scan` CLI flag + server batch-endpoint option. G7a
+    enforced: interactive authoring paths don't invoke the decoder
+    unless the flag is set.
+  - `FixProposal::Confidence` struct per §6.1. Engine aggregate
+    score drives fix/threshold decisions.
+  - `FixSource::DecoderPosterior` variant added (existing variants
+    retained).
+  - **Audit schema bump** to `marque-mvp-2` per §6.1. Migration note
+    shipped in PR.
+  - **Threat-model enforcement** per §6a:
+    - T1: strict-path classification anywhere in document
+      suppresses decoder consideration of `(C)` as copyright.
+    - T2: `FeatureId` as an enum, not a free string; CI test caps
+      audit-record `features[].label` length and charset.
+    - T3: `--corpus-override` available on CLI only; server
+      binary rejects override from HTTP; WASM build fails at
+      compile time if an override codepath is introduced.
+  - **Mangled-marking corpus fixture.** `tests/fixtures/mangled/`
+    with **N ≥ 200** cases labeled with expected marking,
+    mangling class (typo / reordering / missing-delimiter /
+    superseded-token / wrong-case / garbled-delimiter), and
+    source confidence. Generator script in
+    `tools/corpus-analysis/` produces the fixture from the
+    Enron corpus's high-confidence markings by applying known
+    mangling transforms.
+- **Verification.**
+  - New accuracy metric: "mangled-marking resolution rate" with
+    per-confidence-bucket error rates. Target ≥ 85% resolution at
+    aggregate confidence ≥ 0.85; per-bucket error budgets
+    documented in the PR.
+  - `marque-mvp-1` records from pre-Phase-D continue to parse in
+    downstream consumers (back-compat verified).
+- **Gate.**
+  - Strict-only p95 ≤ 16 ms preserved (§2.2).
+  - Decoder p95 ≤ 18 ms on 10 KB with one mangled region
+    (worst-case per §2.2).
+  - ≥ 95% per-rule accuracy on clean corpus (SC-002/SC-003)
+    preserved.
 
 ### Phase E — Vocabulary consolidation + codec scaffolding
 
-Goal: full ISM metadata surfaced through `Vocabulary` + provisional
-codec traits.
-
-- `marque-ism::build.rs` parses ISM JSON (XML fallback for schemas
-  JSON doesn't cover) and generates `TokenMetadataFull` const tables.
-- `Vocabulary` trait + CAPCO implementation. Rules that consume
-  metadata (authority, owner/producer, deprecation replacement) start
-  using it; legacy opaque-`TokenId` paths stay as fallbacks during
-  migration.
-- `Codec<S>` trait in `marque-scheme`. No implementations yet — the
-  surface is pinned so Phase G can wire XML/JSON round-trip.
+- **Goal.** Full ISM metadata surfaced through `Vocabulary` +
+  provisional codec traits. Also: remove the `FOUO → CUI`
+  migration that was never correct CAPCO policy (see §14).
+- **Deliverables.**
+  - `marque-ism::build.rs` dual codepath per §4.4. JSON for term
+    data, XML for XSD/Schematron artifacts.
+  - `TokenMetadataFull` const tables; `Vocabulary` trait + CAPCO
+    implementation. Rules that consume metadata (authority,
+    owner/producer, deprecation replacement) migrate to
+    `Vocabulary` queries; legacy opaque-`TokenId` paths stay as
+    fallbacks during migration.
+  - `Codec<S>` trait in `marque-scheme`. No implementations yet —
+    the surface is pinned so Phase G can wire XML/JSON round-trip.
+  - **FOUO → CUI migration entry removed** from
+    `crates/ism/build.rs`. FOUO remains valid in CAPCO ISM (active
+    in `DissemControl`). Demo-scene and README updated to use a
+    different migration (`NF → NOFORN`) for scene 1. Any future
+    "suggest CUI for FOUO" behavior lands in Phase F via config
+    gates.
+- **Verification.** Existing CAPCO corpus runs with no change in
+  diagnostic set after the FOUO migration is removed (verify
+  `cargo test -p marque-capco` stays green; the `FOUO drops in
+  classified` tests in `crates/ism/tests/rollup_golden.rs` are
+  unrelated to the migration and must stay green).
+- **Gate.** `Vocabulary` adoption preserves ≥95% per-rule accuracy.
 
 ### Phase F — CUI as second scheme
 
-Goal: implement NARA CUI as a second `MarkingScheme` to validate
-genericity.
-
-- `marque-cui` crate, separate from `marque-capco`.
-- CUI's ~125 categories encoded declaratively via built-in lattice
-  constructors where possible; escape to custom impls where not.
-- If CUI exposes expressiveness gaps in the trait surface, they're
-  addressed here — back-ported to `marque-scheme` as trait
-  extensions.
-- Engine gains multi-scheme dispatch: a document can declare its
-  governing scheme via config, header, or auto-detection.
+- **Goal.** Implement NARA CUI as a second `MarkingScheme` to
+  validate genericity.
+- **Deliverables.**
+  - `marque-cui` crate, separate from `marque-capco`. Depends on
+    `marque-scheme` only.
+  - CUI's ~125 categories encoded declaratively via built-in
+    lattice constructors where possible; custom `impl Lattice`
+    where not.
+  - Engine gains multi-scheme dispatch: a document declares its
+    governing scheme via `.marque.toml` (`[scheme] name = "capco"`
+    or `"cui"`), explicit header, or auto-detection fallback.
+    Mixed-scheme documents (Q4) defer to Phase I — one scheme per
+    document in Phase F.
+  - **Agency / CUI config gates** (M-FouoConfig):
+    - `[agency] is_ic_member = true | false` in `.marque.toml`.
+      IC members keep FOUO unconditionally. Non-IC agencies with
+      CUI adoption surface the migration suggestion.
+    - `[cui] migrate_fouo = false` — explicit override. Default
+      `false` (conservative).
+    - The migration suggestion surfaces through the CUI adapter,
+      not through `marque-capco`. CAPCO stays CAPCO.
+  - If CUI exposes expressiveness gaps in the trait surface, they
+    are addressed here and back-ported to `marque-scheme`.
+- **Verification.** CUI corpus accuracy harness (new) ≥ 95%
+  per-rule. CAPCO corpus regression guard.
+- **Gate.** No `marque-capco` diagnostic shape changes.
 
 ### Phase G — ControlBlock trait + CAB derivation
 
-Goal: generalize CAB handling. CAPCO and CUI both implement
-`ControlBlock`. Deterministic CAB derivation lands for XML-metadata
-sources.
-
-- `ControlBlock` trait per §8.
-- `CapcoCab` and `CuiCab` as concrete impls.
-- `derive_from` with provenance tracking: XML metadata → full
-  derivation; plain text → partial with explicit user fields.
-- Rules that today validate CABs move to
-  `ControlBlock::validate` + thin rule adapters.
+- **Goal.** Generalize CAB handling. CAPCO and CUI both implement
+  `ControlBlock`. Deterministic CAB derivation lands for
+  XML-metadata sources.
+- **Deliverables.**
+  - `ControlBlock` trait per §8.
+  - `CapcoCab` and `CuiCab` concrete impls. `PartialCab` /
+    `CabSuggestion` / `SuggestionDisposition` per §8.
+  - `derive_from` with provenance tracking: XML/JSON ISM metadata
+    → full derivation (empty `required`); plain text → partial
+    with explicit user fields and `NeedsConfirmation` suggestions.
+  - CAB-validating rules move to `ControlBlock::validate` + thin
+    rule adapters.
+- **Verification.** Existing CAB diagnostics preserved; new
+  XML-metadata-driven derivations covered by golden tests.
+- **Gate.** ≥95% per-rule accuracy on CAB-bearing corpus entries.
 
 ### Phase H — Diff rules and proactive feedback
 
-Goal: two-marking comparison rules using the lattice algebra.
-
-- `Scope::Diff` wired through `project`.
-- Rules: reply-weakens-parent (email thread analysis),
-  banner-doesn't-cover-portions (already exists; now expressed via
-  the diff primitive), CUI re-disclosure check, historical-marking
-  supersession.
-- Warnings only. No auto-fix on diff rules; the resolution depends
-  on author intent and marque shouldn't guess.
+- **Goal.** Two-marking comparison rules using the lattice algebra.
+- **Deliverables.**
+  - `DiffInput<M>` + `DiffRelation` per §7.1. CLI and server diff
+    entry points.
+  - Rules: reply-weakens-parent (email thread analysis),
+    banner-doesn't-cover-portions (re-expressed via the diff
+    primitive), CUI re-disclosure check, historical-marking
+    supersession.
+  - Warnings only. No auto-fix on diff rules; resolution depends
+    on author intent.
+- **Verification.** Diff-rule test suite with curated
+  email-thread fixtures.
+- **Gate.** No false-positive regression on single-document corpus
+  (diff rules must not fire on single-document input).
 
 ## 13. Open questions
 
@@ -842,9 +1352,10 @@ Called out explicitly so we don't silently drift.
   JSON? MessagePack?).
 - **Q4. Multi-scheme documents.** A document with both CAPCO portion
   markings and CUI banners — rare but possible. Phase F decision:
-  one scheme per document with override, or allow sub-regions to
-  declare a different scheme? Lean toward the first; revisit if
-  real-world cases require otherwise.
+  one scheme per document with override. Mixed-scheme documents
+  defer to a future Phase I. The engine's multi-scheme dispatch in
+  Phase F makes the single-scheme-per-document constraint
+  explicit in config; mixed-scheme handling is additive.
 - **Q5. Custom `impl Lattice` authoring ergonomics.** How much can we
   reduce the boilerplate via derive macros (e.g., `#[derive(Lattice)]`
   for product types)? Nice-to-have; not blocking.
@@ -856,6 +1367,12 @@ Called out explicitly so we don't silently drift.
   returns `required` fields, how does marque surface them to the
   user in CLI / server / Office add-in contexts? Per-frontend;
   `PartialCab` just has to be machine-readable.
+- **Q8. WASM corpus override: forbidden.** The WASM target never
+  accepts a runtime-supplied frequency table. The only corpus
+  table in a WASM build is the one baked at compile time. Q3's
+  override path applies to CLI self-operator mode only (see T3 in
+  §6a). This is settled as of this revision; listed here so the
+  constraint is visible to anyone touching the WASM build.
 
 ## 14. What we dropped
 
@@ -868,6 +1385,25 @@ For the record, so future readers don't re-propose them.
 - **Extending the `MarkingScheme` trait with CAB methods.** CABs
   aren't markings and don't derive purely from markings; they get
   their own trait.
+- **Deriving deprecation replacements from ODNI XML annotations.**
+  The Schematron files encode validity predicates, not policy
+  judgments about which codeword replaces which. Deprecation policy
+  stays hand-maintained in `marque-ism/build.rs::MIGRATIONS`. See
+  §4.2.
+- **Runtime corpus override in WASM.** Q8 / T3 in §6a.
+- **The `FOUO → CUI` migration in `crates/ism/build.rs`.** This
+  entry was factually wrong: the IC never transitioned off FOUO,
+  FOUO remains valid in CAPCO ISM, and CUI is a separate marking
+  system under NARA jurisdiction. Phase E removes the entry. Any
+  future "suggest CUI for FOUO on non-IC documents" behavior lands
+  in Phase F via the `[agency] is_ic_member` / `[cui]
+  migrate_fouo` config gates (M-FouoConfig), not as a blanket
+  CAPCO-level migration.
+- **`Scope::Diff { from, to }` as a variant.** Embedding references
+  in the `Scope` enum forces every scope to carry a lifetime and
+  burdens the 99% of call sites that don't care about diff.
+  Replaced by the dedicated `DiffInput<M>` type per §7.1. `Scope::Diff`
+  survives as a marker variant only.
 
 ## 15. Mapping to prior plans
 

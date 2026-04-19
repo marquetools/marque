@@ -8,11 +8,16 @@
  * record-demo.js — Playwright demo video producer for marque
  *
  * Records a scripted walkthrough of the Marque interactive demo:
- *   Scene 1  — (U//FOUO) → (U//CUI) — deprecated control migration
- *   Scene 2  — (SECRET//NOFORN) → (S//NF) — abbreviation enforcement
- *   Scene 3  — (SERCET//NF) → (S//NF) — typo correction + abbreviation
- *   Scene 4  — (TS//SI-G//NOFORN) → (TS//SI-G//NF) — TS/SCI + banner escalation
+ *   Scene 1  — (SECRET//NOFORN) → (S//NF) — abbreviation enforcement
+ *   Scene 2  — (SERCET//NF) → (S//NF) — typo correction + abbreviation
+ *   Scene 3  — (TS//SI-G//NOFORN) → (TS//SI-G//NF) — TS/SCI + banner escalation
  *   Outro    — scroll to audit log
+ *
+ * (A prior "deprecated-control migration" scene used FOUO→CUI. That
+ * migration was removed in Phase E of the recursive-lattice plan —
+ * FOUO remains valid in CAPCO ISM and CUI is a separate scheme. A
+ * replacement migration demo lands with the future CUI adapter,
+ * gated by agency config.)
  *
  * Usage:
  *   node record-demo.js [--port 4343] [--output demo.webm] [--headed]
@@ -140,38 +145,13 @@ async function scene0_blank(page) {
 }
 
 /**
- * Scene 1 — Deprecated control: type (U//FOUO), watch it auto-correct to (U//CUI).
- * FOUO is deprecated per CAPCO-2016 §F; the migration table replaces it with CUI.
- * Banner: UNCLASSIFIED (U-level marking doesn't elevate the banner).
- */
-async function scene1_fouo(page) {
-  console.log('  Scene 1: (U//FOUO) → (U//CUI)');
-  await focusEnd(page);
-
-  await type(page, '(U//FOUO) ');
-
-  // Pause — let the debounce fire and the correction animate
-  await waitForCorrection(page, 'FOUO', 2000);
-  await afterCorrection(page);
-
-  // Type body text
-  await type(page, 'Initial assessment prepared for authorized recipients under appropriate handling controls.', { charMs: 55 });
-  await hold(page, 800);
-
-  // New paragraph
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter');
-  await betweenParagraphs(page);
-}
-
-/**
- * Scene 2 — Abbreviation enforcement: type (SECRET//NOFORN), watch it correct
+ * Scene 1 — Abbreviation enforcement: type (SECRET//NOFORN), watch it correct
  * to (S//NF). Rule E009 enforces abbreviated forms in portion markings per
  * CAPCO-2016 §C.1.
  * Banner updates to SECRET//NOFORN.
  */
-async function scene2_abbreviation(page) {
-  console.log('  Scene 2: (SECRET//NOFORN) → (S//NF)');
+async function scene1_abbreviation(page) {
+  console.log('  Scene 1: (SECRET//NOFORN) → (S//NF)');
   await focusEnd(page);
 
   await type(page, '(SECRET//NOFORN) ');
@@ -188,13 +168,13 @@ async function scene2_abbreviation(page) {
 }
 
 /**
- * Scene 3 — Typo correction: type (SERCET//NF), watch the two-pass pipeline
+ * Scene 2 — Typo correction: type (SERCET//NF), watch the two-pass pipeline
  * correct the typo via the corrections map (C001: SERCET → SECRET) then
  * abbreviate (E009: SECRET → S), yielding (S//NF).
- * Banner remains SECRET//NOFORN (same classification level as scene 2).
+ * Banner remains SECRET//NOFORN (same classification level as scene 1).
  */
-async function scene3_typo(page) {
-  console.log('  Scene 3: (SERCET//NF) → (S//NF)');
+async function scene2_typo(page) {
+  console.log('  Scene 2: (SERCET//NF) → (S//NF)');
   await focusEnd(page);
 
   await type(page, '(SERCET//NF) ');
@@ -211,12 +191,12 @@ async function scene3_typo(page) {
 }
 
 /**
- * Scene 4 — TS/SCI escalation: type (TS//SI-G//NOFORN), watch the engine
+ * Scene 3 — TS/SCI escalation: type (TS//SI-G//NOFORN), watch the engine
  * abbreviate NOFORN → NF (E009).
  * Banner escalates to TOP SECRET//SI-G//NOFORN — the climax of the demo.
  */
-async function scene4_ts_sci(page) {
-  console.log('  Scene 4: (TS//SI-G//NOFORN) → (TS//SI-G//NF)');
+async function scene3_ts_sci(page) {
+  console.log('  Scene 3: (TS//SI-G//NOFORN) → (TS//SI-G//NF)');
   await focusEnd(page);
 
   // Type slowly — this is the climax scene, give the viewer time to read it
@@ -290,10 +270,9 @@ async function outro(page) {
     // ── Run the script ─────────────────────────────────────────────────────
     console.log('Recording…\n');
     await scene0_blank(page);
-    await scene1_fouo(page);
-    await scene2_abbreviation(page);
-    await scene3_typo(page);
-    await scene4_ts_sci(page);
+    await scene1_abbreviation(page);
+    await scene2_typo(page);
+    await scene3_ts_sci(page);
     await outro(page);
 
     // Final hold on the completed document
