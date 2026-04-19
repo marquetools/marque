@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Pipeline orchestration: core + rules → diagnostics + fixes"
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 [[bench]]
 harness = false

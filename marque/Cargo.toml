@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "A fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules."
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 [[bin]]
 name = "marque"

@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Layered configuration loading for marque"
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 [dependencies]
 marque-ism = { workspace = true }

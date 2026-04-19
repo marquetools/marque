@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "ISM vocabulary types, generated CVE enums, and Span for marque"
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 # Published tarball contents — keep tight. `build.rs` only reads the CVE XML
 # files in CVE_ISM/ and the RelTo trigraph XSD in CVE_ISMCAT/CVEGenerated/.
