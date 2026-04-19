@@ -24,7 +24,7 @@ If you:
 
 ## Official Contributions
 
-> ![IMPORTANT]
+> [!IMPORTANT]
 > ### I Want to Contribute to Marque in an Official *Federal* Government Capacity
 >
 > If you want to contribute to Marque in an official capacity, meaning:
