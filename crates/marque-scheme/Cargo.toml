@@ -9,14 +9,14 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Domain-neutral trait surface for structured marking schemes (lattice + constraints + projection + local ambiguity)."
 repository.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 # Published tarball contents — strictly the source and docs.
 include = [
-    "src/**/*.rs",
-    "Cargo.toml",
-    "README.md",
-    "LICENSE*",
+  "Cargo.toml",
+  "LICENSE*",
+  "README.md",
+  "src/**/*.rs",
 ]
 
 [dependencies]

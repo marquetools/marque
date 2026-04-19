@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Shared test utilities and corpus loader for marque"
 repository.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 serde = { workspace = true }

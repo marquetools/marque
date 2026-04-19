@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "ISM vocabulary types, generated CVE enums, and Span for marque"
 repository.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 # Published tarball contents — keep tight. `build.rs` only reads the CVE XML
 # files in CVE_ISM/ and the RelTo trigraph XSD in CVE_ISMCAT/CVEGenerated/.
@@ -20,13 +20,13 @@ license.workspace = true
 # 10 MiB upload limit. Expand this list when build.rs starts consuming new
 # schema files.
 include = [
-    "src/**/*.rs",
-    "build.rs",
-    "Cargo.toml",
-    "README.md",
-    "LICENSE*",
-    "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
-    "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
+  "Cargo.toml",
+  "LICENSE*",
+  "README.md",
+  "build.rs",
+  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
+  "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
+  "src/**/*.rs",
 ]
 
 # Schema version pinned here — bump intentionally when ODNI publishes updates.
