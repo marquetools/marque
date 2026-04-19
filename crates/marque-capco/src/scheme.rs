@@ -391,10 +391,10 @@ impl CapcoScheme {
                 intra_ordering: IntraOrdering::Alphabetical,
                 expansion: None,
             },
-                // NOTE: REL TO is not its own category; it's a dissemination control.
-                // IsmAttributes models it as a separate field because it's a list of countries that must be compared as a set for supersession and conflict rules.
-                // The list is comma delimited and may consist of country trigraphs or organizational/operational tetragraphs (e.g. FVEY, NATO).
-                // USA **must** always be present and first, other entries are alphabetical.
+            // NOTE: REL TO is not its own category; it's a dissemination control.
+            // IsmAttributes models it as a separate field because it's a list of countries that must be compared as a set for supersession and conflict rules.
+            // The list is comma delimited and may consist of country trigraphs or organizational/operational tetragraphs (e.g. FVEY, NATO).
+            // USA **must** always be present and first, other entries are alphabetical.
             Category {
                 id: CAT_REL_TO,
                 name: "rel_to",
