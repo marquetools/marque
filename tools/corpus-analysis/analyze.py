@@ -1,10 +1,7 @@
 #!/usr/bin/env -S uv run --script
-
-# SPDX-FileCopyrightText: 2026 Knitli Inc.
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 #
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
-# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """
 Token frequency analyzer for classification marking vocabularies.

@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "CAPCO rule implementations for marque, consuming generated code from marque-ism"
 repository.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 aho-corasick = { workspace = true }

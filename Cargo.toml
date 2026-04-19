@@ -25,7 +25,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 repository = "https://github.com/marquetools/marque"
-license = "LicenseRef-MarqueLicense-1.0"
+license-file = "./LICENSE"
 
 [workspace.dependencies]
 marque-capco = { path = "crates/marque-capco", version = "0.2.0" }
