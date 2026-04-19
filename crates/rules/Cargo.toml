@@ -10,6 +10,12 @@ rust-version.workspace = true
 description = "Rule trait definitions for marque — the contract every rule crate implements"
 repository.workspace = true
 license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [dependencies]
 marque-ism = { workspace = true }

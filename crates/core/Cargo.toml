@@ -10,6 +10,12 @@ rust-version.workspace = true
 description = "Format-agnostic text scanner and attribute parser — the marque engine's front end"
 repository.workspace = true
 license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [dependencies]
 aho-corasick = { workspace = true }

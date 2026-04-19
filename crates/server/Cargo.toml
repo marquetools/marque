@@ -10,6 +10,12 @@ rust-version.workspace = true
 description = "REST microservice exposing marque as an API"
 repository.workspace = true
 license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [[bin]]
 name = "marque-server"

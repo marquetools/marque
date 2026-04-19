@@ -10,6 +10,12 @@ rust-version.workspace = true
 description = "Layered configuration loading for marque"
 repository.workspace = true
 license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [dependencies]
 marque-ism = { workspace = true }

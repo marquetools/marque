@@ -10,6 +10,12 @@ rust-version.workspace = true
 description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
 repository.workspace = true
 license-file = "LICENSE.md"
+include = [
+  "Cargo.toml",
+  "LICENSE.md*",
+  "README.md",
+  "src/**/*.rs",
+]
 
 [dependencies]
 futures = { workspace = true }
