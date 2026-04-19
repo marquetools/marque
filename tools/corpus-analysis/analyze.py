@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+#
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 """
 Token frequency analyzer for classification marking vocabularies.
 
@@ -29,7 +33,7 @@ import sys
 import tarfile
 import email
 import email.policy
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
@@ -66,7 +70,11 @@ def download_enron() -> Path:
                 downloaded += len(chunk)
                 if total:
                     pct = downloaded * 100 // total
-                    print(f"\r  {pct}% ({downloaded >> 20} / {total >> 20} MB)", end="", file=sys.stderr)
+                    print(
+                        f"\r  {pct}% ({downloaded >> 20} / {total >> 20} MB)",
+                        end="",
+                        file=sys.stderr,
+                    )
         print(file=sys.stderr)
 
     print("Extracting...", file=sys.stderr)
@@ -201,11 +209,11 @@ def analyze_document(
     """
     results = {
         "word_count": 0,
-        "token_hits": Counter(),       # token → raw count
-        "context_after_paren": Counter(),    # token appeared right after (
+        "token_hits": Counter(),  # token → raw count
+        "context_after_paren": Counter(),  # token appeared right after (
         "context_near_double_slash": Counter(),  # token within N chars of //
-        "context_line_start_caps": Counter(),    # token at start of line, all caps context
-        "context_inside_parens": Counter(),      # token inside (...)
+        "context_line_start_caps": Counter(),  # token at start of line, all caps context
+        "context_inside_parens": Counter(),  # token inside (...)
     }
 
     words = text.split()
@@ -275,7 +283,10 @@ def analyze_document(
                 line_end = len(text)
             line_text = text[line_start:line_end]
             alpha_chars = [c for c in line_text if c.isalpha()]
-            if alpha_chars and sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars) > 0.7:
+            if (
+                alpha_chars
+                and sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars) > 0.7
+            ):
                 results["context_line_start_caps"][token] += 1
 
         # Context: inside parentheses?
@@ -388,8 +399,8 @@ def run_analysis(
     # Aggregate counters
     total_docs = 0
     total_words = 0
-    docs_containing = Counter()       # token → number of docs containing it
-    total_hits = Counter()            # token → total occurrences
+    docs_containing = Counter()  # token → number of docs containing it
+    total_hits = Counter()  # token → total occurrences
     total_after_paren = Counter()
     total_near_dslash = Counter()
     total_line_start_caps = Counter()
@@ -487,7 +498,9 @@ def run_analysis(
                 "total_occurrences": total_dslash,
                 "in_urls": dslash_in_url,
                 "not_in_urls": dslash_not_url,
-                "doc_frequency": round(docs_with_dslash / total_docs, 6) if total_docs > 0 else 0,
+                "doc_frequency": round(docs_with_dslash / total_docs, 6)
+                if total_docs > 0
+                else 0,
             },
         },
         "tokens": token_results,
@@ -542,7 +555,10 @@ def main():
     # Load tokens
     tokens_by_category = load_tokens(args.tokens)
     flat_tokens = all_tokens_flat(tokens_by_category)
-    print(f"Loaded {len(flat_tokens)} tokens in {len(tokens_by_category)} categories", file=sys.stderr)
+    print(
+        f"Loaded {len(flat_tokens)} tokens in {len(tokens_by_category)} categories",
+        file=sys.stderr,
+    )
 
     # Resolve corpus
     if args.corpus:

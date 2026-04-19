@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License 1.0 (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE) covers the project's source code.
 # deny.toml — cargo-deny configuration
 # https://embarkstudios.github.io/cargo-deny/
 
@@ -9,8 +13,11 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 [licenses]
 version = 2
 allow = [
+  "LicenseRef-MarqueLicense-1.0",
   "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
   "MIT",
+  "MIT-0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -18,13 +25,74 @@ allow = [
   "Unicode-DFS-2016",
   "Unlicense",
   "Zlib",
+  "CC0-1.0",
+  "CC-BY-4.0",
 ]
 unused-allowed-license = "allow"
-confidence-threshold = 0.8
+confidence-threshold = 0.93
+
+[[licenses.clarify]]
+crate = "marque"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-capco"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-config"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-core"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-engine"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-extract"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-ism"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-rules"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE", hash = 0xe921130e }]
+
+[[licenses.clarify]]
+crate = "marque-scheme"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [ { path = "LICENSE", hash = 0xe921130e } ]
+
+[[licenses.clarify]]
+crate = "marque-server"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [ { path = "LICENSE", hash = 0xe921130e } ]
+
+[[licenses.clarify]]
+crate = "marque-test-utils"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [ { path = "LICENSE", hash = 0xe921130e } ]
+
+[[licenses.clarify]]
+crate = "marque-wasm"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [ { path = "LICENSE", hash = 0xe921130e } ]
 
 [bans]
 multiple-versions = "warn"
-wildcards = "warn"
 highlight = "all"
 
 [sources]

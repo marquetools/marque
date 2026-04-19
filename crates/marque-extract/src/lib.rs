@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-extract — document text and metadata extraction.
 //!
 //! Wraps Kreuzberg (https://github.com/kreuzberg-dev/kreuzberg):

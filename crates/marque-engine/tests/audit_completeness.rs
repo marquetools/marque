@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 4 — audit completeness tests (T045).
 //!
 //! Enforces SC-004: every AppliedFix has a complete payload (no missing fields,

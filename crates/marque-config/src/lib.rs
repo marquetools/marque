@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-config — layered configuration loading.
 //!
 //! Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `.marque.toml`

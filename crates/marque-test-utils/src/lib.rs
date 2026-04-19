@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Shared test utilities for the marque workspace.
 //!
 //! Provides uniform access to `tests/corpus/` fixtures from any crate's test suite.

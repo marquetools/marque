@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 3 — CLI smoke tests for `marque check`.
 //!
 //! Spawns the compiled binary against the canonical corpus fixtures and

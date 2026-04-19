@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 5 — SC-006: No classifier identity in committed test files (T055).
 //!
 //! Scans every file under `tests/corpus/`, `crates/*/tests/`, and

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 5 — SC-002a corpus provenance scan (T055a).
 //!
 //! Validates corpus integrity:

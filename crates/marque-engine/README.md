@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # marque-engine
 
 Pipeline orchestration for Marque — wires the scanner, parser, and rule sets into a configured, ready-to-run engine.

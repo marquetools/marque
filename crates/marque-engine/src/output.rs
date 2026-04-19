@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Output types returned by the engine's synchronous API surface.
 
 use marque_rules::{AppliedFix, Diagnostic};

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Ambiguity surface for local probabilistic disambiguation.
 //!
 //! The engine is deterministic for >99% of real input. Ambiguity is
@@ -44,11 +48,13 @@ pub struct EvidenceFeature {
 }
 
 impl<M> Parsed<M> {
+    #[inline]
     /// Convenience: is this a single unambiguous parse?
     pub fn is_unambiguous(&self) -> bool {
         matches!(self, Self::Unambiguous(_))
     }
 
+    #[inline]
     /// Map the underlying marking type while preserving the variant.
     pub fn map<N, F: Fn(M) -> N>(self, f: F) -> Parsed<N> {
         match self {

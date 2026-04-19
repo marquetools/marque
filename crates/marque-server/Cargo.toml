@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 [package]
 name = "marque-server"
 version = "0.2.0"
@@ -5,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "REST microservice exposing marque as an API"
 repository.workspace = true
-license.workspace = true
+license-file = "LICENSE"
 
 [[bin]]
 name = "marque-server"

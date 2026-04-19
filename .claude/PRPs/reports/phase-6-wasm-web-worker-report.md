@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Implementation Report: Phase 6 — WASM Web Worker Build (US4)
 
 ## Summary

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 #:schema https://raw.githubusercontent.com/crate-ci/typos/master/config.schema.json
 #:tombi schema.strict = false
 

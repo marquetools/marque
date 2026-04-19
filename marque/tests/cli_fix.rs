@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 4 — CLI integration tests for `marque fix` (T051, T051a).
 
 use assert_cmd::Command;

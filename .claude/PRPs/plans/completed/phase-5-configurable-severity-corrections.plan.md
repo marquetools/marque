@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Plan: Phase 5 — Configurable Rule Severity and Corrections Map (US3)
 
 ## Summary

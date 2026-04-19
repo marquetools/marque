@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR Review: #6 — feat(phase-5): configurable severity, corrections map C001, and classifier-id plumbing
 
 **Reviewed**: 2026-04-12

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 2/3: token extraction and structural parsing.
 //!
 //! Takes [`MarkingCandidate`] spans from the scanner and produces [`IsmAttributes`].

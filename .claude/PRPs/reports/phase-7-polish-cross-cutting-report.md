@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Implementation Report: Phase 7 — Polish & Cross-Cutting Concerns
 
 ## Summary

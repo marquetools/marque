@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-ism — ISM vocabulary types, generated CVE enums, and core spans.
 //!
 //! This crate is the leaf dependency in the marque workspace. It owns:

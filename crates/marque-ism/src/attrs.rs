@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! `IsmAttributes` — the canonical in-memory representation of a classification marking.
 //!
 //! Mirrors the IC ISM XML attribute model. Every source format (free text, XML, web forms)

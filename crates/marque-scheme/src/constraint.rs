@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Declarative constraints between tokens.
 //!
 //! A constraint is a declaration the scheme makes about its marking
