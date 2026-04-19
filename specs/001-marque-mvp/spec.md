@@ -374,7 +374,7 @@ completeness against this criterion.
   documented in plan.md §Performance Goals). The WASM build is covered by
   SC-001b.
 - **SC-001b** (**WASM interactive latency, advisory**): The WASM build, driven
-  from the harness at `crates/marque-wasm/examples/harness.html` in a current
+  from the harness at `crates/wasm/examples/harness.html` in a current
   Chromium-family browser on the reference machine, SHOULD complete
   `lint(text)` in **≤32ms p95** on the same ≤10KB inputs used by SC-001 — two
   display frames, accounting for the JS↔WASM boundary and the `daachorse`

@@ -77,17 +77,17 @@ $ marque fix input.txt
 
 | Priority | File | Lines | Why |
 |---|---|---|---|
-| P0 | `crates/marque-config/src/lib.rs` | all | Config loading, merging, validation — mostly done |
-| P0 | `crates/marque-engine/src/engine.rs` | 66–163 | Engine lint loop with severity override — pattern to extend |
-| P0 | `crates/marque-engine/src/engine.rs` | 205–322 | Engine fix_inner — where classifier_id is injected |
-| P0 | `crates/marque-capco/src/rules.rs` | 1–65, 890–926 | Rule pattern, CapcoRuleSet::new(), make_fix_diagnostic helper |
-| P0 | `crates/marque-rules/src/lib.rs` | 125–156, 340–357 | RuleContext struct, Rule trait — needs corrections field |
+| P0 | `crates/config/src/lib.rs` | all | Config loading, merging, validation — mostly done |
+| P0 | `crates/engine/src/engine.rs` | 66–163 | Engine lint loop with severity override — pattern to extend |
+| P0 | `crates/engine/src/engine.rs` | 205–322 | Engine fix_inner — where classifier_id is injected |
+| P0 | `crates/capco/src/rules.rs` | 1–65, 890–926 | Rule pattern, CapcoRuleSet::new(), make_fix_diagnostic helper |
+| P0 | `crates/rules/src/lib.rs` | 125–156, 340–357 | RuleContext struct, Rule trait — needs corrections field |
 | P1 | `marque/src/main.rs` | 1–200 | CLI entry, load_config, run_check/run_fix |
 | P1 | `marque/src/render.rs` | all | Audit NDJSON renderer — classifier_id already wired |
 | P1 | `specs/001-marque-mvp/tasks.md` | 142–166 | Phase 5 task list (T052–T060) |
 | P1 | `specs/001-marque-mvp/spec.md` | 94–126, 286–303 | US3 acceptance scenarios, FR-007..FR-011 |
 | P2 | `specs/001-marque-mvp/contracts/cli.md` | 38 | `--explain-config` contract |
-| P2 | `crates/marque-capco/tests/rules_us1.rs` | all | Integration test pattern for rules |
+| P2 | `crates/capco/tests/rules_us1.rs` | all | Integration test pattern for rules |
 
 ---
 
@@ -95,7 +95,7 @@ $ marque fix input.txt
 
 ### RULE_IMPLEMENTATION
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:70-137
+// SOURCE: crates/capco/src/rules.rs:70-137
 struct BannerAbbreviationRule;
 
 impl Rule for BannerAbbreviationRule {
@@ -110,7 +110,7 @@ impl Rule for BannerAbbreviationRule {
 
 ### RULE_REGISTRATION
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:39-54
+// SOURCE: crates/capco/src/rules.rs:39-54
 impl CapcoRuleSet {
     pub fn new() -> Self {
         Self {
@@ -125,7 +125,7 @@ impl CapcoRuleSet {
 
 ### FIX_DIAGNOSTIC_HELPER
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:893-926
+// SOURCE: crates/capco/src/rules.rs:893-926
 struct FixDiagnosticParams {
     rule: RuleId, severity: Severity, source: FixSource,
     span: Span, message: String, citation: &'static str,
@@ -137,7 +137,7 @@ fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic { ... }
 
 ### ENGINE_SEVERITY_OVERRIDE
 ```rust
-// SOURCE: crates/marque-engine/src/engine.rs:137-158
+// SOURCE: crates/engine/src/engine.rs:137-158
 for rule_set in &self.rule_sets {
     for rule in rule_set.rules() {
         let configured_severity = self.config.rules.overrides
@@ -154,7 +154,7 @@ for rule_set in &self.rule_sets {
 
 ### CONFIG_LOADING
 ```rust
-// SOURCE: crates/marque-config/src/lib.rs:211-253
+// SOURCE: crates/config/src/lib.rs:211-253
 pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
     // Layer 1+2: walk upward for project + local config
     // Layer 3: environment variables
@@ -164,7 +164,7 @@ pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
 
 ### TEST_PATTERN_ENGINE
 ```rust
-// SOURCE: crates/marque-engine/tests/fix_pipeline.rs:19-25
+// SOURCE: crates/engine/tests/fix_pipeline.rs:19-25
 fn test_engine() -> Engine {
     Engine::with_clock(
         Config::default(),
@@ -188,13 +188,13 @@ fn marque() -> Command {
 
 | File | Action | Justification |
 |---|---|---|
-| `crates/marque-rules/src/lib.rs` | UPDATE | Add `corrections: Option<Arc<HashMap<String, String>>>` to RuleContext |
-| `crates/marque-engine/src/engine.rs` | UPDATE | Pass corrections from config into RuleContext; already wires classifier_id (T060 verified) |
-| `crates/marque-capco/src/rules.rs` | UPDATE | Add C001 `CorrectionsMapRule` implementation |
-| `crates/marque-capco/src/lib.rs` | UPDATE | Register C001 in CapcoRuleSet::new() (noop — rules.rs self-registers) |
+| `crates/rules/src/lib.rs` | UPDATE | Add `corrections: Option<Arc<HashMap<String, String>>>` to RuleContext |
+| `crates/engine/src/engine.rs` | UPDATE | Pass corrections from config into RuleContext; already wires classifier_id (T060 verified) |
+| `crates/capco/src/rules.rs` | UPDATE | Add C001 `CorrectionsMapRule` implementation |
+| `crates/capco/src/lib.rs` | UPDATE | Register C001 in CapcoRuleSet::new() (noop — rules.rs self-registers) |
 | `marque/src/main.rs` | UPDATE | Wire `--explain-config` JSON output (currently exits 64 as stub) |
-| `crates/marque-config/tests/precedence.rs` | CREATE | T052+T053: precedence chain + hard-fail tests |
-| `crates/marque-capco/tests/corrections_map.rs` | CREATE | T054: corrections-map precedence over built-in rules |
+| `crates/config/tests/precedence.rs` | CREATE | T052+T053: precedence chain + hard-fail tests |
+| `crates/capco/tests/corrections_map.rs` | CREATE | T054: corrections-map precedence over built-in rules |
 | `tests/no_classifier_id_in_commits.rs` | CREATE | T055: SC-006 automated classifier-id scan |
 | `tests/corpus_provenance.rs` | CREATE | T055a: SC-002a corpus provenance scan |
 | `tests/corpus/invalid/corrections_typo.txt` | CREATE | Corpus fixture: `SERCET//NF` |
@@ -231,7 +231,7 @@ fn marque() -> Command {
 - **VALIDATE**: `cargo test --workspace` — all existing tests pass (corrections is None by default)
 
 ### Task 3: Implement C001 corrections-map rule (T058)
-- **ACTION**: Add `CorrectionsMapRule` to `crates/marque-capco/src/rules.rs`
+- **ACTION**: Add `CorrectionsMapRule` to `crates/capco/src/rules.rs`
 - **IMPLEMENT**: 
   - Zero-size struct `CorrectionsMapRule`
   - `id()` → `RuleId::new("C001")`
@@ -267,7 +267,7 @@ fn marque() -> Command {
 - **VALIDATE**: CLI integration test passes
 
 ### Task 7: Write config precedence tests (T052)
-- **ACTION**: Create `crates/marque-config/tests/precedence.rs` testing the four-layer precedence chain
+- **ACTION**: Create `crates/config/tests/precedence.rs` testing the four-layer precedence chain
 - **IMPLEMENT**: 
   - Test: `.marque.toml` sets E001=warn, no local/env/CLI → E001 severity is warn
   - Test: `.marque.toml` sets E001=warn, `.marque.local.toml` sets nothing (no [rules] in local) → E001 is warn
@@ -281,7 +281,7 @@ fn marque() -> Command {
 - **VALIDATE**: `cargo test -p marque-config --test precedence`
 
 ### Task 8: Write hard-fail scenario tests (T053)
-- **ACTION**: Add hard-fail tests to `crates/marque-config/tests/precedence.rs`
+- **ACTION**: Add hard-fail tests to `crates/config/tests/precedence.rs`
 - **IMPLEMENT**:
   - Test: `.marque.toml` with `[user]` section → `ConfigError::UserSectionInCommitted`, exit code 65
   - Test: `.marque.toml` with `[capco] version = "WRONG"` → `ConfigError::SchemaVersionMismatch`, exit code 65
@@ -290,7 +290,7 @@ fn marque() -> Command {
 - **VALIDATE**: `cargo test -p marque-config --test precedence`
 
 ### Task 9: Write corrections-map precedence tests (T054)
-- **ACTION**: Create `crates/marque-capco/tests/corrections_map.rs`
+- **ACTION**: Create `crates/capco/tests/corrections_map.rs`
 - **IMPLEMENT**:
   - Test: Built-in E001 fires on "NF" AND corrections map has "NF"="NOFORN" → C001 wins (its FixProposal has rule C001 and source CorrectionsMap). Verify via `engine.fix()` that the applied fix has `rule: "C001"` and `source: CorrectionsMap`.
   - Test: Corrections map entry with no built-in rule match → C001 fires independently

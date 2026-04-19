@@ -29,7 +29,7 @@ cargo build -p marque
 cargo build -p marque-server
 
 # Build WASM target (requires wasm-pack)
-wasm-pack build crates/marque-wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-wasm
 
 # Run all tests
 cargo test
@@ -172,7 +172,7 @@ Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `
 
 ## CAPCO Schema Code Generation
 
-`marque-ism/build.rs` reads ODNI ISM schema files from `crates/marque-ism/schemas/ISM-v2022-DEC/` and generates code into `OUT_DIR/`, consumed via `include!()` in `crates/marque-ism/src/generated.rs`. The schemas are present (ODNI package version `2022-DEC`, built June 2023).
+`marque-ism/build.rs` reads ODNI ISM schema files from `crates/ism/schemas/ISM-v2022-DEC/` and generates code into `OUT_DIR/`, consumed via `include!()` in `crates/ism/src/generated.rs`. The schemas are present (ODNI package version `2022-DEC`, built June 2023).
 
 **Actual schema layout** (the ODNI ZIP extracts to an `ISM/` root; subdirs were remapped on copy):
 ```
@@ -197,11 +197,11 @@ Key files for `build.rs` to parse when implementing full code generation:
 
 `build.rs` currently emits placeholder generated files so the workspace compiles. Full CVE XML and Schematron parsing is the next implementation milestone.
 
-The active schema version is pinned in `crates/marque-ism/Cargo.toml` under `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI publishes a new package.
+The active schema version is pinned in `crates/ism/Cargo.toml` under `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI publishes a new package.
 
 ## Adding a New Rule
 
-1. Add a zero-size struct implementing `Rule` in `crates/marque-capco/src/rules.rs`.
+1. Add a zero-size struct implementing `Rule` in `crates/capco/src/rules.rs`.
 2. Register it in `CapcoRuleSet::new()`.
 3. Rule IDs follow: `E###` = error, `W###` = warning, `C###` = correction.
 4. Rules are stateless; all config-dependent behavior (severity overrides, classifier ID injection) is handled by the engine.

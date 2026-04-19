@@ -19,10 +19,10 @@ Use a web worker to avoid blocking the main thread. The artifact is ~252KB (unop
 ## Building
 
 ```bash
-wasm-pack build crates/marque-wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-wasm
 ```
 
-Targets `bundler` and `nodejs` work the same way. Output lands in `crates/marque-wasm/pkg/`.
+Targets `bundler` and `nodejs` work the same way. Output lands in `crates/wasm/pkg/`.
 
 ## Exported Functions
 

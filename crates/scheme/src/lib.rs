@@ -32,7 +32,7 @@
 //! Phase A scaffolding. The trait and primitives are stable; concrete
 //! adapters land as separate PRs (Phase B onwards). `marque-capco`
 //! implements `MarkingScheme` as a proof of fit — see
-//! `crates/marque-capco/src/scheme.rs`.
+//! `crates/capco/src/scheme.rs`.
 
 pub mod ambiguity;
 pub mod category;

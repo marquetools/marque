@@ -52,7 +52,7 @@ jobs:
       - name: Read pinned schema version
         id: pinned
         run: |
-          VERSION=$(tr -d '[:space:]' < crates/marque-capco/schemas/CURRENT_VERSION)
+          VERSION=$(tr -d '[:space:]' < crates/capco/schemas/CURRENT_VERSION)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Pinned version: ${VERSION}"
 
@@ -188,16 +188,16 @@ jobs:
           ### Update checklist
           
           - [ ] Download and extract the schema ZIP
-          - [ ] Create \`crates/marque-capco/schemas/ISM-v${NEW_VERSION}/\` and populate from the ZIP (which extracts to an \`ISM/\` root):
+          - [ ] Create \`crates/capco/schemas/ISM-v${NEW_VERSION}/\` and populate from the ZIP (which extracts to an \`ISM/\` root):
             - \`ISM/CVE/ISM/\`              → \`CVE_ISM/\`
             - \`ISM/CVE/CveSchema/ISMCAT/\` → \`CVE_ISMCAT/\`
             - \`ISM/Schema/ISM/\`           → \`Schema/\`
             - \`ISM/Schematron/ISM/\`       → \`Schematron/\`
-          - [ ] Update \`crates/marque-capco/schemas/CURRENT_VERSION\` → \`${NEW_VERSION}\`
-          - [ ] Update \`[package.metadata.marque] ism-schema-version\` in \`crates/marque-capco/Cargo.toml\`
-          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/src/lib.rs\`
-          - [ ] Update default \`capco.version\` in \`crates/marque-config/src/lib.rs\`
-          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/marque-capco/build.rs\`
+          - [ ] Update \`crates/capco/schemas/CURRENT_VERSION\` → \`${NEW_VERSION}\`
+          - [ ] Update \`[package.metadata.marque] ism-schema-version\` in \`crates/capco/Cargo.toml\`
+          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/capco/src/lib.rs\`
+          - [ ] Update default \`capco.version\` in \`crates/config/src/lib.rs\`
+          - [ ] Update \`SCHEMA_VERSION\` constant in \`crates/capco/build.rs\`
           - [ ] Run \`cargo build -p marque-capco\` and review \`build.rs\` output diffs
           - [ ] Update migration rules for any newly deprecated or renamed markings
           - [ ] Bump \`marque-capco\` crate version and update changelog

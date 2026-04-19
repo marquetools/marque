@@ -40,7 +40,7 @@ None.
 ### MEDIUM
 
 **M-1 — E003 reconstructed `original` string drops `REL TO ` prefix for REL TO markings**
-`crates/marque-capco/src/rules.rs:316–325` (MisorderedBlocksRule::check)
+`crates/capco/src/rules.rs:316–325` (MisorderedBlocksRule::check)
 
 The E003 diagnostic emits a FixProposal whose `original` field is reconstructed by concatenating token texts (block tokens + separators) from `attrs.token_spans`. For a REL TO block like `SECRET//REL TO USA//SI//NOFORN`, the parser stores individual trigraph spans (`USA`) rather than a single block span with the full `REL TO USA` text. The reconstruction therefore produces `SECRET//USA//SI//NOFORN` instead of `SECRET//REL TO USA//SI//NOFORN`.
 
@@ -64,7 +64,7 @@ if matches!(exit_code, EX_OK | EX_DIAG_WARN) {
 Not a bug — the guard is still correct. Minor readability nit: either remove `EX_DIAG_WARN` from the `matches!` and add a comment, or leave it for defensive parallelism with `run_check`. Current form is fine either way.
 
 **M-3 — `find_portion_end` does not reject `\f` (form feed) as a portion terminator**
-`crates/marque-core/src/scanner.rs:146–157`
+`crates/core/src/scanner.rs:146–157`
 
 ```rust
 match b {
@@ -123,14 +123,14 @@ Tests rose 131 → 132 with the M-3 regression. All findings closed. PR #4 is re
 
 Focus was on the 4 files touched by the Copilot `1fc4bff` commit (the critical new surface after the specialist pass) plus spot checks of the broader Phase 3 footprint. Previous passes covered the rest in full.
 
-- `crates/marque-core/src/parser.rs` (Modified) — Copilot's token_spans sort fix
-- `crates/marque-core/src/scanner.rs` (Modified) — PageBreak composite sort
-- `crates/marque-capco/src/rules.rs` (Modified) — Copilot's `reorder_marking` paren fix + my earlier A.1/C.3 rework
+- `crates/core/src/parser.rs` (Modified) — Copilot's token_spans sort fix
+- `crates/core/src/scanner.rs` (Modified) — PageBreak composite sort
+- `crates/capco/src/rules.rs` (Modified) — Copilot's `reorder_marking` paren fix + my earlier A.1/C.3 rework
 - `marque/src/main.rs` (Modified) — Copilot's exit-code escalation guard + my earlier D.2/D.3/D.4 fixes
 - `marque/src/render.rs` (Modified) — Copilot's doc comment correction
-- `crates/marque-engine/tests/lint_pipeline.rs` (Added) — Spot check — 15 tests + 2 insta snapshots
-- `crates/marque-capco/tests/rules_us1.rs` (Added) — Spot check — corpus harness
-- `crates/marque-config/src/lib.rs` (Modified) — Spot check — `discover_project_dir` upward walk
+- `crates/engine/tests/lint_pipeline.rs` (Added) — Spot check — 15 tests + 2 insta snapshots
+- `crates/capco/tests/rules_us1.rs` (Added) — Spot check — corpus harness
+- `crates/config/src/lib.rs` (Modified) — Spot check — `discover_project_dir` upward walk
 - Corpus fixtures (90 files) — Spot check — 3 per rule + 20 valid + prose, all validated by integration test
 
 All changes are verified or explicitly documented as non-blocking observations.

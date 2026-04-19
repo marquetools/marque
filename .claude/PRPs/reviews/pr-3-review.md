@@ -34,7 +34,7 @@ None.
 ### HIGH
 
 **H-1 — `BatchError` does not distinguish panic from cancellation**
-`crates/marque-engine/src/batch.rs:48–77`
+`crates/engine/src/batch.rs:48–77`
 
 `BatchError::TaskFailed(JoinError)` wraps `tokio::task::JoinError` whole, but `JoinError` can represent either a panic (application bug) or a cancellation (runtime shutdown — not a bug). Callers in CI pipelines need to distinguish these to decide whether to alert or retry. `Display` collapses both into `"batch task failed: {e}"` and the only way to tell them apart is to `source()` + downcast — undocumented and non-obvious.
 
@@ -51,14 +51,14 @@ impl BatchError {
 ```
 
 **H-2 — `AppliedFix::__engine_promote` is `pub` `#[doc(hidden)]` — audit record integrity guarantee is convention-only**
-`crates/marque-rules/src/lib.rs:246–261`
+`crates/rules/src/lib.rs:246–261`
 
 The doc comment explicitly admits: "enforced by convention and code review, not by the type system." Any downstream crate that depends on `marque-rules` can construct an `AppliedFix` directly, bypassing the engine's confidence-threshold gate, the FR-016 sort, and the C-1 overlap guard — and inject arbitrary audit records. For a security tool whose audit log is the compliance output, this is a meaningful integrity gap. The `__` prefix is a discouragement, not a guarantee.
 
 This is a known architectural limitation from the Phase 2 design (the type must live in `marque-rules` because `marque-engine` depends on it, not the reverse), and a full fix would restructure crate boundaries. Recommended: document this explicitly as a known risk in `CLAUDE.md` under architectural invariants so future crate authors know the boundary is not load-bearing.
 
 **H-3 — Public `fix_with_threshold` has no test for INFINITY / NEG_INFINITY rejection**
-`crates/marque-engine/src/engine.rs:146–149`
+`crates/engine/src/engine.rs:146–149`
 
 The validation `!(0.0..=1.0).contains(&value) || value.is_nan()` correctly rejects `f32::INFINITY` and `f32::NEG_INFINITY`, but the test suite (`fix_with_threshold_rejects_nan`, `fix_with_threshold_rejects_out_of_range`) only checks `NaN`, `-0.1`, and `1.1`. Because this is a public API surface, a future refactor could silently regress the INFINITY rejection path without any test catching it.
 
@@ -81,27 +81,27 @@ fn fix_with_threshold_rejects_infinity() {
 ### MEDIUM
 
 **M-1 — `resolve_idents` has no lower-bound assertion on CVE file contents**
-`crates/marque-ism/build.rs:192–209`
+`crates/ism/build.rs:192–209`
 
 If `CVEnumISMDissem.xml` were ever empty (bad schema copy, partial ODNI update), `emit_enum` would emit a valid-but-empty `DissemControl` enum and all dissem rules would silently fire zero diagnostics. Recommended: add a whitelist of required-nonzero CVE files and assert each has at least one entry at build time. `SarIdentifier` already has a special empty-handling code path, so the whitelist would be everything *except* SAR.
 
 **M-2 — `resolve_idents` collision error message is non-actionable**
-`crates/marque-ism/build.rs:204`
+`crates/ism/build.rs:204`
 
 On a duplicate-ident collision the message is `"CVE values produce duplicate identifier {ident:?} (one of them is {value:?}). to_rust_ident needs disambiguation."` — but it only names one of the two colliding values, so a future maintainer can't see which pair collided. Suggested fix: change `seen` from `HashSet<String>` to `HashMap<String, String>` mapping `ident → first_value`, and include both values in the panic message.
 
 **M-3 — `TRIGRAPHS` slice is unsorted so `is_trigraph` uses linear scan**
-`crates/marque-ism/build.rs` (`parse_xsd_trigraphs`) + `token_set.rs:44`
+`crates/ism/build.rs` (`parse_xsd_trigraphs`) + `token_set.rs:44`
 
 The sister `ALL_CVE_TOKENS` went through a `BTreeSet` so `canonicalize` could use `binary_search`. `TRIGRAPHS` was left in XSD document order and `is_trigraph` still calls `.contains()` (~340-entry linear scan per token in parsed marking). The fix is symmetrical to H-8 from the first-pass review: sort at emit time, use `binary_search`. Low hot-path impact today but opportunistic cleanup.
 
 **M-4 — Threshold filter path has no test coverage at the threshold boundary**
-`crates/marque-engine/src/engine.rs` (tests)
+`crates/engine/src/engine.rs` (tests)
 
 All engine test proposals use `confidence = 1.0`, which always passes the `>= 0.95` default threshold. There is no test that a proposal with `confidence = 0.94` is excluded under the default threshold or that a proposal with exactly `0.95` is included. The filtering path (`filter(|f| f.confidence >= threshold)`) could silently regress (e.g., `>` instead of `>=`) without any test catching it.
 
 **M-5 — Zero-length-span filter path has no dedicated test**
-`crates/marque-engine/src/engine.rs:163`
+`crates/engine/src/engine.rs:163`
 
 `fix_inner` filters out fixes where `f.span.is_empty()`. This is the guard that masks the Phase 2 `Span::new(0, 0)` placeholder from current CAPCO rules, and the C-1 overlap guard is designed to take over once Phase 3 wires real spans. A test that verifies a zero-length fix is filtered would pin this contract explicitly and catch a future refactor that accidentally drops the guard.
 
@@ -120,29 +120,29 @@ All engine test proposals use `confidence = 1.0`, which always passes the `>= 0.
 All 25 files in the PR diff were read in full:
 
 - `Cargo.lock` (Modified)
-- `crates/marque-capco/src/rules.rs` (Modified)
-- `crates/marque-config/Cargo.toml` (Modified)
-- `crates/marque-config/src/lib.rs` (Modified)
-- `crates/marque-core/src/attrs.rs` (Modified)
-- `crates/marque-core/src/parser.rs` (Modified)
-- `crates/marque-core/src/scanner.rs` (Modified)
-- `crates/marque-core/src/span.rs` (Modified)
-- `crates/marque-engine/src/batch.rs` (Modified)
-- `crates/marque-engine/src/clock.rs` (Added)
-- `crates/marque-engine/src/engine.rs` (Modified)
-- `crates/marque-engine/src/lib.rs` (Modified)
-- `crates/marque-engine/src/output.rs` (Modified)
-- `crates/marque-engine/src/pipeline.rs` (Modified)
-- `crates/marque-extract/src/lib.rs` (Modified)
-- `crates/marque-ism/Cargo.toml` (Modified)
-- `crates/marque-ism/build.rs` (Modified)
-- `crates/marque-ism/src/attrs.rs` (Modified)
-- `crates/marque-ism/src/lib.rs` (Modified)
-- `crates/marque-ism/src/span.rs` (Modified)
-- `crates/marque-ism/src/token_set.rs` (Modified)
-- `crates/marque-rules/src/lib.rs` (Modified)
-- `crates/marque-server/src/main.rs` (Modified)
-- `crates/marque-wasm/src/lib.rs` (Modified)
+- `crates/capco/src/rules.rs` (Modified)
+- `crates/config/Cargo.toml` (Modified)
+- `crates/config/src/lib.rs` (Modified)
+- `crates/core/src/attrs.rs` (Modified)
+- `crates/core/src/parser.rs` (Modified)
+- `crates/core/src/scanner.rs` (Modified)
+- `crates/core/src/span.rs` (Modified)
+- `crates/engine/src/batch.rs` (Modified)
+- `crates/engine/src/clock.rs` (Added)
+- `crates/engine/src/engine.rs` (Modified)
+- `crates/engine/src/lib.rs` (Modified)
+- `crates/engine/src/output.rs` (Modified)
+- `crates/engine/src/pipeline.rs` (Modified)
+- `crates/extract/src/lib.rs` (Modified)
+- `crates/ism/Cargo.toml` (Modified)
+- `crates/ism/build.rs` (Modified)
+- `crates/ism/src/attrs.rs` (Modified)
+- `crates/ism/src/lib.rs` (Modified)
+- `crates/ism/src/span.rs` (Modified)
+- `crates/ism/src/token_set.rs` (Modified)
+- `crates/rules/src/lib.rs` (Modified)
+- `crates/server/src/main.rs` (Modified)
+- `crates/wasm/src/lib.rs` (Modified)
 - `marque/src/main.rs` (Modified)
 
 ## Focus-Area Results

@@ -70,7 +70,7 @@ Existing SCI fixtures (every `SECRET//SI//NOFORN`, `TOP SECRET//HCS-P//NOFORN`, 
 
 - `CLAUDE.md`: new SCI subsection under Architecture / Two-Layer Rule Architecture explaining the hybrid CVE + structural approach. Bump rule count.
 - `README.md`: update feature/rule count mention.
-- `crates/marque-ism/README.md`: migration note for the added `sci_markings` field (non-breaking; `sci_controls` retained).
+- `crates/ism/README.md`: migration note for the added `sci_markings` field (non-breaking; `sci_controls` retained).
 
 ## Shared code with SAR
 

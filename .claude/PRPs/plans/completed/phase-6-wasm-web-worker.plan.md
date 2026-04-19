@@ -40,17 +40,17 @@ N/A — internal change. The WASM API is consumed by JavaScript code, not a visu
 
 | Priority | File | Lines | Why |
 |---|---|---|---|
-| P0 | `crates/marque-wasm/src/lib.rs` | all (138) | Current WASM implementation to rewrite |
+| P0 | `crates/wasm/src/lib.rs` | all (138) | Current WASM implementation to rewrite |
 | P0 | `specs/001-marque-mvp/contracts/diagnostic.json` | all (70) | NDJSON shape contract — WASM output must match exactly |
 | P0 | `marque/src/render.rs` | 226–284 | `DiagnosticJson`, `diagnostic_to_json()`, `render_ndjson()` — the CLI's serialization logic WASM must replicate |
 | P0 | `specs/001-marque-mvp/tasks.md` | 170–188 | Phase 6 task definitions |
 | P1 | `specs/001-marque-mvp/research.md` | 230–252 | R-7: aho-corasick for both targets, daachorse deferred |
 | P1 | `specs/001-marque-mvp/contracts/audit-record.json` | all | Audit record shape for `fix()` output |
-| P1 | `crates/marque-engine/src/engine.rs` | 76, 267–284 | `Engine::lint`, `Engine::fix`, `Engine::fix_with_threshold` signatures |
-| P1 | `crates/marque-engine/src/output.rs` | 5–56 | `LintResult`, `FixResult` types |
+| P1 | `crates/engine/src/engine.rs` | 76, 267–284 | `Engine::lint`, `Engine::fix`, `Engine::fix_with_threshold` signatures |
+| P1 | `crates/engine/src/output.rs` | 5–56 | `LintResult`, `FixResult` types |
 | P2 | `specs/001-marque-mvp/quickstart.md` | 126–147 | WASM harness steps |
-| P2 | `crates/marque-wasm/Cargo.toml` | all (33) | Current dependencies and wasm-pack config |
-| P2 | `crates/marque-rules/src/lib.rs` | 79–90, 166–297, 303–338 | Severity, FixSource, FixProposal, Diagnostic, AppliedFix types |
+| P2 | `crates/wasm/Cargo.toml` | all (33) | Current dependencies and wasm-pack config |
+| P2 | `crates/rules/src/lib.rs` | 79–90, 166–297, 303–338 | Severity, FixSource, FixProposal, Diagnostic, AppliedFix types |
 
 ## External Documentation
 
@@ -112,7 +112,7 @@ pub fn render_ndjson(out: &mut dyn std::io::Write, result: &LintResult) -> std::
 ```
 
 ### ENGINE_CONSTRUCTION
-// SOURCE: crates/marque-wasm/src/lib.rs:135-137
+// SOURCE: crates/wasm/src/lib.rs:135-137
 ```rust
 fn build_engine(config: Config) -> Engine {
     Engine::new(config, vec![Box::new(capco_rules())])
@@ -120,7 +120,7 @@ fn build_engine(config: Config) -> Engine {
 ```
 
 ### TEST_ENGINE_HELPER
-// SOURCE: crates/marque-capco/tests/corrections_map.rs:16-24
+// SOURCE: crates/capco/tests/corrections_map.rs:16-24
 ```rust
 fn engine_with_corrections(corrections: HashMap<String, String>) -> Engine {
     let mut config = Config::default();
@@ -153,12 +153,12 @@ TOP SECRET//SI//NF
 
 | File | Action | Justification |
 |---|---|---|
-| `crates/marque-wasm/src/lib.rs` | **UPDATE** | T063: Rewrite lint/fix exports to produce NDJSON matching `diagnostic.json` contract |
-| `crates/marque-wasm/Cargo.toml` | **UPDATE** | Add dev-dependencies for tests (marque-capco, marque-engine, marque-config, marque-rules) |
-| `crates/marque-wasm/tests/native_parity.rs` | **CREATE** | T061: Parity test — same input through Engine and WASM wrappers, assert byte-equal JSON |
-| `crates/marque-wasm/tests/no_io.rs` | **CREATE** | T062: Dependency audit asserting no I/O crates in WASM dep tree |
-| `crates/marque-wasm/examples/harness.html` | **CREATE** | T065: Minimal HTML harness loading WASM module, linting a fixture, printing JSON |
-| `crates/marque-core/src/parser.rs` | **NO CHANGE** | T064: Per R-7, aho-corasick for both targets — no daachorse switch needed in MVP |
+| `crates/wasm/src/lib.rs` | **UPDATE** | T063: Rewrite lint/fix exports to produce NDJSON matching `diagnostic.json` contract |
+| `crates/wasm/Cargo.toml` | **UPDATE** | Add dev-dependencies for tests (marque-capco, marque-engine, marque-config, marque-rules) |
+| `crates/wasm/tests/native_parity.rs` | **CREATE** | T061: Parity test — same input through Engine and WASM wrappers, assert byte-equal JSON |
+| `crates/wasm/tests/no_io.rs` | **CREATE** | T062: Dependency audit asserting no I/O crates in WASM dep tree |
+| `crates/wasm/examples/harness.html` | **CREATE** | T065: Minimal HTML harness loading WASM module, linting a fixture, printing JSON |
+| `crates/core/src/parser.rs` | **NO CHANGE** | T064: Per R-7, aho-corasick for both targets — no daachorse switch needed in MVP |
 | `benches/wasm_latency.md` | **CREATE** | T066a: Document measurement method for WASM latency |
 | `Cargo.toml` (root) | **POSSIBLE UPDATE** | Add `daachorse` to workspace deps only if needed; likely no change per R-7 |
 
@@ -176,7 +176,7 @@ TOP SECRET//SI//NF
 
 ### Task 1: T063 — Rewrite WASM lint/fix exports for contract-conformant output
 
-- **ACTION**: Rewrite `crates/marque-wasm/src/lib.rs` to produce NDJSON matching `contracts/diagnostic.json` (for lint) and include `fixed_text` + NDJSON audit records (for fix). The key change: `lint()` must return the **same JSON serialization** as the CLI's `render_ndjson()`, not a custom `WasmLintResult` wrapper.
+- **ACTION**: Rewrite `crates/wasm/src/lib.rs` to produce NDJSON matching `contracts/diagnostic.json` (for lint) and include `fixed_text` + NDJSON audit records (for fix). The key change: `lint()` must return the **same JSON serialization** as the CLI's `render_ndjson()`, not a custom `WasmLintResult` wrapper.
 - **IMPLEMENT**:
   1. Move the `DiagnosticJson`, `SpanJson`, `FixJson`, and `diagnostic_to_json()` helper out of the CLI crate into a shared location. Two options:
      - (a) Add them to `marque-rules` (since they project `Diagnostic` types from that crate) — adds a serde_json dep to marque-rules.
@@ -198,7 +198,7 @@ TOP SECRET//SI//NF
 
 ### Task 2: T061 — Native parity test
 
-- **ACTION**: Create `crates/marque-wasm/tests/native_parity.rs` that drives the same inputs through both the native `Engine::lint` API and the WASM crate's `lint()` wrapper (called as a plain Rust function, not through WASM), and asserts byte-equal JSON output.
+- **ACTION**: Create `crates/wasm/tests/native_parity.rs` that drives the same inputs through both the native `Engine::lint` API and the WASM crate's `lint()` wrapper (called as a plain Rust function, not through WASM), and asserts byte-equal JSON output.
 - **IMPLEMENT**:
   1. Gate with `#![cfg(not(target_arch = "wasm32"))]` — runs only on native.
   2. Load ≥10 corpus fixtures from `tests/corpus/invalid/` and `tests/corpus/valid/`.
@@ -215,7 +215,7 @@ TOP SECRET//SI//NF
 
 ### Task 3: T062 — No-I/O dependency audit test
 
-- **ACTION**: Create `crates/marque-wasm/tests/no_io.rs` that asserts the WASM crate's dependency tree contains no I/O crates.
+- **ACTION**: Create `crates/wasm/tests/no_io.rs` that asserts the WASM crate's dependency tree contains no I/O crates.
 - **IMPLEMENT**:
   1. Gate with `#![cfg(not(target_arch = "wasm32"))]`.
   2. Run `cargo tree -p marque-wasm --no-dev-deps --prefix none` (via `std::process::Command`) and capture stdout.
@@ -235,7 +235,7 @@ TOP SECRET//SI//NF
   1. Run `cargo check -p marque-wasm --target wasm32-unknown-unknown` to verify compilation.
   2. If aho-corasick fails on wasm32, THEN implement the daachorse fallback:
      - Add `daachorse` to `Cargo.toml` workspace deps.
-     - In `crates/marque-ism/src/token_set.rs`, add `#[cfg(target_arch = "wasm32")]` alternative using `daachorse::DoubleArrayAhoCorasick`.
+     - In `crates/ism/src/token_set.rs`, add `#[cfg(target_arch = "wasm32")]` alternative using `daachorse::DoubleArrayAhoCorasick`.
      - Both implementations must produce identical token matching results.
   3. Most likely outcome: aho-corasick 1.x compiles fine for wasm32 (it's a pure-Rust crate with optional SIMD behind feature flags).
 - **MIRROR**: N/A
@@ -244,7 +244,7 @@ TOP SECRET//SI//NF
 
 ### Task 5: T065 — HTML harness
 
-- **ACTION**: Create `crates/marque-wasm/examples/harness.html` — a self-contained HTML file that loads the WASM module and lints a sample marking.
+- **ACTION**: Create `crates/wasm/examples/harness.html` — a self-contained HTML file that loads the WASM module and lints a sample marking.
 - **IMPLEMENT**:
   ```html
   <!DOCTYPE html>
@@ -282,8 +282,8 @@ TOP SECRET//SI//NF
   </html>
   ```
 - **MIRROR**: N/A — standalone HTML file.
-- **GOTCHA**: The `import` path `../pkg/marque_wasm.js` assumes `wasm-pack build` output is in `crates/marque-wasm/pkg/`. Verify this is the default output directory.
-- **GOTCHA**: Needs a local HTTP server to serve (can't use `file://` with ES modules). Document: `python3 -m http.server 8080` from the `crates/marque-wasm/` directory.
+- **GOTCHA**: The `import` path `../pkg/marque_wasm.js` assumes `wasm-pack build` output is in `crates/wasm/pkg/`. Verify this is the default output directory.
+- **GOTCHA**: Needs a local HTTP server to serve (can't use `file://` with ES modules). Document: `python3 -m http.server 8080` from the `crates/wasm/` directory.
 - **VALIDATE**: After `wasm-pack build`, open `http://localhost:8080/examples/harness.html`, click "Lint", see diagnostic JSON.
 
 ### Task 6: T066 — Verify WASM build succeeds and artifact ≤1MB
@@ -292,8 +292,8 @@ TOP SECRET//SI//NF
 - **IMPLEMENT**:
   1. Install wasm-pack if not present: `cargo install wasm-pack` (or check with `wasm-pack --version`).
   2. Install the wasm32 target: `rustup target add wasm32-unknown-unknown`.
-  3. Build: `wasm-pack build crates/marque-wasm --target web --profile release-wasm`.
-  4. Measure: `ls -la crates/marque-wasm/pkg/marque_wasm_bg.wasm` — must be ≤1MB.
+  3. Build: `wasm-pack build crates/wasm --target web --profile release-wasm`.
+  4. Measure: `ls -la crates/wasm/pkg/marque_wasm_bg.wasm` — must be ≤1MB.
   5. If >1MB: check if `wasm-opt` is installed and being applied (the Cargo.toml configures `-Os`). Consider: removing unused features, checking for large static data in generated code.
 - **MIRROR**: N/A — build verification.
 - **GOTCHA**: `wasm-pack` may not be installed in CI. Document the installation step.
@@ -379,13 +379,13 @@ EXPECT: No regressions. All 226+ tests pass.
 
 ### WASM Build
 ```bash
-wasm-pack build crates/marque-wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-wasm
 ```
 EXPECT: Build succeeds. `pkg/marque_wasm_bg.wasm` ≤1MB.
 
 ### Binary Size Check
 ```bash
-ls -la crates/marque-wasm/pkg/marque_wasm_bg.wasm
+ls -la crates/wasm/pkg/marque_wasm_bg.wasm
 ```
 EXPECT: File size ≤1,048,576 bytes (1MB)
 

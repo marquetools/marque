@@ -77,21 +77,21 @@ during `parse_marking_string`.
 
 | File | Action | Purpose |
 |---|---|---|
-| `crates/marque-core/src/scanner.rs` | UPDATED | Added `scan_page_breaks` + 4 unit tests |
-| `crates/marque-core/src/parser.rs` | UPDATED | Major: token-span recording, banner-form dissem fallback, 5 unit tests |
-| `crates/marque-ism/src/span.rs` | UPDATED | Added `MarkingType::PageBreak` |
-| `crates/marque-ism/src/attrs.rs` | UPDATED | Added `TokenKind`, `TokenSpan`, `IsmAttributes::token_spans` |
-| `crates/marque-ism/src/lib.rs` | UPDATED | Re-exported `TokenKind`/`TokenSpan` |
-| `crates/marque-rules/src/lib.rs` | UPDATED | `RuleContext.zone`/`position` → `Option<_>` |
-| `crates/marque-engine/src/engine.rs` | UPDATED | Page-break reset + zone/position now `None` + new unit test |
-| `crates/marque-engine/Cargo.toml` | UPDATED | Added `serde_json` dev-dep + insta json feature |
-| `crates/marque-engine/tests/lint_pipeline.rs` | CREATED | 13 integration tests + 2 insta snapshots |
-| `crates/marque-engine/tests/snapshots/lint_pipeline__e001_diagnostic_json.snap` | CREATED | Insta snapshot |
-| `crates/marque-engine/tests/snapshots/lint_pipeline__e008_diagnostic_json.snap` | CREATED | Insta snapshot |
-| `crates/marque-capco/src/rules.rs` | REWRITTEN | All 9 Phase 3 rules with byte-precise spans + 13 unit tests |
-| `crates/marque-capco/src/lib.rs` | UPDATED | Re-exported `CapcoRuleSet` for tests |
-| `crates/marque-capco/Cargo.toml` | UPDATED | Added `marque-core` dev-dep |
-| `crates/marque-capco/tests/rules_us1.rs` | CREATED | Corpus integration test driving every fixture through all 9 rules |
+| `crates/core/src/scanner.rs` | UPDATED | Added `scan_page_breaks` + 4 unit tests |
+| `crates/core/src/parser.rs` | UPDATED | Major: token-span recording, banner-form dissem fallback, 5 unit tests |
+| `crates/ism/src/span.rs` | UPDATED | Added `MarkingType::PageBreak` |
+| `crates/ism/src/attrs.rs` | UPDATED | Added `TokenKind`, `TokenSpan`, `IsmAttributes::token_spans` |
+| `crates/ism/src/lib.rs` | UPDATED | Re-exported `TokenKind`/`TokenSpan` |
+| `crates/rules/src/lib.rs` | UPDATED | `RuleContext.zone`/`position` → `Option<_>` |
+| `crates/engine/src/engine.rs` | UPDATED | Page-break reset + zone/position now `None` + new unit test |
+| `crates/engine/Cargo.toml` | UPDATED | Added `serde_json` dev-dep + insta json feature |
+| `crates/engine/tests/lint_pipeline.rs` | CREATED | 13 integration tests + 2 insta snapshots |
+| `crates/engine/tests/snapshots/lint_pipeline__e001_diagnostic_json.snap` | CREATED | Insta snapshot |
+| `crates/engine/tests/snapshots/lint_pipeline__e008_diagnostic_json.snap` | CREATED | Insta snapshot |
+| `crates/capco/src/rules.rs` | REWRITTEN | All 9 Phase 3 rules with byte-precise spans + 13 unit tests |
+| `crates/capco/src/lib.rs` | UPDATED | Re-exported `CapcoRuleSet` for tests |
+| `crates/capco/Cargo.toml` | UPDATED | Added `marque-core` dev-dep |
+| `crates/capco/tests/rules_us1.rs` | CREATED | Corpus integration test driving every fixture through all 9 rules |
 | `marque/Cargo.toml` | UPDATED | Added `is-terminal`, `marque-rules`, `marque-ism` deps + assert_cmd dev-dep |
 | `marque/src/main.rs` | REWRITTEN | Full CLI matching `contracts/cli.md` |
 | `marque/src/render.rs` | CREATED | Human + NDJSON renderers, color/TTY/format selection |
@@ -164,12 +164,12 @@ during `parse_marking_string`.
 
 | Test File | Tests | Coverage |
 |---|---|---|
-| `crates/marque-core/src/scanner.rs::tests` | 4 new (8 total) | PageBreak detection: form-feed, blank-line run, double-newline rejection, mixed |
-| `crates/marque-core/src/parser.rs::tests` | 5 new (14 total) | TokenSpan offset tracking: banner, portion paren strip, unknown, REL TO trigraphs, separators |
-| `crates/marque-engine/src/engine.rs::tests` | 1 new (13 total) | Multi-page document with form-feed |
-| `crates/marque-capco/src/rules.rs::tests` | 13 new (13 total) | Per-rule unit tests with byte-span assertions |
-| `crates/marque-capco/tests/rules_us1.rs` | 2 (corpus harness) | invalid + valid fixture iteration with rule+span match |
-| `crates/marque-engine/tests/lint_pipeline.rs` | 15 | Happy path, edge cases, citation, span precision, JSON snapshots |
+| `crates/core/src/scanner.rs::tests` | 4 new (8 total) | PageBreak detection: form-feed, blank-line run, double-newline rejection, mixed |
+| `crates/core/src/parser.rs::tests` | 5 new (14 total) | TokenSpan offset tracking: banner, portion paren strip, unknown, REL TO trigraphs, separators |
+| `crates/engine/src/engine.rs::tests` | 1 new (13 total) | Multi-page document with form-feed |
+| `crates/capco/src/rules.rs::tests` | 13 new (13 total) | Per-rule unit tests with byte-span assertions |
+| `crates/capco/tests/rules_us1.rs` | 2 (corpus harness) | invalid + valid fixture iteration with rule+span match |
+| `crates/engine/tests/lint_pipeline.rs` | 15 | Happy path, edge cases, citation, span precision, JSON snapshots |
 | `marque/tests/cli_smoke.rs` | 9 | CLI: stdin sentinel, --explain-config, NO_COLOR, exit codes, mutual exclusion |
 
 **Total**: 116 tests passing (up from 77 post-Phase 2), zero failures.

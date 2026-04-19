@@ -24,7 +24,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
    Add eight corpus fixtures (four valid, four invalid) per spec §SC-SAR. Extend the accuracy harness in `tests/corpus_accuracy.rs` (or the equivalent location — check before assuming) so SAR rules gate at ≥95%. Snapshot NDJSON output for the canonical banner.
 
 6. **P6 — Documentation**
-   Update `CLAUDE.md` with a SAR subsection under Architecture. Update `README.md` rule-count badge from 29 → 35 (or whatever the final count is). Add a migration note to `crates/marque-ism/README.md` explaining the `SarIdentifier` → `SarMarking` move.
+   Update `CLAUDE.md` with a SAR subsection under Architecture. Update `README.md` rule-count badge from 29 → 35 (or whatever the final count is). Add a migration note to `crates/ism/README.md` explaining the `SarIdentifier` → `SarMarking` move.
 
 ## Side-fix: E004 should flag `//` between same-category tokens, not `/` within one
 

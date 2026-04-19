@@ -43,17 +43,17 @@ None
 | Build | Pass |
 
 ## Files Reviewed
-- `crates/marque-rules/src/lib.rs` — Modified (RuleContext.corrections field)
-- `crates/marque-engine/src/engine.rs` — Modified (corrections_arc struct field + wiring)
-- `crates/marque-capco/src/rules.rs` — Modified (C001 rule + registration)
-- `crates/marque-config/src/lib.rs` — Modified (empty env var guard)
+- `crates/rules/src/lib.rs` — Modified (RuleContext.corrections field)
+- `crates/engine/src/engine.rs` — Modified (corrections_arc struct field + wiring)
+- `crates/capco/src/rules.rs` — Modified (C001 rule + registration)
+- `crates/config/src/lib.rs` — Modified (empty env var guard)
 - `marque/src/render.rs` — Modified (test-only comment)
-- `crates/marque-config/tests/precedence.rs` — Added (16 tests)
-- `crates/marque-capco/tests/corrections_map.rs` — Added (10 tests)
-- `crates/marque-capco/tests/rules_us1.rs` — Modified (+1 field)
+- `crates/config/tests/precedence.rs` — Added (16 tests)
+- `crates/capco/tests/corrections_map.rs` — Added (10 tests)
+- `crates/capco/tests/rules_us1.rs` — Modified (+1 field)
 - `marque/tests/cli_config.rs` — Added (10 tests)
 - `marque/tests/corpus_provenance.rs` — Added (4 tests)
 - `marque/tests/no_classifier_id_in_commits.rs` — Added (1 test)
-- `crates/marque-capco/Cargo.toml` — Modified (dev-deps)
-- `crates/marque-config/Cargo.toml` — Modified (dev-deps)
+- `crates/capco/Cargo.toml` — Modified (dev-deps)
+- `crates/config/Cargo.toml` — Modified (dev-deps)
 - `Cargo.lock` — Modified

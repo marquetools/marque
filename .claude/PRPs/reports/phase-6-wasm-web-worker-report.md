@@ -44,13 +44,13 @@ Implemented the WASM build target for `marque-wasm`, producing byte-identical di
 
 | File | Action | Lines |
 |---|---|---|
-| `crates/marque-wasm/src/lib.rs` | UPDATED | Rewritten (~250 lines) |
-| `crates/marque-wasm/Cargo.toml` | UPDATED | +marque-rules, +humantime, +dev-deps, engine path dep |
-| `crates/marque-wasm/tests/native_parity.rs` | CREATED | +230 lines (6 tests) |
-| `crates/marque-wasm/tests/no_io.rs` | CREATED | +80 lines (2 tests) |
-| `crates/marque-wasm/examples/harness.html` | CREATED | +80 lines |
-| `crates/marque-engine/Cargo.toml` | UPDATED | Feature-gated tokio/futures/recoco-utils behind `batch` |
-| `crates/marque-engine/src/lib.rs` | UPDATED | `#[cfg(feature = "batch")]` on batch module |
+| `crates/wasm/src/lib.rs` | UPDATED | Rewritten (~250 lines) |
+| `crates/wasm/Cargo.toml` | UPDATED | +marque-rules, +humantime, +dev-deps, engine path dep |
+| `crates/wasm/tests/native_parity.rs` | CREATED | +230 lines (6 tests) |
+| `crates/wasm/tests/no_io.rs` | CREATED | +80 lines (2 tests) |
+| `crates/wasm/examples/harness.html` | CREATED | +80 lines |
+| `crates/engine/Cargo.toml` | UPDATED | Feature-gated tokio/futures/recoco-utils behind `batch` |
+| `crates/engine/src/lib.rs` | UPDATED | `#[cfg(feature = "batch")]` on batch module |
 | `benches/wasm_latency.md` | CREATED | +100 lines |
 | `Cargo.toml` (root) | UNCHANGED | release-wasm profile already present |
 
@@ -72,8 +72,8 @@ Implemented the WASM build target for `marque-wasm`, producing byte-identical di
 
 | Test File | Tests | Coverage |
 |---|---|---|
-| `crates/marque-wasm/tests/native_parity.rs` | 6 | SC-008 parity (lint+fix) across all 47 corpus fixtures + edge cases |
-| `crates/marque-wasm/tests/no_io.rs` | 2 | FR-013 dep audit, marque-extract exclusion |
+| `crates/wasm/tests/native_parity.rs` | 6 | SC-008 parity (lint+fix) across all 47 corpus fixtures + edge cases |
+| `crates/wasm/tests/no_io.rs` | 2 | FR-013 dep audit, marque-extract exclusion |
 
 ## Next Steps
 - [ ] Code review via `/code-review`
