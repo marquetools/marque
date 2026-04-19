@@ -25,9 +25,7 @@ Our customers expect uncompromising security, and we're fully committed to it. W
 
 ### How to Report
 
-**Please do NOT open a public GitHub issue for security vulnerabilities.**
-
-Instead, use one of the following channels:
+Use one of the following channels:
 
 1. **GitHub Private Vulnerability Reporting (preferred)**
    Go to [Security Advisories](https://github.com/marquetools/marque/security/advisories/new) and report your identified vulnerability there. With this method, you may optionally submit a private pull request with a fix. Learn more [in the GitHub docs](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/privately-reporting-a-security-vulnerability).
