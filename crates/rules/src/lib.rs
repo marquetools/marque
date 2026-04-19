@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! marque-rules — trait definitions for the marque rule system.
 //!
 //! This crate defines the contract every rule crate must satisfy.

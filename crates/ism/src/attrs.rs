@@ -1039,6 +1039,7 @@ impl Trigraph {
         // SAFETY: `Trigraph` can only be constructed via `try_new` or the
         // `USA` constant, both of which require ASCII uppercase letters.
         // ASCII is a subset of valid UTF-8.
+        #[allow(unsafe_code)]
         unsafe { std::str::from_utf8_unchecked(&self.0) }
     }
 }

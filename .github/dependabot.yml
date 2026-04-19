@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Dependabot configuration — automated dependency update PRs.
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Supply chain audit finding A1: without automated updates, known
+# vulnerabilities in Rust crates, npm packages, and GitHub Actions
+# can persist indefinitely.
+
+version: 2
+
+updates:
+  # ── Rust (Cargo) ──────────────────────────────────────────────────
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: "chore(deps):"
+
+  # ── npm (demo package) ────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /demo
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: "chore(deps):"
+
+  # ── GitHub Actions ────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci):"
