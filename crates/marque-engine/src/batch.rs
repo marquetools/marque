@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Concurrent batch processing over many documents.
 //!
 //! `BatchEngine` wraps `Engine` behind an `Arc` and uses `ConcurrencyController`

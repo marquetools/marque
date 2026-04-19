@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License 1.0 (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE) covers the project's source code.
 [workspace]
 resolver = "2"
 members = [
@@ -21,7 +25,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 repository = "https://github.com/marquetools/marque"
-license = "Apache-2.0"
+license-file = "./LICENSE"
 
 [workspace.dependencies]
 marque-capco = { path = "crates/marque-capco", version = "0.2.0" }
@@ -49,7 +53,7 @@ anyhow = "1.0.102"
 thiserror = "2.0.18"
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 toml = "1.1.2"
 
@@ -58,9 +62,9 @@ axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 
-assert_cmd = "2.2.0"
+assert_cmd = "2.2.1"
 # CLI
-clap = { version = "4.6.0", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.3.0"
 is-terminal = "0.4.17"
 tempfile = "3.27.0"

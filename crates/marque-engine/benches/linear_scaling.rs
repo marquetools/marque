@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! SC-005 benchmark: linear throughput scaling across input sizes.
 //!
 //! Sweeps input size across at least one order of magnitude (1KB -> 100KB)

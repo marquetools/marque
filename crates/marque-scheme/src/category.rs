@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Category descriptors and aggregation operators.
 //!
 //! A marking is a product over categories (classification, SCI, dissem,
@@ -98,8 +102,15 @@ pub enum AggregationOp {
 
 /// Expansion function for composite tokens (tetragraphs → member
 /// trigraphs). Returning `None` means "not a composite; leave the
-/// token alone." Composite expansions are returned as borrowed
-/// static slices to avoid per-call heap allocation in hot paths.
+/// token alone."
+///
+/// Returns a borrowed `&'static [TokenId]` rather than an owned
+/// `Vec<TokenId>` so the hot path (projection, render) can expand
+/// without heap allocation. Composite membership is expected to be a
+/// compile-time static table (e.g., FVEY = `&[USA, GBR, CAN, AUS,
+/// NZL]` as a `const`). A scheme that needs dynamic expansion at
+/// runtime should model that through a category-level escape hatch
+/// instead.
 pub type ExpansionFn = fn(TokenId) -> Option<&'static [TokenId]>;
 
 /// A category of tokens within a marking scheme.
@@ -139,6 +150,7 @@ pub fn reduce_max<T: Ord + Clone>(values: &[T]) -> Option<T> {
 /// tracking (the output is still ordered). Tokens must be `Hash + Eq`
 /// — which covers every token shape the existing schemes use
 /// (`TokenId`, `&str`, owned strings, enum variants).
+#[inline]
 pub fn reduce_union<T: Eq + std::hash::Hash + Clone>(values: &[T]) -> Vec<T> {
     let mut out: Vec<T> = Vec::with_capacity(values.len());
     let mut seen: std::collections::HashSet<&T> =
@@ -157,6 +169,7 @@ pub fn reduce_union<T: Eq + std::hash::Hash + Clone>(values: &[T]) -> Vec<T> {
 /// An empty input returns an empty result (vacuous truth does not help
 /// here — the caller should check `portions.is_empty()` before calling
 /// this on the empty case).
+#[inline]
 pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
     let Some((first, rest)) = sets.split_first() else {
         return Vec::new();
@@ -174,6 +187,7 @@ pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
 ///
 /// Precomputes a `HashSet` of the unioned tokens so the supersession
 /// filter is O(n + k) rather than O(n·k) over the supersession pairs.
+#[inline]
 pub fn reduce_union_with_supersession<T: Eq + std::hash::Hash + Clone>(
     values: &[T],
     supersession: &[(T, T)],

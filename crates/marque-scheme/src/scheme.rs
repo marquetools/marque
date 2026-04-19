@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! The `MarkingScheme` trait.
 //!
 //! A scheme bundles the data that defines a marking system (categories,

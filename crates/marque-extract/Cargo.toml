@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 [package]
 name = "marque-extract"
 version = "0.2.0"
@@ -5,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
 repository.workspace = true
-license.workspace = true
+license-file = "LICENSE"
 
 [dependencies]
 futures = { workspace = true }

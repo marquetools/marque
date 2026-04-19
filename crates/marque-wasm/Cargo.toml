@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 [package]
 name = "marque-wasm"
 version = "0.2.0"
@@ -5,12 +9,16 @@ edition.workspace = true
 rust-version.workspace = true
 description = "WASM target for marque — web worker and browser integration"
 repository.workspace = true
-license.workspace = true
+license-file = "LICENSE"
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 
 [package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+# alias for release
+[package.metadata.wasm-pack.profile.release-wasm]
 wasm-opt = [
   # tool options:
   "--enable-bulk-memory-opt",
@@ -39,10 +47,6 @@ wasm-opt = [
   "--converge",
   "--strip-toolchain-annotations",
 ]
-
-# alias for release
-[package.metadata.wasm-pack.profile.release-wasm]
-inherits = "release"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

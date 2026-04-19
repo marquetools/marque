@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR Review: #4 — feat: Phase 3 — US1 lint with byte-precise spans + CLI
 
 **Reviewed**: 2026-04-12

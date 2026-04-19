@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! CAPCO rule implementations — Layer 2 diagnostic intelligence.
 //!
 //! Each rule uses Layer 1 schema predicates (from generated/validators.rs) to

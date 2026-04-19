@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Phase 0 Research: Marque MVP
 
 **Branch**: `001-marque-mvp` | **Date**: 2026-04-08

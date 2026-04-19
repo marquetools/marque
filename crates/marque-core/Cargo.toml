@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 [package]
 name = "marque-core"
 version = "0.2.0"
@@ -5,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Format-agnostic text scanner and attribute parser — the marque engine's front end"
 repository.workspace = true
-license.workspace = true
+license-file = "LICENSE"
 
 [dependencies]
 aho-corasick = { workspace = true }

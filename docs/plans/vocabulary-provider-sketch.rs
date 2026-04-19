@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 // VocabularyProvider trait sketch — design exploration, not compilable code.
 // This file captures the interface shape for critique before implementation.
 //

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # SCI Compartments Tasks
 
 Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one commit; agents claim a phase via the task harness.

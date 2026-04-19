@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # marque-core
 
 Format-agnostic text scanner and attribute parser — the front end of the Marque rule engine.

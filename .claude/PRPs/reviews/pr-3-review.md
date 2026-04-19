@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR Review: #3 — feat: marque MVP foundation — spec, codegen, engine pipeline
 
 **Reviewed**: 2026-04-10

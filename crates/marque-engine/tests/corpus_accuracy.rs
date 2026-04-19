@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! T069 — Corpus accuracy harness (SC-002 / SC-003 / SC-003a).
 //!
 //! Validates lint and fix behavior across the full test corpus with per-rule

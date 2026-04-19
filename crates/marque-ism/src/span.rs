@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Byte-offset spans into source buffers — zero-copy position tracking.
 
 /// A byte-offset span into the original source buffer.

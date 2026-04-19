@@ -120,7 +120,7 @@ middleware.
 
 ## License
 
-Apache-2.0. Copyright 2026, Knitli Inc.
+This project is licensed under the [Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`)](./LICENSE). Copyright 2026, Knitli Inc.
 
 ## Why... Classification Markings?
 

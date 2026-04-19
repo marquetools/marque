@@ -1,4 +1,10 @@
 <!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
+<!--
 SYNC IMPACT REPORT
 ==================
 Version change: (new) → 1.0.0

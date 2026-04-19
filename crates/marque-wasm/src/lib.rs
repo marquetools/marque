@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-wasm — WASM target for browser and web worker use.
 //!
 //! Compiled with `wasm-pack build --target web` (or `--target bundler`).

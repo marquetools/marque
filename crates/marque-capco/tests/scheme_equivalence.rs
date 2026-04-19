@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase A equivalence tests: `CapcoScheme::project_banner` agrees with
 //! `PageContext::expected_*` on the same inputs, and declarative
 //! constraints agree with hand-written rule behavior for the three

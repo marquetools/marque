@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Local Review: Phase 2 (Foundational) — marque MVP
 
 **Reviewed**: 2026-04-10

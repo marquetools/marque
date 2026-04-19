@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 5 — Config precedence chain and hard-fail validator tests (T052, T053).
 //!
 //! Tests the four-layer precedence chain (FR-007):

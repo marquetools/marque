@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Golden tests derived from the ODNI ISM-Rollup XSpec test suite.
 //!
 //! Each test translates an authoritative XSpec scenario into a Rust test.
