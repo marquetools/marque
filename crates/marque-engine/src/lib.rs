@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-engine — pipeline orchestration.
 //!
 //! Wires together: scanner → parser → validator → fixer → output.

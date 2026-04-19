@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Feature Specification: Marque MVP — CAPCO Marking Linter and Fixer
 
 **Feature Branch**: `001-marque-mvp`

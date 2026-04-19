@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Specification Quality Checklist: Marque MVP
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning

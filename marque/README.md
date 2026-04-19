@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # marque
 
 A fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules.

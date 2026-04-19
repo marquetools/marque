@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 5 — CLI integration tests for configuration behavior.
 //!
 //! Tests `--explain-config`, severity overrides, classifier_id in audit,

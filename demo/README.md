@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Marque Interactive Demo
 
 A single-page office-document demo showing Marque's real-time classification

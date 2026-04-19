@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Generated code wrappers — `include!()` bridges to `OUT_DIR/` build.rs output.
 //!
 //! The actual generated files (`values.rs`, `validators.rs`, `migrations.rs`)

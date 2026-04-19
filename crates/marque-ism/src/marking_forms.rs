@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Single source of truth for banner ↔ portion marking form mappings.
 //!
 //! The CAPCO Register defines three columns per marking:

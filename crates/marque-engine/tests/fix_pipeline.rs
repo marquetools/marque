@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 4 — fix pipeline integration tests (T044, T046).
 //!
 //! Drives `Engine::fix` against corpus fixtures and stub rules, verifying:

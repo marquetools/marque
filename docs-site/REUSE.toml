@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+
+[[annotations]]
+path = [
+  "src/assets/images/marque_logo*.svg",
+  "src/assets/images/marque_logo*.png",
+  "src/assets/favicon.png",
+]
+comment = "You may use Marque's logo and favicon as described in the Marque License 1.0. If you want to use it, contact us. We'll probably say yes, but we want to make sure it's used in a way that aligns with our brand guidelines."
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+SPDX-FileCopyrightText = "2026 Knitli Inc."
+
+[[annotations]]
+path = ["public/**"]
+SPDX-License-Identifier = "MIT OR Apache-2.0"
+SPDX-FileCopyrightText = "2026 Knitli Inc."

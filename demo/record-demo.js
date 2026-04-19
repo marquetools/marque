@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * record-demo.js — Playwright demo video producer for marque
  *

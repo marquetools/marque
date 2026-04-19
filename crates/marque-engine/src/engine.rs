@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! `Engine` — the configured, ready-to-run pipeline.
 
 use crate::clock::{Clock, SystemClock};

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR Review: #8 — feat: Phase 5 & 6 — configurable severity, corrections map, WASM web worker
 
 **Reviewed**: 2026-04-12

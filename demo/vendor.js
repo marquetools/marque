@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // node_modules/@marijn/find-cluster-break/src/index.js
 var rangeFrom = [];
 var rangeTo = [];

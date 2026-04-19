@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! T062 — No-I/O dependency audit (FR-013).
 //!
 //! Asserts that the `marque-wasm` crate's non-dev dependency tree contains

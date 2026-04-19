@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Category descriptors and aggregation operators.
 //!
 //! A marking is a product over categories (classification, SCI, dissem,
