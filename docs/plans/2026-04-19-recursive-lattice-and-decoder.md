@@ -208,8 +208,8 @@ Each is a generic struct with `impl Lattice` and, where meaningful,
 ```rust
 // Flat-set category in three lines, no lattice trait knowledge needed.
 Category::flat_set(
-    CategoryId(4), "dissem", ordering_rank: 4,
-    expansion: None,
+    CategoryId(4), "dissem", 4, // 3rd arg is ordering-rank
+    None, // expansion
 )
 ```
 
