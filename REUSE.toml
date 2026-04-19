@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # NOTE: SPDX identifiers at the top of a file apply only to that file.
-# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE) covers the project's source code.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code.
 version = 1
 SPDX-PackageName = "marque"
 SPDX-PackageSupplier = "Knitli Inc. <knitli@knitli.com>"
@@ -40,7 +40,7 @@ path = [
   "CONTRIBUTORS_LICENSE_AGREEMENT.md",
   "deny.toml",
   "docs-site/src/content/**",
-  "LICENSE",
+  "LICENSE.md",
   "mise.toml",
   "README.md",
   "SECURITY.md",

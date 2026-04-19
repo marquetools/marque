@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Format-agnostic text scanner and attribute parser — the marque engine's front end"
 repository.workspace = true
-license-file = "LICENSE"
+license-file = "LICENSE.md"
 
 [dependencies]
 aho-corasick = { workspace = true }

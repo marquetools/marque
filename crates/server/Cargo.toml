@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "REST microservice exposing marque as an API"
 repository.workspace = true
-license-file = "LICENSE"
+license-file = "LICENSE.md"
 
 [[bin]]
 name = "marque-server"

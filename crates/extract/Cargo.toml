@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
 repository.workspace = true
-license-file = "LICENSE"
+license-file = "LICENSE.md"
 
 [dependencies]
 futures = { workspace = true }

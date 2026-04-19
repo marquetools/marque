@@ -39,7 +39,7 @@ If you:
 >   > I make this contribution under my official capacity for the U.S. Government. All included contributions are in the Public Domain.
 > 
 > That makes it clear that everything in your contribution (and only that) is available for anyone to use however they want -- it's in the Public Domain.
-> As part of Marque, Knitli will distribute it under the [Marque License](./LICENSE) and/or other licenses at Knitli's choice (public domain works can be freely relicensed).
+> As part of Marque, Knitli will distribute it under the [Marque License](./LICENSE.md) and/or other licenses at Knitli's choice (public domain works can be freely relicensed).
 > We'll also apply the 'Public Domain' label to your contribution so people can easily find relevant public domain work, like for other government projects.
 >
 > That's all you need. You can stop reading here.

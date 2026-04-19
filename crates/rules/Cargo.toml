@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Rule trait definitions for marque — the contract every rule crate implements"
 repository.workspace = true
-license-file = "LICENSE"
+license-file = "LICENSE.md"
 
 [dependencies]
 marque-ism = { workspace = true }
