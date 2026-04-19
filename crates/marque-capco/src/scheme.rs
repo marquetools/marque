@@ -236,30 +236,23 @@ impl CapcoScheme {
     /// 1. US Classification Markings
     /// 2. Non-US Protective Markings
     /// 3. Joint Classification Markings
-    /// 4. Sensitive Compartmented Information (SCI) Control System Markings – used by the IC to identify
-    /// information that has special access requirements not met by classification level, alone
-    /// 5. Special Access Program (SAP) Markings – used primarily by non-IC departments and agencies to identify
-    /// information that has special access requirements not met by classification level, alone
+    /// 4. Sensitive Compartmented Information (SCI) Control System Markings – used by the IC to identify information that has special access requirements not met by classification level, alone
+    /// 5. Special Access Program (SAP) Markings – used primarily by non-IC departments and agencies to identify information that has special access requirements not met by classification level, alone
     /// 6. Atomic Energy Act (AEA) Information Markings – used to identify information regarding nuclear matters
     /// 7. Foreign Government Information (FGI) Markings – used to identify information from a foreign source
     /// 8. Dissemination Control Marking – IC markings used to identify the expansion or limitation on distribution
-    /// 9. Non-Intelligence Community Dissemination Control Markings – non-IC markings used to identify the
-    /// expansion or limitation on further distribution
+    /// 9. Non-Intelligence Community Dissemination Control Markings – non-IC markings used to identify the expansion or limitation on further distribution
     fn build_categories() -> Vec<Category> {
         vec![
             // US classifications are a core category with a well-defined hierarchy, so `Max` is the natural aggregation.
             // NOTE: `Classification` includes 3 distinct categories that cannot co-occur in the same portion or banner:
             //  - U.S. classification level (e.g. CONFIDENTIAL, SECRET, TOP SECRET) or UNCLASSIFIED (if no classification)
-            //  - Non-U.S. classification (e.g. //GBR SECRET, //CAN CONFIDENTIAL, //NATO UNCLASSIFIED etc.).
-            //      Non-U.S. classification may also be `RESTRICTED`, between UNCLASSIFIED and CONFIDENTIAL.
-            //  - JOINT classification (e.g. //JOINT USA CAN SECRET, //JOINT USA DEU FRA CONFIDENTIAL, etc.)
-            //      JOINT must always include a REL TO dissemination control that minimally includes the JOINT members (e.g. //JOINT USA CAN SECRET must have at least USA and CAN in REL TO).
-            //      resulting in: `//JOINT USA CAN SECRET//REL TO USA, CAN` or as a portion `(//JOINT USA CAN S//REL TO USA, CAN)`
+            //  - Non-U.S. classification (e.g. //GBR SECRET, //CAN CONFIDENTIAL, //NATO UNCLASSIFIED etc.).  Non-U.S. classification may also be `RESTRICTED`, between UNCLASSIFIED and CONFIDENTIAL.
+            //  - JOINT classification (e.g. //JOINT USA CAN SECRET, //JOINT USA DEU FRA CONFIDENTIAL, etc.) JOINT must always include a REL TO dissemination control that minimally includes the JOINT members (e.g. //JOINT USA CAN SECRET must have at least USA and CAN in REL TO) resulting in: `//JOINT USA CAN SECRET//REL TO USA, CAN` or as a portion `(//JOINT USA CAN S//REL TO USA, CAN)`
             //
             // **A marking can only include one of these three categories** -- they are mutually exclusive.
             //
-            // In banner rollup (and rarely in portions), if any portion carries a U.S. classification, the non-U.S. JOINT members and non-U.S. origin countries
-            //  are moved to the FGI category in the banner as a flat union (with a caveat, see FGI)
+            // In banner rollup (and rarely in portions), if any portion carries a U.S. classification, the non-U.S. JOINT members and non-U.S. origin countries are moved to the FGI category in the banner as a flat union (with a caveat, see FGI)
             //
             // A simple way to think about non-U.S. and JOINT classifications beginning with `//` is that it indicates the separation of the occluded U.S. classification category
             // It's the category separator that is still required to separate from the 'invisible' U.S. classification category that precedes it.

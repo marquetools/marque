@@ -3424,7 +3424,7 @@ government, or
 Note:  LES NOFORN information may not be shared
 any foreign government, foreign national, or internat
 organization regardless of law enforcement affiliation
-without the express written permission of the origina
+without the express written permission of the originator
 agency.
 Requires organizational affiliation of US federal
 government
