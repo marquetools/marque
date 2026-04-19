@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 1: candidate detection — finds potential classification markings in a byte buffer.
 //!
 //! Uses `memchr` for SIMD-accelerated boundary detection. Zero heap allocation

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Structural templates for marking positions (portion / banner / CAB).
 //!
 //! A `Template` records how categories compose into a complete marking

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Document text extraction with streaming support.
 //!
 //! TODO: wire Kreuzberg once crate dependency is confirmed.

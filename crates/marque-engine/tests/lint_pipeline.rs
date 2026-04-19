@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 3 — engine lint pipeline integration test.
 //!
 //! Covers the FR-001/FR-002/FR-003 happy path and the spec edge cases:

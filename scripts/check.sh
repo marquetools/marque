@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 # scripts/check.sh — Run all workspace quality checks.
 #
 # Usage: ./scripts/check.sh [--bench]

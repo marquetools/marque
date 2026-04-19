@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Page-level aggregation context for deriving expected banner markings.
 //!
 //! In CAPCO, a banner marking must reflect the **most restrictive union** of all

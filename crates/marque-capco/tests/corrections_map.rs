@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 5 — Corrections-map integration tests (T054).
 //!
 //! Exercises FR-009: user corrections take precedence over built-in rules

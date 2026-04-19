@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! SC-001 benchmark: Engine::lint latency on representative inputs.
 //!
 //! Target: <= 16ms on inputs <= 10KB of raw text on commodity dev hardware,

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! `CapcoScheme` — CAPCO's implementation of the `MarkingScheme` trait.
 //!
 //! This is the Phase A proof that CAPCO's hand-written aggregation in
@@ -29,13 +33,15 @@ use marque_scheme::{
 // ---------------------------------------------------------------------------
 
 pub const CAT_CLASSIFICATION: CategoryId = CategoryId(1);
-pub const CAT_SCI: CategoryId = CategoryId(2);
-pub const CAT_SAR: CategoryId = CategoryId(3);
-pub const CAT_AEA: CategoryId = CategoryId(4);
-pub const CAT_FGI_MARKER: CategoryId = CategoryId(5);
-pub const CAT_DISSEM: CategoryId = CategoryId(6);
-pub const CAT_REL_TO: CategoryId = CategoryId(7);
-pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(8);
+pub const CAT_NON_US_CLASSIFICATION: CategoryId = CategoryId(2);
+pub const CAT_JOINT_CLASSIFICATION: CategoryId = CategoryId(3);
+pub const CAT_SCI: CategoryId = CategoryId(4);
+pub const CAT_SAR: CategoryId = CategoryId(5);
+pub const CAT_AEA: CategoryId = CategoryId(6);
+pub const CAT_FGI_MARKER: CategoryId = CategoryId(7);
+pub const CAT_DISSEM: CategoryId = CategoryId(8);
+pub const CAT_REL_TO: CategoryId = CategoryId(9);
+pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(10);
 
 // ---------------------------------------------------------------------------
 // Sentinel token ids for constraint expressions
@@ -225,7 +231,7 @@ impl CapcoScheme {
     }
 
     /// Build the scheme's category table.
-    /// 
+    ///
     /// (U) The IC marking system has nine categories of classification and control markings:
     /// 1. US Classification Markings
     /// 2. Non-US Protective Markings
@@ -244,7 +250,7 @@ impl CapcoScheme {
             // US classifications are a core category with a well-defined hierarchy, so `Max` is the natural aggregation.
             // NOTE: `Classification` includes 3 distinct categories that cannot co-occur in the same portion or banner:
             //  - U.S. classification level (e.g. CONFIDENTIAL, SECRET, TOP SECRET) or UNCLASSIFIED (if no classification)
-            //  - Non-U.S. classification (e.g. //GBR SECRET, //CAN CONFIDENTIAL, //NATO UNCLASSIFIED etc.). 
+            //  - Non-U.S. classification (e.g. //GBR SECRET, //CAN CONFIDENTIAL, //NATO UNCLASSIFIED etc.).
             //      Non-U.S. classification may also be `RESTRICTED`, between UNCLASSIFIED and CONFIDENTIAL.
             //  - JOINT classification (e.g. //JOINT USA CAN SECRET, //JOINT USA DEU FRA CONFIDENTIAL, etc.)
             //      JOINT must always include a REL TO dissemination control that minimally includes the JOINT members (e.g. //JOINT USA CAN SECRET must have at least USA and CAN in REL TO).
@@ -254,7 +260,7 @@ impl CapcoScheme {
             //
             // In banner rollup (and rarely in portions), if any portion carries a U.S. classification, the non-U.S. JOINT members and non-U.S. origin countries
             //  are moved to the FGI category in the banner as a flat union (with a caveat, see FGI)
-            // 
+            //
             // A simple way to think about non-U.S. and JOINT classifications beginning with `//` is that it indicates the separation of the occluded U.S. classification category
             // It's the category separator that is still required to separate from the 'invisible' U.S. classification category that precedes it.
             Category {
@@ -266,7 +272,7 @@ impl CapcoScheme {
                 intra_ordering: IntraOrdering::AsWritten,
                 expansion: None,
             },
-            // Non-US classification 
+            // Non-US classification
             // NATO information falls into this category but has its own tokens
             //   (e.g. //NATO COSMIC TOP SECRET, (//CTS), //NATO SECRET, (//NS), etc.)
             Category {
@@ -296,9 +302,6 @@ impl CapcoScheme {
             // but all three levels can have agency or program specific extensions that the scheme must support without requiring code changes.
             // There are some rules to these extensions:
             //  - Controls in their most-common abbreviated form are never more than 3 characters (e.g. HCS, SI, TK, etc.)
-
-
-
             Category {
                 id: CAT_SCI,
                 name: "sci",
@@ -361,7 +364,7 @@ impl CapcoScheme {
                 // NOTE: The FGI category indicates *origin* and says nothing
                 // about *releasability*. FGI should still propagate with NOFORN
                 // and some FGI *originates* as NOFORN. Meaning the country
-                // requested the information *not* get shared back to them 
+                // requested the information *not* get shared back to them
                 // (i.e. to another part of their government)
                 aggregation: AggregationOp::Custom,
                 intra_ordering: IntraOrdering::Alphabetical,
@@ -388,6 +391,10 @@ impl CapcoScheme {
                 intra_ordering: IntraOrdering::Alphabetical,
                 expansion: None,
             },
+                // NOTE: REL TO is not its own category; it's a dissemination control.
+                // IsmAttributes models it as a separate field because it's a list of countries that must be compared as a set for supersession and conflict rules.
+                // The list is comma delimited and may consist of country trigraphs or organizational/operational tetragraphs (e.g. FVEY, NATO).
+                // USA **must** always be present and first, other entries are alphabetical.
             Category {
                 id: CAT_REL_TO,
                 name: "rel_to",
@@ -593,7 +600,7 @@ impl MarkingScheme for CapcoScheme {
 /// legacy-shape bare HCS tokens) and `sci_markings` (the structural
 /// view that carries compartment identifiers). Emits one
 /// `ConstraintViolation` per failing rule per offending HCS entry.
-/// 
+///
 /// By far the most common HCS compartment is `HCS-P` (Product).
 /// HCS-O (Operations) is rarely encountered outside of CIA's walls.
 /// But for users in that environment, they may encounter all three variants routinely.

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 # SC-001a — Performance regression gate.
 #
 # Runs the lint_latency benchmark and compares Criterion's confidence-interval

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Metadata extraction and sanitization.
 //!
 //! Surfaces sensitive metadata that document authors are typically unaware of:

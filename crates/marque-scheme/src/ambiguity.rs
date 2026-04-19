@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Ambiguity surface for local probabilistic disambiguation.
 //!
 //! The engine is deterministic for >99% of real input. Ambiguity is

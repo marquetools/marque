@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Phase 3 — User Story 1 corpus integration test.
 //!
 //! Drives every fixture under `tests/corpus/{invalid,valid}/` through the

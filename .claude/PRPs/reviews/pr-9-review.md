@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR Review: #9 — feat: Phase 5, 6, 7 — configurable severity, WASM web worker, polish & quality gates
 
 **Reviewed**: 2026-04-12

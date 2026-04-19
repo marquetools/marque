@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! marque-rules — trait definitions for the marque rule system.
 //!
 //! This crate defines the contract every rule crate must satisfy.

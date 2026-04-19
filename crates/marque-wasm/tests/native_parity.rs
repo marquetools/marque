@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! T061 — Native-vs-WASM parity test (SC-008).
 //!
 //! Drives the same inputs through the native `Engine::lint` API and the WASM

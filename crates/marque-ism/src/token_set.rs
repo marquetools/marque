@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Compile-time Aho-Corasick automaton over CVE token vocabulary.
 //!
 //! The automaton is built from all known CVE tokens at startup (via LazyLock)

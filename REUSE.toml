@@ -13,7 +13,7 @@ path = [
   "crates/marque-capco/docs/ICMarkings*.md",
   "crates/marque-capco/docs/original-refs/CAPCO*.pdf",
   "crates/marque-capco/docs/original-refs/ICMarkings*.ppt",
-  "crates/marque-ism/schemas/",
+  "crates/marque-ism/schemas/**",
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "United States Government, Public Domain"
@@ -23,23 +23,23 @@ SPDX-License-Identifier = "LicenseRef-PublicDomain"
 path = [
   "_typos.toml",
   ".gitattributes",
-  ".github/workflows/",
-  ".github/ISSUE_TEMPLATE/",
-  ".github/PULL_REQUEST_TEMPLATE/",
-  ".github/actions/",
+  ".github/workflows/**",
+  ".github/ISSUE_TEMPLATE/**",
+  ".github/PULL_REQUEST_TEMPLATE/**",
+  ".github/actions/**",
   ".gitignore",
   "cliff.toml",
   "AGENTS.md",
-  "../AGENTS.md",
+  "**/AGENTS.md",
   "GEMINI.md",
-  "../GEMINI.md",
+  "**/GEMINI.md",
   "CLAUDE.md",
-  "../CLAUDE.md",
+  "**/CLAUDE.md",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "CONTRIBUTORS_LICENSE_AGREEMENT.md",
   "deny.toml",
-  "docs-site/src/content/",
+  "docs-site/src/content/**",
   "LICENSE",
   "mise.toml",
   "README.md",
@@ -58,11 +58,12 @@ SPDX-License-Identifier = "MIT OR Apache-2.0"
 
 [[annotations]]
 path = [
-  ".github/prompts/speckit*.md",
-  ".claude/commands/speckit*.md",
-  ".gemini/commands/speckit*.md",
-  ".specify/scripts/",
-  ".specify/templates/",
+  ".github/prompts/speckit.*.md",
+  ".github/agents/speckit.*.agent.md",
+  ".claude/commands/speckit.*.md",
+  ".gemini/commands/speckit.*.toml",
+  ".specify/scripts/**",
+  ".specify/templates/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "GitHub Inc."
@@ -70,13 +71,24 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
-  "**/docs/plans/",
-  "**/plans/",
-  "**/specs/",
-  "docs/plans/",
-  "plans/",
-  "specs/",
+  "**/docs/plans/**",
+  "**/plans/**",
+  "**/specs/**",
+  "docs/plans/**",
+  ".claude/PRPs/**",
+  "plans/**",
+  "specs/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
-SPDX-License-Identifier = "LicenseRef-MarqueLicense"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
+[[annotations]]
+path = [
+  "tests/corpus/invalid/**",
+  "tests/corpus/valid/**",
+  "tests/corpus/prose/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
