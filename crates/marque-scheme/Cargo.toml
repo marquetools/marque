@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Domain-neutral trait surface for structured marking schemes (lattice + constraints + projection + local ambiguity)."
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 # Published tarball contents — strictly the source and docs.
 include = [

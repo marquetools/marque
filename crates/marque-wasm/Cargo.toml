@@ -9,7 +9,7 @@ edition.workspace = true
 rust-version.workspace = true
 description = "WASM target for marque — web worker and browser integration"
 repository.workspace = true
-license-file.workspace = true
+license-file = "LICENSE"
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
