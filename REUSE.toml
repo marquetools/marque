@@ -9,11 +9,11 @@ SPDX-PackageDownloadLocation = "https://github.com/marquetools/marque"
 
 [[annotations]]
 path = [
-  "crates/marque-capco/docs/CAPCO*.md",
-  "crates/marque-capco/docs/ICMarkings*.md",
-  "crates/marque-capco/docs/original-refs/CAPCO*.pdf",
-  "crates/marque-capco/docs/original-refs/ICMarkings*.ppt",
-  "crates/marque-ism/schemas/**",
+  "crates/capco/docs/CAPCO*.md",
+  "crates/capco/docs/ICMarkings*.md",
+  "crates/capco/docs/original-refs/CAPCO*.pdf",
+  "crates/capco/docs/original-refs/ICMarkings*.ppt",
+  "crates/ism/schemas/**",
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "United States Government, Public Domain"

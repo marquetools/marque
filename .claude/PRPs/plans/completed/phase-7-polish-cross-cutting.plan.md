@@ -35,14 +35,14 @@ N/A — internal change. No user-facing UX transformation.
 
 | Priority | File | Lines | Why |
 |---|---|---|---|
-| P0 | `crates/marque-engine/benches/lint_latency.rs` | all | Stub to implement |
-| P0 | `crates/marque-engine/benches/linear_scaling.rs` | all | Stub to implement |
-| P0 | `crates/marque-engine/src/engine.rs` | 1-110 | Engine struct, constructor, CachedAhoCorasick |
-| P0 | `crates/marque-engine/src/engine.rs` | 149-353 | lint() implementation |
-| P0 | `crates/marque-test-utils/src/lib.rs` | all | Corpus loader utilities |
-| P1 | `crates/marque-wasm/tests/native_parity.rs` | all | T061 parity harness to extend for T070 |
-| P1 | `crates/marque-capco/src/rules.rs` | 33-60 | CapcoRuleSet registration (10 rules) |
-| P1 | `crates/marque-engine/Cargo.toml` | all | Bench config, dev-deps |
+| P0 | `crates/engine/benches/lint_latency.rs` | all | Stub to implement |
+| P0 | `crates/engine/benches/linear_scaling.rs` | all | Stub to implement |
+| P0 | `crates/engine/src/engine.rs` | 1-110 | Engine struct, constructor, CachedAhoCorasick |
+| P0 | `crates/engine/src/engine.rs` | 149-353 | lint() implementation |
+| P0 | `crates/test-utils/src/lib.rs` | all | Corpus loader utilities |
+| P1 | `crates/wasm/tests/native_parity.rs` | all | T061 parity harness to extend for T070 |
+| P1 | `crates/capco/src/rules.rs` | 33-60 | CapcoRuleSet registration (10 rules) |
+| P1 | `crates/engine/Cargo.toml` | all | Bench config, dev-deps |
 | P2 | `marque/src/main.rs` | all | CLI entry point for quickstart validation |
 | P2 | `marque/src/render.rs` | all | NDJSON rendering for parity checks |
 | P2 | `specs/001-marque-mvp/quickstart.md` | all | End-to-end validation script |
@@ -63,7 +63,7 @@ N/A — internal change. No user-facing UX transformation.
 
 ### BENCHMARK_STRUCTURE
 ```rust
-// SOURCE: crates/marque-engine/benches/lint_latency.rs:1-22
+// SOURCE: crates/engine/benches/lint_latency.rs:1-22
 // Criterion bench skeleton — already scaffolded with criterion_group!/criterion_main!
 use criterion::{Criterion, criterion_group, criterion_main};
 
@@ -77,7 +77,7 @@ criterion_main!(benches);
 
 ### ENGINE_CONSTRUCTION
 ```rust
-// SOURCE: crates/marque-wasm/tests/native_parity.rs:74-84
+// SOURCE: crates/wasm/tests/native_parity.rs:74-84
 fn engine_lint_to_ndjson(source: &[u8]) -> String {
     let engine = Engine::new(Config::default(), vec![Box::new(capco_rules())]);
     let result = engine.lint(source);
@@ -87,7 +87,7 @@ fn engine_lint_to_ndjson(source: &[u8]) -> String {
 
 ### CORPUS_LOADING
 ```rust
-// SOURCE: crates/marque-test-utils/src/lib.rs:37-50
+// SOURCE: crates/test-utils/src/lib.rs:37-50
 pub fn fixtures_in(subdir: &str) -> Vec<PathBuf> {
     let dir = corpus_root().join(subdir);
     // ...read_dir, filter .txt, sort...
@@ -107,7 +107,7 @@ pub fn fixtures_in(subdir: &str) -> Vec<PathBuf> {
 
 ### PARITY_TEST_PATTERN
 ```rust
-// SOURCE: crates/marque-wasm/tests/native_parity.rs:110-136
+// SOURCE: crates/wasm/tests/native_parity.rs:110-136
 #[test]
 fn lint_parity_invalid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("invalid"));
@@ -137,17 +137,17 @@ cargo clippy --workspace --benches -- -D warnings
 
 | File | Action | Justification |
 |---|---|---|
-| `crates/marque-engine/benches/lint_latency.rs` | UPDATE | T067: implement p95 latency benchmark |
-| `crates/marque-engine/benches/linear_scaling.rs` | UPDATE | T068: implement scaling sweep benchmark |
+| `crates/engine/benches/lint_latency.rs` | UPDATE | T067: implement p95 latency benchmark |
+| `crates/engine/benches/linear_scaling.rs` | UPDATE | T068: implement scaling sweep benchmark |
 | `benches/baseline.json` | CREATE | T067a: capture p50/p95/p99 baseline |
 | `scripts/bench-check.sh` | CREATE | T067a: regression detection script |
 | `scripts/check.sh` | UPDATE | T067a: integrate bench-check |
 | `tests/corpus_accuracy.rs` | CREATE | T069: corpus accuracy harness (workspace-level integration test) |
-| `crates/marque-wasm/tests/native_parity.rs` | UPDATE | T070: extend to full corpus |
+| `crates/wasm/tests/native_parity.rs` | UPDATE | T070: extend to full corpus |
 | `CLAUDE.md` | UPDATE | T071: reflect MVP completion status |
-| `crates/marque-engine/fuzz/Cargo.toml` | CREATE | T072a: fuzz target workspace |
-| `crates/marque-engine/fuzz/fuzz_targets/lint.rs` | CREATE | T072a: fuzz target implementation |
-| `crates/marque-engine/Cargo.toml` | UPDATE | T072a: add `arbitrary` feature if needed |
+| `crates/engine/fuzz/Cargo.toml` | CREATE | T072a: fuzz target workspace |
+| `crates/engine/fuzz/fuzz_targets/lint.rs` | CREATE | T072a: fuzz target implementation |
+| `crates/engine/Cargo.toml` | UPDATE | T072a: add `arbitrary` feature if needed |
 
 ## NOT Building
 
@@ -163,7 +163,7 @@ cargo clippy --workspace --benches -- -D warnings
 ## Step-by-Step Tasks
 
 ### Task 1: T067 — Lint Latency Benchmark (SC-001)
-- **ACTION**: Implement the criterion benchmark in `crates/marque-engine/benches/lint_latency.rs`
+- **ACTION**: Implement the criterion benchmark in `crates/engine/benches/lint_latency.rs`
 - **IMPLEMENT**:
   1. Build a ~10KB representative input by concatenating invalid corpus fixtures (or repeating a representative marking block with surrounding prose)
   2. Create `Engine::new(Config::default(), vec![Box::new(capco_rules())])`
@@ -192,7 +192,7 @@ cargo clippy --workspace --benches -- -D warnings
 - **VALIDATE**: `bash scripts/bench-check.sh` exits 0 on current hardware
 
 ### Task 3: T068 — Linear Scaling Benchmark (SC-005)
-- **ACTION**: Implement the criterion scaling sweep in `crates/marque-engine/benches/linear_scaling.rs`
+- **ACTION**: Implement the criterion scaling sweep in `crates/engine/benches/linear_scaling.rs`
 - **IMPLEMENT**:
   1. Define a representative marking block (~100 bytes) with a mix of valid and invalid markings
   2. For each size in `[1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000]`:
@@ -236,7 +236,7 @@ cargo clippy --workspace --benches -- -D warnings
 - **VALIDATE**: `cargo test --test corpus_accuracy` passes with >=95% accuracy logged
 
 ### Task 5: T070 — Native/WASM Parity Scaling (SC-008)
-- **ACTION**: Extend `crates/marque-wasm/tests/native_parity.rs` to cover full corpus
+- **ACTION**: Extend `crates/wasm/tests/native_parity.rs` to cover full corpus
 - **IMPLEMENT**:
   1. Update `lint_parity_invalid_fixtures` to remove the `>= 10` minimum assertion (it was a T061 minimum; T070 requires ALL)
   2. Add `lint_parity_prose_fixtures` test covering `tests/corpus/prose/`
@@ -268,7 +268,7 @@ cargo clippy --workspace --benches -- -D warnings
      - Lint with `--format json`
      - Dry-run fix with audit capture
      - Apply fix and re-lint
-     - WASM build with `wasm-pack build crates/marque-wasm --target web --profile release-wasm`
+     - WASM build with `wasm-pack build crates/wasm --target web --profile release-wasm`
      - `cargo test --workspace`
   2. Fix any quickstart.md references to fixture paths that don't exist (the spec references `E001-banner-abbreviation.txt` but actual corpus uses `banner_abbrev.txt`)
   3. If any step fails, fix the underlying issue (not the quickstart)
@@ -280,7 +280,7 @@ cargo clippy --workspace --benches -- -D warnings
 ### Task 8: T072a — Fuzzing Target (Robustness)
 - **ACTION**: Add `cargo-fuzz` target for `Engine::lint` on arbitrary `&[u8]`
 - **IMPLEMENT**:
-  1. Create `crates/marque-engine/fuzz/Cargo.toml`:
+  1. Create `crates/engine/fuzz/Cargo.toml`:
      ```toml
      [package]
      name = "marque-engine-fuzz"
@@ -303,7 +303,7 @@ cargo clippy --workspace --benches -- -D warnings
      test = false
      doc = false
      ```
-  2. Create `crates/marque-engine/fuzz/fuzz_targets/lint.rs`:
+  2. Create `crates/engine/fuzz/fuzz_targets/lint.rs`:
      ```rust
      #![no_main]
      use libfuzzer_sys::fuzz_target;
@@ -332,7 +332,7 @@ cargo clippy --workspace --benches -- -D warnings
          // (remaining diagnostics are below-threshold suggestions only)
      });
      ```
-  3. Add `crates/marque-engine/fuzz` to root workspace `exclude` (fuzz targets use their own workspace)
+  3. Add `crates/engine/fuzz` to root workspace `exclude` (fuzz targets use their own workspace)
 - **MIRROR**: N/A — new pattern (cargo-fuzz)
 - **IMPORTS**: `libfuzzer-sys`, `marque_engine`, `marque_capco`, `marque_config`
 - **GOTCHA**:

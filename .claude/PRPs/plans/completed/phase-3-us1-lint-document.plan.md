@@ -152,22 +152,22 @@ here.
 
 | Priority | File | Lines | Why |
 |---|---|---|---|
-| **P0** | `crates/marque-capco/src/rules.rs` | all (282) | Existing rule shape — every new rule must mirror the four already there. The `Span::new(0,0)` placeholders mark the hot spots Phase 3 must replace. |
-| **P0** | `crates/marque-engine/src/engine.rs` | 60–151 | The lint loop. Phase 3 plumbs real spans through `RuleContext` and resets `PageContext` at page breaks here. The two `TODO(phase-3)` comments at lines 80 and 103 are the entry points. |
-| **P0** | `crates/marque-rules/src/lib.rs` | 125–143 | `RuleContext` definition — Phase 3 either grows this struct (e.g., `source: &[u8]`, `marking_span: Span`) or threads spans via the existing `marking_type` discriminant. |
-| **P0** | `crates/marque-core/src/parser.rs` | all (348) | Parser. Phase 3 must extend `ParsedMarking` (or create a parallel `ParsedMarkingWithSpans` shape) so each parsed token carries its `Span` back into `IsmAttributes` rather than discarding offsets. The current `parse_marking_string` calls split + parse but never records inner spans. |
-| **P0** | `crates/marque-core/src/scanner.rs` | all (153) | Scanner. Phase 3 adds a `MarkingType::PageBreak` variant (or equivalent) so the engine can reset `PageContext`. The candidate ordering already sorts by `span.start`. |
+| **P0** | `crates/capco/src/rules.rs` | all (282) | Existing rule shape — every new rule must mirror the four already there. The `Span::new(0,0)` placeholders mark the hot spots Phase 3 must replace. |
+| **P0** | `crates/engine/src/engine.rs` | 60–151 | The lint loop. Phase 3 plumbs real spans through `RuleContext` and resets `PageContext` at page breaks here. The two `TODO(phase-3)` comments at lines 80 and 103 are the entry points. |
+| **P0** | `crates/rules/src/lib.rs` | 125–143 | `RuleContext` definition — Phase 3 either grows this struct (e.g., `source: &[u8]`, `marking_span: Span`) or threads spans via the existing `marking_type` discriminant. |
+| **P0** | `crates/core/src/parser.rs` | all (348) | Parser. Phase 3 must extend `ParsedMarking` (or create a parallel `ParsedMarkingWithSpans` shape) so each parsed token carries its `Span` back into `IsmAttributes` rather than discarding offsets. The current `parse_marking_string` calls split + parse but never records inner spans. |
+| **P0** | `crates/core/src/scanner.rs` | all (153) | Scanner. Phase 3 adds a `MarkingType::PageBreak` variant (or equivalent) so the engine can reset `PageContext`. The candidate ordering already sorts by `span.start`. |
 | **P0** | `marque/src/main.rs` | all (229) | The CLI to be replaced. Reuse the wiring (`marque_config::load`, `Engine::new`, `engine.lint(&source)`, `engine.fix_with_threshold`) but rebuild the `Cli` enum to match `contracts/cli.md`. |
 | **P0** | `specs/001-marque-mvp/contracts/cli.md` | all (186) | The CLI contract. Every flag, every exit code, every output stream rule lives here. |
 | **P0** | `specs/001-marque-mvp/contracts/diagnostic.json` | all (70) | The diagnostic JSON Schema. The NDJSON renderer must produce records that round-trip through this schema with `additionalProperties: false`. |
-| **P1** | `crates/marque-engine/src/output.rs` | all (57) | `LintResult` / `FixResult`. `error_count`, `warn_count`, `fix_count` already exist and are what the CLI exit-code logic needs. |
-| **P1** | `crates/marque-ism/src/page_context.rs` | all (333) | `PageContext` aggregation rules (max for classification, union for SCI/dissem, intersection-with-NOFORN-supersession for REL TO, max-date for declassify). Phase 3 calls `PageContext::new()` at every page break. |
-| **P1** | `crates/marque-ism/src/attrs.rs` | 1–80 | `IsmAttributes` shape and `Classification` (hand-written, both portion and banner forms). |
-| **P1** | `crates/marque-ism/src/span.rs` | all (140) | `Span::new` panics on inverted bounds; `as_str` returns `Result`. The new rules MUST construct spans with valid `start <= end` and not call `unwrap()` on `as_str` for non-ASCII paths. |
-| **P1** | `crates/marque-config/src/lib.rs` | all (442) | `Config`, `Configuration` shape, `confidence_threshold`, `corrections` map, `user.classifier_id`. The `--explain-config` JSON dump reads from here. |
+| **P1** | `crates/engine/src/output.rs` | all (57) | `LintResult` / `FixResult`. `error_count`, `warn_count`, `fix_count` already exist and are what the CLI exit-code logic needs. |
+| **P1** | `crates/ism/src/page_context.rs` | all (333) | `PageContext` aggregation rules (max for classification, union for SCI/dissem, intersection-with-NOFORN-supersession for REL TO, max-date for declassify). Phase 3 calls `PageContext::new()` at every page break. |
+| **P1** | `crates/ism/src/attrs.rs` | 1–80 | `IsmAttributes` shape and `Classification` (hand-written, both portion and banner forms). |
+| **P1** | `crates/ism/src/span.rs` | all (140) | `Span::new` panics on inverted bounds; `as_str` returns `Result`. The new rules MUST construct spans with valid `start <= end` and not call `unwrap()` on `as_str` for non-ASCII paths. |
+| **P1** | `crates/config/src/lib.rs` | all (442) | `Config`, `Configuration` shape, `confidence_threshold`, `corrections` map, `user.classifier_id`. The `--explain-config` JSON dump reads from here. |
 | **P1** | `tests/corpus/CORPUS_CONTRACT.md` | all (60) | Per-rule fixture minimums (≥3 invalid + ≥20 valid + 1000 lines prose). Phase 3 produces the fixtures, T069 in Phase 7 measures them. |
-| **P2** | `crates/marque-ism/build.rs` | 650–720 | The `MIGRATIONS` table. Rules E006/E007/W001 consume this via `marque_ism::generated::values::find_migration`. |
-| **P2** | `crates/marque-rules/src/lib.rs` | 145–225 | `FixSource`, `FixProposal`, `Diagnostic` shapes — what every new rule emits. `make_fix_diagnostic` in rules.rs:264 is the helper to mirror. |
+| **P2** | `crates/ism/build.rs` | 650–720 | The `MIGRATIONS` table. Rules E006/E007/W001 consume this via `marque_ism::generated::values::find_migration`. |
+| **P2** | `crates/rules/src/lib.rs` | 145–225 | `FixSource`, `FixProposal`, `Diagnostic` shapes — what every new rule emits. `make_fix_diagnostic` in rules.rs:264 is the helper to mirror. |
 | **P2** | `.claude/PRPs/reviews/pr-3-review.md` | all (164) | PR #3 review findings. Phase 3 inherits the H-2 documentation note (already landed in CLAUDE.md), the engine.rs:80 / engine.rs:103 TODO(phase-3) markers, and the page_context.rs Phase-3 TODOs. The H-1/H-3/M-/L- findings are already resolved in commit 304a15f. |
 | **P2** | `CLAUDE.md` | "Architectural Invariants" section | Lists the convention-only invariants Phase 3 must keep intact (`AppliedFix::__engine_promote` engine-only, `FixProposal` purity, `Severity::Off` non-firing, `RuleContext.zone/position` Phase-2 hardcoded, `PageContext` no-reset). Phase 3 closes the last two of these. |
 
@@ -175,7 +175,7 @@ here.
 
 | Topic | Source | Key Takeaway |
 |---|---|---|
-| ODNI ISM CAPCO Implementation Guidance | `crates/marque-ism/schemas/ISM-v2022-DEC/` (already in repo) | Authoritative source for E001 (banner abbreviation), E002 (REL TO USA placement), E003 (block ordering), E005 (declass in CAB only), E006/W001 (deprecated dissem). Already parsed by `build.rs` into `MIGRATIONS` and the generated enums. |
+| ODNI ISM CAPCO Implementation Guidance | `crates/ism/schemas/ISM-v2022-DEC/` (already in repo) | Authoritative source for E001 (banner abbreviation), E002 (REL TO USA placement), E003 (block ordering), E005 (declass in CAB only), E006/W001 (deprecated dissem). Already parsed by `build.rs` into `MIGRATIONS` and the generated enums. |
 | `clap` derive API for stdin sentinel | `clap` 4.x docs (Context7) | `value_parser = clap::value_parser!(PathBuf)` accepts `-`; the CLI then matches on `path.as_os_str() == "-"` to switch to stdin. The existing CLI uses `Vec<PathBuf>` already; only the dispatch logic changes. |
 | `insta` snapshot review | `insta` 1.x docs | `cargo insta review` for golden file updates. Use `insta::assert_json_snapshot!` for diagnostic JSON snapshots so a structural drift in the contract is loud. |
 | `serde_json` NDJSON | stdlib + serde | Each diagnostic is `serde_json::to_string(&diag)?` followed by `\n`; flush per-record, not per-buffer, so a panic mid-stream still produces complete-line output. |
@@ -190,7 +190,7 @@ snippet below is verbatim from the current source — no inventions.
 
 ### NAMING_CONVENTION
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:62-74
+// SOURCE: crates/capco/src/rules.rs:62-74
 /// Banners must use full words: SECRET not S, NOFORN not NF, TOP SECRET not TS.
 struct BannerAbbreviationRule;
 
@@ -213,7 +213,7 @@ config-key form (`banner-abbreviation`).
 
 ### ERROR_HANDLING — rule check loop
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:76-101
+// SOURCE: crates/capco/src/rules.rs:76-101
 fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
     use marque_ism::MarkingType;
     if ctx.marking_type != MarkingType::Banner {
@@ -272,7 +272,7 @@ changes.
 
 ### FIX HELPER PATTERN
 ```rust
-// SOURCE: crates/marque-capco/src/rules.rs:250-282
+// SOURCE: crates/capco/src/rules.rs:250-282
 struct FixDiagnosticParams {
     rule: RuleId,
     severity: Severity,
@@ -306,7 +306,7 @@ Phase 3 may extend this with a `source: FixSource` field if a rule needs
 
 ### TEST_STRUCTURE — unit test pattern
 ```rust
-// SOURCE: crates/marque-core/src/parser.rs:241-262
+// SOURCE: crates/core/src/parser.rs:241-262
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,7 +335,7 @@ names describe behavior (`banner_with_declass_date_populates_attrs`).
 
 ### TEST_STRUCTURE — integration test pattern
 ```rust
-// SOURCE: crates/marque-engine/src/engine.rs (the engine_with_config helper)
+// SOURCE: crates/engine/src/engine.rs (the engine_with_config helper)
 fn engine_with_config(config: Config, proposals: Vec<FixProposal>) -> Engine {
     let mut rules = Vec::new();
     for proposal in proposals {
@@ -383,23 +383,23 @@ or `fix`. They do NOT spin up a CLI process — that lives in
 | `tests/corpus/valid/clean_banner.txt` | CREATE | T026 — known-good banner |
 | `tests/corpus/valid/<19 more>.{txt,expected.json}` | CREATE | T026 — ≥20 known-good fixtures total spanning portion, banner, and CAB types |
 | `tests/corpus/prose/article.txt` | CREATE | T026a — ≥1000 lines body prose, 20+ incidental `(S)` / `(a)` mid-sentence |
-| `crates/marque-capco/tests/rules_us1.rs` | CREATE | T027 — drives every fixture from T025/T026 through `Engine::lint`, asserts rule ID + span |
-| `crates/marque-engine/tests/lint_pipeline.rs` | CREATE | T028 — happy path FR-001/002/003 + edge cases (empty, whitespace, mid-sentence `(S)`, unknown token) |
-| `crates/marque-engine/tests/snapshots/` | CREATE (directory) | T029 — `insta` snapshot files for human + JSON diagnostic formats |
+| `crates/capco/tests/rules_us1.rs` | CREATE | T027 — drives every fixture from T025/T026 through `Engine::lint`, asserts rule ID + span |
+| `crates/engine/tests/lint_pipeline.rs` | CREATE | T028 — happy path FR-001/002/003 + edge cases (empty, whitespace, mid-sentence `(S)`, unknown token) |
+| `crates/engine/tests/snapshots/` | CREATE (directory) | T029 — `insta` snapshot files for human + JSON diagnostic formats |
 | `crates/marque/tests/cli_smoke.rs` | CREATE | T042 — CLI integration test against ≥3 corpus fixtures |
-| `crates/marque-test-utils/src/lib.rs` | UPDATE | Add `load_fixture(path) -> (source, expected)` helper used by every integration test |
-| `crates/marque-capco/src/rules.rs` | UPDATE | T030 — replace `Span::new(0, 0)` placeholders, finish E004 (currently a stub returning `vec![]`), add `MisorderedBlocksRule` (E003), `DeprecatedDissemRule` (E006), `XShorthandDateRule` (E007), `UnknownTokenRule` (E008), `DeprecatedMarkingWarningRule` (W001) |
-| `crates/marque-capco/src/lib.rs` | UPDATE | T039 — register E003, E006, E007, E008, W001 in `CapcoRuleSet::new()` |
-| `crates/marque-rules/src/lib.rs` | UPDATE | Extend `RuleContext` with `marking_span: Span` and `source: &'a [u8]` (or use a borrowed lifetime parameter); the field replaces the convention that `attrs` has been parsed from a known source span |
-| `crates/marque-core/src/parser.rs` | UPDATE | Extend `parse_marking_string` to record per-token spans into a new `IsmAttributes::token_spans: Box<[(TokenKind, Span)]>` (or pass a `&mut Vec<(TokenKind, Span)>` sink); the rules use these to point at the *exact* offending byte range, not the whole marking. |
-| `crates/marque-ism/src/attrs.rs` | UPDATE | Add `IsmAttributes::token_spans` (or a parallel `IsmTokenSpans` sidecar struct held alongside `IsmAttributes` in `ParsedMarking`) so spans are reachable from every rule without re-parsing. |
-| `crates/marque-core/src/scanner.rs` | UPDATE | Add `MarkingType::PageBreak` and a `scan_page_breaks` pass that emits a candidate at every `\f` (form feed) and at every `\n\n\n+` (3+ blank lines, US-letter heuristic). |
-| `crates/marque-ism/src/span.rs` | UPDATE | Add `MarkingType::PageBreak` variant. |
-| `crates/marque-engine/src/engine.rs` | UPDATE | Reset `page_context = PageContext::new()` and clear `page_context_arc` when `candidate.kind == MarkingType::PageBreak`. Replace the `TODO(phase-3)` at line 80 with the real reset call. Wire `parsed.token_spans` (or sidecar) into `RuleContext`. |
+| `crates/test-utils/src/lib.rs` | UPDATE | Add `load_fixture(path) -> (source, expected)` helper used by every integration test |
+| `crates/capco/src/rules.rs` | UPDATE | T030 — replace `Span::new(0, 0)` placeholders, finish E004 (currently a stub returning `vec![]`), add `MisorderedBlocksRule` (E003), `DeprecatedDissemRule` (E006), `XShorthandDateRule` (E007), `UnknownTokenRule` (E008), `DeprecatedMarkingWarningRule` (W001) |
+| `crates/capco/src/lib.rs` | UPDATE | T039 — register E003, E006, E007, E008, W001 in `CapcoRuleSet::new()` |
+| `crates/rules/src/lib.rs` | UPDATE | Extend `RuleContext` with `marking_span: Span` and `source: &'a [u8]` (or use a borrowed lifetime parameter); the field replaces the convention that `attrs` has been parsed from a known source span |
+| `crates/core/src/parser.rs` | UPDATE | Extend `parse_marking_string` to record per-token spans into a new `IsmAttributes::token_spans: Box<[(TokenKind, Span)]>` (or pass a `&mut Vec<(TokenKind, Span)>` sink); the rules use these to point at the *exact* offending byte range, not the whole marking. |
+| `crates/ism/src/attrs.rs` | UPDATE | Add `IsmAttributes::token_spans` (or a parallel `IsmTokenSpans` sidecar struct held alongside `IsmAttributes` in `ParsedMarking`) so spans are reachable from every rule without re-parsing. |
+| `crates/core/src/scanner.rs` | UPDATE | Add `MarkingType::PageBreak` and a `scan_page_breaks` pass that emits a candidate at every `\f` (form feed) and at every `\n\n\n+` (3+ blank lines, US-letter heuristic). |
+| `crates/ism/src/span.rs` | UPDATE | Add `MarkingType::PageBreak` variant. |
+| `crates/engine/src/engine.rs` | UPDATE | Reset `page_context = PageContext::new()` and clear `page_context_arc` when `candidate.kind == MarkingType::PageBreak`. Replace the `TODO(phase-3)` at line 80 with the real reset call. Wire `parsed.token_spans` (or sidecar) into `RuleContext`. |
 | `marque/src/main.rs` | UPDATE (rewrite) | T040, T041, T042a — match `contracts/cli.md` exactly: stdin sentinel, `--config`, `--confidence-threshold`, `--format`, `--no-color`, `-q`, `-v`, `--explain-config`, contract exit codes, NDJSON output |
 | `marque/src/render.rs` | CREATE | T041 — split rendering into `human_render` (rustc-style with caret + citation) and `json_render` (NDJSON conforming to `contracts/diagnostic.json`); honors `NO_COLOR`, `TERM=dumb`, `--no-color` |
 | `marque/Cargo.toml` | UPDATE | Add `is-terminal` (TTY detect for default `--format`), `serde` + `serde_json` (already transitive but make explicit), `colored` or `owo-colors` for ANSI rendering |
-| `crates/marque-engine/src/output.rs` | UPDATE | Add `LintResult::has_errors()` / `has_warnings()` so the CLI exit-code logic doesn't recompute via `error_count() > 0`. Preserves the existing `error_count`/`warn_count` API. |
+| `crates/engine/src/output.rs` | UPDATE | Add `LintResult::has_errors()` / `has_warnings()` so the CLI exit-code logic doesn't recompute via `error_count() > 0`. Preserves the existing `error_count`/`warn_count` API. |
 | `tests/snapshots/<n>.snap` | CREATE | `insta` snapshot files for the JSON diagnostic shape across the canonical fixtures |
 | `CLAUDE.md` | UPDATE | Strike the Phase-3 TODO bullets in "Architectural Invariants" once `RuleContext.zone/position` and `PageContext` reset are wired. Replace with a one-line note that they are now Phase-3-correct. |
 
@@ -446,8 +446,8 @@ creep in. They belong to later phases or future work.
 ### Task 1: Scanner — emit page-break candidates (PR-3 review TODO)
 - **ACTION**: Add `MarkingType::PageBreak` and a `scan_page_breaks` pass.
 - **IMPLEMENT**:
-  - In `crates/marque-ism/src/span.rs`, add `PageBreak` to `MarkingType`.
-  - In `crates/marque-core/src/scanner.rs`, add `scan_page_breaks(source, &mut out)`:
+  - In `crates/ism/src/span.rs`, add `PageBreak` to `MarkingType`.
+  - In `crates/core/src/scanner.rs`, add `scan_page_breaks(source, &mut out)`:
     - Use `memchr_iter(b'\x0c', source)` (form feed) — emit a zero-length
       `Span::new(pos, pos)` at every `\f`.
     - Use a regex-free walk for `\n\n\n+` (≥3 consecutive `\n`): track
@@ -489,7 +489,7 @@ creep in. They belong to later phases or future work.
   which the existing `let Ok(parsed) = ... else { continue; }` would
   swallow — so the reset would never happen.
 - **VALIDATE**:
-  - New unit test in `crates/marque-engine/src/engine.rs::tests`:
+  - New unit test in `crates/engine/src/engine.rs::tests`:
     ```rust
     #[test]
     fn page_context_resets_at_page_break() {
@@ -508,7 +508,7 @@ creep in. They belong to later phases or future work.
   prove a value. For Phase 3, scanner-derived position remains `None`
   (banner-line detection alone doesn't determine header vs footer
   reliably) — but the field type now correctly says "we don't know."
-- **IMPLEMENT**: In `crates/marque-rules/src/lib.rs`, change
+- **IMPLEMENT**: In `crates/rules/src/lib.rs`, change
   `RuleContext.zone: Zone` to `Option<Zone>` and `position: DocumentPosition`
   to `Option<DocumentPosition>`. Update the engine call site at
   `engine.rs:121–122` to pass `None` for both. Delete the Phase-2 `TODO`
@@ -532,11 +532,11 @@ creep in. They belong to later phases or future work.
   `SciControl`, `DissemControl`, `RelToTrigraph`, `SarIdentifier`,
   `DeclassExemption`, `DeclassDate`, `Separator`, `Unknown`.
 - **IMPLEMENT**:
-  - In `crates/marque-ism/src/attrs.rs`, add a new module
+  - In `crates/ism/src/attrs.rs`, add a new module
     `attrs::token_span` defining `TokenKind` (derive `Debug, Clone, Copy,
     PartialEq, Eq`) and `TokenSpan { pub kind: TokenKind, pub span: Span }`.
   - Add `IsmAttributes::token_spans: Box<[TokenSpan]>` (default `Box::new([])`).
-  - In `crates/marque-core/src/parser.rs::parse_marking_string`, replace
+  - In `crates/core/src/parser.rs::parse_marking_string`, replace
     the `for block in &blocks[1..]` loop with a span-tracking variant
     that walks the original string and records `(start, end)` for every
     token recognized. The current `s.split("//")` discards offsets — use
@@ -577,7 +577,7 @@ creep in. They belong to later phases or future work.
     ```
 
 ### Task 5: Replace Span::new(0, 0) placeholders in existing rules
-- **ACTION**: In `crates/marque-capco/src/rules.rs`, replace every
+- **ACTION**: In `crates/capco/src/rules.rs`, replace every
   `Span::new(0, 0)` with the corresponding `TokenSpan` from `attrs.token_spans`.
 - **IMPLEMENT**:
   - **E001 BannerAbbreviationRule** (rules.rs:88): for each abbreviated
@@ -767,7 +767,7 @@ creep in. They belong to later phases or future work.
 - **IMPORTS**: Same as E006.
 - **GOTCHA**: Without W001-flagged entries in `MIGRATIONS`, the
   fixture-based test is the only way to validate the rule. Use the
-  `crates/marque-capco/tests/rules_us1.rs` integration test to
+  `crates/capco/tests/rules_us1.rs` integration test to
   construct a custom `MigrationEntry` (test-only constant), feed it
   through a wrapper rule, and assert the warning fires.
 - **VALIDATE**:
@@ -780,7 +780,7 @@ creep in. They belong to later phases or future work.
 
 ### Task 12: Register all new rules
 - **ACTION**: Update `CapcoRuleSet::new()` at
-  `crates/marque-capco/src/rules.rs:35–46` to register E003, E006,
+  `crates/capco/src/rules.rs:35–46` to register E003, E006,
   E007, E008, W001.
 - **IMPLEMENT**:
   ```rust
@@ -816,7 +816,7 @@ creep in. They belong to later phases or future work.
   - `pub struct ExpectedDiagnostics { pub diagnostics: Vec<ExpectedDiagnostic> }`
   - `pub struct ExpectedDiagnostic { pub rule: String, pub start: usize, pub end: usize }`
   - Parse with `serde_json` (already in dev-deps).
-- **MIRROR**: Existing helpers in `crates/marque-test-utils/src/lib.rs`
+- **MIRROR**: Existing helpers in `crates/test-utils/src/lib.rs`
   (currently a one-function stub).
 - **IMPORTS**: `use serde::Deserialize;`
 - **GOTCHA**: `serde_json` may not be in `marque-test-utils` deps yet —
@@ -902,7 +902,7 @@ creep in. They belong to later phases or future work.
     must produce files that pass this scan once it lands.
 
 ### Task 16: Integration test — rules_us1.rs
-- **ACTION**: Create `crates/marque-capco/tests/rules_us1.rs` that
+- **ACTION**: Create `crates/capco/tests/rules_us1.rs` that
   iterates every fixture in `tests/corpus/invalid/` AND
   `tests/corpus/valid/`, runs `Engine::lint`, and asserts the diagnostics
   match `.expected.json` exactly (rule ID + span).
@@ -944,9 +944,9 @@ creep in. They belong to later phases or future work.
       }
   }
   ```
-- **MIRROR**: The tests/structure pattern in `crates/marque-engine/src/engine.rs::tests::engine_with_config`.
+- **MIRROR**: The tests/structure pattern in `crates/engine/src/engine.rs::tests::engine_with_config`.
 - **IMPORTS**: `marque-test-utils` as a dev-dependency in
-  `crates/marque-capco/Cargo.toml`.
+  `crates/capco/Cargo.toml`.
 - **GOTCHA**: The default `Config` registers all rules, so any corpus
   fixture firing an unexpected diagnostic will fail loud. This is the
   design — corpus drift must be a CI failure.
@@ -954,12 +954,12 @@ creep in. They belong to later phases or future work.
   - `cargo test -p marque-capco --test rules_us1`
 
 ### Task 17: Integration test — lint_pipeline.rs
-- **ACTION**: Create `crates/marque-engine/tests/lint_pipeline.rs`
+- **ACTION**: Create `crates/engine/tests/lint_pipeline.rs`
   covering FR-001/FR-002/FR-003 happy path and the spec edge cases:
   empty document, whitespace-only, mid-sentence `(S)`, unknown token.
 - **IMPLEMENT**: 6+ tests, each constructing a small input string and
   asserting the resulting `LintResult` shape.
-- **MIRROR**: `crates/marque-core/src/parser.rs::tests` shape.
+- **MIRROR**: `crates/core/src/parser.rs::tests` shape.
 - **IMPORTS**: `marque_engine::Engine`, `marque_config::Config`,
   `marque_capco::capco_rules`.
 - **GOTCHA**: Empty document MUST produce `LintResult::is_clean() ==
@@ -970,7 +970,7 @@ creep in. They belong to later phases or future work.
 
 ### Task 18: Snapshot test for diagnostic JSON shape
 - **ACTION**: Add `insta::assert_json_snapshot!` calls in
-  `crates/marque-engine/tests/lint_pipeline.rs` for the human and JSON
+  `crates/engine/tests/lint_pipeline.rs` for the human and JSON
   output of one canonical fixture (`banner_abbrev.txt`).
 - **IMPLEMENT**:
   ```rust
@@ -986,9 +986,9 @@ creep in. They belong to later phases or future work.
 - **MIRROR**: None — `insta` is new for this crate. Pattern follows the
   `insta` README.
 - **IMPORTS**: Add `insta = "1"` to `[dev-dependencies]` of
-  `crates/marque-engine/Cargo.toml`. Already in workspace dev-deps from
+  `crates/engine/Cargo.toml`. Already in workspace dev-deps from
   Phase 1 T004.
-- **GOTCHA**: Snapshots live under `crates/marque-engine/tests/snapshots/`.
+- **GOTCHA**: Snapshots live under `crates/engine/tests/snapshots/`.
   First run produces `*.snap.new` — rename via `cargo insta review`
   before committing.
 - **VALIDATE**:
@@ -1279,18 +1279,18 @@ ls tests/corpus/prose/*.txt
   The only PR-3 review items Phase 3 inherits are the **TODO(phase-3)
   markers in code** that the review explicitly noted as known
   Phase-3 obligations:
-  1. `crates/marque-engine/src/engine.rs:80` — reset PageContext at
+  1. `crates/engine/src/engine.rs:80` — reset PageContext at
      page boundaries (Tasks 1, 2)
-  2. `crates/marque-engine/src/engine.rs:103` — populate `RuleContext.zone`
+  2. `crates/engine/src/engine.rs:103` — populate `RuleContext.zone`
      and `position` (Task 3)
-  3. `crates/marque-rules/src/lib.rs:132–143` — `page_context: None`
+  3. `crates/rules/src/lib.rs:132–143` — `page_context: None`
      is now populated (already done in Phase 2; Phase 3 closes the
      reset gap)
-  4. `crates/marque-capco/src/rules.rs:88,172,201,236` — `Span::new(0, 0)`
+  4. `crates/capco/src/rules.rs:88,172,201,236` — `Span::new(0, 0)`
      placeholders (Tasks 4, 5, 7)
-  5. `crates/marque-ism/src/page_context.rs:50` — TODO Phase 3
+  5. `crates/ism/src/page_context.rs:50` — TODO Phase 3
      wiring (Task 2)
-  6. `crates/marque-ism/src/page_context.rs:216–225` — duration-aware
+  6. `crates/ism/src/page_context.rs:216–225` — duration-aware
      `DeclassExemption` ordering — **deferred**, NOT Phase 3 scope.
      Document this in Task 21's CLAUDE.md update.
 

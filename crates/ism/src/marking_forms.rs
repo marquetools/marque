@@ -25,7 +25,7 @@
 //! schemas only carry the portion-form codes; banner abbreviations are a CAPCO
 //! marking convention not encoded in the XML. When ODNI publishes a new
 //! register, update this table and bump the schema version in
-//! `crates/marque-ism/Cargo.toml`.
+//! `crates/ism/Cargo.toml`.
 
 /// A marking where the banner-line abbreviation differs from the portion mark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

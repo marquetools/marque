@@ -46,17 +46,17 @@ Implemented User Story 3 (T052-T060): configurable per-rule severity overrides, 
 
 | File | Action | Lines |
 |---|---|---|
-| `crates/marque-rules/src/lib.rs` | UPDATED | +3 (corrections field + import) |
-| `crates/marque-engine/src/engine.rs` | UPDATED | +8 (corrections Arc wiring) |
-| `crates/marque-capco/src/rules.rs` | UPDATED | +55 (C001 rule + registration) |
-| `crates/marque-capco/Cargo.toml` | UPDATED | +2 (dev-deps) |
-| `crates/marque-config/Cargo.toml` | UPDATED | +3 (dev-deps) |
-| `crates/marque-config/tests/precedence.rs` | CREATED | +298 (T052+T053) |
-| `crates/marque-capco/tests/corrections_map.rs` | CREATED | +174 (T054+T060) |
+| `crates/rules/src/lib.rs` | UPDATED | +3 (corrections field + import) |
+| `crates/engine/src/engine.rs` | UPDATED | +8 (corrections Arc wiring) |
+| `crates/capco/src/rules.rs` | UPDATED | +55 (C001 rule + registration) |
+| `crates/capco/Cargo.toml` | UPDATED | +2 (dev-deps) |
+| `crates/config/Cargo.toml` | UPDATED | +3 (dev-deps) |
+| `crates/config/tests/precedence.rs` | CREATED | +298 (T052+T053) |
+| `crates/capco/tests/corrections_map.rs` | CREATED | +174 (T054+T060) |
 | `marque/tests/no_classifier_id_in_commits.rs` | CREATED | +142 (T055) |
 | `marque/tests/corpus_provenance.rs` | CREATED | +157 (T055a) |
 | `marque/tests/cli_config.rs` | CREATED | +220 (CLI config tests) |
-| `crates/marque-capco/tests/rules_us1.rs` | UPDATED | +1 (corrections field) |
+| `crates/capco/tests/rules_us1.rs` | UPDATED | +1 (corrections field) |
 
 ## Deviations from Plan
 
@@ -74,8 +74,8 @@ Implemented User Story 3 (T052-T060): configurable per-rule severity overrides, 
 
 | Test File | Tests | Coverage |
 |---|---|---|
-| `crates/marque-config/tests/precedence.rs` | 13 | T052 precedence chain + T053 hard-fail scenarios |
-| `crates/marque-capco/tests/corrections_map.rs` | 7 | T054 FR-009 precedence + T060 classifier_id |
+| `crates/config/tests/precedence.rs` | 13 | T052 precedence chain + T053 hard-fail scenarios |
+| `crates/capco/tests/corrections_map.rs` | 7 | T054 FR-009 precedence + T060 classifier_id |
 | `marque/tests/no_classifier_id_in_commits.rs` | 1 | T055 SC-006 guard |
 | `marque/tests/corpus_provenance.rs` | 3 | T055a SC-002a corpus provenance |
 | `marque/tests/cli_config.rs` | 9 | --explain-config, severity override, classifier_id, corrections |

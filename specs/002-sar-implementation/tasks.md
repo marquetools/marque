@@ -10,8 +10,8 @@ Task numbering aligns with the harness `TaskCreate` IDs on branch `feat/sar-impl
 
 ## P1 — Data model (task #2)
 
-- [ ] Remove `SarIdentifier` enum emission from `crates/marque-ism/build.rs` (delete lines ~402–421 in the current file; replace with a comment explaining why the CVE file is intentionally unused).
-- [ ] Add `SarMarking`, `SarIndicator`, `SarProgram`, `SarCompartment` types to `crates/marque-ism/src/attrs.rs`.
+- [ ] Remove `SarIdentifier` enum emission from `crates/ism/build.rs` (delete lines ~402–421 in the current file; replace with a comment explaining why the CVE file is intentionally unused).
+- [ ] Add `SarMarking`, `SarIndicator`, `SarProgram`, `SarCompartment` types to `crates/ism/src/attrs.rs`.
 - [ ] Change `IsmAttributes.sar_identifiers: Box<[SarIdentifier]>` → `IsmAttributes.sar_markings: Option<SarMarking>`.
 - [ ] Add `TokenKind::SarIndicator`, `::SarProgram`, `::SarCompartment`, `::SarSubCompartment`. Mark `TokenKind::SarIdentifier` `#[deprecated(note = "use SarIndicator/SarProgram/SarCompartment/SarSubCompartment")]`.
 - [ ] Delete the `SarIdentifier` re-export from `attrs.rs`.
@@ -21,7 +21,7 @@ Task numbering aligns with the harness `TaskCreate` IDs on branch `feat/sar-impl
 
 ## P2 — Subparser (task #3)
 
-- [ ] Add `fn parse_sar_category(text: &str, base: usize) -> Option<(SarMarking, Vec<TokenSpan>)>` to `crates/marque-core/src/parser.rs`.
+- [ ] Add `fn parse_sar_category(text: &str, base: usize) -> Option<(SarMarking, Vec<TokenSpan>)>` to `crates/core/src/parser.rs`.
 - [ ] Grammar per `spec.md` §R2. Recursive-descent, no regex.
 - [ ] Helper `split_once_hyphen_preserving` to separate `PROG-COMP SUB` tokens without swallowing the hyphen.
 - [ ] Dispatch in `IsmAttributes::from_marking_bytes` when a block text starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
@@ -70,7 +70,7 @@ Task numbering aligns with the harness `TaskCreate` IDs on branch `feat/sar-impl
 
 - [ ] `CLAUDE.md` — add SAR subsection under Architecture / Two-Layer Rule Architecture.
 - [ ] `README.md` — update rule count.
-- [ ] `crates/marque-ism/README.md` — migration note on `SarIdentifier` → `SarMarking`.
+- [ ] `crates/ism/README.md` — migration note on `SarIdentifier` → `SarMarking`.
 
 ## Side-fix — E004 same-category `//` (task #7)
 

@@ -7,7 +7,7 @@
 
 [files]
 extend-exclude = [
-  "crates/marque-ism/schemas/",
+  "crates/ism/schemas/",
   # Design docs and specs contain intentional misspellings as examples
   "docs/plans/",
   "specs/",

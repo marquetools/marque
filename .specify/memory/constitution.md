@@ -213,7 +213,7 @@ gain dependencies that violate that license.
 
 1. Implement Layer 1 predicates in `marque-capco/build.rs` or extend the CVE parsing
    to cover new schema elements.
-2. Add a zero-size struct implementing `Rule` in `crates/marque-capco/src/rules.rs`.
+2. Add a zero-size struct implementing `Rule` in `crates/capco/src/rules.rs`.
 3. Register it in `CapcoRuleSet::new()`.
 4. Assign a rule ID: `E###`, `W###`, or `C###`.
 5. Write tests that verify the rule fires on known-bad inputs and passes on valid inputs
