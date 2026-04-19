@@ -720,7 +720,7 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
     // (CAPCO Register §9). A prior entry mapping LIMDIS→RELIDO was incorrect.
     //
     // Note: FOUO → CUI is NOT a CAPCO-level migration. FOUO remains valid in
-    // CAPCO ISM (see DissemControl::FOUO, still enumerated in the active CVE);
+    // CAPCO ISM (see DissemControl::Fouo, still enumerated in the active CVE);
     // CUI is a separate marking system under NARA jurisdiction. A prior
     // entry mapping FOUO→CUI was removed in Phase E of the recursive-lattice
     // design (2026-04-19 plan). Any "suggest CUI on non-IC documents"

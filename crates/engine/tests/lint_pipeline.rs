@@ -104,7 +104,7 @@ fn missing_usa_in_rel_to_fires_e002() {
 // Note: a previous test asserted that `SECRET//FOUO` fires E006 because
 // FOUO was treated as deprecated via a FOUO→CUI migration. That migration
 // was factually incorrect — FOUO remains valid in CAPCO ISM (see
-// DissemControl::FOUO) and CUI is a separate marking system under NARA
+// DissemControl::Fouo) and CUI is a separate marking system under NARA
 // jurisdiction. FOUO also does not propagate to classified markings
 // The migration was removed per Phase E of the recursive-lattice plan 
 // (docs/plans/2026-04-19-recursive-lattice-and-decoder.md §14).
@@ -119,10 +119,10 @@ fn missing_usa_in_rel_to_fires_e002() {
 
 #[test]
 fn unclassified_fouo_does_not_fire_e006() {
-    let result = engine().lint(b"UNCLASSIFIED//FOUO")
+    let result = engine().lint(b"UNCLASSIFIED//FOUO");
     assert!(
         result.diagnostics.iter().all(|d| d.rule.as_str() != "E006")
-    )
+    );
 }
 
 #[test]
