@@ -17,7 +17,7 @@ same phase letter, **this document wins**.
 problem statement, core algebra, and Phase A scaffolding are
 unchanged.
 **Revision history:** 2026-04-19 initial draft; 2026-04-19 (this file)
-incorporates ultraplan review — fixes factual errors (F1–F4), adds
+incorporates ultraplan review — fixes factual errors (F1–F3), adds
 §5.1a recognizer adapter, §6a threat model, §7a cross-category
 rewrites, pins `DiffInput` / `CabSuggestion` / `SciSet::meet` / `K=8`
 decoder bound / `Send + Sync` contract, reconciles perf budget,
