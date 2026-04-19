@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! marque-extract — document text and metadata extraction.
 //!
 //! Wraps Kreuzberg (https://github.com/kreuzberg-dev/kreuzberg):

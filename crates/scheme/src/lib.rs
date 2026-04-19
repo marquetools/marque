@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! # marque-scheme
 //!
 //! Domain-neutral trait surface for structured marking schemes.

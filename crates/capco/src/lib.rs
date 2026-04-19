@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! marque-capco — CAPCO rule implementations for marque.
 //!
 //! # Code Generation

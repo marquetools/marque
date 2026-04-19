@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# CODEOWNERS — enforce mandatory review on security-critical paths.
+#
+# Supply chain audit finding A2/F4: without CODEOWNERS, any collaborator
+# with write access can modify CI workflows, dependency config, or build
+# scripts without review from designated security-aware maintainers.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ── Default owner for everything ────────────────────────────────────
+*                                       @marquetools/maintainers
+
+# ── CI / CD pipelines ──────────────────────────────────────────────
+.github/workflows/                      @marquetools/maintainers
+.github/dependabot.yml                  @marquetools/maintainers
+.github/CODEOWNERS                      @marquetools/maintainers
+
+# ── Dependency configuration ────────────────────────────────────────
+Cargo.toml                              @marquetools/maintainers
+Cargo.lock                              @marquetools/maintainers
+deny.toml                               @marquetools/maintainers
+demo/package.json                       @marquetools/maintainers
+demo/package-lock.json                  @marquetools/maintainers
+
+# ── Build-time code generation (schema + build.rs) ──────────────────
+crates/ism/build.rs                     @marquetools/maintainers
+crates/ism/schemas/                     @marquetools/maintainers
+
+# ── Security policy ─────────────────────────────────────────────────
+SECURITY.md                             @marquetools/maintainers

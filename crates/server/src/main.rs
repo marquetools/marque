@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! marque-server — REST microservice exposing marque as an API.
 //!
 //! Endpoints:

@@ -132,10 +132,10 @@ function serveFile(res, absPath) {
     if (err) {
       if (err.code === 'ENOENT') {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end(`404 Not Found: ${absPath}`);
+        res.end('404 Not Found');
       } else {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end(`500 Internal Server Error: ${err.message}`);
+        res.end('500 Internal Server Error');
       }
       return;
     }

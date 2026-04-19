@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![forbid(unsafe_code)]
+
 //! marque-engine — pipeline orchestration.
 //!
 //! Wires together: scanner → parser → validator → fixer → output.
