@@ -1,14 +1,5 @@
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
-#
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
-#
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
 name: "CodeQL Advanced"
 
 on:
@@ -65,7 +56,7 @@ jobs:
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@129d771399bd55c4200933e39540ef3dd4f66479
+      uses: github/codeql-action/init@0b7b740d4cd9b44f80c907b666497564df09d1d9
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
@@ -94,6 +85,6 @@ jobs:
         exit 1
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@74c8748a6f2dada2c01b25ae170d7858ac90f4af
+      uses: github/codeql-action/analyze@0b7b740d4cd9b44f80c907b666497564df09d1d9
       with:
         category: "/language:${{matrix.language}}"
