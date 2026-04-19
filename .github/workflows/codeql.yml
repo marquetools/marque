@@ -22,6 +22,7 @@ jobs:
     permissions:
       # required for all workflows
       security-events: write
+      contents: read
 
       # required to fetch internal or private CodeQL packs
       packages: read
