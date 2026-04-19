@@ -84,7 +84,7 @@ jobs:
       
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
         with:
-          files: crates/marque-wasm/pkg/*.wasm
+          file: crates/marque-wasm/pkg/*.wasm
           options: >-
             --enable-bulk-memory-opt
             --enable-bulk-memory
