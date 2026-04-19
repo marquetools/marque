@@ -2884,15 +2884,15 @@ UNCLASSIFIED
 
 (U) Authorized Banner Line Marking Title:
 
-RSV-[COMPARMENT] (3 alphanumeric characters)
+RSV-[COMPARTMENT] (3 alphanumeric characters)
 
 (U) Authorized Banner Line Abbreviation:
 
-RSV-[COMPARMENT] (3 alphanumeric characters)
+RSV-[COMPARTMENT] (3 alphanumeric characters)
 
 (U) Authorized Portion Mark:
 
-RSV-[COMPARMENT] (3 alphanumeric characters)
+RSV-[COMPARTMENT] (3 alphanumeric characters)
 
 (U) Example Banner Line:
 
@@ -3239,11 +3239,11 @@ GAMMA [SUB-COMPARTMENT] (4 alpha characters)
 
 (U) Authorized Banner Line Abbreviation:
 
-G [SUB-COMPARMENT] (4 alpha characters)
+G [SUB-COMPARTMENT] (4 alpha characters)
 
 (U) Authorized Portion Mark:
 
-G [SUB-COMPARMENT] (4 alpha characters)
+G [SUB-COMPARTMENT] (4 alpha characters)
 
 (U) Example Banner Line:
 
