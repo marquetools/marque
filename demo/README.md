@@ -51,7 +51,6 @@ wasm-pack build crates/wasm --target web --dev -- --features console_error_panic
 | Banner auto-updates as you type | `compute_banner()` on every keystroke (80ms debounce) |
 | Typo correction | `fix()` with corrections map — e.g., SERCET → SECRET → S |
 | Abbreviation enforcement | E009: SECRET → S, NOFORN → NF in portion markings |
-| Deprecated control migration | E006: FOUO → CUI per CAPCO migration table |
 | Squiggly underlines | `lint()` → CodeMirror `Decoration.mark` for remaining diagnostics |
 | Hover tooltips | CodeMirror `hoverTooltip` showing rule ID, message, citation |
 | Inline audit log | Each applied fix produces a timestamped audit entry |
