@@ -33,7 +33,7 @@ None
 - **Suggested fix**: Rename to `lower_ci_us/mean_us/upper_ci_us` or add a `_note` field.
 
 **L-2**: `BenchmarkId::from_parameter(size)` label mismatch for 1KB scaling point
-- **File**: `crates/marque-engine/benches/linear_scaling.rs:48`
+- **File**: `crates/engine/benches/linear_scaling.rs:48`
 - **Description**: The 1KB point is labeled "1000" but actual input is ~828 bytes after block-aligned truncation. Throughput calculation is correct (uses `input.len()`), only the axis label is off.
 - **Suggested fix**: Use `BenchmarkId::from_parameter(input.len())` for accurate labels.
 
@@ -43,7 +43,7 @@ None
 - **Suggested fix**: Add `[[ "$BASELINE_P95" =~ ^[0-9]+$ ]]` guard.
 
 **L-4**: `TEST-WASM-42` passes SC-006 scanner by coincidence of raw-string parsing
-- **File**: `crates/marque-wasm/tests/native_parity.rs:348`
+- **File**: `crates/wasm/tests/native_parity.rs:348`
 - **Description**: The value avoids detection because `r#"` parsing extracts `{` (length 1 < 5), not because it's allow-listed. Reformatting to a regular string literal would trigger a false positive.
 - **Suggested fix**: Add `TEST-WASM-42` to `ALLOWED_SENTINELS` in `no_classifier_id_in_commits.rs`.
 
@@ -62,14 +62,14 @@ None
 | `CLAUDE.md` | Modified — MVP status update |
 | `Cargo.toml` | Modified — fuzz exclude |
 | `benches/baseline.json` | Added — performance baseline |
-| `crates/marque-capco/tests/rules_us1.rs` | Modified — C001 fixture skip |
-| `crates/marque-engine/benches/linear_scaling.rs` | Modified — implemented scaling benchmark |
-| `crates/marque-engine/benches/lint_latency.rs` | Modified — implemented latency benchmark |
-| `crates/marque-engine/fuzz/Cargo.toml` | Added — fuzz workspace |
-| `crates/marque-engine/fuzz/fuzz_targets/lint.rs` | Added — fuzz target |
-| `crates/marque-engine/tests/corpus_accuracy.rs` | Added — accuracy harness |
-| `crates/marque-wasm/Cargo.toml` | Modified — release-wasm wasm-opt |
-| `crates/marque-wasm/tests/native_parity.rs` | Modified — full corpus parity |
+| `crates/capco/tests/rules_us1.rs` | Modified — C001 fixture skip |
+| `crates/engine/benches/linear_scaling.rs` | Modified — implemented scaling benchmark |
+| `crates/engine/benches/lint_latency.rs` | Modified — implemented latency benchmark |
+| `crates/engine/fuzz/Cargo.toml` | Added — fuzz workspace |
+| `crates/engine/fuzz/fuzz_targets/lint.rs` | Added — fuzz target |
+| `crates/engine/tests/corpus_accuracy.rs` | Added — accuracy harness |
+| `crates/wasm/Cargo.toml` | Modified — release-wasm wasm-opt |
+| `crates/wasm/tests/native_parity.rs` | Modified — full corpus parity |
 | `scripts/bench-check.sh` | Added — regression gate |
 | `scripts/check.sh` | Modified — bench gate integration |
 | `tests/corpus/invalid/corrections_map_typo*.{txt,expected.json}` | Added — C001 fixtures (6 files) |

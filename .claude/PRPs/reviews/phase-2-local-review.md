@@ -32,7 +32,7 @@ Three independent Rust reviewers produced converging findings across three revie
 ### CRITICAL
 
 **C-1 — Missing overlap/adjacency guard in `Engine::fix`**
-`crates/marque-engine/src/engine.rs:118–138`
+`crates/engine/src/engine.rs:118–138`
 
 FR-016 sorts fixes reverse-by-end to preserve earlier offsets, but there is no check that two fixes overlap. Phase 2 hides this because every fix proposal currently has a `Span::new(0, 0)` placeholder and is filtered by `!f.span.is_empty()` at line 113. Once Phase 3 wires real spans, two rules emitting fixes for the same byte range will silently overwrite each other via `output.splice`. This is a latent data-corruption bug.
 
@@ -46,7 +46,7 @@ Even if Phase 3 is expected to address this, a `TODO(phase-3)` with `debug_asser
 ---
 
 **C-2 — `MARQUE_CONFIDENCE_THRESHOLD` silently discards parse failures**
-`crates/marque-config/src/lib.rs:255–258`
+`crates/config/src/lib.rs:255–258`
 
 ```rust
 if let Ok(val) = std::env::var("MARQUE_CONFIDENCE_THRESHOLD") {
@@ -61,7 +61,7 @@ The inner `if let Ok` drops typos like `"0.9o"` or locale values like `"0,9"` wi
 ---
 
 **C-3 — Generated `validators.rs` imports a type that does not exist in `generated::values`**
-`crates/marque-ism/build.rs:520–525`
+`crates/ism/build.rs:520–525`
 
 ```rust
 use super::values::{Classification, SciControl, DissemControl};
@@ -72,7 +72,7 @@ use super::values::{Classification, SciControl, DissemControl};
 ---
 
 **C-4 — `to_rust_ident` can produce empty strings and duplicate variant names**
-`crates/marque-ism/build.rs:152–179`
+`crates/ism/build.rs:152–179`
 
 Two distinct CVE values can collapse to the same Rust identifier (e.g., `"RS"` and `"R-S"` both → `Rs`). Values consisting entirely of separators produce `""` which emits `pub enum X { , }` and fails to compile. The function has no dedup guard.
 
@@ -93,7 +93,7 @@ Today's CVE schema may happen to avoid collisions, but the next ODNI package upd
 ### HIGH
 
 **H-1 — Server bypasses the entire config system**
-`crates/marque-server/src/main.rs:160`
+`crates/server/src/main.rs:160`
 
 ```rust
 let config = Config::default();
@@ -104,7 +104,7 @@ No `.marque.toml` loaded, no `MARQUE_CONFIDENCE_THRESHOLD`, no `MARQUE_CLASSIFIE
 ---
 
 **H-2 — Server `FixRequest::confidence_threshold` field is dead**
-`crates/marque-server/src/main.rs:71–75, 136–149`
+`crates/server/src/main.rs:71–75, 136–149`
 
 The field is serialized in the API struct (with `#[allow(dead_code)]` as a tell) but `fix_handler` passes the engine's compiled-in config threshold unconditionally. Callers setting `"confidence_threshold": 0.7` see no effect. Either plumb it (engine needs a per-call threshold), or remove the field and document that the server is configured statically.
 
@@ -133,7 +133,7 @@ let config = marque_config::load(std::env::current_dir().unwrap().as_path()).unw
 ---
 
 **H-5 — `Trigraph::as_str()` panics in WASM-safe library code**
-`crates/marque-ism/src/attrs.rs:94–97`
+`crates/ism/src/attrs.rs:94–97`
 
 ```rust
 pub fn as_str(&self) -> &str {
@@ -146,7 +146,7 @@ pub fn as_str(&self) -> &str {
 ---
 
 **H-6 — Unrecognized rule severity strings in config silently fall back to the default**
-`crates/marque-engine/src/engine.rs:72–78`
+`crates/engine/src/engine.rs:72–78`
 
 ```rust
 .and_then(|s| Severity::parse_config(s))
@@ -158,7 +158,7 @@ pub fn as_str(&self) -> &str {
 ---
 
 **H-7 — O(n²) `applied_fixes.contains` in `remaining_diagnostics`**
-`crates/marque-engine/src/engine.rs:107, 159–166`
+`crates/engine/src/engine.rs:107, 159–166`
 
 `Vec<(RuleId, Span)>` with linear `contains` per diagnostic. `RuleId` is `&'static str`; `Span` is `Copy + Eq`. Use a `HashSet` (requires `#[derive(Hash)]` on `Span` — verify it's there). For large documents with many rules this is a real scaling cost.
 
@@ -167,14 +167,14 @@ Additionally the filter clones `f.rule` on every iteration even when `applied_fi
 ---
 
 **H-8 — `ALL_CVE_TOKENS` contains hardcoded duplicates**
-`crates/marque-ism/build.rs:438–445`
+`crates/ism/build.rs:438–445`
 
 After emitting all CVE dissem control tokens from XML, `build.rs` unconditionally appends `NOFORN`, `ORCON`, `PROPIN`, `IMCON` as literal strings — values that are already present from the XML. `canonicalize` still returns correct answers by first-hit, but the duplicates inflate the slice and slow both the linear scan and the `AUTOMATON` construction. Deduplicate before emission.
 
 ---
 
 **H-9 — `parse_classification` is hand-coded while the file comment claims the migration is complete**
-`crates/marque-core/src/parser.rs:175–208`
+`crates/core/src/parser.rs:175–208`
 
 ```rust
 fn parse_classification(s: &str) -> Option<Classification> {
@@ -202,7 +202,7 @@ The build.rs codegen pipeline, `Engine::fix` ordering, `Severity::parse_config`,
 ### MEDIUM
 
 **M-1 — `FixProposal::confidence` validator is `debug_assert!` only**
-`crates/marque-rules/src/lib.rs:134–137`
+`crates/rules/src/lib.rs:134–137`
 
 ```rust
 debug_assert!(
@@ -216,7 +216,7 @@ Stripped in release. A rule emitting `confidence: f32::INFINITY` or `NaN` passes
 ---
 
 **M-2 — `Span::as_slice` panics on out-of-bounds in release**
-`crates/marque-ism/src/span.rs:29–31`
+`crates/ism/src/span.rs:29–31`
 
 `Span::new` only `debug_assert`s `start <= end`. `as_slice` does `&source[self.start..self.end]` which panics on any bound violation in release. Add a checked variant:
 
@@ -231,56 +231,56 @@ And upgrade `Span::new` from `debug_assert` to `assert`.
 ---
 
 **M-3 — `RuleContext` always passes `Zone::Body` / `DocumentPosition::Body`**
-`crates/marque-engine/src/engine.rs:64–67`
+`crates/engine/src/engine.rs:64–67`
 
 Hardcoded. Current rules only key off `marking_type`, so this is not a live bug — but it guarantees any future rule that reads `zone` or `position` will silently get wrong answers. Add a `// TODO(phase-3): plumb document structure from scanner` comment at minimum.
 
 ---
 
 **M-4 — `classifier_id` is `Box<str>`-cloned per fix in the engine loop**
-`crates/marque-engine/src/engine.rs:130–144`
+`crates/engine/src/engine.rs:130–144`
 
 Switch to `Arc<str>` in `AppliedFix` (or share via `Arc` from `Config::user`) to make the per-fix clone O(1). For a large document with many fixes this is avoidable allocation.
 
 ---
 
 **M-5 — `batch.rs` `.expect("lint task panicked")` aborts the entire process**
-`crates/marque-engine/src/batch.rs:116, 146`
+`crates/engine/src/batch.rs:116, 146`
 
 `spawn_blocking` `JoinError` covers both panics and cancellation. Using `.expect` turns any single-document failure into a process-wide abort that loses partial batch results. Propagate `JoinError` through the stream item.
 
 ---
 
 **M-6 — `format!("{:?}", severity)` leaks Debug format into JSON**
-`crates/marque-server/src/main.rs:118`, `crates/marque-wasm/src/lib.rs:44`
+`crates/server/src/main.rs:118`, `crates/wasm/src/lib.rs:44`
 
 Debug formatting is not a stable API. Derive `Serialize` on `Severity` with `#[serde(rename_all = "lowercase")]` (or implement `Display`) and use that. Better: introduce a shared `DiagnosticJson` type in `marque-engine` so server and WASM do not duplicate.
 
 ---
 
 **M-7 — Unused runtime dependencies in `marque-ism`**
-`crates/marque-ism/Cargo.toml:11–16`
+`crates/ism/Cargo.toml:11–16`
 
 `thiserror`, `phf`, and `anyhow` are listed as runtime deps but `grep` confirms they are not used in `src/`. They bloat every downstream consumer including WASM (where binary size matters). Remove until actually used. `phf` in particular should be reserved until trigraph lookups are migrated to `phf::Set` (see recommended fix for H-8-adjacent trigraph O(n) scan).
 
 ---
 
 **M-8 — `CapcoTokenSet::canonicalize` is O(n)**
-`crates/marque-ism/src/token_set.rs:32–34`
+`crates/ism/src/token_set.rs:32–34`
 
 Linear scan over `ALL_CVE_TOKENS` per call. The neighboring `AUTOMATON` static is dead-coded with `#[allow(dead_code)]`. Emit `ALL_CVE_TOKENS` sorted from `build.rs` and use `binary_search` for O(log n), or switch to `phf::Set` for O(1). The trigraph `contains` at line 40 has the same issue.
 
 ---
 
 **M-9 — `make_fix_diagnostic` has 9 parameters with `#[allow(too_many_arguments)]`**
-`crates/marque-capco/src/rules.rs:248`
+`crates/capco/src/rules.rs:248`
 
 Extract a `FixProposalParams` struct. Phase 3 will multiply the call sites.
 
 ---
 
 **M-10 — Silent XML unescape via `unwrap_or_default` in `parse_cve_xml`**
-`crates/marque-ism/build.rs:128`
+`crates/ism/build.rs:128`
 
 ```rust
 current_value.push_str(&e.unescape().unwrap_or_default());
@@ -293,45 +293,45 @@ Any unescape error silently truncates the value and can feed an empty string int
 ### LOW
 
 **L-1 — `run_metadata` returns exit 0 with a TODO message** — `marque/src/main.rs:158–161`. Should return exit 69 (EX_UNAVAILABLE) so scripts do not trust the stub.
-**L-2 — Duplicate doc comment on `Severity::parse_config`** — `crates/marque-rules/src/lib.rs:54–55`.
-**L-3 — `FixedClock(pub SystemTime)` exposes inner field** — `crates/marque-engine/src/clock.rs:24`. Prefer `FixedClock::new(t)`.
-**L-4 — `RuleId(pub &'static str)` allows arbitrary construction** — `crates/marque-rules/src/lib.rs:25`. Make inner field `pub(crate)` and add `pub const fn new`.
-**L-5 — `LintResult::fix_count()` counts `Severity::Fix` diagnostics, not diagnostics with proposals** — `crates/marque-engine/src/output.rs:32–38`. Either rename to `fixable_diagnostic_count` or add `d.fix.is_some()` guard.
-**L-6 — `SCHEMA_VERSION` not re-exported at crate root** — `crates/marque-ism/src/lib.rs`. Add `pub use generated::values::SCHEMA_VERSION;`.
-**L-7 — `Severity::Off` ordering under `max` merge semantics** — `crates/marque-rules/src/lib.rs:40–51`. `Off < Warn < Error < Fix` means a local config cannot suppress a rule if the project config set it to `Error`. This may be intentional for a security tool; document explicitly.
+**L-2 — Duplicate doc comment on `Severity::parse_config`** — `crates/rules/src/lib.rs:54–55`.
+**L-3 — `FixedClock(pub SystemTime)` exposes inner field** — `crates/engine/src/clock.rs:24`. Prefer `FixedClock::new(t)`.
+**L-4 — `RuleId(pub &'static str)` allows arbitrary construction** — `crates/rules/src/lib.rs:25`. Make inner field `pub(crate)` and add `pub const fn new`.
+**L-5 — `LintResult::fix_count()` counts `Severity::Fix` diagnostics, not diagnostics with proposals** — `crates/engine/src/output.rs:32–38`. Either rename to `fixable_diagnostic_count` or add `d.fix.is_some()` guard.
+**L-6 — `SCHEMA_VERSION` not re-exported at crate root** — `crates/ism/src/lib.rs`. Add `pub use generated::values::SCHEMA_VERSION;`.
+**L-7 — `Severity::Off` ordering under `max` merge semantics** — `crates/rules/src/lib.rs:40–51`. `Off < Warn < Error < Fix` means a local config cannot suppress a rule if the project config set it to `Error`. This may be intentional for a security tool; document explicitly.
 **L-8 — `writeln!(out, ...).unwrap()` throughout `build.rs`** — Infallible on `String`, but non-idiomatic; return `fmt::Result` and propagate with `?`.
-**L-9 — `parse_xsd_trigraphs` does not unescape attribute values** — `crates/marque-ism/build.rs:481`. Safe today because trigraphs are pure ASCII, but inconsistent with `parse_cve_xml` which does unescape.
+**L-9 — `parse_xsd_trigraphs` does not unescape attribute values** — `crates/ism/build.rs:481`. Safe today because trigraphs are pure ASCII, but inconsistent with `parse_cve_xml` which does unescape.
 
 ## Files Reviewed
 
 ### Modified (24)
 - `Cargo.lock`
-- `crates/marque-capco/src/rules.rs`
-- `crates/marque-config/Cargo.toml`
-- `crates/marque-config/src/lib.rs`
-- `crates/marque-core/src/attrs.rs`
-- `crates/marque-core/src/parser.rs`
-- `crates/marque-core/src/scanner.rs`
-- `crates/marque-core/src/span.rs`
-- `crates/marque-engine/src/batch.rs`
-- `crates/marque-engine/src/engine.rs`
-- `crates/marque-engine/src/lib.rs`
-- `crates/marque-engine/src/output.rs`
-- `crates/marque-engine/src/pipeline.rs`
-- `crates/marque-extract/src/lib.rs`
-- `crates/marque-ism/Cargo.toml`
-- `crates/marque-ism/build.rs`
-- `crates/marque-ism/src/attrs.rs`
-- `crates/marque-ism/src/lib.rs`
-- `crates/marque-ism/src/span.rs`
-- `crates/marque-ism/src/token_set.rs`
-- `crates/marque-rules/src/lib.rs`
-- `crates/marque-server/src/main.rs`
-- `crates/marque-wasm/src/lib.rs`
+- `crates/capco/src/rules.rs`
+- `crates/config/Cargo.toml`
+- `crates/config/src/lib.rs`
+- `crates/core/src/attrs.rs`
+- `crates/core/src/parser.rs`
+- `crates/core/src/scanner.rs`
+- `crates/core/src/span.rs`
+- `crates/engine/src/batch.rs`
+- `crates/engine/src/engine.rs`
+- `crates/engine/src/lib.rs`
+- `crates/engine/src/output.rs`
+- `crates/engine/src/pipeline.rs`
+- `crates/extract/src/lib.rs`
+- `crates/ism/Cargo.toml`
+- `crates/ism/build.rs`
+- `crates/ism/src/attrs.rs`
+- `crates/ism/src/lib.rs`
+- `crates/ism/src/span.rs`
+- `crates/ism/src/token_set.rs`
+- `crates/rules/src/lib.rs`
+- `crates/server/src/main.rs`
+- `crates/wasm/src/lib.rs`
 - `marque/src/main.rs`
 
 ### Added (1)
-- `crates/marque-engine/src/clock.rs`
+- `crates/engine/src/clock.rs`
 
 ## Blocking Issues Summary
 

@@ -46,7 +46,7 @@ makes diff review of the generated code possible across schema versions.
 **Schema rollback strategy**: The active schema version is pinned in
 `marque-ism/Cargo.toml [package.metadata.marque] ism-schema-version` and
 asserted at build time (T010). A new ODNI schema package lands as a sibling
-directory under `crates/marque-ism/schemas/` (e.g. `ISM-v2024-JUN/`) in a
+directory under `crates/ism/schemas/` (e.g. `ISM-v2024-JUN/`) in a
 dedicated branch; the pin bumps in that same branch, Layer 1 regenerates, and
 the Layer 2 rule set is audited for behavioral drift against the MVP corpus
 before the branch merges. If a schema bump is later found to have regressed

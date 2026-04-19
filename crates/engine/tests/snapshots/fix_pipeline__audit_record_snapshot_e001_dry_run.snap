@@ -1,5 +1,5 @@
 ---
-source: crates/marque-engine/tests/fix_pipeline.rs
+source: crates/engine/tests/fix_pipeline.rs
 expression: json
 ---
 [

@@ -17,12 +17,12 @@ becomes a hard gate in the browser-extension slice.
 
 1. Build the WASM artifact:
    ```bash
-   wasm-pack build crates/marque-wasm --target web --release
+   wasm-pack build crates/wasm --target web --release
    ```
 
 2. Serve the harness page:
    ```bash
-   cd crates/marque-wasm
+   cd crates/wasm
    python3 -m http.server 8080
    # Open http://localhost:8080/examples/harness.html
    ```
@@ -77,7 +77,7 @@ import('../pkg/marque_wasm.js').then(async (mod) => {
 **OS**: (e.g., Ubuntu 24.04 on WSL2)
 **Machine**: (reference machine per plan.md)
 **Date**: YYYY-MM-DD
-**WASM artifact size**: (output of `ls -la crates/marque-wasm/pkg/marque_wasm_bg.wasm`)
+**WASM artifact size**: (output of `ls -la crates/wasm/pkg/marque_wasm_bg.wasm`)
 
 ## Pass/Fail Criteria
 

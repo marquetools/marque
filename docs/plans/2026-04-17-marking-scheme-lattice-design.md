@@ -129,7 +129,7 @@ pub trait MarkingScheme {
 
 Supporting types (`Category`, `AggregationOp`, `Constraint`, `Template`,
 `Parsed`, `Candidate`, `EvidenceFeature`) live in sibling modules. See
-`crates/marque-scheme/src/` for the authoritative definitions. The rest
+`crates/scheme/src/` for the authoritative definitions. The rest
 of this section is the conceptual tour.
 
 ### 3.1 `Category` and `AggregationOp`
@@ -274,8 +274,8 @@ prior session). Wiring them into the resolver is a later-phase task.
 ```
 Phase A (this PR)
   ├── docs/plans/2026-04-17-marking-scheme-lattice-design.md
-  ├── crates/marque-scheme/   (trait + lattice + data types, no adopters)
-  ├── crates/marque-capco/src/scheme.rs   (CapcoScheme adapter)
+  ├── crates/scheme/   (trait + lattice + data types, no adopters)
+  ├── crates/capco/src/scheme.rs   (CapcoScheme adapter)
   └── equivalence tests: CapcoScheme agrees with PageContext
 Phase B
   └── Replace PageContext internals with scheme-driven aggregation.

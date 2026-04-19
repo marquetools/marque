@@ -70,7 +70,7 @@ marque fix report.txt
 Configuration lives in `.marque.toml` (project, committed) and
 `.marque.local.toml` (per-user identity, gitignored). See the
 [CLI README](./marque/README.md) for flags and exit codes, and
-[`marque-config`](./crates/marque-config/README.md) for the full schema.
+[`marque-config`](./crates/config/README.md) for the full schema.
 
 ## Workspace
 
@@ -89,15 +89,15 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | Crate | Role |
 |---|---|
 | [`marque`](./marque/) | CLI binary — `check`, `fix`, `metadata`. |
-| [`marque-core`](./crates/marque-core/) | Format-agnostic scanner + parser. SIMD via `memchr`, token matching via Aho-Corasick. WASM-safe. |
-| [`marque-rules`](./crates/marque-rules/) | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `AppliedFix`, `Severity`. |
-| [`marque-engine`](./crates/marque-engine/) | Pipeline orchestration. `Engine` (sync) + `BatchEngine` (async concurrent). Confidence gate + audit log live here. |
-| [`marque-config`](./crates/marque-config/) | Layered config loading (CLI > env > `.marque.local.toml` > `.marque.toml`) with hard-fail validators. |
-| [`marque-ism`](./crates/marque-ism/) | ISM vocabulary types + generated CVE enums from ODNI schemas. Build-time codegen, no runtime I/O. |
-| [`marque-capco`](./crates/marque-capco/) | 39 hand-written CAPCO rules (E001–E035, W001–W003, C001) consuming `marque-ism` predicates. Includes SAR (Special Access Required) validation per §H.5 and structural SCI compartment + sub-compartment support per §A.6. |
-| [`marque-extract`](./crates/marque-extract/) | Document text + metadata extraction. **Stub** — Kreuzberg integration pending. |
-| [`marque-wasm`](./crates/marque-wasm/) | WASM target via `wasm-pack`. Byte-identical NDJSON output to the CLI. |
-| [`marque-server`](./crates/marque-server/) | axum REST microservice wrapping `marque-engine`. |
+| [`marque-core`](./crates/core/) | Format-agnostic scanner + parser. SIMD via `memchr`, token matching via Aho-Corasick. WASM-safe. |
+| [`marque-rules`](./crates/rules/) | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `AppliedFix`, `Severity`. |
+| [`marque-engine`](./crates/engine/) | Pipeline orchestration. `Engine` (sync) + `BatchEngine` (async concurrent). Confidence gate + audit log live here. |
+| [`marque-config`](./crates/config/) | Layered config loading (CLI > env > `.marque.local.toml` > `.marque.toml`) with hard-fail validators. |
+| [`marque-ism`](./crates/ism/) | ISM vocabulary types + generated CVE enums from ODNI schemas. Build-time codegen, no runtime I/O. |
+| [`marque-capco`](./crates/capco/) | 39 hand-written CAPCO rules (E001–E035, W001–W003, C001) consuming `marque-ism` predicates. Includes SAR (Special Access Required) validation per §H.5 and structural SCI compartment + sub-compartment support per §A.6. |
+| [`marque-extract`](./crates/extract/) | Document text + metadata extraction. **Stub** — Kreuzberg integration pending. |
+| [`marque-wasm`](./crates/wasm/) | WASM target via `wasm-pack`. Byte-identical NDJSON output to the CLI. |
+| [`marque-server`](./crates/server/) | axum REST microservice wrapping `marque-engine`. |
 
 **Domain scoping:** `marque-ism` and `marque-capco` are the only crates that
 are ISM/CAPCO-specific. Everything else is general-purpose infrastructure

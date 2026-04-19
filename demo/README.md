@@ -13,7 +13,7 @@ marking lint and auto-fix capabilities.
 
 ```sh
 # 1. Build the WASM module (required before first run)
-wasm-pack build crates/marque-wasm --target web --dev
+wasm-pack build crates/wasm --target web --dev
 
 # 2. Install demo dependencies
 cd demo && npm install
@@ -29,19 +29,19 @@ The server opens `http://localhost:4242` with the interactive demo.
 Development build (fast, no wasm-opt):
 
 ```sh
-wasm-pack build crates/marque-wasm --target web --dev
+wasm-pack build crates/wasm --target web --dev
 ```
 
 Production build (optimized):
 
 ```sh
-wasm-pack build crates/marque-wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-wasm
 ```
 
 Enable the panic hook for better WASM error messages in the browser console:
 
 ```sh
-wasm-pack build crates/marque-wasm --target web --dev -- --features console_error_panic_hook
+wasm-pack build crates/wasm --target web --dev -- --features console_error_panic_hook
 ```
 
 ## What the Demo Shows

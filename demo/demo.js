@@ -16,7 +16,7 @@
  *   document, blending into the page background.
  *
  * WASM path: served at /wasm/ by the dev server (bin/serve.js routes that prefix
- * to crates/marque-wasm/pkg/ in the monorepo, or to the bundled wasm/ dir when
+ * to crates/wasm/pkg/ in the monorepo, or to the bundled wasm/ dir when
  * running from an npm-installed package).
  */
 

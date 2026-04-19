@@ -46,13 +46,13 @@ Implemented all 10 Phase 7 tasks (T067–T074): criterion benchmarks for lint la
 
 | File | Action | Lines |
 |---|---|---|
-| `crates/marque-engine/benches/lint_latency.rs` | UPDATED | +35 / -5 |
-| `crates/marque-engine/benches/linear_scaling.rs` | UPDATED | +40 / -5 |
-| `crates/marque-engine/tests/corpus_accuracy.rs` | CREATED | +280 |
-| `crates/marque-wasm/tests/native_parity.rs` | UPDATED | +55 / -5 |
-| `crates/marque-wasm/Cargo.toml` | UPDATED | +3 |
-| `crates/marque-engine/fuzz/Cargo.toml` | CREATED | +22 |
-| `crates/marque-engine/fuzz/fuzz_targets/lint.rs` | CREATED | +52 |
+| `crates/engine/benches/lint_latency.rs` | UPDATED | +35 / -5 |
+| `crates/engine/benches/linear_scaling.rs` | UPDATED | +40 / -5 |
+| `crates/engine/tests/corpus_accuracy.rs` | CREATED | +280 |
+| `crates/wasm/tests/native_parity.rs` | UPDATED | +55 / -5 |
+| `crates/wasm/Cargo.toml` | UPDATED | +3 |
+| `crates/engine/fuzz/Cargo.toml` | CREATED | +22 |
+| `crates/engine/fuzz/fuzz_targets/lint.rs` | CREATED | +52 |
 | `Cargo.toml` | UPDATED | +1 (exclude fuzz) |
 | `benches/baseline.json` | CREATED | +15 |
 | `scripts/bench-check.sh` | CREATED | +85 |
@@ -73,8 +73,8 @@ Implemented all 10 Phase 7 tasks (T067–T074): criterion benchmarks for lint la
 
 | Test File | Tests | Coverage |
 |---|---|---|
-| `crates/marque-engine/tests/corpus_accuracy.rs` | 4 tests | SC-002 lint accuracy, SC-003 fix accuracy, SC-003a prose precision, valid fixture validation |
-| `crates/marque-wasm/tests/native_parity.rs` | 2 new tests | Prose parity, valid fixture fix parity (13 total) |
+| `crates/engine/tests/corpus_accuracy.rs` | 4 tests | SC-002 lint accuracy, SC-003 fix accuracy, SC-003a prose precision, valid fixture validation |
+| `crates/wasm/tests/native_parity.rs` | 2 new tests | Prose parity, valid fixture fix parity (13 total) |
 
 ## Next Steps
 - [ ] Code review via `/code-review`

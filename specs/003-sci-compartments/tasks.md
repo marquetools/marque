@@ -10,10 +10,10 @@ Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one 
 
 ## P1 — Data model (`marque-ism`)
 
-- [ ] Add `SciMarking`, `SciControlSystem`, `SciControlBare`, `SciCompartment` to `crates/marque-ism/src/attrs.rs` with `#[non_exhaustive]` and `::new()` constructors (lesson from SAR P2 — non_exhaustive blocks struct-literal construction from `marque-core`).
+- [ ] Add `SciMarking`, `SciControlSystem`, `SciControlBare`, `SciCompartment` to `crates/ism/src/attrs.rs` with `#[non_exhaustive]` and `::new()` constructors (lesson from SAR P2 — non_exhaustive blocks struct-literal construction from `marque-core`).
 - [ ] Add `IsmAttributes.sci_markings: Box<[SciMarking]>` alongside the existing `sci_controls: Box<[SciControl]>`. Do NOT remove or deprecate `sci_controls`.
 - [ ] Add `TokenKind::SciSystem` and `TokenKind::SciSubCompartment`. Audit whether `TokenKind::SciCompartment` exists already; if so, reuse; if not, add it.
-- [ ] Re-export new types from `crates/marque-ism/src/lib.rs`.
+- [ ] Re-export new types from `crates/ism/src/lib.rs`.
 - [ ] Derive `SciControlBare` from the CVE at build time (per QA review: the 2016 manual publishes only 4 systems, the 2022 CVE has 7 — the recognition set must follow the live CVE, not a hardcoded list). `build.rs` emits a `SciControlBare` enum containing every CVE value whose text contains no `-`. Provides a `fn is_bare_cve_value(s: &str) -> bool` helper for the structural anchor check.
 - [ ] `cargo check --workspace` green with no changes to `marque-core` or `marque-capco` consumers yet (P2 wires them).
 
@@ -73,7 +73,7 @@ Phase layout mirrors `specs/002-sar-implementation/tasks.md`. Each phase is one 
 
 - [ ] `CLAUDE.md`: SCI subsection under Architecture mentioning the hybrid CVE + structural approach and the `sci_markings` field. Bump rule count.
 - [ ] `README.md`: update rule count + add SCI mention to features.
-- [ ] `crates/marque-ism/README.md`: migration note (non-breaking; `sci_markings` is additive).
+- [ ] `crates/ism/README.md`: migration note (non-breaking; `sci_markings` is additive).
 
 ## Coordination with SAR branch
 

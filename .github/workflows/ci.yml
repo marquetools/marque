@@ -80,11 +80,11 @@ jobs:
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
 
       - name: wasm-pack build
-        run: wasm-pack build crates/marque-wasm --target web --release
+        run: wasm-pack build crates/wasm --target web --release
       
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
         with:
-          file: crates/marque-wasm/pkg/*.wasm
+          file: crates/wasm/pkg/*.wasm
           options: >-
             --enable-bulk-memory-opt
             --enable-bulk-memory

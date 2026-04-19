@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Mark ODNI ISM schemas as vendored so GitHub classifies the repo as Rust, not XSLT.
-crates/marque-ism/schemas/** linguist-vendored
+crates/ism/schemas/** linguist-vendored

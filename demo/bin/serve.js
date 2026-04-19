@@ -16,7 +16,7 @@
  * WASM routing:
  *   /wasm/* is resolved in priority order:
  *     1. <demo-root>/wasm/          (pre-built, ships inside the npm package)
- *     2. <repo-root>/crates/marque-wasm/pkg/  (local monorepo dev build)
+ *     2. <repo-root>/crates/wasm/pkg/  (local monorepo dev build)
  *
  * No external npm dependencies — uses only Node.js built-ins.
  */
@@ -55,7 +55,7 @@ const DEMO_ROOT = path.resolve(__dirname, '..');
 const BUNDLED_WASM_ROOT = path.join(DEMO_ROOT, 'wasm');
 
 // In the monorepo dev tree, WASM lives two levels up in the rust workspace.
-const MONOREPO_WASM_ROOT = path.resolve(DEMO_ROOT, '..', 'crates', 'marque-wasm', 'pkg');
+const MONOREPO_WASM_ROOT = path.resolve(DEMO_ROOT, '..', 'crates', 'wasm', 'pkg');
 
 function resolveWasmRoot() {
   if (fs.existsSync(path.join(BUNDLED_WASM_ROOT, 'marque_wasm.js'))) {
@@ -105,7 +105,7 @@ function handleRequest(req, res) {
       res.end(
         'WASM module not found.\n\n' +
         'If running from the marque monorepo, build it first:\n' +
-        '  wasm-pack build crates/marque-wasm --target web --profile release-wasm\n\n' +
+        '  wasm-pack build crates/wasm --target web --profile release-wasm\n\n' +
         'If running from an npm install, the package may be incomplete.\n'
       );
       return;
@@ -167,7 +167,7 @@ server.listen(port, '127.0.0.1', () => {
   if (!wasmRoot) {
     console.warn('  \x1b[33m⚠\x1b[0m  WASM module not found — lint/fix features will be unavailable.');
     console.warn('     Build it with:');
-    console.warn('       wasm-pack build crates/marque-wasm --target web --profile release-wasm');
+    console.warn('       wasm-pack build crates/wasm --target web --profile release-wasm');
     console.warn('');
   }
 
