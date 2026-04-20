@@ -237,6 +237,23 @@ mod tests {
     }
 
     #[test]
+    fn union_empty_slice() {
+        assert_eq!(reduce_union::<&str>(&[]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn union_no_duplicates() {
+        let v = reduce_union(&["SI", "TK", "HCS"]);
+        assert_eq!(v, vec!["SI", "TK", "HCS"]);
+    }
+
+    #[test]
+    fn union_all_duplicates() {
+        let v = reduce_union(&["SI", "SI", "SI"]);
+        assert_eq!(v, vec!["SI"]);
+    }
+
+    #[test]
     fn intersect_returns_common_subset() {
         let a = vec!["USA", "GBR", "CAN"];
         let b = vec!["USA", "GBR", "DEU"];
