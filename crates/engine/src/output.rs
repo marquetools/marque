@@ -58,3 +58,30 @@ pub struct FixResult {
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_rules::{Diagnostic, RuleId, Severity};
+    use marque_core::Span;
+
+    #[test]
+    fn test_is_clean() {
+        let clean_result = LintResult {
+            diagnostics: vec![],
+        };
+        assert!(clean_result.is_clean());
+
+        let dirty_result = LintResult {
+            diagnostics: vec![Diagnostic::new(
+                RuleId::new("E001"),
+                Severity::Error,
+                Span::new(0, 0),
+                "test",
+                "test",
+                None,
+            )],
+        };
+        assert!(!dirty_result.is_clean());
+    }
+}
