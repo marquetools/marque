@@ -174,12 +174,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p sbom-output
-          cargo cyclonedx --format json --output-cdx \
-            > sbom-output/marque-sbom.cdx.json 2>/dev/null || true
 
-          # Also generate a per-crate top-level SBOM
-          cargo cyclonedx --format xml --output-cdx \
-            > sbom-output/marque-sbom.cdx.xml 2>/dev/null || true
+          echo "Generating CycloneDX JSON SBOM…"
+          if ! cargo cyclonedx --format json --output-cdx > sbom-output/marque-sbom.cdx.json 2>&1; then
+            echo "::warning::CycloneDX JSON generation failed — see output above"
+          fi
+
+          echo "Generating CycloneDX XML SBOM…"
+          if ! cargo cyclonedx --format xml --output-cdx > sbom-output/marque-sbom.cdx.xml 2>&1; then
+            echo "::warning::CycloneDX XML generation failed — see output above"
+          fi
 
           echo "✅ CycloneDX SBOMs generated"
           ls -la sbom-output/
