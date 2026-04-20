@@ -94,10 +94,7 @@ The following are in scope for security reports:
 - Dependabot monitors Cargo, npm, and GitHub Actions dependencies
 - CodeQL runs on every PR and weekly for Rust, Python, and Actions
 - `Cargo.lock` is committed for reproducible builds
-- SBOM generation (CycloneDX + SPDX) is produced with every release for government compliance
-- WASM artifacts include SRI (Subresource Integrity) hashes for distribution verification
-- `cargo-vet` audits third-party crate trust alongside `cargo-deny`
-- Periodic supply chain reviews monitor transitive dependency author changes
+- SBOM generation and publication in multiple formats is planned for future releases
 - `deny.toml` blocks non-crates.io registry sources and git dependencies
 - We have multiple other routine security scans and efforts to proactively identify vulnerabilities or weaknesses.
 - We actively seek to keep dependencies fresh and updated, and continually re-evaluate for better-maintained or more secure alternatives.
