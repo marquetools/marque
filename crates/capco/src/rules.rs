@@ -47,8 +47,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem,
-    SciMarking, Span, TokenKind, TokenSpan,
+    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
+    Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
