@@ -233,10 +233,19 @@ impl Lattice for SciSet {
         let mut out = Self::empty();
         for (sys, comp_map) in &self.systems {
             let Some(other_comps) = other.systems.get(sys) else {
+                // System absent from other operand: drop (§3.3a policy (b) —
+                // system must appear at the shared depth 0).
                 continue;
             };
+            // Intersect compartments. Missing compartments on either side
+            // are dropped; the system itself survives because it's at the
+            // shared depth (both operands contain it). That gives:
+            //   - `SI ⊓ SI-G = SI`     (non-shared compartments drop)
+            //   - `SI-G ⊓ SI-H = SI`   (both have compartments but they
+            //                           disagree — compartments drop,
+            //                           bare system survives)
+            //   - `SI-G A ⊓ SI-G B = SI-G` (compartment survives, subs drop)
             let mut out_comps: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-            // Intersect compartments.
             for (cid, subs) in comp_map {
                 let Some(other_subs) = other_comps.get(cid) else {
                     continue;
@@ -244,16 +253,7 @@ impl Lattice for SciSet {
                 let common: BTreeSet<String> = subs.intersection(other_subs).cloned().collect();
                 out_comps.insert(cid.clone(), common);
             }
-            if !out_comps.is_empty() || other_comps.is_empty() || comp_map.is_empty() {
-                // Preserve bare-system entries on either side so
-                // `SI ⊓ SI-G = SI`: no compartments common, but both
-                // sides contain the bare system SI. If both sides have
-                // any compartments under the system and they disagree
-                // entirely, the system still survives as a bare entry
-                // because it's at the shared depth — matching
-                // policy (b).
-                out.systems.insert(sys.clone(), out_comps);
-            }
+            out.systems.insert(sys.clone(), out_comps);
         }
         out
     }
@@ -638,6 +638,31 @@ mod tests {
         let m = a.meet(&b);
         let out = m.to_markings();
         assert_eq!(out.len(), 1);
+        assert!(out[0].compartments.is_empty());
+    }
+
+    #[test]
+    fn sci_set_meet_disagreeing_compartments_preserves_bare_system() {
+        // §3.3a policy (b): `SI-G ABCD ⊓ SI-H DEFG = SI` (bare system
+        // survives because both sides contain SI at depth 0; the
+        // compartments disagree so they drop). Regression test against a
+        // prior implementation that silently dropped the system entirely
+        // when both sides had disagreeing non-empty compartment maps.
+        let a = SciSet::from_markings(&[mk_sci(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![("G", vec!["ABCD"])],
+        )]);
+        let b = SciSet::from_markings(&[mk_sci(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![("H", vec!["DEFG"])],
+        )]);
+        let m = a.meet(&b);
+        let out = m.to_markings();
+        assert_eq!(out.len(), 1);
+        assert!(matches!(
+            &out[0].system,
+            SciControlSystem::Published(SciControlBare::Si)
+        ));
         assert!(out[0].compartments.is_empty());
     }
 
