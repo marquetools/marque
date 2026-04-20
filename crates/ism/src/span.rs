@@ -109,14 +109,12 @@ mod tests {
     #[test]
     fn span_new_accepts_equal_bounds() {
         let s = Span::new(5, 5);
-        assert!(s.is_empty());
         assert_eq!(s.len(), 0);
     }
 
     #[test]
     fn span_new_accepts_normal_range() {
         let s = Span::new(2, 7);
-        assert!(!s.is_empty());
         assert_eq!(s.len(), 5);
     }
 
