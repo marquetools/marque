@@ -1,5 +1,6 @@
 {
   "name": "@marque/marque-demo",
+  "private": true,
   "version": "0.1.0",
   "description": "Interactive CAPCO classification-marking demo powered by marque-wasm. Lint and auto-fix classification markings in real time.",
   "keywords": [
