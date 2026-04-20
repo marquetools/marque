@@ -367,7 +367,10 @@ fn hard_fail_env_threshold_not_a_float() {
 
     let result = marque_config::load_with_env(
         &dir,
-        [("MARQUE_CONFIDENCE_THRESHOLD".to_owned(), "bananas".to_owned())],
+        [(
+            "MARQUE_CONFIDENCE_THRESHOLD".to_owned(),
+            "bananas".to_owned(),
+        )],
     );
 
     let err = result.unwrap_err();
@@ -421,10 +424,8 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(
-        &dir,
-        [("MARQUE_CLASSIFIER_ID".to_owned(), "".to_owned())],
-    );
+    let config =
+        marque_config::load_with_env(&dir, [("MARQUE_CLASSIFIER_ID".to_owned(), "".to_owned())]);
 
     let config = config.expect("load should succeed");
     assert_eq!(

@@ -426,11 +426,13 @@ where
                 }
             }
             "MARQUE_CONFIDENCE_THRESHOLD" => {
-                let threshold = value.parse::<f32>().map_err(|_| ConfigError::InvalidEnvVar {
-                    var: "MARQUE_CONFIDENCE_THRESHOLD",
-                    raw: value,
-                    reason: "expected a floating-point number in [0.0, 1.0]",
-                })?;
+                let threshold = value
+                    .parse::<f32>()
+                    .map_err(|_| ConfigError::InvalidEnvVar {
+                        var: "MARQUE_CONFIDENCE_THRESHOLD",
+                        raw: value,
+                        reason: "expected a floating-point number in [0.0, 1.0]",
+                    })?;
                 config.set_confidence_threshold(threshold)?;
             }
             _ => {}
