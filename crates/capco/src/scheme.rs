@@ -183,9 +183,10 @@ impl Lattice for CapcoMarking {
 // than in `marque-scheme` because the variant payloads reference
 // `S::Token` and `S::Marking` and each scheme has to project those
 // onto its concrete storage. The `CategoryPredicate::Custom` /
-// `CategoryAction::Custom` variants skip this dispatch and the
-// rewrite author supplies the closure directly — §7a's NOFORN rewrite
-// takes that path since it's cross-category.
+// `CategoryAction::Custom` variants still skip this dispatch and let
+// the rewrite author supply the closure directly, but cross-category
+// rewrites such as CAPCO's NOFORN rule are also supported in
+// declarative form here.
 
 /// `CategoryPredicate::Contains { category, token }` evaluator.
 ///
@@ -912,8 +913,8 @@ impl CapcoScheme {
     /// Test-only constructor that lets tests install arbitrary
     /// `PageRewrite` entries, exercising the declarative dispatch
     /// path (`CategoryPredicate::Contains` / `Empty`,
-    /// `CategoryAction::Clear` / `Replace`) that's bypassed by the
-    /// default scheme's `Custom`-based NOFORN rewrite.
+    /// `CategoryAction::Clear` / `Replace`) with test-provided
+    /// rewrites.
     pub(crate) fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
         Self {
             categories: Self::build_categories(),
