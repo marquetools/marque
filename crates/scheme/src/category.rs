@@ -257,6 +257,25 @@ mod tests {
     }
 
     #[test]
+    fn intersect_single_set_returns_itself() {
+        let a = vec!["USA", "GBR"];
+        assert_eq!(reduce_intersect(std::slice::from_ref(&a)), a);
+    }
+
+    #[test]
+    fn intersect_identical_sets() {
+        let a = vec!["USA", "GBR"];
+        assert_eq!(reduce_intersect(&[a.clone(), a.clone(), a.clone()]), a);
+    }
+
+    #[test]
+    fn intersect_with_empty_set_returns_empty() {
+        let a = vec!["USA", "GBR"];
+        let b = Vec::<&str>::new();
+        assert_eq!(reduce_intersect(&[a, b]), Vec::<&str>::new());
+    }
+
+    #[test]
     fn supersession_drops_superseded_when_superseding_present() {
         // Model: NOFORN (1) supersedes REL TO (2). Union result contains
         // both, so the superseded REL TO is dropped.
