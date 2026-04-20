@@ -239,7 +239,14 @@ mod tests {
 
     #[test]
     fn union_empty_slice() {
-        assert_eq!(reduce_union::<&str>(&[]), Vec::<&str>::new());
+        let v: Vec<&str> = reduce_union(&[]);
+        assert_eq!(v, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn union_single_element() {
+        let v = reduce_union(&["SI"]);
+        assert_eq!(v, vec!["SI"]);
     }
 
     #[test]
@@ -250,8 +257,14 @@ mod tests {
 
     #[test]
     fn union_all_duplicates() {
-        let v = reduce_union(&["SI", "SI", "SI"]);
-        assert_eq!(v, vec!["SI"]);
+        let v = reduce_union(&["TK", "TK", "TK"]);
+        assert_eq!(v, vec!["TK"]);
+    }
+
+    #[test]
+    fn union_no_duplicates_preserves_order() {
+        let v = reduce_union(&["A", "B", "A", "C"]);
+        assert_eq!(v, vec!["A", "B", "C"]);
     }
 
     #[test]
