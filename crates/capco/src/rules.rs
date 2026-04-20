@@ -47,8 +47,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
-    Span, TokenKind, TokenSpan, sar_sort_key,
+    sar_sort_key, ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem,
+    SciMarking, Span, TokenKind, TokenSpan,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -3698,8 +3698,9 @@ impl Rule for SciBannerRollupRule {
                             None => {
                                 let comp_id = exp_comp.identifier.as_ref();
                                 let suffix = " (compartment missing from banner)";
-                                let mut s =
-                                    String::with_capacity(exp_key.len() + 1 + comp_id.len() + suffix.len());
+                                let mut s = String::with_capacity(
+                                    exp_key.len() + 1 + comp_id.len() + suffix.len(),
+                                );
                                 s.push_str(exp_key);
                                 s.push('-');
                                 s.push_str(comp_id);
