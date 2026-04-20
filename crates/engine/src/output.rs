@@ -66,12 +66,15 @@ mod tests {
     use marque_rules::{Diagnostic, RuleId, Severity};
 
     #[test]
-    fn test_is_clean() {
+    fn is_clean_returns_true_when_no_diagnostics() {
         let clean_result = LintResult {
             diagnostics: vec![],
         };
         assert!(clean_result.is_clean());
+    }
 
+    #[test]
+    fn is_clean_returns_false_when_has_diagnostics() {
         let dirty_result = LintResult {
             diagnostics: vec![Diagnostic::new(
                 RuleId::new("E001"),
