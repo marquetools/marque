@@ -146,4 +146,16 @@ mod tests {
         let s = Span::new(0, 3);
         assert_eq!(s.as_str(buf).unwrap(), "abc");
     }
+
+    #[test]
+    fn span_is_empty_returns_true_when_bounds_are_equal() {
+        let s = Span::new(42, 42);
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn span_is_empty_returns_false_when_bounds_differ() {
+        let s = Span::new(42, 43);
+        assert!(!s.is_empty());
+    }
 }
