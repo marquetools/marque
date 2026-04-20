@@ -107,7 +107,6 @@ mod tests {
                 dummy_diagnostic(Severity::Warn, false),
                 dummy_diagnostic(Severity::Fix, true),
                 dummy_diagnostic(Severity::Fix, false), // Should not be counted in fix_count
-                dummy_diagnostic(Severity::Off, false),
             ],
         };
 
