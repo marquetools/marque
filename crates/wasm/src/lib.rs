@@ -604,7 +604,7 @@ pub fn generate_cab_native(
     let mut found_declass_exemption: Option<String> = None;
 
     for candidate in &candidates {
-        if let Ok(mut parsed) = parser.parse(candidate, text.as_bytes()) {
+        if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
             if found_declass_date.is_none() {
                 if let Some(date) = &parsed.attrs.declassify_on {
                     found_declass_date = Some(date.to_string());
@@ -616,7 +616,7 @@ pub fn generate_cab_native(
                 }
             }
             if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(std::mem::take(&mut parsed.attrs));
+                page_context.add_portion(parsed.attrs);
             }
         }
     }

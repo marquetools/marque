@@ -441,3 +441,42 @@ fn lint_batch_invalid_json_returns_error() {
     let result = marque_wasm::lint_batch_native("not json", None);
     assert!(result.is_err());
 }
+
+// ---------------------------------------------------------------------------
+// generate_cab
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_generate_cab_basic() {
+    let text = "(S//NF) This is secret.\n(TS//SI//REL TO USA, GBR) This is top secret.";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Classified By: Derivative Classifier"));
+    assert!(cab.contains("Derived From: Multiple Sources"));
+    assert!(cab.contains("Declassify On:"));
+    // Since TS is present, it's definitely classified.
+}
+
+#[test]
+fn test_generate_cab_with_explicit_declass() {
+    let text = "(S//NF//20401231) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 20401231"));
+}
+
+#[test]
+fn test_generate_cab_unclassified_empty() {
+    let text = "(U) Unclassified portion";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert_eq!(cab, "");
+}
+
+// ---------------------------------------------------------------------------
+// compute_banner
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compute_banner_basic() {
+    let text = "(S//NF) Portion 1\n(TS//SI//NF) Portion 2";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
+    assert_eq!(banner, "TOP SECRET//SI//NOFORN");
+}

@@ -220,15 +220,6 @@ struct CapcoConfigFile {
 ///
 /// Hard-fail validators run after merging all layers.
 pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
-    load_with_env(start, std::env::vars())
-}
-
-/// Load and merge configuration from standard locations, using the provided
-/// environment variables instead of `std::env::vars()`.
-pub fn load_with_env<I>(start: &std::path::Path, env: I) -> Result<Config, ConfigError>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
     let mut config = Config::default();
 
     // Layer 1+2: walk upward for the project config.
@@ -264,7 +255,7 @@ where
     }
 
     // Layer 3: environment variables
-    apply_env_from_iter(&mut config, env)?;
+    apply_env(&mut config)?;
 
     // T023: validate schema version (FR-011)
     validate_schema_version(&config)?;
@@ -278,18 +269,6 @@ where
 /// config; the local-config search still applies, only in the directory
 /// containing the supplied path."
 pub fn load_with_explicit_config(project_config: &std::path::Path) -> Result<Config, ConfigError> {
-    load_with_explicit_config_and_env(project_config, std::env::vars())
-}
-
-/// Load configuration from an explicit `.marque.toml` path, using the provided
-/// environment variables instead of `std::env::vars()`.
-pub fn load_with_explicit_config_and_env<I>(
-    project_config: &std::path::Path,
-    env: I,
-) -> Result<Config, ConfigError>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
     let mut config = Config::default();
 
     // Layer 1: explicit project config — required to exist.
@@ -321,7 +300,7 @@ where
         }
     }
 
-    apply_env_from_iter(&mut config, env)?;
+    apply_env(&mut config)?;
     validate_schema_version(&config)?;
     Ok(config)
 }
@@ -404,33 +383,24 @@ fn merge_user_into(config: &mut Config, file: ConfigFile) {
     }
 }
 
-fn apply_env_from_iter<I>(config: &mut Config, vars: I) -> Result<(), ConfigError>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
+fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     // L-2 parity: apply the same non-empty guard as merge_user_into so that
     // `MARQUE_CLASSIFIER_ID=""` does not silently overwrite a populated
     // local-config value with an empty string.
-    //
+    if let Ok(id) = std::env::var("MARQUE_CLASSIFIER_ID") {
+        if !id.trim().is_empty() {
+            config.user.classifier_id = Some(id);
+        }
+    }
     // C-2: propagate parse failures. `MARQUE_CONFIDENCE_THRESHOLD=0.9o` must
     // hard-fail, not silently apply the default.
-    for (key, value) in vars {
-        match key.as_str() {
-            "MARQUE_CLASSIFIER_ID" if !value.trim().is_empty() => {
-                config.user.classifier_id = Some(value);
-            }
-            "MARQUE_CONFIDENCE_THRESHOLD" => {
-                let threshold = value
-                    .parse::<f32>()
-                    .map_err(|_| ConfigError::InvalidEnvVar {
-                        var: "MARQUE_CONFIDENCE_THRESHOLD",
-                        raw: value,
-                        reason: "expected a floating-point number in [0.0, 1.0]",
-                    })?;
-                config.set_confidence_threshold(threshold)?;
-            }
-            _ => {}
-        }
+    if let Ok(raw) = std::env::var("MARQUE_CONFIDENCE_THRESHOLD") {
+        let threshold = raw.parse::<f32>().map_err(|_| ConfigError::InvalidEnvVar {
+            var: "MARQUE_CONFIDENCE_THRESHOLD",
+            raw: raw.clone(),
+            reason: "expected a floating-point number in [0.0, 1.0]",
+        })?;
+        config.set_confidence_threshold(threshold)?;
     }
     // MARQUE_LOG is handled by the tracing subscriber, not by config loading.
     Ok(())

@@ -15,6 +15,7 @@
 use marque_config::ConfigError;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 /// Create a unique tempdir with a process-id + test-name discriminator.
 fn make_tmpdir(name: &str) -> PathBuf {
@@ -26,6 +27,51 @@ fn make_tmpdir(name: &str) -> PathBuf {
 
 /// The compiled schema version — config files must use this to pass FR-011.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
+
+/// Global mutex serializing all env-var access in this test binary.
+///
+/// Environment variables are process-global state. Tests within the same
+/// integration-test binary can run in parallel, so without serialization
+/// one test's `set_var` can race with another test's `load()` call.
+/// Every test that calls `marque_config::load()` must hold this lock —
+/// not just tests that set env vars — because `load()` reads env vars
+/// internally (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`).
+///
+/// **Scope**: this mutex serializes threads within this test binary only.
+/// Different integration-test binaries are separate OS processes, each
+/// with their own copy of this static. Cross-binary races are impossible
+/// because each process has its own environment. If a future test file
+/// in this crate also touches env vars, it needs its own mutex or must
+/// be merged into this file.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+/// RAII guard: saves the previous value of `var`, sets it to `value`,
+/// and restores the original on drop. Caller must hold `ENV_MUTEX`.
+struct EnvGuard {
+    var: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(var: &'static str, value: &str) -> Self {
+        let previous = std::env::var(var).ok();
+        // SAFETY: single-threaded access is ensured by the caller holding ENV_MUTEX.
+        unsafe { std::env::set_var(var, value) };
+        Self { var, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: single-threaded access is ensured by the caller holding ENV_MUTEX.
+        unsafe {
+            match &self.previous {
+                Some(v) => std::env::set_var(self.var, v),
+                None => std::env::remove_var(self.var),
+            }
+        }
+    }
+}
 
 // -----------------------------------------------------------------------
 // T052: Four-layer precedence chain
@@ -48,7 +94,8 @@ E001 = "warn"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(
         config.rules.overrides.get("E001"),
         Some(&"warn".to_owned()),
@@ -75,7 +122,8 @@ SECERT = "SECRET"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(config.corrections.get("SERCET"), Some(&"SECRET".to_owned()));
     assert_eq!(config.corrections.get("SECERT"), Some(&"SECRET".to_owned()));
     let _ = fs::remove_dir_all(&dir);
@@ -91,7 +139,8 @@ fn layer1_project_config_sets_confidence_threshold() {
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert!((config.confidence_threshold() - 0.8).abs() < f32::EPSILON);
     let _ = fs::remove_dir_all(&dir);
 }
@@ -118,7 +167,8 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(config.user.classifier_id.as_deref(), Some("LOCAL-42"));
     let _ = fs::remove_dir_all(&dir);
 }
@@ -145,10 +195,10 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(
-        &dir,
-        [("MARQUE_CLASSIFIER_ID".to_owned(), "ENV-99".to_owned())],
-    );
+    // Serialize env-var access so parallel test threads don't race.
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CLASSIFIER_ID", "ENV-99");
+    let config = marque_config::load(&dir);
 
     let config = config.expect("load should succeed");
     assert_eq!(
@@ -168,10 +218,9 @@ fn layer3_env_overrides_project_config_threshold() {
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(
-        &dir,
-        [("MARQUE_CONFIDENCE_THRESHOLD".to_owned(), "0.5".to_owned())],
-    );
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "0.5");
+    let config = marque_config::load(&dir);
 
     let config = config.expect("load should succeed");
     assert!(
@@ -187,7 +236,8 @@ fn defaults_when_no_config_files() {
     let dir = make_tmpdir("defaults");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed with defaults");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed with defaults");
     assert!(config.rules.overrides.is_empty());
     assert!(config.corrections.is_empty());
     assert!((config.confidence_threshold() - 0.95).abs() < f32::EPSILON);
@@ -218,7 +268,8 @@ classifier_id = ""
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert!(
         config.user.classifier_id.is_none(),
         "empty classifier_id should be treated as not set"
@@ -256,7 +307,8 @@ E001 = "off"
     )
     .unwrap();
 
-    let config = marque_config::load_with_env(&dir, []).expect("load should succeed");
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config = marque_config::load(&dir).expect("load should succeed");
     assert_eq!(
         config.rules.overrides.get("E001"),
         Some(&"error".to_owned()),
@@ -286,7 +338,8 @@ classifier_id = "LEAKED-42"
     )
     .unwrap();
 
-    let err = marque_config::load_with_env(&dir, []).unwrap_err();
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::UserSectionInCommitted { .. }),
         "expected UserSectionInCommitted, got: {err:?}"
@@ -307,7 +360,8 @@ version = "ISM-v1999-WRONG"
     )
     .unwrap();
 
-    let err = marque_config::load_with_env(&dir, []).unwrap_err();
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::SchemaVersionMismatch { .. }),
         "expected SchemaVersionMismatch, got: {err:?}"
@@ -325,7 +379,8 @@ fn hard_fail_threshold_out_of_range() {
     )
     .unwrap();
 
-    let err = marque_config::load_with_env(&dir, []).unwrap_err();
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::ThresholdOutOfRange { .. }),
         "expected ThresholdOutOfRange, got: {err:?}"
@@ -351,7 +406,8 @@ E001 = "err"
     )
     .unwrap();
 
-    let err = marque_config::load_with_env(&dir, []).unwrap_err();
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let err = marque_config::load(&dir).unwrap_err();
     assert!(
         matches!(err, ConfigError::UnknownSeverity { .. }),
         "expected UnknownSeverity, got: {err:?}"
@@ -365,13 +421,9 @@ fn hard_fail_env_threshold_not_a_float() {
     let dir = make_tmpdir("hf-env-parse");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
-    let result = marque_config::load_with_env(
-        &dir,
-        [(
-            "MARQUE_CONFIDENCE_THRESHOLD".to_owned(),
-            "bananas".to_owned(),
-        )],
-    );
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "bananas");
+    let result = marque_config::load(&dir);
 
     let err = result.unwrap_err();
     assert!(
@@ -388,10 +440,9 @@ fn hard_fail_env_threshold_nan() {
     let dir = make_tmpdir("hf-env-nan");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
-    let result = marque_config::load_with_env(
-        &dir,
-        [("MARQUE_CONFIDENCE_THRESHOLD".to_owned(), "NaN".to_owned())],
-    );
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CONFIDENCE_THRESHOLD", "NaN");
+    let result = marque_config::load(&dir);
 
     let err = result.unwrap_err();
     assert!(
@@ -424,8 +475,9 @@ classifier_id = "LOCAL-42"
     )
     .unwrap();
 
-    let config =
-        marque_config::load_with_env(&dir, [("MARQUE_CLASSIFIER_ID".to_owned(), "".to_owned())]);
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set("MARQUE_CLASSIFIER_ID", "");
+    let config = marque_config::load(&dir);
 
     let config = config.expect("load should succeed");
     assert_eq!(

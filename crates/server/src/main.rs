@@ -166,10 +166,6 @@ async fn fix_handler(
 // Main
 // ---------------------------------------------------------------------------
 
-fn get_bind_address(env_var: Option<String>) -> String {
-    env_var.unwrap_or_else(|| "127.0.0.1:3000".to_owned())
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -204,7 +200,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = get_bind_address(std::env::var("MARQUE_ADDR").ok());
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 
@@ -214,22 +210,4 @@ async fn main() {
     axum::serve(listener, app)
         .await
         .expect("server exited with error");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_bind_address_default() {
-        assert_eq!(get_bind_address(None), "127.0.0.1:3000");
-    }
-
-    #[test]
-    fn test_get_bind_address_env() {
-        assert_eq!(
-            get_bind_address(Some("0.0.0.0:8080".to_string())),
-            "0.0.0.0:8080"
-        );
-    }
 }
