@@ -29,7 +29,7 @@ Endpoints documented elsewhere as planned but not yet implemented: `/v1/metadata
 
 ```bash
 cargo run -p marque-server
-# binds 127.0.0.1:3000 by default
+# binds 0.0.0.0:3000 by default
 ```
 
 Override the bind address:
@@ -42,7 +42,7 @@ MARQUE_ADDR=127.0.0.1:8080 cargo run -p marque-server
 
 | Variable | Effect |
 |----------|--------|
-| `MARQUE_ADDR` | Bind address. Defaults to `127.0.0.1:3000`. |
+| `MARQUE_ADDR` | Bind address. Defaults to `0.0.0.0:3000`. |
 | `MARQUE_LOG` | Tracing filter, e.g. `marque=debug` or `marque=trace`. |
 | `MARQUE_CLASSIFIER_ID` | Classifier identity injected into audit records emitted by `/v1/fix`. |
 | `MARQUE_CONFIDENCE_THRESHOLD` | Minimum fix confidence to auto-apply. |
