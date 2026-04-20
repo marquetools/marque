@@ -107,10 +107,6 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-fn get_default_addr() -> String {
-    std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
-}
-
 async fn schema_version() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "version": marque_capco::SCHEMA_VERSION }))
 }
@@ -205,7 +201,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = get_default_addr();
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 
@@ -216,6 +212,8 @@ async fn main() {
         .await
         .expect("server exited with error");
 }
+<<<<<<< add-span-as-slice-tests-18118776497861755945
+=======
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -228,3 +226,4 @@ mod tests {
         assert_eq!(addr, "127.0.0.1:3000");
     }
 }
+>>>>>>> main
