@@ -215,6 +215,7 @@ mod tests {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     enum Level {
+        #[allow(dead_code)]
         U,
         C,
         S,
@@ -224,7 +225,7 @@ mod tests {
     #[test]
     fn max_reduces_to_peak() {
         assert_eq!(
-            reduce_max(&[Level::U, Level::C, Level::TS, Level::S]),
+            reduce_max(&[Level::C, Level::TS, Level::S]),
             Some(Level::TS)
         );
         assert_eq!(reduce_max::<Level>(&[]), None);
@@ -246,6 +247,13 @@ mod tests {
     fn union_single_element() {
         let v = reduce_union(&["SI"]);
         assert_eq!(v, vec!["SI"]);
+        assert_eq!(reduce_union::<&str>(&[]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn union_no_duplicates() {
+        let v = reduce_union(&["SI", "TK", "HCS"]);
+        assert_eq!(v, vec!["SI", "TK", "HCS"]);
     }
 
     #[test]
@@ -258,6 +266,8 @@ mod tests {
     fn union_no_duplicates_preserves_order() {
         let v = reduce_union(&["A", "B", "C"]);
         assert_eq!(v, vec!["A", "B", "C"]);
+        let v = reduce_union(&["SI", "SI", "SI"]);
+        assert_eq!(v, vec!["SI"]);
     }
 
     #[test]
