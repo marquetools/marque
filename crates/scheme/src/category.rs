@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn intersect_single_set_returns_itself() {
         let a = vec!["USA", "GBR"];
-        assert_eq!(reduce_intersect(&[a.clone()]), a);
+        assert_eq!(reduce_intersect(std::slice::from_ref(&a)), a);
     }
 
     #[test]
