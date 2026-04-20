@@ -103,6 +103,7 @@ pub enum DocumentPosition {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
@@ -164,5 +165,28 @@ mod tests {
     fn span_is_empty_returns_false_when_bounds_differ() {
         let s = Span::new(42, 43);
         assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn as_slice_returns_bytes_when_in_bounds() {
+        let buf = b"hello";
+        let s = Span::new(1, 4);
+        assert_eq!(s.as_slice(buf), b"ell");
+    }
+
+    #[test]
+    #[should_panic]
+    fn as_slice_panics_when_end_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(2, 100);
+        let _ = s.as_slice(buf);
+    }
+
+    #[test]
+    #[should_panic]
+    fn as_slice_panics_when_start_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(100, 101);
+        let _ = s.as_slice(buf);
     }
 }

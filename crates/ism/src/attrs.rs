@@ -1005,7 +1005,7 @@ impl std::fmt::Display for NonIcDissem {
 /// (AUSTRALIA_GROUP). These are present in the CVE TRIGRAPHS list but cannot
 /// be represented by this type's 3-byte constraint. A broader `CountryCode`
 /// type is planned for a future version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Trigraph([u8; 3]);
 
 impl Trigraph {
@@ -1143,6 +1143,7 @@ impl SciCompartment {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

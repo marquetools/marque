@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-rules — trait definitions for the marque rule system.
 //!
@@ -368,6 +369,7 @@ pub trait RuleSet: Send + Sync {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

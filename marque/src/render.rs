@@ -432,6 +432,7 @@ pub fn label_for(path: Option<&Path>) -> String {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::Span;

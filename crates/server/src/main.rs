@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-server — REST microservice exposing marque as an API.
 //!
@@ -211,3 +212,18 @@ async fn main() {
         .await
         .expect("server exited with error");
 }
+<<<<<<< add-span-as-slice-tests-18118776497861755945
+=======
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_default_addr_no_env() {
+        let addr = get_default_addr();
+        assert_eq!(addr, "127.0.0.1:3000");
+    }
+}
+>>>>>>> main
