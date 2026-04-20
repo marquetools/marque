@@ -52,13 +52,21 @@ const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
 
 #[cfg_attr(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")), global_allocator)]
 #[cfg(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")))]
-static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(unsafe {
-    static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>()
-        + INITIAL_HEAP_EXTRA_BYTES] =
-        [0; min_first_heap_size::<DefaultBinning>() + INITIAL_HEAP_EXTRA_BYTES];
+static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(
+    // SAFETY: `INITIAL_HEAP` is a private static buffer used only to seed the
+    // global allocator during this one-time initialization. We pass a raw
+    // mutable pointer with `&raw mut`, so no Rust reference is created, and the
+    // buffer is handed off to Talc for allocator-managed access. This module
+    // does not access `INITIAL_HEAP` anywhere else, so there are no competing
+    // aliases to the storage after the claim is created.
+    unsafe {
+        static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>()
+            + INITIAL_HEAP_EXTRA_BYTES] =
+            [0; min_first_heap_size::<DefaultBinning>() + INITIAL_HEAP_EXTRA_BYTES];
 
-    Claim::array(&raw mut INITIAL_HEAP)
-});
+        Claim::array(&raw mut INITIAL_HEAP)
+    },
+);
 
 // ---------------------------------------------------------------------------
 // WASM-compatible clock — Date.now() via wasm_bindgen extern
