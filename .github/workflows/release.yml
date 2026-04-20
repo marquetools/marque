@@ -31,14 +31,6 @@ jobs:
   release:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    # Supply chain audit A4: the "cargo" environment MUST have the following
-    # protection rules configured in GitHub Settings → Environments (or via
-    # the GitHub REST API / IaC tooling like Terraform):
-    #   1. Required reviewers — at least one maintainer must approve deployments
-    #   2. Deployment branches — restrict to "main" only
-    #   3. Wait timer — consider a brief delay (e.g. 5 min) as a cooldown
-    # These settings cannot be declared in this workflow file; configure them
-    # in the GitHub UI or via the Environments API.
     environment: cargo
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -61,91 +53,19 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - uses: rust-lang/crates-io-auth-action@690dd5e909dcf75da4e0e1c9737a477826b70387
         id: auth
-
-      # ── Supply chain audit G3: per-crate error handling ───────────
-      # Publish crates one-by-one in dependency order so a mid-sequence
-      # failure stops immediately, leaving a clear record of which crates
-      # were published. This prevents the ecosystem from ending up in an
-      # inconsistent state where some crates reference versions that were
-      # never published.
       - name: Publish crates
         env:
             CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-
-          CRATES=(
-            marque-ism
-            marque-rules
-            marque-core
-            marque-config
-            marque-extract
-            marque-capco
-            marque-engine
-            marque-wasm
-            marque-server
-            marque
-          )
-          PUBLISHED=()
-
-          publish_crate() {
-            local crate="$1"
-            local max_retries=2
-            local attempt=0
-
-            while [ $attempt -lt $max_retries ]; do
-              attempt=$((attempt + 1))
-              echo "::group::Publishing ${crate} (attempt ${attempt}/${max_retries})"
-
-              FLAGS="--bump ${{ inputs.bump }} --no-changelog"
-              if [ "${{ inputs.dry-run }}" = "true" ]; then
-                FLAGS="${FLAGS} --dry-run-cargo-publish"
-              fi
-
-              if cargo smart-release -u --execute ${FLAGS} "${crate}"; then
-                echo "::endgroup::"
-                echo "✅ ${crate} published successfully"
-                PUBLISHED+=("${crate}")
-                return 0
-              fi
-
-              echo "::endgroup::"
-              if [ $attempt -lt $max_retries ]; then
-                echo "⚠️  ${crate} publish failed, retrying in 15s…"
-                sleep 15
-              fi
-            done
-
-            echo "::error::❌ ${crate} failed after ${max_retries} attempts"
-            echo ""
-            echo "=== PUBLISH FAILURE SUMMARY ==="
-            echo "Failed crate: ${crate}"
-            echo "Successfully published before failure:"
-            for c in "${PUBLISHED[@]+"${PUBLISHED[@]}"}"; do
-              echo "  ✅ ${c}"
-            done
-            echo ""
-            echo "Remaining (not published):"
-            local found=false
-            for c in "${CRATES[@]}"; do
-              if [ "$found" = "true" ]; then
-                echo "  ⏭️  ${c}"
-              fi
-              if [ "$c" = "${crate}" ]; then
-                echo "  ❌ ${c} (FAILED)"
-                found=true
-              fi
-            done
-            return 1
-          }
-
-          for crate in "${CRATES[@]}"; do
-            publish_crate "${crate}"
-          done
-
-          echo ""
-          echo "=== ALL CRATES PUBLISHED SUCCESSFULLY ==="
+          FLAGS="--bump ${{ inputs.bump }} --no-changelog"
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run-cargo-publish"
+          fi
+          cargo smart-release -u --execute $FLAGS \
+            marque-ism marque-rules marque-core marque-config \
+            marque-extract marque-capco marque-engine \
+            marque-wasm marque-server marque
 
       - name: Create workspace tag
         id: tag
@@ -162,158 +82,6 @@ jobs:
             git tag -a "$TAG" -m "Release ${TAG}"
             echo "created=true" >> "$GITHUB_OUTPUT"
           fi
-
-      # ── Supply chain audit: SBOM generation ─────────────────────
-      # Generate CycloneDX and SPDX SBOMs for government compliance.
-      # SBOMs document the full dependency tree and are required by
-      # Executive Order 14028 for software sold to the U.S. Government.
-      - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --version 0.5.9 --locked
-
-      - name: Generate CycloneDX SBOM
-        run: |
-          set -euo pipefail
-          mkdir -p sbom-output
-          generation_failed=0
-
-          echo "Generating CycloneDX JSON SBOM…"
-          if ! cargo cyclonedx --format json --output-cdx > sbom-output/marque-sbom.cdx.json; then
-            echo "::error::CycloneDX JSON generation failed"
-            rm -f sbom-output/marque-sbom.cdx.json
-            generation_failed=1
-          fi
-
-          echo "Generating CycloneDX XML SBOM…"
-          if ! cargo cyclonedx --format xml --output-cdx > sbom-output/marque-sbom.cdx.xml; then
-            echo "::error::CycloneDX XML generation failed"
-            rm -f sbom-output/marque-sbom.cdx.xml
-            generation_failed=1
-          fi
-
-          if [ "$generation_failed" -ne 0 ]; then
-            echo "::error::CycloneDX SBOM generation failed"
-            exit 1
-          fi
-
-          echo "✅ CycloneDX SBOMs generated"
-          ls -la sbom-output/
-
-      - name: Generate SPDX SBOM
-        run: |
-          set -euo pipefail
-
-          # Generate SPDX-compatible dependency listing via cargo metadata
-          VERSION="${{ steps.tag.outputs.version }}"
-          COMMIT="${{ github.sha }}"
-
-          cat > sbom-output/marque-sbom.spdx.json <<SPDX_EOF
-          {
-            "spdxVersion": "SPDX-2.3",
-            "dataLicense": "CC0-1.0",
-            "SPDXID": "SPDXRef-DOCUMENT",
-            "name": "marque-${VERSION}",
-            "documentNamespace": "https://github.com/marquetools/marque/releases/tag/v${VERSION}",
-            "creationInfo": {
-              "created": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-              "creators": [
-                "Tool: github-actions",
-                "Tool: cargo-metadata"
-              ],
-              "licenseListVersion": "3.25"
-            },
-            "comment": "SBOM generated from commit ${COMMIT} for marque v${VERSION}. Full dependency details available in the CycloneDX SBOM."
-          }
-          SPDX_EOF
-
-          echo "✅ SPDX SBOM stub generated"
-
-      - name: Upload SBOMs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: sbom-${{ steps.tag.outputs.tag }}
-          path: sbom-output/
-          retention-days: 365
-
-      # ── Supply chain audit E1: SRI hashes for WASM ────────────────
-      # Build WASM and generate integrity hashes alongside the release so
-      # consumers can verify WASM modules served from CDNs or third-party
-      # hosts.
-      - name: Build WASM package for SRI hashing
-        run: |
-          set -euo pipefail
-          rustup target add wasm32-unknown-unknown
-          cargo install wasm-pack --locked
-          wasm-pack build crates/wasm --target web --profile release-wasm
-
-      - name: Generate WASM SRI hashes
-        run: |
-          set -euo pipefail
-          mkdir -p sri-output
-
-          for file in crates/wasm/pkg/marque_wasm_bg.wasm crates/wasm/pkg/marque_wasm.js; do
-            if [ ! -f "$file" ]; then
-              echo "❌ Expected WASM build artifact not found: $file"
-              exit 1
-            fi
-
-            BASENAME=$(basename "$file")
-            SHA384=$(openssl dgst -sha384 -binary "$file" | openssl base64 -A)
-            echo "sha384-${SHA384}  ${BASENAME}" >> sri-output/WASM-SRI-HASHES.txt
-            echo "✅ ${BASENAME}: sha384-${SHA384}"
-          done
-
-      - name: Upload SRI hashes
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: wasm-sri-${{ steps.tag.outputs.tag }}
-          path: sri-output/
-          retention-days: 365
-
-      # ── Attach SBOMs and SRI hashes to GitHub Release ──────────────
-      # Artifacts uploaded to workflow runs expire. Attaching them to the
-      # GitHub Release ensures they remain permanently accessible alongside
-      # the release notes and tag.
-      - name: Create GitHub Release with artifacts
-        if: steps.tag.outputs.created == 'true' && inputs.dry-run == false
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag }}"
-
-          # Collect all release assets into a flat list
-          ASSETS=()
-          for dir in sbom-output sri-output; do
-            if [ -d "$dir" ]; then
-              for f in "$dir"/*; do
-                [ -f "$f" ] && ASSETS+=("$f")
-              done
-            fi
-          done
-
-          if [ ${#ASSETS[@]} -eq 0 ]; then
-            echo "⚠️ No release assets found — skipping release creation"
-            exit 0
-          fi
-
-          # Create (or update) the release with attached files
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG exists — uploading assets"
-            for f in "${ASSETS[@]}"; do
-              gh release upload "$TAG" "$f" --clobber
-            done
-          else
-            ATTACH_FLAGS=()
-            for f in "${ASSETS[@]}"; do
-              ATTACH_FLAGS+=(--attach "$f")
-            done
-            gh release create "$TAG" \
-              --title "Release ${TAG}" \
-              --generate-notes \
-              "${ATTACH_FLAGS[@]}"
-          fi
-
-          echo "✅ SBOMs and SRI hashes attached to release ${TAG}"
 
       - name: Generate changelog
         run: git cliff --output CHANGELOG.md
