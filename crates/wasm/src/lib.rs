@@ -24,10 +24,6 @@
 // TODO: implement JavaScript calling instead of serializing to JSON using newer WASM 2.0 features
 
 #![cfg_attr(
-    all(target_arch = "wasm32", feature = "talc"),
-    feature(allow_internal_unsafe)
-)]
-#![cfg_attr(
     not(all(target_arch = "wasm32", feature = "talc")),
     forbid(unsafe_code)
 )]
