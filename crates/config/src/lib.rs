@@ -416,11 +416,10 @@ where
     // hard-fail, not silently apply the default.
     for (key, value) in vars {
         match key.as_str() {
-            "MARQUE_CLASSIFIER_ID" => {
-                if !value.trim().is_empty() {
+            "MARQUE_CLASSIFIER_ID"
+                if !value.trim().is_empty() => {
                     config.user.classifier_id = Some(value);
                 }
-            }
             "MARQUE_CONFIDENCE_THRESHOLD" => {
                 let threshold = value
                     .parse::<f32>()
