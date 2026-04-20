@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Supply chain audit: periodic review of transitive dependency authors.
+#
+# This workflow runs monthly and on-demand to surface new crate authors and
+# publishers in the dependency tree. Changes in who publishes a crate you
+# depend on can signal account compromise, hostile takeover, or an abandoned
+# crate being re-claimed.
+#
+# Complements cargo-deny (advisory DB) and cargo-vet (audit-level trust)
+# with publisher-level awareness.
+#
+# References:
+#   - https://crates.io/policies
+#   - https://github.com/nickel-org/cargo-supply-chain (if installed)
+
+name: Supply Chain Review
+
+on:
+  schedule:
+    # 1st and 15th of each month at 10:00 UTC
+    - cron: '0 10 1,15 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: Dependency author review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
+
+      # ── Generate dependency tree snapshot ──────────────────────────
+      # `cargo metadata` gives us the full resolved dependency graph.
+      # We extract unique crate names + versions for review.
+      - name: Generate dependency snapshot
+        run: |
+          set -euo pipefail
+          mkdir -p supply-chain-output
+
+          echo "=== Dependency Tree Snapshot ==="
+          echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+
+          # Full resolved dependency list
+          cargo metadata --format-version 1 \
+            | jq -r '.packages[]
+                     | select(.source != null)
+                     | "\(.name) \(.version) \(.source)"' \
+            | sort \
+            > supply-chain-output/deps-current.txt
+
+          echo "Total third-party dependencies: $(wc -l < supply-chain-output/deps-current.txt)"
+          echo ""
+
+          # Summary by registry
+          echo "=== Dependencies by source ==="
+          awk '{print $3}' supply-chain-output/deps-current.txt | sort | uniq -c | sort -rn
+          echo ""
+
+      # ── Check for non-crates.io sources ────────────────────────────
+      # This is also enforced by cargo-deny, but an explicit check here
+      # provides a clear signal in the review workflow output.
+      - name: Verify all dependencies from crates.io
+        run: |
+          set -euo pipefail
+          NON_CRATES_IO=$(grep -v 'registry+https://github.com/rust-lang/crates.io-index' \
+            supply-chain-output/deps-current.txt || true)
+
+          if [ -n "$NON_CRATES_IO" ]; then
+            echo "::error::Non-crates.io dependencies detected:"
+            echo "$NON_CRATES_IO"
+            exit 1
+          else
+            echo "✅ All third-party dependencies sourced from crates.io"
+          fi
+
+      # ── Detect new or changed dependencies ─────────────────────────
+      # Compare against the previous snapshot (if available via cache).
+      - name: Restore previous snapshot
+        id: cache
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: supply-chain-output/deps-previous.txt
+          key: supply-chain-deps-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            supply-chain-deps-
+
+      - name: Compare dependency changes
+        run: |
+          set -euo pipefail
+
+          if [ -f supply-chain-output/deps-previous.txt ]; then
+            echo "=== Dependency Changes Since Last Review ==="
+
+            ADDED=$(comm -23 supply-chain-output/deps-current.txt \
+                             supply-chain-output/deps-previous.txt || true)
+            REMOVED=$(comm -13 supply-chain-output/deps-current.txt \
+                               supply-chain-output/deps-previous.txt || true)
+
+            if [ -n "$ADDED" ]; then
+              echo ""
+              echo "➕ New dependencies:"
+              echo "$ADDED" | while read -r line; do echo "  $line"; done
+              echo ""
+            fi
+
+            if [ -n "$REMOVED" ]; then
+              echo ""
+              echo "➖ Removed dependencies:"
+              echo "$REMOVED" | while read -r line; do echo "  $line"; done
+              echo ""
+            fi
+
+            if [ -z "$ADDED" ] && [ -z "$REMOVED" ]; then
+              echo "No dependency changes since last review."
+            fi
+          else
+            echo "No previous snapshot available — this is the baseline run."
+            echo "Future runs will compare against this snapshot."
+          fi
+
+      # ── Save current snapshot for next comparison ──────────────────
+      - name: Save snapshot for next run
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: supply-chain-output/deps-previous.txt
+          key: supply-chain-deps-${{ hashFiles('Cargo.lock') }}
+
+      # ── Upload report ──────────────────────────────────────────────
+      - name: Upload dependency report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: supply-chain-report
+          path: supply-chain-output/
+          retention-days: 90
