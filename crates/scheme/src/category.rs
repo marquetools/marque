@@ -283,6 +283,7 @@ pub fn reduce_union_with_supersession<T: Eq + std::hash::Hash + Clone>(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

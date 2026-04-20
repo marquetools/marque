@@ -940,6 +940,7 @@ fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::attrs::{Classification, MarkingClassification};

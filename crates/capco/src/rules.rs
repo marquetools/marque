@@ -3928,6 +3928,7 @@ fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_capco_test_support::{lint_banner, lint_portion};
@@ -5323,6 +5324,7 @@ mod tests {
 /// without depending on the engine crate. This avoids a circular dependency
 /// (`marque-capco` is below `marque-engine` in the workspace graph).
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod marque_capco_test_support {
     use super::CapcoRuleSet;
     use marque_core::{Parser, Scanner};
