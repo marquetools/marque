@@ -140,7 +140,9 @@ jobs:
       - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
 
       - name: Install cargo-vet
-        run: cargo install cargo-vet --locked
+        uses: taiki-e/install-action@6c30010265446c48ca58ba69185adf76b78476b4
+        with:
+          tool: cargo-vet@0.10.1
 
       - name: cargo vet check
         run: cargo vet
