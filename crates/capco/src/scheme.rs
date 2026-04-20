@@ -24,8 +24,9 @@
 
 use marque_ism::{Classification, IsmAttributes, PageContext, Trigraph};
 use marque_scheme::{
-    AggregationOp, Cardinality, Category, CategoryId, Constraint, ConstraintViolation,
-    IntraOrdering, Lattice, MarkingScheme, Parsed, Template, TokenId, TokenRef,
+    AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
+    Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
+    Scope, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,80 @@ impl Lattice for CapcoMarking {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Category-predicate / category-action dispatch (for PageRewrite)
+// ---------------------------------------------------------------------------
+//
+// These helpers implement the trigger and action variants of a
+// `PageRewrite` against CAPCO's `CapcoMarking`. They're here rather
+// than in `marque-scheme` because the variant payloads reference
+// `S::Token` and `S::Marking` and each scheme has to project those
+// onto its concrete storage. The `CategoryPredicate::Custom` /
+// `CategoryAction::Custom` variants still skip this dispatch and let
+// the rewrite author supply the closure directly, but cross-category
+// rewrites such as CAPCO's NOFORN rule are also supported in
+// declarative form here.
+
+/// `CategoryPredicate::Contains { category, token }` evaluator.
+///
+/// Phase B supports the sample constraint set. Unhandled `(category,
+/// token)` pairs return `false` — a safe conservative answer that
+/// effectively disables the rewrite rather than silently misfiring.
+/// Phase C expands coverage as more rewrites move to the declarative
+/// form.
+fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenId) -> bool {
+    let attrs = &m.0;
+    if category == CAT_DISSEM && token == TOK_NOFORN {
+        return attrs
+            .dissem_controls
+            .iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    }
+    false
+}
+
+/// `CategoryPredicate::Empty { category }` evaluator.
+///
+/// Unhandled categories return `true` (treated as "non-empty / unknown")
+/// so an `Empty` predicate on an unknown category **does not fire**
+/// and a rewrite conditioned on it stays inert. This matches
+/// [`capco_category_contains`]'s conservative-false stance and avoids
+/// misfiring rewrites on categories Phase B doesn't yet inspect.
+/// Phase C expands the match arms as more rewrites move into the
+/// declarative form.
+fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
+    let attrs = &m.0;
+    match category {
+        CAT_REL_TO => !attrs.rel_to.is_empty(),
+        CAT_DISSEM => !attrs.dissem_controls.is_empty(),
+        CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
+        _ => true,
+    }
+}
+
+/// `CategoryAction::Clear { category }` evaluator.
+fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
+    let attrs = &mut m.0;
+    if category == CAT_REL_TO {
+        attrs.rel_to = Box::new([]);
+    } else if category == CAT_DISSEM {
+        attrs.dissem_controls = Box::new([]);
+    }
+    // Other categories: no-op. Phase C expands coverage.
+}
+
+/// `CategoryAction::Replace { category, with }` evaluator. The `with`
+/// argument supplies a full marking; Phase B copies only the named
+/// category's storage out.
+fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &CapcoMarking) {
+    let attrs = &mut m.0;
+    if category == CAT_REL_TO {
+        attrs.rel_to = with.0.rel_to.clone();
+    } else if category == CAT_DISSEM {
+        attrs.dissem_controls = with.0.dissem_controls.clone();
+    }
+}
+
 /// Build an `IsmAttributes` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
 /// fields exercised by Phase A's equivalence tests. Other fields land
@@ -213,6 +288,7 @@ pub struct CapcoScheme {
     categories: Vec<Category>,
     constraints: Vec<Constraint>,
     templates: Vec<Template>,
+    page_rewrites: Vec<PageRewrite<CapcoScheme>>,
 }
 
 impl Default for CapcoScheme {
@@ -227,7 +303,37 @@ impl CapcoScheme {
             categories: Self::build_categories(),
             constraints: Self::build_constraints(),
             templates: Vec::new(), // Phase A does not model templates yet
+            page_rewrites: Self::build_page_rewrites(),
         }
+    }
+
+    /// Construct CAPCO's `PageRewrite` table per §7a of the Phase B
+    /// design doc. Phase B declares one rewrite:
+    ///
+    /// - `capco/noforn-clears-rel-to` — when NOFORN is present in the
+    ///   aggregated dissem category, the REL TO category clears. This
+    ///   is the same behavior [`PageContext::expected_rel_to`]
+    ///   implements today.
+    ///
+    /// The rewrite is expressed in **declarative** form
+    /// ([`CategoryPredicate::Contains`] + [`CategoryAction::Clear`])
+    /// rather than via `Custom` closures, so scheme-exploration tools
+    /// can render "this page will clear REL TO when NOFORN is present"
+    /// without executing scheme code. The dispatch lands in the
+    /// private `capco_category_contains` / `capco_category_clear`
+    /// helpers below.
+    fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
+        vec![PageRewrite {
+            id: "capco/noforn-clears-rel-to",
+            citation: "CAPCO-2016-§H.2",
+            trigger: CategoryPredicate::Contains {
+                category: CAT_DISSEM,
+                token: TOK_NOFORN,
+            },
+            action: CategoryAction::Clear {
+                category: CAT_REL_TO,
+            },
+        }]
     }
 
     /// Build the scheme's category table.
@@ -545,12 +651,67 @@ impl MarkingScheme for CapcoScheme {
         out
     }
 
-    fn project_banner(&self, portions: &[Self::Marking]) -> Self::Marking {
-        let mut ctx = PageContext::new();
-        for p in portions {
-            ctx.add_portion(p.0.clone());
+    fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
+        match scope {
+            Scope::Portion => {
+                // Identity under portion scope: if the caller passed a
+                // single marking we return it; empty → bottom.
+                markings
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| CapcoMarking(IsmAttributes::default()))
+            }
+            Scope::Page | Scope::Document | Scope::Diff => {
+                // Page / Document rollup: drive through the existing
+                // `PageContext` aggregator (which is already
+                // category-component-wise), then apply page rewrites.
+                //
+                // Byte-identical equivalence with `PageContext` is the
+                // Phase B verification gate — see the
+                // `scheme_equivalence.rs` tests. When CAPCO's categories
+                // move to individual `impl Lattice` types in their own
+                // right (Phase C continuation), this implementation
+                // swaps in the category-wise composition directly
+                // without changing the outward contract.
+                let mut ctx = PageContext::new();
+                for p in markings {
+                    ctx.add_portion(p.0.clone());
+                }
+                let mut out = CapcoMarking(page_context_to_attrs(&ctx));
+                // Apply declarative page rewrites. `PageContext`
+                // already applies NOFORN-clears-REL-TO internally, so
+                // the rewrite is effectively a no-op on today's
+                // storage — but declaring it here makes the semantic
+                // inspectable per §7a.
+                for rw in &self.page_rewrites {
+                    let fires = match &rw.trigger {
+                        CategoryPredicate::Contains { category, token } => {
+                            capco_category_contains(&out, *category, *token)
+                        }
+                        CategoryPredicate::Empty { category } => {
+                            !capco_category_has_values(&out, *category)
+                        }
+                        CategoryPredicate::Custom(f) => f(&out),
+                    };
+                    if fires {
+                        match &rw.action {
+                            CategoryAction::Clear { category } => {
+                                capco_category_clear(&mut out, *category);
+                            }
+                            CategoryAction::Replace { category, with } => {
+                                capco_category_replace(&mut out, *category, with);
+                            }
+                            CategoryAction::Custom(f) => f(&mut out),
+                        }
+                    }
+                }
+                out
+            }
         }
-        CapcoMarking(page_context_to_attrs(&ctx))
+    }
+
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &self.page_rewrites
     }
 
     fn render_portion(&self, m: &Self::Marking) -> String {
@@ -744,5 +905,247 @@ impl CapcoMarking {
     #[inline]
     pub fn classification(&self) -> Option<Classification> {
         self.0.us_classification()
+    }
+}
+
+#[cfg(test)]
+impl CapcoScheme {
+    /// Test-only constructor that lets tests install arbitrary
+    /// `PageRewrite` entries, exercising the declarative dispatch
+    /// path (`CategoryPredicate::Contains` / `Empty`,
+    /// `CategoryAction::Clear` / `Replace`) with test-provided
+    /// rewrites.
+    pub(crate) fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
+        Self {
+            categories: Self::build_categories(),
+            constraints: Self::build_constraints(),
+            templates: Vec::new(),
+            page_rewrites: rewrites,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_ism::{DissemControl, IsmAttributes, MarkingClassification, Trigraph};
+
+    fn mk_attrs() -> IsmAttributes {
+        let mut a = IsmAttributes::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a
+    }
+
+    // capco_category_contains — all branches
+
+    #[test]
+    fn category_contains_detects_noforn_in_dissem() {
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Nf].into();
+        let m = CapcoMarking(a);
+        assert!(capco_category_contains(&m, CAT_DISSEM, TOK_NOFORN));
+    }
+
+    #[test]
+    fn category_contains_returns_false_on_absent_token() {
+        let a = mk_attrs();
+        let m = CapcoMarking(a);
+        assert!(!capco_category_contains(&m, CAT_DISSEM, TOK_NOFORN));
+    }
+
+    #[test]
+    fn category_contains_returns_false_for_unhandled_pair() {
+        let a = mk_attrs();
+        let m = CapcoMarking(a);
+        // An unhandled (category, token) pair — should be false.
+        assert!(!capco_category_contains(&m, CAT_REL_TO, TOK_NOFORN));
+        assert!(!capco_category_contains(&m, CAT_DISSEM, TOK_USA));
+        assert!(!capco_category_contains(&m, CAT_SCI, TOK_NOFORN));
+    }
+
+    // capco_category_has_values — all branches
+
+    #[test]
+    fn category_has_values_rel_to_populated() {
+        let mut a = mk_attrs();
+        a.rel_to = vec![Trigraph::USA].into();
+        let m = CapcoMarking(a);
+        assert!(capco_category_has_values(&m, CAT_REL_TO));
+    }
+
+    #[test]
+    fn category_has_values_rel_to_empty() {
+        let a = mk_attrs();
+        let m = CapcoMarking(a);
+        assert!(!capco_category_has_values(&m, CAT_REL_TO));
+    }
+
+    #[test]
+    fn category_has_values_dissem_populated() {
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Nf].into();
+        let m = CapcoMarking(a);
+        assert!(capco_category_has_values(&m, CAT_DISSEM));
+    }
+
+    #[test]
+    fn category_has_values_dissem_empty() {
+        let m = CapcoMarking(mk_attrs());
+        assert!(!capco_category_has_values(&m, CAT_DISSEM));
+    }
+
+    #[test]
+    fn category_has_values_sci_populated_via_sci_controls() {
+        let mut a = mk_attrs();
+        a.sci_controls = vec![marque_ism::SciControl::Si].into();
+        let m = CapcoMarking(a);
+        assert!(capco_category_has_values(&m, CAT_SCI));
+    }
+
+    #[test]
+    fn category_has_values_sci_empty() {
+        let m = CapcoMarking(mk_attrs());
+        assert!(!capco_category_has_values(&m, CAT_SCI));
+    }
+
+    #[test]
+    fn category_has_values_unhandled_returns_true() {
+        // Unhandled categories default to true ("non-empty / unknown")
+        // so `Empty` predicates on them stay inert.
+        let m = CapcoMarking(mk_attrs());
+        assert!(capco_category_has_values(&m, CAT_SAR));
+        assert!(capco_category_has_values(&m, CAT_AEA));
+        assert!(capco_category_has_values(&m, CAT_FGI_MARKER));
+    }
+
+    // capco_category_clear — all branches
+
+    #[test]
+    fn category_clear_empties_rel_to() {
+        let mut a = mk_attrs();
+        a.rel_to = vec![Trigraph::USA].into();
+        let mut m = CapcoMarking(a);
+        capco_category_clear(&mut m, CAT_REL_TO);
+        assert!(m.0.rel_to.is_empty());
+    }
+
+    #[test]
+    fn category_clear_empties_dissem() {
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Nf].into();
+        let mut m = CapcoMarking(a);
+        capco_category_clear(&mut m, CAT_DISSEM);
+        assert!(m.0.dissem_controls.is_empty());
+    }
+
+    #[test]
+    fn category_clear_unhandled_is_noop() {
+        let mut a = mk_attrs();
+        a.rel_to = vec![Trigraph::USA].into();
+        let mut m = CapcoMarking(a);
+        capco_category_clear(&mut m, CAT_SCI);
+        // REL TO untouched — other-category clear was a no-op.
+        assert_eq!(m.0.rel_to.len(), 1);
+    }
+
+    // capco_category_replace — all branches
+
+    #[test]
+    fn category_replace_rel_to_copies_from_source() {
+        let mut src_attrs = IsmAttributes::default();
+        src_attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+        let src = CapcoMarking(src_attrs);
+
+        let mut dst = CapcoMarking(mk_attrs());
+        capco_category_replace(&mut dst, CAT_REL_TO, &src);
+        assert_eq!(dst.0.rel_to.len(), 2);
+    }
+
+    #[test]
+    fn category_replace_dissem_copies_from_source() {
+        let mut src_attrs = IsmAttributes::default();
+        src_attrs.dissem_controls = vec![DissemControl::Nf].into();
+        let src = CapcoMarking(src_attrs);
+
+        let mut dst = CapcoMarking(mk_attrs());
+        capco_category_replace(&mut dst, CAT_DISSEM, &src);
+        assert_eq!(dst.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    #[test]
+    fn category_replace_unhandled_is_noop() {
+        let src = CapcoMarking(mk_attrs());
+        let mut dst = CapcoMarking(mk_attrs());
+        let before = dst.clone();
+        capco_category_replace(&mut dst, CAT_SCI, &src);
+        assert_eq!(dst, before);
+    }
+
+    // Declarative rewrite dispatch — exercise the Contains / Empty /
+    // Clear / Replace match arms inside `project`.
+
+    #[test]
+    fn project_applies_declarative_contains_then_clear() {
+        // Construct a scheme with a declarative Contains-trigger +
+        // Clear-action rewrite (instead of the default Custom
+        // closures). That way the engine hits the Contains and Clear
+        // match arms in the project() dispatch.
+        let rewrites = vec![PageRewrite {
+            id: "test/nf-clears-rel-to",
+            citation: "test",
+            trigger: CategoryPredicate::Contains {
+                category: CAT_DISSEM,
+                token: TOK_NOFORN,
+            },
+            action: CategoryAction::Clear {
+                category: CAT_REL_TO,
+            },
+        }];
+        let scheme = CapcoScheme::with_rewrites(rewrites);
+
+        // Two portions: one with NOFORN, one with REL TO.
+        let mut p1 = mk_attrs();
+        p1.dissem_controls = vec![DissemControl::Nf].into();
+        let mut p2 = mk_attrs();
+        p2.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+
+        let out = marque_scheme::MarkingScheme::project(
+            &scheme,
+            marque_scheme::Scope::Page,
+            &[CapcoMarking(p1), CapcoMarking(p2)],
+        );
+        // Rewrite should have fired — REL TO cleared.
+        assert!(out.0.rel_to.is_empty());
+    }
+
+    #[test]
+    fn project_applies_declarative_empty_then_replace() {
+        // An Empty trigger on an unhandled category (returns false, so
+        // rewrite does NOT fire). Verify a Replace action is reachable
+        // via a trigger that DOES fire.
+        let mut replacement = IsmAttributes::default();
+        replacement.dissem_controls = vec![DissemControl::Nf].into();
+
+        let rewrites = vec![PageRewrite {
+            id: "test/empty-rel-to-triggers-replace-dissem",
+            citation: "test",
+            trigger: CategoryPredicate::Empty {
+                category: CAT_REL_TO,
+            },
+            action: CategoryAction::Replace {
+                category: CAT_DISSEM,
+                with: CapcoMarking(replacement),
+            },
+        }];
+        let scheme = CapcoScheme::with_rewrites(rewrites);
+
+        // Portion with no REL TO — trigger fires → dissem replaced.
+        let p = mk_attrs();
+        let out = marque_scheme::MarkingScheme::project(
+            &scheme,
+            marque_scheme::Scope::Page,
+            &[CapcoMarking(p)],
+        );
+        assert!(out.0.dissem_controls.contains(&DissemControl::Nf));
     }
 }

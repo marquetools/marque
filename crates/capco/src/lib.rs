@@ -17,9 +17,12 @@
 //! `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI
 //! publishes spec updates.
 
+pub mod lattice;
 pub mod rules;
 pub mod scheme;
+pub mod vocab;
 
+pub use lattice::{FgiSet, SarSet, SciSet};
 pub use marque_ism::CapcoTokenSet;
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoScheme};
