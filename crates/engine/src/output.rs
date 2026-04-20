@@ -62,8 +62,8 @@ pub struct FixResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use marque_rules::{Diagnostic, RuleId, Severity};
     use marque_core::Span;
+    use marque_rules::{Diagnostic, RuleId, Severity};
 
     #[test]
     fn test_is_clean() {
