@@ -29,7 +29,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          toolchain: "1.89"
+          toolchain: "nightly"
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
