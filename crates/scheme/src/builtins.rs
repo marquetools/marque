@@ -912,4 +912,368 @@ mod tests {
         let b = Product(OrdMax(7_u32), OrdMax(5_u32));
         assert_eq!(a.meet(&b), Product(OrdMax(3), OrdMax(5)));
     }
+
+    // -----------------------------------------------------------------
+    // Additional coverage — constructors, accessors, equal-branch paths
+    // -----------------------------------------------------------------
+
+    // OrdMax / OrdMin — equal-operand and commutative branches
+
+    #[test]
+    fn ord_max_join_equal_operands_picks_self() {
+        // Exercises the `self.0 >= other.0` branch when they're equal.
+        let v = OrdMax(5_u32);
+        assert_eq!(v.join(&v.clone()), v);
+    }
+
+    #[test]
+    fn ord_max_meet_equal_operands_picks_self() {
+        let v = OrdMax(5_u32);
+        assert_eq!(v.meet(&v.clone()), v);
+    }
+
+    #[test]
+    fn ord_min_join_equal_operands_picks_self() {
+        let v = OrdMin(5_u32);
+        assert_eq!(v.join(&v.clone()), v);
+    }
+
+    #[test]
+    fn ord_min_meet_equal_operands_picks_self() {
+        let v = OrdMin(5_u32);
+        assert_eq!(v.meet(&v.clone()), v);
+    }
+
+    #[test]
+    fn ord_min_laws_smoke() {
+        // Join = min; meet = max. Quick spot check across asymmetric pairs.
+        assert_eq!(OrdMin(3_u32).join(&OrdMin(7_u32)), OrdMin(3));
+        assert_eq!(OrdMin(7_u32).join(&OrdMin(3_u32)), OrdMin(3));
+        assert_eq!(OrdMin(3_u32).meet(&OrdMin(7_u32)), OrdMin(7));
+        assert_eq!(OrdMin(7_u32).meet(&OrdMin(3_u32)), OrdMin(7));
+    }
+
+    // FlatSet — accessors and edge branches
+
+    #[test]
+    fn flat_set_empty_accessors() {
+        let e: FlatSet<&str> = FlatSet::empty();
+        assert!(e.is_empty());
+        assert_eq!(e.len(), 0);
+        assert_eq!(e.as_slice(), &[] as &[&str]);
+        assert!(!e.contains(&"SI"));
+    }
+
+    #[test]
+    fn flat_set_populated_accessors() {
+        let a = FlatSet::from_iter_sorted(vec!["SI", "TK"]);
+        assert!(!a.is_empty());
+        assert_eq!(a.len(), 2);
+        assert!(a.contains(&"SI"));
+        assert!(a.contains(&"TK"));
+        assert!(!a.contains(&"HCS"));
+    }
+
+    #[test]
+    fn flat_set_default_is_empty() {
+        let a: FlatSet<u32> = FlatSet::default();
+        assert!(a.is_empty());
+    }
+
+    #[test]
+    fn flat_set_join_left_suffix_remainder() {
+        // Left has a trailing element that falls after everything in right.
+        let a = FlatSet::from_iter_sorted(vec!["A", "Z"]);
+        let b = FlatSet::from_iter_sorted(vec!["A"]);
+        assert_eq!(a.join(&b).as_slice(), &["A", "Z"]);
+    }
+
+    #[test]
+    fn flat_set_join_right_suffix_remainder() {
+        // Right has a trailing element that falls after everything in left.
+        let a = FlatSet::from_iter_sorted(vec!["A"]);
+        let b = FlatSet::from_iter_sorted(vec!["A", "Z"]);
+        assert_eq!(a.join(&b).as_slice(), &["A", "Z"]);
+    }
+
+    #[test]
+    fn flat_set_meet_empty_when_disjoint() {
+        let a = FlatSet::from_iter_sorted(vec!["A", "B"]);
+        let b = FlatSet::from_iter_sorted(vec!["C", "D"]);
+        assert!(a.meet(&b).is_empty());
+    }
+
+    // IntersectSet — accessors and edge branches
+
+    #[test]
+    fn intersect_set_empty_accessors() {
+        let e: IntersectSet<&str> = IntersectSet::empty();
+        assert!(e.is_empty());
+        assert_eq!(e.len(), 0);
+        assert_eq!(e.as_slice(), &[] as &[&str]);
+    }
+
+    #[test]
+    fn intersect_set_populated_accessors() {
+        let a = IntersectSet::from_iter_sorted(vec!["USA", "GBR"]);
+        assert!(!a.is_empty());
+        assert_eq!(a.len(), 2);
+        // `as_slice` is sorted canonically.
+        assert_eq!(a.as_slice(), &["GBR", "USA"]);
+    }
+
+    #[test]
+    fn intersect_set_default_is_empty() {
+        let a: IntersectSet<u32> = IntersectSet::default();
+        assert!(a.is_empty());
+    }
+
+    #[test]
+    fn intersect_set_meet_unions_with_left_suffix() {
+        let a = IntersectSet::from_iter_sorted(vec!["A", "Z"]);
+        let b = IntersectSet::from_iter_sorted(vec!["A"]);
+        assert_eq!(a.meet(&b).as_slice(), &["A", "Z"]);
+    }
+
+    #[test]
+    fn intersect_set_meet_unions_with_right_suffix() {
+        let a = IntersectSet::from_iter_sorted(vec!["A"]);
+        let b = IntersectSet::from_iter_sorted(vec!["A", "Z"]);
+        assert_eq!(a.meet(&b).as_slice(), &["A", "Z"]);
+    }
+
+    #[test]
+    fn intersect_set_meet_interleaves_less_branch() {
+        // Triggers the `Ordering::Less` arm inside IntersectSet::meet
+        // (push from self, advance self).
+        let a = IntersectSet::from_iter_sorted(vec!["A", "M"]);
+        let b = IntersectSet::from_iter_sorted(vec!["Z"]);
+        assert_eq!(a.meet(&b).as_slice(), &["A", "M", "Z"]);
+    }
+
+    #[test]
+    fn intersect_set_join_empty_on_disjoint() {
+        let a = IntersectSet::from_iter_sorted(vec!["A"]);
+        let b = IntersectSet::from_iter_sorted(vec!["B"]);
+        assert!(a.join(&b).is_empty());
+    }
+
+    // SupersessionSet — constructors, accessors, meet, and edge cases
+
+    static SUP_COV: &[(u8, u8)] = &[(1, 2)];
+
+    #[test]
+    fn supersession_set_new_is_empty() {
+        let s: SupersessionSet<u8> = SupersessionSet::new(SUP_COV);
+        assert!(s.is_empty());
+        assert_eq!(s.as_slice(), &[] as &[u8]);
+    }
+
+    #[test]
+    fn supersession_set_populated_accessors() {
+        let s = SupersessionSet::from_iter_sorted(vec![2_u8, 3], SUP_COV);
+        assert!(!s.is_empty());
+        assert_eq!(s.as_slice(), &[2, 3]);
+    }
+
+    #[test]
+    fn supersession_set_from_iter_dedupes() {
+        let s = SupersessionSet::from_iter_sorted(vec![2_u8, 2, 3, 3], SUP_COV);
+        assert_eq!(s.as_slice(), &[2, 3]);
+    }
+
+    #[test]
+    fn supersession_set_meet_is_intersection() {
+        let a = SupersessionSet::from_iter_sorted(vec![1_u8, 2], SUP_COV);
+        let b = SupersessionSet::from_iter_sorted(vec![2_u8, 3], SUP_COV);
+        let m = a.meet(&b);
+        // Plain intersection on the stored set — supersession is
+        // join-only. Both had 2.
+        assert_eq!(m.as_slice(), &[2]);
+    }
+
+    #[test]
+    fn supersession_set_join_preserves_non_superseded() {
+        // No superseding element present — supersession is a no-op.
+        let a = SupersessionSet::from_iter_sorted(vec![2_u8, 3], SUP_COV);
+        let b = SupersessionSet::from_iter_sorted(vec![3_u8, 4], SUP_COV);
+        let j = a.join(&b);
+        // Union is {2, 3, 4}; no `1` anywhere, so `2` survives.
+        assert_eq!(j.as_slice(), &[2, 3, 4]);
+    }
+
+    // ModeSet — accessors, mode(), extend_counts, and meet
+
+    #[test]
+    fn mode_set_default_is_empty() {
+        let m: ModeSet<&str> = ModeSet::default();
+        assert!(m.is_empty());
+        assert_eq!(m.mode(), None);
+    }
+
+    #[test]
+    fn mode_set_mode_ties_broken_by_ord() {
+        // Two values tied at count 1 — smaller Ord wins per doc comment.
+        let m = ModeSet::from_iter_counted(vec!["b", "a"]);
+        assert_eq!(m.mode(), Some(&"a"));
+    }
+
+    #[test]
+    fn mode_set_is_empty_on_populated_returns_false() {
+        let m = ModeSet::from_iter_counted(vec!["a"]);
+        assert!(!m.is_empty());
+    }
+
+    #[test]
+    fn mode_set_extend_counts_preserves_self() {
+        let a = ModeSet::from_iter_counted(vec!["a"]);
+        let combined = a.extend_counts(&ModeSet::default());
+        assert_eq!(combined, a);
+    }
+
+    #[test]
+    fn mode_set_meet_is_per_key_min() {
+        let a = ModeSet::from_iter_counted(vec!["x", "x", "y"]); // {x:2, y:1}
+        let b = ModeSet::from_iter_counted(vec!["x", "y", "y"]); // {x:1, y:2}
+        let m = a.meet(&b);
+        // Per-key min: {x:1, y:1}.
+        assert_eq!(m.mode(), Some(&"x"));
+    }
+
+    #[test]
+    fn mode_set_meet_drops_keys_missing_on_either_side() {
+        let a = ModeSet::from_iter_counted(vec!["a", "b"]);
+        let b = ModeSet::from_iter_counted(vec!["a", "c"]);
+        let m = a.meet(&b);
+        // Only `a` is common.
+        assert_eq!(m.mode(), Some(&"a"));
+    }
+
+    // MaxDate — accessors and edge branches
+
+    #[test]
+    fn max_date_absent_and_as_deref() {
+        assert!(MaxDate::absent().as_deref().is_none());
+        let d = MaxDate::present("20301231");
+        assert_eq!(d.as_deref(), Some("20301231"));
+    }
+
+    #[test]
+    fn max_date_default_is_absent() {
+        assert_eq!(MaxDate::default(), MaxDate::absent());
+    }
+
+    #[test]
+    fn max_date_join_none_none_is_none() {
+        assert_eq!(
+            MaxDate::absent().join(&MaxDate::absent()),
+            MaxDate::absent()
+        );
+    }
+
+    #[test]
+    fn max_date_join_equal_dates() {
+        // Exercises the `a >= b` branch when they're equal.
+        let a = MaxDate::present("20301231");
+        assert_eq!(a.join(&a.clone()), a);
+    }
+
+    #[test]
+    fn max_date_join_picks_left_when_greater() {
+        // Exercises the `a >= b` branch.
+        let a = MaxDate::present("20481231");
+        let b = MaxDate::present("20301231");
+        assert_eq!(a.join(&b), a);
+    }
+
+    #[test]
+    fn max_date_meet_picks_earlier() {
+        let a = MaxDate::present("20301231");
+        let b = MaxDate::present("20481231");
+        assert_eq!(a.meet(&b), a);
+        assert_eq!(b.meet(&a), a);
+    }
+
+    #[test]
+    fn max_date_meet_equal_dates() {
+        let a = MaxDate::present("20301231");
+        assert_eq!(a.meet(&a.clone()), a);
+    }
+
+    #[test]
+    fn max_date_meet_absent_collapses_to_absent() {
+        let a = MaxDate::present("20301231");
+        assert_eq!(a.meet(&MaxDate::absent()), MaxDate::absent());
+        assert_eq!(MaxDate::absent().meet(&a), MaxDate::absent());
+        assert_eq!(
+            MaxDate::absent().meet(&MaxDate::absent()),
+            MaxDate::absent()
+        );
+    }
+
+    #[test]
+    fn max_date_top_is_sentinel() {
+        let t = MaxDate::top();
+        assert_eq!(t.as_deref(), Some("99991231"));
+        // Top dominates any real date under join.
+        let d = MaxDate::present("20481231");
+        assert_eq!(t.join(&d), t);
+    }
+
+    // OptionalSingleton — meet paths and BoundedLattice
+
+    #[test]
+    fn optional_singleton_meet_some_some_calls_inner() {
+        let a = OptionalSingleton::present(OrdMax(3_u32));
+        let b = OptionalSingleton::present(OrdMax(7_u32));
+        // Inner OrdMax::meet picks the lesser.
+        assert_eq!(a.meet(&b), OptionalSingleton::present(OrdMax(3)));
+    }
+
+    #[test]
+    fn optional_singleton_meet_none_collapses() {
+        let a = OptionalSingleton::present(OrdMax(3_u32));
+        let none: OptionalSingleton<OrdMax<u32>> = OptionalSingleton::absent();
+        assert_eq!(a.meet(&none), none);
+        assert_eq!(none.meet(&a), none);
+        assert_eq!(none.meet(&none), none);
+    }
+
+    #[test]
+    fn optional_singleton_default_is_absent() {
+        let a: OptionalSingleton<OrdMax<u32>> = OptionalSingleton::default();
+        assert_eq!(a, OptionalSingleton::absent());
+    }
+
+    #[test]
+    fn optional_singleton_bounded_top_wraps_inner_top() {
+        let t: OptionalSingleton<MaxDate> = OptionalSingleton::top();
+        assert_eq!(t, OptionalSingleton::present(MaxDate::top()));
+    }
+
+    #[test]
+    fn optional_singleton_bounded_bottom_is_absent() {
+        let b: OptionalSingleton<MaxDate> = OptionalSingleton::bottom();
+        assert_eq!(b, OptionalSingleton::absent());
+    }
+
+    // Product — BoundedLattice + Default
+
+    #[test]
+    fn product_default_uses_inner_defaults() {
+        let p: Product<MaxDate, MaxDate> = Product::default();
+        assert_eq!(p, Product(MaxDate::default(), MaxDate::default()));
+    }
+
+    #[test]
+    fn product_bounded_top_uses_inner_tops() {
+        let t: Product<MaxDate, MaxDate> = Product::top();
+        assert_eq!(t, Product(MaxDate::top(), MaxDate::top()));
+    }
+
+    #[test]
+    fn product_bounded_bottom_uses_inner_bottoms() {
+        let b: Product<MaxDate, MaxDate> = Product::bottom();
+        assert_eq!(b, Product(MaxDate::bottom(), MaxDate::bottom()));
+    }
 }

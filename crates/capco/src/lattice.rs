@@ -837,4 +837,483 @@ mod tests {
     fn fgi_set_none_is_bottom() {
         assert_eq!(FgiSet::bottom(), FgiSet::None);
     }
+
+    // -----------------------------------------------------------------
+    // Additional coverage: constructors, accessors, Custom paths,
+    // round-trip, meet edge cases
+    // -----------------------------------------------------------------
+
+    // SciSet — Custom system, accessors, round-trip
+
+    #[test]
+    fn sci_set_custom_system_round_trip() {
+        // Custom systems (agency-allocated `[A-Z0-9]{2,5}`) should
+        // round-trip via from_markings / to_markings.
+        let custom = SciMarking::new(
+            SciControlSystem::Custom("99".to_string().into_boxed_str()),
+            vec![].into_boxed_slice(),
+            None,
+        );
+        let set = SciSet::from_markings(&[custom]);
+        let out = set.to_markings();
+        assert_eq!(out.len(), 1);
+        match &out[0].system {
+            SciControlSystem::Custom(s) => assert_eq!(s.as_ref(), "99"),
+            SciControlSystem::Published(_) => panic!("expected Custom"),
+        }
+    }
+
+    #[test]
+    fn sci_set_custom_system_text_used_for_ordering() {
+        // Two customs; ordering in output uses SAR-style sort keys
+        // (numeric first, then alpha).
+        let custom_alpha = SciMarking::new(
+            SciControlSystem::Custom("AAA".to_string().into_boxed_str()),
+            Box::new([]),
+            None,
+        );
+        let custom_num = SciMarking::new(
+            SciControlSystem::Custom("99".to_string().into_boxed_str()),
+            Box::new([]),
+            None,
+        );
+        let set = SciSet::from_markings(&[custom_alpha, custom_num]);
+        let out = set.to_markings();
+        assert_eq!(out.len(), 2);
+        // Numeric `99` sorts before alphabetic `AAA`.
+        match &out[0].system {
+            SciControlSystem::Custom(s) => assert_eq!(s.as_ref(), "99"),
+            _ => panic!("expected Custom"),
+        }
+    }
+
+    #[test]
+    fn sci_set_round_trip_with_subcompartments_preserves_order() {
+        let m = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![SciCompartment::new(
+                "G".to_string().into_boxed_str(),
+                vec![
+                    "DEFG".to_string().into_boxed_str(),
+                    "ABCD".to_string().into_boxed_str(),
+                ]
+                .into_boxed_slice(),
+            )]
+            .into_boxed_slice(),
+            None,
+        );
+        let set = SciSet::from_markings(&[m]);
+        let out = set.to_markings();
+        // Sub-compartments come out alpha-sorted per §A.6 p15.
+        let subs: Vec<&str> = out[0].compartments[0]
+            .sub_compartments
+            .iter()
+            .map(|s| s.as_ref())
+            .collect();
+        assert_eq!(subs, vec!["ABCD", "DEFG"]);
+    }
+
+    #[test]
+    fn sci_set_is_empty_and_accessors() {
+        let empty = SciSet::empty();
+        assert!(empty.is_empty());
+        let populated = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([]),
+            None,
+        )]);
+        assert!(!populated.is_empty());
+    }
+
+    #[test]
+    fn sci_set_overlaps_false_on_disjoint_systems() {
+        let a = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([]),
+            None,
+        )]);
+        let b = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Tk),
+            Box::new([]),
+            None,
+        )]);
+        assert!(!a.overlaps(&b));
+    }
+
+    #[test]
+    fn sci_set_common_compartments_empty_on_disjoint() {
+        let a = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([]),
+            None,
+        )]);
+        let b = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Tk),
+            Box::new([]),
+            None,
+        )]);
+        assert!(a.common_compartments(&b).is_empty());
+    }
+
+    #[test]
+    fn sci_set_common_compartments_shared_system_disjoint_compartments() {
+        // Same system (SI), disagreeing compartment IDs — common_compartments
+        // should be empty.
+        let a = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![SciCompartment::new(
+                "G".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+            None,
+        )]);
+        let b = SciSet::from_markings(&[SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![SciCompartment::new(
+                "H".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+            None,
+        )]);
+        assert!(a.common_compartments(&b).is_empty());
+    }
+
+    #[test]
+    fn sci_set_from_markings_merges_duplicate_entries() {
+        // Two markings for the same system with different
+        // sub-compartments should merge.
+        let m1 = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![SciCompartment::new(
+                "G".to_string().into_boxed_str(),
+                vec!["A".to_string().into_boxed_str()].into_boxed_slice(),
+            )]
+            .into_boxed_slice(),
+            None,
+        );
+        let m2 = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            vec![SciCompartment::new(
+                "G".to_string().into_boxed_str(),
+                vec!["B".to_string().into_boxed_str()].into_boxed_slice(),
+            )]
+            .into_boxed_slice(),
+            None,
+        );
+        let set = SciSet::from_markings(&[m1, m2]);
+        let out = set.to_markings();
+        assert_eq!(out.len(), 1);
+        let subs: Vec<&str> = out[0].compartments[0]
+            .sub_compartments
+            .iter()
+            .map(|s| s.as_ref())
+            .collect();
+        assert_eq!(subs, vec!["A", "B"]);
+    }
+
+    #[test]
+    fn sci_set_to_markings_empty_returns_empty() {
+        let set = SciSet::empty();
+        let out = set.to_markings();
+        assert_eq!(out.len(), 0);
+    }
+
+    // SarSet — round-trip, accessors, meet edge cases
+
+    #[test]
+    fn sar_set_empty_roundtrip_returns_none() {
+        let set = SarSet::from_marking(None);
+        assert!(set.is_empty());
+        assert!(set.to_marking().is_none());
+    }
+
+    #[test]
+    fn sar_set_is_empty_false_on_populated() {
+        let set = SarSet::from_marking(Some(&SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "BP".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+        )));
+        assert!(!set.is_empty());
+    }
+
+    #[test]
+    fn sar_set_round_trip_with_nested_hierarchy() {
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "BP".to_string().into_boxed_str(),
+                vec![SarCompartment::new(
+                    "J12".to_string().into_boxed_str(),
+                    vec![
+                        "K20".to_string().into_boxed_str(),
+                        "K15".to_string().into_boxed_str(),
+                    ]
+                    .into_boxed_slice(),
+                )]
+                .into_boxed_slice(),
+            )]
+            .into_boxed_slice(),
+        );
+        let set = SarSet::from_marking(Some(&sar));
+        let out = set.to_marking().expect("nonempty");
+        // Indicator normalizes to Abbrev on roundtrip.
+        assert_eq!(out.indicator, SarIndicator::Abbrev);
+        // Sub-compartments come out in numeric-first sort order.
+        let subs: Vec<&str> = out.programs[0].compartments[0]
+            .sub_compartments
+            .iter()
+            .map(|s| s.as_ref())
+            .collect();
+        assert_eq!(subs, vec!["K15", "K20"]);
+    }
+
+    #[test]
+    fn sar_set_meet_drops_programs_not_on_both_sides() {
+        let a = SarSet::from_marking(Some(&SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "BP".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+        )));
+        let b = SarSet::from_marking(Some(&SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "CD".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+        )));
+        assert!(a.meet(&b).is_empty());
+    }
+
+    #[test]
+    fn sar_set_meet_common_program_keeps_entry() {
+        let a = SarSet::from_marking(Some(&SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "BP".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+        )));
+        let b = SarSet::from_marking(Some(&SarMarking::new(
+            SarIndicator::Abbrev,
+            vec![SarProgram::new(
+                "BP".to_string().into_boxed_str(),
+                Box::new([]),
+            )]
+            .into_boxed_slice(),
+        )));
+        let m = a.meet(&b);
+        assert!(!m.is_empty());
+    }
+
+    // FgiSet — from_marker/to_marker round-trip + concealed branches
+
+    #[test]
+    fn fgi_set_from_marker_none_returns_none() {
+        assert_eq!(FgiSet::from_marker(None), FgiSet::None);
+    }
+
+    #[test]
+    fn fgi_set_from_marker_empty_countries_is_concealed() {
+        let m = FgiMarker {
+            countries: Box::new([]),
+        };
+        let set = FgiSet::from_marker(Some(&m));
+        assert!(matches!(
+            set,
+            FgiSet::Present {
+                concealed: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn fgi_set_from_marker_populated_countries_is_open() {
+        let m = FgiMarker {
+            countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
+        };
+        let set = FgiSet::from_marker(Some(&m));
+        match set {
+            FgiSet::Present {
+                concealed,
+                countries,
+            } => {
+                assert!(!concealed);
+                assert_eq!(countries.len(), 1);
+            }
+            _ => panic!("expected Present"),
+        }
+    }
+
+    #[test]
+    fn fgi_set_to_marker_none_for_none() {
+        assert!(FgiSet::None.to_marker().is_none());
+    }
+
+    #[test]
+    fn fgi_set_to_marker_concealed_emits_empty_countries() {
+        let set = FgiSet::Present {
+            concealed: true,
+            countries: BTreeSet::new(),
+        };
+        let marker = set.to_marker().expect("Some");
+        assert!(marker.countries.is_empty());
+    }
+
+    #[test]
+    fn fgi_set_to_marker_open_round_trips_countries() {
+        let mut countries = BTreeSet::new();
+        countries.insert(Trigraph::try_new(*b"GBR").unwrap());
+        countries.insert(Trigraph::try_new(*b"DEU").unwrap());
+        let set = FgiSet::Present {
+            concealed: false,
+            countries,
+        };
+        let marker = set.to_marker().expect("Some");
+        assert_eq!(marker.countries.len(), 2);
+    }
+
+    #[test]
+    fn fgi_set_empty_is_none() {
+        assert_eq!(FgiSet::empty(), FgiSet::None);
+    }
+
+    #[test]
+    fn fgi_set_default_is_none() {
+        let d: FgiSet = FgiSet::default();
+        assert_eq!(d, FgiSet::None);
+    }
+
+    #[test]
+    fn fgi_set_top_is_concealed_empty() {
+        let t = FgiSet::top();
+        assert!(matches!(
+            t,
+            FgiSet::Present {
+                concealed: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn fgi_set_join_none_right_preserves_left() {
+        let left = FgiSet::Present {
+            concealed: false,
+            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+                .iter()
+                .copied()
+                .collect(),
+        };
+        assert_eq!(left.join(&FgiSet::None), left);
+    }
+
+    #[test]
+    fn fgi_set_join_none_left_preserves_right() {
+        let right = FgiSet::Present {
+            concealed: false,
+            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+                .iter()
+                .copied()
+                .collect(),
+        };
+        assert_eq!(FgiSet::None.join(&right), right);
+    }
+
+    #[test]
+    fn fgi_set_meet_both_concealed_preserved() {
+        let a = FgiSet::Present {
+            concealed: true,
+            countries: BTreeSet::new(),
+        };
+        let b = FgiSet::Present {
+            concealed: true,
+            countries: BTreeSet::new(),
+        };
+        let m = a.meet(&b);
+        assert!(matches!(
+            m,
+            FgiSet::Present {
+                concealed: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn fgi_set_meet_disjoint_countries_collapses_to_none() {
+        let a = FgiSet::Present {
+            concealed: false,
+            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+                .iter()
+                .copied()
+                .collect(),
+        };
+        let b = FgiSet::Present {
+            concealed: false,
+            countries: [Trigraph::try_new(*b"DEU").unwrap()]
+                .iter()
+                .copied()
+                .collect(),
+        };
+        assert_eq!(a.meet(&b), FgiSet::None);
+    }
+
+    #[test]
+    fn fgi_set_meet_common_country_preserved() {
+        let a = FgiSet::Present {
+            concealed: false,
+            countries: [
+                Trigraph::try_new(*b"GBR").unwrap(),
+                Trigraph::try_new(*b"DEU").unwrap(),
+            ]
+            .iter()
+            .copied()
+            .collect(),
+        };
+        let b = FgiSet::Present {
+            concealed: false,
+            countries: [
+                Trigraph::try_new(*b"GBR").unwrap(),
+                Trigraph::try_new(*b"FRA").unwrap(),
+            ]
+            .iter()
+            .copied()
+            .collect(),
+        };
+        let m = a.meet(&b);
+        match m {
+            FgiSet::Present {
+                concealed,
+                countries,
+            } => {
+                assert!(!concealed);
+                assert_eq!(countries.len(), 1);
+                assert!(countries.contains(&Trigraph::try_new(*b"GBR").unwrap()));
+            }
+            _ => panic!("expected Present"),
+        }
+    }
+
+    #[test]
+    fn fgi_set_meet_none_collapses_to_none() {
+        let a = FgiSet::Present {
+            concealed: true,
+            countries: BTreeSet::new(),
+        };
+        assert_eq!(FgiSet::None.meet(&a), FgiSet::None);
+        assert_eq!(a.meet(&FgiSet::None), FgiSet::None);
+        assert_eq!(FgiSet::None.meet(&FgiSet::None), FgiSet::None);
+    }
 }

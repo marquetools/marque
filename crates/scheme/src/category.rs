@@ -377,4 +377,92 @@ mod tests {
         let out = reduce_union_with_supersession(&values, &supers);
         assert_eq!(out, vec![2]);
     }
+
+    // CategoryShape from Category::shape() — exercises every arm.
+
+    fn mk(op: AggregationOp) -> Category {
+        Category {
+            id: CategoryId(1),
+            name: "c",
+            ordering_rank: 0,
+            cardinality: Cardinality::Many,
+            aggregation: op,
+            intra_ordering: IntraOrdering::AsWritten,
+            expansion: None,
+        }
+    }
+
+    #[test]
+    fn shape_max_is_ordinal() {
+        assert_eq!(mk(AggregationOp::Max).shape(), CategoryShape::Ordinal);
+    }
+
+    #[test]
+    fn shape_max_date_is_date() {
+        assert_eq!(mk(AggregationOp::MaxDate).shape(), CategoryShape::Date);
+    }
+
+    #[test]
+    fn shape_union_is_flat_set() {
+        assert_eq!(mk(AggregationOp::Union).shape(), CategoryShape::FlatSet);
+    }
+
+    #[test]
+    fn shape_intersect_is_intersect_set() {
+        assert_eq!(
+            mk(AggregationOp::Intersect).shape(),
+            CategoryShape::IntersectSet
+        );
+    }
+
+    #[test]
+    fn shape_union_with_supersession_is_supersession() {
+        let c = mk(AggregationOp::UnionWithSupersession(Box::new([(
+            TokenId(1),
+            TokenId(2),
+        )])));
+        assert_eq!(c.shape(), CategoryShape::Supersession);
+    }
+
+    #[test]
+    fn shape_mode_is_mode() {
+        assert_eq!(mk(AggregationOp::Mode).shape(), CategoryShape::Mode);
+    }
+
+    #[test]
+    fn shape_custom_is_custom() {
+        assert_eq!(mk(AggregationOp::Custom).shape(), CategoryShape::Custom);
+    }
+
+    #[test]
+    fn intra_ordering_fixed_first_constructs() {
+        // Exercise the FixedFirst IntraOrdering variant — it's
+        // constructed only when a scheme declares it.
+        let o = IntraOrdering::FixedFirst {
+            first: TokenId(104),
+            rest: Box::new(IntraOrdering::Alphabetical),
+        };
+        match o {
+            IntraOrdering::FixedFirst { first, rest } => {
+                assert_eq!(first, TokenId(104));
+                assert!(matches!(*rest, IntraOrdering::Alphabetical));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn intra_ordering_other_variants_exist() {
+        let _n = IntraOrdering::NumericThenAlpha;
+        let _a = IntraOrdering::AsWritten;
+        let _l = IntraOrdering::Alphabetical;
+    }
+
+    #[test]
+    fn cardinality_variants() {
+        // Cardinality::One / Optional / Many — exercise each.
+        let _o = Cardinality::One;
+        let _op = Cardinality::Optional;
+        let _m = Cardinality::Many;
+    }
 }
