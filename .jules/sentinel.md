@@ -1,0 +1,4 @@
+## 2025-03-05 - [Secure Defaults for Web Services]
+**Vulnerability:** The `marque-server` bounded to `0.0.0.0` by default.
+**Learning:** This exposes the service to the network natively unless overriden.
+**Prevention:** Default to local loopback interface (`127.0.0.1`) so explicit intent via configuration is needed to expose services externally.
