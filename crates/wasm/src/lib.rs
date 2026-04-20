@@ -44,11 +44,18 @@ mod simd128_placeholder {}
 use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
 
+#[cfg(all(target_arch = "wasm32", feature = "talc"))]
+// Extra headroom beyond Talc's minimum first heap size so typical WASM lint/fix
+// workloads do not immediately trigger heap growth. Tune this alongside expected
+// input sizes and allocator behavior.
+const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
+
 #[cfg_attr(all(target_arch = "wasm32", feature = "talc"), global_allocator)]
 #[cfg(all(target_arch = "wasm32", feature = "talc"))]
 static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(unsafe {
-    static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>() + 100000] =
-        [0; min_first_heap_size::<DefaultBinning>() + 100000];
+    static mut INITIAL_HEAP: [u8;
+        min_first_heap_size::<DefaultBinning>() + INITIAL_HEAP_EXTRA_BYTES] =
+        [0; min_first_heap_size::<DefaultBinning>() + INITIAL_HEAP_EXTRA_BYTES];
 
     Claim::array(&raw mut INITIAL_HEAP)
 });
