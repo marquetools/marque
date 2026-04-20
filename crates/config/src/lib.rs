@@ -404,10 +404,6 @@ fn merge_user_into(config: &mut Config, file: ConfigFile) {
     }
 }
 
-fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
-    apply_env_from_iter(config, std::env::vars())
-}
-
 fn apply_env_from_iter<I>(config: &mut Config, vars: I) -> Result<(), ConfigError>
 where
     I: IntoIterator<Item = (String, String)>,
