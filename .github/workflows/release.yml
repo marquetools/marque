@@ -281,26 +281,36 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.tag.outputs.tag }}"
 
-          # Collect all release assets
+          # Collect all release assets into a flat list
           ASSETS=()
-          for f in sbom-output/*; do
-            [ -f "$f" ] && ASSETS+=(--attach "$f")
+          for dir in sbom-output sri-output; do
+            if [ -d "$dir" ]; then
+              for f in "$dir"/*; do
+                [ -f "$f" ] && ASSETS+=("$f")
+              done
+            fi
           done
-          for f in sri-output/*; do
-            [ -f "$f" ] && ASSETS+=(--attach "$f")
-          done
+
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "⚠️ No release assets found — skipping release creation"
+            exit 0
+          fi
 
           # Create (or update) the release with attached files
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG exists — uploading assets"
-            for f in sbom-output/* sri-output/*; do
-              [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
+            for f in "${ASSETS[@]}"; do
+              gh release upload "$TAG" "$f" --clobber
             done
           else
+            ATTACH_FLAGS=()
+            for f in "${ASSETS[@]}"; do
+              ATTACH_FLAGS+=(--attach "$f")
+            done
             gh release create "$TAG" \
               --title "Release ${TAG}" \
               --generate-notes \
-              "${ASSETS[@]}"
+              "${ATTACH_FLAGS[@]}"
           fi
 
           echo "✅ SBOMs and SRI hashes attached to release ${TAG}"
