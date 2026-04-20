@@ -54,8 +54,34 @@ wasm-opt = [
   "--strip-toolchain-annotations",
 ]
 
-[lints]
-workspace = true
+[package.metadata.wasm-pack.profile.release-cloud]
+wasm-opt = [
+  # tool options:
+  "--enable-bulk-memory-opt",
+  "--enable-bulk-memory",
+  "--enable-extended-const",
+  "--enable-gc",
+  "--enable-multi-value",
+  "--enable-mutable-globals",
+  "--enable-nontrapping-float-to-int",
+  "--enable-reference-types",
+  "--enable-sign-ext",
+  "--enable-simd",
+  "--enable-relaxed-simd",
+  "--enable-tail-call",
+
+  # optimization passes:
+  "--type-refining-gufa",
+  "--generate-global-effects",
+  "-O3",
+  "--monomorphize",
+  "--precompute-propagate",
+  "--low-memory-unused",
+  "--gufa",
+  "-O3",
+  "--converge",
+  "--strip-toolchain-annotations",
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -70,6 +96,7 @@ marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
+talc = { version = "5.0.3", optional = true }
 wasm-bindgen = { workspace = true }
 
 [dev-dependencies]
@@ -80,9 +107,22 @@ marque-rules = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-[features]
-default = []
-console_error_panic_hook = ["dep:console_error_panic_hook"]
-
 # marque-extract intentionally excluded — format extraction is caller's
 # responsibility in WASM context; core operates on pre-extracted text.
+
+[features]
+# NOTE: This is mostly pre-wiring for future features; we don't currently have any SIMD128-specific code paths (heavy SIMD optimizations in main codebase), nor have we added multi-threading support yet; but this allows us to enable those features in the future without breaking changes, and also allows users to opt into SIMD128 support for cloud environments where it's available.
+default = ["talc_alloc", "web"]
+
+talc_alloc = ["dep:talc"]
+
+cloud = ["simd128"]
+cloud_talc = ["cloud", "talc_alloc"]
+console_error_panic_hook = ["dep:console_error_panic_hook"]
+multi-threading = []
+simd128 = []
+# Features for browser and web worker targets; which provides support for SIMD, multi-threading, and other WASM features as available in modern browsers.
+web = ["console_error_panic_hook", "multi-threading", "simd128"]
+
+[lints]
+workspace = true

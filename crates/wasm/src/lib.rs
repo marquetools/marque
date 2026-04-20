@@ -2,7 +2,15 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+// TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
+// TalkLock is tuned for multi-threaded workloads (i.e. browser)
+// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocate_api2::Allocator` on stable
+#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
+#![feature(allow_internal_unsafe)]
+
+#[cfg(not(all(target_arch = "wasm32", target_feature = "talc_alloc")))]
 #![forbid(unsafe_code)]
+
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-wasm — WASM target for browser and web worker use.
@@ -32,6 +40,20 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use wasm_bindgen::prelude::*;
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+// placeholder for future SIMD-optimized code paths; currently unused but ensures the simd128 feature compiles.
+
+
+#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
+use talc::{*, source::Claim};
+#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
+#[global_allocator]
+static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(unsafe {
+    static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>() + 100000] =
+        [0; min_first_heap_size::<DefaultBinning>() + 100000];
+
+    Claim::array(&raw mut INITIAL_HEAP)
+});
 
 // ---------------------------------------------------------------------------
 // WASM-compatible clock — Date.now() via wasm_bindgen extern
