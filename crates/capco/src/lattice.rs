@@ -233,14 +233,14 @@ impl Lattice for SciSet {
         let mut out = Self::empty();
         for (sys, comp_map) in &self.systems {
             let Some(other_comps) = other.systems.get(sys) else {
-                // System absent from other operand: drop (§3.3a policy b —
+                // System absent from other operand: drop (§3.3a policy (b) —
                 // system must appear at the shared depth 0).
                 continue;
             };
             // Intersect compartments. Missing compartments on either side
             // are dropped; the system itself survives because it's at the
             // shared depth (both operands contain it). That gives:
-            //   - `SI ⊓ SI-G = SI`     (right-bare compartments drop)
+            //   - `SI ⊓ SI-G = SI`     (non-shared compartments drop)
             //   - `SI-G ⊓ SI-H = SI`   (both have compartments but they
             //                           disagree — compartments drop,
             //                           bare system survives)
@@ -660,7 +660,7 @@ mod tests {
         let out = m.to_markings();
         assert_eq!(out.len(), 1);
         assert!(matches!(
-            out[0].system,
+            &out[0].system,
             SciControlSystem::Published(SciControlBare::Si)
         ));
         assert!(out[0].compartments.is_empty());
