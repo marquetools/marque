@@ -19,6 +19,9 @@ name = "lint_latency"
 harness = false
 name = "linear_scaling"
 
+[lints]
+workspace = true
+
 [dependencies]
 aho-corasick = { workspace = true }
 futures = { workspace = true, optional = true }

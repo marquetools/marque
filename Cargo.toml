@@ -99,6 +99,13 @@ wasm-bindgen = "0.2.118"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
+# Workspace-wide lint settings — inherited by all member crates.
+# cargo-llvm-cov sets `cfg(coverage)` and `cfg(coverage_nightly)` when running
+# instrumented builds. Declaring them here silences the unexpected_cfgs warning
+# on Rust 1.80+ without requiring per-crate overrides.
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)', 'cfg(coverage_nightly)'] }
+
 [profile.bench]
 inherits = "release"
 debug = true

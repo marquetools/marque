@@ -141,6 +141,7 @@ pub fn portion_to_banner(portion: &str) -> Option<&'static str> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

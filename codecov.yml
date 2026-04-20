@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Codecov configuration for marque.
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    # Project-level coverage gate — the overall repository target.
+    project:
+      default:
+        target: auto          # track against the base commit (no fixed %)
+        threshold: 2%         # allow up to 2% drop before failing
+        if_ci_failed: error   # fail the check if the CI job itself failed
+
+    # Patch-level coverage gate — only new/changed lines in a PR.
+    patch:
+      default:
+        target: 80%           # new code should be ≥80% covered
+        threshold: 5%         # allow small deviations
+        if_ci_failed: error
+
+# Ignore paths that should never count toward coverage metrics.
+# These are test infrastructure, generated code, build scripts, and benchmarks
+# that cargo-llvm-cov's default --ignore-filename-regex does not fully exclude.
+ignore:
+  - "crates/test-utils/**"
+  - "crates/ism/build.rs"
+  - "crates/engine/benches/**"
+  - "crates/wasm/tests/**"
+  - "crates/ism/tests/**"
+  - "tests/**"
+  - "benches/**"
+  - "scripts/**"
+  - "demo/**"
+
+# Comment configuration — controls the PR comment Codecov posts.
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  require_changes: true       # only comment when coverage changes
+  after_n_builds: 1           # post comment after the first upload

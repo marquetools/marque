@@ -56,6 +56,7 @@ pub trait BoundedLattice: Lattice {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

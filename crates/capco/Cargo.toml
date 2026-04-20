@@ -17,6 +17,9 @@ include = [
   "src/**/*.rs",
 ]
 
+[lints]
+workspace = true
+
 [dependencies]
 aho-corasick = { workspace = true }
 marque-ism = { workspace = true }
