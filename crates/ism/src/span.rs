@@ -165,4 +165,27 @@ mod tests {
         let s = Span::new(42, 43);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn as_slice_returns_bytes_when_in_bounds() {
+        let buf = b"hello";
+        let s = Span::new(1, 4);
+        assert_eq!(s.as_slice(buf), b"ell");
+    }
+
+    #[test]
+    #[should_panic(expected = "range end index 100 out of range for slice of length 5")]
+    fn as_slice_panics_when_end_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(2, 100);
+        let _ = s.as_slice(buf);
+    }
+
+    #[test]
+    #[should_panic(expected = "range start index 100 out of range for slice of length 5")]
+    fn as_slice_panics_when_start_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(100, 101);
+        let _ = s.as_slice(buf);
+    }
 }
