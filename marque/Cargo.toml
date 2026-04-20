@@ -17,6 +17,9 @@ include = [
   "src/**/*.rs",
 ]
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "marque"
 path = "src/main.rs"

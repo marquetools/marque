@@ -76,6 +76,30 @@ pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
 /// (TODO: Phase 3 wiring) to allow banner-validation rules to compare the observed
 /// banner against the expected composite derived from all seen portions.
 ///
+/// # Phase B: canonical entry point is `scheme.project(Scope::Page, ...)`
+///
+/// Post-Phase-B, the canonical way to compute a banner rollup is
+/// `CapcoScheme::project(Scope::Page, &portions)` (or another scheme's
+/// `project`). `PageContext` is retained because:
+///
+/// 1. It lives in `marque-ism`, which does not depend on
+///    `marque-scheme`, so existing rule code that reads
+///    `PageContext::expected_*` directly doesn't need rewiring.
+/// 2. Its public API is stable — consumers outside the marque
+///    workspace may depend on it.
+///
+/// The byte-level equivalence between `PageContext::expected_*` and
+/// `scheme.project(Scope::Page, ...)` is the Phase B verification gate
+/// (see `crates/capco/tests/scheme_equivalence.rs`). Either entry
+/// point produces the same banner rollup; scheme.project is preferred
+/// for new code because it extends cleanly across schemes (CUI, NATO,
+/// ...).
+///
+/// New rules that need structural SCI semantics should read
+/// `sci_markings` / `SciSet` (in `marque-capco::lattice`) rather than
+/// the flat `sci_controls` CVE-projection — see the Phase B migration
+/// note in `CLAUDE.md`.
+///
 /// # Thread-safety
 /// `PageContext` is not `Sync` — the engine builds it sequentially during a single
 /// document pass. If future batch processing requires sharing, wrap in `Arc<Mutex<_>>`.
@@ -916,6 +940,7 @@ fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::attrs::{Classification, MarkingClassification};

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! # marque-scheme
 //!
@@ -37,20 +38,29 @@
 //! `crates/capco/src/scheme.rs`.
 
 pub mod ambiguity;
+pub mod builtins;
 pub mod category;
 pub mod constraint;
 pub mod lattice;
+pub mod page_rewrite;
 pub mod projection;
 pub mod scheme;
+pub mod scope;
 pub mod template;
 
 pub use ambiguity::{Candidate, EvidenceFeature, Parsed};
+pub use builtins::{
+    FlatSet, IntersectSet, MaxDate, ModeSet, OptionalSingleton, OrdMax, OrdMin, Product,
+    SupersessionSet,
+};
 pub use category::{
-    AggregationOp, Cardinality, Category, CategoryId, ExpansionFn, IntraOrdering, TokenId,
-    reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
+    AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
+    TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
 };
 pub use constraint::{Constraint, ConstraintViolation, TokenRef};
 pub use lattice::{BoundedLattice, Lattice};
+pub use page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite};
 pub use projection::{Projection, categories_in_render_order};
 pub use scheme::MarkingScheme;
+pub use scope::{DiffInput, DiffRelation, Scope};
 pub use template::{CategoryRule, Presence, Template, TokenForm, Wrapping};
