@@ -3162,21 +3162,7 @@ fn sar_missing_identifiers(
                 for comp in prog.compartments.iter() {
                     match obs_comps.get(comp.identifier.as_ref()) {
                         None => {
-                            let prog_id = prog.identifier.as_ref();
-                            let comp_id = comp.identifier.as_ref();
-                            let mut s = String::with_capacity(
-                                prog_id.len()
-                                    + 1
-                                    + comp_id.len()
-                                    + comp
-                                        .sub_compartments
-                                        .iter()
-                                        .map(|sub| 1 + sub.len())
-                                        .sum::<usize>(),
-                            );
-                            s.push_str(prog_id);
-                            s.push('-');
-                            s.push_str(comp_id);
+                            let mut s = format!("{}-{}", prog.identifier, comp.identifier);
                             for sub in comp.sub_compartments.iter() {
                                 s.push(' ');
                                 s.push_str(sub);
@@ -3186,18 +3172,10 @@ fn sar_missing_identifiers(
                         Some(obs_subs) => {
                             for sub in comp.sub_compartments.iter() {
                                 if !obs_subs.contains(sub.as_ref()) {
-                                    let prog_id = prog.identifier.as_ref();
-                                    let comp_id = comp.identifier.as_ref();
-                                    let sub_id = sub.as_ref();
-                                    let mut s = String::with_capacity(
-                                        prog_id.len() + 1 + comp_id.len() + 1 + sub_id.len(),
-                                    );
-                                    s.push_str(prog_id);
-                                    s.push('-');
-                                    s.push_str(comp_id);
-                                    s.push(' ');
-                                    s.push_str(sub_id);
-                                    missing.push(s);
+                                    missing.push(format!(
+                                        "{}-{} {}",
+                                        prog.identifier, comp.identifier, sub,
+                                    ));
                                 }
                             }
                         }
@@ -3213,23 +3191,7 @@ fn sar_missing_identifiers(
 /// the leading indicator prefix). Used to describe missing programs in
 /// diagnostic messages.
 fn render_single_program(prog: &marque_ism::SarProgram) -> String {
-    let prog_id = prog.identifier.as_ref();
-    let cap = prog_id.len()
-        + prog
-            .compartments
-            .iter()
-            .map(|comp| {
-                1 + comp.identifier.len()
-                    + comp
-                        .sub_compartments
-                        .iter()
-                        .map(|sub| 1 + sub.len())
-                        .sum::<usize>()
-            })
-            .sum::<usize>();
-
-    let mut s = String::with_capacity(cap);
-    s.push_str(prog_id);
+    let mut s = String::from(prog.identifier.as_ref());
     for comp in prog.compartments.iter() {
         s.push('-');
         s.push_str(&comp.identifier);
@@ -3680,11 +3642,7 @@ impl Rule for SciBannerRollupRule {
                 .find(|m| sci_system_text(&m.system) == exp_key);
             match observed {
                 None => {
-                    let suffix = " (system missing from banner)";
-                    let mut s = String::with_capacity(exp_key.len() + suffix.len());
-                    s.push_str(exp_key);
-                    s.push_str(suffix);
-                    missing.push(s);
+                    missing.push(format!("{} (system missing from banner)", exp_key));
                 }
                 Some(obs) => {
                     // Compartment check: every expected compartment must
@@ -3696,38 +3654,21 @@ impl Rule for SciBannerRollupRule {
                             .find(|c| c.identifier == exp_comp.identifier);
                         match obs_comp {
                             None => {
-                                let comp_id = exp_comp.identifier.as_ref();
-                                let suffix = " (compartment missing from banner)";
-                                let mut s = String::with_capacity(
-                                    exp_key.len() + 1 + comp_id.len() + suffix.len(),
-                                );
-                                s.push_str(exp_key);
-                                s.push('-');
-                                s.push_str(comp_id);
-                                s.push_str(suffix);
-                                missing.push(s);
+                                missing.push(format!(
+                                    "{}-{} (compartment missing from banner)",
+                                    exp_key,
+                                    exp_comp.identifier.as_ref()
+                                ));
                             }
                             Some(oc) => {
                                 for exp_sub in exp_comp.sub_compartments.iter() {
                                     if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
-                                        let comp_id = exp_comp.identifier.as_ref();
-                                        let sub_id = exp_sub.as_ref();
-                                        let suffix = " (sub-compartment missing from banner)";
-                                        let mut s = String::with_capacity(
-                                            exp_key.len()
-                                                + 1
-                                                + comp_id.len()
-                                                + 1
-                                                + sub_id.len()
-                                                + suffix.len(),
-                                        );
-                                        s.push_str(exp_key);
-                                        s.push('-');
-                                        s.push_str(comp_id);
-                                        s.push(' ');
-                                        s.push_str(sub_id);
-                                        s.push_str(suffix);
-                                        missing.push(s);
+                                        missing.push(format!(
+                                            "{}-{} {} (sub-compartment missing from banner)",
+                                            exp_key,
+                                            exp_comp.identifier.as_ref(),
+                                            exp_sub.as_ref()
+                                        ));
                                     }
                                 }
                             }
