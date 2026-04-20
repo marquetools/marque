@@ -31,14 +31,6 @@ jobs:
   release:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    # Supply chain audit A4: the "cargo" environment MUST have the following
-    # protection rules configured in GitHub Settings → Environments (or via
-    # the GitHub REST API / IaC tooling like Terraform):
-    #   1. Required reviewers — at least one maintainer must approve deployments
-    #   2. Deployment branches — restrict to "main" only
-    #   3. Wait timer — consider a brief delay (e.g. 5 min) as a cooldown
-    # These settings cannot be declared in this workflow file; configure them
-    # in the GitHub UI or via the Environments API.
     environment: cargo
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -61,91 +53,19 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - uses: rust-lang/crates-io-auth-action@690dd5e909dcf75da4e0e1c9737a477826b70387
         id: auth
-
-      # ── Supply chain audit G3: per-crate error handling ───────────
-      # Publish crates one-by-one in dependency order so a mid-sequence
-      # failure stops immediately, leaving a clear record of which crates
-      # were published. This prevents the ecosystem from ending up in an
-      # inconsistent state where some crates reference versions that were
-      # never published.
       - name: Publish crates
         env:
             CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-
-          CRATES=(
-            marque-ism
-            marque-rules
-            marque-core
-            marque-config
-            marque-extract
-            marque-capco
-            marque-engine
-            marque-wasm
-            marque-server
-            marque
-          )
-          PUBLISHED=()
-
-          publish_crate() {
-            local crate="$1"
-            local max_retries=2
-            local attempt=0
-
-            while [ $attempt -lt $max_retries ]; do
-              attempt=$((attempt + 1))
-              echo "::group::Publishing ${crate} (attempt ${attempt}/${max_retries})"
-
-              FLAGS="--bump ${{ inputs.bump }} --no-changelog"
-              if [ "${{ inputs.dry-run }}" = "true" ]; then
-                FLAGS="${FLAGS} --dry-run-cargo-publish"
-              fi
-
-              if cargo smart-release -u --execute ${FLAGS} "${crate}"; then
-                echo "::endgroup::"
-                echo "✅ ${crate} published successfully"
-                PUBLISHED+=("${crate}")
-                return 0
-              fi
-
-              echo "::endgroup::"
-              if [ $attempt -lt $max_retries ]; then
-                echo "⚠️  ${crate} publish failed, retrying in 15s…"
-                sleep 15
-              fi
-            done
-
-            echo "::error::❌ ${crate} failed after ${max_retries} attempts"
-            echo ""
-            echo "=== PUBLISH FAILURE SUMMARY ==="
-            echo "Failed crate: ${crate}"
-            echo "Successfully published before failure:"
-            for c in "${PUBLISHED[@]+"${PUBLISHED[@]}"}"; do
-              echo "  ✅ ${c}"
-            done
-            echo ""
-            echo "Remaining (not published):"
-            local found=false
-            for c in "${CRATES[@]}"; do
-              if [ "$found" = "true" ]; then
-                echo "  ⏭️  ${c}"
-              fi
-              if [ "$c" = "${crate}" ]; then
-                echo "  ❌ ${c} (FAILED)"
-                found=true
-              fi
-            done
-            return 1
-          }
-
-          for crate in "${CRATES[@]}"; do
-            publish_crate "${crate}"
-          done
-
-          echo ""
-          echo "=== ALL CRATES PUBLISHED SUCCESSFULLY ==="
+          FLAGS="--bump ${{ inputs.bump }} --no-changelog"
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run-cargo-publish"
+          fi
+          cargo smart-release -u --execute $FLAGS \
+            marque-ism marque-rules marque-core marque-config \
+            marque-extract marque-capco marque-engine \
+            marque-wasm marque-server marque
 
       - name: Create workspace tag
         id: tag

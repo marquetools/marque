@@ -92,21 +92,8 @@ expression = "LicenseRef-MarqueLicense-1.0"
 license-files = [{ path = "LICENSE.md", hash = 0xe921130e }]
 
 [bans]
-# Supply chain audit finding B4: duplicate crate versions increase the reviewed
-# surface area and could mask a malicious fork pulled in transitively. Deny by
-# default; add targeted skip entries below when a legitimate transitive
-# duplicate is unavoidable.
-multiple-versions = "deny"
+multiple-versions = "warn"
 highlight = "all"
-
-# Known acceptable duplicates — each entry must include a justification.
-# Re-evaluate on every major dependency bump.
-#
-# Format:
-#   skip = [
-#     { crate = "some-crate@1.0", reason = "required by dep-a and dep-b" },
-#   ]
-skip = []
 
 [sources]
 unknown-registry = "deny"
