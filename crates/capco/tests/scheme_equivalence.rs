@@ -524,3 +524,154 @@ fn scheme_identity_fields_plausible() {
     // isn't empty — the exact value bumps with ODNI releases.
     assert!(!scheme.schema_version().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Phase B: Scope-parameterized projection + PageRewrite declaration
+// ---------------------------------------------------------------------------
+
+#[test]
+fn project_page_scope_equivalent_to_project_banner() {
+    use marque_scheme::Scope;
+
+    // project_banner is a Phase A shim that delegates to
+    // project(Scope::Page, ...). Both should produce byte-identical
+    // results on the same inputs.
+    let mut p1 = portion(Classification::Confidential);
+    p1.sci_controls = vec![SciControl::Si].into();
+    let mut p2 = portion(Classification::TopSecret);
+    p2.sci_controls = vec![SciControl::Tk].into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+    let scheme = CapcoScheme::new();
+    let banner_from_shim = scheme.project_banner(&portions);
+    let banner_from_scope = scheme.project(Scope::Page, &portions);
+
+    assert_eq!(banner_from_shim, banner_from_scope);
+}
+
+#[test]
+fn project_portion_scope_is_identity() {
+    use marque_scheme::Scope;
+
+    let scheme = CapcoScheme::new();
+    let only = wrap(portion(Classification::Secret));
+    let out = scheme.project(Scope::Portion, std::slice::from_ref(&only));
+    assert_eq!(out, only);
+}
+
+#[test]
+fn project_portion_scope_empty_returns_bottom() {
+    use marque_scheme::Scope;
+
+    let scheme = CapcoScheme::new();
+    let out = scheme.project(Scope::Portion, &[]);
+    // Bottom is the default `IsmAttributes`.
+    assert_eq!(out.0, marque_ism::IsmAttributes::default());
+}
+
+#[test]
+fn scheme_declares_noforn_clears_rel_to_rewrite() {
+    let scheme = CapcoScheme::new();
+    let rewrites = scheme.page_rewrites();
+    assert_eq!(rewrites.len(), 1);
+    assert_eq!(rewrites[0].id, "capco/noforn-clears-rel-to");
+    assert_eq!(rewrites[0].citation, "CAPCO-2016-§H.2");
+}
+
+#[test]
+fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
+    // Semantic smoke test: the declarative rewrite should give the
+    // same observable result as PageContext's existing
+    // expected_rel_to (which applies the supersession internally).
+    use marque_scheme::Scope;
+
+    let mut p1 = portion(Classification::Secret);
+    p1.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_controls = vec![DissemControl::Nf].into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+    let scheme = CapcoScheme::new();
+    let banner = scheme.project(Scope::Page, &portions);
+
+    // After the page rewrite, REL TO should be empty; NF should
+    // appear in dissem.
+    assert!(banner.0.rel_to.is_empty());
+    assert!(banner.0.dissem_controls.contains(&DissemControl::Nf));
+}
+
+// ---------------------------------------------------------------------------
+// Phase B: SciSet lattice round-trip with PageContext::expected_sci_markings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sci_set_from_to_roundtrip_agrees_with_page_context() {
+    use marque_capco::SciSet;
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    // Build two portions, both with SI-G plus sub-compartments; the
+    // rollup should union them.
+    let sci1 = vec![SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        vec![SciCompartment::new(
+            "G".to_string().into_boxed_str(),
+            vec!["ABCD".to_string().into_boxed_str()].into_boxed_slice(),
+        )]
+        .into_boxed_slice(),
+        None,
+    )]
+    .into_boxed_slice();
+    let sci2 = vec![SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        vec![SciCompartment::new(
+            "G".to_string().into_boxed_str(),
+            vec!["DEFG".to_string().into_boxed_str()].into_boxed_slice(),
+        )]
+        .into_boxed_slice(),
+        None,
+    )]
+    .into_boxed_slice();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.sci_markings = sci1.clone();
+    let mut p2 = portion(Classification::Secret);
+    p2.sci_markings = sci2.clone();
+
+    // Lattice path.
+    let set1 = SciSet::from_markings(&p1.sci_markings);
+    let set2 = SciSet::from_markings(&p2.sci_markings);
+    let joined = marque_scheme::Lattice::join(&set1, &set2);
+    let from_lattice = joined.to_markings();
+
+    // PageContext path.
+    let mut ctx = marque_ism::PageContext::new();
+    ctx.add_portion(p1);
+    ctx.add_portion(p2);
+    let from_pagectx = ctx.expected_sci_markings();
+
+    assert_eq!(from_lattice, from_pagectx);
+}
+
+// ---------------------------------------------------------------------------
+// Phase B: Category::shape() returns the expected descriptors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn category_shapes_are_inspectable() {
+    use marque_capco::scheme::{
+        CAT_CLASSIFICATION, CAT_DECLASSIFY_ON, CAT_DISSEM, CAT_REL_TO, CAT_SAR,
+    };
+    use marque_scheme::CategoryShape;
+
+    let scheme = CapcoScheme::new();
+    let cats = scheme.categories();
+
+    let by_id = |id| cats.iter().find(|c| c.id == id).unwrap();
+
+    assert_eq!(by_id(CAT_CLASSIFICATION).shape(), CategoryShape::Ordinal);
+    assert_eq!(by_id(CAT_DISSEM).shape(), CategoryShape::FlatSet);
+    assert_eq!(by_id(CAT_REL_TO).shape(), CategoryShape::IntersectSet);
+    assert_eq!(by_id(CAT_DECLASSIFY_ON).shape(), CategoryShape::Date);
+    // SAR is a structural category with a bespoke lattice (SarSet).
+    assert_eq!(by_id(CAT_SAR).shape(), CategoryShape::Custom);
+}

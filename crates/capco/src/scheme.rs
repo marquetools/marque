@@ -24,8 +24,9 @@
 
 use marque_ism::{Classification, IsmAttributes, PageContext, Trigraph};
 use marque_scheme::{
-    AggregationOp, Cardinality, Category, CategoryId, Constraint, ConstraintViolation,
-    IntraOrdering, Lattice, MarkingScheme, Parsed, Template, TokenId, TokenRef,
+    AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
+    Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
+    Scope, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,71 @@ impl Lattice for CapcoMarking {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Category-predicate / category-action dispatch (for PageRewrite)
+// ---------------------------------------------------------------------------
+//
+// These helpers implement the trigger and action variants of a
+// `PageRewrite` against CAPCO's `CapcoMarking`. They're here rather
+// than in `marque-scheme` because the variant payloads reference
+// `S::Token` and `S::Marking` and each scheme has to project those
+// onto its concrete storage. The `CategoryPredicate::Custom` /
+// `CategoryAction::Custom` variants skip this dispatch and the
+// rewrite author supplies the closure directly — §7a's NOFORN rewrite
+// takes that path since it's cross-category.
+
+/// `CategoryPredicate::Contains { category, token }` evaluator.
+///
+/// Phase B supports the sample constraint set. Unhandled `(category,
+/// token)` pairs return `false` — a safe conservative answer that
+/// effectively disables the rewrite rather than silently misfiring.
+/// Phase C expands coverage as more rewrites move to the declarative
+/// form.
+fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenId) -> bool {
+    let attrs = &m.0;
+    if category == CAT_DISSEM && token == TOK_NOFORN {
+        return attrs
+            .dissem_controls
+            .iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    }
+    false
+}
+
+/// `CategoryPredicate::Empty { category }` evaluator.
+fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
+    let attrs = &m.0;
+    match category {
+        CAT_REL_TO => !attrs.rel_to.is_empty(),
+        CAT_DISSEM => !attrs.dissem_controls.is_empty(),
+        CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
+        _ => false,
+    }
+}
+
+/// `CategoryAction::Clear { category }` evaluator.
+fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
+    let attrs = &mut m.0;
+    if category == CAT_REL_TO {
+        attrs.rel_to = Box::new([]);
+    } else if category == CAT_DISSEM {
+        attrs.dissem_controls = Box::new([]);
+    }
+    // Other categories: no-op. Phase C expands coverage.
+}
+
+/// `CategoryAction::Replace { category, with }` evaluator. The `with`
+/// argument supplies a full marking; Phase B copies only the named
+/// category's storage out.
+fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &CapcoMarking) {
+    let attrs = &mut m.0;
+    if category == CAT_REL_TO {
+        attrs.rel_to = with.0.rel_to.clone();
+    } else if category == CAT_DISSEM {
+        attrs.dissem_controls = with.0.dissem_controls.clone();
+    }
+}
+
 /// Build an `IsmAttributes` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
 /// fields exercised by Phase A's equivalence tests. Other fields land
@@ -213,6 +279,7 @@ pub struct CapcoScheme {
     categories: Vec<Category>,
     constraints: Vec<Constraint>,
     templates: Vec<Template>,
+    page_rewrites: Vec<PageRewrite<CapcoScheme>>,
 }
 
 impl Default for CapcoScheme {
@@ -227,7 +294,32 @@ impl CapcoScheme {
             categories: Self::build_categories(),
             constraints: Self::build_constraints(),
             templates: Vec::new(), // Phase A does not model templates yet
+            page_rewrites: Self::build_page_rewrites(),
         }
+    }
+
+    /// Construct CAPCO's `PageRewrite` table per §7a of the Phase B
+    /// design doc. Phase B declares one rewrite:
+    ///
+    /// - `capco/noforn-clears-rel-to` — when NOFORN is present in the
+    ///   aggregated dissem category, the REL TO category clears. This
+    ///   is the same behavior [`PageContext::expected_rel_to`]
+    ///   implements today; the declarative form is inspectable at
+    ///   runtime (tooling can render "this page will have NOFORN⇒
+    ///   REL-TO-cleared applied" without calling scheme code).
+    fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
+        vec![PageRewrite {
+            id: "capco/noforn-clears-rel-to",
+            citation: "CAPCO-2016-§H.2",
+            trigger: CategoryPredicate::Custom(|m: &CapcoMarking| {
+                m.0.dissem_controls
+                    .iter()
+                    .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+            }),
+            action: CategoryAction::Custom(|m: &mut CapcoMarking| {
+                m.0.rel_to = Box::new([]);
+            }),
+        }]
     }
 
     /// Build the scheme's category table.
@@ -545,12 +637,67 @@ impl MarkingScheme for CapcoScheme {
         out
     }
 
-    fn project_banner(&self, portions: &[Self::Marking]) -> Self::Marking {
-        let mut ctx = PageContext::new();
-        for p in portions {
-            ctx.add_portion(p.0.clone());
+    fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
+        match scope {
+            Scope::Portion => {
+                // Identity under portion scope: if the caller passed a
+                // single marking we return it; empty → bottom.
+                markings
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| CapcoMarking(IsmAttributes::default()))
+            }
+            Scope::Page | Scope::Document | Scope::Diff => {
+                // Page / Document rollup: drive through the existing
+                // `PageContext` aggregator (which is already
+                // category-component-wise), then apply page rewrites.
+                //
+                // Byte-identical equivalence with `PageContext` is the
+                // Phase B verification gate — see the
+                // `scheme_equivalence.rs` tests. When CAPCO's categories
+                // move to individual `impl Lattice` types in their own
+                // right (Phase C continuation), this implementation
+                // swaps in the category-wise composition directly
+                // without changing the outward contract.
+                let mut ctx = PageContext::new();
+                for p in markings {
+                    ctx.add_portion(p.0.clone());
+                }
+                let mut out = CapcoMarking(page_context_to_attrs(&ctx));
+                // Apply declarative page rewrites. `PageContext`
+                // already applies NOFORN-clears-REL-TO internally, so
+                // the rewrite is effectively a no-op on today's
+                // storage — but declaring it here makes the semantic
+                // inspectable per §7a.
+                for rw in &self.page_rewrites {
+                    let fires = match &rw.trigger {
+                        CategoryPredicate::Contains { category, token } => {
+                            capco_category_contains(&out, *category, *token)
+                        }
+                        CategoryPredicate::Empty { category } => {
+                            !capco_category_has_values(&out, *category)
+                        }
+                        CategoryPredicate::Custom(f) => f(&out),
+                    };
+                    if fires {
+                        match &rw.action {
+                            CategoryAction::Clear { category } => {
+                                capco_category_clear(&mut out, *category);
+                            }
+                            CategoryAction::Replace { category, with } => {
+                                capco_category_replace(&mut out, *category, with);
+                            }
+                            CategoryAction::Custom(f) => f(&mut out),
+                        }
+                    }
+                }
+                out
+            }
         }
-        CapcoMarking(page_context_to_attrs(&ctx))
+    }
+
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &self.page_rewrites
     }
 
     fn render_portion(&self, m: &Self::Marking) -> String {

@@ -62,8 +62,26 @@ pub enum IntraOrdering {
     },
 }
 
-/// Per-category aggregation operator. Applied during `project_banner`
-/// over the values from all portions.
+/// Per-category aggregation operator.
+///
+/// # Status (Phase B)
+///
+/// `AggregationOp` is **retired from the runtime dispatch path**. The
+/// engine reduces categories by calling [`Lattice::join`](crate::Lattice::join)
+/// on the category's value type; it no longer consults this enum to
+/// decide which reducer to run. The variants survive as:
+///
+/// 1. **Build-time shorthand** for authors declaring flat categories
+///    (the values here map to the built-in lattice constructors in
+///    [`crate::builtins`]).
+/// 2. **Inspection metadata** returned from [`Category::shape`] so
+///    tooling can render a scheme's aggregation semantics without
+///    instantiating markings.
+///
+/// In particular, [`AggregationOp::Custom`] no longer drives a runtime
+/// dispatch — it's a marker meaning "this category has a bespoke
+/// `impl Lattice`." Phase C expands coverage so more categories can
+/// use the enumerated variants instead of `Custom`.
 ///
 /// The inputs to each operator are the *atomic* tokens: any composite
 /// token (e.g., FVEY → {USA, GBR, CAN, AUS, NZL}) is expanded by the
@@ -125,6 +143,61 @@ pub struct Category {
     pub intra_ordering: IntraOrdering,
     /// Optional expansion for composite tokens.
     pub expansion: Option<ExpansionFn>,
+}
+
+/// Runtime-inspectable shape of a category's lattice.
+///
+/// Phase B retired `AggregationOp` as a runtime dispatch point — the
+/// engine reduces categories by calling `Lattice::join` on their
+/// values. `CategoryShape` is what replaces `AggregationOp` for
+/// *inspection*: a scheme-exploration UI or docs generator can walk
+/// `scheme.categories()`, call `Category::shape()` on each one, and
+/// render the aggregation semantics without instantiating any marking
+/// values. The engine never consults this.
+///
+/// `Product` and `Optional` nest recursively so composed lattices
+/// (`Product<FlatSet<T>, OrdMax<U>>`) can describe their structure in
+/// full. `Custom` is the terminator for schemes whose category has a
+/// bespoke `impl Lattice` that doesn't decompose into built-ins (SCI's
+/// compartment tree, SAR's program hierarchy).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CategoryShape {
+    /// `OrdMax` / `OrdMin` — total-order lattice.
+    Ordinal,
+    /// `FlatSet` — powerset with join = union.
+    FlatSet,
+    /// `IntersectSet` — powerset with join = intersect.
+    IntersectSet,
+    /// `SupersessionSet` — union with post-filter supersession.
+    Supersession,
+    /// `MaxDate` — date-valued lattice.
+    Date,
+    /// `ModeSet` — multiset with mode-picking join.
+    Mode,
+    /// Any of the above lifted to `Option<L>` via `OptionalSingleton`.
+    Optional(Box<CategoryShape>),
+    /// `Product<A, B>` — component-wise join on a tuple.
+    Product(Vec<CategoryShape>),
+    /// A custom `impl Lattice` outside the built-in palette.
+    Custom,
+}
+
+impl Category {
+    /// Inspect this category's lattice shape. Defaults to a mapping
+    /// from the `AggregationOp` build-time shorthand; schemes with
+    /// bespoke `impl Lattice` categories override via a wrapper helper
+    /// (see `CapcoScheme::category_shape` in `marque-capco`).
+    pub fn shape(&self) -> CategoryShape {
+        match &self.aggregation {
+            AggregationOp::Max => CategoryShape::Ordinal,
+            AggregationOp::MaxDate => CategoryShape::Date,
+            AggregationOp::Union => CategoryShape::FlatSet,
+            AggregationOp::Intersect => CategoryShape::IntersectSet,
+            AggregationOp::UnionWithSupersession(_) => CategoryShape::Supersession,
+            AggregationOp::Mode => CategoryShape::Mode,
+            AggregationOp::Custom => CategoryShape::Custom,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
