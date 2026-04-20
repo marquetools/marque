@@ -605,9 +605,6 @@ pub fn generate_cab_native(
 
     for candidate in &candidates {
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(parsed.attrs.clone());
-            }
             if found_declass_date.is_none() {
                 if let Some(date) = &parsed.attrs.declassify_on {
                     found_declass_date = Some(date.to_string());
@@ -617,6 +614,9 @@ pub fn generate_cab_native(
                 if let Some(ex) = parsed.attrs.declass_exemption {
                     found_declass_exemption = Some(ex.as_str().to_owned());
                 }
+            }
+            if candidate.kind == MarkingType::Portion {
+                page_context.add_portion(parsed.attrs);
             }
         }
     }
