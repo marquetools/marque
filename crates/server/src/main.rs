@@ -106,6 +106,10 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
+fn get_default_addr() -> String {
+    std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
+}
+
 async fn schema_version() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "version": marque_capco::SCHEMA_VERSION }))
 }
@@ -200,7 +204,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
+    let addr = get_default_addr();
 
     tracing::info!("marque-server listening on {addr}");
 
@@ -210,4 +214,15 @@ async fn main() {
     axum::serve(listener, app)
         .await
         .expect("server exited with error");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_default_addr_no_env() {
+        let addr = get_default_addr();
+        assert_eq!(addr, "127.0.0.1:3000");
+    }
 }
