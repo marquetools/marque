@@ -406,19 +406,28 @@ impl<T: Ord + Clone + 'static> Lattice for SupersessionSet<T> {
 // ModeSet — multiset lattice keyed by mode (most-frequent value)
 // ---------------------------------------------------------------------------
 
-/// Multiset of values, with `join` picking the most-frequent value
-/// across both operands (ties broken by `Ord`).
+/// Multiset of observation counts per value, with `join` taking the
+/// **per-key max** of counts across both operands.
 ///
 /// Useful for schemes (corporate, medical) that want "most common
 /// sensitivity" semantics instead of "most restrictive." Storage keeps a
-/// count per value so `join` composes without losing observation
-/// frequency.
+/// count per value; [`ModeSet::mode`] returns the value with the
+/// highest observed count.
 ///
-/// This is a genuine lattice: join is associative, commutative, and
-/// idempotent (combining a multiset with itself doubles counts but the
-/// mode is unchanged). The bottom is the empty multiset; `top()` would
-/// require a distinguished "every value with infinite count" sentinel
-/// and is not provided generically.
+/// # Why per-key max (not sum)
+///
+/// A lattice `join` must be idempotent: `a ⊔ a = a`. If `join` summed
+/// counts, `a.join(&a)` would double every count and violate the
+/// contract. Per-key max gives an idempotent join while still tracking
+/// "the highest frequency observed for this value across any source."
+/// For callers that need sum-of-observations semantics (counting total
+/// votes), combine multisets via [`ModeSet::extend_counts`] rather
+/// than `join` — that method deliberately does not claim lattice
+/// semantics.
+///
+/// Bottom is the empty multiset; `top()` would require a distinguished
+/// "every value with infinite count" sentinel and is not provided
+/// generically (see `BoundedLattice` note on [`FlatSet`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeSet<T: Ord + Clone>(BTreeMap<T, u32>);
 
@@ -450,14 +459,31 @@ impl<T: Ord + Clone> ModeSet<T> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// Sum observation counts across `other` into `self`. **Not a
+    /// lattice operation** — sums are not idempotent. Callers who want
+    /// "how many total votes did each value get across N sources" use
+    /// this; callers who want "highest frequency observed across any
+    /// single source" use [`Lattice::join`].
+    pub fn extend_counts(&self, other: &Self) -> Self {
+        let mut out = self.0.clone();
+        for (k, v) in &other.0 {
+            *out.entry(k.clone()).or_insert(0) += v;
+        }
+        Self(out)
+    }
 }
 
 impl<T: Ord + Clone> Lattice for ModeSet<T> {
+    /// Per-key max of counts. Idempotent: `a.join(&a) = a`.
     #[inline]
     fn join(&self, other: &Self) -> Self {
         let mut out = self.0.clone();
         for (k, v) in &other.0 {
-            *out.entry(k.clone()).or_insert(0) += v;
+            let slot = out.entry(k.clone()).or_insert(0);
+            if *v > *slot {
+                *slot = *v;
+            }
         }
         Self(out)
     }
@@ -788,12 +814,32 @@ mod tests {
     }
 
     #[test]
-    fn mode_set_join_sums_counts() {
+    fn mode_set_join_is_idempotent() {
+        // The Lattice contract requires `a.join(&a) = a`. Per-key max
+        // gives this; sum-of-counts would not.
+        let a = ModeSet::from_iter_counted(vec!["a", "b", "b", "c"]);
+        assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn mode_set_join_takes_per_key_max() {
+        // a has {x:3, y:1}; b has {x:1, y:2, z:5}. Per-key max should
+        // give {x:3, y:2, z:5} — *not* sum.
+        let a = ModeSet::from_iter_counted(vec!["x", "x", "x", "y"]);
+        let b = ModeSet::from_iter_counted(vec!["x", "y", "y", "z", "z", "z", "z", "z"]);
+        let j = a.join(&b);
+        // Mode of the joined multiset is `z` (max count 5).
+        assert_eq!(j.mode(), Some(&"z"));
+    }
+
+    #[test]
+    fn mode_set_extend_counts_sums_observations() {
+        // The non-lattice observation aggregator DOES sum counts.
         let a = ModeSet::from_iter_counted(vec!["a", "b"]);
         let b = ModeSet::from_iter_counted(vec!["b", "c"]);
-        let j = a.join(&b);
-        // `b` now appears twice (1 + 1); mode should be `b`.
-        assert_eq!(j.mode(), Some(&"b"));
+        let combined = a.extend_counts(&b);
+        // `b` now appears twice (1 + 1).
+        assert_eq!(combined.mode(), Some(&"b"));
     }
 
     // MaxDate

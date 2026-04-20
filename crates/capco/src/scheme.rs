@@ -206,13 +206,21 @@ fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenI
 }
 
 /// `CategoryPredicate::Empty { category }` evaluator.
+///
+/// Unhandled categories return `true` (treated as "non-empty / unknown")
+/// so an `Empty` predicate on an unknown category **does not fire**
+/// and a rewrite conditioned on it stays inert. This matches
+/// [`capco_category_contains`]'s conservative-false stance and avoids
+/// misfiring rewrites on categories Phase B doesn't yet inspect.
+/// Phase C expands the match arms as more rewrites move into the
+/// declarative form.
 fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
     let attrs = &m.0;
     match category {
         CAT_REL_TO => !attrs.rel_to.is_empty(),
         CAT_DISSEM => !attrs.dissem_controls.is_empty(),
         CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
-        _ => false,
+        _ => true,
     }
 }
 

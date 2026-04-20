@@ -112,11 +112,13 @@ fn sci_set_join_associative() {
 }
 
 #[test]
-fn sci_set_bottom_is_join_identity() {
-    let bottom = SciSet::bottom();
+fn sci_set_empty_is_join_identity() {
+    // SciSet doesn't implement BoundedLattice (SCI has no finite top),
+    // but empty() is the join identity regardless.
+    let empty = SciSet::empty();
     for a in sci_samples() {
-        assert_eq!(a.join(&bottom), a);
-        assert_eq!(bottom.join(&a), a);
+        assert_eq!(a.join(&empty), a);
+        assert_eq!(empty.join(&a), a);
     }
 }
 
@@ -208,11 +210,13 @@ fn sar_set_join_associative() {
 }
 
 #[test]
-fn sar_set_bottom_is_join_identity() {
-    let bottom = SarSet::bottom();
+fn sar_set_empty_is_join_identity() {
+    // SarSet doesn't implement BoundedLattice (SAR program identifiers
+    // are an open set); empty() is the join identity regardless.
+    let empty = SarSet::empty();
     for a in sar_samples() {
-        assert_eq!(a.join(&bottom), a);
-        assert_eq!(bottom.join(&a), a);
+        assert_eq!(a.join(&empty), a);
+        assert_eq!(empty.join(&a), a);
     }
 }
 

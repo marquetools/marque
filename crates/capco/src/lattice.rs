@@ -259,19 +259,15 @@ impl Lattice for SciSet {
     }
 }
 
-impl BoundedLattice for SciSet {
-    /// Bottom: empty set, no systems.
-    fn bottom() -> Self {
-        Self::empty()
-    }
-    /// No finite top for SCI (agency-custom systems are an open set).
-    /// Returns an empty set; schemes that need a bounded top should
-    /// instantiate their own variant. Documented here so callers don't
-    /// rely on `top() != bottom()` as a universal property.
-    fn top() -> Self {
-        Self::empty()
-    }
-}
+// `SciSet` intentionally does **not** implement `BoundedLattice`: SCI
+// has no lawful finite top because agency-custom control systems are
+// an open set (any new `[A-Z0-9]{2,5}` identifier extends the
+// universe). An "empty" top would violate the
+// `BoundedLattice::top ⊔ a = top` contract on any non-empty `a`. Use
+// [`SciSet::empty`] / [`SciSet::default`] when you need the bottom,
+// and [`Lattice::join`] / [`Lattice::meet`] for composition. Schemes
+// that want a bounded variant should wrap `SciSet` with an explicit
+// sentinel top.
 
 // ---------------------------------------------------------------------------
 // SarSet — lattice over the full SAR category state
@@ -404,16 +400,12 @@ impl Lattice for SarSet {
     }
 }
 
-impl BoundedLattice for SarSet {
-    fn bottom() -> Self {
-        Self::empty()
-    }
-    /// No finite top — SAR program identifiers are agency-assigned
-    /// codewords, an open set. See `SciSet::top`.
-    fn top() -> Self {
-        Self::empty()
-    }
-}
+// `SarSet` intentionally does **not** implement `BoundedLattice`: SAR
+// program identifiers are agency-assigned codewords, an open set. An
+// "empty" top would violate the `BoundedLattice::top ⊔ a = top`
+// contract on any non-empty `a`. Use [`SarSet::empty`] /
+// [`SarSet::default`] when you need the bottom, and [`Lattice::join`]
+// / [`Lattice::meet`] for composition.
 
 // ---------------------------------------------------------------------------
 // FgiSet — lattice over the FGI marker
