@@ -1,18 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
-
-// TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
-// TalkLock is tuned for multi-threaded workloads (i.e. browser)
-// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocate_api2::Allocator` on stable
-#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
-#![feature(allow_internal_unsafe)]
-
-#[cfg(not(all(target_arch = "wasm32", target_feature = "talc_alloc")))]
-#![forbid(unsafe_code)]
-
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-
 //! marque-wasm — WASM target for browser and web worker use.
 //!
 //! Compiled with `wasm-pack build --target web` (or `--target bundler`).
@@ -30,6 +18,21 @@
 //! per `contracts/audit-record.json`), and `remaining` (diagnostics per
 //! `contracts/diagnostic.json`).
 
+// TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
+// TalkLock is tuned for multi-threaded workloads (i.e. browser)
+// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocate_api2::Allocator` on stable
+// TODO: implement javascript calling instead of serializing to JSON using newer WASM 2.0 features
+
+#![cfg_attr(
+    all(target_arch = "wasm32", feature = "talc"),
+    feature(allow_internal_unsafe)
+)]
+#![cfg_attr(
+    not(all(target_arch = "wasm32", feature = "talc")),
+    forbid(unsafe_code)
+)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use marque_config::Config;
 use marque_engine::{Clock, Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
@@ -39,15 +42,14 @@ use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use wasm_bindgen::prelude::*;
-#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+#[cfg(all(target_arch = "wasm32", feature = "simd128"))]
 // placeholder for future SIMD-optimized code paths; currently unused but ensures the simd128 feature compiles.
+#[cfg(all(target_arch = "wasm32", feature = "talc"))]
+use talc::{source::Claim, *};
+use wasm_bindgen::prelude::*;
 
-
-#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
-use talc::{*, source::Claim};
-#[cfg(all(target_arch = "wasm32", target_feature = "talc_alloc"))]
-#[global_allocator]
+#[cfg_attr(all(target_arch = "wasm32", feature = "talc"), global_allocator)]
+#[cfg(all(target_arch = "wasm32", feature = "talc"))]
 static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(unsafe {
     static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>() + 100000] =
         [0; min_first_heap_size::<DefaultBinning>() + 100000];

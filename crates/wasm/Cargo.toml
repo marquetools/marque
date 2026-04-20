@@ -114,10 +114,11 @@ serde_json = { workspace = true }
 # NOTE: This is mostly pre-wiring for future features; we don't currently have any SIMD128-specific code paths (heavy SIMD optimizations in main codebase), nor have we added multi-threading support yet; but this allows us to enable those features in the future without breaking changes, and also allows users to opt into SIMD128 support for cloud environments where it's available.
 default = ["talc_alloc", "web"]
 
-talc_alloc = ["dep:talc"]
+talc = ["dep:talc"]
+talc_alloc = ["talc"]
 
 cloud = ["simd128"]
-cloud_talc = ["cloud", "talc_alloc"]
+cloud_talc = ["cloud", "talc"]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 multi-threading = []
 simd128 = []
