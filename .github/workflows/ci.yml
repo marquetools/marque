@@ -4,9 +4,10 @@
 
 # Supply chain audit: the following jobs MUST be configured as required status
 # checks in GitHub Settings → Branches → main → "Require status checks":
-#   - check        (Format + Lint)
-#   - test         (Test)
-#   - deny         (Supply chain audit — cargo-deny advisories + bans)
+#   - check            (Format + Lint)
+#   - test             (Test)
+#   - deny             (Supply chain audit — cargo-deny advisories + bans)
+#   - vet              (Crate trust audit — cargo-vet)
 #   - schema-integrity (Schema integrity check)
 # Without this, a PR can merge even if cargo-deny flags a known vulnerability.
 
@@ -154,8 +155,8 @@ jobs:
       # have not been tampered with. A compromised schema could alter
       # build-time code generation and silently weaken marking validation.
       - name: Verify schema checksums
+        working-directory: crates/ism/schemas/ISM-v2022-DEC
         run: |
-          cd crates/ism/schemas/ISM-v2022-DEC
           if [ ! -f SHA256SUMS ]; then
             echo "::error::SHA256SUMS file missing from schema directory"
             exit 1

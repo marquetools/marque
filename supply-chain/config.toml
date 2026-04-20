@@ -1,23 +1,5 @@
 
 # cargo-vet config file
-#
-# Supply chain audit: cargo-vet provides per-crate trust auditing, complementary
-# to cargo-deny. Each third-party crate must either be:
-#   1. Audited (recorded in audits.toml)
-#   2. Exempted (listed below — initial bootstrap, to be whittled down)
-#   3. Imported from a trusted organization's audit set (see [imports])
-#
-# New dependencies added without an audit or import will fail `cargo vet check`.
-# Run `cargo vet` locally to review and audit new crates.
-#
-# To import audits from trusted organizations, run:
-#   cargo vet suggest-imports
-#
-# To audit a specific crate:
-#   cargo vet inspect <crate> <version>
-#   cargo vet certify <crate> <version>
-#
-# See: https://mozilla.github.io/cargo-vet/
 
 [cargo-vet]
 version = "0.10"

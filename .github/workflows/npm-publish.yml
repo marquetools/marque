@@ -6,6 +6,11 @@
 # Supply chain audit finding C2: without automated publishing with provenance,
 # there is no guarantee that published packages were built from this repository.
 #
+# Supply chain audit finding C3: the @marque/marque-demo package is NOT marked
+# "private" because it is intended to be published to npm via this workflow.
+# Manual `npm publish` from the demo/ directory is NOT the sanctioned process;
+# always use this workflow to ensure provenance attestation and CI gates.
+#
 # Provenance attestation (--provenance) uses GitHub Actions OIDC to prove:
 #   - The package was built from a specific commit in this repository
 #   - The build was triggered by a specific workflow run
@@ -59,7 +64,7 @@ jobs:
 
       # ── Build WASM module ─────────────────────────────────────────
       - name: Build WASM
-        run: wasm-pack build crates/wasm --target web --release
+        run: wasm-pack build crates/wasm --target web --profile release-wasm
 
       # ── Copy WASM artifacts into demo ─────────────────────────────
       - name: Stage WASM artifacts
