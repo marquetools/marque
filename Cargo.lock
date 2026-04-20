@@ -1016,6 +1016,7 @@ dependencies = [
  "marque-rules",
  "serde",
  "serde_json",
+ "spinning_top",
  "talc",
  "wasm-bindgen",
 ]
@@ -1535,6 +1536,15 @@ checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "spinning_top"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d96d2d1d716fb500937168cc09353ffdc7a012be8475ac7308e1bdf0e3923300"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]
