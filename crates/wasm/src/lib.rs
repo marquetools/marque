@@ -39,7 +39,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
-// placeholder for future SIMD-optimized code paths; currently unused but ensures the simd128 feature compiles.
+mod simd128_placeholder {}
 #[cfg(all(target_arch = "wasm32", feature = "talc"))]
 use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
