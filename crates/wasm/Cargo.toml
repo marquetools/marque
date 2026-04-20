@@ -127,7 +127,7 @@ simd128 = []
 web = ["console_error_panic_hook", "multi-threading", "simd128"]
 
 # For debugging and optimization, talc offers a counters feature with metrics on heap allocations and deallocations
-talc_debug = ["console_error_panic_hook", "dep:spinning_top", "talc/counters"]
+talc_debug = ["console_error_panic_hook", "dep:spinning_top", "dep:talc", "talc/counters"]
 
 [lints]
 workspace = true
