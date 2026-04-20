@@ -35,9 +35,34 @@ jobs:
         with:
           fetch-depth: 2
 
+      # Supply chain audit finding A6 — Trust Decision: Claude Code Plugin Marketplace
+      #
+      # The `plugin_marketplaces` field resolves to the anthropics/claude-code
+      # GitHub repository at runtime. This is an accepted trust decision because:
+      #
+      #   1. Anthropic is the vendor of Claude Code and maintains this repository.
+      #   2. The `uses:` action itself is pinned to a commit SHA, so the action
+      #      code that *fetches* the plugin is immutable per workflow version.
+      #   3. The plugin marketplace URL points to the same vendor's official repo.
+      #   4. This workflow runs with read-only permissions (contents: read,
+      #      pull-requests: read, issues: read) — a compromised plugin cannot
+      #      write to the repository, create releases, or exfiltrate secrets.
+      #   5. The id-token: write permission is scoped to OIDC and cannot be
+      #      used to push code or publish packages.
+      #
+      # Risk acceptance: MEDIUM-LOW. The plugin marketplace is resolved at
+      # runtime (not SHA-pinned), so a compromise of the anthropics/claude-code
+      # repo could inject malicious plugin code. Mitigated by read-only perms.
+      #
+      # Review trigger: re-evaluate this decision if:
+      #   - The workflow gains write permissions
+      #   - The plugin marketplace URL changes to a non-Anthropic source
+      #   - Anthropic deprecates the plugin marketplace mechanism
+      #
+      # Last reviewed: 2026-04-20
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@c8b699d43e9bfed42b48ef15da85d89bab70960
+        uses: anthropics/claude-code-action@4c682d8b65549056a671d1be4d37ac4832e53859
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
