@@ -2,19 +2,24 @@
 #
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# Supply chain audit: periodic review of transitive dependency authors.
+# Supply chain audit: periodic review of dependency versions, sources, and
+# crates.io publisher/owner metadata.
 #
-# This workflow runs monthly and on-demand to surface new crate authors and
-# publishers in the dependency tree. Changes in who publishes a crate you
-# depend on can signal account compromise, hostile takeover, or an abandoned
-# crate being re-claimed.
+# This workflow runs twice a month (1st and 15th) and on-demand. It:
+#   1. Snapshots the full resolved dependency tree (name, version, source)
+#   2. Verifies all dependencies come from crates.io
+#   3. Queries crates.io publisher/owner info via `cargo supply-chain`
+#   4. Compares against the previous snapshot to surface additions/removals
+#
+# Changes in who publishes a crate you depend on can signal account
+# compromise, hostile takeover, or an abandoned crate being re-claimed.
 #
 # Complements cargo-deny (advisory DB) and cargo-vet (audit-level trust)
 # with publisher-level awareness.
 #
 # References:
 #   - https://crates.io/policies
-#   - https://github.com/nickel-org/cargo-supply-chain (if installed)
+#   - https://github.com/nickel-org/cargo-supply-chain
 
 name: Supply Chain Review
 
@@ -33,7 +38,7 @@ concurrency:
 
 jobs:
   review:
-    name: Dependency author review
+    name: Dependency & publisher review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -43,6 +48,9 @@ jobs:
           toolchain: "1.89"
 
       - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
+
+      - name: Install cargo-supply-chain
+        run: cargo install cargo-supply-chain --locked
 
       # ── Generate dependency tree snapshot ──────────────────────────
       # `cargo metadata` gives us the full resolved dependency graph.
@@ -89,6 +97,24 @@ jobs:
           else
             echo "✅ All third-party dependencies sourced from crates.io"
           fi
+
+      # ── Query crates.io publisher/owner metadata ───────────────────
+      # `cargo supply-chain` queries the crates.io API for who published
+      # each version and who owns each crate. This surfaces changes in
+      # maintainership that might otherwise go unnoticed.
+      - name: Query crates.io publishers
+        run: |
+          set -euo pipefail
+
+          echo "=== Crate Publishers ==="
+          cargo supply-chain publishers \
+            | tee supply-chain-output/publishers.txt
+          echo ""
+
+          echo "=== Crate Update History ==="
+          cargo supply-chain update \
+            | tee supply-chain-output/updates.txt
+          echo ""
 
       # ── Detect new or changed dependencies ─────────────────────────
       # Compare against the previous snapshot (if available via cache).

@@ -158,4 +158,4 @@ jobs:
         with:
           name: wasm-sri-hashes
           path: sri-output/
-          retention-days: 90
+          retention-days: 365

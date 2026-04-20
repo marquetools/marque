@@ -36,8 +36,8 @@ For a security tool processing classified information markings, build reproducib
 **Recommended verification procedure:**
 
 ```bash
-# Clone at the exact release tag
-git clone --branch v0.2.0 https://github.com/marquetools/marque
+# Clone at the exact release tag (replace vX.Y.Z with the version you're verifying)
+git clone --branch vX.Y.Z https://github.com/marquetools/marque
 cd marque
 
 # Build with deterministic settings
@@ -65,8 +65,8 @@ sha256sum target/release/marque
 **Recommended verification procedure:**
 
 ```bash
-# Clone at the exact release tag
-git clone --branch v0.2.0 https://github.com/marquetools/marque
+# Clone at the exact release tag (replace vX.Y.Z with the version you're verifying)
+git clone --branch vX.Y.Z https://github.com/marquetools/marque
 cd marque
 
 # Build WASM

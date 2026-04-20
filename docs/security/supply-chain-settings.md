@@ -139,7 +139,8 @@ Comprehensive rollup of all supply chain security measures implemented across Ph
 - **Artifacts:** `WASM-SRI-HASHES.txt` (human-readable), `wasm-sri.json` (machine-readable)
 - **Triggers:** On release tag push (`v*`) and manual dispatch
 - **Usage:** Consumers add `integrity="sha384-<hash>"` attribute when loading WASM from CDN
-- **Verify:** Download the `wasm-sri-hashes` artifact from any release workflow run
+- **Distribution:** Uploaded as workflow artifacts (365-day retention) AND attached to GitHub Releases for permanent availability
+- **Verify:** Download the SRI hashes from the GitHub Release page or from workflow artifacts
 
 ### A6: Claude Code Plugin Marketplace Trust Decision
 - **File:** `.github/workflows/claude-code-review.yml` (documented inline)
@@ -151,26 +152,28 @@ Comprehensive rollup of all supply chain security measures implemented across Ph
 - **Review trigger:** Re-evaluate if the workflow gains write permissions, the marketplace URL changes, or Anthropic deprecates the mechanism
 - **Last reviewed:** 2026-04-20
 
-### Supply Chain Dependency Author Review
+### Supply Chain Dependency & Publisher Review
 - **File:** `.github/workflows/supply-chain-review.yml`
-- **What:** Periodic (1st and 15th of month) review of transitive dependency authors
+- **What:** Periodic (1st and 15th of month) review of dependency versions, sources, and crates.io publisher/owner metadata via `cargo supply-chain`
 - **Features:**
   - Generates dependency tree snapshot from `cargo metadata`
   - Verifies all dependencies are from crates.io
+  - Queries crates.io publisher/owner info via `cargo supply-chain publishers` and `cargo supply-chain update`
   - Compares against previous snapshot to detect additions/removals
-  - Uploads report as artifact
+  - Uploads full report (deps, publishers, update history) as artifact
 - **Verify:** Check workflow run history for the "Supply Chain Review" workflow
 
 ### SBOM Generation
 - **File:** `.github/workflows/release.yml` (added steps)
 - **What:** CycloneDX and SPDX SBOM generation during release
+- **Tool:** `cargo-cyclonedx` pinned to version `0.5.9`
 - **Formats:**
   - CycloneDX JSON (`marque-sbom.cdx.json`)
   - CycloneDX XML (`marque-sbom.cdx.xml`)
   - SPDX JSON stub (`marque-sbom.spdx.json`)
 - **Compliance:** Addresses Executive Order 14028 (U.S. Government SBOM requirement)
-- **Artifact:** `sbom-v{version}` with 365-day retention
-- **Verify:** Download the SBOM artifact from a release workflow run
+- **Distribution:** Uploaded as workflow artifacts (365-day retention) AND attached to GitHub Releases for permanent availability
+- **Verify:** Download the SBOM from the GitHub Release page or from workflow artifacts
 
 ### Reproducible Builds Documentation
 - **File:** `docs/security/reproducible-builds.md`
