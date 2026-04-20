@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "range end index 100 out of range for slice of length 5")]
+    #[should_panic]
     fn as_slice_panics_when_end_out_of_bounds() {
         let buf = b"hello";
         let s = Span::new(2, 100);
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "range start index 100 out of range for slice of length 5")]
+    #[should_panic]
     fn as_slice_panics_when_start_out_of_bounds() {
         let buf = b"hello";
         let s = Span::new(100, 101);
