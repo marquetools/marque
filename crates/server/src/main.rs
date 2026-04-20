@@ -200,7 +200,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 
