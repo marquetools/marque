@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Supply chain audit finding E1: generate Subresource Integrity (SRI) hashes
+# for WASM distribution artifacts. These hashes allow consumers to verify that
+# the WASM module they load has not been tampered with during distribution.
+#
+# SRI hashes are generated for every release and published as a build artifact.
+# Consumers embedding the WASM module from a CDN or third-party host SHOULD
+# verify the integrity attribute against these published hashes.
+#
+# References:
+#   - https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+#   - https://www.w3.org/TR/SRI/
+
+name: WASM SRI Hashes
+
+on:
+  # Generate hashes on every release tag push
+  push:
+    tags:
+      - 'v*'
+  # Allow manual runs for testing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sri-hashes:
+    name: Generate WASM SRI hashes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
+
+      - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
+
+      - name: Build WASM
+        run: wasm-pack build crates/wasm --target web --profile release-wasm
+
+      - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
+        with:
+          file: crates/wasm/pkg/*.wasm
+          options: >-
+            --enable-bulk-memory-opt
+            --enable-bulk-memory
+            --enable-extended-const
+            --enable-gc
+            --enable-multi-value
+            --enable-mutable-globals
+            --enable-nontrapping-float-to-int
+            --enable-reference-types
+            --enable-sign-ext
+            --enable-simd
+            --enable-tail-call
+            --enable-threads
+            --enable-typed-function-references
+            --type-refining-gufa
+            --generate-global-effects
+            -O3
+            --monomorphize
+            --precompute-propagate
+            --low-memory-unused
+            --gufa
+            -O3
+            --converge
+            --strip-toolchain-annotations
+
+      # ── Generate SRI hashes ──────────────────────────────────────
+      # Produces SHA-256, SHA-384, and SHA-512 SRI hashes for each
+      # WASM artifact. SHA-384 is the recommended default for SRI.
+      - name: Generate SRI hashes
+        run: |
+          set -euo pipefail
+          mkdir -p sri-output
+
+          echo "# WASM Subresource Integrity (SRI) Hashes" > sri-output/WASM-SRI-HASHES.txt
+          echo "#" >> sri-output/WASM-SRI-HASHES.txt
+          echo "# Generated from: ${{ github.sha }}" >> sri-output/WASM-SRI-HASHES.txt
+          echo "# Tag: ${{ github.ref_name }}" >> sri-output/WASM-SRI-HASHES.txt
+          echo "# Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> sri-output/WASM-SRI-HASHES.txt
+          echo "#" >> sri-output/WASM-SRI-HASHES.txt
+          echo "# Usage: add the integrity attribute to your script/link tags:" >> sri-output/WASM-SRI-HASHES.txt
+          echo '#   <script src="marque_wasm.js" integrity="sha384-<hash>" crossorigin="anonymous"></script>' >> sri-output/WASM-SRI-HASHES.txt
+          echo "#" >> sri-output/WASM-SRI-HASHES.txt
+          echo "" >> sri-output/WASM-SRI-HASHES.txt
+
+          for file in crates/wasm/pkg/marque_wasm_bg.wasm crates/wasm/pkg/marque_wasm.js; do
+            if [ -f "$file" ]; then
+              BASENAME=$(basename "$file")
+              echo "=== ${BASENAME} ===" >> sri-output/WASM-SRI-HASHES.txt
+
+              # SHA-256
+              SHA256=$(openssl dgst -sha256 -binary "$file" | openssl base64 -A)
+              echo "  sha256-${SHA256}" >> sri-output/WASM-SRI-HASHES.txt
+
+              # SHA-384 (recommended for SRI)
+              SHA384=$(openssl dgst -sha384 -binary "$file" | openssl base64 -A)
+              echo "  sha384-${SHA384}" >> sri-output/WASM-SRI-HASHES.txt
+
+              # SHA-512
+              SHA512=$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)
+              echo "  sha512-${SHA512}" >> sri-output/WASM-SRI-HASHES.txt
+
+              echo "" >> sri-output/WASM-SRI-HASHES.txt
+
+              echo "✅ ${BASENAME}: sha384-${SHA384}"
+            fi
+          done
+
+          # Also generate a machine-readable JSON manifest
+          echo '{' > sri-output/wasm-sri.json
+          echo '  "commit": "${{ github.sha }}",' >> sri-output/wasm-sri.json
+          echo '  "tag": "${{ github.ref_name }}",' >> sri-output/wasm-sri.json
+          echo "  \"generated\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"," >> sri-output/wasm-sri.json
+          echo '  "artifacts": {' >> sri-output/wasm-sri.json
+
+          FIRST=true
+          for file in crates/wasm/pkg/marque_wasm_bg.wasm crates/wasm/pkg/marque_wasm.js; do
+            if [ -f "$file" ]; then
+              BASENAME=$(basename "$file")
+              SHA256=$(openssl dgst -sha256 -binary "$file" | openssl base64 -A)
+              SHA384=$(openssl dgst -sha384 -binary "$file" | openssl base64 -A)
+              SHA512=$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)
+
+              if [ "$FIRST" = "true" ]; then
+                FIRST=false
+              else
+                echo ',' >> sri-output/wasm-sri.json
+              fi
+
+              printf '    "%s": {\n' "$BASENAME" >> sri-output/wasm-sri.json
+              printf '      "sha256": "sha256-%s",\n' "$SHA256" >> sri-output/wasm-sri.json
+              printf '      "sha384": "sha384-%s",\n' "$SHA384" >> sri-output/wasm-sri.json
+              printf '      "sha512": "sha512-%s"\n' "$SHA512" >> sri-output/wasm-sri.json
+              printf '    }' >> sri-output/wasm-sri.json
+            fi
+          done
+
+          echo '' >> sri-output/wasm-sri.json
+          echo '  }' >> sri-output/wasm-sri.json
+          echo '}' >> sri-output/wasm-sri.json
+
+          echo ""
+          echo "=== SRI hash manifest ==="
+          cat sri-output/WASM-SRI-HASHES.txt
+
+      - name: Upload SRI hashes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wasm-sri-hashes
+          path: sri-output/
+          retention-days: 365

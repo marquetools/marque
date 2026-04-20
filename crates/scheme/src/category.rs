@@ -215,7 +215,6 @@ mod tests {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     enum Level {
-        #[allow(dead_code)]
         U,
         C,
         S,
@@ -225,7 +224,7 @@ mod tests {
     #[test]
     fn max_reduces_to_peak() {
         assert_eq!(
-            reduce_max(&[Level::C, Level::TS, Level::S]),
+            reduce_max(&[Level::U, Level::C, Level::TS, Level::S]),
             Some(Level::TS)
         );
         assert_eq!(reduce_max::<Level>(&[]), None);
