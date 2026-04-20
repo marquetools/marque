@@ -3,9 +3,26 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Codecov configuration for marque.
-# https://docs.codecov.com/docs/codecov-yaml
+# Reference: https://docs.codecov.com/docs/codecov-yaml
+# Validate:  https://api.codecov.io/validate
 
+# ---------------------------------------------------------------------------
+# Top-level Codecov settings
+# ---------------------------------------------------------------------------
+codecov:
+  require_ci_to_pass: yes     # wait for CI before posting status
+  notify:
+    after_n_builds: 1         # post status after the first upload
+    wait_for_ci: yes
+
+# ---------------------------------------------------------------------------
+# Coverage settings
+# ---------------------------------------------------------------------------
 coverage:
+  precision: 2                # two decimal places (e.g. 84.27%)
+  round: down                 # always round down
+  range: "60...100"           # green range for the badge / graph
+
   status:
     # Project-level coverage gate — the overall repository target.
     project:
@@ -13,6 +30,7 @@ coverage:
         target: auto          # track against the base commit (no fixed %)
         threshold: 2%         # allow up to 2% drop before failing
         if_ci_failed: error   # fail the check if the CI job itself failed
+        removed_code_behavior: adjust_base  # adjust base when code is removed
 
     # Patch-level coverage gate — only new/changed lines in a PR.
     patch:
@@ -21,9 +39,11 @@ coverage:
         threshold: 5%         # allow small deviations
         if_ci_failed: error
 
-# Ignore paths that should never count toward coverage metrics.
+# ---------------------------------------------------------------------------
+# Ignore paths — excluded from coverage metrics entirely.
 # These are test infrastructure, generated code, build scripts, and benchmarks
 # that cargo-llvm-cov's default --ignore-filename-regex does not fully exclude.
+# ---------------------------------------------------------------------------
 ignore:
   - "crates/test-utils/**"
   - "crates/ism/build.rs"
@@ -34,9 +54,21 @@ ignore:
   - "benches/**"
   - "scripts/**"
   - "demo/**"
+  - "docs/**"
+  - "docs-site/**"
+  - "tools/**"
 
-# Comment configuration — controls the PR comment Codecov posts.
+# ---------------------------------------------------------------------------
+# PR comment settings
+# ---------------------------------------------------------------------------
 comment:
   layout: "condensed_header, condensed_files, condensed_footer"
+  behavior: default           # update existing comment, create if absent
   require_changes: true       # only comment when coverage changes
-  after_n_builds: 1           # post comment after the first upload
+
+# ---------------------------------------------------------------------------
+# GitHub Checks annotations — disable to prevent noisy annotations on
+# closing braces and other non-actionable single-line regions.
+# ---------------------------------------------------------------------------
+github_checks:
+  annotations: false
