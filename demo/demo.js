@@ -169,6 +169,7 @@ function prependAuditEntry(fix, stream, emptyEl) {
 
   const entry = document.createElement('div');
   entry.className = 'audit-entry';
+  entry.setAttribute('role', 'log');
   const spanTime = document.createElement('span');
   spanTime.className = 'audit-time';
   spanTime.textContent = timeStr;
@@ -197,13 +198,21 @@ function prependAuditEntry(fix, stream, emptyEl) {
   spanConfidence.className = 'audit-confidence';
   spanConfidence.textContent = `${pct}%`;
 
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanTime);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanRule);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanOriginal);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanArrow);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanReplacement);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanSource);
+  entry.appendChild(document.createTextNode('\n    '));
   entry.appendChild(spanConfidence);
+  entry.appendChild(document.createTextNode('\n  '));
 
   // Prepend: insert before the first child (or append if empty)
   if (stream.firstChild) {
@@ -375,11 +384,6 @@ async function main() {
   const auditStream  = document.getElementById('audit-stream');
   const auditEmpty   = document.getElementById('audit-empty');
 
-  if (auditStream) {
-    auditStream.setAttribute('role', 'log');
-    auditStream.setAttribute('aria-live', 'polite');
-  }
-
   // Tooltip that reads from view._marqueDiagData.
   const simpleTip = hoverTooltip((view, pos) => {
     const diags = view._marqueDiagData || [];
@@ -405,9 +409,13 @@ async function main() {
         divCitation.className = 'tip-citation';
         divCitation.textContent = match.citation;
 
+        dom.appendChild(document.createTextNode('\n          '));
         dom.appendChild(divRule);
+        dom.appendChild(document.createTextNode('\n          '));
         dom.appendChild(divMessage);
+        dom.appendChild(document.createTextNode('\n          '));
         dom.appendChild(divCitation);
+        dom.appendChild(document.createTextNode('\n        '));
 
         return { dom };
       },
