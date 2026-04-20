@@ -51,6 +51,7 @@ path = [
   "Cargo.toml",
   "Cargo.lock",
   "**/README.md",
+  "supply-chain/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
