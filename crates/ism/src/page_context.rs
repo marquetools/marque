@@ -150,11 +150,11 @@ impl PageContext {
     /// All SCI controls that must appear on the banner (union of all portions).
     pub fn expected_sci_controls(&self) -> Vec<SciControl> {
         let mut seen = std::collections::BTreeSet::new();
-        for attrs in &self.portions {
-            for &ctrl in attrs.sci_controls.iter() {
-                seen.insert(ctrl);
-            }
-        }
+        seen.extend(
+            self.portions
+                .iter()
+                .flat_map(|attrs| attrs.sci_controls.iter().copied()),
+        );
         seen.into_iter().collect()
     }
 
@@ -313,11 +313,11 @@ impl PageContext {
 
         // Step 1: Basic union of all dissem controls.
         let mut seen = std::collections::BTreeSet::new();
-        for attrs in &self.portions {
-            for &ctrl in attrs.dissem_controls.iter() {
-                seen.insert(ctrl);
-            }
-        }
+        seen.extend(
+            self.portions
+                .iter()
+                .flat_map(|attrs| attrs.dissem_controls.iter().copied()),
+        );
 
         // Step 2: OC-USGOV drops if not on ALL OC-carrying portions.
         if seen.contains(&DissemControl::OcUsgov) {
@@ -697,11 +697,11 @@ impl PageContext {
         let mut seen = std::collections::BTreeSet::new();
         let mut needs_nf_from_split = false;
 
-        for attrs in &self.portions {
-            for &nic in attrs.non_ic_dissem.iter() {
-                seen.insert(nic);
-            }
-        }
+        seen.extend(
+            self.portions
+                .iter()
+                .flat_map(|attrs| attrs.non_ic_dissem.iter().copied()),
+        );
 
         if classified {
             // SBU-NF → SBU + NF (dissem)
