@@ -119,6 +119,15 @@ mod tests {
     }
 
     #[test]
+    fn span_len_calculates_correctly() {
+        assert_eq!(Span::new(0, 0).len(), 0);
+        assert_eq!(Span::new(0, 10).len(), 10);
+        assert_eq!(Span::new(5, 10).len(), 5);
+        assert_eq!(Span::new(100, 100).len(), 0);
+        assert_eq!(Span::new(100, 250).len(), 150);
+    }
+
+    #[test]
     #[should_panic(expected = "Span::new")]
     fn span_new_panics_on_inverted_bounds() {
         let _ = Span::new(7, 2);
