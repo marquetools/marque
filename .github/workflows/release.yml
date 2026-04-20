@@ -42,7 +42,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install release tooling
         run: cargo install cargo-smart-release git-cliff --locked
