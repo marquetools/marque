@@ -19,9 +19,9 @@
 //! `contracts/diagnostic.json`).
 
 // TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
-// TalkLock is tuned for multi-threaded workloads (i.e. browser)
-// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocate_api2::Allocator` on stable
-// TODO: implement javascript calling instead of serializing to JSON using newer WASM 2.0 features
+// TalcLock is tuned for multi-threaded workloads (i.e. browser)
+// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocator_api2::Allocator` on stable
+// TODO: implement JavaScript calling instead of serializing to JSON using newer WASM 2.0 features
 
 #![cfg_attr(
     all(target_arch = "wasm32", feature = "talc"),
