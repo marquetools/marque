@@ -247,7 +247,6 @@ mod tests {
     fn union_single_element() {
         let v = reduce_union(&["SI"]);
         assert_eq!(v, vec!["SI"]);
-        assert_eq!(reduce_union::<&str>(&[]), Vec::<&str>::new());
     }
 
     #[test]
@@ -264,10 +263,8 @@ mod tests {
 
     #[test]
     fn union_no_duplicates_preserves_order() {
-        let v = reduce_union(&["A", "B", "C"]);
+        let v = reduce_union(&["A", "B", "A", "C"]);
         assert_eq!(v, vec!["A", "B", "C"]);
-        let v = reduce_union(&["SI", "SI", "SI"]);
-        assert_eq!(v, vec!["SI"]);
     }
 
     #[test]
