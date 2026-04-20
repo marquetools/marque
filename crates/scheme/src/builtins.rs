@@ -377,10 +377,21 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
 }
 
 impl<T: Ord + Clone + 'static> Lattice for SupersessionSet<T> {
+    /// Join = union then apply supersession. Both operands must carry
+    /// the same supersession table (pointer equality) — schemes
+    /// construct a single `&'static [(T, T)]` per category and use it
+    /// everywhere. The `debug_assert!` catches mis-wired test setups
+    /// that combine two sets with different tables (which would
+    /// silently produce order-dependent results in release builds
+    /// because the output carries `self.supersession` unconditionally).
     #[inline]
     fn join(&self, other: &Self) -> Self {
-        // Supersession table must agree (it's an invariant of the
-        // category). We preserve `self.supersession` on the output.
+        debug_assert!(
+            std::ptr::eq(self.supersession, other.supersession),
+            "SupersessionSet::join called on operands with different supersession tables; \
+             the lattice laws (commutativity, associativity) only hold when both sides share \
+             the same category table"
+        );
         let flat = FlatSet(self.set.clone()).join(&FlatSet(other.set.clone()));
         let filtered = Self::apply_supersession(flat.0, self.supersession);
         Self {
@@ -392,8 +403,16 @@ impl<T: Ord + Clone + 'static> Lattice for SupersessionSet<T> {
     /// Meet = intersection. Supersession is a join-side post-filter only
     /// (the spec never defines a "meet with supersession"); the meet is
     /// the plain intersection on the stored set.
+    ///
+    /// Same table-equality invariant as `join` — enforced via
+    /// `debug_assert!`.
     #[inline]
     fn meet(&self, other: &Self) -> Self {
+        debug_assert!(
+            std::ptr::eq(self.supersession, other.supersession),
+            "SupersessionSet::meet called on operands with different supersession tables; \
+             see SupersessionSet::join for the invariant"
+        );
         let flat = FlatSet(self.set.clone()).meet(&FlatSet(other.set.clone()));
         Self {
             set: flat.0,
@@ -512,71 +531,111 @@ impl<T: Ord + Clone> Lattice for ModeSet<T> {
 /// `PageContext::expected_declassify_on`). Bottom is the absent date
 /// (`None`).
 ///
+/// # Validation
+///
+/// The inner field is private and construction is gated through
+/// [`MaxDate::present`] (panicking on invalid) or [`MaxDate::try_present`]
+/// (fallible). Accepted inputs are exactly `[0-9]{4}` or `[0-9]{8}` —
+/// the two forms CAPCO's `declassify_on` uses. This is what makes
+/// [`BoundedLattice::top`] lawful: its sentinel `99991231` is strictly
+/// greater than every representable value under the lex ordering.
+/// Without this gate, a caller could construct e.g. `"ZZZZ"` whose
+/// lex order is greater than `99991231`, breaking `top ⊔ a = top`.
+///
+/// # Storage
+///
 /// We store the owned string rather than a reference so the lattice
-/// value can outlive any single input portion. For large-scale batch
-/// work, a `MaxDate<&'static str>` variant is trivial to add if memory
-/// pressure warrants.
+/// value can outlive any single input portion.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct MaxDate(pub Option<Box<str>>);
+pub struct MaxDate {
+    inner: Option<Box<str>>,
+}
 
 impl MaxDate {
     #[inline]
     pub fn absent() -> Self {
-        Self(None)
+        Self { inner: None }
     }
 
+    /// Construct from a validated date string. Panics if `s` is neither
+    /// exactly 4 nor exactly 8 ASCII digits.
+    ///
+    /// Prefer [`MaxDate::try_present`] at system boundaries where input
+    /// is untrusted; `present` is the convenience entry for scheme
+    /// code that already has a known-valid string.
     #[inline]
     pub fn present(s: impl Into<Box<str>>) -> Self {
-        Self(Some(s.into()))
+        let boxed = s.into();
+        assert!(
+            Self::is_valid(&boxed),
+            "MaxDate::present: expected YYYY or YYYYMMDD; got {boxed:?}"
+        );
+        Self { inner: Some(boxed) }
+    }
+
+    /// Fallible constructor. Returns `None` unless `s` matches the
+    /// accepted `[0-9]{4}` or `[0-9]{8}` shape.
+    #[inline]
+    pub fn try_present(s: impl Into<Box<str>>) -> Option<Self> {
+        let boxed = s.into();
+        if Self::is_valid(&boxed) {
+            Some(Self { inner: Some(boxed) })
+        } else {
+            None
+        }
     }
 
     #[inline]
     pub fn as_deref(&self) -> Option<&str> {
-        self.0.as_deref()
+        self.inner.as_deref()
+    }
+
+    /// Validate a candidate date string.
+    fn is_valid(s: &str) -> bool {
+        (s.len() == 4 || s.len() == 8) && s.bytes().all(|b| b.is_ascii_digit())
     }
 }
 
 impl Lattice for MaxDate {
     #[inline]
     fn join(&self, other: &Self) -> Self {
-        match (&self.0, &other.0) {
-            (None, None) => Self(None),
-            (Some(a), None) => Self(Some(a.clone())),
-            (None, Some(b)) => Self(Some(b.clone())),
-            (Some(a), Some(b)) => {
-                if a >= b {
-                    Self(Some(a.clone()))
-                } else {
-                    Self(Some(b.clone()))
-                }
-            }
+        match (&self.inner, &other.inner) {
+            (None, None) => Self { inner: None },
+            (Some(a), None) => Self {
+                inner: Some(a.clone()),
+            },
+            (None, Some(b)) => Self {
+                inner: Some(b.clone()),
+            },
+            (Some(a), Some(b)) => Self {
+                inner: Some(if a >= b { a.clone() } else { b.clone() }),
+            },
         }
     }
 
     #[inline]
     fn meet(&self, other: &Self) -> Self {
-        match (&self.0, &other.0) {
-            (None, _) | (_, None) => Self(None),
-            (Some(a), Some(b)) => {
-                if a <= b {
-                    Self(Some(a.clone()))
-                } else {
-                    Self(Some(b.clone()))
-                }
-            }
+        match (&self.inner, &other.inner) {
+            (None, _) | (_, None) => Self { inner: None },
+            (Some(a), Some(b)) => Self {
+                inner: Some(if a <= b { a.clone() } else { b.clone() }),
+            },
         }
     }
 }
 
 impl BoundedLattice for MaxDate {
+    /// Sentinel top. `99991231` is strictly greater than every
+    /// `[0-9]{4}` and `[0-9]{8}` value under lex order, so the
+    /// `top ⊔ a = top` law holds for every validly-constructed
+    /// `MaxDate`. See the type-level docs for the validation gate.
     fn top() -> Self {
-        // No finite top — return a sentinel string that orders after any
-        // reasonable ISO date. Values larger than this would themselves
-        // be invalid inputs.
-        Self(Some("99991231".into()))
+        Self {
+            inner: Some("99991231".into()),
+        }
     }
     fn bottom() -> Self {
-        Self(None)
+        Self { inner: None }
     }
 }
 
@@ -871,6 +930,52 @@ mod tests {
         let year = MaxDate::present("2030");
         let date = MaxDate::present("20300601");
         assert_eq!(year.join(&date), date);
+    }
+
+    #[test]
+    fn max_date_try_present_accepts_yyyy() {
+        assert!(MaxDate::try_present("2030").is_some());
+    }
+
+    #[test]
+    fn max_date_try_present_accepts_yyyymmdd() {
+        assert!(MaxDate::try_present("20301231").is_some());
+    }
+
+    #[test]
+    fn max_date_try_present_rejects_wrong_length() {
+        assert!(MaxDate::try_present("").is_none());
+        assert!(MaxDate::try_present("30").is_none());
+        assert!(MaxDate::try_present("203").is_none());
+        assert!(MaxDate::try_present("20301").is_none());
+        assert!(MaxDate::try_present("203012310").is_none());
+    }
+
+    #[test]
+    fn max_date_try_present_rejects_non_digits() {
+        assert!(MaxDate::try_present("ZZZZ").is_none());
+        assert!(MaxDate::try_present("2030AAAA").is_none());
+        assert!(MaxDate::try_present("203O").is_none()); // O, not 0
+    }
+
+    #[test]
+    #[should_panic(expected = "MaxDate::present: expected YYYY or YYYYMMDD")]
+    fn max_date_present_panics_on_invalid() {
+        // Confirms the invariant gate: `present` rejects non-digit
+        // strings that would otherwise sort after the top() sentinel.
+        let _ = MaxDate::present("ZZZZ");
+    }
+
+    #[test]
+    fn max_date_top_dominates_every_valid_value() {
+        // The BoundedLattice law `top ⊔ a = top` — verified on every
+        // representative valid input. This was the Phase B invariant
+        // at risk before the field became private + validated.
+        let t = MaxDate::top();
+        for s in ["2000", "20001231", "20991231", "99981231", "99991230"] {
+            let a = MaxDate::present(s);
+            assert_eq!(t.join(&a), t, "top ⊔ {s} must equal top");
+        }
     }
 
     // OptionalSingleton

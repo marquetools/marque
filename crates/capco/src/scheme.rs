@@ -312,21 +312,26 @@ impl CapcoScheme {
     /// - `capco/noforn-clears-rel-to` — when NOFORN is present in the
     ///   aggregated dissem category, the REL TO category clears. This
     ///   is the same behavior [`PageContext::expected_rel_to`]
-    ///   implements today; the declarative form is inspectable at
-    ///   runtime (tooling can render "this page will have NOFORN⇒
-    ///   REL-TO-cleared applied" without calling scheme code).
+    ///   implements today.
+    ///
+    /// The rewrite is expressed in **declarative** form
+    /// ([`CategoryPredicate::Contains`] + [`CategoryAction::Clear`])
+    /// rather than via `Custom` closures, so scheme-exploration tools
+    /// can render "this page will clear REL TO when NOFORN is present"
+    /// without executing scheme code. The dispatch lands in the
+    /// private `capco_category_contains` / `capco_category_clear`
+    /// helpers below.
     fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
         vec![PageRewrite {
             id: "capco/noforn-clears-rel-to",
             citation: "CAPCO-2016-§H.2",
-            trigger: CategoryPredicate::Custom(|m: &CapcoMarking| {
-                m.0.dissem_controls
-                    .iter()
-                    .any(|d| matches!(d, marque_ism::DissemControl::Nf))
-            }),
-            action: CategoryAction::Custom(|m: &mut CapcoMarking| {
-                m.0.rel_to = Box::new([]);
-            }),
+            trigger: CategoryPredicate::Contains {
+                category: CAT_DISSEM,
+                token: TOK_NOFORN,
+            },
+            action: CategoryAction::Clear {
+                category: CAT_REL_TO,
+            },
         }]
     }
 
