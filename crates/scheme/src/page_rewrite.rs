@@ -132,17 +132,14 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// evaluation with the `assert!` messages below, so the error is
     /// visible at the declaration site before the crate ever runs.
     ///
-    /// For **runtime-authored** rewrites (e.g., built from a config
-    /// file, dynamically composed), use [`PageRewrite::try_custom`],
-    /// which returns a `Result` instead of panicking. The `Engine`
-    /// also catches this case via
-    /// [`EngineConstructionError::UnannotatedCustomAxes`] when a
-    /// field-literal rewrite bypasses both constructors, so the
+    /// For callers holding pre-built `'static` tables that need a
+    /// recoverable runtime validation path (rather than a panic), use
+    /// [`PageRewrite::try_custom`]. The engine's
+    /// `EngineConstructionError::UnannotatedCustomAxes` variant
+    /// catches the same invariant at `Engine::new` when a
+    /// field-literal rewrite bypasses both constructors — the
     /// invariant is guarded on three surfaces (compile, runtime-
-    /// construct, and `Engine::new`).
-    ///
-    /// [`EngineConstructionError::UnannotatedCustomAxes`]: this crate doesn't own that error type —
-    /// see `marque_engine::errors::EngineConstructionError::UnannotatedCustomAxes`
+    /// construct, and engine-construct).
     pub const fn custom(
         id: RewriteId,
         citation: &'static str,
@@ -180,10 +177,23 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     ///
     /// Returns [`PageRewriteAxisError`] when `reads` or `writes` is
     /// empty — the same invariant [`PageRewrite::custom`] enforces via
-    /// a `const` panic. Use this constructor when rewrites are
-    /// authored at runtime (from a config file, a dynamic plugin
-    /// surface, etc.) and the caller needs to surface an authoring
-    /// error without aborting the process.
+    /// a `const` panic. Use this constructor when you have pre-built
+    /// `&'static` axis slices and want validation to surface as a
+    /// `Result` rather than aborting the process (e.g., a rewrite
+    /// registry that loads from a baked-in table and wants to report
+    /// authoring errors through its own error path).
+    ///
+    /// `'static` is a load-bearing requirement: both `reads` and
+    /// `writes` must be `&'static [CategoryId]` because `PageRewrite`
+    /// itself stores them that way and the engine's scheduler walks
+    /// them without owning. For truly *dynamic* axes (e.g., parsed
+    /// from a user config at runtime), callers must either leak the
+    /// slice (`Box::leak(Vec::into_boxed_slice(…))`) during one-time
+    /// scheme initialization or design a separate owned-axis rewrite
+    /// type. An owned-axis variant is not provided here because every
+    /// production scheme in-tree (CAPCO, and the future CUI / NATO
+    /// schemes) declares its rewrite table as a `const` at scheme-
+    /// construction time.
     pub fn try_custom(
         id: RewriteId,
         citation: &'static str,

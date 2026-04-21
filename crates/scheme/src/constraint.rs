@@ -226,15 +226,23 @@ where
             }
             Constraint::Custom { name, label } => {
                 // The module-level invariant is that
-                // `ConstraintViolation.citation` is the triggering
-                // constraint's authoritative-source `label` verbatim.
-                // `evaluate_custom` is free to build scheme-specific
-                // per-violation messages and sub-labels, but the
-                // citation surface must resolve to the same string
-                // the catalog publishes — we override after the call
-                // so the scheme can't accidentally drift from it.
+                // `ConstraintViolation.constraint_label` is the
+                // declared `name` and `.citation` is the `label`
+                // verbatim. `evaluate_custom` is free to build
+                // scheme-specific per-violation messages, but the
+                // identifier surface must resolve uniformly — we
+                // override both fields after the call so the scheme
+                // can't accidentally drift from the catalog.
+                //
+                // Sub-rule information (e.g., HCS's "HCS-legacy-bare"
+                // vs "HCS-O-requires-ORCON" differentiation) belongs
+                // in the violation message, not in `constraint_label`.
+                // Schemes that need per-subcheck surfacing must carry
+                // that signal through `message` or declare distinct
+                // `Constraint::Custom` entries.
                 out.extend(scheme.evaluate_custom(name, marking).into_iter().map(
                     |mut v| {
+                        v.constraint_label = name;
                         v.citation = label;
                         v
                     },

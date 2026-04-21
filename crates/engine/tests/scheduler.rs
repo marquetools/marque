@@ -189,6 +189,50 @@ fn cyclic_rewrite_pair_fails_construction() {
 }
 
 #[test]
+fn disjoint_cycles_report_one_scc_only() {
+    // Two disjoint cycles:
+    //   * Cycle-1: a ↔ b (categories X, Y)
+    //   * Cycle-2: c ↔ d (categories Z, W)
+    // The scheduler must report exactly one of them, not a mixed
+    // member list that names nodes from both. We pick the cycle
+    // containing the lowest-index rewrite in declaration order —
+    // `a` here — so the reported set is deterministically {a, b}.
+    const A_READS: &[CategoryId] = &[CAT_Y];
+    const A_WRITES: &[CategoryId] = &[CAT_X];
+    const B_READS: &[CategoryId] = &[CAT_X];
+    const B_WRITES: &[CategoryId] = &[CAT_Y];
+    const C_READS: &[CategoryId] = &[CAT_W];
+    const C_WRITES: &[CategoryId] = &[CAT_Z];
+    const D_READS: &[CategoryId] = &[CAT_Z];
+    const D_WRITES: &[CategoryId] = &[CAT_W];
+
+    let scheme = StubScheme::new(vec![
+        declarative_rewrite("a", A_READS, A_WRITES),
+        declarative_rewrite("b", B_READS, B_WRITES),
+        declarative_rewrite("c", C_READS, C_WRITES),
+        declarative_rewrite("d", D_READS, D_WRITES),
+    ]);
+
+    let err = match try_build(scheme) {
+        Ok(_) => panic!("cycles must fail"),
+        Err(e) => e,
+    };
+    match err {
+        EngineConstructionError::RewriteCycle { members, .. } => {
+            let mut names: Vec<&str> = members.to_vec();
+            names.sort();
+            assert_eq!(
+                names,
+                ["a", "b"],
+                "disjoint cycles should surface as a single SCC; the \
+                 cycle containing the lowest-index rewrite wins. Got {names:?}",
+            );
+        }
+        other => panic!("expected RewriteCycle, got {other:?}"),
+    }
+}
+
+#[test]
 fn downstream_blocked_rewrite_not_reported_as_cycle_member() {
     // `a` ↔ `b` form a cycle. `d` reads `Y` (which `b` writes) and
     // writes `Z` — `d` is blocked by the cycle but is NOT a cycle

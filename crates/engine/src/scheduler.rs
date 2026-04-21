@@ -121,8 +121,17 @@ where
         // explicitly NOT counted as cycles above; a size-1 SCC
         // without a self-successor is a downstream-blocked node,
         // not a cycle member.
+        //
+        // When multiple disjoint cycles exist, report **one** of
+        // them — the one containing the lowest-index rewrite in
+        // declaration order. Flattening all cycles into a single
+        // `members` list would produce an error whose `axis` names
+        // one cycle and whose member set mixes unrelated rewrites,
+        // which is worse than naming just one cycle authoritatively.
+        // The author fixes this cycle, re-runs, and the next cycle
+        // (if any) surfaces on the next attempt.
         let sccs = tarjan_sccs(n, &successors);
-        let mut cycle_indexes: Vec<usize> = sccs
+        let mut cycle_sccs: Vec<Vec<usize>> = sccs
             .into_iter()
             .filter(|scc| {
                 // Size-1 SCCs reach this code only through
@@ -132,13 +141,25 @@ where
                 // a singleton SCC never contains a true self-edge.
                 scc.len() > 1
             })
-            .flatten()
             .collect();
-        cycle_indexes.sort_unstable();
-        let axis = cycle_axis(rewrites, &cycle_indexes);
-        let members: Box<[RewriteId]> = cycle_indexes
-            .into_iter()
-            .map(|i| rewrites[i].id)
+        debug_assert!(
+            !cycle_sccs.is_empty(),
+            "scheduled.len() != n but Tarjan found no non-trivial SCC; \
+             this indicates a logic error in `schedule_rewrites` or in \
+             `tarjan_sccs`, because Kahn's algorithm only leaves nodes \
+             unscheduled when the residual graph contains a cycle."
+        );
+        // Pick the SCC that contains the rewrite with the lowest
+        // declaration index — deterministic across runs.
+        let picked = cycle_sccs
+            .iter_mut()
+            .min_by_key(|scc| scc.iter().min().copied().unwrap_or(usize::MAX))
+            .expect("debug_assert above guards the empty-Vec case");
+        picked.sort_unstable();
+        let axis = cycle_axis(rewrites, picked);
+        let members: Box<[RewriteId]> = picked
+            .iter()
+            .map(|&i| rewrites[i].id)
             .collect::<Vec<_>>()
             .into_boxed_slice();
         return Err(EngineConstructionError::RewriteCycle { axis, members });

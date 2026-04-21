@@ -263,7 +263,12 @@ fn supersedes_does_not_emit_diagnostics() {
 }
 
 #[test]
-fn custom_dispatches_through_scheme() {
+fn custom_dispatches_through_scheme_and_normalizes_identifiers() {
+    // StubScheme::evaluate_custom returns a violation with
+    // constraint_label="custom-stub" and citation="stub-custom".
+    // The evaluator MUST override both so the violation surfaces the
+    // declared Constraint's `name` and `label` — that is the
+    // traceability invariant called out in the `Constraint` docs.
     let scheme = StubScheme::new(vec![Constraint::Custom {
         name: "my-custom",
         label: "TEST §custom",
@@ -271,6 +276,16 @@ fn custom_dispatches_through_scheme() {
     let marking = StubMarking::default();
     let v = evaluate(&scheme, &marking);
     assert_eq!(v.len(), 1);
-    assert_eq!(v[0].constraint_label, "custom-stub");
-    assert!(v[0].message.contains("my-custom"));
+    assert_eq!(
+        v[0].constraint_label, "my-custom",
+        "constraint_label must be overridden to the declared name"
+    );
+    assert_eq!(
+        v[0].citation, "TEST §custom",
+        "citation must be overridden to the declared label"
+    );
+    assert!(
+        v[0].message.contains("my-custom"),
+        "the scheme's message survives the override"
+    );
 }
