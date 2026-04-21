@@ -254,7 +254,17 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         return run_explain_config(&config);
     }
 
-    let engine = Engine::new(config, vec![Box::new(capco_rules())]);
+    let engine = match Engine::new(
+        config,
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+    ) {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("error: failed to construct engine: {err}");
+            return EX_UNAVAILABLE;
+        }
+    };
     let format: render::Format = common
         .format
         .map(Into::into)
@@ -411,10 +421,22 @@ fn run_fix(
         Engine::with_clock(
             config,
             vec![Box::new(capco_rules())],
+            marque_engine::default_scheme(),
             Box::new(marque_engine::FixedClock::new(ts)),
         )
     } else {
-        Engine::new(config, vec![Box::new(capco_rules())])
+        Engine::new(
+            config,
+            vec![Box::new(capco_rules())],
+            marque_engine::default_scheme(),
+        )
+    };
+    let engine = match engine {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("error: failed to construct engine: {err}");
+            return EX_UNAVAILABLE;
+        }
     };
 
     let engine_mode = if dry_run {

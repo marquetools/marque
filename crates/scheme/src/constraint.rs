@@ -31,7 +31,8 @@
 //! directly and routes `Custom` variants into the scheme's own
 //! predicate.
 
-use crate::category::TokenId;
+use crate::category::{CategoryId, TokenId};
+use crate::scheme::MarkingScheme;
 
 /// Reference to a token or category in a constraint. Kept as a small
 /// enum rather than a bare `TokenId` because some constraints are
@@ -41,7 +42,7 @@ pub enum TokenRef {
     /// A specific token id.
     Token(TokenId),
     /// Any token in the named category.
-    AnyInCategory(crate::category::CategoryId),
+    AnyInCategory(CategoryId),
 }
 
 /// A declarative invariant the scheme enforces.
@@ -125,4 +126,67 @@ pub struct ConstraintViolation {
     pub constraint_label: &'static str,
     pub message: String,
     pub citation: &'static str,
+}
+
+/// Walk a scheme's declarative constraints and emit one
+/// [`ConstraintViolation`] per dyadic variant whose predicate fires
+/// against `marking`.
+///
+/// `evaluate` covers the four dyadic variants (`Conflicts`, `Requires`,
+/// `Implies`, `Supersedes`) by asking the scheme to resolve each
+/// [`TokenRef`] via [`MarkingScheme::satisfies`]. The `Custom` variant
+/// is dispatched through [`MarkingScheme::evaluate_custom`] so the
+/// scheme owns its bespoke predicate bodies.
+///
+/// Contract (FR-007, Phase 3 US1):
+/// - **Deterministic**: same input returns identical output on every
+///   call, regardless of thread or iteration order.
+/// - **Declaration-ordered**: the scheme's declared constraint order is
+///   preserved in the returned violation vec.
+/// - **Allocation-bounded**: the only heap allocations come from the
+///   returned `Vec` and the violation-message strings each variant
+///   constructs. The loop itself does not allocate.
+pub fn evaluate<S>(scheme: &S, marking: &S::Marking) -> Vec<ConstraintViolation>
+where
+    S: MarkingScheme + ?Sized,
+{
+    let mut out = Vec::new();
+    for c in scheme.constraints() {
+        match c {
+            Constraint::Conflicts { left, right, label } => {
+                if scheme.satisfies(marking, left) && scheme.satisfies(marking, right) {
+                    out.push(ConstraintViolation {
+                        constraint_label: "conflicts",
+                        message: format!("conflicting tokens: {left:?} and {right:?}"),
+                        citation: label,
+                    });
+                }
+            }
+            Constraint::Requires { left, right, label } => {
+                if scheme.satisfies(marking, left) && !scheme.satisfies(marking, right) {
+                    out.push(ConstraintViolation {
+                        constraint_label: "requires",
+                        message: format!("token {left:?} requires {right:?} but it is missing"),
+                        citation: label,
+                    });
+                }
+            }
+            Constraint::Implies { .. } => {
+                // `Implies` is an information statement, not a
+                // violation trigger: it tells other engine paths that
+                // `right` is safe to omit when `left` is present. No
+                // diagnostic emission.
+            }
+            Constraint::Supersedes { .. } => {
+                // `Supersedes` is a rewrite hint for banner roll-up,
+                // not a violation trigger — the rewrite itself is
+                // applied by `project(Scope::Page, ...)`. No diagnostic
+                // emission from the evaluator.
+            }
+            Constraint::Custom { name, label: _ } => {
+                out.extend(scheme.evaluate_custom(name, marking));
+            }
+        }
+    }
+    out
 }

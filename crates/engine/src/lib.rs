@@ -18,6 +18,7 @@ pub mod engine;
 pub mod errors;
 pub mod output;
 pub mod pipeline;
+pub mod scheduler;
 
 #[cfg(feature = "batch")]
 pub use batch::{BatchEngine, BatchError, BatchOptions};
@@ -31,4 +32,13 @@ pub use output::{FixResult, LintResult};
 /// Both the CLI and WASM front ends use this to share one registration entry point.
 pub fn default_ruleset() -> Vec<Box<dyn marque_rules::RuleSet>> {
     vec![Box::new(marque_capco::rules::CapcoRuleSet::new())]
+}
+
+/// Returns the default marking scheme for marque (CAPCO).
+///
+/// Callers pass this to [`Engine::new`] to get the standard CAPCO
+/// page-rewrite schedule. The scheme is stateless and cheap to
+/// construct on demand.
+pub fn default_scheme() -> marque_capco::scheme::CapcoScheme {
+    marque_capco::scheme::CapcoScheme::new()
 }

@@ -21,7 +21,14 @@ use std::sync::OnceLock;
 /// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
 fn shared_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| Engine::new(Config::default(), marque_engine::default_ruleset()))
+    ENGINE.get_or_init(|| {
+        Engine::new(
+            Config::default(),
+            marque_engine::default_ruleset(),
+            marque_engine::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -85,10 +85,19 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// Constructor for a declarative rewrite — all-data triggers and
     /// actions (`Contains` / `Empty` + `Clear` / `Replace` / `Promote`).
     ///
-    /// **Phase 2 stub**: takes `reads` / `writes` explicitly. Phase 3
-    /// (task T029) replaces this with a const-fn that derives the
-    /// slices from the trigger category and the action category so
-    /// callers only pass `id`, `citation`, `trigger`, `action`.
+    /// The caller still passes `reads` / `writes` explicitly. The
+    /// scheduler in `marque-engine` uses them to build the topological
+    /// ordering between rewrites (task T031). For a pure-declarative
+    /// rewrite the slices should be derivable from the `trigger` and
+    /// `action` categories; callers that want a single-category hint
+    /// can construct the slices as `const`s at the call site. Deriving
+    /// them at construction would require runtime allocation — the
+    /// scheme's rewrite table is a `&'static` constant — so this stays
+    /// a plain fallible-free `const fn`.
+    ///
+    /// For `Custom` trigger or action variants the scheduler cannot
+    /// derive dataflow from the variant itself, so use
+    /// [`PageRewrite::custom`] which fails closed on empty annotations.
     pub const fn declarative(
         id: RewriteId,
         citation: &'static str,
@@ -110,15 +119,18 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// Constructor for a rewrite with a `Custom` trigger or action.
     ///
     /// Callers MUST annotate `reads` / `writes` explicitly because the
-    /// function-pointer bodies are opaque. The engine fails closed if
-    /// a `Custom` rewrite is registered without annotations (see
-    /// [`EngineConstructionError::UnannotatedCustomAxes`] — Phase 3 /
-    /// task T017).
+    /// function-pointer bodies are opaque. Empty slices are treated
+    /// as "unannotated" and abort the build — a `Custom` rewrite that
+    /// reaches the scheduler without axis annotations cannot be
+    /// ordered relative to the other rewrites, and silently
+    /// degrading would mask the authoring bug.
     ///
-    /// **Phase 2 stub**: identical to [`PageRewrite::declarative`] in
-    /// shape; the divergence (validation that at least one `Custom`
-    /// variant is present, non-empty `reads` / `writes` requirement)
-    /// lands in Phase 3.
+    /// The guard is `const` so a `static`-initialized rewrite table
+    /// with an empty-annotation custom entry fails at compile time
+    /// (`const` panic). Runtime construction hits the same panic,
+    /// producing the same diagnostic shape as
+    /// [`EngineConstructionError::UnannotatedCustomAxes`] without
+    /// needing the engine to be running yet.
     pub const fn custom(
         id: RewriteId,
         citation: &'static str,
@@ -127,6 +139,16 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
         reads: &'static [CategoryId],
         writes: &'static [CategoryId],
     ) -> Self {
+        assert!(
+            !reads.is_empty(),
+            "PageRewrite::custom: empty `reads` slice; Custom triggers/actions \
+             require explicit axis annotation so the scheduler can order them"
+        );
+        assert!(
+            !writes.is_empty(),
+            "PageRewrite::custom: empty `writes` slice; Custom triggers/actions \
+             require explicit axis annotation so the scheduler can order them"
+        );
         Self {
             id,
             citation,

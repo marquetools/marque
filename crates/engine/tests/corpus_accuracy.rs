@@ -19,7 +19,12 @@ use marque_test_utils::{
 use std::collections::HashMap;
 
 fn make_engine() -> Engine {
-    Engine::new(Config::default(), marque_engine::default_ruleset())
+    Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +320,12 @@ fn c001_corrections_map_accuracy() {
 
     let mut config = Config::default();
     config.corrections = corrections;
-    let engine = Engine::new(config, marque_engine::default_ruleset());
+    let engine = Engine::new(
+        config,
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     let mut matched = 0;
     let mut total = 0;

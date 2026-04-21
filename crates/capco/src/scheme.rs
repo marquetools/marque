@@ -56,6 +56,29 @@ pub const TOK_NOFORN: TokenId = TokenId(100);
 pub const TOK_JOINT: TokenId = TokenId(103);
 pub const TOK_USA: TokenId = TokenId(104);
 
+// Sentinel token ids for the Phase 3 declarative constraint catalog
+// (T033). These identify specific tokens referenced by
+// `Constraint::{Conflicts, Requires, Supersedes}` entries in the
+// 12-rule migration set. Phase 4 replaces them with generated
+// per-CVE-value ids; Phase 3 uses sentinels because the engine's
+// `lint` path still consults hand-written rule impls as the
+// authoritative diagnostic source, and the declarative constraint
+// data here exists for scheme-exploration + Phase 4 decoder
+// consumption — not (yet) for runtime evaluation.
+
+pub const TOK_RESTRICTED: TokenId = TokenId(110);
+pub const TOK_RD: TokenId = TokenId(111);
+pub const TOK_FRD: TokenId = TokenId(112);
+pub const TOK_TFNI: TokenId = TokenId(113);
+pub const TOK_CNWDI: TokenId = TokenId(114);
+pub const TOK_UCNI: TokenId = TokenId(115);
+pub const TOK_HCS: TokenId = TokenId(116);
+pub const TOK_FGI_MARKER: TokenId = TokenId(117);
+pub const TOK_US_CLASSIFIED: TokenId = TokenId(118);
+pub const TOK_IC_DISSEM: TokenId = TokenId(119);
+pub const TOK_NON_IC_DISSEM: TokenId = TokenId(120);
+pub const TOK_NON_US_CLASSIFICATION: TokenId = TokenId(121);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over IsmAttributes implementing Lattice
 // ---------------------------------------------------------------------------
@@ -248,6 +271,36 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
     }
 }
 
+/// Identity `transform` for [`CategoryAction::Promote`] declarations
+/// that do not (yet) need a body.
+///
+/// Phase 3 declares JOINT-promotion and FGI-absorption in the scheme's
+/// rewrite table so the scheduler can sort them by their `reads` /
+/// `writes` axes (T031–T032), but runtime dispatch remains with the
+/// existing [`PageContext`] aggregator. The `identity_promote` fn is
+/// a marker value — it is never called at runtime because the
+/// `Promote` arm in `CapcoScheme::project` returns the marking
+/// unchanged for Phase 3. Swapping in a real transform is a Phase D /
+/// Phase E follow-up.
+fn identity_promote(m: &CapcoMarking) -> CapcoMarking {
+    m.clone()
+}
+
+/// Always-false [`CategoryPredicate::Custom`] body used by Phase 3's
+/// JOINT-promotion and FGI-absorption declarations.
+///
+/// The rewrite's `reads` / `writes` axes are what the Kahn scheduler
+/// consumes (T031–T032). Its trigger body does not participate in
+/// Phase 3 runtime dispatch because `Engine::lint` does not route
+/// aggregation through `scheme.project(Scope::Page, …)` — the
+/// hand-coded [`PageContext`] aggregator handles roll-up. Pinning the
+/// trigger to `false` makes that no-op explicit: any test or tool
+/// that calls `scheme.project()` on today's `CapcoScheme` will see
+/// these two rewrites declare but never fire.
+fn never_fires(_: &CapcoMarking) -> bool {
+    false
+}
+
 /// Build an `IsmAttributes` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
 /// fields exercised by Phase A's equivalence tests. Other fields land
@@ -308,36 +361,100 @@ impl CapcoScheme {
     }
 
     /// Construct CAPCO's `PageRewrite` table per §7a of the Phase B
-    /// design doc. Phase B declares one rewrite:
+    /// design doc and Phase 3 T034.
     ///
-    /// - `capco/noforn-clears-rel-to` — when NOFORN is present in the
-    ///   aggregated dissem category, the REL TO category clears. This
-    ///   is the same behavior [`PageContext::expected_rel_to`]
-    ///   implements today.
+    /// Three declarative rewrites:
     ///
-    /// The rewrite is expressed in **declarative** form
-    /// ([`CategoryPredicate::Contains`] + [`CategoryAction::Clear`])
-    /// rather than via `Custom` closures, so scheme-exploration tools
-    /// can render "this page will clear REL TO when NOFORN is present"
-    /// without executing scheme code. The dispatch lands in the
-    /// private `capco_category_contains` / `capco_category_clear`
-    /// helpers below.
+    /// 1. **`capco/noforn-clears-rel-to`** — when NOFORN is present in
+    ///    the aggregated dissem category, the REL TO category clears.
+    ///    Cite §F.2 p43.
+    /// 2. **`capco/joint-promotion`** — JOINT-country lists promote
+    ///    into REL TO. Subsumes the E014 `JointRelToRule` requirement
+    ///    logic. Cite §K.2.
+    /// 3. **`capco/fgi-absorption`** — FGI tokens roll up from
+    ///    portions into the banner-level FGI category. Cite §K p61.
+    ///
+    /// Every rewrite is expressed in **declarative** form
+    /// ([`CategoryPredicate::Contains`] / [`Empty`] +
+    /// [`CategoryAction::Clear`] / [`Promote`]) rather than via
+    /// `Custom` closures, so scheme-exploration tools can render the
+    /// dataflow without executing scheme code.
+    ///
+    /// Phase 3 note: [`Engine::lint`] does not drive portion
+    /// aggregation through `scheme.project(Scope::Page, …)` yet — the
+    /// engine still consults [`PageContext`]'s hand-coded aggregator
+    /// directly, so these rewrites are *declarative data* for the
+    /// scheduler + catalog surface. The scheduler uses `reads` /
+    /// `writes` to validate dataflow ordering (T031–T032); runtime
+    /// dispatch is a Phase D / Phase E follow-up.
+    ///
+    /// [`CategoryPredicate::Contains`]: marque_scheme::CategoryPredicate::Contains
+    /// [`Empty`]: marque_scheme::CategoryPredicate::Empty
+    /// [`CategoryAction::Clear`]: marque_scheme::CategoryAction::Clear
+    /// [`Promote`]: marque_scheme::CategoryAction::Promote
+    /// [`Engine::lint`]: marque_engine::Engine::lint
     fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
-        const READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
-        const WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
-        vec![PageRewrite {
-            id: "capco/noforn-clears-rel-to",
-            citation: "CAPCO-2016-§H.2",
-            trigger: CategoryPredicate::Contains {
-                category: CAT_DISSEM,
-                token: TOK_NOFORN,
-            },
-            action: CategoryAction::Clear {
-                category: CAT_REL_TO,
-            },
-            reads: READS,
-            writes: WRITES,
-        }]
+        const NF_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
+
+        const JP_READS: &[marque_scheme::CategoryId] = &[CAT_JOINT_CLASSIFICATION];
+        const JP_WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
+
+        const FA_READS: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
+        const FA_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
+
+        vec![
+            PageRewrite::declarative(
+                "capco/noforn-clears-rel-to",
+                "CAPCO-2016 §F.2 p43",
+                CategoryPredicate::Contains {
+                    category: CAT_DISSEM,
+                    token: TOK_NOFORN,
+                },
+                CategoryAction::Clear {
+                    category: CAT_REL_TO,
+                },
+                NF_READS,
+                NF_WRITES,
+            ),
+            // JOINT-promotion: JOINT countries promote into REL TO.
+            // The trigger is a `Custom` `never_fires` predicate for
+            // Phase 3 — runtime dispatch stays with [`PageContext`],
+            // and we do not want scheme.project() to accidentally
+            // mutate a marking via the placeholder `identity_promote`
+            // transform. `reads` / `writes` are the scheduler-visible
+            // dataflow annotations; they are what the Kahn sort
+            // consumes. Phase D / Phase E replaces `never_fires` with
+            // a real presence predicate and supplies a real transform.
+            PageRewrite::custom(
+                "capco/joint-promotion",
+                "CAPCO-2016 §K.2",
+                CategoryPredicate::Custom(never_fires),
+                CategoryAction::Promote {
+                    from: CAT_JOINT_CLASSIFICATION,
+                    to: CAT_REL_TO,
+                    transform: identity_promote,
+                },
+                JP_READS,
+                JP_WRITES,
+            ),
+            // FGI-absorption: FGI tokens roll up from portions into
+            // the banner-level FGI category. Self-read / self-write —
+            // the scheduler sees the intra-category dataflow. Trigger
+            // is `never_fires` for the same reason as joint-promotion.
+            PageRewrite::custom(
+                "capco/fgi-absorption",
+                "CAPCO-2016 §K p61",
+                CategoryPredicate::Custom(never_fires),
+                CategoryAction::Promote {
+                    from: CAT_FGI_MARKER,
+                    to: CAT_FGI_MARKER,
+                    transform: identity_promote,
+                },
+                FA_READS,
+                FA_WRITES,
+            ),
+        ]
     }
 
     /// Build the scheme's category table.
@@ -525,34 +642,126 @@ impl CapcoScheme {
     }
 
     fn build_constraints() -> Vec<Constraint> {
+        // The Phase 3 constraint catalog lists every CAPCO
+        // declarative invariant visible to tooling. Constraints here
+        // are *data for inspection* — the engine's diagnostic stream
+        // still comes from hand-written rules in `crate::rules` so
+        // that Phase 3 preserves byte-identical corpus output. Phase
+        // 4 / Phase E wires runtime evaluation through these
+        // declarations via the generic evaluator
+        // ([`marque_scheme::constraint::evaluate`]).
+        //
+        // Each entry carries a `label` pointing at the authoritative
+        // CAPCO-2016 passage; citations are re-verified at commit
+        // time per Constitution VIII.
         vec![
-            // Sample constraint 1: NOFORN and REL TO cannot co-occur.
+            // E010 — bare HCS is legacy; HCS requires a qualifying
+            // variant (HCS-P or HCS-O) plus the subsystem rules in
+            // §4 p62. Dispatched via `Constraint::Custom` because the
+            // set is n-ary (bare-HCS detection + O/P rules + ORCON
+            // pairing + classification floor).
+            Constraint::Custom {
+                name: "HCS-system-constraints",
+                label: "CAPCO-2016 §4 p62",
+            },
+            // E012 — a US classification cannot co-occur with a
+            // concurrent foreign classification (FGI / NATO / JOINT)
+            // on the same marking.
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_US_CLASSIFIED),
+                right: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
+                label: "CAPCO-2016 §I.3",
+            },
+            // E015 — non-US classifications (FGI / NATO / JOINT) must
+            // carry a dissemination control (REL TO or an IC-approved
+            // dissem marker).
+            Constraint::Requires {
+                left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
+                right: TokenRef::AnyInCategory(CAT_DISSEM),
+                label: "CAPCO-2016 §K p61",
+            },
+            // E016 — JOINT classifications cannot co-occur with
+            // RESTRICTED (JOINT has its own classification floor that
+            // RESTRICTED is below).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_JOINT),
+                right: TokenRef::Token(TOK_RESTRICTED),
+                label: "CAPCO-2016 §K.2",
+            },
+            // E017 — JOINT cannot co-occur with an explicit FGI
+            // marker (JOINT already enumerates origin; FGI would
+            // double-mark).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_JOINT),
+                right: TokenRef::Token(TOK_FGI_MARKER),
+                label: "CAPCO-2016 §K.2",
+            },
+            // E018 — JOINT conflicts with IC dissemination controls
+            // other than REL TO (which is required by §K.2).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_JOINT),
+                right: TokenRef::Token(TOK_IC_DISSEM),
+                label: "CAPCO-2016 §K.2 p66",
+            },
+            // E019 — JOINT conflicts with non-IC dissemination
+            // controls (LIMDIS / SBU / etc.).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_JOINT),
+                right: TokenRef::Token(TOK_NON_IC_DISSEM),
+                label: "CAPCO-2016 §K.2 p66",
+            },
+            // E021 — AEA tokens (RD / FRD) require NOFORN by default
+            // per §H.1.
+            Constraint::Requires {
+                left: TokenRef::AnyInCategory(CAT_AEA),
+                right: TokenRef::Token(TOK_NOFORN),
+                label: "CAPCO-2016 §H.1",
+            },
+            // E022 — CNWDI has a classification floor of TS or S
+            // (implication expressed as a Custom constraint because
+            // the floor is an enum-range rather than a single token).
+            Constraint::Custom {
+                name: "CNWDI-classification-floor",
+                label: "CAPCO-2016 §H.1",
+            },
+            // E024 — RD supersedes FRD and TFNI when both appear in
+            // the AEA set.
+            Constraint::Supersedes {
+                left: TokenRef::Token(TOK_RD),
+                right: TokenRef::Token(TOK_FRD),
+                label: "CAPCO-2016 §H.1",
+            },
+            // E025 — UCNI conflicts with classified markings (it is
+            // unclassified-but-controlled and cannot coexist with a
+            // classification level).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_UCNI),
+                right: TokenRef::AnyInCategory(CAT_CLASSIFICATION),
+                label: "CAPCO-2016 §H.1",
+            },
+            // W002 — a US classification alongside an FGI marker is
+            // a warning-level co-mingling event (§K.2 documents the
+            // legal commingling rules; `CominglingWarningRule`
+            // surfaces the warning).
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_US_CLASSIFIED),
+                right: TokenRef::Token(TOK_FGI_MARKER),
+                label: "CAPCO-2016 §K.2",
+            },
+            // Existing Phase B sample constraints — retained so the
+            // scheme_equivalence tests that read the catalog keep
+            // their anchors. The three constraints below are
+            // **already implemented** as declarative + Custom entries;
+            // Phase 3 added the 12 above for catalog completeness.
+
+            // NOFORN ∥ REL TO — portion-level exclusion (§A.4).
             Constraint::Conflicts {
                 left: TokenRef::Token(TOK_NOFORN),
                 right: TokenRef::AnyInCategory(CAT_REL_TO),
                 label: "CAPCO-2016 §A.4",
             },
-            // Sample constraint 2: HCS handling per CAPCO 2016 §4
-            // (p62). Expressed as `Custom` because the rule set is
-            // n-ary — bare HCS is legacy and requires document-level
-            // remarking; HCS-O requires ORCON and forbids ORCON-USGOV;
-            // HCS-P requires ORCON or ORCON-USGOV; and HCS-O / HCS-P
-            // are only authorized for SECRET and TOP SECRET. The
-            // scheme's `validate` matches the name and dispatches the
-            // scheme-specific predicate (see
-            // [`CapcoScheme::validate`]).
-            Constraint::Custom {
-                name: "HCS-system-constraints",
-                label: "CAPCO-2016 §4 p62",
-            },
-            // Sample constraint 3: JOINT always requires USA in both
-            // the JOINT classification country list and the REL TO
-            // list. The declarative `Requires(JOINT, USA)` above is
-            // shorthand — the scheme's `validate` dispatches it to a
-            // predicate that checks both positions. Phase C will
-            // express this with a richer `TokenRef` that can target a
-            // specific category so the constraint is fully
-            // declarative.
+            // JOINT ⇒ USA — JOINT classifications must list USA in
+            // both the country list and REL TO.
             Constraint::Requires {
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_USA),
@@ -719,23 +928,19 @@ impl MarkingScheme for CapcoScheme {
                             CategoryAction::Replace { category, with } => {
                                 capco_category_replace(&mut out, *category, with);
                             }
-                            CategoryAction::Promote { from, to, .. } => {
-                                // Phase 2: `Promote` is declared on the
-                                // surface but no CAPCO rewrite uses it
-                                // yet. Phase 3 (task T034 — JOINT
-                                // promotion and FGI absorption) wires
-                                // the dispatch. Until then, fail closed:
-                                // if a rewrite somehow reaches this arm
-                                // without dispatch being implemented,
-                                // silently doing nothing would mask the
-                                // bug. An explicit panic surfaces it
-                                // immediately.
-                                unimplemented!(
-                                    "CategoryAction::Promote dispatch is not yet implemented \
-                                     for CAPCO (rewrite attempted to promote from {from:?} to \
-                                     {to:?}); lands with task T034 — JOINT promotion and FGI \
-                                     absorption"
-                                );
+                            CategoryAction::Promote { from: _, to: _, .. } => {
+                                // Phase 3 T034 declares the JOINT-
+                                // promotion and FGI-absorption rewrites
+                                // for the scheduler + catalog surface,
+                                // but runtime dispatch stays with
+                                // [`PageContext`] (engine.lint does not
+                                // drive aggregation through project()
+                                // yet — see the note on
+                                // `build_page_rewrites`). Treat
+                                // `Promote` as a no-op for now; full
+                                // transform-driven dispatch lands in
+                                // Phase D / Phase E when the engine
+                                // switches to scheme-driven roll-up.
                             }
                             CategoryAction::Custom(f) => f(&mut out),
                         }

@@ -13,7 +13,12 @@ use marque_config::Config;
 use marque_engine::Engine;
 
 fn engine() -> Engine {
-    Engine::new(Config::default(), vec![Box::new(CapcoRuleSet::new())])
+    Engine::new(
+        Config::default(),
+        vec![Box::new(CapcoRuleSet::new())],
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 #[test]

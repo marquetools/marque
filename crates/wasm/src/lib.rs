@@ -345,12 +345,15 @@ fn with_engine<T>(
 
         if needs_rebuild {
             let config = parse_config(config_json)?;
+            let engine = Engine::with_clock(
+                config,
+                marque_engine::default_ruleset(),
+                marque_engine::default_scheme(),
+                Box::new(WasmClock),
+            )
+            .map_err(|e| format!("engine construction failed: {e}"))?;
             *cache = Some(CachedEngine {
-                engine: Engine::with_clock(
-                    config,
-                    marque_engine::default_ruleset(),
-                    Box::new(WasmClock),
-                ),
+                engine,
                 config_key: config_json.clone(),
             });
         }
