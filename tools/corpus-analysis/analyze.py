@@ -4,36 +4,60 @@
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 """
-Token frequency analyzer for classification marking vocabularies.
+Corpus analysis tool for classification marking vocabularies.
 
-Given a token vocabulary (JSON) and a text corpus, measures how often each
-token appears in normal (non-IC) English text and in what structural contexts.
-The output is a frequency table that Rust build scripts consume to set
-empirical base rates for the probabilistic recognition engine.
+Three modes of operation, selected via ``--mode``:
+
+``baseline`` (default)
+    Token-frequency analysis. Given a token vocabulary (JSON) and a text
+    corpus, measures how often each token appears in normal (non-IC)
+    English text and in what structural contexts. Back-compatible with
+    the original tool behavior — this was the only mode before Phase C.
+
+``priors``
+    Corpus-derived priors for the Phase-D decoder. Runs the baseline
+    analysis, then reshapes the result into the schema consumed by
+    ``crates/capco/build.rs`` at compile time (see
+    ``crates/capco/corpus/README.md``). Output goes to a single
+    ``priors.json`` file.
+
+``mangled``
+    Generates labeled mangled-marking fixtures for the Phase-D decoder
+    accuracy harness. Walks a corpus, identifies high-confidence
+    classification markings via pattern matching, applies one of six
+    labeled mangling transforms per observed marking, and emits one
+    JSON file per case under ``tests/fixtures/mangled/<class>/``. See
+    ``tests/fixtures/mangled/README.md`` for schema and transform set.
 
 Usage:
-    # Default: download Enron corpus, analyze against CAPCO tokens
-    python analyze.py
+    # Baseline token frequencies (default mode)
+    python analyze.py --output output/enron-full.json
 
-    # Custom corpus path
-    python analyze.py --corpus /path/to/text/files/
+    # Corpus-derived priors for the decoder (Phase D)
+    python analyze.py --mode priors --output crates/capco/corpus/priors.json
 
-    # Custom token vocabulary
-    python analyze.py --tokens tokens/my-vocab.json
+    # Labeled mangled-marking fixtures (Phase D, SC-004 gate)
+    python analyze.py --mode mangled \\
+        --output tests/fixtures/mangled/ --min-cases 200
 
-    # Custom corpus URL (tar.gz of text files)
-    python analyze.py --corpus-url https://example.com/corpus.tar.gz
+    # Custom corpus, any mode
+    python analyze.py --corpus /path/to/text/files/ --mode mangled \\
+        --output tests/fixtures/mangled/
 """
 
 import argparse
+import hashlib
 import json
+import math
 import os
+import random
 import re
 import sys
 import tarfile
 import email
 import email.policy
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -512,13 +536,400 @@ def run_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Phase D: corpus-derived priors output
+# ---------------------------------------------------------------------------
+
+PRIORS_SCHEMA_VERSION = "marque-priors-1"
+
+
+def _corpus_fingerprint(corpus_path: Path) -> str:
+    """
+    Deterministic, content-ignorant fingerprint of a corpus directory.
+
+    Hashes only file metadata (relative path, size, mtime) so the
+    fingerprint shifts when the corpus shifts without ever absorbing
+    document bytes into the priors JSON — preserving the
+    content-ignorance invariant enforced at audit time (Constitution V)
+    at the priors-pipeline level too.
+    """
+    h = hashlib.blake3() if hasattr(hashlib, "blake3") else hashlib.sha256()
+    for root, _dirs, files in os.walk(corpus_path):
+        for fname in sorted(files):
+            if fname.startswith("."):
+                continue
+            fpath = Path(root) / fname
+            try:
+                rel = fpath.relative_to(corpus_path)
+                stat = fpath.stat()
+                h.update(f"{rel}\0{stat.st_size}\0{int(stat.st_mtime)}\n".encode())
+            except (OSError, ValueError):
+                continue
+    algo = "blake3" if hasattr(hashlib, "blake3") else "sha256"
+    return f"{algo}:{h.hexdigest()}"
+
+
+# Template shapes the decoder recognizes at Phase D. Keys are opaque
+# identifiers that the decoder's GrammarTemplate surface consumes
+# (T059). The priors emitted here carry the same keys so build.rs can
+# match them at compile time without string-surgery.
+PRIORS_TEMPLATE_KEYS = (
+    "classification",
+    "classification//dissem",
+    "classification//sci-block//dissem",
+    "classification//dissem//rel-to",
+    "classification//sci-block",
+)
+
+
+def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
+    """
+    Reshape a baseline analysis result into the priors.json schema.
+
+    The baseline analysis gives per-token raw counts and contextual
+    signals. The priors schema needs: token base rates (with precomputed
+    log-priors), template base rates, and strict-context priors.
+
+    Token log-prior: ``log_prior = log((hits + 1) / (total_tokens + |V|))``
+    Laplace-smoothed so zero-count tokens don't map to ``-inf``. The
+    smoothing constant matches what the Rust decoder assumes at scoring
+    time; changing it here requires changing it there in lockstep.
+    """
+    tokens = analysis["tokens"]
+    total_hits = sum(t.get("raw_count", 0) for t in tokens.values())
+    vocab_size = max(1, len(tokens))
+
+    # Laplace smoothing: prior = (hits + 1) / (total + |V|)
+    denom = float(total_hits + vocab_size)
+
+    token_base_rates = {}
+    for token, data in tokens.items():
+        hits = int(data.get("raw_count", 0))
+        numerator = float(hits + 1)
+        log_prior = math.log(numerator / denom)
+        token_base_rates[token] = {
+            "count": hits,
+            "log_prior": round(log_prior, 6),
+        }
+
+    # Template base rates: we approximate by counting co-occurrence
+    # patterns. The exact template detection is CAPCO-specific and will
+    # be refined by the Rust decoder at scoring time; priors here give
+    # the base rates a generic-enough shape for build.rs to consume.
+    total_dslash = analysis["corpus_stats"]["double_slash"]["not_in_urls"]
+    cooccurrences = analysis.get("cooccurrence_pairs", {})
+    total_cooc = sum(cooccurrences.values()) or 1
+
+    template_base_rates = {
+        "classification": {
+            "count": sum(
+                tokens.get(t, {}).get("raw_count", 0)
+                for t in tokens_by_category.get("classification_abbrev", [])
+                + tokens_by_category.get("classification_full", [])
+            ),
+        },
+        "classification//dissem": {"count": total_dslash},
+        "classification//sci-block//dissem": {"count": total_cooc // 3},
+        "classification//dissem//rel-to": {"count": total_cooc // 4},
+        "classification//sci-block": {"count": total_cooc // 5},
+    }
+    # Fill in log-priors for templates with the same smoothing
+    total_tpl = sum(d["count"] for d in template_base_rates.values())
+    tpl_denom = float(total_tpl + len(template_base_rates))
+    for key, data in template_base_rates.items():
+        data["log_prior"] = round(math.log(float(data["count"] + 1) / tpl_denom), 6)
+
+    # Strict-context priors: floors for FR-011. These are heuristic
+    # defaults pending corpus refinement — the decoder uses these as the
+    # lower bound when a document shows strict-path evidence at a given
+    # classification level. Adjust when corpus measurement gives a
+    # better empirical estimate.
+    strict_context_priors = {
+        "confidential_floor": 0.97,
+        "secret_floor": 0.99,
+        "top_secret_floor": 0.995,
+    }
+
+    return {
+        "schema_version": PRIORS_SCHEMA_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "token_base_rates": token_base_rates,
+        "template_base_rates": template_base_rates,
+        "strict_context_priors": strict_context_priors,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase D: mangled-marking fixture generation
+# ---------------------------------------------------------------------------
+
+MANGLING_CLASSES = (
+    "typo",
+    "reordering",
+    "missing-delimiter",
+    "superseded-token",
+    "wrong-case",
+    "garbled-delimiter",
+)
+
+# Superseded-token pairs the generator knows about. Keeping the map small
+# and hardcoded keeps the Python tool independent of the Rust migration
+# tables; the authoritative list lives in `crates/ism/build.rs` and
+# `crates/capco/docs/CAPCO-2016.md`. If a token pair is added to the
+# migration table, mirror it here.
+SUPERSEDED_TOKEN_MAP = {
+    "NOFORN": "NF",
+    "ORCON": "OC",
+    "IMCON": "IMC",
+    "PROPIN": "PR",
+    "REL TO": "REL",
+    "EYES ONLY": "EYES",
+    "RESTRICTED DATA": "RD",
+    "FORMERLY RESTRICTED DATA": "FRD",
+}
+
+# Matches a canonical-looking marking: portion or banner with at least
+# one `//` delimiter. Intentionally conservative — prefers false
+# negatives (skip a genuine marking we didn't match) over false
+# positives (treat random `FOO//BAR` text as a marking). High-confidence
+# shapes only:
+#   (CLASS//DISSEM)
+#   CLASS//DISSEM
+#   CLASS//SCI//DISSEM
+# where CLASS is one of the known classification tokens.
+_MARKING_PORTION_RE = re.compile(
+    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/\- ]+)+)\)"
+)
+_MARKING_BANNER_RE = re.compile(
+    r"(?:^|(?<=\s))"
+    r"((?:UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP SECRET|RESTRICTED)"
+    r"(?://[A-Z][A-Z0-9 ,/\-]+)+)"
+    r"(?=\s|$)",
+    re.MULTILINE,
+)
+
+
+def extract_candidate_markings(text: str) -> list[str]:
+    """
+    Return high-confidence marking strings observed in ``text``.
+
+    Each returned string is an exact substring of the input. Only
+    canonical-looking markings (classification + at least one `//`
+    delimiter + at least one controlled token) are emitted; ambiguous
+    shapes like bare ``(C)`` are deliberately skipped because they
+    collide with copyright in non-IC text.
+    """
+    candidates = set()
+    for m in _MARKING_PORTION_RE.finditer(text):
+        candidates.add(m.group(1))
+    for m in _MARKING_BANNER_RE.finditer(text):
+        candidates.add(m.group(1))
+    return sorted(candidates)
+
+
+def _apply_typo(canonical: str, rng: random.Random) -> Optional[str]:
+    """Single-char edit-distance-1 typo. Swap, drop, insert, or substitute."""
+    if len(canonical) < 2:
+        return None
+    idx = rng.randrange(len(canonical))
+    choice = rng.choice(("swap", "drop", "substitute"))
+    if choice == "swap" and idx < len(canonical) - 1:
+        return canonical[:idx] + canonical[idx + 1] + canonical[idx] + canonical[idx + 2 :]
+    if choice == "drop":
+        return canonical[:idx] + canonical[idx + 1 :]
+    if choice == "substitute":
+        ch = canonical[idx]
+        if ch.isalpha():
+            # Substitute with an adjacent letter in the alphabet (keeps
+            # edit distance to 1 and keeps the character class).
+            sub = chr(((ord(ch.upper()) - ord("A") + 1) % 26) + ord("A"))
+            return canonical[:idx] + sub + canonical[idx + 1 :]
+    return None
+
+
+def _apply_reordering(canonical: str, rng: random.Random) -> Optional[str]:
+    """Permute `//`-separated segments into a non-canonical order."""
+    segments = canonical.split("//")
+    if len(segments) < 2:
+        return None
+    # Retry a few times to ensure we produce a non-identity permutation.
+    for _ in range(8):
+        shuffled = segments.copy()
+        rng.shuffle(shuffled)
+        if shuffled != segments:
+            return "//".join(shuffled)
+    return None
+
+
+def _apply_missing_delimiter(canonical: str, rng: random.Random) -> Optional[str]:
+    """Drop one `//` boundary, keeping the surrounding tokens."""
+    if "//" not in canonical:
+        return None
+    # Replace one occurrence with a single space — models a human typing a
+    # delimiter as whitespace.
+    parts = canonical.split("//")
+    if len(parts) < 2:
+        return None
+    boundary = rng.randrange(len(parts) - 1)
+    rebuilt = parts[0]
+    for i in range(1, len(parts)):
+        sep = " " if (i - 1) == boundary else "//"
+        rebuilt += sep + parts[i]
+    return rebuilt
+
+
+def _apply_superseded_token(canonical: str, rng: random.Random) -> Optional[str]:
+    """Replace one canonical token with a superseded synonym."""
+    for canonical_tok, superseded_tok in SUPERSEDED_TOKEN_MAP.items():
+        if canonical_tok in canonical:
+            return canonical.replace(canonical_tok, superseded_tok, 1)
+    return None
+
+
+def _apply_wrong_case(canonical: str, rng: random.Random) -> Optional[str]:
+    """Correct tokens, wrong case."""
+    choice = rng.choice(("lower", "title"))
+    if choice == "lower":
+        return canonical.lower()
+    # Title-case each word, which is also non-canonical for markings.
+    return canonical.title()
+
+
+def _apply_garbled_delimiter(canonical: str, rng: random.Random) -> Optional[str]:
+    """Replace `//` with a malformed glyph or spacing."""
+    if "//" not in canonical:
+        return None
+    replacements = (" // ", "/ /", " / / ", "∕∕", " //", "// ")
+    return canonical.replace("//", rng.choice(replacements), 1)
+
+
+_MANGLING_TRANSFORMS = {
+    "typo": _apply_typo,
+    "reordering": _apply_reordering,
+    "missing-delimiter": _apply_missing_delimiter,
+    "superseded-token": _apply_superseded_token,
+    "wrong-case": _apply_wrong_case,
+    "garbled-delimiter": _apply_garbled_delimiter,
+}
+
+
+def generate_mangled_fixtures(
+    corpus_path: Path,
+    output_dir: Path,
+    min_cases: int,
+    max_docs: Optional[int],
+    seed: int,
+) -> dict:
+    """
+    Produce labeled mangled-marking fixtures under ``output_dir``.
+
+    Returns a summary dict with per-class case counts. Raises ``RuntimeError``
+    if the total case count falls below ``min_cases`` after exhausting the
+    corpus, since the SC-004 gate depends on ≥200 cases.
+    """
+    rng = random.Random(seed)
+    # One directory per class, created eagerly so downstream checks that
+    # inspect directory existence find what they expect.
+    for cls in MANGLING_CLASSES:
+        (output_dir / cls).mkdir(parents=True, exist_ok=True)
+
+    # Collect unique canonical markings from the corpus. We dedupe because
+    # a real corpus repeats common markings many times — a fixture with
+    # 500 copies of `SECRET//NOFORN` is not 500 cases, it's one case with
+    # inflated weight. We want coverage, not volume.
+    canonicals: set[str] = set()
+    scanned_docs = 0
+    for _doc_id, text in iter_corpus_texts(corpus_path, max_docs):
+        scanned_docs += 1
+        canonicals.update(extract_candidate_markings(text))
+        # Stop scanning once we have enough distinct canonicals that
+        # every class can hit its share.
+        if len(canonicals) >= min_cases * 2:
+            break
+
+    if not canonicals:
+        raise RuntimeError(
+            f"No canonical-looking markings found in corpus {corpus_path}. "
+            f"Expected at least some `(CLASS//DISSEM)` or `CLASS//DISSEM` "
+            f"shapes. Check the corpus contents."
+        )
+
+    # Distribute evenly across classes. Each canonical is mangled into
+    # every class where the transform applies. Not every transform
+    # applies to every canonical (e.g., superseded-token only triggers
+    # when a superseded token is in the canonical).
+    counts = Counter()
+    case_digest_seen: set[str] = set()
+
+    for canonical in sorted(canonicals):
+        for cls in MANGLING_CLASSES:
+            transform = _MANGLING_TRANSFORMS[cls]
+            observed = transform(canonical, rng)
+            if observed is None or observed == canonical:
+                continue
+            # Confidence heuristic: longer markings + more structure
+            # make the (observed, expected) mapping more defensible.
+            source_confidence = min(0.99, 0.80 + 0.01 * canonical.count("//"))
+            record = {
+                "observed": observed,
+                "expected": canonical,
+                "mangling_class": _class_to_pascal(cls),
+                "source_confidence": source_confidence,
+            }
+            # Stable filename derived from a content digest — two different
+            # invocations against the same corpus produce the same filenames,
+            # so committing the fixture is deterministic.
+            digest = hashlib.sha256(
+                f"{cls}\0{observed}\0{canonical}".encode()
+            ).hexdigest()[:16]
+            if digest in case_digest_seen:
+                continue
+            case_digest_seen.add(digest)
+            out_path = output_dir / cls / f"{digest}.json"
+            out_path.write_text(json.dumps(record, indent=2) + "\n")
+            counts[cls] += 1
+
+    total = sum(counts.values())
+    summary = {
+        "scanned_docs": scanned_docs,
+        "unique_canonicals": len(canonicals),
+        "total_cases": total,
+        "per_class": dict(counts),
+    }
+    if total < min_cases:
+        raise RuntimeError(
+            f"Generated {total} cases, below --min-cases {min_cases}. "
+            f"Per-class distribution: {dict(counts)}. "
+            f"Consider a larger corpus or a lower --min-cases threshold."
+        )
+    return summary
+
+
+def _class_to_pascal(cls: str) -> str:
+    """'missing-delimiter' -> 'MissingDelimiter' (matches Rust enum name)."""
+    return "".join(part.capitalize() for part in cls.split("-"))
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Measure token frequencies in a text corpus for classification marking analysis."
+        description=(
+            "Corpus analysis tool for classification marking "
+            "vocabularies. See module docstring for the three modes."
+        )
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("baseline", "priors", "mangled"),
+        default="baseline",
+        help=(
+            "baseline: token-frequency analysis (default, pre-Phase-C behavior). "
+            "priors: corpus-derived priors for the Phase-D decoder. "
+            "mangled: labeled mangled-marking fixtures for the decoder accuracy harness."
+        ),
     )
     parser.add_argument(
         "--tokens",
@@ -548,7 +959,29 @@ def main():
         "--output",
         type=Path,
         default=None,
-        help="Output JSON path. Default: stdout.",
+        help=(
+            "Output path. baseline / priors: JSON file (stdout if omitted). "
+            "mangled: directory (one JSON per case under <class>/)."
+        ),
+    )
+    parser.add_argument(
+        "--min-cases",
+        type=int,
+        default=200,
+        help=(
+            "Mangled mode: minimum total case count. Generator fails if the "
+            "corpus produces fewer than this many distinct cases. Default: 200 "
+            "(matches SC-004 gate)."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help=(
+            "Mangled mode: RNG seed for deterministic transform output. "
+            "Same seed + same corpus = same fixture contents."
+        ),
     )
     args = parser.parse_args()
 
@@ -570,26 +1003,61 @@ def main():
         print(f"Error: corpus path {corpus_path} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    # Run analysis
-    results = run_analysis(corpus_path, tokens_by_category, args.max_docs)
+    if args.mode in ("baseline", "priors"):
+        results = run_analysis(corpus_path, tokens_by_category, args.max_docs)
+        results["metadata"] = {
+            "vocabulary_file": str(args.tokens),
+            "corpus_path": str(corpus_path),
+            "token_count": len(flat_tokens),
+            "category_count": len(tokens_by_category),
+        }
 
-    # Add metadata
-    results["metadata"] = {
-        "vocabulary_file": str(args.tokens),
-        "corpus_path": str(corpus_path),
-        "token_count": len(flat_tokens),
-        "category_count": len(tokens_by_category),
-    }
+        if args.mode == "priors":
+            priors = derive_priors(results, tokens_by_category)
+            priors["corpus_fingerprint"] = _corpus_fingerprint(corpus_path)
+            payload = priors
+        else:
+            payload = results
 
-    # Output
-    output_json = json.dumps(results, indent=2)
+        output_json = json.dumps(payload, indent=2)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(output_json)
+            print(f"Results written to {args.output}", file=sys.stderr)
+        else:
+            print(output_json)
+        return
 
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(output_json)
-        print(f"Results written to {args.output}", file=sys.stderr)
-    else:
-        print(output_json)
+    # mangled mode
+    if not args.output:
+        print(
+            "Error: --mode mangled requires --output <dir>",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    output_dir = args.output
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        summary = generate_mangled_fixtures(
+            corpus_path=corpus_path,
+            output_dir=output_dir,
+            min_cases=args.min_cases,
+            max_docs=args.max_docs,
+            seed=args.seed,
+        )
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(3)
+
+    print(
+        f"Generated {summary['total_cases']} mangled fixtures across "
+        f"{len(summary['per_class'])} classes "
+        f"from {summary['unique_canonicals']} unique canonicals "
+        f"({summary['scanned_docs']} docs scanned).",
+        file=sys.stderr,
+    )
+    for cls, count in sorted(summary["per_class"].items()):
+        print(f"  {cls:22s} {count:5d}", file=sys.stderr)
 
 
 if __name__ == "__main__":

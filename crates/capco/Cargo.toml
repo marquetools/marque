@@ -37,3 +37,23 @@ marque-core = { workspace = true }
 # time), and marque-test-utils is publish=false.
 marque-engine = { workspace = true }
 marque-test-utils = { workspace = true }
+
+[features]
+# Phase-C–E feature gates.
+#
+# - `corpus-override`: gate the CLI-only corpus override codepath. Must stay
+#   opt-in so the WASM artifact (which never enables this feature) compiles
+#   out the override surface entirely (Constitution III + FR-013 + T3).
+# - `corpus-harness`: enables the CAPCO corpus equivalence harness (SC-003
+#   byte-identical pre/post migration); consumed by integration tests under
+#   `crates/capco/tests/corpus_parity.rs` and the US1 quickstart walkthrough.
+# - `decoder-harness`: enables the Phase-D decoder accuracy harness
+#   (SC-004 ≥85% resolution); consumed by `crates/capco/tests/decoder_*.rs`
+#   and the US2 quickstart walkthrough.
+#
+# All three default to off. A build that enables none of them is identical in
+# behavior to pre-Phase-C.
+default = []
+corpus-override = []
+corpus-harness = []
+decoder-harness = []
