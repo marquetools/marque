@@ -1072,8 +1072,12 @@ evaluation:
    either break the cycle by re-expressing the rewrites or — if the
    cycle is genuine policy — encode the resolution as a single
    combined rewrite with explicit semantics.
-2. **Unannotated `Custom` axes.** A `PageRewrite::custom` invocation
-   that omits `reads` or `writes` is a compile error. Non-`Custom`
+2. **Unannotated `Custom` axes.** `PageRewrite::custom(...)` always
+   takes explicit `reads` and `writes` parameters, so the relevant
+   construction-time failure is not omission at the call-site but an
+   empty or otherwise underspecified axis declaration for a `Custom`
+   rewrite. Scheme construction rejects such cases with
+   `EngineConstructionError::UnannotatedCustomAxes`. Non-`Custom`
    variants get the annotations for free from
    `PageRewrite::declarative`.
 
