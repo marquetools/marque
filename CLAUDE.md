@@ -68,16 +68,23 @@ cargo check --workspace
 ### Crate Dependency Graph
 
 ```
-marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
-                                    ↓
-                             marque-engine  ←  marque-config
-                              ↑          ↑
-                     marque-extract    marque-wasm
-                              ↑
-                       marque-server
-                              ↑
-                           marque (CLI)
+marque-ism    ←── marque-core ────────────────────┐
+marque-ism    ←── marque-rules ←── marque-capco ──┤
+marque-scheme ←──────────────────  marque-capco ──┤
+                                                  ↓
+                                            marque-engine ←── marque-config
+                                            ↑    ↑
+                                   marque-wasm  marque-extract (non-WASM only)
+                                            ↑
+                                      marque-server
+                                            ↑
+                                       marque (CLI)
 ```
+
+Read `A ←── B` as "`B` depends on `A`". `marque-rules` does NOT depend on
+`marque-core`. `marque-capco` does NOT depend on `marque-core`. `marque-engine`
+is the sole convergence point that pulls both chains together. `marque-scheme`
+has no runtime deps on `marque-ism`/`marque-core`/`marque-rules`.
 
 ### Crate Responsibilities
 
@@ -239,6 +246,8 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO ru
 - `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections
 - `criterion` 0.5 — benchmarking (SC-001, SC-005)
 - `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
+- Rust ≥ 1.85 (edition 2024). Pinned by Constitution Tech Stack. + `memchr` 2 (scanner), `aho-corasick` 1 (token matching; `daachorse` on WASM per Tech Stack), `quick-xml` (build-time ODNI XSD/Schematron parsing, already present), `serde` + `serde_json` (build-time JSON codepath for per-term vocabulary data; runtime deserialization not required — data is emitted as Rust const tables by `build.rs`), `phf` (compile-time replacement lookup, already present). No new runtime crates introduced by Phase D's decoder — log-posterior scoring uses `f64` and Rust standard ops. Corpus-derived priors baked in as `&'static [T]` tables at build time. (004-constraints-decoder-vocab)
+- None at runtime. Build-time inputs: `crates/ism/schemas/ISM-v2022-DEC/` (ODNI XML, vendored), `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored), `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). Test inputs: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable). (004-constraints-decoder-vocab)
 
 ## Recent Changes
 - Phase B (recursive lattice & decoder plan, §12): built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`); `Scope` / `DiffInput` / `CategoryShape` / `PageRewrite` trait-surface additions; `SciSet`/`SarSet`/`FgiSet` lattice types in `marque-capco` with §3.3a equal-depth meet policy; `CapcoScheme::project(Scope, ...)` taking over from `project_banner`; `capco/noforn-clears-rel-to` declared as the first `PageRewrite`; tetragraph expansion tables consolidated in `marque-capco::vocab`; `AggregationOp::Custom` retired from runtime dispatch (build-time shorthand only)
