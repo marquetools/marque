@@ -233,11 +233,16 @@ impl FixProposal {
     ///
     /// # Panics
     ///
-    /// Panics if `confidence.combined()` is outside `[0.0, 1.0]` or is
-    /// `NaN`. The check runs in release builds (not just debug) because
-    /// `NaN` silently fails every threshold comparison and `INFINITY`
-    /// silently bypasses every threshold — both are correctness-
-    /// impacting bugs in release.
+    /// Panics if `confidence` fails [`Confidence::validate`] — i.e.,
+    /// any individual axis is out of range or `NaN` / non-finite. The
+    /// per-axis check is the load-bearing one: `combined() =
+    /// recognition × rule` can land in `[0.0, 1.0]` for individually-
+    /// invalid axes (e.g., `recognition = 2.0`, `rule = 0.4` ⇒
+    /// `combined = 0.8`), so validating only the product would let an
+    /// invalid record through. The check runs in release builds (not
+    /// just debug) because `NaN` silently fails every threshold
+    /// comparison and `INFINITY` silently bypasses every threshold —
+    /// both are correctness-impacting bugs in release.
     pub fn new(
         rule: RuleId,
         source: FixSource,
@@ -247,11 +252,9 @@ impl FixProposal {
         confidence: Confidence,
         migration_ref: Option<&'static str>,
     ) -> Self {
-        let combined = confidence.combined();
-        assert!(
-            (0.0..=1.0).contains(&combined) && !combined.is_nan(),
-            "FixProposal combined confidence must be in [0.0, 1.0] and not NaN, got {combined}"
-        );
+        if let Err(msg) = confidence.validate() {
+            panic!("FixProposal invalid confidence: {msg}");
+        }
         Self {
             rule,
             source,
@@ -537,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn fix_proposal_new_panics_when_combined_confidence_is_nan() {
+    fn fix_proposal_new_panics_when_axis_is_nan() {
         // A directly-constructed Confidence can still have NaN axes
         // that slip past the strict-path assert. Verify the
         // FixProposal::new gate catches that case too.
@@ -561,7 +564,93 @@ mod tests {
         });
         assert!(
             caught.is_err(),
-            "expected FixProposal::new to panic on NaN combined"
+            "expected FixProposal::new to panic on NaN recognition axis"
+        );
+    }
+
+    #[test]
+    fn fix_proposal_new_panics_when_axis_out_of_range() {
+        // combined() = recognition × rule can still land in [0, 1]
+        // even when an individual axis is out of range
+        // (e.g. recognition = 2.0, rule = 0.4 ⇒ combined = 0.8).
+        // Validating only the product would let this through; the
+        // per-axis check catches it.
+        let bad = Confidence {
+            recognition: 2.0,
+            rule: 0.4,
+            region: None,
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        // Sanity check: combined() IS in [0, 1] — that's the whole
+        // point of adding per-axis validation.
+        assert!((0.0..=1.0).contains(&bad.combined()));
+        let caught = std::panic::catch_unwind(|| {
+            FixProposal::new(
+                RuleId::new("E001"),
+                FixSource::BuiltinRule,
+                Span::new(0, 0),
+                "x",
+                "y",
+                bad,
+                None,
+            );
+        });
+        assert!(
+            caught.is_err(),
+            "expected FixProposal::new to panic on out-of-range recognition axis"
+        );
+    }
+
+    #[test]
+    fn fix_proposal_new_panics_when_feature_delta_is_nan() {
+        let bad = Confidence {
+            recognition: 0.9,
+            rule: 0.9,
+            region: None,
+            runner_up_ratio: None,
+            features: vec![FeatureContribution {
+                id: FeatureId::EditDistance1,
+                delta: f32::NAN,
+            }],
+        };
+        let caught = std::panic::catch_unwind(|| {
+            FixProposal::new(
+                RuleId::new("E001"),
+                FixSource::BuiltinRule,
+                Span::new(0, 0),
+                "x",
+                "y",
+                bad,
+                None,
+            );
+        });
+        assert!(
+            caught.is_err(),
+            "expected FixProposal::new to panic on NaN feature delta"
+        );
+    }
+
+    #[test]
+    fn fix_proposal_new_accepts_runner_up_ratio_above_one() {
+        // runner_up_ratio can legitimately be > 1.0 — it's a ratio,
+        // not a unit interval. Verify the per-axis validator doesn't
+        // over-constrain it.
+        let ok = Confidence {
+            recognition: 0.9,
+            rule: 0.9,
+            region: None,
+            runner_up_ratio: Some(3.5),
+            features: Vec::new(),
+        };
+        let _ = FixProposal::new(
+            RuleId::new("E001"),
+            FixSource::BuiltinRule,
+            Span::new(0, 0),
+            "x",
+            "y",
+            ok,
+            None,
         );
     }
 }

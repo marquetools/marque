@@ -91,8 +91,14 @@ pub struct PointOfContact {
 /// `replacement = None` denotes the "no known replacement" case
 /// (FR-017). The decoder uses that signal to avoid silently rewriting
 /// a token into a replacement that does not exist.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Deprecation<Token: Copy + 'static> {
+///
+/// The `Token` parameter carries no bounds on the struct definition —
+/// the bounds live on the derives so downstream code doesn't inherit
+/// unrelated constraints. `Clone`, `Debug`, `PartialEq`, and `Eq` are
+/// auto-implemented when `Token` satisfies them; consumers that only
+/// read via `&'static Deprecation<_>` get the type unconditionally.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Deprecation<Token> {
     /// Schema version at which the token was deprecated, e.g.,
     /// `"ISM-v2022-DEC"`.
     pub since: &'static str,
@@ -105,8 +111,11 @@ pub struct Deprecation<Token: Copy + 'static> {
 /// Baked as `&'static` into the generated tables by
 /// `marque-ism/build.rs` (task T080). Accessible through
 /// [`Vocabulary::metadata`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TokenMetadataFull<Token: Copy + 'static> {
+///
+/// The `Token` parameter carries no bounds on the struct — see the
+/// note on [`Deprecation`] for rationale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenMetadataFull<Token> {
     /// Canonical (authoritative) token name, e.g., `"SECRET"`.
     pub canonical: &'static str,
     /// ODNI URN for the term.
@@ -136,15 +145,14 @@ pub struct TokenMetadataFull<Token: Copy + 'static> {
 /// [`MarkingScheme`] — see `impl Vocabulary<CapcoScheme> for CapcoScheme`
 /// (task T084 in Phase 5).
 ///
-/// The trait takes the token by reference (`&S::Token`) to avoid
-/// imposing `Copy` on every scheme's token type. The Phase 5 CAPCO
-/// implementation uses the simple [`crate::category::TokenId`]
-/// (`u32`-wrapper, `Copy`); more complex schemes could use a
-/// non-`Copy` symbol type and still implement this trait.
-pub trait Vocabulary<S: MarkingScheme + ?Sized>
-where
-    S::Token: Copy + 'static,
-{
+/// The trait takes the token by reference (`&S::Token`) — no `Copy`
+/// bound is required. The Phase 5 CAPCO implementation uses the
+/// simple [`crate::category::TokenId`] (`u32`-wrapper, trivially
+/// `Copy`); schemes that prefer a richer non-`Copy` symbol type can
+/// still implement this trait without change. The metadata structs
+/// ([`TokenMetadataFull`] and [`Deprecation`]) likewise carry no
+/// `Copy` bound on their `Token` parameter.
+pub trait Vocabulary<S: MarkingScheme + ?Sized> {
     /// Authority record for `token`.
     fn authority(&self, token: &S::Token) -> &'static Authority;
 

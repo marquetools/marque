@@ -104,6 +104,63 @@ impl Confidence {
     pub fn combined(&self) -> f32 {
         self.recognition * self.rule
     }
+
+    /// Validate every axis of this `Confidence` record.
+    ///
+    /// Returns `Err(message)` naming the first invalid axis. Checks:
+    ///
+    /// - `recognition` and `rule` in `[0.0, 1.0]` and not NaN.
+    /// - `region`, when `Some`, in `[0.0, 1.0]` and not NaN.
+    /// - `runner_up_ratio`, when `Some`, finite and not NaN. No range
+    ///   constraint — a well-behaved decoder returns `≥ 1.0` (top /
+    ///   runner-up) but infinity (runner-up posterior = 0) and values
+    ///   `< 1.0` are legal for debugging / inspection code.
+    /// - Every `features[i].delta` finite and not NaN. `delta` carries
+    ///   signed log-posterior contributions so any finite value is
+    ///   legal; `NaN` / infinity would poison downstream audit-sum
+    ///   invariants silently.
+    ///
+    /// The zero-axis edge case (recognition = 0 or rule = 0) is valid
+    /// — `combined() = 0.0` is a legitimate below-threshold result,
+    /// not an invariant violation.
+    pub fn validate(&self) -> Result<(), String> {
+        let check_unit = |label: &str, v: f32| -> Result<(), String> {
+            if v.is_nan() || !(0.0..=1.0).contains(&v) {
+                Err(format!(
+                    "Confidence.{label} must be in [0.0, 1.0] and not NaN, got {v}"
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        let check_finite = |label: &str, v: f32| -> Result<(), String> {
+            if v.is_nan() || !v.is_finite() {
+                Err(format!(
+                    "Confidence.{label} must be finite and not NaN, got {v}"
+                ))
+            } else {
+                Ok(())
+            }
+        };
+
+        check_unit("recognition", self.recognition)?;
+        check_unit("rule", self.rule)?;
+        if let Some(r) = self.region {
+            check_unit("region", r)?;
+        }
+        if let Some(r) = self.runner_up_ratio {
+            check_finite("runner_up_ratio", r)?;
+        }
+        for (i, feature) in self.features.iter().enumerate() {
+            if feature.delta.is_nan() || !feature.delta.is_finite() {
+                return Err(format!(
+                    "Confidence.features[{i}].delta must be finite and not NaN, got {}",
+                    feature.delta
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// One named contribution to [`Confidence::recognition`].
@@ -195,5 +252,130 @@ mod tests {
         };
         assert_eq!(fc.id, FeatureId::EditDistance1);
         assert!((fc.delta - (-0.3)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_record() {
+        assert!(Confidence::strict(0.85).validate().is_ok());
+        assert!(
+            Confidence {
+                recognition: 0.9,
+                rule: 0.8,
+                region: Some(0.5),
+                runner_up_ratio: Some(2.7),
+                features: vec![FeatureContribution {
+                    id: FeatureId::EditDistance1,
+                    delta: -0.5,
+                }],
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_recognition() {
+        let c = Confidence {
+            recognition: 1.5,
+            rule: 0.5,
+            region: None,
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        let err = c.validate().unwrap_err();
+        assert!(
+            err.contains("recognition"),
+            "error should name the offending axis, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_rule() {
+        let c = Confidence {
+            recognition: 0.5,
+            rule: -0.1,
+            region: None,
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        let err = c.validate().unwrap_err();
+        assert!(err.contains("rule"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_region() {
+        let c = Confidence {
+            recognition: 0.5,
+            rule: 0.5,
+            region: Some(1.5),
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        let err = c.validate().unwrap_err();
+        assert!(err.contains("region"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_non_finite_runner_up_ratio() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let c = Confidence {
+                recognition: 0.5,
+                rule: 0.5,
+                region: None,
+                runner_up_ratio: Some(bad),
+                features: Vec::new(),
+            };
+            assert!(
+                c.validate().is_err(),
+                "runner_up_ratio = {bad:?} should fail validation"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_finite_runner_up_ratio_of_any_magnitude() {
+        // No range constraint on the ratio — verify low values pass.
+        let c = Confidence {
+            recognition: 0.5,
+            rule: 0.5,
+            region: None,
+            runner_up_ratio: Some(0.01),
+            features: Vec::new(),
+        };
+        assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_non_finite_feature_delta() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let c = Confidence {
+                recognition: 0.5,
+                rule: 0.5,
+                region: None,
+                runner_up_ratio: None,
+                features: vec![FeatureContribution {
+                    id: FeatureId::EditDistance1,
+                    delta: bad,
+                }],
+            };
+            assert!(
+                c.validate().is_err(),
+                "feature delta = {bad:?} should fail validation"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_zero_axes() {
+        // Zero is a legal below-threshold value, not an invariant
+        // violation — check that validate doesn't treat it specially.
+        let c = Confidence {
+            recognition: 0.0,
+            rule: 0.0,
+            region: Some(0.0),
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        assert!(c.validate().is_ok());
     }
 }
