@@ -1363,15 +1363,14 @@ Each phase block below lists: **Goal**, **Deliverables**,
       current token name in the codebase; the implementation should use
       the existing CAPCO sentinel-token mechanism (today including
       tokens such as `TOK_USA` and `TOK_JOINT`) or introduce a clearly
-      named equivalent when Phase C is implemented. Citation: CAPCO §J
-      — confirm exact subsection in the PR.
+      named equivalent when Phase C is implemented. Citation: TBD
     - **FGI-absorption** (`capco/unattributed-fgi-absorbs-attributed`)
       declared as a `PageRewrite` via `PageRewrite::custom` with explicit
       `reads = &[fgi]` / `writes = &[fgi]`. The within-axis collapse
       isn't expressible as `Clear` or `Replace` so the action is
       `Custom`; the trigger is `Custom` because "unattributed" is a
       structural marker on the FGI value rather than a literal token.
-      Citation: CAPCO §E — confirm exact subsection in the PR.
+      Citation: TBD.
     - **`R-FgiExplicitRel` property test.** A portion contributing
       `FGI(unattributed)` to the page-level FGI axis, alongside any
       portion with explicit REL TO content, must produce a banner that
