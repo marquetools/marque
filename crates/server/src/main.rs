@@ -201,7 +201,9 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
+    // Security Convention: Default to binding to the local loopback interface
+    // (127.0.0.1) instead of all interfaces (0.0.0.0) to prevent unintentional external exposure.
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 
