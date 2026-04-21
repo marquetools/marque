@@ -304,34 +304,25 @@ The workspace dependency graph MUST be one-directional and acyclic.
 - The canonical dependency graph is:
 
   ```text
-  marque-ism    ←── marque-core ────────────────────┐
-  marque-ism    ←── marque-rules ←── marque-capco ──┤
-  marque-scheme ←──────────────────  marque-capco ──┤
-                                                    ↓
-                                              marque-engine ←── marque-config
-                                                    ↑
-                                              marque-wasm
-                                                    ↑
-                                marque-extract (non-WASM only)
-                                                    ↑
-                                              marque-server
-                                                    ↑
-                                               marque (CLI)
+  marque-ism ← marque-core ← marque-rules ← marque-capco
+                                   │
+  marque-scheme ────────────────── ┘
+                                   ↓
+                              marque-engine ← marque-config
+                                   ↑
+                            marque-wasm
+                                   ↑
+                          marque-extract (non-WASM only)
+                                   ↑
+                            marque-server
+                                   ↑
+                              marque (CLI)
   ```
 
-  Read `A ←── B` as "`B` depends on `A`". `marque-ism` is the pivot crate
-  (vocabulary, generated CVE enums, `Span`, `IsmAttributes`) and sits at the
-  bottom of every WASM-safe chain. `marque-core` and `marque-rules` are
-  parallel consumers of `marque-ism`; `marque-rules` does **not** depend on
-  `marque-core`. `marque-scheme` is the domain-neutral trait surface for
-  structured marking schemes and has zero runtime dependencies (it does not
-  depend on `marque-ism`, `marque-core`, or `marque-rules`). `marque-capco`
-  consumes `marque-ism`, `marque-rules`, and `marque-scheme` — but **not**
-  `marque-core`. `marque-engine` is the convergence point that consumes all
-  of `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`, and
-  `marque-config`; this is the only crate that pulls both the
-  scanner/parser chain (via `marque-core`) and the rule chain (via
-  `marque-capco`) together.
+  `marque-ism` is the pivot crate (vocabulary, generated CVE enums, `Span`,
+  `IsmAttributes`). `marque-scheme` is the domain-neutral trait surface for
+  structured marking schemes and has zero runtime dependencies on `marque-ism`.
+  `marque-capco` consumes both.
 - No crate may introduce a circular dependency. `cargo check --workspace`
   MUST pass on every commit.
 - The WASM-safe set (`marque-ism`, `marque-core`, `marque-rules`,
@@ -513,4 +504,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.1.1 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-20
+**Version**: 1.1.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-20

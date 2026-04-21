@@ -75,22 +75,16 @@ Configuration lives in `.marque.toml` (project, committed) and
 ## Workspace
 
 ```text
-marque-ism    ←── marque-core ────────────────────┐
-marque-ism    ←── marque-rules ←── marque-capco ──┤
-marque-scheme ←──────────────────  marque-capco ──┤
-                                                  ↓
-                                            marque-engine ←── marque-config
-                                            ↑    ↑
-                                   marque-wasm  marque-extract (non-WASM only)
-                                            ↑
-                                      marque-server
-                                            ↑
-                                       marque (CLI)
+marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
+                                    ↓
+                             marque-engine  ←  marque-config
+                              ↑          ↑
+                     marque-extract    marque-wasm
+                              ↑
+                       marque-server
+                              ↑
+                           marque (CLI)
 ```
-
-Read `A ←── B` as "`B` depends on `A`". `marque-engine` is the sole
-convergence point for the scanner chain (`marque-core`) and the rule chain
-(`marque-capco`). `marque-scheme` is the domain-neutral trait surface.
 
 | Crate | Role |
 |---|---|
