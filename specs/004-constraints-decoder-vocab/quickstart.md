@@ -79,7 +79,8 @@ The harness fails if resolution rate drops below 85%. The printed statistics abo
 ### Spot-check audit records
 
 ```bash
-cargo run -p marque -- fix --deep-scan tests/fixtures/mangled/typo/sercet.txt --audit-log /tmp/audit.jsonl
+jq -r '.observed' tests/fixtures/mangled/typo/sercet.json > /tmp/sercet.txt
+cargo run -p marque -- fix --deep-scan /tmp/sercet.txt --audit-log /tmp/audit.jsonl
 cat /tmp/audit.jsonl | jq '.confidence.features'
 # expect: non-empty array of FeatureContribution entries with enum FeatureId values
 ```
