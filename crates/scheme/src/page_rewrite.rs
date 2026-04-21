@@ -127,10 +127,14 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     ///
     /// The guard is `const` so a `static`-initialized rewrite table
     /// with an empty-annotation custom entry fails at compile time
-    /// (`const` panic). Runtime construction hits the same panic,
-    /// producing the same diagnostic shape as
-    /// [`EngineConstructionError::UnannotatedCustomAxes`] without
-    /// needing the engine to be running yet.
+    /// (`const` panic). **Runtime construction also panics** rather
+    /// than returning an
+    /// [`EngineConstructionError::UnannotatedCustomAxes`]: this is an
+    /// eager fail-fast check at rewrite-construction time. The engine
+    /// still performs the equivalent validation at `Engine::new` time
+    /// — that path covers rewrites authored via field-literal
+    /// construction (which bypasses this `const fn`) so the error
+    /// variant is reachable from runtime-authored rewrite tables.
     pub const fn custom(
         id: RewriteId,
         citation: &'static str,

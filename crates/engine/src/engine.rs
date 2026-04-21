@@ -59,9 +59,12 @@ pub struct Engine {
     /// Topologically-sorted rewrite ids, computed once at construction
     /// time from the scheme's `page_rewrites()` declaration. The order
     /// satisfies: for every edge `a → b` (rewrite `a` writes a
-    /// category `b` reads), `a` appears before `b`. FR-007 guarantees
-    /// this order is independent of declaration order. Empty when the
-    /// scheme declares no rewrites.
+    /// category `b` reads), `a` appears before `b`. When dataflow
+    /// edges fully determine the order, FR-007's declaration-order-
+    /// independence guarantee holds; when two rewrites have no edge
+    /// between them, the scheduler breaks the tie by declaration
+    /// order (Kahn's algorithm seeded in declaration order). Empty
+    /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
 }
 

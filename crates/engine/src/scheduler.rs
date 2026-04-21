@@ -113,11 +113,28 @@ where
     }
 
     if scheduled.len() != n {
-        // Cycle detected. Collect the members still in-degree > 0 and
-        // any rewrite reachable only from them. The cycle may span
-        // multiple components; `cycle_members` below returns every
-        // participating rewrite.
-        let cycle_indexes: Vec<usize> = (0..n).filter(|i| in_degree[*i] > 0).collect();
+        // Cycle detected. Extract the actual cycle participants via
+        // Tarjan's SCC so downstream-blocked rewrites (nodes that
+        // have in-degree > 0 only because a cycle upstream never
+        // resolves) are excluded from the reported `members` list.
+        // Self-edges (`a` reads and writes category `X`) are
+        // explicitly NOT counted as cycles above; a size-1 SCC
+        // without a self-successor is a downstream-blocked node,
+        // not a cycle member.
+        let sccs = tarjan_sccs(n, &successors);
+        let mut cycle_indexes: Vec<usize> = sccs
+            .into_iter()
+            .filter(|scc| {
+                // Size-1 SCCs reach this code only through
+                // downstream blocking — the self-loop case (a
+                // rewrite reading and writing the same category)
+                // is skipped earlier when building `successors`, so
+                // a singleton SCC never contains a true self-edge.
+                scc.len() > 1
+            })
+            .flatten()
+            .collect();
+        cycle_indexes.sort_unstable();
         let axis = cycle_axis(rewrites, &cycle_indexes);
         let members: Box<[RewriteId]> = cycle_indexes
             .into_iter()
@@ -128,6 +145,105 @@ where
     }
 
     Ok(scheduled.into_boxed_slice())
+}
+
+/// Tarjan's strongly-connected-components algorithm.
+///
+/// Returns one `Vec<usize>` per SCC. A graph edge `u → v` is encoded
+/// as `successors[u].contains(&v)`. The algorithm is deterministic:
+/// it walks `successors` in `BTreeSet` order (sorted) so SCCs with
+/// identical node sets are grouped identically across runs.
+///
+/// Size-1 SCCs without a self-edge are not cycles — they are nodes
+/// the caller may choose to filter out based on the graph's semantics
+/// (the scheduler above filters on `scc.len() > 1` because `successors`
+/// has already had self-edges stripped).
+///
+/// The implementation is iterative to avoid stack-overflow on
+/// pathological inputs — `CapcoScheme` has ≤10 rewrites today, but a
+/// future CUI / NATO scheme may declare more.
+fn tarjan_sccs(n: usize, successors: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
+    // Per-node state.
+    let mut index: Vec<Option<usize>> = vec![None; n];
+    let mut lowlink: Vec<usize> = vec![0; n];
+    let mut on_stack: Vec<bool> = vec![false; n];
+    let mut scc_stack: Vec<usize> = Vec::new();
+    let mut next_index: usize = 0;
+    let mut sccs: Vec<Vec<usize>> = Vec::new();
+
+    // DFS-frame stack: (node, iterator-position into that node's
+    // successor list). We iterate successors as a Vec snapshot so we
+    // can pause and resume at a given index without borrowing the
+    // source BTreeSet across frames.
+    struct Frame {
+        node: usize,
+        successors: Vec<usize>,
+        pos: usize,
+    }
+    let mut dfs: Vec<Frame> = Vec::new();
+
+    for start in 0..n {
+        if index[start].is_some() {
+            continue;
+        }
+
+        // Seed.
+        index[start] = Some(next_index);
+        lowlink[start] = next_index;
+        next_index += 1;
+        scc_stack.push(start);
+        on_stack[start] = true;
+        dfs.push(Frame {
+            node: start,
+            successors: successors[start].iter().copied().collect(),
+            pos: 0,
+        });
+
+        while let Some(frame) = dfs.last_mut() {
+            if frame.pos < frame.successors.len() {
+                let w = frame.successors[frame.pos];
+                frame.pos += 1;
+                if index[w].is_none() {
+                    // Descend into w.
+                    index[w] = Some(next_index);
+                    lowlink[w] = next_index;
+                    next_index += 1;
+                    scc_stack.push(w);
+                    on_stack[w] = true;
+                    dfs.push(Frame {
+                        node: w,
+                        successors: successors[w].iter().copied().collect(),
+                        pos: 0,
+                    });
+                } else if on_stack[w] {
+                    let v = frame.node;
+                    let w_idx = index[w].expect("index[w] was set when w was pushed");
+                    lowlink[v] = lowlink[v].min(w_idx);
+                }
+            } else {
+                // Frame exhausted — pop and emit SCC if v is the root.
+                let v = frame.node;
+                dfs.pop();
+                if let Some(parent) = dfs.last_mut() {
+                    lowlink[parent.node] = lowlink[parent.node].min(lowlink[v]);
+                }
+                let v_index = index[v].expect("index[v] was set at seed");
+                if lowlink[v] == v_index {
+                    let mut component = Vec::new();
+                    while let Some(w) = scc_stack.pop() {
+                        on_stack[w] = false;
+                        component.push(w);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    sccs.push(component);
+                }
+            }
+        }
+    }
+
+    sccs
 }
 
 /// Does the rewrite's trigger or action contain a `Custom` variant?

@@ -183,8 +183,21 @@ where
                 // applied by `project(Scope::Page, ...)`. No diagnostic
                 // emission from the evaluator.
             }
-            Constraint::Custom { name, label: _ } => {
-                out.extend(scheme.evaluate_custom(name, marking));
+            Constraint::Custom { name, label } => {
+                // The module-level invariant is that
+                // `ConstraintViolation.citation` is the triggering
+                // constraint's authoritative-source `label` verbatim.
+                // `evaluate_custom` is free to build scheme-specific
+                // per-violation messages and sub-labels, but the
+                // citation surface must resolve to the same string
+                // the catalog publishes — we override after the call
+                // so the scheme can't accidentally drift from it.
+                out.extend(scheme.evaluate_custom(name, marking).into_iter().map(
+                    |mut v| {
+                        v.citation = label;
+                        v
+                    },
+                ));
             }
         }
     }

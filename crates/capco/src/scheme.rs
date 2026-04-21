@@ -374,11 +374,16 @@ impl CapcoScheme {
     /// 3. **`capco/fgi-absorption`** — FGI tokens roll up from
     ///    portions into the banner-level FGI category. Cite §K p61.
     ///
-    /// Every rewrite is expressed in **declarative** form
-    /// ([`CategoryPredicate::Contains`] / [`Empty`] +
-    /// [`CategoryAction::Clear`] / [`Promote`]) rather than via
-    /// `Custom` closures, so scheme-exploration tools can render the
-    /// dataflow without executing scheme code.
+    /// Actions are expressed declaratively
+    /// ([`CategoryAction::Clear`] / [`Promote`]). Two of the three
+    /// rewrites currently use a `CategoryPredicate::Custom(never_fires)`
+    /// trigger as a placeholder — Phase 3 does not drive page roll-up
+    /// through `scheme.project()`, so pinning the trigger to `false`
+    /// keeps those rewrites from mutating markings via the
+    /// placeholder `identity_promote` transform. Scheme-exploration
+    /// tools can still inspect `reads` / `writes` and the action
+    /// variant without running the trigger body; Phase D / Phase E
+    /// replaces the `Custom` triggers with real presence predicates.
     ///
     /// Phase 3 note: [`Engine::lint`] does not drive portion
     /// aggregation through `scheme.project(Scope::Page, …)` yet — the

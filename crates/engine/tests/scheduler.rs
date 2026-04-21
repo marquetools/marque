@@ -189,6 +189,43 @@ fn cyclic_rewrite_pair_fails_construction() {
 }
 
 #[test]
+fn downstream_blocked_rewrite_not_reported_as_cycle_member() {
+    // `a` ↔ `b` form a cycle. `d` reads `Y` (which `b` writes) and
+    // writes `Z` — `d` is blocked by the cycle but is NOT a cycle
+    // member itself. Kahn's residual `in_degree > 0` set would
+    // include `d`; Tarjan's SCC must exclude it.
+    const A_READS: &[CategoryId] = &[CAT_Y];
+    const A_WRITES: &[CategoryId] = &[CAT_X];
+    const B_READS: &[CategoryId] = &[CAT_X];
+    const B_WRITES: &[CategoryId] = &[CAT_Y];
+    const D_READS: &[CategoryId] = &[CAT_Y];
+    const D_WRITES: &[CategoryId] = &[CAT_Z];
+
+    let scheme = StubScheme::new(vec![
+        declarative_rewrite("a", A_READS, A_WRITES),
+        declarative_rewrite("b", B_READS, B_WRITES),
+        declarative_rewrite("d", D_READS, D_WRITES),
+    ]);
+
+    let err = match try_build(scheme) {
+        Ok(_) => panic!("cycle must fail"),
+        Err(e) => e,
+    };
+    match err {
+        EngineConstructionError::RewriteCycle { members, .. } => {
+            let mut names: Vec<&str> = members.to_vec();
+            names.sort();
+            assert_eq!(
+                names,
+                ["a", "b"],
+                "downstream-blocked `d` must NOT appear in cycle members; got {names:?}",
+            );
+        }
+        other => panic!("expected RewriteCycle, got {other:?}"),
+    }
+}
+
+#[test]
 fn cyclic_three_rewrite_cycle_reports_all_members() {
     // a writes X reads Z, b writes Y reads X, c writes Z reads Y.
     // Cycle: a → b → c → a (via category edges).
