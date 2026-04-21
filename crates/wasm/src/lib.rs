@@ -24,10 +24,7 @@
 // TODO: implement JavaScript calling instead of serializing to JSON using newer WASM 2.0 features
 
 #![cfg_attr(
-    not(all(
-        target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
-    )),
+    not(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug"))),
     forbid(unsafe_code)
 )]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
@@ -43,33 +40,18 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
 mod simd128_placeholder {}
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
+#[cfg(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")))]
 use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
+#[cfg(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")))]
 // Extra headroom beyond Talc's minimum first heap size so typical WASM lint/fix
 // workloads do not immediately trigger heap growth. Tune this alongside expected
 // input sizes and allocator behavior.
 const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
 
-#[cfg_attr(
-    all(
-        target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
-    ),
-    global_allocator
-)]
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
+#[cfg_attr(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")), global_allocator)]
+#[cfg(all(target_arch = "wasm32", any(feature = "talc_alloc", feature = "talc_debug")))]
 static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(
     // SAFETY: `INITIAL_HEAP` is a private static buffer used only to seed the
     // global allocator during this one-time initialization. We pass a raw

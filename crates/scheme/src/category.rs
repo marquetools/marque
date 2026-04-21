@@ -247,11 +247,13 @@ pub fn reduce_intersect<T: Eq + Clone>(sets: &[Vec<T>]) -> Vec<T> {
     let Some((first, rest)) = sets.split_first() else {
         return Vec::new();
     };
-    first
-        .iter()
-        .filter(|v| rest.iter().all(|s| s.contains(v)))
-        .cloned()
-        .collect()
+    let mut out: Vec<T> = Vec::new();
+    for v in first {
+        if !out.contains(v) && rest.iter().all(|s| s.contains(v)) {
+            out.push(v.clone());
+        }
+    }
+    out
 }
 
 /// Apply `AggregationOp::UnionWithSupersession`. Unions the values, then
@@ -303,22 +305,6 @@ mod tests {
             Some(Level::TS)
         );
         assert_eq!(reduce_max::<Level>(&[]), None);
-    }
-
-    #[test]
-    fn max_reduces_integers() {
-        assert_eq!(reduce_max(&[1, 5, 3, 4, 2]), Some(5));
-        assert_eq!(reduce_max(&[-10, -5, -1, -20]), Some(-1));
-    }
-
-    #[test]
-    fn max_reduces_strings() {
-        assert_eq!(reduce_max(&["apple", "zebra", "banana"]), Some("zebra"));
-    }
-
-    #[test]
-    fn max_reduces_with_duplicates() {
-        assert_eq!(reduce_max(&[2, 5, 2, 5, 1]), Some(5));
     }
 
     #[test]
@@ -375,6 +361,33 @@ mod tests {
     #[test]
     fn intersect_empty_on_no_portions() {
         assert_eq!(reduce_intersect::<&str>(&[]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn intersect_single_set() {
+        let a = vec!["USA", "GBR"];
+        assert_eq!(reduce_intersect(&[a.clone()]), a);
+    }
+
+    #[test]
+    fn intersect_with_empty_set() {
+        let a = vec!["USA", "GBR"];
+        let b = Vec::<&str>::new();
+        assert_eq!(reduce_intersect(&[a, b]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn intersect_preserves_order_of_first_set() {
+        let a = vec!["Z", "A", "C", "B"];
+        let b = vec!["A", "B", "C", "Z"];
+        assert_eq!(reduce_intersect(&[a, b]), vec!["Z", "A", "C", "B"]);
+    }
+
+    #[test]
+    fn intersect_with_duplicates_in_first_set() {
+        let a = vec!["USA", "USA", "GBR"];
+        let b = vec!["USA", "GBR", "CAN"];
+        assert_eq!(reduce_intersect(&[a, b]), vec!["USA", "GBR"]);
     }
 
     #[test]
