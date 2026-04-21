@@ -1,9 +1,10 @@
-[![codecov](https://codecov.io/gh/marquetools/marque/graph/badge.svg?token=7WQKZM1DA9)](https://codecov.io/gh/marquetools/marque)
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark.svg">
   <img alt="marque logo" src="https://raw.githubusercontent.com/marquetools/marque/refs/heads/main/docs-site/src/assets/images/marque_logomark.svg" height="150px">
 </picture>
+
+[![codecov](https://codecov.io/gh/marquetools/marque/graph/badge.svg?token=7WQKZM1DA9)](https://codecov.io/gh/marquetools/marque)
 
 ## **A fast, rule-driven text linter, formatter, and transformer.** 
 
