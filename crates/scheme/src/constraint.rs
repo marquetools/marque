@@ -47,14 +47,29 @@ pub enum TokenRef {
 
 /// A declarative invariant the scheme enforces.
 ///
-/// Every variant carries a `label: &'static str` citation pointing at
-/// the authoritative-source passage that defines the constraint
-/// (see the module-level docs).
+/// Every variant carries two `&'static str` identifiers:
+///
+/// - `name` — a **stable, scheme-unique short identifier** for the
+///   constraint (e.g. `"capco/joint-conflicts-fgi"`). Surfaced as
+///   [`ConstraintViolation::constraint_label`] so a downstream
+///   consumer can trace a violation back to the specific declared
+///   entry. Two `Conflicts` or `Requires` constraints in the same
+///   catalog MUST have different `name`s; the evaluator does not
+///   enforce uniqueness because the catalog is author-owned, but a
+///   repeated `name` would collapse two logically distinct rules into
+///   indistinguishable diagnostics.
+/// - `label` — the authoritative-source citation passage (e.g.
+///   `"CAPCO-2016 §H.4"`). Shared across a catalog is fine — many
+///   distinct rules may share a citation.
+///
+/// See the module-level docs for the full rationale and Constitution
+/// VIII for citation discipline.
 #[derive(Debug, Clone)]
 pub enum Constraint {
     /// Two tokens cannot co-occur in one marking. Example: NOFORN and
     /// REL TO are mutually exclusive at the portion level.
     Conflicts {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -62,6 +77,7 @@ pub enum Constraint {
     /// If the left is present, the right must also be present.
     /// Example: HCS requires NOFORN.
     Requires {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -69,6 +85,7 @@ pub enum Constraint {
     /// If the left is present, the right is implied (safe to omit).
     /// The engine uses this to avoid false "missing X" diagnostics.
     Implies {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -77,6 +94,7 @@ pub enum Constraint {
     /// drops out of the banner if the left is present. Example:
     /// NOFORN ⊐ REL TO at banner scope.
     Supersedes {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -102,6 +120,19 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    /// The stable short identifier for this constraint — the same
+    /// string that lands in [`ConstraintViolation::constraint_label`]
+    /// when the constraint fires.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Constraint::Conflicts { name, .. }
+            | Constraint::Requires { name, .. }
+            | Constraint::Implies { name, .. }
+            | Constraint::Supersedes { name, .. }
+            | Constraint::Custom { name, .. } => name,
+        }
+    }
+
     /// The authoritative-source citation for this constraint (e.g.
     /// `"CAPCO-2016 §H.4"`). Returned unchanged regardless of variant.
     pub fn label(&self) -> &'static str {
@@ -153,19 +184,29 @@ where
     let mut out = Vec::new();
     for c in scheme.constraints() {
         match c {
-            Constraint::Conflicts { left, right, label } => {
+            Constraint::Conflicts {
+                name,
+                left,
+                right,
+                label,
+            } => {
                 if scheme.satisfies(marking, left) && scheme.satisfies(marking, right) {
                     out.push(ConstraintViolation {
-                        constraint_label: "conflicts",
+                        constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
                     });
                 }
             }
-            Constraint::Requires { left, right, label } => {
+            Constraint::Requires {
+                name,
+                left,
+                right,
+                label,
+            } => {
                 if scheme.satisfies(marking, left) && !scheme.satisfies(marking, right) {
                     out.push(ConstraintViolation {
-                        constraint_label: "requires",
+                        constraint_label: name,
                         message: format!("token {left:?} requires {right:?} but it is missing"),
                         citation: label,
                     });

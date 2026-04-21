@@ -666,13 +666,14 @@ impl CapcoScheme {
             // set is n-ary (bare-HCS detection + O/P rules + ORCON
             // pairing + classification floor).
             Constraint::Custom {
-                name: "HCS-system-constraints",
+                name: "E010/HCS-system-constraints",
                 label: "CAPCO-2016 §4 p62",
             },
             // E012 — a US classification cannot co-occur with a
             // concurrent foreign classification (FGI / NATO / JOINT)
             // on the same marking.
             Constraint::Conflicts {
+                name: "E012/us-conflicts-non-us-classification",
                 left: TokenRef::Token(TOK_US_CLASSIFIED),
                 right: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
                 label: "CAPCO-2016 §I.3",
@@ -681,6 +682,7 @@ impl CapcoScheme {
             // carry a dissemination control (REL TO or an IC-approved
             // dissem marker).
             Constraint::Requires {
+                name: "E015/non-us-requires-dissem",
                 left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
                 right: TokenRef::AnyInCategory(CAT_DISSEM),
                 label: "CAPCO-2016 §K p61",
@@ -689,6 +691,7 @@ impl CapcoScheme {
             // RESTRICTED (JOINT has its own classification floor that
             // RESTRICTED is below).
             Constraint::Conflicts {
+                name: "E016/joint-conflicts-restricted",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_RESTRICTED),
                 label: "CAPCO-2016 §K.2",
@@ -697,6 +700,7 @@ impl CapcoScheme {
             // marker (JOINT already enumerates origin; FGI would
             // double-mark).
             Constraint::Conflicts {
+                name: "E017/joint-conflicts-fgi",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_FGI_MARKER),
                 label: "CAPCO-2016 §K.2",
@@ -704,6 +708,7 @@ impl CapcoScheme {
             // E018 — JOINT conflicts with IC dissemination controls
             // other than REL TO (which is required by §K.2).
             Constraint::Conflicts {
+                name: "E018/joint-conflicts-ic-dissem",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_IC_DISSEM),
                 label: "CAPCO-2016 §K.2 p66",
@@ -711,6 +716,7 @@ impl CapcoScheme {
             // E019 — JOINT conflicts with non-IC dissemination
             // controls (LIMDIS / SBU / etc.).
             Constraint::Conflicts {
+                name: "E019/joint-conflicts-non-ic-dissem",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_NON_IC_DISSEM),
                 label: "CAPCO-2016 §K.2 p66",
@@ -718,6 +724,7 @@ impl CapcoScheme {
             // E021 — AEA tokens (RD / FRD) require NOFORN by default
             // per §H.1.
             Constraint::Requires {
+                name: "E021/aea-requires-noforn",
                 left: TokenRef::AnyInCategory(CAT_AEA),
                 right: TokenRef::Token(TOK_NOFORN),
                 label: "CAPCO-2016 §H.1",
@@ -726,20 +733,29 @@ impl CapcoScheme {
             // (implication expressed as a Custom constraint because
             // the floor is an enum-range rather than a single token).
             Constraint::Custom {
-                name: "CNWDI-classification-floor",
+                name: "E022/CNWDI-classification-floor",
                 label: "CAPCO-2016 §H.1",
             },
             // E024 — RD supersedes FRD and TFNI when both appear in
-            // the AEA set.
+            // the AEA set. Declared as two `Supersedes` entries so
+            // catalog consumers see the full supersession relation.
             Constraint::Supersedes {
+                name: "E024/rd-supersedes-frd",
                 left: TokenRef::Token(TOK_RD),
                 right: TokenRef::Token(TOK_FRD),
+                label: "CAPCO-2016 §H.1",
+            },
+            Constraint::Supersedes {
+                name: "E024/rd-supersedes-tfni",
+                left: TokenRef::Token(TOK_RD),
+                right: TokenRef::Token(TOK_TFNI),
                 label: "CAPCO-2016 §H.1",
             },
             // E025 — UCNI conflicts with classified markings (it is
             // unclassified-but-controlled and cannot coexist with a
             // classification level).
             Constraint::Conflicts {
+                name: "E025/ucni-conflicts-classification",
                 left: TokenRef::Token(TOK_UCNI),
                 right: TokenRef::AnyInCategory(CAT_CLASSIFICATION),
                 label: "CAPCO-2016 §H.1",
@@ -749,6 +765,7 @@ impl CapcoScheme {
             // legal commingling rules; `CominglingWarningRule`
             // surfaces the warning).
             Constraint::Conflicts {
+                name: "W002/us-commingled-with-fgi",
                 left: TokenRef::Token(TOK_US_CLASSIFIED),
                 right: TokenRef::Token(TOK_FGI_MARKER),
                 label: "CAPCO-2016 §K.2",
@@ -761,6 +778,7 @@ impl CapcoScheme {
 
             // NOFORN ∥ REL TO — portion-level exclusion (§A.4).
             Constraint::Conflicts {
+                name: "capco/noforn-conflicts-rel-to",
                 left: TokenRef::Token(TOK_NOFORN),
                 right: TokenRef::AnyInCategory(CAT_REL_TO),
                 label: "CAPCO-2016 §A.4",
@@ -768,6 +786,7 @@ impl CapcoScheme {
             // JOINT ⇒ USA — JOINT classifications must list USA in
             // both the country list and REL TO.
             Constraint::Requires {
+                name: "capco/joint-requires-usa",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_USA),
                 label: "CAPCO-2016 §H.3",
@@ -860,6 +879,7 @@ impl MarkingScheme for CapcoScheme {
                     left: TokenRef::Token(a),
                     right: TokenRef::AnyInCategory(cat),
                     label,
+                    ..
                 } if *a == TOK_NOFORN && *cat == CAT_REL_TO => {
                     let has_nf = attrs
                         .dissem_controls
@@ -875,13 +895,17 @@ impl MarkingScheme for CapcoScheme {
                         });
                     }
                 }
-                Constraint::Custom { name, label } if *name == "HCS-system-constraints" => {
+                Constraint::Custom { name, label }
+                    if *name == "E010/HCS-system-constraints"
+                        || *name == "HCS-system-constraints" =>
+                {
                     out.extend(hcs_system_constraints(attrs, label));
                 }
                 Constraint::Requires {
                     left: TokenRef::Token(a),
                     right: TokenRef::Token(b),
                     label,
+                    ..
                 } if *a == TOK_JOINT && *b == TOK_USA => {
                     if let Some(marque_ism::MarkingClassification::Joint(ref j)) =
                         attrs.classification

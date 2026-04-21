@@ -114,11 +114,13 @@ const CAT_FOO: CategoryId = CategoryId(1);
 fn evaluate_is_deterministic() {
     let scheme = StubScheme::new(vec![
         Constraint::Conflicts {
+            name: "test/ab-conflict",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
             label: "TEST §1",
         },
         Constraint::Requires {
+            name: "test/a-requires-foo",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::AnyInCategory(CAT_FOO),
             label: "TEST §2",
@@ -174,6 +176,7 @@ fn empty_constraints_returns_empty() {
 #[test]
 fn conflict_violation_preserves_citation() {
     let scheme = StubScheme::new(vec![Constraint::Conflicts {
+        name: "test/conflict",
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
         label: "CAPCO-2016 §H.4",
@@ -189,6 +192,40 @@ fn conflict_violation_preserves_citation() {
         "CAPCO-2016 §H.4",
         "citation must be copied verbatim from the triggering constraint"
     );
+    assert_eq!(
+        v[0].constraint_label, "test/conflict",
+        "constraint_label must be the declared `name` — not a generic 'conflicts' string"
+    );
+}
+
+#[test]
+fn constraint_label_maps_to_declared_name_per_entry() {
+    // Two `Conflicts` constraints with the same variant but different
+    // names — verify that violations carry the right `constraint_label`
+    // for each, so a downstream consumer can trace a violation back
+    // to the specific declared entry.
+    let scheme = StubScheme::new(vec![
+        Constraint::Conflicts {
+            name: "test/ab-conflict",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::Token(TOK_B),
+            label: "TEST §1",
+        },
+        Constraint::Conflicts {
+            name: "test/foo-conflict",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::AnyInCategory(CAT_FOO),
+            label: "TEST §2",
+        },
+    ]);
+    let marking = StubMarking {
+        tokens: vec![TOK_A, TOK_B],
+        category_members: vec![(CAT_FOO, TOK_A)],
+    };
+    let v = evaluate(&scheme, &marking);
+    assert_eq!(v.len(), 2);
+    assert_eq!(v[0].constraint_label, "test/ab-conflict");
+    assert_eq!(v[1].constraint_label, "test/foo-conflict");
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +235,7 @@ fn conflict_violation_preserves_citation() {
 #[test]
 fn implies_does_not_emit_diagnostics() {
     let scheme = StubScheme::new(vec![Constraint::Implies {
+        name: "test/implies",
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
         label: "TEST §implies",
@@ -212,6 +250,7 @@ fn implies_does_not_emit_diagnostics() {
 #[test]
 fn supersedes_does_not_emit_diagnostics() {
     let scheme = StubScheme::new(vec![Constraint::Supersedes {
+        name: "test/supersedes",
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
         label: "TEST §supersedes",

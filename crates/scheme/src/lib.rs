@@ -63,7 +63,9 @@ pub use category::{
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, TokenRef};
 pub use lattice::{BoundedLattice, Lattice};
-pub use page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite, RewriteId};
+pub use page_rewrite::{
+    CategoryAction, CategoryPredicate, PageRewrite, PageRewriteAxisError, RewriteId,
+};
 pub use projection::{Projection, categories_in_render_order};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
 pub use scheme::MarkingScheme;
