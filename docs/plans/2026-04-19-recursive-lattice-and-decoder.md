@@ -1323,8 +1323,10 @@ Each phase block below lists: **Goal**, **Deliverables**,
     stay as `Rule` impls.
   - Cross-category supersession (NOFORN⊐REL TO) moves from
     `PageContext::expected_rel_to` into a `PageRewrite` declaration.
-    The `TODO(Phase C)` comment in `crates/capco/src/scheme.rs`
-    line 380 is resolved.
+    The Phase C note in `crates/capco/src/scheme.rs` covering
+    cross-category supersession (the CAT_DISSEM / NOFORN ⊐ REL TO
+    aggregation comment and related `build_page_rewrites()` work) is
+    resolved.
     - **`PageRewrite` axis annotations** (refactor of the
       Phase-B-shipped type). `PageRewrite` gains
       `reads: &'static [CategoryId]` and
