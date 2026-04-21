@@ -6,9 +6,19 @@
 //!
 //! Every [`FixProposal`](crate::FixProposal) carries a `Confidence`
 //! record describing how the engine arrived at the proposal. The
-//! record is a sum of four scores plus a list of named feature
-//! contributions; together they reconstruct the decoder's scoring
+//! record stores two primary scalar confidence axes —
+//! `recognition` and `rule` — plus optional auxiliary fields
+//! (`region` and `runner_up_ratio`) and a list of named feature
+//! contributions. Together they reconstruct the decoder's scoring
 //! path so an auditor can verify *why* a given fix was promoted.
+//!
+//! The engine's current threshold-facing combined score is
+//! `recognition * rule` as exposed by [`Confidence::combined`].
+//! `region` is recorded as additional audit/context metadata when
+//! available, but it does not currently participate in that
+//! combined score. `runner_up_ratio` likewise provides decoder
+//! provenance rather than a direct multiplicative/additive input to
+//! `combined()`.
 //!
 //! ## Precision: `f32` throughout
 //!
