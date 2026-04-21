@@ -786,6 +786,29 @@ pub enum CapcoParseError {
     NotImplemented,
 }
 
+// Phase 3 drift-hazard note (prerequisite for T035 / Phase D-E):
+//
+// `satisfies` and `evaluate_custom` are deliberately left at their
+// trait defaults on `CapcoScheme` — the declarative constraint
+// catalog in `build_constraints()` is **data-only** until T035 or
+// Phase D/E rewires the engine to drive diagnostics through
+// `marque_scheme::constraint::evaluate(scheme, marking)`. The live
+// HCS / dyadic predicates still fire through `CapcoScheme::validate`'s
+// hand-coded `match` below (which bypasses the evaluator) plus the
+// hand-written `Rule` impls in `crate::rules`, which is why byte-
+// identity with the pre-branch corpus holds in this phase.
+//
+// BEFORE retiring any rule impl (T035) or switching the engine to
+// `scheme.validate()` (Phase D/E), override `satisfies` to resolve
+// `TokenRef::Token` / `TokenRef::AnyInCategory` against `CapcoMarking`'s
+// concrete storage and override `evaluate_custom` to route
+// `"HCS-system-constraints"` / `"CNWDI-classification-floor"` to their
+// scheme-specific predicates. Until then, calling
+// `marque_scheme::constraint::evaluate(&CapcoScheme::new(), &m)`
+// returns an empty vec — every dyadic constraint no-ops and every
+// `Custom` entry drops silently. Leaving the defaults unoverridden
+// would have been a bug if Phase 3 also flipped the engine; the two
+// changes must land together.
 impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;

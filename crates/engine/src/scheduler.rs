@@ -145,11 +145,17 @@ fn rewrite_is_custom<S: MarkingScheme + ?Sized>(rw: &PageRewrite<S>) -> bool {
 /// Pick a category from the rewrite cycle to name in the error.
 ///
 /// Any category that appears on both sides of the cycle is a valid
-/// answer. We pick the lowest category id that's both read and written
-/// by some member of the cycle — gives deterministic output for
-/// reporting. Falls back to `CategoryId(0)` when nothing matches
-/// (should not happen if `schedule_rewrites` correctly identified a
-/// cycle, but the fallback keeps the return type total).
+/// answer. We pick the lowest category id that's both read and
+/// written by some member of the cycle for deterministic reporting.
+///
+/// The intersection is guaranteed non-empty when `indexes` names a
+/// real cycle — every edge `a → b` in the scheduler's graph exists
+/// because some `c ∈ a.writes ∩ b.reads`, and a cycle requires at
+/// least one such shared category. The `debug_assert!` below catches
+/// a broken invariant loudly in tests and debug builds; the release
+/// fallback returns `CategoryId(0)` only as a last-resort defense
+/// against a future refactor that calls this helper with a
+/// non-cyclic index set.
 fn cycle_axis<S: MarkingScheme + ?Sized>(
     rewrites: &[PageRewrite<S>],
     indexes: &[usize],
@@ -164,11 +170,15 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
             writes.insert(*w);
         }
     }
-    reads
-        .intersection(&writes)
-        .next()
-        .copied()
-        .unwrap_or(CategoryId(0))
+    let picked = reads.intersection(&writes).next().copied();
+    debug_assert!(
+        picked.is_some(),
+        "cycle_axis called with no shared read/write axis; this should \
+         be unreachable when `indexes` names a real cycle in the scheduler \
+         graph. The release-mode fallback is CategoryId(0), but reaching \
+         it means `schedule_rewrites` classified a non-cycle as a cycle.",
+    );
+    picked.unwrap_or(CategoryId(0))
 }
 
 #[cfg(test)]
