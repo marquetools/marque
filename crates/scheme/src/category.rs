@@ -362,6 +362,33 @@ mod tests {
     }
 
     #[test]
+    fn intersect_single_set() {
+        let a = vec!["USA", "GBR"];
+        assert_eq!(reduce_intersect(&[a.clone()]), a);
+    }
+
+    #[test]
+    fn intersect_with_empty_set() {
+        let a = vec!["USA", "GBR"];
+        let b = Vec::<&str>::new();
+        assert_eq!(reduce_intersect(&[a, b]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn intersect_preserves_order_of_first_set() {
+        let a = vec!["Z", "A", "C", "B"];
+        let b = vec!["A", "B", "C", "Z"];
+        assert_eq!(reduce_intersect(&[a, b]), vec!["Z", "A", "C", "B"]);
+    }
+
+    #[test]
+    fn intersect_with_duplicates_in_first_set() {
+        let a = vec!["USA", "USA", "GBR"];
+        let b = vec!["USA", "GBR", "CAN"];
+        assert_eq!(reduce_intersect(&[a, b]), vec!["USA", "USA", "GBR"]);
+    }
+
+    #[test]
     fn supersession_drops_superseded_when_superseding_present() {
         // Model: NOFORN (1) supersedes REL TO (2). Union result contains
         // both, so the superseded REL TO is dropped.
