@@ -49,7 +49,7 @@ or the decoder's scoring shape changes.
 ```json
 {
   "schema_version": "marque-priors-1",
-  "generated_at": "2026-04-21T08:00:00Z",
+  "generated_at": "2026-04-21T08:00:00+00:00",
   "corpus_fingerprint": "sha512:…",
   "token_base_rates": {
     "SECRET":   { "count": 12345, "log_prior": -2.14 },

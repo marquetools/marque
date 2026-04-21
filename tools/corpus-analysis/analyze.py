@@ -558,15 +558,17 @@ def _corpus_fingerprint(corpus_path: Path) -> str:
     path, and SHA-512 is available without an optional dependency.
     """
     h = hashlib.sha512()
-    for root, _dirs, files in os.walk(corpus_path):
+    for root, dirs, files in os.walk(corpus_path):
+        dirs.sort()
         for fname in sorted(files):
             if fname.startswith("."):
                 continue
             fpath = Path(root) / fname
             try:
                 rel = fpath.relative_to(corpus_path)
+                rel_key = rel.as_posix()
                 stat = fpath.stat()
-                h.update(f"{rel}\0{stat.st_size}\0{int(stat.st_mtime)}\n".encode())
+                h.update(f"{rel_key}\0{stat.st_size}\0{int(stat.st_mtime)}\n".encode())
             except (OSError, ValueError):
                 continue
     return f"sha512:{h.hexdigest()}"
