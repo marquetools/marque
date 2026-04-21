@@ -130,7 +130,7 @@
 - [ ] T054 [P] [US2] Audit v2 back-compat parse test `v1_records_parse_in_v2_consumer` in `crates/engine/tests/audit.rs` (fixture v1 record from pre-Phase-D engine deserializes without error)
 - [ ] T055 [P] [US2] Audit v2 single-version invariant test `single_schema_per_build` in `crates/engine/tests/audit.rs` (no v1 records appear in v2-build output stream)
 - [ ] T056 [P] [US2] Audit v2 content-ignorance test `no_document_text_leaks_into_audit` in `crates/engine/tests/audit.rs` (runs corpus harness, greps audit output stream for any document-text fragment outside marking tokens, asserts zero matches — Constitution V + G13 invariant)
-- [ ] T057 [P] [US2] Decoder accuracy harness test `resolution_rate_at_0_85` in `crates/capco/tests/decoder_accuracy.rs` (reads `tests/fixtures/mangled/**/*.toml`, runs DecoderRecognizer with confidence ≥0.85, asserts ≥85% resolution rate) — SC-004 gate
+- [ ] T057 [P] [US2] Decoder accuracy harness test `resolution_rate_at_0_85` in `crates/capco/tests/decoder_accuracy.rs` (reads `tests/fixtures/mangled/**/*.json`, runs DecoderRecognizer with confidence ≥0.85, asserts ≥85% resolution rate) — SC-004 gate
 
 ### Implementation for User Story 2
 
