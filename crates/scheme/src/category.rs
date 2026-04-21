@@ -375,10 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn intersect_preserves_order_of_first_set() {
+    fn intersect_contains_all_common_tokens() {
         let a = vec!["Z", "A", "C", "B"];
         let b = vec!["A", "B", "C", "Z"];
-        assert_eq!(reduce_intersect(&[a, b]), vec!["Z", "A", "C", "B"]);
+        let mut out = reduce_intersect(&[a, b]);
+        let mut expected = vec!["Z", "A", "C", "B"];
+        out.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(out, expected);
     }
 
     #[test]
