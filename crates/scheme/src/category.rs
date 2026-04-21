@@ -306,6 +306,22 @@ mod tests {
     }
 
     #[test]
+    fn max_reduces_integers() {
+        assert_eq!(reduce_max(&[1, 5, 3, 4, 2]), Some(5));
+        assert_eq!(reduce_max(&[-10, -5, -1, -20]), Some(-1));
+    }
+
+    #[test]
+    fn max_reduces_strings() {
+        assert_eq!(reduce_max(&["apple", "zebra", "banana"]), Some("zebra"));
+    }
+
+    #[test]
+    fn max_reduces_with_duplicates() {
+        assert_eq!(reduce_max(&[2, 5, 2, 5, 1]), Some(5));
+    }
+
+    #[test]
     fn union_deduplicates_preserving_order() {
         let v = reduce_union(&["SI", "TK", "SI", "HCS"]);
         assert_eq!(v, vec!["SI", "TK", "HCS"]);
