@@ -117,29 +117,32 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     }
 
     /// `const` constructor for a rewrite with a `Custom` trigger or
-    /// action — fails **at compile time** when `reads` or `writes`
-    /// is empty.
+    /// action. Panics when `reads` or `writes` is empty:
+    ///
+    /// - Called from a `static` / `const` initializer (the common
+    ///   case), the panic fires during **`const` evaluation** — the
+    ///   build fails at compile time with the `assert!` messages
+    ///   below, so the error is visible at the declaration site
+    ///   before the crate ever runs.
+    /// - Called from a non-`const` call site (runtime), the panic
+    ///   fires at runtime as a normal panic.
     ///
     /// Callers MUST annotate `reads` / `writes` explicitly because the
     /// function-pointer bodies are opaque. Empty slices are treated
-    /// as "unannotated" and abort the build — a `Custom` rewrite that
-    /// reaches the scheduler without axis annotations cannot be
+    /// as "unannotated" and abort construction — a `Custom` rewrite
+    /// that reaches the scheduler without axis annotations cannot be
     /// ordered relative to the other rewrites, and silently
     /// degrading would mask the authoring bug.
     ///
-    /// This is the constructor for `static`-initialized rewrite tables
-    /// (the common case): empty annotations fail the `const`
-    /// evaluation with the `assert!` messages below, so the error is
-    /// visible at the declaration site before the crate ever runs.
-    ///
     /// For callers holding pre-built `'static` tables that need a
-    /// recoverable runtime validation path (rather than a panic), use
+    /// recoverable validation path (rather than a panic), use
     /// [`PageRewrite::try_custom`]. The engine's
     /// `EngineConstructionError::UnannotatedCustomAxes` variant
     /// catches the same invariant at `Engine::new` when a
     /// field-literal rewrite bypasses both constructors — the
-    /// invariant is guarded on three surfaces (compile, runtime-
-    /// construct, and engine-construct).
+    /// invariant is guarded on three surfaces (compile/runtime
+    /// construct via this fn, fallible construct via `try_custom`,
+    /// and engine-construct).
     pub const fn custom(
         id: RewriteId,
         citation: &'static str,
