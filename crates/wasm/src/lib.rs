@@ -177,6 +177,7 @@ fn fix_source_str(source: FixSource) -> &'static str {
         FixSource::BuiltinRule => "BuiltinRule",
         FixSource::CorrectionsMap => "CorrectionsMap",
         FixSource::MigrationTable => "MigrationTable",
+        FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -193,7 +194,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
         fix: d.fix.as_ref().map(|f| FixJson {
             source: fix_source_str(f.source),
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence,
+            confidence: f.confidence.combined(),
             migration_ref: f.migration_ref,
         }),
     }
@@ -233,7 +234,7 @@ fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson<'_> {
         },
         original: &fix.proposal.original,
         replacement: &fix.proposal.replacement,
-        confidence: fix.proposal.confidence,
+        confidence: fix.proposal.confidence.combined(),
         migration_ref: fix.proposal.migration_ref,
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
         classifier_id: fix.classifier_id.as_deref(),

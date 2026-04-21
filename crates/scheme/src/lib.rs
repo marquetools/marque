@@ -40,13 +40,16 @@
 pub mod ambiguity;
 pub mod builtins;
 pub mod category;
+pub mod codec;
 pub mod constraint;
 pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
+pub mod recognizer;
 pub mod scheme;
 pub mod scope;
 pub mod template;
+pub mod vocabulary;
 
 pub use ambiguity::{Candidate, EvidenceFeature, Parsed};
 pub use builtins::{
@@ -57,10 +60,16 @@ pub use category::{
     AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
     TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
 };
+pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, TokenRef};
 pub use lattice::{BoundedLattice, Lattice};
-pub use page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite};
+pub use page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite, RewriteId};
 pub use projection::{Projection, categories_in_render_order};
+pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
 pub use scheme::MarkingScheme;
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use template::{CategoryRule, Presence, Template, TokenForm, Wrapping};
+pub use vocabulary::{
+    Authority, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenMetadataFull,
+    Vocabulary,
+};

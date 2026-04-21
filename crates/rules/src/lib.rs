@@ -18,11 +18,14 @@
 //! classifier id, dry-run flag) and is constructed **only** by `Engine::fix`.
 //! This makes "suggested vs applied" a type-system invariant.
 
+pub mod confidence;
+
 use marque_ism::{IsmAttributes, Span};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 
 // ---------------------------------------------------------------------------
@@ -178,6 +181,13 @@ pub enum FixSource {
     CorrectionsMap,
     /// Deterministic deprecated-marking conversion (FR-004a).
     MigrationTable,
+    /// Probabilistic decoder produced this fix from a recognition
+    /// candidate's posterior (Phase D, see
+    /// `docs/plans/2026-04-16-probabilistic-recognition.md`). Paired
+    /// with a non-trivial `features` list in
+    /// [`FixProposal::confidence`] so auditors can reconstruct the
+    /// scoring path.
+    DecoderPosterior,
 }
 
 // ---------------------------------------------------------------------------
@@ -188,13 +198,23 @@ pub enum FixSource {
 ///
 /// Pure data — deterministic, timestamp-free, classifier-free, safe to snapshot
 /// in tests. A `FixProposal` is a *suggestion* until `Engine::fix` promotes it
-/// to an `AppliedFix` when `confidence >= configuration.confidence_threshold`.
+/// to an `AppliedFix` when `confidence.combined() >= configuration.confidence_threshold`.
+///
+/// # Phase D: Multi-axis confidence
+///
+/// `confidence` is a [`Confidence`] record rather than a scalar. Strict-path
+/// rules construct it via [`Confidence::strict`]; the Phase D decoder
+/// constructs a full record with `recognition`, `runner_up_ratio`, and
+/// feature contributions. The engine threshold gate uses
+/// [`Confidence::combined`] so a 0.95-recognition × 0.9-rule fix that
+/// previously would have been scalar-0.855 still gates the same way.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct FixProposal {
     /// The rule that generated this proposal.
     pub rule: RuleId,
-    /// Provenance: built-in rule, corrections map, or migration table.
+    /// Provenance: built-in rule, corrections map, migration table, or
+    /// decoder posterior.
     pub source: FixSource,
     /// Byte range in original source to replace.
     pub span: Span,
@@ -202,9 +222,8 @@ pub struct FixProposal {
     pub original: Box<str>,
     /// Replacement text.
     pub replacement: Box<str>,
-    /// Confidence in this fix (0.0–1.0). Fixes below the configured threshold
-    /// are surfaced as suggestions rather than applied automatically.
-    pub confidence: f32,
+    /// Multi-axis confidence for this fix.
+    pub confidence: Confidence,
     /// Reference to the CAPCO rule or migration document justifying this fix.
     pub migration_ref: Option<&'static str>,
 }
@@ -214,22 +233,24 @@ impl FixProposal {
     ///
     /// # Panics
     ///
-    /// Panics if `confidence` is outside `[0.0, 1.0]` or is `NaN`. The check
-    /// runs in release builds (not just debug) because `NaN` silently fails
-    /// every threshold comparison and `INFINITY` silently bypasses every
-    /// threshold — both are correctness-impacting bugs in release.
+    /// Panics if `confidence.combined()` is outside `[0.0, 1.0]` or is
+    /// `NaN`. The check runs in release builds (not just debug) because
+    /// `NaN` silently fails every threshold comparison and `INFINITY`
+    /// silently bypasses every threshold — both are correctness-
+    /// impacting bugs in release.
     pub fn new(
         rule: RuleId,
         source: FixSource,
         span: Span,
         original: impl Into<Box<str>>,
         replacement: impl Into<Box<str>>,
-        confidence: f32,
+        confidence: Confidence,
         migration_ref: Option<&'static str>,
     ) -> Self {
+        let combined = confidence.combined();
         assert!(
-            (0.0..=1.0).contains(&confidence) && !confidence.is_nan(),
-            "FixProposal confidence must be in [0.0, 1.0] and not NaN, got {confidence}"
+            (0.0..=1.0).contains(&combined) && !combined.is_nan(),
+            "FixProposal combined confidence must be in [0.0, 1.0] and not NaN, got {combined}"
         );
         Self {
             rule,
@@ -252,16 +273,35 @@ impl FixProposal {
 /// Constructed **only** by `Engine::fix` at the moment a `FixProposal` meets
 /// the confidence threshold. Never constructed by a rule or suggestion path.
 ///
-/// Serves as the audit record: the NDJSON schema at `contracts/audit-record.json`
-/// serializes this type.
+/// Serves as the audit record: the NDJSON schemas at `contracts/audit-record*.json`
+/// serialize this type.
 ///
 /// `classifier_id` is an `Arc<str>` so promoting many fixes from a single
 /// document only clones an atomic refcount, not the underlying string.
+///
+/// # v2 audit fields (`confidence`, `source`)
+///
+/// Phase D promotes the fix's [`Confidence`] and [`FixSource`] to
+/// **top-level** fields on `AppliedFix` so the v2 audit emitter doesn't
+/// need to descend into `.proposal` to find them. They are a snapshot
+/// at promotion time — the engine may (in future phases) adjust them
+/// for region context before promotion, so they can diverge from the
+/// original `proposal.confidence` / `proposal.source`. Today the
+/// engine promotes them unchanged from the proposal.
+///
+/// Both fields are redundant with the `proposal` sub-struct by design:
+/// the v1 schema reads them through `proposal`; the v2 schema reads
+/// the top-level fields. Keeping both paths live makes the v1→v2
+/// transition a pure emitter change rather than a data-model change.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct AppliedFix {
     /// The original proposal that was applied.
     pub proposal: FixProposal,
+    /// Snapshot of the fix's confidence at promotion time (v2 audit).
+    pub confidence: Confidence,
+    /// Snapshot of the fix's provenance at promotion time (v2 audit).
+    pub source: FixSource,
     /// Timestamp of application (clock-injected).
     pub timestamp: SystemTime,
     /// Classifier identity from runtime config. `None` if not configured.
@@ -282,6 +322,11 @@ impl AppliedFix {
     /// and CLI code must never construct `AppliedFix` directly — they produce
     /// `FixProposal` values and let the engine promote them.
     ///
+    /// The engine snapshots `proposal.confidence` and `proposal.source`
+    /// into the top-level `confidence` / `source` fields at promotion
+    /// time. A future phase may adjust these per region-context before
+    /// snapshotting; Phase 2 copies them unchanged.
+    ///
     /// This is enforced by convention and code review, not by the type system,
     /// because `AppliedFix` must be defined in `marque-rules` (which the engine
     /// depends on, not the reverse).
@@ -293,8 +338,12 @@ impl AppliedFix {
         dry_run: bool,
         input: Option<Arc<str>>,
     ) -> Self {
+        let confidence = proposal.confidence.clone();
+        let source = proposal.source;
         Self {
             proposal,
+            confidence,
+            source,
             timestamp,
             classifier_id,
             dry_run,
@@ -431,7 +480,7 @@ mod tests {
             Span::new(0, 0),
             "x",
             "y",
-            0.0,
+            Confidence::strict(0.0),
             None,
         );
         let _one = FixProposal::new(
@@ -440,13 +489,13 @@ mod tests {
             Span::new(0, 0),
             "x",
             "y",
-            1.0,
+            Confidence::strict(1.0),
             None,
         );
     }
 
     #[test]
-    #[should_panic(expected = "FixProposal confidence")]
+    #[should_panic(expected = "Confidence::strict rule confidence")]
     fn fix_proposal_new_panics_on_negative_confidence() {
         let _ = FixProposal::new(
             RuleId::new("E001"),
@@ -454,13 +503,13 @@ mod tests {
             Span::new(0, 0),
             "x",
             "y",
-            -0.1,
+            Confidence::strict(-0.1),
             None,
         );
     }
 
     #[test]
-    #[should_panic(expected = "FixProposal confidence")]
+    #[should_panic(expected = "Confidence::strict rule confidence")]
     fn fix_proposal_new_panics_on_above_one_confidence() {
         let _ = FixProposal::new(
             RuleId::new("E001"),
@@ -468,13 +517,13 @@ mod tests {
             Span::new(0, 0),
             "x",
             "y",
-            1.5,
+            Confidence::strict(1.5),
             None,
         );
     }
 
     #[test]
-    #[should_panic(expected = "FixProposal confidence")]
+    #[should_panic(expected = "Confidence::strict rule confidence")]
     fn fix_proposal_new_panics_on_nan_confidence() {
         let _ = FixProposal::new(
             RuleId::new("E001"),
@@ -482,8 +531,37 @@ mod tests {
             Span::new(0, 0),
             "x",
             "y",
-            f32::NAN,
+            Confidence::strict(f32::NAN),
             None,
+        );
+    }
+
+    #[test]
+    fn fix_proposal_new_panics_when_combined_confidence_is_nan() {
+        // A directly-constructed Confidence can still have NaN axes
+        // that slip past the strict-path assert. Verify the
+        // FixProposal::new gate catches that case too.
+        let bad = Confidence {
+            recognition: f32::NAN,
+            rule: 1.0,
+            region: None,
+            runner_up_ratio: None,
+            features: Vec::new(),
+        };
+        let caught = std::panic::catch_unwind(|| {
+            FixProposal::new(
+                RuleId::new("E001"),
+                FixSource::BuiltinRule,
+                Span::new(0, 0),
+                "x",
+                "y",
+                bad,
+                None,
+            );
+        });
+        assert!(
+            caught.is_err(),
+            "expected FixProposal::new to panic on NaN combined"
         );
     }
 }

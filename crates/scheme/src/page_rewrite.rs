@@ -23,6 +23,15 @@
 use crate::category::CategoryId;
 use crate::scheme::MarkingScheme;
 
+/// Stable identifier for a [`PageRewrite`]. Alias for `&'static str` —
+/// exists as a named type so error variants can say
+/// `members: &'static [RewriteId]` and line up with the data-model
+/// contract without forcing a newtype wrapper at every call site.
+///
+/// Convention: `"scheme/snake-case-description"` (e.g.,
+/// `"capco/noforn-clears-rel-to"`).
+pub type RewriteId = &'static str;
+
 /// One post-aggregation page-level rewrite.
 ///
 /// A rewrite is a pair of (`trigger`, `action`) — if the trigger fires
@@ -31,6 +40,25 @@ use crate::scheme::MarkingScheme;
 /// for diagnostic / audit purposes: the engine records which rewrites
 /// ran during a given `project(Scope::Page, ...)` invocation so a
 /// reviewer can see exactly which rewrites shaped the final banner.
+///
+/// `reads` / `writes` declare the categories the rewrite depends on
+/// and the categories it mutates. They surface two properties the
+/// engine relies on:
+///
+/// 1. **Topological ordering** — the engine sorts rewrites so a
+///    rewrite that writes category X runs before any rewrite that
+///    reads X (Phase 3 / T031–T032). Cycles fail scheme construction
+///    (`EngineConstructionError::RewriteCycle`).
+/// 2. **Tooling** — scheme-exploration UIs and the declarative-
+///    constraint catalog can render the dataflow graph without
+///    executing scheme code.
+///
+/// For declarative triggers and actions the fields can be derived
+/// from the variants themselves (Phase 3 / T029 adds const-fn
+/// derivation in [`PageRewrite::declarative`]). For `Custom` triggers
+/// and actions the caller MUST supply them explicitly via
+/// [`PageRewrite::custom`] because the function-pointer bodies are
+/// opaque to the engine.
 ///
 /// Generic over `S: MarkingScheme` because predicate and action need
 /// to reference the scheme's concrete marking type.
@@ -45,6 +73,69 @@ pub struct PageRewrite<S: MarkingScheme + ?Sized> {
     pub trigger: CategoryPredicate<S>,
     /// What to do when it fires.
     pub action: CategoryAction<S>,
+    /// Categories this rewrite inspects. Used by the engine to build
+    /// the topological ordering between rewrites.
+    pub reads: &'static [CategoryId],
+    /// Categories this rewrite mutates. Used by the engine to build
+    /// the topological ordering between rewrites.
+    pub writes: &'static [CategoryId],
+}
+
+impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
+    /// Constructor for a declarative rewrite — all-data triggers and
+    /// actions (`Contains` / `Empty` + `Clear` / `Replace` / `Promote`).
+    ///
+    /// **Phase 2 stub**: takes `reads` / `writes` explicitly. Phase 3
+    /// (task T029) replaces this with a const-fn that derives the
+    /// slices from the trigger category and the action category so
+    /// callers only pass `id`, `citation`, `trigger`, `action`.
+    pub const fn declarative(
+        id: &'static str,
+        citation: &'static str,
+        trigger: CategoryPredicate<S>,
+        action: CategoryAction<S>,
+        reads: &'static [CategoryId],
+        writes: &'static [CategoryId],
+    ) -> Self {
+        Self {
+            id,
+            citation,
+            trigger,
+            action,
+            reads,
+            writes,
+        }
+    }
+
+    /// Constructor for a rewrite with a `Custom` trigger or action.
+    ///
+    /// Callers MUST annotate `reads` / `writes` explicitly because the
+    /// function-pointer bodies are opaque. The engine fails closed if
+    /// a `Custom` rewrite is registered without annotations (see
+    /// [`EngineConstructionError::UnannotatedCustomAxes`] — Phase 3 /
+    /// task T017).
+    ///
+    /// **Phase 2 stub**: identical to [`PageRewrite::declarative`] in
+    /// shape; the divergence (validation that at least one `Custom`
+    /// variant is present, non-empty `reads` / `writes` requirement)
+    /// lands in Phase 3.
+    pub const fn custom(
+        id: &'static str,
+        citation: &'static str,
+        trigger: CategoryPredicate<S>,
+        action: CategoryAction<S>,
+        reads: &'static [CategoryId],
+        writes: &'static [CategoryId],
+    ) -> Self {
+        Self {
+            id,
+            citation,
+            trigger,
+            action,
+            reads,
+            writes,
+        }
+    }
 }
 
 /// Trigger for a [`PageRewrite`].
@@ -72,6 +163,21 @@ pub enum CategoryAction<S: MarkingScheme + ?Sized> {
     Replace {
         category: CategoryId,
         with: S::Marking,
+    },
+    /// Promote content from `from` into `to`, optionally transformed
+    /// by a declarative function. Used for rewrites like JOINT →
+    /// Classification or FGI absorption: the `from` category drains
+    /// and `to` absorbs the transformed content.
+    ///
+    /// The transform is a plain `fn` pointer (not a closure) so the
+    /// rewrite remains data-form — scheme-exploration tooling can
+    /// still pattern-match on the variant without executing scheme
+    /// code, and the engine can pre-compute `reads` / `writes` from
+    /// the variant's categories.
+    Promote {
+        from: CategoryId,
+        to: CategoryId,
+        transform: fn(&S::Marking) -> S::Marking,
     },
     /// Scheme-specific mutation.
     Custom(fn(&mut S::Marking)),
@@ -113,6 +219,12 @@ where
                 .debug_struct("Replace")
                 .field("category", category)
                 .field("with", with)
+                .finish(),
+            Self::Promote { from, to, .. } => f
+                .debug_struct("Promote")
+                .field("from", from)
+                .field("to", to)
+                .field("transform", &"<fn>")
                 .finish(),
             Self::Custom(_) => f.write_str("Custom(<fn>)"),
         }
@@ -252,9 +364,13 @@ mod tests {
             action: CategoryAction::Clear {
                 category: crate::category::CategoryId(1),
             },
+            reads: &[crate::category::CategoryId(1)],
+            writes: &[crate::category::CategoryId(1)],
         };
         assert_eq!(rw.id, "test/r1");
         assert_eq!(rw.citation, "doc §1");
+        assert_eq!(rw.reads, &[crate::category::CategoryId(1)]);
+        assert_eq!(rw.writes, &[crate::category::CategoryId(1)]);
         // Trigger / action reachable through pattern match.
         match rw.trigger {
             CategoryPredicate::Empty { category } => {

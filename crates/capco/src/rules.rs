@@ -404,7 +404,7 @@ impl Rule for MisorderedBlocksRule {
                 span,
                 String::new(),
                 replacement,
-                0.6,
+                marque_rules::Confidence::strict(0.6),
                 None,
             )
         });
@@ -2638,7 +2638,7 @@ impl Rule for SarPortionFormRule {
                 block_span,
                 original,
                 replacement,
-                0.35,
+                marque_rules::Confidence::strict(0.35),
                 None,
             ))
         } else {
@@ -3914,7 +3914,7 @@ fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
         p.span,
         p.original,
         p.replacement,
-        p.confidence,
+        marque_rules::Confidence::strict(p.confidence),
         p.migration_ref,
     );
     Diagnostic::new(
@@ -4094,7 +4094,7 @@ mod tests {
             .fix
             .as_ref()
             .expect("E003 must carry a FixProposal (T032)");
-        assert!((fix.confidence - 0.6).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.6).abs() < f32::EPSILON);
         assert_eq!(fix.replacement.as_ref(), "SECRET//SI//NOFORN");
     }
 
@@ -4149,7 +4149,7 @@ mod tests {
         let fix = e004[0].fix.as_ref().expect("E004 must carry a FixProposal");
         assert_eq!(fix.original.as_ref(), "//");
         assert_eq!(fix.replacement.as_ref(), "/");
-        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4251,7 +4251,7 @@ mod tests {
         assert_eq!(e007.len(), 1);
         let fix = e007[0].fix.as_ref().expect("E007 must carry a fix");
         assert_eq!(fix.replacement.as_ref(), "25X2");
-        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
         // E008 must NOT also fire on the same span.
         assert!(diags.iter().all(|d| d.rule.as_str() != "E008"));
     }
@@ -4265,7 +4265,7 @@ mod tests {
         let fix = e007[0].fix.as_ref().unwrap();
         assert_eq!(fix.replacement.as_ref(), "25X1");
         // Table confidence from the seed MIGRATIONS entry (0.97).
-        assert!((fix.confidence - 0.97).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.97).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4390,7 +4390,7 @@ mod tests {
         assert_eq!(e010[0].span.as_str(src).unwrap(), "HCS");
         let fix = e010[0].fix.as_ref().expect("E010 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "HCS-P");
-        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4428,9 +4428,9 @@ mod tests {
         assert_eq!(e010.len(), 1);
         let fix = e010[0].fix.as_ref().unwrap();
         assert!(
-            (fix.confidence - 0.5).abs() < f32::EPSILON,
+            (fix.confidence.combined() - 0.5).abs() < f32::EPSILON,
             "confidence should be 0.5 when HCS-O is present, got {}",
-            fix.confidence
+            fix.confidence.combined()
         );
     }
 
@@ -4724,7 +4724,7 @@ mod tests {
         assert_eq!(e020.len(), 1);
         let fix = e020[0].fix.as_ref().expect("E020 must have fix");
         assert_eq!(fix.replacement.as_ref(), "USA, AUS, GBR");
-        assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4875,7 +4875,7 @@ mod tests {
             "E032 must fire on SI/123 ordering: {diags:?}"
         );
         let fix = e032[0].fix.as_ref().expect("E032 must carry a FixProposal");
-        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
         // Reorder puts numeric first.
         assert_eq!(fix.replacement.as_ref(), "123/SI");
     }
@@ -4981,7 +4981,7 @@ mod tests {
         assert_eq!(e028.len(), 1, "E028 must fire on CD/BP: {diags:?}");
         let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
-        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -5031,7 +5031,7 @@ mod tests {
             "E033 must fire once on the out-of-order marking: {diags:?}"
         );
         let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
-        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
         assert_eq!(fix.replacement.as_ref(), "G ABCD DEFG");
     }
 
@@ -5204,7 +5204,7 @@ mod tests {
         // The fix extends backward over `//` so the replacement is `/CD`.
         assert_eq!(fix.original.as_ref(), "//SAR-CD");
         assert_eq!(fix.replacement.as_ref(), "/CD");
-        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -5242,7 +5242,7 @@ mod tests {
         // Expected rolled-up form: programs sorted per CAPCO ascending order
         // (alpha: BP before CD).
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
-        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
+        assert!((fix.confidence.combined() - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]

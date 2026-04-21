@@ -42,7 +42,7 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     // Only E001 (confidence 1.0) should be applied.
     assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
     assert_eq!(result.applied[0].proposal.rule.as_str(), "E001");
-    assert!((result.applied[0].proposal.confidence - 1.0).abs() < f32::EPSILON);
+    assert!((result.applied[0].proposal.confidence.combined() - 1.0).abs() < f32::EPSILON);
 
     // The post-fix text should have NF replaced with NOFORN.
     let fixed_text = String::from_utf8(result.source).unwrap();
@@ -81,7 +81,10 @@ fn dry_run_parity_with_apply() {
     // Same rule IDs and confidences.
     for (a, d) in apply_result.applied.iter().zip(dry_result.applied.iter()) {
         assert_eq!(a.proposal.rule.as_str(), d.proposal.rule.as_str());
-        assert!((a.proposal.confidence - d.proposal.confidence).abs() < f32::EPSILON);
+        assert!(
+            (a.proposal.confidence.combined() - d.proposal.confidence.combined()).abs()
+                < f32::EPSILON
+        );
     }
 
     // DryRun records have dry_run=true.
@@ -190,6 +193,7 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     };
     json!({
         "schema": AUDIT_SCHEMA_VERSION,
@@ -201,7 +205,7 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         },
         "original": fix.proposal.original.as_ref(),
         "replacement": fix.proposal.replacement.as_ref(),
-        "confidence": fix.proposal.confidence,
+        "confidence": fix.proposal.confidence.combined(),
         "migration_ref": fix.proposal.migration_ref,
         "timestamp": humantime::format_rfc3339(fix.timestamp).to_string(),
         "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),

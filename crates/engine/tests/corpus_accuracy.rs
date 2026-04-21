@@ -153,7 +153,11 @@ fn fix_accuracy_invalid_fixtures() {
         let fixable_rules: std::collections::HashSet<String> = lint_result
             .diagnostics
             .iter()
-            .filter(|d| d.fix.as_ref().is_some_and(|f| f.confidence >= threshold))
+            .filter(|d| {
+                d.fix
+                    .as_ref()
+                    .is_some_and(|f| f.confidence.combined() >= threshold)
+            })
             .map(|d| d.rule.as_str().to_owned())
             .collect();
 

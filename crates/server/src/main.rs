@@ -128,7 +128,7 @@ async fn lint_handler(
             end: d.span.end,
             fix: d.fix.as_ref().map(|f| FixJson {
                 replacement: f.replacement.to_string(),
-                confidence: f.confidence,
+                confidence: f.confidence.combined(),
                 migration_ref: f.migration_ref.map(str::to_owned),
             }),
         })

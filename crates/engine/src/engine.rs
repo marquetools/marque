@@ -263,7 +263,7 @@ impl Engine {
                             span,
                             key.as_ref(),
                             value.as_ref(),
-                            1.0,
+                            marque_rules::Confidence::strict(1.0),
                             None,
                         );
                         diagnostics.push(Diagnostic::new(
@@ -353,7 +353,7 @@ impl Engine {
             .diagnostics
             .iter()
             .filter_map(|d| d.fix.as_ref())
-            .filter(|f| f.confidence >= threshold)
+            .filter(|f| f.confidence.combined() >= threshold)
             .filter(|f| !f.span.is_empty())
             .collect();
 
@@ -484,7 +484,7 @@ impl Engine {
             .filter(|d| d.rule.as_str() == "C001")
             .filter_map(|d| d.fix.as_ref())
             .filter(|f| f.source == FixSource::CorrectionsMap)
-            .filter(|f| f.confidence >= threshold)
+            .filter(|f| f.confidence.combined() >= threshold)
             .filter(|f| !f.span.is_empty())
             .collect();
 
@@ -615,7 +615,7 @@ mod tests {
             Span::new(start, end),
             "x",
             replacement,
-            confidence,
+            marque_rules::Confidence::strict(confidence),
             None,
         )
     }

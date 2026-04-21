@@ -60,6 +60,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -76,7 +77,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
         fix: d.fix.as_ref().map(|f| FixJson {
             source: fix_source_str(f.source),
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence,
+            confidence: f.confidence.combined(),
             migration_ref: f.migration_ref,
         }),
     }
