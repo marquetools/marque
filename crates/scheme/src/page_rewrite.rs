@@ -25,7 +25,7 @@ use crate::scheme::MarkingScheme;
 
 /// Stable identifier for a [`PageRewrite`]. Alias for `&'static str` —
 /// exists as a named type so error variants can say
-/// `members: &'static [RewriteId]` and line up with the data-model
+/// `members: Box<[RewriteId]>` and line up with the data-model
 /// contract without forcing a newtype wrapper at every call site.
 ///
 /// Convention: `"scheme/snake-case-description"` (e.g.,
@@ -66,7 +66,7 @@ pub struct PageRewrite<S: MarkingScheme + ?Sized> {
     /// Stable identifier for this rewrite. Surfaced in diagnostics and
     /// audit records. Convention: `"scheme/snake-case-description"`
     /// (e.g., `"capco/noforn-clears-rel-to"`).
-    pub id: &'static str,
+    pub id: RewriteId,
     /// The rewrite's CAPCO / CUI / other-spec citation.
     pub citation: &'static str,
     /// When this rewrite fires.
@@ -90,7 +90,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// slices from the trigger category and the action category so
     /// callers only pass `id`, `citation`, `trigger`, `action`.
     pub const fn declarative(
-        id: &'static str,
+        id: RewriteId,
         citation: &'static str,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
@@ -120,7 +120,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// variant is present, non-empty `reads` / `writes` requirement)
     /// lands in Phase 3.
     pub const fn custom(
-        id: &'static str,
+        id: RewriteId,
         citation: &'static str,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,

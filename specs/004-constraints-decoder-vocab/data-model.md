@@ -78,7 +78,7 @@ Errors raised at `Engine::new` during scheme validation.
 
 | Variant | Meaning | Trigger |
 |---|---|---|
-| `RewriteCycle { axis: CategoryId, members: &'static [RewriteId] }` | A read/write cycle exists among the declared rewrites; `members` names every participating rewrite (cycles ≥3 are valid per foundational-plan line 1066) | FR-004 |
+| `RewriteCycle { axis: CategoryId, members: Box<[RewriteId]> }` | A read/write cycle exists among the declared rewrites; `members` names every participating rewrite (cycles ≥3 are valid per foundational-plan line 1066). `members` is owned because cycle membership is computed at engine-construction time from the declared graph, not borrowed from a static table | FR-004 |
 | `UnannotatedCustomAxes { rewrite: RewriteId }` | A `PageRewrite::custom` was declared without explicit `reads`/`writes` | FR-005 |
 
 ## Phase D — Probabilistic recognizer
