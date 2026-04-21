@@ -1,6 +1,6 @@
 # Tasks: Declarative Rule Expression, Probabilistic Recovery, and Full Vocabulary Metadata (Phases C–E)
 
-**Input**: Design documents from `/home/knitli/marque/specs/004-constraints-decoder-vocab/`
+**Input**: Design documents from `specs/004-constraints-decoder-vocab/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
 
 **Tests**: Included. The spec's acceptance scenarios, success criteria (SC-001 – SC-010), and quickstart walk-throughs all name specific tests (corpus-parity harness, decoder-accuracy harness, WASM compile-fail, Send+Sync static assertions, content-ignorance greps). Tests are FIRST-class deliverables for this feature.
