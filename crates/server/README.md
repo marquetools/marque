@@ -34,10 +34,6 @@ cargo run -p marque-server
 
 Override the bind address:
 
-> **Warning:** `0.0.0.0` binds on all network interfaces, which can make the
-> service reachable from other hosts. Only use this when you intentionally
-> want external access and have appropriate network controls in place (for
-> example, firewall rules, security groups, or a reverse proxy).
 ```bash
 MARQUE_ADDR=0.0.0.0:8080 cargo run -p marque-server
 ```
