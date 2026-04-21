@@ -750,9 +750,13 @@ mod tests {
         ));
     }
 
-    // M-4: the confidence filter at `f.confidence >= threshold` is on the
-    // hot path of Engine::fix. These two tests pin the `>=` semantics so a
-    // future refactor that flips it to `>` (or vice versa) is caught.
+    // M-4: the confidence filter at `f.confidence.combined() >= threshold`
+    // is on the hot path of Engine::fix. These two tests pin the `>=`
+    // semantics so a future refactor that flips it to `>` (or vice versa)
+    // is caught. "Confidence" here is the scalar `Confidence::combined()`
+    // (= recognition × rule); the other axes (`region`, `runner_up_ratio`,
+    // feature contributions) are audit-provenance metadata and do not
+    // participate in the threshold gate.
     #[test]
     fn confidence_below_default_threshold_is_excluded() {
         // Config::default().confidence_threshold == 0.95. A fix at 0.94

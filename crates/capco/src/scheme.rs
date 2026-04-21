@@ -719,12 +719,23 @@ impl MarkingScheme for CapcoScheme {
                             CategoryAction::Replace { category, with } => {
                                 capco_category_replace(&mut out, *category, with);
                             }
-                            CategoryAction::Promote { .. } => {
-                                // Phase 2: Promote is declared on the
+                            CategoryAction::Promote { from, to, .. } => {
+                                // Phase 2: `Promote` is declared on the
                                 // surface but no CAPCO rewrite uses it
                                 // yet. Phase 3 (task T034 — JOINT
                                 // promotion and FGI absorption) wires
-                                // the dispatch.
+                                // the dispatch. Until then, fail closed:
+                                // if a rewrite somehow reaches this arm
+                                // without dispatch being implemented,
+                                // silently doing nothing would mask the
+                                // bug. An explicit panic surfaces it
+                                // immediately.
+                                unimplemented!(
+                                    "CategoryAction::Promote dispatch is not yet implemented \
+                                     for CAPCO (rewrite attempted to promote from {from:?} to \
+                                     {to:?}); lands with task T034 — JOINT promotion and FGI \
+                                     absorption"
+                                );
                             }
                             CategoryAction::Custom(f) => f(&mut out),
                         }

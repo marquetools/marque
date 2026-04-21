@@ -148,7 +148,16 @@ fn fix_accuracy_invalid_fixtures() {
             continue;
         }
 
-        // Lint first to discover which rules are fixable (have above-threshold fixes)
+        // Lint first to discover which rules are fixable — i.e., the
+        // rule's fix clears the engine's combined-confidence
+        // threshold gate.
+        //
+        // "Confidence" here is the scalar `Confidence::combined()`
+        // (= recognition × rule) that the engine applies at the
+        // promotion boundary (FR-016). `Confidence` carries additional
+        // axes (`region`, `runner_up_ratio`, feature contributions)
+        // for audit provenance, but this harness and every
+        // threshold-gated consumer compare on `.combined()` only.
         let lint_result = engine.lint(&source);
         let fixable_rules: std::collections::HashSet<String> = lint_result
             .diagnostics
