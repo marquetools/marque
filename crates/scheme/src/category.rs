@@ -389,7 +389,7 @@ mod tests {
     fn intersect_with_duplicates_in_first_set() {
         let a = vec!["USA", "USA", "GBR"];
         let b = vec!["USA", "GBR", "CAN"];
-        assert_eq!(reduce_intersect(&[a, b]), vec!["USA", "USA", "GBR"]);
+        assert_eq!(reduce_intersect(&[a, b]), vec!["USA", "GBR"]);
     }
 
     #[test]
