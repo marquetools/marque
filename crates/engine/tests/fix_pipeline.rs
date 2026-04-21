@@ -24,8 +24,10 @@ fn test_engine() -> Engine {
     Engine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
@@ -165,8 +167,10 @@ fn classifier_id_propagated_when_configured() {
     let engine = Engine::with_clock(
         config,
         vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
-    );
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);

@@ -189,7 +189,17 @@ async fn main() {
         }
     };
 
-    let engine = Engine::new(config, vec![Box::new(capco_rules())]);
+    let engine = match Engine::new(
+        config,
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+    ) {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("error: failed to construct engine: {err}");
+            std::process::exit(69);
+        }
+    };
     let state = AppState {
         engine: Arc::new(engine),
     };

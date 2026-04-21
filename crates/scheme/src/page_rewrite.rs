@@ -85,10 +85,19 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// Constructor for a declarative rewrite — all-data triggers and
     /// actions (`Contains` / `Empty` + `Clear` / `Replace` / `Promote`).
     ///
-    /// **Phase 2 stub**: takes `reads` / `writes` explicitly. Phase 3
-    /// (task T029) replaces this with a const-fn that derives the
-    /// slices from the trigger category and the action category so
-    /// callers only pass `id`, `citation`, `trigger`, `action`.
+    /// The caller still passes `reads` / `writes` explicitly. The
+    /// scheduler in `marque-engine` uses them to build the topological
+    /// ordering between rewrites (task T031). For a pure-declarative
+    /// rewrite the slices should be derivable from the `trigger` and
+    /// `action` categories; callers that want a single-category hint
+    /// can construct the slices as `const`s at the call site. Deriving
+    /// them at construction would require runtime allocation — the
+    /// scheme's rewrite table is a `&'static` constant — so this stays
+    /// a plain fallible-free `const fn`.
+    ///
+    /// For `Custom` trigger or action variants the scheduler cannot
+    /// derive dataflow from the variant itself, so use
+    /// [`PageRewrite::custom`] which fails closed on empty annotations.
     pub const fn declarative(
         id: RewriteId,
         citation: &'static str,
@@ -107,18 +116,33 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
         }
     }
 
-    /// Constructor for a rewrite with a `Custom` trigger or action.
+    /// `const` constructor for a rewrite with a `Custom` trigger or
+    /// action. Panics when `reads` or `writes` is empty:
+    ///
+    /// - Called from a `static` / `const` initializer (the common
+    ///   case), the panic fires during **`const` evaluation** — the
+    ///   build fails at compile time with the `assert!` messages
+    ///   below, so the error is visible at the declaration site
+    ///   before the crate ever runs.
+    /// - Called from a non-`const` call site (runtime), the panic
+    ///   fires at runtime as a normal panic.
     ///
     /// Callers MUST annotate `reads` / `writes` explicitly because the
-    /// function-pointer bodies are opaque. The engine fails closed if
-    /// a `Custom` rewrite is registered without annotations (see
-    /// [`EngineConstructionError::UnannotatedCustomAxes`] — Phase 3 /
-    /// task T017).
+    /// function-pointer bodies are opaque. Empty slices are treated
+    /// as "unannotated" and abort construction — a `Custom` rewrite
+    /// that reaches the scheduler without axis annotations cannot be
+    /// ordered relative to the other rewrites, and silently
+    /// degrading would mask the authoring bug.
     ///
-    /// **Phase 2 stub**: identical to [`PageRewrite::declarative`] in
-    /// shape; the divergence (validation that at least one `Custom`
-    /// variant is present, non-empty `reads` / `writes` requirement)
-    /// lands in Phase 3.
+    /// For callers holding pre-built `'static` tables that need a
+    /// recoverable validation path (rather than a panic), use
+    /// [`PageRewrite::try_custom`]. The engine's
+    /// `EngineConstructionError::UnannotatedCustomAxes` variant
+    /// catches the same invariant at `Engine::new` when a
+    /// field-literal rewrite bypasses both constructors — the
+    /// invariant is guarded on three surfaces (compile/runtime
+    /// construct via this fn, fallible construct via `try_custom`,
+    /// and engine-construct).
     pub const fn custom(
         id: RewriteId,
         citation: &'static str,
@@ -127,6 +151,20 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
         reads: &'static [CategoryId],
         writes: &'static [CategoryId],
     ) -> Self {
+        assert!(
+            !reads.is_empty(),
+            "PageRewrite::custom: empty `reads` slice; Custom triggers/actions \
+             require explicit axis annotation so the scheduler can order them. \
+             Use `PageRewrite::try_custom` for runtime-authored rewrites that \
+             need a recoverable error path."
+        );
+        assert!(
+            !writes.is_empty(),
+            "PageRewrite::custom: empty `writes` slice; Custom triggers/actions \
+             require explicit axis annotation so the scheduler can order them. \
+             Use `PageRewrite::try_custom` for runtime-authored rewrites that \
+             need a recoverable error path."
+        );
         Self {
             id,
             citation,
@@ -136,7 +174,92 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
             writes,
         }
     }
+
+    /// Non-panicking runtime constructor for a rewrite with a `Custom`
+    /// trigger or action.
+    ///
+    /// Returns [`PageRewriteAxisError`] when `reads` or `writes` is
+    /// empty — the same invariant [`PageRewrite::custom`] enforces via
+    /// a `const` panic. Use this constructor when you have pre-built
+    /// `&'static` axis slices and want validation to surface as a
+    /// `Result` rather than aborting the process (e.g., a rewrite
+    /// registry that loads from a baked-in table and wants to report
+    /// authoring errors through its own error path).
+    ///
+    /// `'static` is a load-bearing requirement: both `reads` and
+    /// `writes` must be `&'static [CategoryId]` because `PageRewrite`
+    /// itself stores them that way and the engine's scheduler walks
+    /// them without owning. For truly *dynamic* axes (e.g., parsed
+    /// from a user config at runtime), callers must either leak the
+    /// slice (`Box::leak(Vec::into_boxed_slice(…))`) during one-time
+    /// scheme initialization or design a separate owned-axis rewrite
+    /// type. An owned-axis variant is not provided here because every
+    /// production scheme in-tree (CAPCO, and the future CUI / NATO
+    /// schemes) declares its rewrite table as a `const` at scheme-
+    /// construction time.
+    pub fn try_custom(
+        id: RewriteId,
+        citation: &'static str,
+        trigger: CategoryPredicate<S>,
+        action: CategoryAction<S>,
+        reads: &'static [CategoryId],
+        writes: &'static [CategoryId],
+    ) -> Result<Self, PageRewriteAxisError> {
+        if reads.is_empty() {
+            return Err(PageRewriteAxisError::EmptyReads { rewrite: id });
+        }
+        if writes.is_empty() {
+            return Err(PageRewriteAxisError::EmptyWrites { rewrite: id });
+        }
+        Ok(Self {
+            id,
+            citation,
+            trigger,
+            action,
+            reads,
+            writes,
+        })
+    }
 }
+
+/// Error returned by [`PageRewrite::try_custom`] when a `Custom`
+/// rewrite is constructed without axis annotations.
+///
+/// Mirrors the engine-level
+/// `EngineConstructionError::UnannotatedCustomAxes` variant. The two
+/// types are kept separate because `marque-scheme` is upstream of
+/// `marque-engine` in the crate graph (see Constitution VII) and
+/// cannot reference the engine's error type. Engine callers that
+/// want to fold rewrite-construction errors into the engine-
+/// construction error surface can convert at the boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageRewriteAxisError {
+    /// `reads` was empty; a `Custom` trigger/action requires at least
+    /// one read-axis annotation so the scheduler can order this
+    /// rewrite after its producers.
+    EmptyReads { rewrite: RewriteId },
+    /// `writes` was empty; a `Custom` trigger/action requires at
+    /// least one write-axis annotation so the scheduler can order
+    /// this rewrite before its consumers.
+    EmptyWrites { rewrite: RewriteId },
+}
+
+impl std::fmt::Display for PageRewriteAxisError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyReads { rewrite } => write!(
+                f,
+                "page-rewrite {rewrite:?}: empty `reads` on a Custom rewrite"
+            ),
+            Self::EmptyWrites { rewrite } => write!(
+                f,
+                "page-rewrite {rewrite:?}: empty `writes` on a Custom rewrite"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for PageRewriteAxisError {}
 
 /// Trigger for a [`PageRewrite`].
 ///
@@ -350,6 +473,67 @@ mod tests {
         let a: CategoryAction<FakeScheme> = CategoryAction::Custom(|_: &mut FakeMarking| {});
         let s = format!("{a:?}");
         assert_eq!(s, "Custom(<fn>)");
+    }
+
+    #[test]
+    fn try_custom_rejects_empty_reads() {
+        let res = PageRewrite::<FakeScheme>::try_custom(
+            "bad",
+            "test",
+            CategoryPredicate::Custom(|_: &FakeMarking| false),
+            CategoryAction::Custom(|_: &mut FakeMarking| {}),
+            &[],
+            &[crate::category::CategoryId(1)],
+        );
+        let err = match res {
+            Ok(_) => panic!("empty reads must fail"),
+            Err(e) => e,
+        };
+        assert_eq!(
+            err,
+            PageRewriteAxisError::EmptyReads { rewrite: "bad" },
+        );
+    }
+
+    #[test]
+    fn try_custom_rejects_empty_writes() {
+        let res = PageRewrite::<FakeScheme>::try_custom(
+            "bad",
+            "test",
+            CategoryPredicate::Custom(|_: &FakeMarking| false),
+            CategoryAction::Custom(|_: &mut FakeMarking| {}),
+            &[crate::category::CategoryId(1)],
+            &[],
+        );
+        let err = match res {
+            Ok(_) => panic!("empty writes must fail"),
+            Err(e) => e,
+        };
+        assert_eq!(
+            err,
+            PageRewriteAxisError::EmptyWrites { rewrite: "bad" },
+        );
+    }
+
+    #[test]
+    fn try_custom_accepts_non_empty_axes() {
+        let ok = PageRewrite::<FakeScheme>::try_custom(
+            "ok",
+            "test",
+            CategoryPredicate::Custom(|_: &FakeMarking| false),
+            CategoryAction::Custom(|_: &mut FakeMarking| {}),
+            &[crate::category::CategoryId(1)],
+            &[crate::category::CategoryId(2)],
+        );
+        assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn page_rewrite_axis_error_display_is_informative() {
+        let err = PageRewriteAxisError::EmptyReads { rewrite: "r1" };
+        let s = format!("{err}");
+        assert!(s.contains("r1"));
+        assert!(s.contains("reads"));
     }
 
     #[test]

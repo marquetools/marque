@@ -570,12 +570,27 @@ fn project_portion_scope_empty_returns_bottom() {
 }
 
 #[test]
-fn scheme_declares_noforn_clears_rel_to_rewrite() {
+fn scheme_declares_phase3_rewrites() {
+    // Phase 3 T034: CAPCO declares three rewrites — NOFORN clears
+    // REL TO (existing), JOINT-promotion, and FGI-absorption.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 1);
-    assert_eq!(rewrites[0].id, "capco/noforn-clears-rel-to");
-    assert_eq!(rewrites[0].citation, "CAPCO-2016-§H.2");
+    assert_eq!(rewrites.len(), 3);
+
+    let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
+    assert_eq!(
+        ids,
+        ["capco/noforn-clears-rel-to", "capco/joint-promotion", "capco/fgi-absorption"],
+        "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
+         reorders them by read/write edges, but the declaration-order snapshot \
+         here pins what downstream tools see from `page_rewrites()`."
+    );
+
+    // Citations must point at real passages (Constitution VIII); the
+    // specific text is re-verified at commit time (T089).
+    assert_eq!(rewrites[0].citation, "CAPCO-2016 §F.2 p43");
+    assert_eq!(rewrites[1].citation, "CAPCO-2016 §K.2");
+    assert_eq!(rewrites[2].citation, "CAPCO-2016 §K p61");
 }
 
 #[test]

@@ -19,8 +19,10 @@ fn test_engine() -> Engine {
     Engine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 #[test]

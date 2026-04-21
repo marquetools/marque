@@ -31,7 +31,8 @@
 //! directly and routes `Custom` variants into the scheme's own
 //! predicate.
 
-use crate::category::TokenId;
+use crate::category::{CategoryId, TokenId};
+use crate::scheme::MarkingScheme;
 
 /// Reference to a token or category in a constraint. Kept as a small
 /// enum rather than a bare `TokenId` because some constraints are
@@ -41,19 +42,34 @@ pub enum TokenRef {
     /// A specific token id.
     Token(TokenId),
     /// Any token in the named category.
-    AnyInCategory(crate::category::CategoryId),
+    AnyInCategory(CategoryId),
 }
 
 /// A declarative invariant the scheme enforces.
 ///
-/// Every variant carries a `label: &'static str` citation pointing at
-/// the authoritative-source passage that defines the constraint
-/// (see the module-level docs).
+/// Every variant carries two `&'static str` identifiers:
+///
+/// - `name` — a **stable, scheme-unique short identifier** for the
+///   constraint (e.g. `"capco/joint-conflicts-fgi"`). Surfaced as
+///   [`ConstraintViolation::constraint_label`] so a downstream
+///   consumer can trace a violation back to the specific declared
+///   entry. Two `Conflicts` or `Requires` constraints in the same
+///   catalog MUST have different `name`s; the evaluator does not
+///   enforce uniqueness because the catalog is author-owned, but a
+///   repeated `name` would collapse two logically distinct rules into
+///   indistinguishable diagnostics.
+/// - `label` — the authoritative-source citation passage (e.g.
+///   `"CAPCO-2016 §H.4"`). Shared across a catalog is fine — many
+///   distinct rules may share a citation.
+///
+/// See the module-level docs for the full rationale and Constitution
+/// VIII for citation discipline.
 #[derive(Debug, Clone)]
 pub enum Constraint {
     /// Two tokens cannot co-occur in one marking. Example: NOFORN and
     /// REL TO are mutually exclusive at the portion level.
     Conflicts {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -61,6 +77,7 @@ pub enum Constraint {
     /// If the left is present, the right must also be present.
     /// Example: HCS requires NOFORN.
     Requires {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -68,6 +85,7 @@ pub enum Constraint {
     /// If the left is present, the right is implied (safe to omit).
     /// The engine uses this to avoid false "missing X" diagnostics.
     Implies {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -76,6 +94,7 @@ pub enum Constraint {
     /// drops out of the banner if the left is present. Example:
     /// NOFORN ⊐ REL TO at banner scope.
     Supersedes {
+        name: &'static str,
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
@@ -101,6 +120,19 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    /// The stable short identifier for this constraint — the same
+    /// string that lands in [`ConstraintViolation::constraint_label`]
+    /// when the constraint fires.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Constraint::Conflicts { name, .. }
+            | Constraint::Requires { name, .. }
+            | Constraint::Implies { name, .. }
+            | Constraint::Supersedes { name, .. }
+            | Constraint::Custom { name, .. } => name,
+        }
+    }
+
     /// The authoritative-source citation for this constraint (e.g.
     /// `"CAPCO-2016 §H.4"`). Returned unchanged regardless of variant.
     pub fn label(&self) -> &'static str {
@@ -125,4 +157,98 @@ pub struct ConstraintViolation {
     pub constraint_label: &'static str,
     pub message: String,
     pub citation: &'static str,
+}
+
+/// Walk a scheme's declarative constraints and emit one
+/// [`ConstraintViolation`] per dyadic variant whose predicate fires
+/// against `marking`.
+///
+/// `evaluate` covers the four dyadic variants (`Conflicts`, `Requires`,
+/// `Implies`, `Supersedes`) by asking the scheme to resolve each
+/// [`TokenRef`] via [`MarkingScheme::satisfies`]. The `Custom` variant
+/// is dispatched through [`MarkingScheme::evaluate_custom`] so the
+/// scheme owns its bespoke predicate bodies.
+///
+/// Contract (FR-007, Phase 3 US1):
+/// - **Deterministic**: same input returns identical output on every
+///   call, regardless of thread or iteration order.
+/// - **Declaration-ordered**: the scheme's declared constraint order is
+///   preserved in the returned violation vec.
+/// - **Allocation-bounded**: the only heap allocations come from the
+///   returned `Vec` and the violation-message strings each variant
+///   constructs. The loop itself does not allocate.
+pub fn evaluate<S>(scheme: &S, marking: &S::Marking) -> Vec<ConstraintViolation>
+where
+    S: MarkingScheme + ?Sized,
+{
+    let mut out = Vec::new();
+    for c in scheme.constraints() {
+        match c {
+            Constraint::Conflicts {
+                name,
+                left,
+                right,
+                label,
+            } => {
+                if scheme.satisfies(marking, left) && scheme.satisfies(marking, right) {
+                    out.push(ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("conflicting tokens: {left:?} and {right:?}"),
+                        citation: label,
+                    });
+                }
+            }
+            Constraint::Requires {
+                name,
+                left,
+                right,
+                label,
+            } => {
+                if scheme.satisfies(marking, left) && !scheme.satisfies(marking, right) {
+                    out.push(ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("token {left:?} requires {right:?} but it is missing"),
+                        citation: label,
+                    });
+                }
+            }
+            Constraint::Implies { .. } => {
+                // `Implies` is an information statement, not a
+                // violation trigger: it tells other engine paths that
+                // `right` is safe to omit when `left` is present. No
+                // diagnostic emission.
+            }
+            Constraint::Supersedes { .. } => {
+                // `Supersedes` is a rewrite hint for banner roll-up,
+                // not a violation trigger — the rewrite itself is
+                // applied by `project(Scope::Page, ...)`. No diagnostic
+                // emission from the evaluator.
+            }
+            Constraint::Custom { name, label } => {
+                // The module-level invariant is that
+                // `ConstraintViolation.constraint_label` is the
+                // declared `name` and `.citation` is the `label`
+                // verbatim. `evaluate_custom` is free to build
+                // scheme-specific per-violation messages, but the
+                // identifier surface must resolve uniformly — we
+                // override both fields after the call so the scheme
+                // can't accidentally drift from the catalog.
+                //
+                // Sub-rule information (e.g., HCS's "HCS-legacy-bare"
+                // vs "HCS-O-requires-ORCON" differentiation) belongs
+                // in the violation message, not in `constraint_label`.
+                // Schemes that need per-subcheck surfacing must carry
+                // that signal through `message` or declare distinct
+                // `Constraint::Custom` entries.
+                out.extend(scheme.evaluate_custom(name, marking).into_iter().map(
+                    |mut v| {
+                        v.constraint_label = name;
+                        v.citation = label;
+                        v
+                    },
+                ));
+            }
+        }
+    }
+    out
 }

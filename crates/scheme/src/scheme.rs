@@ -12,7 +12,7 @@
 
 use crate::ambiguity::Parsed;
 use crate::category::Category;
-use crate::constraint::{Constraint, ConstraintViolation};
+use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::lattice::Lattice;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
@@ -63,9 +63,54 @@ pub trait MarkingScheme {
     /// points (e.g., the CAPCO `(C)` copyright-vs-CONFIDENTIAL case).
     fn parse(&self, input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError>;
 
+    /// Resolve a [`TokenRef`] against a concrete marking.
+    ///
+    /// The declarative constraint evaluator (see
+    /// [`crate::constraint::evaluate`]) asks the scheme this question
+    /// for every dyadic-variant predicate it needs to fire. Schemes
+    /// map `TokenRef::Token(id)` to "the marking carries that token
+    /// somewhere" and `TokenRef::AnyInCategory(cat)` to "any token in
+    /// that category is present in the marking."
+    ///
+    /// The default implementation returns `false` so a scheme that
+    /// does not declare dyadic constraints in Phase 3 is still
+    /// well-formed — only the variants the scheme actually uses need
+    /// coverage.
+    fn satisfies(&self, _marking: &Self::Marking, _token_ref: &TokenRef) -> bool {
+        false
+    }
+
+    /// Evaluate a [`Constraint::Custom`] by name. Returns one
+    /// [`ConstraintViolation`] per failing check.
+    ///
+    /// Custom constraints are n-ary or context-dependent predicates
+    /// that cannot be expressed as a pair of token references (SIGMA
+    /// numeric-ordering, CNWDI's classification floor, HCS's
+    /// sub-compartment rules). The scheme's evaluator owns the
+    /// predicate body; [`crate::constraint::evaluate`] simply calls
+    /// this method and pipes the results through.
+    ///
+    /// Default: no violations.
+    fn evaluate_custom(
+        &self,
+        _name: &'static str,
+        _marking: &Self::Marking,
+    ) -> Vec<ConstraintViolation> {
+        Vec::new()
+    }
+
     /// Check all declarative constraints against `m`. Returns one
     /// violation per failing predicate.
-    fn validate(&self, m: &Self::Marking) -> Vec<ConstraintViolation>;
+    ///
+    /// Default: delegates to [`crate::constraint::evaluate`] so
+    /// schemes get the declarative-evaluator behavior automatically.
+    /// Schemes override when they need to prepend / append
+    /// scheme-specific non-constraint checks that live outside the
+    /// declarative catalog (e.g., structural validations tied to
+    /// token ordering within a category).
+    fn validate(&self, m: &Self::Marking) -> Vec<ConstraintViolation> {
+        crate::constraint::evaluate(self, m)
+    }
 
     /// Project a set of markings into a single marking under the given
     /// scope.

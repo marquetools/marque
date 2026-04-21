@@ -5,11 +5,14 @@
 //! `Engine` — the configured, ready-to-run pipeline.
 
 use crate::clock::{Clock, SystemClock};
+use crate::errors::EngineConstructionError;
 use crate::output::{FixResult, LintResult};
+use crate::scheduler::schedule_rewrites;
 use aho_corasick::AhoCorasick;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{AppliedFix, Diagnostic, FixProposal, FixSource, RuleId, RuleSet, Severity};
+use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -53,6 +56,16 @@ pub struct Engine {
     /// no-op and "//" entries). `None` when the corrections map is empty or
     /// all entries are filtered out.
     corrections_ac: Option<CachedAhoCorasick>,
+    /// Topologically-sorted rewrite ids, computed once at construction
+    /// time from the scheme's `page_rewrites()` declaration. The order
+    /// satisfies: for every edge `a → b` (rewrite `a` writes a
+    /// category `b` reads), `a` appears before `b`. When dataflow
+    /// edges fully determine the order, FR-007's declaration-order-
+    /// independence guarantee holds; when two rewrites have no edge
+    /// between them, the scheduler breaks the tie by declaration
+    /// order (Kahn's algorithm seeded in declaration order). Empty
+    /// when the scheme declares no rewrites.
+    scheduled_rewrites: Box<[RewriteId]>,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -64,17 +77,31 @@ struct CachedAhoCorasick {
 }
 
 impl Engine {
-    /// Create a new engine with the given configuration and rule sets.
-    pub fn new(config: Config, rule_sets: Vec<Box<dyn RuleSet>>) -> Self {
-        Self::with_clock(config, rule_sets, Box::new(SystemClock))
+    /// Create a new engine with the given configuration, rule sets, and
+    /// marking scheme.
+    ///
+    /// Runs the page-rewrite scheduler (Kahn's algorithm over the
+    /// scheme's declared `reads` / `writes` axes) once at construction
+    /// time. Cycles and unannotated `Custom` rewrites fail closed with
+    /// [`EngineConstructionError`] rather than degrading at lint time.
+    ///
+    /// Use [`Engine::with_clock`] for deterministic-timestamp testing.
+    pub fn new<S: MarkingScheme>(
+        config: Config,
+        rule_sets: Vec<Box<dyn RuleSet>>,
+        scheme: S,
+    ) -> Result<Self, EngineConstructionError> {
+        Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
     }
 
     /// Create an engine with a custom clock (for deterministic tests).
-    pub fn with_clock(
+    pub fn with_clock<S: MarkingScheme>(
         mut config: Config,
         rule_sets: Vec<Box<dyn RuleSet>>,
+        scheme: S,
         clock: Box<dyn Clock>,
-    ) -> Self {
+    ) -> Result<Self, EngineConstructionError> {
+        let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
@@ -112,13 +139,24 @@ impl Engine {
             }
         });
 
-        Self {
+        Ok(Self {
             config,
             rule_sets,
             clock,
             corrections_arc,
             corrections_ac,
-        }
+            scheduled_rewrites,
+        })
+    }
+
+    /// The topologically-sorted rewrite order computed by the scheduler
+    /// at construction time.
+    ///
+    /// Exposed for diagnostic / test inspection. Per-document lint does
+    /// not re-sort; this slice is the canonical order every page roll-up
+    /// walks.
+    pub fn scheduled_rewrites(&self) -> &[RewriteId] {
+        &self.scheduled_rewrites
     }
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
@@ -633,10 +671,12 @@ mod tests {
         Engine::with_clock(
             config,
             vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
             Box::new(FixedClock::new(
                 UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             )),
         )
+        .expect("default CAPCO scheme has no rewrite cycles")
     }
 
     /// A source long enough to span the test fix offsets, AND containing a
@@ -885,10 +925,12 @@ mod tests {
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
             Box::new(FixedClock::new(
                 UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             )),
-        );
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
 
         // Two pages, separated by a form feed:
         //   Page 1: one portion + one banner
@@ -939,10 +981,12 @@ mod tests {
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
             Box::new(FixedClock::new(
                 UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             )),
-        );
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
         let src: &[u8] = b"(SECRET//NF) text\nSECRET//NOFORN\n";
         let _ = engine.lint(src);
         let _ = engine.lint(src);
