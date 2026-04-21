@@ -175,7 +175,7 @@ pub struct FeatureContribution {
 /// Closed enumeration of features the decoder can record.
 ///
 /// New variants MUST bump the audit schema version (see
-/// `MARQUE_AUDIT_SCHEMA` in `marque-engine/build.rs`). Treat this
+/// `MARQUE_AUDIT_SCHEMA` in `crates/engine/build.rs`). Treat this
 /// enum as part of the on-the-wire audit contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FeatureId {
