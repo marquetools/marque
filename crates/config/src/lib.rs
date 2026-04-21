@@ -673,4 +673,42 @@ classifier_id = "from-sub"
         );
         let _ = fs::remove_dir_all(&root);
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn load_returns_read_error_for_unreadable_project_config() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = make_tmpdir("load-err-proj");
+        let project_config = root.join(".marque.toml");
+        fs::write(&project_config, b"").unwrap();
+
+        let mut perms = fs::metadata(&project_config).unwrap().permissions();
+        perms.set_mode(0o000); // remove read permission
+        fs::set_permissions(&project_config, perms).unwrap();
+
+        let err = super::load(&root).unwrap_err();
+        assert!(matches!(err, ConfigError::ReadError { .. }));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn load_returns_read_error_for_unreadable_local_config() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = make_tmpdir("load-err-local");
+        fs::write(root.join(".marque.toml"), b"").unwrap();
+
+        let local_config = root.join(".marque.local.toml");
+        fs::write(&local_config, b"").unwrap();
+
+        let mut perms = fs::metadata(&local_config).unwrap().permissions();
+        perms.set_mode(0o000); // remove read permission
+        fs::set_permissions(&local_config, perms).unwrap();
+
+        let err = super::load(&root).unwrap_err();
+        assert!(matches!(err, ConfigError::ReadError { .. }));
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }
