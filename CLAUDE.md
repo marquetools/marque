@@ -8,6 +8,13 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> [!IMPORTANT]
+> ## Project Constitution
+>
+>  The project constitution is the authoritative source for principles governing all maintenance.
+
+@.specify/memory/constitution.md
+
 ## What This Is
 
 `marque` is a **general-purpose rule engine for fast text processing** — rules produce warnings, errors, fixes, and transformations, each with a confidence score the engine uses to decide what to apply vs. surface as a suggestion. Built in the style of `ruff`: designed for perceptual instantaneity at any scale, operating on raw byte buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
@@ -82,7 +89,7 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`/`CategoryShape`, `Constraint`, `Parsed<M>`, `Scope`, `PageRewrite`, and built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`). Zero runtime deps; no dependency on `marque-ism`. Phase B landed the recursive-lattice surface — see `docs/plans/2026-04-19-recursive-lattice-and-decoder.md`. |
 | `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. Also hosts `CapcoScheme`, the `marque-scheme` adapter over `IsmAttributes`; `SciSet`/`SarSet`/`FgiSet` lattice types (`marque_capco::lattice`); and tetragraph expansion tables (`marque_capco::vocab`). |
 | `marque-engine` | Pipeline orchestration: `Engine` (single doc) and `BatchEngine` (async concurrent). |
-| `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. **Not in WASM.** |
+| `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. Alternately a narrowing custom or pieced together use of other libraries (Kreuzberg has some licensing complication) **Not in WASM.** |
 | `marque-config` | Layered config loading from `.marque.toml` → `.marque.local.toml` → env vars. |
 | `marque-wasm` | `wasm-pack` target. Exposes `lint`/`fix` to web workers. Format extraction is caller's responsibility. |
 | `marque-server` | axum REST microservice wrapping `marque-engine`. Auth/logging via Tower middleware. |
@@ -227,7 +234,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO ru
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
-- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack
+- Rust 1.89+ (edition 2024) — pinned by constitution Tech Stack
 - `memchr` 2 — SIMD candidate detection (Phase 1 scanner)
 - `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections
 - `criterion` 0.5 — benchmarking (SC-001, SC-005)
