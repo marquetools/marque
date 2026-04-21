@@ -97,7 +97,7 @@ cargo bench -p marque-engine --bench lint_latency -- \
 
 - **US2.1 (typo resolved, audit has provenance):** covered by `tests/fixtures/mangled/typo/` + audit record check above.
 - **US2.2 ((C) blocked from copyright when strict CONFIDENTIAL present):** covered by `marque-capco/tests/decoder_strict_context.rs`.
-- **US2.3 (banner reordered to canonical):** covered by `tests/fixtures/mangled/reordering/dissem_before_sci.txt`.
+- **US2.3 (banner reordered to canonical):** covered by `tests/fixtures/mangled/reordering/dissem_before_sci.json`.
 - **US2.4 (interactive without opt-in doesn't invoke decoder):** covered by a timed test that runs `marque check` (no flag) on a mangled input, measures latency ≤16 ms, and verifies no decoder features appear in the output.
 - **US2.5 (server rejects corpus override):** covered by `marque-server/tests/http.rs::rejects_corpus_override`.
 - **US2.6 (WASM has no override surface):** covered by the WASM compile-fail test; `cargo build --target wasm32-unknown-unknown -p marque-wasm` succeeds only when the override codepath is absent.
