@@ -52,6 +52,7 @@ import math
 import os
 import random
 import re
+import string
 import sys
 import tarfile
 import email
@@ -546,13 +547,17 @@ def _corpus_fingerprint(corpus_path: Path) -> str:
     """
     Deterministic, content-ignorant fingerprint of a corpus directory.
 
-    Hashes only file metadata (relative path, size, mtime) so the
-    fingerprint shifts when the corpus shifts without ever absorbing
-    document bytes into the priors JSON — preserving the
+    Hashes only file metadata (relative path, size, mtime) — never file
+    contents — so the fingerprint shifts when the corpus shifts without
+    ever absorbing document bytes into the priors JSON, preserving the
     content-ignorance invariant enforced at audit time (Constitution V)
     at the priors-pipeline level too.
+
+    SHA-512 is used rather than something faster (BLAKE3, etc.):
+    fingerprinting a corpus is a one-time build step, not a runtime
+    path, and SHA-512 is available without an optional dependency.
     """
-    h = hashlib.blake3() if hasattr(hashlib, "blake3") else hashlib.sha256()
+    h = hashlib.sha512()
     for root, _dirs, files in os.walk(corpus_path):
         for fname in sorted(files):
             if fname.startswith("."):
@@ -564,21 +569,13 @@ def _corpus_fingerprint(corpus_path: Path) -> str:
                 h.update(f"{rel}\0{stat.st_size}\0{int(stat.st_mtime)}\n".encode())
             except (OSError, ValueError):
                 continue
-    algo = "blake3" if hasattr(hashlib, "blake3") else "sha256"
-    return f"{algo}:{h.hexdigest()}"
+    return f"sha512:{h.hexdigest()}"
 
 
-# Template shapes the decoder recognizes at Phase D. Keys are opaque
-# identifiers that the decoder's GrammarTemplate surface consumes
-# (T059). The priors emitted here carry the same keys so build.rs can
-# match them at compile time without string-surgery.
-PRIORS_TEMPLATE_KEYS = (
-    "classification",
-    "classification//dissem",
-    "classification//sci-block//dissem",
-    "classification//dissem//rel-to",
-    "classification//sci-block",
-)
+# Phase-D template identifiers are defined inline where priors are
+# emitted (``derive_priors`` below) so there is no separate key list
+# that can drift from the actual ``template_base_rates`` payload
+# consumed downstream.
 
 
 def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
@@ -671,20 +668,31 @@ MANGLING_CLASSES = (
     "garbled-delimiter",
 )
 
-# Superseded-token pairs the generator knows about. Keeping the map small
-# and hardcoded keeps the Python tool independent of the Rust migration
-# tables; the authoritative list lives in `crates/ism/build.rs` and
-# `crates/capco/docs/CAPCO-2016.md`. If a token pair is added to the
-# migration table, mirror it here.
+# Deprecated → live token pairs that CAPCO-2016 records as actual
+# supersession. These are NOT banner/portion-form abbreviation
+# differences — `NF` (portion) and `NOFORN` (banner) are both
+# authorized canonical forms in their respective contexts per the ODNI
+# CVE register (`crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/
+# CVEnumISMDissem.csv`). Form-mismatch mangling would need its own
+# class; this class is for tokens CAPCO explicitly retired.
+#
+# Every entry MUST cite a passage in
+# `crates/capco/docs/CAPCO-2016.md` per Constitution VIII. An entry
+# without a verified citation is a correctness defect (wrong-provenance
+# fixtures), not a stylistic choice.
+#
+# Map direction: ``live_token → retired_synonym``. The mangling
+# transform finds ``live_token`` inside a canonical marking extracted
+# from the corpus and substitutes the retired form to produce the
+# ``observed`` mangled string; the original canonical stays as the
+# ``expected``. Consequence: classes generate fewer fixtures than
+# other transforms if the corpus does not contain the live tokens,
+# which is honest — genuine CAPCO supersessions are rare.
 SUPERSEDED_TOKEN_MAP = {
-    "NOFORN": "NF",
-    "ORCON": "OC",
-    "IMCON": "IMC",
-    "PROPIN": "PR",
-    "REL TO": "REL",
-    "EYES ONLY": "EYES",
-    "RESTRICTED DATA": "RD",
-    "FORMERLY RESTRICTED DATA": "FRD",
+    # CAPCO-2016 ~line 5136 (§A.6 note): "The COMINT title for the
+    # Special Intelligence (SI) control system is no longer valid."
+    # SI is the current title, COMINT is the retired one.
+    "SI": "COMINT",
 }
 
 # Matches a canonical-looking marking: portion or banner with at least
@@ -697,7 +705,7 @@ SUPERSEDED_TOKEN_MAP = {
 #   CLASS//SCI//DISSEM
 # where CLASS is one of the known classification tokens.
 _MARKING_PORTION_RE = re.compile(
-    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/\- ]+)+)\)"
+    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/\-]+)+)\)"
 )
 _MARKING_BANNER_RE = re.compile(
     r"(?:^|(?<=\s))"
@@ -731,11 +739,18 @@ def _apply_typo(canonical: str, rng: random.Random) -> Optional[str]:
     if len(canonical) < 2:
         return None
     idx = rng.randrange(len(canonical))
-    choice = rng.choice(("swap", "drop", "substitute"))
+    choice = rng.choice(("swap", "drop", "insert", "substitute"))
     if choice == "swap" and idx < len(canonical) - 1:
         return canonical[:idx] + canonical[idx + 1] + canonical[idx] + canonical[idx + 2 :]
     if choice == "drop":
         return canonical[:idx] + canonical[idx + 1 :]
+    if choice == "insert":
+        # Insert a random uppercase letter at a random boundary. Insertion
+        # stays edit-distance-1 and preserves the marking character class
+        # (markings are upper-case ASCII by convention).
+        insert_at = rng.randrange(len(canonical) + 1)
+        insert_ch = rng.choice(string.ascii_uppercase)
+        return canonical[:insert_at] + insert_ch + canonical[insert_at:]
     if choice == "substitute":
         ch = canonical[idx]
         if ch.isalpha():
@@ -827,10 +842,17 @@ def generate_mangled_fixtures(
     corpus, since the SC-004 gate depends on ≥200 cases.
     """
     rng = random.Random(seed)
-    # One directory per class, created eagerly so downstream checks that
-    # inspect directory existence find what they expect.
+    # One directory per class, created eagerly so downstream checks
+    # that inspect directory existence find what they expect. Clear
+    # any stale generated fixtures from prior runs so the resulting
+    # fixture set is reproducible for the current corpus/seed without
+    # disturbing non-JSON files such as README documentation or the
+    # `.gitkeep` that keeps empty class dirs tracked in git.
     for cls in MANGLING_CLASSES:
-        (output_dir / cls).mkdir(parents=True, exist_ok=True)
+        class_dir = output_dir / cls
+        class_dir.mkdir(parents=True, exist_ok=True)
+        for fixture_path in class_dir.glob("*.json"):
+            fixture_path.unlink()
 
     # Collect unique canonical markings from the corpus. We dedupe because
     # a real corpus repeats common markings many times — a fixture with
@@ -875,9 +897,12 @@ def generate_mangled_fixtures(
                 "mangling_class": _class_to_pascal(cls),
                 "source_confidence": source_confidence,
             }
-            # Stable filename derived from a content digest — two different
-            # invocations against the same corpus produce the same filenames,
-            # so committing the fixture is deterministic.
+            # Stable filename derived from a content digest. For the
+            # same corpus and the same ``--seed``, invocations produce
+            # the same filenames, so committing the fixture set is
+            # reproducible; different seeds will generally produce
+            # different observed strings and therefore different
+            # filenames (the transforms themselves are RNG-driven).
             digest = hashlib.sha256(
                 f"{cls}\0{observed}\0{canonical}".encode()
             ).hexdigest()[:16]

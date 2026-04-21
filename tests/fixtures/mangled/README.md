@@ -44,12 +44,25 @@ transform the generator applied to produce the observed form.
 
 | Class directory | Transform | Example `observed` → `expected` |
 |---|---|---|
-| `typo/` | Single-character typo or edit-distance-1 substitution | `SERCET` → `SECRET` |
+| `typo/` | Single-character edit-distance-1 typo (swap, drop, insert, substitute) | `SERCET` → `SECRET` |
 | `reordering/` | Banner tokens presented out of canonical order | `REL TO USA, GBR//SI` → `SI//REL TO USA, GBR` |
 | `missing-delimiter/` | Portion or banner delimiter dropped | `S REL TO USA` → `S//REL TO USA` |
-| `superseded-token/` | Deprecated or retired token in place of its live replacement | `NF` → `NOFORN` |
+| `superseded-token/` | A token CAPCO-2016 explicitly retired in place of its live replacement | `SECRET//COMINT` → `SECRET//SI` |
 | `wrong-case/` | Correct tokens, wrong case | `secret//noforn` → `SECRET//NOFORN` |
 | `garbled-delimiter/` | Delimiter present but malformed (wrong glyph, spacing) | `S ∕∕ NOFORN` → `S//NOFORN` |
+
+**Note on `superseded-token/`:** this class is narrower than it may
+sound. It represents **actual CAPCO-2016 supersessions** (e.g.,
+`COMINT` retired in favor of `SI`, CAPCO-2016 ~line 5136), NOT
+banner/portion form pairs like `NOFORN`/`NF` — both of those are live
+authorized forms per the ODNI CVE register
+(`crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISMDissem.csv`) and
+would belong to a separate "wrong marking form" class. Genuine CAPCO
+supersessions are rare, so this class typically produces fewer
+fixtures than its siblings. Any entry added to
+`SUPERSEDED_TOKEN_MAP` in `tools/corpus-analysis/analyze.py` MUST
+cite a specific passage in `crates/capco/docs/CAPCO-2016.md`
+(Constitution VIII).
 
 ## Fixture schema
 

@@ -109,7 +109,14 @@ The generator:
   skipped — they collide with copyright and aren't useful for
   accuracy training.
 - Skips identity transforms (transform produces output == input).
-- Deduplicates by content digest so distinct seeds run against the
-  same corpus converge to the same fixture set.
+- Deduplicates by content digest so identical generated outputs are
+  only emitted once; fixture sets are reproducible for the same
+  corpus and `--seed`. Different seeds will generally produce
+  different `observed` strings (the transforms are RNG-driven) and
+  therefore different digests/filenames.
+- Clears stale `*.json` fixtures from each class directory before
+  writing so a re-run with a different corpus/seed cannot silently
+  accumulate leftover cases (non-JSON files such as the README or
+  `.gitkeep` sentinels are preserved).
 - Raises if fewer than `--min-cases` fixtures materialize across the
   six classes combined.

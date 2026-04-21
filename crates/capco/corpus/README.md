@@ -50,7 +50,7 @@ or the decoder's scoring shape changes.
 {
   "schema_version": "marque-priors-1",
   "generated_at": "2026-04-21T08:00:00Z",
-  "corpus_fingerprint": "blake3:…",
+  "corpus_fingerprint": "sha512:…",
   "token_base_rates": {
     "SECRET":   { "count": 12345, "log_prior": -2.14 },
     "NOFORN":   { "count":  4567, "log_prior": -3.21 }
@@ -73,9 +73,15 @@ Field contract (what `build.rs` expects):
 - `schema_version` — opaque string; bumped when the shape changes.
   `build.rs` refuses an unknown version rather than silently parsing a
   mismatched shape.
-- `corpus_fingerprint` — BLAKE3 of the corpus input that produced this
-  file. Not load-bearing at build time; used by downstream analysts who
-  want to correlate a priors file back to a specific corpus snapshot.
+- `corpus_fingerprint` — SHA-512 fingerprint of the corpus input that
+  produced this file, encoded as `sha512:<hex>`. Computed over file
+  metadata only (relative path, size, mtime) — never over file
+  contents — so the priors artifact does not accrete document bytes
+  from the source corpus (content-ignorance, Constitution V). SHA-512
+  is chosen because fingerprinting is a one-time build step, not a
+  runtime path; a faster algorithm would buy nothing here. Not
+  load-bearing at build time; used by downstream analysts who want to
+  correlate a priors file back to a specific corpus snapshot.
 - `token_base_rates` — one entry per canonical token. `count` is the
   raw occurrence count; `log_prior` is the precomputed log-prior the
   decoder uses at scoring time (saves a per-query `ln()`). `log_prior`
