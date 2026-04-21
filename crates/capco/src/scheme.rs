@@ -323,6 +323,8 @@ impl CapcoScheme {
     /// private `capco_category_contains` / `capco_category_clear`
     /// helpers below.
     fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
+        const READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
         vec![PageRewrite {
             id: "capco/noforn-clears-rel-to",
             citation: "CAPCO-2016-§H.2",
@@ -333,6 +335,8 @@ impl CapcoScheme {
             action: CategoryAction::Clear {
                 category: CAT_REL_TO,
             },
+            reads: READS,
+            writes: WRITES,
         }]
     }
 
@@ -523,20 +527,24 @@ impl CapcoScheme {
     fn build_constraints() -> Vec<Constraint> {
         vec![
             // Sample constraint 1: NOFORN and REL TO cannot co-occur.
-            Constraint::Conflicts(
-                TokenRef::Token(TOK_NOFORN),
-                TokenRef::AnyInCategory(CAT_REL_TO),
-            ),
+            Constraint::Conflicts {
+                left: TokenRef::Token(TOK_NOFORN),
+                right: TokenRef::AnyInCategory(CAT_REL_TO),
+                label: "CAPCO-2016 §A.4",
+            },
             // Sample constraint 2: HCS handling per CAPCO 2016 §4
             // (p62). Expressed as `Custom` because the rule set is
             // n-ary — bare HCS is legacy and requires document-level
             // remarking; HCS-O requires ORCON and forbids ORCON-USGOV;
             // HCS-P requires ORCON or ORCON-USGOV; and HCS-O / HCS-P
             // are only authorized for SECRET and TOP SECRET. The
-            // scheme's `validate` matches the label and dispatches the
+            // scheme's `validate` matches the name and dispatches the
             // scheme-specific predicate (see
             // [`CapcoScheme::validate`]).
-            Constraint::Custom("HCS-system-constraints"),
+            Constraint::Custom {
+                name: "HCS-system-constraints",
+                label: "CAPCO-2016 §4 p62",
+            },
             // Sample constraint 3: JOINT always requires USA in both
             // the JOINT classification country list and the REL TO
             // list. The declarative `Requires(JOINT, USA)` above is
@@ -545,7 +553,11 @@ impl CapcoScheme {
             // express this with a richer `TokenRef` that can target a
             // specific category so the constraint is fully
             // declarative.
-            Constraint::Requires(TokenRef::Token(TOK_JOINT), TokenRef::Token(TOK_USA)),
+            Constraint::Requires {
+                left: TokenRef::Token(TOK_JOINT),
+                right: TokenRef::Token(TOK_USA),
+                label: "CAPCO-2016 §H.3",
+            },
         ]
     }
 }
@@ -607,9 +619,11 @@ impl MarkingScheme for CapcoScheme {
         // constraints are exercised.
         for c in &self.constraints {
             match c {
-                Constraint::Conflicts(TokenRef::Token(a), TokenRef::AnyInCategory(cat))
-                    if *a == TOK_NOFORN && *cat == CAT_REL_TO =>
-                {
+                Constraint::Conflicts {
+                    left: TokenRef::Token(a),
+                    right: TokenRef::AnyInCategory(cat),
+                    label,
+                } if *a == TOK_NOFORN && *cat == CAT_REL_TO => {
                     let has_nf = attrs
                         .dissem_controls
                         .iter()
@@ -620,15 +634,18 @@ impl MarkingScheme for CapcoScheme {
                             constraint_label: "NOFORN∥REL TO",
                             message: "NOFORN and REL TO cannot co-occur in one portion marking"
                                 .to_owned(),
+                            citation: label,
                         });
                     }
                 }
-                Constraint::Custom(label) if *label == "HCS-system-constraints" => {
-                    out.extend(hcs_system_constraints(attrs));
+                Constraint::Custom { name, label } if *name == "HCS-system-constraints" => {
+                    out.extend(hcs_system_constraints(attrs, label));
                 }
-                Constraint::Requires(TokenRef::Token(a), TokenRef::Token(b))
-                    if *a == TOK_JOINT && *b == TOK_USA =>
-                {
+                Constraint::Requires {
+                    left: TokenRef::Token(a),
+                    right: TokenRef::Token(b),
+                    label,
+                } if *a == TOK_JOINT && *b == TOK_USA => {
                     if let Some(marque_ism::MarkingClassification::Joint(ref j)) =
                         attrs.classification
                     {
@@ -640,6 +657,7 @@ impl MarkingScheme for CapcoScheme {
                                 message: "JOINT classifications must list USA in both the \
                                           classification countries and REL TO"
                                     .to_owned(),
+                                citation: label,
                             });
                         }
                     }
@@ -701,6 +719,24 @@ impl MarkingScheme for CapcoScheme {
                             CategoryAction::Replace { category, with } => {
                                 capco_category_replace(&mut out, *category, with);
                             }
+                            CategoryAction::Promote { from, to, .. } => {
+                                // Phase 2: `Promote` is declared on the
+                                // surface but no CAPCO rewrite uses it
+                                // yet. Phase 3 (task T034 — JOINT
+                                // promotion and FGI absorption) wires
+                                // the dispatch. Until then, fail closed:
+                                // if a rewrite somehow reaches this arm
+                                // without dispatch being implemented,
+                                // silently doing nothing would mask the
+                                // bug. An explicit panic surfaces it
+                                // immediately.
+                                unimplemented!(
+                                    "CategoryAction::Promote dispatch is not yet implemented \
+                                     for CAPCO (rewrite attempted to promote from {from:?} to \
+                                     {to:?}); lands with task T034 — JOINT promotion and FGI \
+                                     absorption"
+                                );
+                            }
                             CategoryAction::Custom(f) => f(&mut out),
                         }
                     }
@@ -760,6 +796,7 @@ impl MarkingScheme for CapcoScheme {
 /// But for users in that environment, they may encounter all three variants routinely.
 fn hcs_system_constraints(
     attrs: &marque_ism::IsmAttributes,
+    citation: &'static str,
 ) -> Vec<marque_scheme::ConstraintViolation> {
     use marque_ism::{DissemControl, SciControl, SciControlBare, SciControlSystem};
 
@@ -792,6 +829,7 @@ fn hcs_system_constraints(
                     "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
                      p62 (requires document-level analysis)."
                         .to_owned(),
+                citation,
             });
             if classification == Some(Classification::Confidential) {
                 out.push(marque_scheme::ConstraintViolation {
@@ -799,6 +837,7 @@ fn hcs_system_constraints(
                     message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction \
                               per CAPCO 2016 §4."
                         .to_owned(),
+                    citation,
                 });
             }
             continue;
@@ -816,12 +855,14 @@ fn hcs_system_constraints(
                             message: "HCS-O is only authorized for SECRET and TOP SECRET per \
                                       CAPCO 2016 §4."
                                 .to_owned(),
+                            citation,
                         });
                     }
                     if !has_orcon {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-O-requires-ORCON",
                             message: "HCS-O requires ORCON per CAPCO 2016 §4.".to_owned(),
+                            citation,
                         });
                     }
                     if has_orcon_usgov {
@@ -830,6 +871,7 @@ fn hcs_system_constraints(
                             message: "HCS-O must not be used with ORCON-USGOV per CAPCO \
                                       2016 §4."
                                 .to_owned(),
+                            citation,
                         });
                     }
                 }
@@ -840,6 +882,7 @@ fn hcs_system_constraints(
                             message: "HCS-P is only authorized for SECRET and TOP SECRET per \
                                       CAPCO 2016 §4."
                                 .to_owned(),
+                            citation,
                         });
                     }
                     if !has_orcon && !has_orcon_usgov {
@@ -848,6 +891,7 @@ fn hcs_system_constraints(
                             message: "HCS-P requires either ORCON or ORCON-USGOV per CAPCO \
                                       2016 §4."
                                 .to_owned(),
+                            citation,
                         });
                     }
                 }
@@ -881,6 +925,7 @@ fn hcs_system_constraints(
             message: "HCS requires a compartment (O or P); remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
                  p62 (requires document-level analysis)."
                 .to_owned(),
+            citation,
         });
         if classification == Some(Classification::Confidential) {
             out.push(marque_scheme::ConstraintViolation {
@@ -888,6 +933,7 @@ fn hcs_system_constraints(
                 message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction per \
                           CAPCO 2016 §4."
                     .to_owned(),
+                citation,
             });
         }
     }
@@ -1100,6 +1146,8 @@ mod tests {
             action: CategoryAction::Clear {
                 category: CAT_REL_TO,
             },
+            reads: &[CAT_DISSEM],
+            writes: &[CAT_REL_TO],
         }];
         let scheme = CapcoScheme::with_rewrites(rewrites);
 
@@ -1136,6 +1184,8 @@ mod tests {
                 category: CAT_DISSEM,
                 with: CapcoMarking(replacement),
             },
+            reads: &[CAT_REL_TO],
+            writes: &[CAT_DISSEM],
         }];
         let scheme = CapcoScheme::with_rewrites(rewrites);
 

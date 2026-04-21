@@ -61,7 +61,7 @@ fn c001_fires_on_corrections_map_match() {
     let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
     assert_eq!(fix.source, FixSource::CorrectionsMap);
     assert_eq!(fix.replacement.as_ref(), "NOFORN");
-    assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
+    assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
     assert_eq!(fix.migration_ref, None);
 }
 

@@ -23,8 +23,8 @@ Declarative expression of a binary relationship between tokens or categories. Re
 | `Conflicts { left, right, label }` | `left` and `right` MUST NOT both be present |
 | `Requires { left, right, label }` | Presence of `left` REQUIRES presence of `right` |
 | `Implies { left, right, label }` | Presence of `left` IMPLIES presence of `right` (warning severity) |
-| `Supersedes { winner, loser, label }` | `winner` displaces `loser` in page roll-up |
-| `Custom(&'static str)` | Opaque label for constraints not expressible via the above four |
+| `Supersedes { left, right, label }` | `left` displaces `right` in page roll-up |
+| `Custom { name, label }` | `name` is the rule identifier dispatched by `MarkingScheme::validate`; `label` is the authoritative-source citation. Escape hatch for constraints not expressible via the above four |
 
 **Invariants:**
 - All fields (`left`, `right`, `label`, etc.) are `&'static` / const — no runtime allocation.
@@ -78,7 +78,7 @@ Errors raised at `Engine::new` during scheme validation.
 
 | Variant | Meaning | Trigger |
 |---|---|---|
-| `RewriteCycle { axis: CategoryId, members: &'static [RewriteId] }` | A read/write cycle exists among the declared rewrites; `members` names every participating rewrite (cycles ≥3 are valid per foundational-plan line 1066) | FR-004 |
+| `RewriteCycle { axis: CategoryId, members: Box<[RewriteId]> }` | A read/write cycle exists among the declared rewrites; `members` names every participating rewrite (cycles ≥3 are valid per foundational-plan line 1066). `members` is owned because cycle membership is computed at engine-construction time from the declared graph, not borrowed from a static table | FR-004 |
 | `UnannotatedCustomAxes { rewrite: RewriteId }` | A `PageRewrite::custom` was declared without explicit `reads`/`writes` | FR-005 |
 
 ## Phase D — Probabilistic recognizer

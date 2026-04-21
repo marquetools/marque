@@ -179,7 +179,7 @@ fn diagnostic_to_contract_json(d: &marque_rules::Diagnostic) -> serde_json::Valu
         serde_json::json!({
             "source": format!("{:?}", f.source),
             "replacement": f.replacement.as_ref(),
-            "confidence": f.confidence,
+            "confidence": f.confidence.combined(),
             "migration_ref": f.migration_ref,
         })
     });

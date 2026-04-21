@@ -30,6 +30,7 @@ marque-config = { workspace = true }
 marque-core = { workspace = true }
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
 recoco-utils = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }

@@ -15,6 +15,7 @@
 pub mod batch;
 pub mod clock;
 pub mod engine;
+pub mod errors;
 pub mod output;
 pub mod pipeline;
 
@@ -22,6 +23,7 @@ pub mod pipeline;
 pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use engine::{Engine, FixMode, InvalidThreshold};
+pub use errors::EngineConstructionError;
 pub use output::{FixResult, LintResult};
 
 /// Returns the default rule set for marque (CAPCO rules).

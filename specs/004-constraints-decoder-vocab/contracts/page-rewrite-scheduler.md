@@ -12,7 +12,7 @@ Page-level rewrites are scheduled deterministically by topological sort over the
 
 ```rust
 pub enum EngineConstructionError {
-    RewriteCycle { axis: CategoryId, members: &'static [RewriteId] },
+    RewriteCycle { axis: CategoryId, members: Box<[RewriteId]> },
     UnannotatedCustomAxes { rewrite: RewriteId },
     // ... existing variants
 }
