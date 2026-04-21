@@ -23,8 +23,8 @@ Declarative expression of a binary relationship between tokens or categories. Re
 | `Conflicts { left, right, label }` | `left` and `right` MUST NOT both be present |
 | `Requires { left, right, label }` | Presence of `left` REQUIRES presence of `right` |
 | `Implies { left, right, label }` | Presence of `left` IMPLIES presence of `right` (warning severity) |
-| `Supersedes { winner, loser, label }` | `winner` displaces `loser` in page roll-up |
-| `Custom(&'static str)` | Opaque label for constraints not expressible via the above four |
+| `Supersedes { left, right, label }` | `left` displaces `right` in page roll-up |
+| `Custom { name, label }` | `name` is the rule identifier dispatched by `MarkingScheme::validate`; `label` is the authoritative-source citation. Escape hatch for constraints not expressible via the above four |
 
 **Invariants:**
 - All fields (`left`, `right`, `label`, etc.) are `&'static` / const — no runtime allocation.
