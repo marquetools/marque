@@ -8,6 +8,13 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> [!IMPORTANT]
+> ## Project Constitution
+>
+>  The project constitution is the authoritative source for principles governing all maintenance.
+
+@.specify/memory/constitution.md
+
 ## What This Is
 
 `marque` is a **general-purpose rule engine for fast text processing** — rules produce warnings, errors, fixes, and transformations, each with a confidence score the engine uses to decide what to apply vs. surface as a suggestion. Built in the style of `ruff`: designed for perceptual instantaneity at any scale, operating on raw byte buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
@@ -227,7 +234,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO ru
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
-- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack
+- Rust 1.89+ (edition 2024) — pinned by constitution Tech Stack
 - `memchr` 2 — SIMD candidate detection (Phase 1 scanner)
 - `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections
 - `criterion` 0.5 — benchmarking (SC-001, SC-005)
