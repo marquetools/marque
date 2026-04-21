@@ -275,8 +275,11 @@ fn tarjan_sccs(n: usize, successors: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
 /// variants can safely elide annotations because the category is
 /// carried in the variant payload.
 fn rewrite_is_custom<S: MarkingScheme + ?Sized>(rw: &PageRewrite<S>) -> bool {
-    matches!(rw.trigger, CategoryPredicate::Custom(_))
-        || matches!(rw.action, CategoryAction::Custom(_))
+    // Match on explicit references so the predicate stays correct
+    // even if a future variant introduces non-`Copy` payloads that
+    // default-binding-mode ergonomics won't cover.
+    matches!(&rw.trigger, CategoryPredicate::Custom(_))
+        || matches!(&rw.action, CategoryAction::Custom(_))
 }
 
 /// Pick a category from the rewrite cycle to name in the error.

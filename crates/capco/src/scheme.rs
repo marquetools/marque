@@ -399,7 +399,23 @@ impl CapcoScheme {
     /// [`Promote`]: marque_scheme::CategoryAction::Promote
     /// [`Engine::lint`]: marque_engine::Engine::lint
     fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
-        const NF_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        // `capco/noforn-clears-rel-to` reads `CAT_DISSEM` to look for
+        // NOFORN and writes `CAT_REL_TO` to clear it. It also reads
+        // `CAT_REL_TO` explicitly so the scheduler orders it AFTER
+        // any rewrite that writes REL TO — e.g.,
+        // `capco/joint-promotion` promotes JOINT country lists into
+        // REL TO, and the NOFORN clear must see those countries
+        // before deciding whether to drop them. Without this
+        // read-edge, JOINT-promotion could run after the clearer
+        // and reintroduce REL TO entries that should have been
+        // dropped.
+        //
+        // (REL TO appearing as its own category — rather than as a
+        // dissem-control subtype — is an artifact of `IsmAttributes`
+        // modeling country-list resolution separately; the rewrite
+        // semantics treat it as a first-class category that
+        // producers can write.)
+        const NF_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM, CAT_REL_TO];
         const NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
 
         const JP_READS: &[marque_scheme::CategoryId] = &[CAT_JOINT_CLASSIFICATION];

@@ -113,3 +113,29 @@ fn phase_3_scheduler_exposes_three_scheduled_rewrites() {
         ]
     );
 }
+
+#[test]
+fn phase_3_noforn_clearer_runs_after_joint_promotion() {
+    // `capco/joint-promotion` writes REL TO; `capco/noforn-clears-
+    // rel-to` reads REL TO (and writes it to clear it). The
+    // scheduler must order JOINT-promotion before the NOFORN
+    // clearer — otherwise JOINT could reintroduce REL TO entries
+    // after NOFORN cleared them. This ordering is a declarative
+    // guarantee of the scheme's `reads` / `writes` annotations,
+    // not an accident of declaration order.
+    let engine = engine();
+    let scheduled = engine.scheduled_rewrites();
+    let jp = scheduled
+        .iter()
+        .position(|&r| r == "capco/joint-promotion")
+        .expect("joint-promotion is declared");
+    let nf = scheduled
+        .iter()
+        .position(|&r| r == "capco/noforn-clears-rel-to")
+        .expect("noforn-clears-rel-to is declared");
+    assert!(
+        jp < nf,
+        "joint-promotion ({jp}) must be scheduled before \
+         noforn-clears-rel-to ({nf}) — scheduled order: {scheduled:?}",
+    );
+}
