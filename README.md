@@ -128,12 +128,21 @@ middleware.
 
 This project is licensed under the [Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`)](./LICENSE.md). Copyright 2026, Knitli Inc.
 
-## Why... Classification Markings?
+### Is it Open Source?
 
-Because I lived them for 18.5 years, and I'm unusually encyclopedic about them.
+That depends on who you ask. The Open Source Initiative (OSI) and Free Software Foundation (FSF) both would say **no**, because their definitions don't consider any provision that limits uses as open source or libre [^libre].
 
-I'm building what I wanted for 18.5 years everytime I used a poorly designed classification tool that slowed me down without helping me. I believe classifying a document correctly should take milliseconds, not 15+ minutes, and  `marque` is living proof. I can give that time back to the millions of people who have to classify or add control markings to documents every day.
+Marque *is* arguably open source under U.S. law[^open-source].
 
-### It should go without saying, but all classification markings are for testing and illustration purposes
+However you classify it, the Marque License is what is known as "fair code" or "source available." It tries to balance a few competing interests:
 
-Some folks need to hear that, it seems.
+- **Source is right here in the open.** An engineer can read, understand, and test it. I think that's a fundamental consumer right — you deserve to know what's under the hood and how meticulous I am about ensuring a high-quality product. You should also be able to freely conduct your own security testing, weighing the trade-off decisions I made against your own specific situation. That's nearly impossible with most enterprise software.
+
+- **You can freely use it for a lot of things.** You can deploy Marque on an internal server, run the demo for your office, and much more. I built this because I knew the problem was solvable — the existing solutions just reflect what happens when nobody with real domain expertise is building the tools.
+
+- **You can't use Marque against me.** I put a lot of time, care, and consideration into every detail of Marque. It's built on deep experience with marking systems. I let people use it for a lot of things for free — but I need to live, and I deserve some benefit from it too. I also don't want to see vendors who couldn't build this — and didn't — use it to undercut the people actually solving problems their customers have been waiting years for them to fix.
+
+---
+
+[^libre]: The definitions are very similar, but OSI uses the term 'open source' while the FSF uses 'libre'.
+[^open-source]: [Public Law 115-232](https://www.congress.gov/115/plaws/publ232/PLAW-115publ232.pdf) defines open source software as "software for which the human-readable source code is available for use, study, re-use, modification, enhancement, and re-distribution by the users of such software." Marque's source code is publicly available and meets this definition for internal use. Marque does not meet the [Open Source Definition](https://opensource.org/osd) maintained by the Open Source Initiative or the [Free Software Definition](https://www.gnu.org/philosophy/free-sw.html) maintained by the Free Software Foundation, because it restricts commercial redistribution.
