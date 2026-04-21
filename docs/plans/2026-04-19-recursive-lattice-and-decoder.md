@@ -1350,10 +1350,15 @@ Each phase block below lists: **Goal**, **Deliverables**,
       the new `CategoryAction::Promote { from: classification, to: fgi,
       transform }` variant. Trigger:
       `CategoryPredicate::Contains { category: classification, token:
-      US_PRESENCE }` (the `US_PRESENCE` token is a structural marker
-      emitted by the parser when any portion of the page carries US
-      classification, including as the US member of a JOINT marking).
-      Citation: CAPCO §J — confirm exact subsection in the PR.
+      US_PRESENCE }`, where `US_PRESENCE` is a **planned Phase C
+      placeholder name** for a structural marker emitted/derived by the
+      parser when any portion of the page carries US classification,
+      including as the US member of a JOINT marking. This is not a
+      current token name in the codebase; the implementation should use
+      the existing CAPCO sentinel-token mechanism (today including
+      tokens such as `TOK_USA` and `TOK_JOINT`) or introduce a clearly
+      named equivalent when Phase C is implemented. Citation: CAPCO §J
+      — confirm exact subsection in the PR.
     - **FGI-absorption** (`capco/unattributed-fgi-absorbs-attributed`)
       declared as a `PageRewrite` via `PageRewrite::custom` with explicit
       `reads = &[fgi]` / `writes = &[fgi]`. The within-axis collapse
