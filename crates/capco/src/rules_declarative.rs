@@ -5,13 +5,23 @@
 //! Declarative CAPCO rule wrappers (T035).
 //!
 //! Each wrapper here replaces a hand-written `Rule` impl in
-//! `crate::rules`. The wrapper calls `CapcoScheme::validate(marking)`
-//! as a **trigger** (did the catalog's declared predicate fire?) and,
-//! when it did, enumerates `attrs` locally to build `Diagnostic`
-//! values with byte-identical message/span/fix output. This keeps
-//! the catalog in `crate::scheme::build_constraints()` as the
-//! authoritative source for "which invariant fires" while the
-//! wrappers own the user-visible emission shape.
+//! `crate::rules`. The wrapper calls
+//! [`CapcoScheme::evaluate_named_constraint`] as a **trigger** (did
+//! the catalog's declared predicate fire?) and, when it did,
+//! enumerates `attrs` locally to build `Diagnostic` values with
+//! byte-identical message/span/fix output. This keeps the catalog
+//! in `crate::scheme::build_constraints()` as the authoritative
+//! source for "which invariant fires" while the wrappers own the
+//! user-visible emission shape.
+//!
+//! `evaluate_named_constraint` is the inherent fast path on
+//! `CapcoScheme` that takes `&IsmAttributes` directly and dispatches
+//! only the single named predicate — no `CapcoMarking` wrap, no full
+//! catalog walk. The trait-path `scheme.validate()` + post-hoc
+//! filtering that an earlier revision used iterated all ~13 catalog
+//! entries per wrapper (11× overhead per marking); the named path
+//! reduces that to a linear `find`-by-name plus one predicate
+//! dispatch.
 //!
 //! ## Why trigger-only, not violation-driven
 //!
@@ -56,10 +66,10 @@ use std::sync::LazyLock;
 
 use marque_ism::{IsmAttributes, Span, TokenKind, TokenSpan};
 use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
-use marque_scheme::{ConstraintViolation, MarkingScheme};
+use marque_scheme::ConstraintViolation;
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
-use crate::scheme::{CapcoMarking, CapcoScheme};
+use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -70,30 +80,31 @@ use crate::scheme::{CapcoMarking, CapcoScheme};
 /// only `&'static` references + `Vec`s of fixed-size entries, so a
 /// single instance is sound for all threads and all documents.
 ///
-/// Hoisting this out of `violations_for` eliminates the per-wrapper
-/// `CapcoScheme::new()` allocation — with 11 declarative wrappers in
-/// the rule set, a single document with N markings was doing 11×N
-/// scheme constructions before. Constitution VI's "rules MUST be
-/// stateless" guarantee is preserved because the wrappers themselves
-/// carry no state; the `LazyLock` lives outside the `Rule` impls.
+/// Constitution VI's "rules MUST be stateless" guarantee holds
+/// because the wrapper structs themselves carry no state; the
+/// `LazyLock` lives at module scope, outside the `Rule` impls.
 static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
-/// Run the scheme's constraint evaluator and return only the
-/// violations whose `constraint_label` matches one of `wanted`.
+/// Evaluate a single named constraint via the fast path
+/// ([`CapcoScheme::evaluate_named_constraint`]), returning the
+/// violations (if any) that the named predicate produced.
 ///
-/// Still allocates: each call clones `IsmAttributes` into a
-/// `CapcoMarking` and runs the full constraint loop. Sharing one
-/// `validate()` result across all 11 wrappers per marking would
-/// require threading a per-marking cache through `RuleContext`
-/// (a `marque-rules` trait-surface change) — deferred until
-/// benchmark data shows the remaining overhead is material on the
-/// SC-001 p95 path.
-fn violations_for(attrs: &IsmAttributes, wanted: &[&'static str]) -> Vec<ConstraintViolation> {
-    SCHEME
-        .validate(&CapcoMarking(attrs.clone()))
-        .into_iter()
-        .filter(|v| wanted.contains(&v.constraint_label))
-        .collect()
+/// **No clone, no catalog walk.** This is the key perf-difference
+/// from the earlier `validate()`-plus-filter pattern:
+///
+/// - `evaluate_named_constraint` takes `&IsmAttributes` directly, so
+///   the wrapper doesn't have to `CapcoMarking(attrs.clone())` to
+///   cross the trait boundary.
+/// - It finds the constraint by name (linear scan of ~13 entries)
+///   and dispatches only that one predicate. The old `validate()`
+///   path walked the entire catalog per wrapper call — with 11
+///   declarative wrappers that was an 11× overhead on every
+///   marking.
+///
+/// The wrapper struct + its `check()` signature stay unchanged;
+/// this is a pure perf path swap.
+fn violations_for(attrs: &IsmAttributes, name: &'static str) -> Vec<ConstraintViolation> {
+    SCHEME.evaluate_named_constraint(attrs, name)
 }
 
 /// Return the `Span` of the first token in `attrs.token_spans` whose
@@ -147,7 +158,7 @@ impl Rule for DeclarativeBareHcsRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::SciControl;
 
-        let violations = violations_for(attrs, &["E010/HCS-system-constraints"]);
+        let violations = violations_for(attrs, "E010/HCS-system-constraints");
         let bare_hcs_fired = violations.iter().any(|v| {
             v.message.starts_with("Bare HCS is legacy")
                 || v.message.starts_with("HCS requires a compartment")
@@ -233,7 +244,7 @@ impl Rule for DeclarativeDualClassificationRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
-        if violations_for(attrs, &["E012/dual-classification"]).is_empty() {
+        if violations_for(attrs, "E012/dual-classification").is_empty() {
             return vec![];
         }
 
@@ -328,7 +339,7 @@ impl Rule for DeclarativeJointRelToRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingClassification;
 
-        if violations_for(attrs, &["E014/joint-requires-rel-to-coverage"]).is_empty() {
+        if violations_for(attrs, "E014/joint-requires-rel-to-coverage").is_empty() {
             return vec![];
         }
 
@@ -381,7 +392,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E015/non-us-requires-dissem"]).is_empty() {
+        if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
         }
 
@@ -421,7 +432,7 @@ impl Rule for DeclarativeJointRestrictedRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E016/joint-conflicts-restricted"]).is_empty() {
+        if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
             return vec![];
         }
 
@@ -457,7 +468,7 @@ impl Rule for DeclarativeJointFgiRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E017/joint-conflicts-fgi"]).is_empty() {
+        if violations_for(attrs, "E017/joint-conflicts-fgi").is_empty() {
             return vec![];
         }
 
@@ -493,7 +504,7 @@ impl Rule for DeclarativeAeaNofornRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E021/aea-requires-noforn"]).is_empty() {
+        if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
         }
 
@@ -530,7 +541,7 @@ impl Rule for DeclarativeCnwdiConstraintRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E022/CNWDI-classification-floor"]).is_empty() {
+        if violations_for(attrs, "E022/CNWDI-classification-floor").is_empty() {
             return vec![];
         }
 
@@ -572,7 +583,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::AeaMarking;
 
-        if violations_for(attrs, &["E024/rd-precedence"]).is_empty() {
+        if violations_for(attrs, "E024/rd-precedence").is_empty() {
             return vec![];
         }
 
@@ -622,7 +633,7 @@ impl Rule for DeclarativeUcniClassificationRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, &["E025/ucni-conflicts-classification"]).is_empty() {
+        if violations_for(attrs, "E025/ucni-conflicts-classification").is_empty() {
             return vec![];
         }
 
@@ -666,7 +677,7 @@ impl Rule for DeclarativeCominglingWarningRule {
             return vec![];
         }
 
-        if violations_for(attrs, &["W002/us-commingled-with-fgi"]).is_empty() {
+        if violations_for(attrs, "W002/us-commingled-with-fgi").is_empty() {
             return vec![];
         }
 

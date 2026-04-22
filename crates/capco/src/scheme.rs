@@ -890,6 +890,218 @@ pub enum CapcoParseError {
     NotImplemented,
 }
 
+// ---------------------------------------------------------------------------
+// Predicate implementations (free functions — trait impls delegate here)
+// ---------------------------------------------------------------------------
+//
+// `satisfies_attrs` and `evaluate_custom_by_attrs` are the source of
+// truth for CAPCO's constraint semantics. They take `&IsmAttributes`
+// directly to avoid forcing callers on the fast path to wrap in
+// `CapcoMarking` (which would require cloning the attributes). The
+// trait impls on `CapcoScheme` delegate to them, and the fast-path
+// inherent method `CapcoScheme::evaluate_named_constraint` uses them
+// directly to dispatch a single named constraint without walking
+// the whole catalog.
+
+/// Resolve a [`TokenRef`] against raw [`marque_ism::IsmAttributes`].
+///
+/// **Token-presence semantics** (T035):
+/// - [`TokenRef::Token(id)`] returns true when the marking carries
+///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
+///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere in
+///   `aea_markings`", etc.
+/// - [`TokenRef::AnyInCategory(cat)`] returns true when the category
+///   has at least one populated value. `CAT_DISSEM` intentionally
+///   counts both `dissem_controls` AND `rel_to` as dissem-flavored
+///   presence, matching the historical E015 predicate.
+///
+/// `MarkingClassification::Conflict` is deliberately excluded from
+/// `TOK_NON_US_CLASSIFICATION` / `CAT_NON_US_CLASSIFICATION` — that
+/// state is E012's concern, not E015's.
+///
+/// Sentinel `TokenId`s not used by the current catalog
+/// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`;
+/// they are declared for future T035b consumption.
+fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> bool {
+    use marque_ism::{
+        AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
+        SciControlSystem,
+    };
+    match token_ref {
+        TokenRef::Token(id) => match *id {
+            TOK_NOFORN => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Nf)),
+            TOK_USA => attrs.rel_to.contains(&Trigraph::USA),
+            TOK_JOINT => {
+                matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+            }
+            TOK_RESTRICTED => matches!(
+                &attrs.classification,
+                Some(c) if c.effective_level() == Classification::Restricted
+            ),
+            TOK_RD => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Rd(_))),
+            TOK_FRD => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Frd(_))),
+            TOK_TFNI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Tfni)),
+            TOK_CNWDI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)),
+            TOK_UCNI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            TOK_HCS => {
+                attrs.sci_controls.contains(&SciControl::Hcs)
+                    || attrs.sci_markings.iter().any(|m| {
+                        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                    })
+            }
+            TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
+            TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
+            // `Conflict` deliberately excluded — see fn doc.
+            TOK_NON_US_CLASSIFICATION => matches!(
+                &attrs.classification,
+                Some(
+                    MarkingClassification::Fgi(_)
+                        | MarkingClassification::Nato(_)
+                        | MarkingClassification::Joint(_)
+                )
+            ),
+            TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
+            _ => false,
+        },
+        TokenRef::AnyInCategory(cat) => match *cat {
+            CAT_CLASSIFICATION => attrs.classification.is_some(),
+            // `Conflict` deliberately excluded — see fn doc.
+            CAT_NON_US_CLASSIFICATION => matches!(
+                &attrs.classification,
+                Some(
+                    MarkingClassification::Fgi(_)
+                        | MarkingClassification::Nato(_)
+                        | MarkingClassification::Joint(_)
+                )
+            ),
+            CAT_JOINT_CLASSIFICATION => {
+                matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+            }
+            CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
+            CAT_SAR => attrs.sar_markings.is_some(),
+            CAT_AEA => !attrs.aea_markings.is_empty(),
+            CAT_FGI_MARKER => attrs.fgi_marker.is_some(),
+            CAT_DISSEM => !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty(),
+            CAT_REL_TO => !attrs.rel_to.is_empty(),
+            CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
+            _ => false,
+        },
+    }
+}
+
+/// Route a `Constraint::Custom` by name to its scheme-private
+/// predicate helper. Returns an empty `Vec` for unknown names
+/// (forward-compat with future catalog entries).
+fn evaluate_custom_by_attrs(
+    attrs: &marque_ism::IsmAttributes,
+    name: &'static str,
+) -> Vec<ConstraintViolation> {
+    match name {
+        "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p61-62"),
+        "E012/dual-classification" => e012_dual_classification(attrs),
+        "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
+        "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
+        "E022/CNWDI-classification-floor" => e022_cnwdi_floor(attrs),
+        "E024/rd-precedence" => e024_rd_precedence(attrs),
+        "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
+        "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
+        "capco/joint-requires-usa" => joint_requires_usa(attrs),
+        _ => Vec::new(),
+    }
+}
+
+impl CapcoScheme {
+    /// Evaluate a single constraint by `name` against raw
+    /// `IsmAttributes`. Fast path for rule wrappers that want "did
+    /// this specific predicate fire?" without the overhead of a
+    /// full `MarkingScheme::validate()` call.
+    ///
+    /// Compared to `scheme.validate(&CapcoMarking(attrs.clone()))`:
+    /// - **No `IsmAttributes` clone** — works on the borrow directly
+    /// - **No full catalog walk** — linear `find` by `name` over the
+    ///   ~13 catalog entries, then single dispatch. O(1) effectively;
+    ///   the filter step that the wrappers previously did after
+    ///   `validate()` is eliminated.
+    /// - **No `CapcoMarking` wrap** — delegates straight to the
+    ///   free-function predicates (`satisfies_attrs`,
+    ///   `evaluate_custom_by_attrs`), which is also what the trait
+    ///   impls use.
+    ///
+    /// Contract: the emitted `ConstraintViolation.constraint_label`
+    /// and `.citation` are populated from the catalog entry's
+    /// declared `name` and `label`, matching the normalization that
+    /// `marque_scheme::constraint::evaluate` performs in its
+    /// `Custom` arm. Dyadic-variant violations carry a generic
+    /// "conflicting tokens" / "token X requires Y" message — same
+    /// as the generic evaluator — because the wrapper layer is
+    /// responsible for constructing the user-visible diagnostic
+    /// text, not the scheme.
+    pub(crate) fn evaluate_named_constraint(
+        &self,
+        attrs: &marque_ism::IsmAttributes,
+        name: &'static str,
+    ) -> Vec<ConstraintViolation> {
+        let Some(c) = self.constraints.iter().find(|c| c.name() == name) else {
+            return Vec::new();
+        };
+        let label = c.label();
+        match c {
+            Constraint::Conflicts { left, right, .. } => {
+                if satisfies_attrs(attrs, left) && satisfies_attrs(attrs, right) {
+                    vec![ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("conflicting tokens: {left:?} and {right:?}"),
+                        citation: label,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            }
+            Constraint::Requires { left, right, .. } => {
+                if satisfies_attrs(attrs, left) && !satisfies_attrs(attrs, right) {
+                    vec![ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("token {left:?} requires {right:?} but it is missing"),
+                        citation: label,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            }
+            // `Implies` is informational; `Supersedes` is a lattice
+            // hint. Neither emits diagnostics — matches the behavior
+            // of `marque_scheme::constraint::evaluate`.
+            Constraint::Implies { .. } | Constraint::Supersedes { .. } => Vec::new(),
+            Constraint::Custom { .. } => evaluate_custom_by_attrs(attrs, name)
+                .into_iter()
+                .map(|mut v| {
+                    v.constraint_label = name;
+                    v.citation = label;
+                    v
+                })
+                .collect(),
+        }
+    }
+}
+
 // T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
 // implemented on `CapcoScheme`, so calling
 // `marque_scheme::constraint::evaluate(&CapcoScheme::new(), &m)`
@@ -897,12 +1109,11 @@ pub enum CapcoParseError {
 // fires every dyadic and Custom constraint in the catalog.
 //
 // The 11 hand-written rule impls retired by T035 dispatch through
-// `crate::rules_declarative`, which uses `scheme.validate()` as a
-// trigger and constructs `Diagnostic` values locally for byte-
-// identical message/span/fix output. E018 / E019 remain hand-
-// written pending the T035b predicate audit (their CAPCO §H.3
-// citations are over-restrictive — see project memory
-// "Audit predicates against source").
+// `crate::rules_declarative`, which uses the inherent fast-path
+// method `CapcoScheme::evaluate_named_constraint` above (not the
+// trait-path `validate`) and constructs `Diagnostic` values
+// locally for byte-identical message/span/fix output. E018 / E019
+// remain hand-written pending the T035b predicate audit.
 impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;
@@ -958,140 +1169,28 @@ impl MarkingScheme for CapcoScheme {
     /// E018/E019 catalog entries are added back with corrected
     /// predicates. Categories not listed (none today) likewise fall
     /// through.
+    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
+    /// storage. Drives the dyadic-variant arms of
+    /// [`marque_scheme::constraint::evaluate`] when callers go through
+    /// the trait path; the free-function `satisfies_attrs` below is
+    /// the authoritative implementation.
+    ///
+    /// See `satisfies_attrs` for the full sentinel-to-predicate
+    /// table.
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
-        use marque_ism::{
-            AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
-            SciControlSystem,
-        };
-        let attrs = &marking.0;
-        match token_ref {
-            TokenRef::Token(id) => match *id {
-                TOK_NOFORN => attrs
-                    .dissem_controls
-                    .iter()
-                    .any(|d| matches!(d, DissemControl::Nf)),
-                TOK_USA => attrs.rel_to.contains(&Trigraph::USA),
-                TOK_JOINT => {
-                    matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
-                }
-                TOK_RESTRICTED => matches!(
-                    &attrs.classification,
-                    Some(c) if c.effective_level() == Classification::Restricted
-                ),
-                TOK_RD => attrs
-                    .aea_markings
-                    .iter()
-                    .any(|a| matches!(a, AeaMarking::Rd(_))),
-                TOK_FRD => attrs
-                    .aea_markings
-                    .iter()
-                    .any(|a| matches!(a, AeaMarking::Frd(_))),
-                TOK_TFNI => attrs
-                    .aea_markings
-                    .iter()
-                    .any(|a| matches!(a, AeaMarking::Tfni)),
-                TOK_CNWDI => attrs
-                    .aea_markings
-                    .iter()
-                    .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)),
-                TOK_UCNI => attrs
-                    .aea_markings
-                    .iter()
-                    .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
-                TOK_HCS => {
-                    attrs.sci_controls.contains(&SciControl::Hcs)
-                        || attrs.sci_markings.iter().any(|m| {
-                            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
-                        })
-                }
-                TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
-                TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
-                // `MarkingClassification::Conflict` is NOT treated as
-                // non-US for presence checks. It is a parser-internal
-                // "both US + foreign classification present" state
-                // that E012 already fires on as a dual-classification
-                // diagnostic. Including it here would cause E015
-                // (`non-US-requires-dissem`) to double-emit on every
-                // dual-classification marking, which the legacy
-                // `NonUsMissingDissemRule` never did.
-                TOK_NON_US_CLASSIFICATION => matches!(
-                    &attrs.classification,
-                    Some(
-                        MarkingClassification::Fgi(_)
-                            | MarkingClassification::Nato(_)
-                            | MarkingClassification::Joint(_)
-                    )
-                ),
-                // T035b sentinels — see method-level note above.
-                TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
-                _ => false,
-            },
-            TokenRef::AnyInCategory(cat) => match *cat {
-                CAT_CLASSIFICATION => attrs.classification.is_some(),
-                // See `TOK_NON_US_CLASSIFICATION` above — `Conflict`
-                // is deliberately excluded so E015 does not double-
-                // emit on dual-classification markings handled by
-                // E012.
-                CAT_NON_US_CLASSIFICATION => matches!(
-                    &attrs.classification,
-                    Some(
-                        MarkingClassification::Fgi(_)
-                            | MarkingClassification::Nato(_)
-                            | MarkingClassification::Joint(_)
-                    )
-                ),
-                CAT_JOINT_CLASSIFICATION => {
-                    matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
-                }
-                CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
-                CAT_SAR => attrs.sar_markings.is_some(),
-                CAT_AEA => !attrs.aea_markings.is_empty(),
-                CAT_FGI_MARKER => attrs.fgi_marker.is_some(),
-                CAT_DISSEM => {
-                    // REL TO is a dissem control per CAPCO §H.8; the
-                    // historical E015 predicate counts either
-                    // dissem_controls OR rel_to as "dissem present".
-                    !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty()
-                }
-                CAT_REL_TO => !attrs.rel_to.is_empty(),
-                CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
-                _ => false,
-            },
-        }
+        satisfies_attrs(&marking.0, token_ref)
     }
 
     /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
-    /// predicate body.
-    ///
-    /// Each branch returns one or more [`ConstraintViolation`]s when
-    /// the named predicate fires. The caller
-    /// ([`marque_scheme::constraint::evaluate`]) overwrites
-    /// `constraint_label` and `citation` on every returned violation
-    /// with the catalog entry's `name` / `label` — the helper bodies
-    /// can put any value in those fields. They populate `message` with
-    /// scheme-specific text that the wrapper layer
-    /// (`crate::rules_declarative`) inspects when constructing
-    /// `Diagnostic` values.
+    /// predicate body. Delegates to `evaluate_custom_by_attrs`, the
+    /// name→helper router that the fast-path
+    /// [`Self::evaluate_named_constraint`] uses.
     fn evaluate_custom(
         &self,
         name: &'static str,
         marking: &Self::Marking,
     ) -> Vec<ConstraintViolation> {
-        let attrs = &marking.0;
-        match name {
-            "E010/HCS-system-constraints" => {
-                hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p61-62")
-            }
-            "E012/dual-classification" => e012_dual_classification(attrs),
-            "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
-            "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
-            "E022/CNWDI-classification-floor" => e022_cnwdi_floor(attrs),
-            "E024/rd-precedence" => e024_rd_precedence(attrs),
-            "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
-            "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
-            "capco/joint-requires-usa" => joint_requires_usa(attrs),
-            _ => Vec::new(),
-        }
+        evaluate_custom_by_attrs(&marking.0, name)
     }
 
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
