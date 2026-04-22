@@ -425,9 +425,13 @@ impl CapcoScheme {
         const FA_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
 
         vec![
+            // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
+            // Line Roll-Up) Rule #2 specifies that NOFORN supersedes
+            // REL TO at banner scope; the H.8 NOFORN entry line 9488
+            // back-references this table.
             PageRewrite::declarative(
                 "capco/noforn-clears-rel-to",
-                "CAPCO-2016 §F.2 p43",
+                "CAPCO-2016 §D.2 Table 3 + §H.8 p145",
                 CategoryPredicate::Contains {
                     category: CAT_DISSEM,
                     token: TOK_NOFORN,
@@ -439,6 +443,11 @@ impl CapcoScheme {
                 NF_WRITES,
             ),
             // JOINT-promotion: JOINT countries promote into REL TO.
+            // §H.3 line 4025-4026 establishes the JOINT [LIST]
+            // membership rule; lines 4192-4200 describe the
+            // banner-line construction (REL TO including all common
+            // non-US trigraphs from JOINT portions).
+            //
             // The trigger is a `Custom` `never_fires` predicate for
             // Phase 3 — runtime dispatch stays with [`PageContext`],
             // and we do not want scheme.project() to accidentally
@@ -449,7 +458,7 @@ impl CapcoScheme {
             // a real presence predicate and supplies a real transform.
             PageRewrite::custom(
                 "capco/joint-promotion",
-                "CAPCO-2016 §K.2",
+                "CAPCO-2016 §H.3 p57 lines 4192-4200",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Promote {
                     from: CAT_JOINT_CLASSIFICATION,
@@ -460,12 +469,15 @@ impl CapcoScheme {
                 JP_WRITES,
             ),
             // FGI-absorption: FGI tokens roll up from portions into
-            // the banner-level FGI category. Self-read / self-write —
-            // the scheduler sees the intra-category dataflow. Trigger
-            // is `never_fires` for the same reason as joint-promotion.
+            // the banner-level FGI category. §H.7 lines 8240-8252
+            // describe FGI banner-line composition: "Used as a content
+            // indicator... Use FGI + ... trigraph country code(s) ...
+            // in the banner line." Self-read / self-write — the
+            // scheduler sees the intra-category dataflow. Trigger is
+            // `never_fires` for the same reason as joint-promotion.
             PageRewrite::custom(
                 "capco/fgi-absorption",
-                "CAPCO-2016 §K p61",
+                "CAPCO-2016 §H.7 p123 lines 8240-8252",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Promote {
                     from: CAT_FGI_MARKER,
@@ -663,149 +675,201 @@ impl CapcoScheme {
     }
 
     fn build_constraints() -> Vec<Constraint> {
-        // The Phase 3 constraint catalog lists every CAPCO
-        // declarative invariant visible to tooling. Constraints here
-        // are *data for inspection* — the engine's diagnostic stream
-        // still comes from hand-written rules in `crate::rules` so
-        // that Phase 3 preserves byte-identical corpus output. Phase
-        // 4 / Phase E wires runtime evaluation through these
-        // declarations via the generic evaluator
-        // ([`marque_scheme::constraint::evaluate`]).
+        // The CAPCO declarative constraint catalog. Every entry's
+        // `label` cites a verified passage in
+        // `crates/capco/docs/CAPCO-2016.md`; non-normative sections
+        // (§I-K — history, examples, acronym list) are NOT valid
+        // citation targets. See Constitution VIII and the project
+        // memory entry "CAPCO doc structure".
         //
-        // Each entry carries a `label` pointing at the authoritative
-        // CAPCO-2016 passage; citations are re-verified at commit
-        // time per Constitution VIII.
+        // T035 (2026-04-21) wired runtime evaluation through this
+        // catalog: dyadic variants dispatch via the generic evaluator
+        // (`crate::constraint::evaluate`) using
+        // [`Self::satisfies`]; `Custom` variants dispatch through
+        // [`Self::evaluate_custom`] to scheme-private predicate
+        // helpers below. The hand-written `Rule` impls in
+        // `crate::rules` that previously enforced these invariants
+        // are retired in the same PR; `crate::rules_declarative`
+        // hosts thin wrappers that call `scheme.validate()` and
+        // construct `Diagnostic` values with byte-identical
+        // message/span/fix output.
+        //
+        // E018 (`joint-conflicts-ic-dissem`) and E019
+        // (`joint-conflicts-non-ic-dissem`) are intentionally NOT
+        // declared here. Both rules' predicates contradict
+        // CAPCO-2016 §H.3 lines 4140-4146, which explicitly permit
+        // JOINT with IC and non-IC dissem controls (excluding only
+        // NOFORN and HCS). Predicate fix is tracked as T035b; the
+        // existing hand-written rules remain registered (with their
+        // legacy citations) until T035b lands.
         vec![
-            // E010 — bare HCS is legacy; HCS requires a qualifying
-            // variant (HCS-P or HCS-O) plus the subsystem rules in
-            // §4 p62. Dispatched via `Constraint::Custom` because the
-            // set is n-ary (bare-HCS detection + O/P rules + ORCON
-            // pairing + classification floor).
+            // ---- E010: HCS subsystem rules (CAPCO-2016 §H.4) -----
+            //
+            // Bare HCS is legacy; HCS-O requires ORCON; HCS-P
+            // requires ORCON or ORCON-USGOV; HCS-O/P require S or
+            // TS. The full sub-rule set lives in
+            // `hcs_system_constraints` because the predicate is
+            // n-ary and emits multiple violations per offending
+            // marking (one per failing sub-rule).
             Constraint::Custom {
                 name: "E010/HCS-system-constraints",
-                label: "CAPCO-2016 §4 p62",
+                label: "CAPCO-2016 §H.4 p61-62",
             },
-            // E012 — a US classification cannot co-occur with a
-            // concurrent foreign classification (FGI / NATO / JOINT)
-            // on the same marking.
-            Constraint::Conflicts {
-                name: "E012/us-conflicts-non-us-classification",
-                left: TokenRef::Token(TOK_US_CLASSIFIED),
-                right: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
-                label: "CAPCO-2016 §I.3",
+            // ---- E012: dual classification (CAPCO-2016 §H.3 p55) -
+            //
+            // §H.3 line 4017-4018: "The US, non-US, and JOINT
+            // classification markings are mutually exclusive – a
+            // banner line or portion mark may contain only one type
+            // and value for the classification marking."
+            //
+            // Custom (not Conflicts) because the predicate inspects
+            // a single field — `MarkingClassification::Conflict {
+            // us, foreign }` — that the parser populates when it
+            // encounters two systems in one marking.
+            Constraint::Custom {
+                name: "E012/dual-classification",
+                label: "CAPCO-2016 §H.3 p55",
             },
-            // E015 — non-US classifications (FGI / NATO / JOINT) must
-            // carry a dissemination control (REL TO or an IC-approved
-            // dissem marker).
+            // ---- E014: JOINT requires REL TO coverage (§H.3 p56) -
+            //
+            // §H.3 line 4139: "Requires REL TO USA, LIST". Every
+            // JOINT participant MUST also appear in the marking's
+            // REL TO list. Custom (not Requires) because the check
+            // is iterative across all JOINT countries.
+            Constraint::Custom {
+                name: "E014/joint-requires-rel-to-coverage",
+                label: "CAPCO-2016 §H.3 p56",
+            },
+            // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
+            //
+            // FGI markings require explicit foreign release per
+            // §H.7 lines 8254-8268 and §B.3.d (line 1025-1032);
+            // JOINT requires REL TO per §H.3 line 4139. The
+            // simplified dyadic predicate "non-US classification +
+            // empty dissem" captures the common-case violation. The
+            // narrower per-system requirements (FGI-specific,
+            // JOINT-specific) are separately enforced by E014 and
+            // by the existing hand-written rules.
             Constraint::Requires {
                 name: "E015/non-us-requires-dissem",
                 left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
                 right: TokenRef::AnyInCategory(CAT_DISSEM),
-                label: "CAPCO-2016 §K p61",
+                label: "CAPCO-2016 §H.7 + §B.3.d",
             },
-            // E016 — JOINT classifications cannot co-occur with
-            // RESTRICTED (JOINT has its own classification floor that
-            // RESTRICTED is below).
+            // ---- E016: JOINT conflicts RESTRICTED (§H.3 p55) -----
+            //
+            // §H.3 line 4125-4127: "May not be used with
+            // RESTRICTED. (Note: the US is always a JOINT marking
+            // owner/producer; and RESTRICTED is not an authorized
+            // US classification marking.)"
             Constraint::Conflicts {
                 name: "E016/joint-conflicts-restricted",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_RESTRICTED),
-                label: "CAPCO-2016 §K.2",
+                label: "CAPCO-2016 §H.3 p55",
             },
-            // E017 — JOINT cannot co-occur with an explicit FGI
-            // marker (JOINT already enumerates origin; FGI would
-            // double-mark).
+            // ---- E017: JOINT conflicts FGI marker (§H.3 p56) -----
+            //
+            // §H.3 line 4017-4018 (mutually-exclusive systems);
+            // p57 lines 4163-4164: "If FGI information is used in a
+            // JOINT classified document, refer to Section H.7." A
+            // JOINT marking with a separate FGI block is malformed.
             Constraint::Conflicts {
                 name: "E017/joint-conflicts-fgi",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_FGI_MARKER),
-                label: "CAPCO-2016 §K.2",
+                label: "CAPCO-2016 §H.3 p56",
             },
-            // E018 — JOINT conflicts with IC dissemination controls
-            // other than REL TO (which is required by §K.2).
-            Constraint::Conflicts {
-                name: "E018/joint-conflicts-ic-dissem",
-                left: TokenRef::Token(TOK_JOINT),
-                right: TokenRef::Token(TOK_IC_DISSEM),
-                label: "CAPCO-2016 §K.2 p66",
-            },
-            // E019 — JOINT conflicts with non-IC dissemination
-            // controls (LIMDIS / SBU / etc.).
-            Constraint::Conflicts {
-                name: "E019/joint-conflicts-non-ic-dissem",
-                left: TokenRef::Token(TOK_JOINT),
-                right: TokenRef::Token(TOK_NON_IC_DISSEM),
-                label: "CAPCO-2016 §K.2 p66",
-            },
-            // E021 — AEA tokens (RD / FRD) require NOFORN by default
-            // per §H.1.
-            Constraint::Requires {
+            // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
+            //
+            // §H.6 RD entry line 6811: "Is always used with NOFORN
+            // unless a sharing agreement has been established per
+            // the Atomic Energy Act. (Ref. Sections 123 and 144...)".
+            // The "always used with NOFORN" requirement applies to
+            // RD, FRD, and TFNI specifically — not UCNI (DOD/DOE
+            // UCNI §H.6 lines 7706+ carry no such requirement) and
+            // not to any future AEA entry added to the category.
+            // Custom (not `Requires { left: AnyInCategory(CAT_AEA) }`)
+            // because that dyadic shape would sweep UCNI in: a valid
+            // `U//UCNI` marking would incorrectly require NOFORN.
+            Constraint::Custom {
                 name: "E021/aea-requires-noforn",
-                left: TokenRef::AnyInCategory(CAT_AEA),
-                right: TokenRef::Token(TOK_NOFORN),
-                label: "CAPCO-2016 §H.1",
+                label: "CAPCO-2016 §H.6 p104",
             },
-            // E022 — CNWDI has a classification floor of TS or S
-            // (implication expressed as a Custom constraint because
-            // the floor is an enum-range rather than a single token).
+            // ---- E022: CNWDI classification floor (§H.6 p106) ----
+            //
+            // §H.6 CNWDI entry line 6963 / 6967: "Applicable only to
+            // Top Secret or Secret RD information" / "May only be
+            // used with TOP SECRET RD or SECRET RD." Custom because
+            // the floor predicate ("classification ≥ S") is a level
+            // comparison, not a single-token check.
             Constraint::Custom {
                 name: "E022/CNWDI-classification-floor",
-                label: "CAPCO-2016 §H.1",
+                label: "CAPCO-2016 §H.6 p106",
             },
-            // E024 — RD supersedes FRD and TFNI when both appear in
-            // the AEA set. Declared as two `Supersedes` entries so
-            // catalog consumers see the full supersession relation.
-            Constraint::Supersedes {
-                name: "E024/rd-supersedes-frd",
-                left: TokenRef::Token(TOK_RD),
-                right: TokenRef::Token(TOK_FRD),
-                label: "CAPCO-2016 §H.1",
+            // ---- E024: RD precedence (§H.6 p104) -----------------
+            //
+            // §H.6 RD entry line 6825-6826: "If RD, FRD, and TFNI
+            // portions are in a document, the RD takes precedence
+            // and is conveyed in the banner line." Custom (not
+            // Supersedes) because Supersedes is a banner-rollup
+            // hint that doesn't fire diagnostics; the per-portion
+            // commingling violation is what E024 reports. The
+            // banner-rollup Supersedes entries are intentionally
+            // deferred until Phase E wires them through
+            // `project(Scope::Page, ...)`.
+            Constraint::Custom {
+                name: "E024/rd-precedence",
+                label: "CAPCO-2016 §H.6 p104",
             },
-            Constraint::Supersedes {
-                name: "E024/rd-supersedes-tfni",
-                left: TokenRef::Token(TOK_RD),
-                right: TokenRef::Token(TOK_TFNI),
-                label: "CAPCO-2016 §H.1",
-            },
-            // E025 — UCNI conflicts with classified markings (it is
-            // unclassified-but-controlled and cannot coexist with a
-            // classification level).
-            Constraint::Conflicts {
+            // ---- E025: UCNI conflicts classification (§H.6 p116) -
+            //
+            // §H.6 DOD UCNI entry line 7706 / 7710: "Applicable only
+            // to unclassified information" / "May only be used with
+            // UNCLASSIFIED." Custom (not Conflicts) because the
+            // predicate distinguishes UNCLASSIFIED (allowed) from
+            // C/S/TS (forbidden) — a level comparison rather than
+            // mere presence/absence.
+            Constraint::Custom {
                 name: "E025/ucni-conflicts-classification",
-                left: TokenRef::Token(TOK_UCNI),
-                right: TokenRef::AnyInCategory(CAT_CLASSIFICATION),
-                label: "CAPCO-2016 §H.1",
+                label: "CAPCO-2016 §H.6 p116",
             },
-            // W002 — a US classification alongside an FGI marker is
-            // a warning-level co-mingling event (§K.2 documents the
-            // legal commingling rules; `CominglingWarningRule`
-            // surfaces the warning).
-            Constraint::Conflicts {
+            // ---- W002: US + FGI commingling (§H.7 p124) ----------
+            //
+            // §H.7 lines 8254-8268: documents not marked per ICD 206
+            // "must segregate the FGI from US portions." Custom (not
+            // Conflicts) because the rule is portion-only — the
+            // wrapper filters by `RuleContext::marking_type` after
+            // the predicate fires.
+            Constraint::Custom {
                 name: "W002/us-commingled-with-fgi",
-                left: TokenRef::Token(TOK_US_CLASSIFIED),
-                right: TokenRef::Token(TOK_FGI_MARKER),
-                label: "CAPCO-2016 §K.2",
+                label: "CAPCO-2016 §H.7 p124",
             },
-            // Existing Phase B sample constraints — retained so the
-            // scheme_equivalence tests that read the catalog keep
-            // their anchors. The three constraints below are
-            // **already implemented** as declarative + Custom entries;
-            // Phase 3 added the 12 above for catalog completeness.
-
-            // NOFORN ∥ REL TO — portion-level exclusion (§A.4).
+            // ---- capco/noforn-conflicts-rel-to (§H.8 p145) -------
+            //
+            // §H.8 NOFORN entry line 9482: "Cannot be used with
+            // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY." This is
+            // the portion-level exclusion; the page-rewrite that
+            // clears REL TO when NOFORN is present at page scope is
+            // declared separately in `build_page_rewrites`.
             Constraint::Conflicts {
                 name: "capco/noforn-conflicts-rel-to",
                 left: TokenRef::Token(TOK_NOFORN),
                 right: TokenRef::AnyInCategory(CAT_REL_TO),
-                label: "CAPCO-2016 §A.4",
+                label: "CAPCO-2016 §H.8 p145",
             },
-            // JOINT ⇒ USA — JOINT classifications must list USA in
-            // both the country list and REL TO.
-            Constraint::Requires {
+            // ---- capco/joint-requires-usa (§H.3 p55) -------------
+            //
+            // §H.3 line 4025-4026: "USA is always included in the
+            // JOINT marking [LIST], as USA is always a
+            // co-owner/producer." Plus REL TO must include USA per
+            // §H.3 line 4139. Custom (not Requires) because USA
+            // must appear in BOTH `joint.countries` AND `rel_to` —
+            // a coupled predicate that doesn't decompose cleanly
+            // into a single TokenRef pair.
+            Constraint::Custom {
                 name: "capco/joint-requires-usa",
-                left: TokenRef::Token(TOK_JOINT),
-                right: TokenRef::Token(TOK_USA),
-                label: "CAPCO-2016 §H.3",
+                label: "CAPCO-2016 §H.3 p55",
             },
         ]
     }
@@ -826,29 +890,230 @@ pub enum CapcoParseError {
     NotImplemented,
 }
 
-// Phase 3 drift-hazard note (prerequisite for T035 / Phase D-E):
+// ---------------------------------------------------------------------------
+// Predicate implementations (free functions — trait impls delegate here)
+// ---------------------------------------------------------------------------
 //
-// `satisfies` and `evaluate_custom` are deliberately left at their
-// trait defaults on `CapcoScheme` — the declarative constraint
-// catalog in `build_constraints()` is **data-only** until T035 or
-// Phase D/E rewires the engine to drive diagnostics through
-// `marque_scheme::constraint::evaluate(scheme, marking)`. The live
-// HCS / dyadic predicates still fire through `CapcoScheme::validate`'s
-// hand-coded `match` below (which bypasses the evaluator) plus the
-// hand-written `Rule` impls in `crate::rules`, which is why byte-
-// identity with the pre-branch corpus holds in this phase.
-//
-// BEFORE retiring any rule impl (T035) or switching the engine to
-// `scheme.validate()` (Phase D/E), override `satisfies` to resolve
-// `TokenRef::Token` / `TokenRef::AnyInCategory` against `CapcoMarking`'s
-// concrete storage and override `evaluate_custom` to route
-// `"HCS-system-constraints"` / `"CNWDI-classification-floor"` to their
-// scheme-specific predicates. Until then, calling
+// `satisfies_attrs` and `evaluate_custom_by_attrs` are the source of
+// truth for CAPCO's constraint semantics. They take `&IsmAttributes`
+// directly to avoid forcing callers on the fast path to wrap in
+// `CapcoMarking` (which would require cloning the attributes). The
+// trait impls on `CapcoScheme` delegate to them, and the fast-path
+// inherent method `CapcoScheme::evaluate_named_constraint` uses them
+// directly to dispatch a single named constraint without walking
+// the whole catalog.
+
+/// Resolve a [`TokenRef`] against raw [`marque_ism::IsmAttributes`].
+///
+/// **Token-presence semantics** (T035):
+/// - [`TokenRef::Token(id)`] returns true when the marking carries
+///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
+///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere in
+///   `aea_markings`", etc.
+/// - [`TokenRef::AnyInCategory(cat)`] returns true when the category
+///   has at least one populated value. `CAT_DISSEM` intentionally
+///   counts both `dissem_controls` AND `rel_to` as dissem-flavored
+///   presence, matching the historical E015 predicate.
+///
+/// `MarkingClassification::Conflict` is deliberately excluded from
+/// `TOK_NON_US_CLASSIFICATION` / `CAT_NON_US_CLASSIFICATION` — that
+/// state is E012's concern, not E015's.
+///
+/// Sentinel `TokenId`s not used by the current catalog
+/// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`;
+/// they are declared for future T035b consumption.
+fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> bool {
+    use marque_ism::{
+        AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
+        SciControlSystem,
+    };
+    match token_ref {
+        TokenRef::Token(id) => match *id {
+            TOK_NOFORN => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Nf)),
+            TOK_USA => attrs.rel_to.contains(&Trigraph::USA),
+            TOK_JOINT => {
+                matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+            }
+            TOK_RESTRICTED => matches!(
+                &attrs.classification,
+                Some(c) if c.effective_level() == Classification::Restricted
+            ),
+            TOK_RD => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Rd(_))),
+            TOK_FRD => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Frd(_))),
+            TOK_TFNI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Tfni)),
+            TOK_CNWDI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)),
+            TOK_UCNI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            TOK_HCS => {
+                attrs.sci_controls.contains(&SciControl::Hcs)
+                    || attrs.sci_markings.iter().any(|m| {
+                        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                    })
+            }
+            TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
+            TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
+            // `Conflict` deliberately excluded — see fn doc.
+            TOK_NON_US_CLASSIFICATION => matches!(
+                &attrs.classification,
+                Some(
+                    MarkingClassification::Fgi(_)
+                        | MarkingClassification::Nato(_)
+                        | MarkingClassification::Joint(_)
+                )
+            ),
+            TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
+            _ => false,
+        },
+        TokenRef::AnyInCategory(cat) => match *cat {
+            CAT_CLASSIFICATION => attrs.classification.is_some(),
+            // `Conflict` deliberately excluded — see fn doc.
+            CAT_NON_US_CLASSIFICATION => matches!(
+                &attrs.classification,
+                Some(
+                    MarkingClassification::Fgi(_)
+                        | MarkingClassification::Nato(_)
+                        | MarkingClassification::Joint(_)
+                )
+            ),
+            CAT_JOINT_CLASSIFICATION => {
+                matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+            }
+            CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
+            CAT_SAR => attrs.sar_markings.is_some(),
+            CAT_AEA => !attrs.aea_markings.is_empty(),
+            CAT_FGI_MARKER => attrs.fgi_marker.is_some(),
+            CAT_DISSEM => !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty(),
+            CAT_REL_TO => !attrs.rel_to.is_empty(),
+            CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
+            _ => false,
+        },
+    }
+}
+
+/// Route a `Constraint::Custom` by name to its scheme-private
+/// predicate helper. Returns an empty `Vec` for unknown names
+/// (forward-compat with future catalog entries).
+fn evaluate_custom_by_attrs(
+    attrs: &marque_ism::IsmAttributes,
+    name: &'static str,
+) -> Vec<ConstraintViolation> {
+    match name {
+        "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p61-62"),
+        "E012/dual-classification" => e012_dual_classification(attrs),
+        "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
+        "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
+        "E022/CNWDI-classification-floor" => e022_cnwdi_floor(attrs),
+        "E024/rd-precedence" => e024_rd_precedence(attrs),
+        "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
+        "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
+        "capco/joint-requires-usa" => joint_requires_usa(attrs),
+        _ => Vec::new(),
+    }
+}
+
+impl CapcoScheme {
+    /// Evaluate a single constraint by `name` against raw
+    /// `IsmAttributes`. Fast path for rule wrappers that want "did
+    /// this specific predicate fire?" without the overhead of a
+    /// full `MarkingScheme::validate()` call.
+    ///
+    /// Compared to `scheme.validate(&CapcoMarking(attrs.clone()))`:
+    /// - **No `IsmAttributes` clone** — works on the borrow directly
+    /// - **No full catalog walk** — linear `find` by `name` over the
+    ///   ~13 catalog entries, then single dispatch. O(1) effectively;
+    ///   the filter step that the wrappers previously did after
+    ///   `validate()` is eliminated.
+    /// - **No `CapcoMarking` wrap** — delegates straight to the
+    ///   free-function predicates (`satisfies_attrs`,
+    ///   `evaluate_custom_by_attrs`), which is also what the trait
+    ///   impls use.
+    ///
+    /// Contract: the emitted `ConstraintViolation.constraint_label`
+    /// and `.citation` are populated from the catalog entry's
+    /// declared `name` and `label`, matching the normalization that
+    /// `marque_scheme::constraint::evaluate` performs in its
+    /// `Custom` arm. Dyadic-variant violations carry a generic
+    /// "conflicting tokens" / "token X requires Y" message — same
+    /// as the generic evaluator — because the wrapper layer is
+    /// responsible for constructing the user-visible diagnostic
+    /// text, not the scheme.
+    pub(crate) fn evaluate_named_constraint(
+        &self,
+        attrs: &marque_ism::IsmAttributes,
+        name: &'static str,
+    ) -> Vec<ConstraintViolation> {
+        let Some(c) = self.constraints.iter().find(|c| c.name() == name) else {
+            return Vec::new();
+        };
+        let label = c.label();
+        match c {
+            Constraint::Conflicts { left, right, .. } => {
+                if satisfies_attrs(attrs, left) && satisfies_attrs(attrs, right) {
+                    vec![ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("conflicting tokens: {left:?} and {right:?}"),
+                        citation: label,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            }
+            Constraint::Requires { left, right, .. } => {
+                if satisfies_attrs(attrs, left) && !satisfies_attrs(attrs, right) {
+                    vec![ConstraintViolation {
+                        constraint_label: name,
+                        message: format!("token {left:?} requires {right:?} but it is missing"),
+                        citation: label,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            }
+            // `Implies` is informational; `Supersedes` is a lattice
+            // hint. Neither emits diagnostics — matches the behavior
+            // of `marque_scheme::constraint::evaluate`.
+            Constraint::Implies { .. } | Constraint::Supersedes { .. } => Vec::new(),
+            Constraint::Custom { .. } => evaluate_custom_by_attrs(attrs, name)
+                .into_iter()
+                .map(|mut v| {
+                    v.constraint_label = name;
+                    v.citation = label;
+                    v
+                })
+                .collect(),
+        }
+    }
+}
+
+// T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
+// implemented on `CapcoScheme`, so calling
 // `marque_scheme::constraint::evaluate(&CapcoScheme::new(), &m)`
-// returns an empty vec — every dyadic constraint no-ops and every
-// `Custom` entry drops silently. Leaving the defaults unoverridden
-// would have been a bug if Phase 3 also flipped the engine; the two
-// changes must land together.
+// (or equivalently `scheme.validate(&m)` via the trait default)
+// fires every dyadic and Custom constraint in the catalog.
+//
+// The 11 hand-written rule impls retired by T035 dispatch through
+// `crate::rules_declarative`, which uses the inherent fast-path
+// method `CapcoScheme::evaluate_named_constraint` above (not the
+// trait-path `validate`) and constructs `Diagnostic` values
+// locally for byte-identical message/span/fix output. E018 / E019
+// remain hand-written pending the T035b predicate audit.
 impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;
@@ -882,68 +1147,50 @@ impl MarkingScheme for CapcoScheme {
         Err(CapcoParseError::NotImplemented)
     }
 
-    fn validate(&self, m: &Self::Marking) -> Vec<ConstraintViolation> {
-        let mut out = Vec::new();
-        let attrs = &m.0;
+    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
+    /// storage. Drives the dyadic-variant arms of
+    /// [`marque_scheme::constraint::evaluate`].
+    ///
+    /// **Token-presence semantics** (T035):
+    /// - [`TokenRef::Token(id)`] returns true when the marking carries
+    ///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
+    ///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere
+    ///   in `aea_markings`", etc. The mapping is per-sentinel and
+    ///   documented inline below.
+    /// - [`TokenRef::AnyInCategory(cat)`] returns true when the
+    ///   category has at least one populated value. `CAT_DISSEM`
+    ///   intentionally counts both `dissem_controls` AND `rel_to` as
+    ///   dissem-flavored presence, matching the historical E015
+    ///   predicate ("non-US classification needs SOME dissem").
+    ///
+    /// Sentinel `TokenId`s not used by the current catalog
+    /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`
+    /// — they remain declared for future T035b consumption when the
+    /// E018/E019 catalog entries are added back with corrected
+    /// predicates. Categories not listed (none today) likewise fall
+    /// through.
+    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
+    /// storage. Drives the dyadic-variant arms of
+    /// [`marque_scheme::constraint::evaluate`] when callers go through
+    /// the trait path; the free-function `satisfies_attrs` below is
+    /// the authoritative implementation.
+    ///
+    /// See `satisfies_attrs` for the full sentinel-to-predicate
+    /// table.
+    fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
+        satisfies_attrs(&marking.0, token_ref)
+    }
 
-        // Walk the declarative constraints. Token-id lookups are
-        // sentinel-based for Phase A — only the three sample
-        // constraints are exercised.
-        for c in &self.constraints {
-            match c {
-                Constraint::Conflicts {
-                    left: TokenRef::Token(a),
-                    right: TokenRef::AnyInCategory(cat),
-                    label,
-                    ..
-                } if *a == TOK_NOFORN && *cat == CAT_REL_TO => {
-                    let has_nf = attrs
-                        .dissem_controls
-                        .iter()
-                        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
-                    let has_rel_to = !attrs.rel_to.is_empty();
-                    if has_nf && has_rel_to {
-                        out.push(ConstraintViolation {
-                            constraint_label: "NOFORN∥REL TO",
-                            message: "NOFORN and REL TO cannot co-occur in one portion marking"
-                                .to_owned(),
-                            citation: label,
-                        });
-                    }
-                }
-                Constraint::Custom { name, label }
-                    if *name == "E010/HCS-system-constraints"
-                        || *name == "HCS-system-constraints" =>
-                {
-                    out.extend(hcs_system_constraints(attrs, label));
-                }
-                Constraint::Requires {
-                    left: TokenRef::Token(a),
-                    right: TokenRef::Token(b),
-                    label,
-                    ..
-                } if *a == TOK_JOINT && *b == TOK_USA => {
-                    if let Some(marque_ism::MarkingClassification::Joint(ref j)) =
-                        attrs.classification
-                    {
-                        let has_usa_reltop = attrs.rel_to.contains(&Trigraph::USA);
-                        let joint_includes_usa = j.countries.contains(&Trigraph::USA);
-                        if !has_usa_reltop || !joint_includes_usa {
-                            out.push(ConstraintViolation {
-                                constraint_label: "JOINT⇒USA",
-                                message: "JOINT classifications must list USA in both the \
-                                          classification countries and REL TO"
-                                    .to_owned(),
-                                citation: label,
-                            });
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        out
+    /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
+    /// predicate body. Delegates to `evaluate_custom_by_attrs`, the
+    /// name→helper router that the fast-path
+    /// [`Self::evaluate_named_constraint`] uses.
+    fn evaluate_custom(
+        &self,
+        name: &'static str,
+        marking: &Self::Marking,
+    ) -> Vec<ConstraintViolation> {
+        evaluate_custom_by_attrs(&marking.0, name)
     }
 
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
@@ -1041,7 +1288,255 @@ impl MarkingScheme for CapcoScheme {
 }
 
 // ---------------------------------------------------------------------------
-// HCS constraint handler (CAPCO 2016 §4 p62)
+// T035 Custom-constraint helpers
+// ---------------------------------------------------------------------------
+//
+// Each helper is the predicate body for a `Constraint::Custom` entry in
+// `build_constraints`. The helpers do NOT reference `RuleContext` — only
+// `IsmAttributes`. Per-context filtering (e.g., W002 portion-only) lives in
+// the wrapper layer (`crate::rules_declarative`); the catalog represents
+// "this marking is structurally inconsistent" without regard to where the
+// marking appears.
+//
+// The returned `ConstraintViolation` populates `message` with text that the
+// wrapper inspects when constructing the user-facing `Diagnostic`. The
+// `constraint_label` and `citation` fields are overwritten by the caller
+// (`marque_scheme::constraint::evaluate`'s `Custom` arm) so any placeholder
+// values are fine — using the catalog name + label keeps the helpers
+// self-documenting in isolation.
+
+/// E012 — `MarkingClassification::Conflict` indicates the parser saw a US
+/// classification AND a foreign classification in the same marking. CAPCO
+/// §H.3 line 4017-4018 forbids this.
+fn e012_dual_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    if let Some(marque_ism::MarkingClassification::Conflict { us, foreign }) = &attrs.classification
+    {
+        let foreign_desc = match foreign.as_ref() {
+            marque_ism::ForeignClassification::Nato(n) => format!("NATO ({})", n.banner_str()),
+            marque_ism::ForeignClassification::Fgi(f) => {
+                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+                if countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    format!("FGI {}", countries.join(" "))
+                }
+            }
+            marque_ism::ForeignClassification::Joint(j) => {
+                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
+                format!("JOINT {}", countries.join(" "))
+            }
+        };
+        vec![ConstraintViolation {
+            constraint_label: "E012/dual-classification",
+            // The wrapper rebuilds the user-visible message from attrs;
+            // the message here exists for catalog-level inspection and
+            // tests. We surface `us` + `foreign_desc` so a test can
+            // confirm both systems were observed.
+            message: format!(
+                "marking has both US ({}) and foreign ({}) classification",
+                us.banner_str(),
+                foreign_desc
+            ),
+            citation: "CAPCO-2016 §H.3 p55",
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
+/// E014 — every JOINT participant must appear in the marking's REL TO list.
+/// CAPCO §H.3 line 4139.
+fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let joint = match &attrs.classification {
+        Some(marque_ism::MarkingClassification::Joint(j)) => j,
+        _ => return Vec::new(),
+    };
+    let missing: Vec<&str> = joint
+        .countries
+        .iter()
+        .filter(|c| !attrs.rel_to.contains(c))
+        .map(|c| c.as_str())
+        .collect();
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E014/joint-requires-rel-to-coverage",
+        message: format!(
+            "JOINT participants [{}] must appear in REL TO list",
+            missing.join(", ")
+        ),
+        citation: "CAPCO-2016 §H.3 p56",
+    }]
+}
+
+/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement per
+/// AEA §123/§144 exists). CAPCO §H.6 line 6811. Intentionally narrower
+/// than `AnyInCategory(CAT_AEA)` — UCNI variants do not carry the NOFORN
+/// requirement (CAPCO §H.6 lines 7706+).
+fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Rd(_)
+                | marque_ism::AeaMarking::Frd(_)
+                | marque_ism::AeaMarking::Tfni
+        )
+    });
+    if !has_rd_frd_tfni {
+        return Vec::new();
+    }
+    let has_noforn = attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    if has_noforn {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E021/aea-requires-noforn",
+        message: "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                  per the Atomic Energy Act"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.6 p104",
+    }]
+}
+
+/// E022 — CNWDI requires TS or S classification. CAPCO §H.6 line 6963/6967.
+fn e022_cnwdi_floor(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let has_cnwdi = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Rd(rd) if rd.cnwdi));
+    if !has_cnwdi {
+        return Vec::new();
+    }
+    let level = attrs.us_classification();
+    let valid = matches!(
+        level,
+        Some(Classification::TopSecret | Classification::Secret)
+    );
+    if valid {
+        return Vec::new();
+    }
+    let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
+    vec![ConstraintViolation {
+        constraint_label: "E022/CNWDI-classification-floor",
+        message: format!(
+            "CNWDI may only be used with TOP SECRET or SECRET RD; \
+             current classification is {level_str}"
+        ),
+        citation: "CAPCO-2016 §H.6 p106",
+    }]
+}
+
+/// E024 — RD takes precedence over FRD/TFNI. Fires when RD AND any of
+/// (FRD, TFNI) are present. The wrapper enumerates per-element to emit one
+/// `Diagnostic` per offending marking with byte-precise spans; this helper
+/// emits ONE `ConstraintViolation` whose presence signals the wrapper to do
+/// that work. CAPCO §H.6 line 6825-6826.
+fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let has_rd = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Rd(_)));
+    if !has_rd {
+        return Vec::new();
+    }
+    let has_superseded = attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Frd(_) | marque_ism::AeaMarking::Tfni
+        )
+    });
+    if !has_superseded {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E024/rd-precedence",
+        message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.6 p104",
+    }]
+}
+
+/// E025 — UCNI may only be used with UNCLASSIFIED. Fires when DOD/DOE UCNI
+/// is present AND the classification level is above UNCLASSIFIED.
+/// CAPCO §H.6 line 7706/7710.
+///
+/// Note on T035 refactor: the Phase 3 catalog entry was
+/// `Conflicts { left: TOK_UCNI, right: AnyInCategory(CAT_CLASSIFICATION) }`.
+/// That shape would fire on `classification.is_some()` — including
+/// `Some(Unclassified)` — because `satisfies(AnyInCategory(CAT_CLASSIFICATION))`
+/// is `true` whenever a classification field is populated at all. The
+/// hand-written legacy rule fires only when `classification >
+/// Unclassified`. Converting to `Custom` closed that semantic gap: a
+/// valid `U//UCNI` marking (CAPCO §H.6) would have tripped the
+/// `Conflicts` variant but passes the hand-written predicate. This
+/// helper matches the hand-written predicate exactly (early-return
+/// on `Some(Unclassified)`).
+fn e025_ucni_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let has_ucni = attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::DodUcni | marque_ism::AeaMarking::DoeUcni
+        )
+    });
+    if !has_ucni {
+        return Vec::new();
+    }
+    let is_unclassified = attrs
+        .us_classification()
+        .is_some_and(|c| c == Classification::Unclassified);
+    if is_unclassified {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E025/ucni-conflicts-classification",
+        message: "DOD/DOE UCNI may only be used with UNCLASSIFIED information".to_owned(),
+        citation: "CAPCO-2016 §H.6 p116",
+    }]
+}
+
+/// W002 — US classification + FGI marker is commingling. Always fires when
+/// both are present; the wrapper filters by `RuleContext::marking_type ==
+/// Portion`. CAPCO §H.7 lines 8254-8268.
+fn w002_us_commingled_with_fgi(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "W002/us-commingled-with-fgi",
+        message: "portion mark comingles US classification with FGI; \
+                  consider splitting into separate US and foreign paragraphs"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.7 p124",
+    }]
+}
+
+/// `capco/joint-requires-usa` — JOINT classifications must list USA in BOTH
+/// `joint.countries` AND `rel_to`. CAPCO §H.3 line 4025-4026 / line 4139.
+fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let joint = match &attrs.classification {
+        Some(marque_ism::MarkingClassification::Joint(j)) => j,
+        _ => return Vec::new(),
+    };
+    let has_usa_in_rel_to = attrs.rel_to.contains(&Trigraph::USA);
+    let joint_includes_usa = joint.countries.contains(&Trigraph::USA);
+    if has_usa_in_rel_to && joint_includes_usa {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "capco/joint-requires-usa",
+        message: "JOINT classifications must list USA in both the \
+                  classification countries and REL TO"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.3 p55",
+    }]
+}
+
+// ---------------------------------------------------------------------------
+// HCS constraint handler (CAPCO-2016 §H.4 p61-62)
 // ---------------------------------------------------------------------------
 
 /// Evaluate the `Constraint::Custom("HCS-system-constraints")` sample.
