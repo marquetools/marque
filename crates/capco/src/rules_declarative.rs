@@ -52,6 +52,8 @@
 //! dissem controls (excluding only NOFORN and HCS); both existing
 //! rules are over-restrictive relative to the source.
 
+use std::sync::LazyLock;
+
 use marque_ism::{IsmAttributes, Span, TokenKind, TokenSpan};
 use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
 use marque_scheme::{ConstraintViolation, MarkingScheme};
@@ -63,17 +65,31 @@ use crate::scheme::{CapcoMarking, CapcoScheme};
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/// Process-global `CapcoScheme` instance shared across every wrapper
+/// invocation. The scheme is stateless, deterministic, and carries
+/// only `&'static` references + `Vec`s of fixed-size entries, so a
+/// single instance is sound for all threads and all documents.
+///
+/// Hoisting this out of `violations_for` eliminates the per-wrapper
+/// `CapcoScheme::new()` allocation — with 11 declarative wrappers in
+/// the rule set, a single document with N markings was doing 11×N
+/// scheme constructions before. Constitution VI's "rules MUST be
+/// stateless" guarantee is preserved because the wrappers themselves
+/// carry no state; the `LazyLock` lives outside the `Rule` impls.
+static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
+
 /// Run the scheme's constraint evaluator and return only the
 /// violations whose `constraint_label` matches one of `wanted`.
 ///
-/// `CapcoScheme::new()` is constant-time in practice (builds three
-/// small `Vec`s over O(categories + constraints + rewrites) static
-/// entries). Per-invocation construction preserves Constitution VI's
-/// "rules MUST be stateless" guarantee; promoting to a `OnceLock` is
-/// reserved for the day benchmark data flags the allocation as hot.
+/// Still allocates: each call clones `IsmAttributes` into a
+/// `CapcoMarking` and runs the full constraint loop. Sharing one
+/// `validate()` result across all 11 wrappers per marking would
+/// require threading a per-marking cache through `RuleContext`
+/// (a `marque-rules` trait-surface change) — deferred until
+/// benchmark data shows the remaining overhead is material on the
+/// SC-001 p95 path.
 fn violations_for(attrs: &IsmAttributes, wanted: &[&'static str]) -> Vec<ConstraintViolation> {
-    let scheme = CapcoScheme::new();
-    scheme
+    SCHEME
         .validate(&CapcoMarking(attrs.clone()))
         .into_iter()
         .filter(|v| wanted.contains(&v.constraint_label))

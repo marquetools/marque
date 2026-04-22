@@ -971,7 +971,9 @@ impl MarkingScheme for CapcoScheme {
                     .iter()
                     .any(|d| matches!(d, DissemControl::Nf)),
                 TOK_USA => attrs.rel_to.contains(&Trigraph::USA),
-                TOK_JOINT => matches!(attrs.classification, Some(MarkingClassification::Joint(_))),
+                TOK_JOINT => {
+                    matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+                }
                 TOK_RESTRICTED => matches!(
                     &attrs.classification,
                     Some(c) if c.effective_level() == Classification::Restricted
@@ -1039,7 +1041,7 @@ impl MarkingScheme for CapcoScheme {
                     )
                 ),
                 CAT_JOINT_CLASSIFICATION => {
-                    matches!(attrs.classification, Some(MarkingClassification::Joint(_)))
+                    matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
                 }
                 CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
                 CAT_SAR => attrs.sar_markings.is_some(),
