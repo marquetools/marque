@@ -11,7 +11,7 @@
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
 //! Assignments per spec tasks.md:
-//!   E001 = banner abbreviation (T030)
+//!   E001 = portion mark used in banner (correctness)
 //!   E002 = REL TO missing USA trigraph (T031)
 //!   E003 = misordered banner blocks (T032)
 //!   E004 = separator-count normalization (T033)
@@ -77,7 +77,7 @@ impl CapcoRuleSet {
         };
         Self {
             rules: vec![
-                Box::new(BannerAbbreviationRule),
+                Box::new(PortionMarkInBannerRule),
                 Box::new(PortionAbbreviationRule),
                 Box::new(MissingUsaTrigraphRule),
                 Box::new(MisorderedBlocksRule),
@@ -139,18 +139,29 @@ impl RuleSet for CapcoRuleSet {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E001 — Banner uses abbreviated classification or caveat
+// Rule: E001 — Portion mark used in banner (correctness)
 // ---------------------------------------------------------------------------
 
-/// Banners must use full words: SECRET not S, NOFORN not NF, TOP SECRET not TS.
-struct BannerAbbreviationRule;
+/// Portion marks must not appear in banner lines. CAPCO defines three forms
+/// per marking (Marking Title / Banner Line Abbreviation / Portion Mark — see
+/// §H.8 / §H.9 per-marking entries); banners permit the first two but not the
+/// third. Portion marks that happen to equal the banner abbreviation (e.g.,
+/// SBU, LES, SSI, FISA where all forms are identical) do not fire this rule
+/// because no substitution is needed or possible.
+///
+/// This is a **correctness** rule — the fix is non-negotiable, the portion
+/// form is categorically wrong in a banner. A parallel style rule (`S001`
+/// `prefer-banner-abbreviation`, deferred to T035c-1b) will cover the
+/// complementary case of long "Marking Title" forms in banners where the
+/// user has authored-but-unidiomatic text.
+struct PortionMarkInBannerRule;
 
-impl Rule for BannerAbbreviationRule {
+impl Rule for PortionMarkInBannerRule {
     fn id(&self) -> RuleId {
         RuleId::new("E001")
     }
     fn name(&self) -> &'static str {
-        "banner-abbreviation"
+        "portion-mark-in-banner"
     }
     fn default_severity(&self) -> Severity {
         Severity::Fix
@@ -163,23 +174,26 @@ impl Rule for BannerAbbreviationRule {
         }
         let mut diagnostics = Vec::new();
         // Walk dissem-control token spans in document order. For each one
-        // whose canonical CVE form is an abbreviation that maps to a full
-        // banner form, check whether the SOURCE BYTES are the abbreviation
-        // (not just the parsed enum — the parser also accepts banner-form
-        // full words via parse_dissem_full_form, and those are already
-        // correct).
+        // whose CVE portion form has a distinct banner abbreviation, check
+        // whether the SOURCE BYTES are the portion form. The parser also
+        // accepts the banner abbreviation via `parse_dissem_full_form`, so
+        // a banner already carrying the abbreviation is skipped.
         //
-        // The emit check happens at construction time against
-        // `token_span.text` rather than as a post-hoc length filter, so the
-        // logic cannot silently regress if a future abbreviation has a
-        // different length from its canonical form.
+        // `portion_to_banner` (see `marque_ism::marking_forms`) returns the
+        // banner abbreviation (NOT the long Marking Title), so the fix
+        // target is already correct for this rule. The module's `banner`
+        // column name is historical; it stores the abbreviation.
         let dissem_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::DissemControl)
             .collect();
         for (idx, control) in attrs.dissem_controls.iter().enumerate() {
-            let Some(full) = marque_ism::marking_forms::portion_to_banner(control.as_str()) else {
+            let Some(banner_abbrev) =
+                marque_ism::marking_forms::portion_to_banner(control.as_str())
+            else {
+                // portion form == banner abbreviation (e.g., FISA, RELIDO)
+                // — no substitution possible. Rule does not fire.
                 continue;
             };
             // The Nth dissem token span corresponds to the Nth dissem
@@ -187,43 +201,11 @@ impl Rule for BannerAbbreviationRule {
             let Some(token_span) = dissem_spans.get(idx) else {
                 continue;
             };
-            let abbrev = control.as_str();
-            // Only fire when the literal source text is the abbreviation.
+            let portion = control.as_str();
+            // Only fire when the literal source text is the portion form.
             // A banner containing "NOFORN" parses to DissemControl::Nf but
-            // token_span.text is "NOFORN" — skip it.
-            if token_span.text.as_ref() != abbrev {
-                continue;
-            }
-            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                rule: self.id(),
-                severity: self.default_severity(),
-                source: FixSource::BuiltinRule,
-                span: token_span.span,
-                message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
-                citation: "CAPCO-2016 §A.6",
-                original: abbrev.to_owned(),
-                replacement: full.to_owned(),
-                confidence: 1.0,
-                migration_ref: None,
-            }));
-        }
-        // Walk non-IC dissem token spans. If the source text is the portion
-        // abbreviation (e.g., "DS" instead of "LIMDIS"), suggest the banner form.
-        let nic_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::NonIcDissem)
-            .collect();
-        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
-            let Some(full) = marque_ism::marking_forms::portion_to_banner(nic.portion_str()) else {
-                // banner_str == portion_str (e.g., SBU, LES, SSI) — no correction needed.
-                continue;
-            };
-            let Some(token_span) = nic_spans.get(idx) else {
-                continue;
-            };
-            let abbrev = nic.portion_str();
-            if token_span.text.as_ref() != abbrev {
+            // token_span.text is "NOFORN" — skip it (already correct).
+            if token_span.text.as_ref() != portion {
                 continue;
             }
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -232,11 +214,51 @@ impl Rule for BannerAbbreviationRule {
                 source: FixSource::BuiltinRule,
                 span: token_span.span,
                 message: format!(
-                    "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
+                    "banner contains portion mark {portion:?} for an IC dissem control; \
+                     use banner abbreviation {banner_abbrev:?}"
                 ),
-                citation: "CAPCO-2016 §A.6",
-                original: abbrev.to_owned(),
-                replacement: full.to_owned(),
+                citation: "CAPCO-2016 §H.8",
+                original: portion.to_owned(),
+                replacement: banner_abbrev.to_owned(),
+                confidence: 1.0,
+                migration_ref: None,
+            }));
+        }
+        // Walk non-IC dissem token spans. Same logic as the IC branch: the
+        // portion form (e.g., "DS" for LIMDIS, "XD" for EXDIS) must be
+        // replaced with the banner abbreviation.
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let Some(banner_abbrev) =
+                marque_ism::marking_forms::portion_to_banner(nic.portion_str())
+            else {
+                // banner abbreviation == portion form (e.g., SBU, LES, SSI)
+                // — no substitution possible. Rule does not fire.
+                continue;
+            };
+            let Some(token_span) = nic_spans.get(idx) else {
+                continue;
+            };
+            let portion = nic.portion_str();
+            if token_span.text.as_ref() != portion {
+                continue;
+            }
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "banner contains portion mark {portion:?} for a non-IC dissem control; \
+                     use banner abbreviation {banner_abbrev:?}"
+                ),
+                citation: "CAPCO-2016 §H.9",
+                original: portion.to_owned(),
+                replacement: banner_abbrev.to_owned(),
                 confidence: 1.0,
                 migration_ref: None,
             }));

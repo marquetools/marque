@@ -84,8 +84,8 @@ full schema.
 version = "ISM-v2022-DEC"
 
 [rules]
-banner-abbreviation = "fix"
-missing-usa-trigraph = "warn"
+E001 = "fix"                    # portion-mark-in-banner; off | warn | error | fix
+E002 = "warn"                   # missing-usa-trigraph
 
 [corrections]
 "SERCET" = "SECRET"

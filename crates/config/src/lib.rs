@@ -337,8 +337,8 @@ fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
 
 fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
     // H-6: validate every severity override at load time. A typo like
-    // `banner-abbreviation = "err"` must fail loudly, not silently fall back
-    // to the rule default.
+    // `E001 = "err"` must fail loudly, not silently fall back to the rule
+    // default.
     for (rule, value) in &file.rules {
         if Severity::parse_config(value).is_none() {
             return Err(ConfigError::UnknownSeverity {
