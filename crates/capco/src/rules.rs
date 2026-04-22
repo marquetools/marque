@@ -192,8 +192,8 @@ impl Rule for PortionMarkInBannerRule {
             let Some(banner_abbrev) =
                 marque_ism::marking_forms::portion_to_banner(control.as_str())
             else {
-                // portion form == banner abbreviation (e.g., HCS, TK, FISA,
-                // RELIDO) — no substitution possible. Rule does not fire.
+                // portion form == banner abbreviation (e.g., FISA, RELIDO)
+                // — no substitution possible. Rule does not fire.
                 continue;
             };
             // The Nth dissem token span corresponds to the Nth dissem
