@@ -33,7 +33,23 @@ When validating rules, tokens, or markings, you:
 
 **CAPCO-2016 Reference Material**
 
-F.  (U)  LEGACY CONTROL MARKINGS ................................................................................................................... 35
+
+begin page 35               UNCLASSIFIED
+
+## F. (U) Legacy Control Markings
+
+(U) Information bearing legacy control markings and/or information security metadata (if any), including applicable parts of the classification banner, portion marks, and classification authority block, is required to be re-marked in accordance with the current Register and Manual under either of the following conditions: 1.(U) When disseminated and the access rights and handling assigned to the legacy-marked information will not appropriately control access to the information; or 2.(U) When the legacy-marked information is reused. (U) Re-marking is not required when legacy-marked information is retained within the access control mechanisms that protect and enforce the access rights and handling assigned to the legacy-marked information. (U) As identified, legacy markings will be incorporated into the Unauthorized IC Classification and Control Markings List . It will include guidance on how legacy markings should be changed to comply with current standards and requirements for access to and protection of such information. If no mapping exists for a specific legacy marking, contact your agency’s CMIWG representative for assistance. (U) Definitions (for the purposes of this document):
+- (U) Legacy control markings: Unauthorized IC and non-IC control markings.
+- (U) Dissemination: shared externally or internally with the holding agency or moved into a new information resource.
+- (U) Information resource: any aid that provides information and imparts knowledge (e.g., a repository, system, database, publication, conference listing, or the Internet).
+- (U) Reuse: incorporated, paraphrased, restated, revised, or reintroduced into a new document or information resource.
+- (U) Document: any recorded information, regardless of the nature of the medium or the method or circumstances of recording. (U) The Unauthorized IC Classification and Control Markings list (not exhaustive) is available on the SMP Intelink-TS website and is updated as unauthorized markings are identified. The list contains the following items:
+- IC element internal markings not authorized for information transmitted outside of the IC element
+- Legacy markings no longer authorized for intelligence information
+- Non-IC markings not authorized for use on intelligence information ( Note:   markings are authorized only for non-IC information)
+- Other unauthorized markings (U) The SMP Intelink-TS URL for the Unauthorized IC Classification and Control Markings list is: For additional information, questions, or comments on unauthorized markings, please contact the SMP office   (b)(3) 50 U.S.C. 3024i  (b)(3) 50 U.S.C. 3024i  (b)(3) 50 U.S.C. 3024i
+
+end page 35               UNCLASSIFIED
 
 
 ## ISM Enumeration Data
@@ -62,3 +78,6 @@ When validating, structure your response as:
 ### Recommended Fix:
 [Corrected version with rationale]
 ```
+
+> [!IMPORTANT]
+> For deep historical information, consult with the `capco-deprecated-historical-specialist`

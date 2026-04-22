@@ -1,6 +1,6 @@
 # capco-validators
 
-Specialized CAPCO/ISM validator agents and orchestration skill for the `marque` rule engine. Provides 14 focused expert agents covering every marking category, plus a skill for coordinating validation workflows.
+Specialized CAPCO/ISM validator agents and orchestration skill for the `marque` rule engine. Provides 13 focused expert agents covering every marking category, plus a skill for coordinating validation workflows.
 
 ## Purpose
 
@@ -38,22 +38,21 @@ checks that compartment ordering is numeric-first then alpha.
 Test: "SI-123 G ABCD" fails, "SI-G 123 ABCD" passes.
 ```
 
-## The 14 Agents
+## The 13 Agents
 
 ### Category Validators (10)
 
 | Agent | Domain | CAPCO § |
-|-------|--------|---------|
+|-------|--------|----------|
 | `capco-foundational` | Portion marks, banners, general syntax | §A–D |
 | `capco-sci-validator` | SCI controls, compartments, sub-compartments | §H.4, §A.6 |
 | `capco-sar-validator` | SAR/SAP markings | §H.5 |
 | `capco-dissem-validator` | Dissemination controls | §H.8–9 |
 | `capco-aea-validator` | Atomic Energy Act markings | §H.6 |
 | `capco-fgi-validator` | Foreign Government Information | §H.7 |
-| `capco-nato-validator` | JOINT/NATO markings | §H.3 |
 | `capco-classification-validator` | US classification levels | §H.1–2 |
 | `capco-declassification-validator` | CAB declassification guidance | §E |
-| `capco-cui-validator` | CUI BASIC/SPECIFIED | §F |
+| `capco-non-ic-validator` | Non-IC dissemination control markings | §H.9 |
 | `capco-legacy-validator` | Deprecated markings | §F |
 
 ### Specialist Validators (3)
@@ -71,7 +70,7 @@ capco-validators/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── marketplace.json
-├── agents/                    (14 agent .md files)
+├── agents/                    (13 agent .md files)
 ├── skills/
 │   └── capco-validate/
 │       └── SKILL.md           (orchestration guide + quick selection)
