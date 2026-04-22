@@ -207,7 +207,7 @@ fn constraint_noforn_rel_to_conflict_fires() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "NOFORN∥REL TO"),
+            .any(|v| v.constraint_label == "capco/noforn-conflicts-rel-to"),
         "expected NOFORN∥REL TO violation, got: {violations:?}"
     );
 }
@@ -223,7 +223,7 @@ fn constraint_noforn_rel_to_conflict_is_silent_when_separate() {
     assert!(
         !violations
             .iter()
-            .any(|v| v.constraint_label == "NOFORN∥REL TO"),
+            .any(|v| v.constraint_label == "capco/noforn-conflicts-rel-to"),
         "no conflict expected when only NOFORN is present: {violations:?}"
     );
 }
@@ -273,17 +273,23 @@ fn hcs_bare_is_flagged_as_legacy() {
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
+    // After T035, all HCS sub-rule violations carry the catalog label
+    // "E010/HCS-system-constraints" (the per-Custom evaluator
+    // overrides constraint_label). Sub-rule discrimination moves to
+    // the message text per the constraint module's documented
+    // contract.
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-legacy-bare"),
-        "expected HCS-legacy-bare, got: {violations:?}"
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.starts_with("Bare HCS is legacy")),
+        "expected bare-HCS legacy violation, got: {violations:?}"
     );
 }
 
 #[test]
 fn hcs_legacy_confidential_flags_originator_correction() {
-    // Legacy `C//HCS`: per CAPCO 2016 §4, identify to originator.
+    // Legacy `C//HCS`: per CAPCO 2016 §H.4, identify to originator.
     let attrs = hcs_structural(Classification::Confidential, None);
 
     let scheme = CapcoScheme::new();
@@ -291,14 +297,16 @@ fn hcs_legacy_confidential_flags_originator_correction() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-legacy-bare"),
-        "expected HCS-legacy-bare alongside the confidential flag: {violations:?}"
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.starts_with("Bare HCS is legacy")),
+        "expected bare-HCS legacy violation alongside the confidential flag: {violations:?}"
     );
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-legacy-confidential"),
-        "expected HCS-legacy-confidential: {violations:?}"
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.starts_with("Legacy CONFIDENTIAL//HCS")),
+        "expected CONFIDENTIAL//HCS originator-correction violation: {violations:?}"
     );
 }
 
@@ -315,8 +323,9 @@ fn hcs_projection_only_bare_still_fires_legacy() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-legacy-bare"),
-        "expected HCS-legacy-bare from projection-only path: {violations:?}"
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.starts_with("HCS requires a compartment")),
+        "expected projection-only bare-HCS violation: {violations:?}"
     );
 }
 
@@ -330,7 +339,8 @@ fn hcs_o_without_orcon_fires() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-O-requires-ORCON"),
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-O requires ORCON")),
         "expected HCS-O-requires-ORCON: {violations:?}"
     );
 }
@@ -346,7 +356,8 @@ fn hcs_o_with_orcon_usgov_fires() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-O-forbids-ORCON-USGOV"),
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-O must not be used with ORCON-USGOV")),
         "expected HCS-O-forbids-ORCON-USGOV: {violations:?}"
     );
 }
@@ -362,7 +373,8 @@ fn hcs_o_on_confidential_fires_classification_floor() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-O-classification-floor"),
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-O is only authorized for SECRET and TOP SECRET")),
         "expected HCS-O-classification-floor: {violations:?}"
     );
 }
@@ -378,7 +390,7 @@ fn hcs_o_with_orcon_on_top_secret_is_silent() {
     let violations = scheme.validate(&CapcoMarking(attrs));
     let hcs_violations: Vec<_> = violations
         .iter()
-        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .filter(|v| v.constraint_label == "E010/HCS-system-constraints")
         .collect();
     assert!(
         hcs_violations.is_empty(),
@@ -396,7 +408,8 @@ fn hcs_p_without_orcon_or_orcon_usgov_fires() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-P-requires-ORCON-or-ORCON-USGOV"),
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-P requires either ORCON or ORCON-USGOV")),
         "expected HCS-P-requires-ORCON-or-ORCON-USGOV: {violations:?}"
     );
 }
@@ -411,7 +424,7 @@ fn hcs_p_with_orcon_is_silent() {
     let violations = scheme.validate(&CapcoMarking(attrs));
     let hcs_violations: Vec<_> = violations
         .iter()
-        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .filter(|v| v.constraint_label == "E010/HCS-system-constraints")
         .collect();
     assert!(
         hcs_violations.is_empty(),
@@ -421,7 +434,7 @@ fn hcs_p_with_orcon_is_silent() {
 
 #[test]
 fn hcs_p_with_orcon_usgov_is_silent() {
-    // HCS-P with ORCON-USGOV (no plain ORCON) is valid per CAPCO 2016 §4.
+    // HCS-P with ORCON-USGOV (no plain ORCON) is valid per CAPCO 2016 §H.4.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("P"));
     attrs.dissem_controls = vec![DissemControl::OcUsgov].into();
 
@@ -429,7 +442,7 @@ fn hcs_p_with_orcon_usgov_is_silent() {
     let violations = scheme.validate(&CapcoMarking(attrs));
     let hcs_violations: Vec<_> = violations
         .iter()
-        .filter(|v| v.constraint_label.starts_with("HCS-"))
+        .filter(|v| v.constraint_label == "E010/HCS-system-constraints")
         .collect();
     assert!(
         hcs_violations.is_empty(),
@@ -448,7 +461,8 @@ fn hcs_p_on_confidential_fires_classification_floor() {
     assert!(
         violations
             .iter()
-            .any(|v| v.constraint_label == "HCS-P-classification-floor"),
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-P is only authorized for SECRET and TOP SECRET")),
         "expected HCS-P-classification-floor: {violations:?}"
     );
 }
@@ -469,7 +483,7 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        violations.iter().any(|v| v.constraint_label == "JOINT⇒USA"),
+        violations.iter().any(|v| v.constraint_label == "capco/joint-requires-usa"),
         "expected JOINT⇒USA violation, got: {violations:?}"
     );
 }
@@ -486,7 +500,7 @@ fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        !violations.iter().any(|v| v.constraint_label == "JOINT⇒USA"),
+        !violations.iter().any(|v| v.constraint_label == "capco/joint-requires-usa"),
         "no JOINT⇒USA violation expected: {violations:?}"
     );
 }
@@ -586,11 +600,21 @@ fn scheme_declares_phase3_rewrites() {
          here pins what downstream tools see from `page_rewrites()`."
     );
 
-    // Citations must point at real passages (Constitution VIII); the
-    // specific text is re-verified at commit time (T089).
-    assert_eq!(rewrites[0].citation, "CAPCO-2016 §F.2 p43");
-    assert_eq!(rewrites[1].citation, "CAPCO-2016 §K.2");
-    assert_eq!(rewrites[2].citation, "CAPCO-2016 §K p61");
+    // Citations point at verified normative passages (Constitution
+    // VIII; T035 cleanup of T034's drift into §I-K non-normative
+    // sections). All three updated to §A-H normative cites.
+    assert_eq!(
+        rewrites[0].citation,
+        "CAPCO-2016 §D.2 Table 3 + §H.8 p145"
+    );
+    assert_eq!(
+        rewrites[1].citation,
+        "CAPCO-2016 §H.3 p57 lines 4192-4200"
+    );
+    assert_eq!(
+        rewrites[2].citation,
+        "CAPCO-2016 §H.7 p123 lines 8240-8252"
+    );
 }
 
 #[test]
@@ -848,7 +872,7 @@ fn constraint_joint_without_usa_in_reltop_violates() {
     let s = CapcoScheme::new();
     let v = s.validate(&CapcoMarking(attrs));
     assert!(
-        v.iter().any(|c| c.constraint_label == "JOINT⇒USA"),
+        v.iter().any(|c| c.constraint_label == "capco/joint-requires-usa"),
         "expected JOINT⇒USA violation, got: {:?}",
         v
     );
@@ -867,7 +891,7 @@ fn constraint_joint_with_usa_everywhere_is_silent() {
     let s = CapcoScheme::new();
     let v = s.validate(&CapcoMarking(attrs));
     assert!(
-        !v.iter().any(|c| c.constraint_label == "JOINT⇒USA"),
+        !v.iter().any(|c| c.constraint_label == "capco/joint-requires-usa"),
         "unexpected JOINT⇒USA violation, got: {:?}",
         v
     );
