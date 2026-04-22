@@ -1697,8 +1697,23 @@ fn check_trigraph_ordering(
 // Rule: E023 — SIGMA valid values and numerical order
 // ---------------------------------------------------------------------------
 
-/// SIGMA compartment numbers must be from the valid set (14, 15, 18, 20)
-/// and listed in numerical order. Values 1–5 and 9–13 are obsolete.
+/// SIGMA compartment numbers must be from the currently authorized set
+/// (14, 15, 18, 20) and listed in numerical order.
+///
+/// # Historical SIGMA range
+///
+/// CAPCO v1.2 (2008) §7 documented SIGMA as ranging from 1 to 99
+/// (`crates/capco/docs/original-refs/CAPCO_v1.2_(2008).pdf`, p14 entry for
+/// `-SIGMA [#]`). CAPCO v5.1 (2012) §H.6 line 4090 and CAPCO 2016 §H.6 line
+/// 7129 both narrow this to "SIGMA # currently represents one or more of
+/// the following numbers: 14, 15, 18, and 20." Neither manual enumerates
+/// which specific values outside the current set were formally obsoleted —
+/// only that the current set is the narrow four. An earlier revision of
+/// this rule asserted that values `1..=5 | 9..=13` were "obsolete" while
+/// `6..=8 | 16..=17 | 19 | 21..=99` were "invalid"; that bifurcation was
+/// project inference, not backed by CAPCO source text. The unified
+/// "not in current authorized set" message below matches what the source
+/// actually says.
 struct SigmaValidationRule;
 
 impl Rule for SigmaValidationRule {
@@ -1735,35 +1750,29 @@ impl Rule for SigmaValidationRule {
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
 
-            // Check for invalid values.
+            // Check for values outside the currently authorized set.
+            // Unified message (no obsolete/invalid bifurcation) — CAPCO
+            // 2016 §H.6 line 7129 only names the current four, not any
+            // specific obsolete subset. Contact the originating
+            // program for guidance on historical SIGMA numbers (CAPCO
+            // v1.2 2008 permitted 1-99).
             let invalid: Vec<u8> = sigma
                 .iter()
                 .filter(|n| !valid_sigmas.contains(n))
                 .copied()
                 .collect();
             if !invalid.is_empty() {
-                let obsolete: Vec<u8> = invalid
-                    .iter()
-                    .filter(|n| matches!(n, 1..=5 | 9..=13))
-                    .copied()
-                    .collect();
-                let message = if !obsolete.is_empty() {
-                    format!(
-                        "SIGMA {:?} are obsolete; convert to current categories (14, 15, 18, 20)",
-                        obsolete,
-                    )
-                } else {
-                    format!(
-                        "SIGMA {:?} are not valid; current values are 14, 15, 18, 20",
-                        invalid,
-                    )
-                };
                 diagnostics.push(Diagnostic::new(
                     self.id(),
                     self.default_severity(),
                     span,
-                    message,
-                    "CAPCO-2016 §H.6",
+                    format!(
+                        "SIGMA {:?} not in the currently authorized set \
+                         (14, 15, 18, 20); contact the originating \
+                         program for guidance on historical values",
+                        invalid,
+                    ),
+                    "CAPCO-2016 §H.6 line 7129",
                     None,
                 ));
             }
@@ -1786,7 +1795,10 @@ impl Rule for SigmaValidationRule {
                             original.join(" "),
                             replacement.join(" "),
                         ),
-                        citation: "CAPCO-2016 §H.6",
+                        // §H.6 line 7130 (RD block): "Multiple SIGMA
+                        // numbers shall be listed in numerical order
+                        // with a space preceding each value."
+                        citation: "CAPCO-2016 §H.6 line 7130",
                         original: original.join(" "),
                         replacement: replacement.join(" "),
                         confidence: 1.0,
