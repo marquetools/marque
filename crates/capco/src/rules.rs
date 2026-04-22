@@ -1342,7 +1342,18 @@ impl Rule for MissingNonUsPrefix {
                 "non-US classification {text:?} is missing the leading //; \
                  use //{text} to indicate the US classification slot is empty"
             ),
-            citation: "CAPCO-2016 §H.4",
+            // §A.6 lines 771-772: "For non-US or Joint information,
+            // the banner line and portion mark must always start
+            // with a double forward slash ('//') with no interjected
+            // space." §H.3 line 4020 reinforces for JOINT: "The
+            // JOINT classification marking always starts with a
+            // double forward slash ('//')."
+            //
+            // Earlier revisions cited §H.4, which is the SCI control
+            // system section — unrelated to the non-US prefix rule.
+            // T035c-7 corrected the citation to the two sections
+            // that actually establish the predicate.
+            citation: "CAPCO-2016 §A.6 + §H.3",
             original: text.to_owned(),
             replacement: format!("//{text}"),
             confidence: 0.95,
