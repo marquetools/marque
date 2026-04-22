@@ -69,10 +69,7 @@ impl MarkingScheme for StubScheme {
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         match token_ref {
             TokenRef::Token(id) => marking.tokens.contains(id),
-            TokenRef::AnyInCategory(cat) => marking
-                .category_members
-                .iter()
-                .any(|(c, _)| c == cat),
+            TokenRef::AnyInCategory(cat) => marking.category_members.iter().any(|(c, _)| c == cat),
         }
     }
     fn evaluate_custom(
@@ -188,8 +185,7 @@ fn conflict_violation_preserves_citation() {
     let v = evaluate(&scheme, &marking);
     assert_eq!(v.len(), 1);
     assert_eq!(
-        v[0].citation,
-        "CAPCO-2016 §H.4",
+        v[0].citation, "CAPCO-2016 §H.4",
         "citation must be copied verbatim from the triggering constraint"
     );
     assert_eq!(

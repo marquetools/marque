@@ -96,9 +96,8 @@ where
 
     // 3. Kahn's algorithm. Seed the frontier with indexes that have
     //    in-degree 0, preserving declaration order.
-    let mut frontier: std::collections::VecDeque<usize> = (0..n)
-        .filter(|i| in_degree[*i] == 0)
-        .collect();
+    let mut frontier: std::collections::VecDeque<usize> =
+        (0..n).filter(|i| in_degree[*i] == 0).collect();
     let mut scheduled: Vec<RewriteId> = Vec::with_capacity(n);
     while let Some(idx) = frontier.pop_front() {
         scheduled.push(rewrites[idx].id);
