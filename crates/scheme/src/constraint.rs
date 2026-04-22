@@ -240,13 +240,16 @@ where
                 // Schemes that need per-subcheck surfacing must carry
                 // that signal through `message` or declare distinct
                 // `Constraint::Custom` entries.
-                out.extend(scheme.evaluate_custom(name, marking).into_iter().map(
-                    |mut v| {
-                        v.constraint_label = name;
-                        v.citation = label;
-                        v
-                    },
-                ));
+                out.extend(
+                    scheme
+                        .evaluate_custom(name, marking)
+                        .into_iter()
+                        .map(|mut v| {
+                            v.constraint_label = name;
+                            v.citation = label;
+                            v
+                        }),
+                );
             }
         }
     }

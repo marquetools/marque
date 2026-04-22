@@ -954,8 +954,10 @@ impl MarkingScheme for CapcoScheme {
     /// predicates. Categories not listed (none today) likewise fall
     /// through.
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
-        use marque_ism::{AeaMarking, DissemControl, MarkingClassification, SciControl,
-                          SciControlBare, SciControlSystem};
+        use marque_ism::{
+            AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
+            SciControlSystem,
+        };
         let attrs = &marking.0;
         match token_ref {
             TokenRef::Token(id) => match *id {
@@ -989,10 +991,12 @@ impl MarkingScheme for CapcoScheme {
                     .aea_markings
                     .iter()
                     .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
-                TOK_HCS => attrs.sci_controls.contains(&SciControl::Hcs)
-                    || attrs.sci_markings.iter().any(|m| {
-                        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
-                    }),
+                TOK_HCS => {
+                    attrs.sci_controls.contains(&SciControl::Hcs)
+                        || attrs.sci_markings.iter().any(|m| {
+                            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                        })
+                }
                 TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
                 TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
                 TOK_NON_US_CLASSIFICATION => matches!(
@@ -1290,10 +1294,12 @@ fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
     if !has_rd {
         return Vec::new();
     }
-    let has_superseded = attrs
-        .aea_markings
-        .iter()
-        .any(|a| matches!(a, marque_ism::AeaMarking::Frd(_) | marque_ism::AeaMarking::Tfni));
+    let has_superseded = attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Frd(_) | marque_ism::AeaMarking::Tfni
+        )
+    });
     if !has_superseded {
         return Vec::new();
     }

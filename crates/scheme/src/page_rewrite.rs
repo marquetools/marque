@@ -489,10 +489,7 @@ mod tests {
             Ok(_) => panic!("empty reads must fail"),
             Err(e) => e,
         };
-        assert_eq!(
-            err,
-            PageRewriteAxisError::EmptyReads { rewrite: "bad" },
-        );
+        assert_eq!(err, PageRewriteAxisError::EmptyReads { rewrite: "bad" },);
     }
 
     #[test]
@@ -509,10 +506,7 @@ mod tests {
             Ok(_) => panic!("empty writes must fail"),
             Err(e) => e,
         };
-        assert_eq!(
-            err,
-            PageRewriteAxisError::EmptyWrites { rewrite: "bad" },
-        );
+        assert_eq!(err, PageRewriteAxisError::EmptyWrites { rewrite: "bad" },);
     }
 
     #[test]

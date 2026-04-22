@@ -357,7 +357,8 @@ fn hcs_o_with_orcon_usgov_fires() {
         violations
             .iter()
             .any(|v| v.constraint_label == "E010/HCS-system-constraints"
-                && v.message.contains("HCS-O must not be used with ORCON-USGOV")),
+                && v.message
+                    .contains("HCS-O must not be used with ORCON-USGOV")),
         "expected HCS-O-forbids-ORCON-USGOV: {violations:?}"
     );
 }
@@ -374,7 +375,8 @@ fn hcs_o_on_confidential_fires_classification_floor() {
         violations
             .iter()
             .any(|v| v.constraint_label == "E010/HCS-system-constraints"
-                && v.message.contains("HCS-O is only authorized for SECRET and TOP SECRET")),
+                && v.message
+                    .contains("HCS-O is only authorized for SECRET and TOP SECRET")),
         "expected HCS-O-classification-floor: {violations:?}"
     );
 }
@@ -409,7 +411,8 @@ fn hcs_p_without_orcon_or_orcon_usgov_fires() {
         violations
             .iter()
             .any(|v| v.constraint_label == "E010/HCS-system-constraints"
-                && v.message.contains("HCS-P requires either ORCON or ORCON-USGOV")),
+                && v.message
+                    .contains("HCS-P requires either ORCON or ORCON-USGOV")),
         "expected HCS-P-requires-ORCON-or-ORCON-USGOV: {violations:?}"
     );
 }
@@ -462,7 +465,8 @@ fn hcs_p_on_confidential_fires_classification_floor() {
         violations
             .iter()
             .any(|v| v.constraint_label == "E010/HCS-system-constraints"
-                && v.message.contains("HCS-P is only authorized for SECRET and TOP SECRET")),
+                && v.message
+                    .contains("HCS-P is only authorized for SECRET and TOP SECRET")),
         "expected HCS-P-classification-floor: {violations:?}"
     );
 }
@@ -483,7 +487,9 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        violations.iter().any(|v| v.constraint_label == "capco/joint-requires-usa"),
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/joint-requires-usa"),
         "expected JOINT⇒USA violation, got: {violations:?}"
     );
 }
@@ -500,7 +506,9 @@ fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking(attrs));
     assert!(
-        !violations.iter().any(|v| v.constraint_label == "capco/joint-requires-usa"),
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/joint-requires-usa"),
         "no JOINT⇒USA violation expected: {violations:?}"
     );
 }
@@ -594,7 +602,11 @@ fn scheme_declares_phase3_rewrites() {
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
         ids,
-        ["capco/noforn-clears-rel-to", "capco/joint-promotion", "capco/fgi-absorption"],
+        [
+            "capco/noforn-clears-rel-to",
+            "capco/joint-promotion",
+            "capco/fgi-absorption"
+        ],
         "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
          reorders them by read/write edges, but the declaration-order snapshot \
          here pins what downstream tools see from `page_rewrites()`."
@@ -603,18 +615,9 @@ fn scheme_declares_phase3_rewrites() {
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections). All three updated to §A-H normative cites.
-    assert_eq!(
-        rewrites[0].citation,
-        "CAPCO-2016 §D.2 Table 3 + §H.8 p145"
-    );
-    assert_eq!(
-        rewrites[1].citation,
-        "CAPCO-2016 §H.3 p57 lines 4192-4200"
-    );
-    assert_eq!(
-        rewrites[2].citation,
-        "CAPCO-2016 §H.7 p123 lines 8240-8252"
-    );
+    assert_eq!(rewrites[0].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
+    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.3 p57 lines 4192-4200");
+    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p123 lines 8240-8252");
 }
 
 #[test]
@@ -872,7 +875,8 @@ fn constraint_joint_without_usa_in_reltop_violates() {
     let s = CapcoScheme::new();
     let v = s.validate(&CapcoMarking(attrs));
     assert!(
-        v.iter().any(|c| c.constraint_label == "capco/joint-requires-usa"),
+        v.iter()
+            .any(|c| c.constraint_label == "capco/joint-requires-usa"),
         "expected JOINT⇒USA violation, got: {:?}",
         v
     );
@@ -891,7 +895,8 @@ fn constraint_joint_with_usa_everywhere_is_silent() {
     let s = CapcoScheme::new();
     let v = s.validate(&CapcoMarking(attrs));
     assert!(
-        !v.iter().any(|c| c.constraint_label == "capco/joint-requires-usa"),
+        !v.iter()
+            .any(|c| c.constraint_label == "capco/joint-requires-usa"),
         "unexpected JOINT⇒USA violation, got: {:?}",
         v
     );

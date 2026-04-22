@@ -75,7 +75,11 @@ fn first_span_of(attrs: &IsmAttributes, kind: TokenKind) -> Span {
 
 /// Collect all token spans of a given kind in document order.
 fn spans_of_kind(attrs: &IsmAttributes, kind: TokenKind) -> Vec<&TokenSpan> {
-    attrs.token_spans.iter().filter(|t| t.kind == kind).collect()
+    attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == kind)
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
