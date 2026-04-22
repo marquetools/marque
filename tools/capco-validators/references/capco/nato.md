@@ -16,13 +16,11 @@ A, B, AND C) ...................................................................
 
 UNCLASSIFIED
 
-4
+end page 4
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) OPERATIONS .................................................................................................................................................. 64
 
@@ -76,13 +74,11 @@ This document is not approved for public release.
 
 UNCLASSIFIED
 
-5
+end page 5
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SIGMA [#] ........................................................................................................................................................ 113
 
@@ -136,13 +132,11 @@ This document is not approved for public release.
 
 UNCLASSIFIED
 
-6
+end page 6
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SENSITIVE BUT UNCLASSIFIED NOFORN .................................................................................................. 178
 
@@ -160,13 +154,11 @@ K.  (U) ACRONYM LIST ...........................................................
 
 UNCLASSIFIED
 
-7
+end page 7
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) List of Figures
 
@@ -182,13 +174,11 @@ Figure 5: (U) Optional SAP Hierarchical Structure ..............................
 
 UNCLASSIFIED
 
-8
+end page 8
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) List of Tables
 
@@ -210,13 +200,11 @@ Table 8: (U) History of Banner Line Syntax Changes .............................
 
 UNCLASSIFIED
 
-9
+end page 9
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Change Log
 
@@ -290,13 +278,11 @@ DOD personnel.
 
 UNCLASSIFIED
 
-10
+end page 10
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 H. (U) IC Markings System Manual
 1.  U.S. Classification Markings
@@ -364,13 +350,11 @@ to the Change Log in each document for a list of specific changes.
 
 UNCLASSIFIED
 
-11
+end page 11
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 A.  (U) Introduction
 
@@ -427,13 +411,11 @@ marking instructions for each authorized marking used to communicate and control
 
 UNCLASSIFIED
 
-12
+end page 12
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 information.  The markings in the Manual are to be applied to human-readable information regardless of medium (e.g.,
 text, image, graphics, electronic documents including web pages), unless a waiver has been granted.
@@ -488,13 +470,11 @@ protecting intelligence sources, methods, and activities.
 
 UNCLASSIFIED
 
-13
+end page 13
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) The artifacts listed in Table 1 below together define and describe the implementation of the IC marking system:
 
@@ -576,13 +556,11 @@ sections within those artifacts are applicable, the types of products generated,
 
 UNCLASSIFIED
 
-14
+end page 14
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) This figure is UNCLASSIFIED.
 
@@ -611,13 +589,11 @@ followed by alphabetic values (this ordering guidance applies for both published
 
 UNCLASSIFIED
 
-15
+end page 15
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN where 123 and SI are SCI control systems, G and
 MMM are SI compartments, ABCD and DEFG are sub-compartments of G, and AACD is a sub-compartment of MMM.
@@ -669,13 +645,11 @@ and detailed in this document.
 
 UNCLASSIFIED
 
-16
+end page 16
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) This figure is UNCLASSIFIED.
 
@@ -694,13 +668,11 @@ JWICS
 
 UNCLASSIFIED
 
-17
+end page 17
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 B.  (U) GENERAL MARKINGS GUIDANCE
 
@@ -728,13 +700,11 @@ Figure 3: (U) Required Human-Readable Marking Elements
 
 UNCLASSIFIED
 
-18
+end page 18
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 2.  (U) Classified Information Used as a Derivative Source
 
@@ -796,15 +766,11 @@ is classified, created on or after 28 June 2010, and caveated (see note below).
 
 is classified and created prior to 28 June 2010 whether uncaveated or caveated.
 
-19
+end page 19
 
 UNCLASSIFIED
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Mark as follows if the information is unclassified:
 
@@ -869,13 +835,11 @@ Banner Line Roll-Up.
 
 UNCLASSIFIED
 
-20
+end page 20
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 f.  (U) FD&R Portion Markings on Other IC Information
 
@@ -940,13 +904,11 @@ but not required
 
 UNCLASSIFIED
 
-21
+end page 21
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 FGI w/o FD&R markings
 
@@ -1011,13 +973,11 @@ days from the release of the Register and Manual. For questions or concerns rega
 
 UNCLASSIFIED
 
-22
+end page 22
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 5.  (U) Markings and System Waivers
 
@@ -1074,15 +1034,11 @@ placed at the top and bottom of every page (hereafter referred to as the “bann
 
   Portion marks (preceding the text to which they apply)
 
-23
+end page 23
 
 UNCLASSIFIED
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Classification authority block (may appear anywhere on the first page/cover either vertically or horizontally)
   Date of origin of the document
@@ -1122,13 +1078,11 @@ Level/Applicable Controls).”
 
 UNCLASSIFIED
 
-24
+end page 24
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 C.  (U) PORTION MARKS
 
@@ -1199,13 +1153,11 @@ position affords maximum visibility to the reader.
 
 UNCLASSIFIED
 
-25
+end page 25
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Portion marks must use the same separators (i.e., slashes, hyphens, commas) as are used for the banner line,
 except for SBU NOFORN and LES NOFORN where the portion mark uses a hyphen to connect the NOFORN,
@@ -1251,13 +1203,11 @@ information, the document must be portion marked.
 
 UNCLASSIFIED
 
-26
+end page 26
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 D.  (U) BANNER LINE
 
@@ -1322,13 +1272,11 @@ required.
 
 UNCLASSIFIED
 
-27
+end page 27
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 2.  (U) Banner Line “Roll-Up” Rules
 
@@ -1377,11 +1325,11 @@ marking scenario
 Overall banner line FD&R
 marking
 
-1
+end page 1
 
 NF
 
-2
+end page 2
 
 NF
 
@@ -1425,12 +1373,12 @@ NOFORN (IC dissem)
 3
 4
 
-5
+end page 5
 
 6
 7
 
-8
+end page 8
 
 NF
 Portions without FD&R
@@ -1447,13 +1395,11 @@ value of NOFORN
 
 UNCLASSIFIED
 
-28
+end page 28
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Rule
 #
@@ -1462,7 +1408,7 @@ One or more portion(s)
 contain the following FD&R
 marking scenario
 
-9
+end page 9
 
 REL TO [USA, LIST]
 
@@ -1491,13 +1437,13 @@ NOFORN
 NOFORN
 NOFORN
 
-12
+end page 12
 
 REL TO [USA, LIST]/RELIDO  Other portions have no FD&R markings
 
 NOFORN
 
-13
+end page 13
 
 REL TO [USA, LIST]
 
@@ -1525,15 +1471,15 @@ RELIDO
 DISPLAY ONLY [LIST]
 DISPLAY ONLY [LIST]
 
-21
+end page 21
 
 REL TO [USA, LIST]
 
-22
+end page 22
 
 REL TO [USA, LIST]
 
-23
+end page 23
 
 REL TO USA, TEYE or ACGU
 or FVEY
@@ -1589,7 +1535,7 @@ DISPLAY ONLY [LIST]
 (common trigraph/tetragraphs
 only in banner line [LIST])
 
-29
+end page 29
 
 24
 25
@@ -1604,11 +1550,7 @@ value(s) amongst portions)
 
 UNCLASSIFIED
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Rule
 #
@@ -1617,7 +1559,7 @@ One or more portion(s)
 contain the following FD&R
 marking scenario
 
-26
+end page 26
 
 DISPLAY ONLY [LIST]
 
@@ -1644,7 +1586,7 @@ audience.
 REL TO [USA, LIST]/DISPLAY
 ONLY [LIST]
 
-27
+end page 27
 
 REL TO [USA, LIST]/DISPLAY
 ONLY [LIST]
@@ -1659,13 +1601,11 @@ DISPLAY ONLY and REL TO portions.)
 
 UNCLASSIFIED
 
-30
+end page 30
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 E.  (U) CLASSIFICATION AUTHORITY BLOCK
 
@@ -1742,13 +1682,11 @@ agreement' is not to be used at any time.”
 
 UNCLASSIFIED
 
-31
+end page 31
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 2.  (U) Derivative Classification Authority
 
@@ -1812,13 +1750,11 @@ lowest number.
 
 UNCLASSIFIED
 
-32
+end page 32
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 
 
@@ -1886,13 +1822,11 @@ Note.)
 
 UNCLASSIFIED
 
-33
+end page 33
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   When the source date cannot be readily determined, calculate a date 25 years from the current date.
 
@@ -1955,13 +1889,11 @@ block, refer to EO 13526 and the ISOO Implementing Directive, Subparts A-C, and 
 
 UNCLASSIFIED
 
-34
+end page 34
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 F.  (U)  Legacy Control Markings
 
@@ -2027,13 +1959,11 @@ questions, or comments on unauthorized markings, please contact the SMP office
 
 UNCLASSIFIED
 
-35
+end page 35
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 G.  (U) IC Markings System Register
 
@@ -2114,13 +2044,11 @@ NU
 
 UNCLASSIFIED
 
-36
+end page 36
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Authorized Banner Line Marking Title
 
@@ -2291,15 +2219,11 @@ SG [#]
 
 Authorized Portion Mark
 
-37
+end page 37
 
 UNCLASSIFIED
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 FORMERLY RESTRICTED DATA
 
@@ -2435,15 +2359,11 @@ formatting and syntax guidance.
 (U) ** “[USA, LIST]” pertains to the string that contains “USA” followed by one or more Register, Annex B  trigraph country
 code(s), Register, Annex A tetragraph code(s), or Manual, Appendix B NATO/NAC markings  used with the REL TO
 
-38
+end page 38
 
 UNCLASSIFIED
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 marking.  A tetragraph is a four-letter code (unless an exception is granted) used to represent an international
 organization, alliance, or coalition. “USA” must always appear first whenever the REL TO string is used to communicate
@@ -2504,13 +2424,11 @@ organizational affiliation to track either the US federal government department 
 
 UNCLASSIFIED
 
-39
+end page 39
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 tribal, territorial (SLTT) government entity they support.  In IC ITE, foreign users will have an organizational affiliation to
 track the US or foreign governmental agency they support. This value is not relevant to an access control determination
@@ -2625,13 +2543,11 @@ SLTT government
 
 UNCLASSIFIED
 
-40
+end page 40
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Marking/Data Attribute
 
@@ -2772,13 +2688,11 @@ RSV is not used alone, requires compartment
 
 UNCLASSIFIED
 
-41
+end page 41
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Marking/Data Attribute
 
@@ -2917,13 +2831,11 @@ if received mark as REL TO.)
 
 UNCLASSIFIED
 
-42
+end page 42
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Marking/Data Attribute
 
@@ -3047,13 +2959,11 @@ Contact the originator for access requirements
 
 UNCLASSIFIED
 
-43
+end page 43
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Marking/Data Attribute
 
@@ -3149,13 +3059,11 @@ TO.)
 
 UNCLASSIFIED
 
-44
+end page 44
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Marking/Data Attribute
 
@@ -3256,13 +3164,11 @@ Note: USA country affiliation is not required
 
 UNCLASSIFIED
 
-45
+end page 45
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 H.  (U) IC Markings System Manual
 
@@ -3296,13 +3202,11 @@ UNCLASSIFIED is a marking that indicates the information does not meet the thres
 
 UNCLASSIFIED
 
-46
+end page 46
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) TOP SECRET
 
@@ -3376,13 +3280,11 @@ TOP SECRET//NOFORN
 
 UNCLASSIFIED
 
-47
+end page 47
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SECRET
 
@@ -3445,13 +3347,11 @@ IC Dissemination Control Markings categories, unless specifically prohibited.
 
 UNCLASSIFIED
 
-48
+end page 48
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -3483,13 +3383,11 @@ SECRET//REL TO USA, FVEY
 
 UNCLASSIFIED
 
-49
+end page 49
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) CONFIDENTIAL
 
@@ -3566,13 +3464,11 @@ CONFIDENTIAL
 
 UNCLASSIFIED
 
-50
+end page 50
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) UNCLASSIFIED
 
@@ -3655,13 +3551,11 @@ mark when combined with information classified at a higher level.
 
 UNCLASSIFIED
 
-51
+end page 51
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   May be used with other markings listed in the Register for the AEA, FGI, Dissemination, and Non-IC
 
@@ -3717,13 +3611,11 @@ SECRET//REL TO USA, JPN
 
 UNCLASSIFIED
 
-52
+end page 52
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -3766,13 +3658,11 @@ UNCLASSIFIED//NOFORN//SBU
 
 UNCLASSIFIED
 
-53
+end page 53
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 5:
 
@@ -3801,13 +3691,11 @@ UNCLASSIFIED//REL TO USA, FVEY
 
 UNCLASSIFIED
 
-54
+end page 54
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 2.  (U) Non-US Protective Markings (Refer to the IC Markings System Manual Appendices A, B,
 and C)
@@ -3860,13 +3748,11 @@ applied (“REL” is an authorized portion mark that may be used when the porti
 
 UNCLASSIFIED
 
-55
+end page 55
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) JOINT
 
@@ -3951,13 +3837,11 @@ RESTRICTED is not an authorized US classification marking.)
 
 UNCLASSIFIED
 
-56
+end page 56
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Requires REL TO USA, LIST
   May be used with SCI (excluding HCS markings), SAP, AEA, FGI, IC and Non-IC dissemination control
@@ -4029,13 +3913,11 @@ markings and must be consistent with any and all dissemination controls.
 
 UNCLASSIFIED
 
-57
+end page 57
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -4071,13 +3953,11 @@ information.
 
 UNCLASSIFIED
 
-58
+end page 58
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -4132,13 +4012,11 @@ SECRET//FGI ISAF NATO//REL TO USA, GBR
 
 UNCLASSIFIED
 
-59
+end page 59
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 4.  (U) Sensitive Compartmented Information Control System Markings
 
@@ -4172,13 +4050,11 @@ sample.
 
 UNCLASSIFIED
 
-60
+end page 60
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
  RESERVE (RSV)
 
@@ -4263,13 +4139,11 @@ ORCON, NOFORN
 
 UNCLASSIFIED
 
-61
+end page 61
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) HCS
 
@@ -4344,13 +4218,11 @@ marking or HCS-O and/or HCS-P marking(s) must be conveyed in the portion mark. L
 
 UNCLASSIFIED
 
-62
+end page 62
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 be combined with newly created information but the portion mark must include either HCS-P, HCS-O, or HCS-O-P, if
 applicable.
@@ -4361,13 +4233,11 @@ must be re-marked according to the instructions for HCS-O and/or HCS-P when reus
 
 UNCLASSIFIED
 
-63
+end page 63
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) OPERATIONS
 
@@ -4445,13 +4315,11 @@ procedures.  See above precedence and commingling rules.
 
 UNCLASSIFIED
 
-64
+end page 64
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -4468,13 +4336,11 @@ SECRET//HCS-O//ORCON/NOFORN
 
 UNCLASSIFIED
 
-65
+end page 65
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) PRODUCT
 
@@ -4556,13 +4422,11 @@ HCS-O) and the HCS-P marking must be conveyed in the portion mark.
 
 UNCLASSIFIED
 
-66
+end page 66
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., reuse of information in whole or in part in intelligence products):
 
@@ -4583,13 +4447,11 @@ SECRET//HCS-P//NOFORN
 
 UNCLASSIFIED
 
-67
+end page 67
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) PRODUCT [SUB-COMPARTMENT]
 
@@ -4668,13 +4530,11 @@ HCS-O). HCS-P sub-compartment(s) marking must be conveyed in the portion mark.
 
 UNCLASSIFIED
 
-68
+end page 68
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): HCS-P sub-
 compartment information may be reused in accordance with relevant policy and/or procedures.  See above precedence
@@ -4695,13 +4555,11 @@ TOP SECRET//HCS-P EFG//ORCON/NOFORN
 
 UNCLASSIFIED
 
-69
+end page 69
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) RESERVE
 
@@ -4773,13 +4631,11 @@ not be sourced.
 
 UNCLASSIFIED
 
-70
+end page 70
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -4796,13 +4652,11 @@ TOP SECRET//RSV-ABC//NOFORN
 
 UNCLASSIFIED
 
-71
+end page 71
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) RESERVE-[COMPARTMENT]
 
@@ -4871,13 +4725,11 @@ information may not be sourced.
 
 UNCLASSIFIED
 
-72
+end page 72
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -4896,13 +4748,11 @@ TOP SECRET//RSV-123-ABC//NOFORN
 
 UNCLASSIFIED
 
-73
+end page 73
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SPECIAL INTELLIGENCE
 
@@ -4963,13 +4813,11 @@ sourced in accordance with relevant policy and/or procedures.  See above precede
 
 UNCLASSIFIED
 
-74
+end page 74
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -4986,13 +4834,11 @@ SECRET//SI//REL TO USA, FVEY
 
 UNCLASSIFIED
 
-75
+end page 75
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SI-[COMPARTMENT]
 
@@ -5064,13 +4910,11 @@ commingling rules.
 
 UNCLASSIFIED
 
-76
+end page 76
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -5086,13 +4930,11 @@ TOP SECRET//SI-ABC//NOFORN
 
 UNCLASSIFIED
 
-77
+end page 77
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) ECRU
 (U) Note: Per ODNI direction, the EL control system is being retired and all associated compartments moved to the SI
@@ -5162,13 +5004,11 @@ rules.
 
 UNCLASSIFIED
 
-78
+end page 78
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -5185,13 +5025,11 @@ TOP SECRET// SI-EU//REL TO USA, CAN, GBR
 
 UNCLASSIFIED
 
-79
+end page 79
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) GAMMA
 
@@ -5264,13 +5102,11 @@ TOP SECRET//SI-G//ORCON/NOFORN
 
 UNCLASSIFIED
 
-80
+end page 80
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) GAMMA [SUB-COMPARTMENT ]
 
@@ -5339,13 +5175,11 @@ precedence and commingling rules.
 
 UNCLASSIFIED
 
-81
+end page 81
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -5362,13 +5196,11 @@ TOP SECRET//SI-G ABCD//ORCON/NOFORN
 
 UNCLASSIFIED
 
-82
+end page 82
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) NONBOOK
 
@@ -5441,13 +5273,11 @@ be sourced in accordance with relevant IC policy and/or procedures.  See above p
 
 UNCLASSIFIED
 
-83
+end page 83
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -5464,13 +5294,11 @@ TOP SECRET// SI-NK//REL TO USA, CAN, GBR
 
 UNCLASSIFIED
 
-84
+end page 84
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) TALENT KEYHOLE
 
@@ -5543,13 +5371,11 @@ always appear in the banner line.
 
 UNCLASSIFIED
 
-85
+end page 85
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion: May be combined with other information when appropriate and the TK
 marking must be conveyed in the portion mark.
@@ -5572,13 +5398,11 @@ SECRET//TK//RELIDO
 
 UNCLASSIFIED
 
-86
+end page 86
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) BLUEFISH
 
@@ -5654,13 +5478,11 @@ appropriate and the TK-BLFH marking must be conveyed in the portion mark.
 
 UNCLASSIFIED
 
-87
+end page 87
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (re-use of information in whole or in part into intelligence products): TK-BLFH
 information may be sourced in accordance with relevant IC policy and/or procedures.  See above
@@ -5681,13 +5503,11 @@ TOP SECRET//TK-BLFH//NOFORN
 
 UNCLASSIFIED
 
-88
+end page 88
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) BLUEFISH [SUB-COMPARTMENT]
 
@@ -5765,13 +5585,11 @@ and the TK-BLFH sub-compartment marking must be conveyed in the portion mark.
 
 UNCLASSIFIED
 
-89
+end page 89
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): TK-BLFH
 sub-compartment information may be sourced in accordance with relevant IC policy and/or procedures.
@@ -5809,13 +5627,11 @@ TOP SECRET//TK-BLFH ABCD-IDIT//NOFORN
 
 UNCLASSIFIED
 
-90
+end page 90
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) IDITAROD
 
@@ -5889,13 +5705,11 @@ and the TK-IDIT marking must be conveyed in the portion mark.
 
 UNCLASSIFIED
 
-91
+end page 91
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (re-use of information in whole or in part into intelligence products): TK-IDIT
 information may be sourced in accordance with relevant IC policy and/or procedures.  See above
@@ -5916,13 +5730,11 @@ TOP SECRET//TK-IDIT//NOFORN
 
 UNCLASSIFIED
 
-92
+end page 92
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) IDITAROD [SUB-COMPARTMENT]
 
@@ -6003,13 +5815,11 @@ precedence and commingling rules.
 
 UNCLASSIFIED
 
-93
+end page 93
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -6043,13 +5853,11 @@ TOP SECRET//TK-IDIT ABCD-KAND//NOFORN
 
 UNCLASSIFIED
 
-94
+end page 94
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) KANDIK
 
@@ -6123,13 +5931,11 @@ rules
 
 UNCLASSIFIED
 
-95
+end page 95
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -6146,13 +5952,11 @@ TOP SECRET//TK-KAND//NOFORN
 
 UNCLASSIFIED
 
-96
+end page 96
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) KANDIK [SUB-COMPARTMENT]
 
@@ -6227,13 +6031,11 @@ precedence and commingling rules.
 
 UNCLASSIFIED
 
-97
+end page 97
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -6267,13 +6069,11 @@ TOP SECRET//TK-IDIT-KAND ABCD//NOFORN
 
 UNCLASSIFIED
 
-98
+end page 98
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 5.  (U) Special Access Program Markings
 
@@ -6310,13 +6110,11 @@ Figure 5: (U) Optional SAP Hierarchical Structure
 
 UNCLASSIFIED
 
-99
+end page 99
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) For the purpose of succinctness in the banner and portion mark, the IC SAP Marking Standard is not intended to show
 direct hierarchy/structure beyond or beneath the sub-compartment level.  To display a program beyond the sub-
@@ -6399,13 +6197,11 @@ NOFORN
 
 UNCLASSIFIED
 
-100
+end page 100
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SPECIAL ACCESS REQUIRED
 
@@ -6476,13 +6272,11 @@ FD&R marking is required as described in Section B.3., paragraph a., FD&R for IC
 
 UNCLASSIFIED
 
-101
+end page 101
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -6500,13 +6294,11 @@ TOP SECRET//SAR-BP//NOFORN
 
 UNCLASSIFIED
 
-102
+end page 102
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 6.  (U) Atomic Energy Act Information Markings
 
@@ -6559,13 +6351,11 @@ instructions for each of the source documents classified under EO 13526.
 
 UNCLASSIFIED
 
-103
+end page 103
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) RESTRICTED DATA
 
@@ -6650,13 +6440,11 @@ case, use only the RD warning statement.
 
 UNCLASSIFIED
 
-104
+end page 104
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion:
 
@@ -6735,13 +6523,11 @@ SECRET//RESTRICTED DATA//NOFORN
 
 UNCLASSIFIED
 
-105
+end page 105
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) CRITICAL NUCLEAR WEAPON DESIGN INFORMATION
 
@@ -6815,13 +6601,11 @@ declassification instruction for each of the source documents classified under E
 
 UNCLASSIFIED
 
-106
+end page 106
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): RD information may be
 sourced provided that:
@@ -6888,13 +6672,11 @@ SECRET//RD-CNWDI//NOFORN
 
 UNCLASSIFIED
 
-107
+end page 107
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SIGMA [#]
 
@@ -6971,13 +6753,11 @@ unique SIGMA numbers identified in the portion marks.
 
 UNCLASSIFIED
 
-108
+end page 108
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 If both RD and FRD SIGMA [#] portions are in a document, the RD-SIGMA [#] marking takes precedence over the
 FRD-SIGMA [#] marking in the banner line and all SIGMA numbers are listed in the RD-SIGMA [#] marking in the
@@ -7059,13 +6839,11 @@ for further guidance.
 
 UNCLASSIFIED
 
-109
+end page 109
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -7088,13 +6866,11 @@ SECRET//RESTRICTED DATA-SIGMA 20//NOFORN
 
 UNCLASSIFIED
 
-110
+end page 110
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) FORMERLY RESTRICTED DATA
 
@@ -7181,13 +6957,11 @@ precedence over FRD in the portion mark.
 
 UNCLASSIFIED
 
-111
+end page 111
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notes:
 
@@ -7260,13 +7034,11 @@ SECRET//FORMERLY RESTRICTED DATA//NOFORN
 
 UNCLASSIFIED
 
-112
+end page 112
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SIGMA [#]
 
@@ -7346,13 +7118,11 @@ SIGMA [#] marking, regardless of whether the information was RD or FRD.
 
 UNCLASSIFIED
 
-113
+end page 113
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion:
 
@@ -7449,13 +7219,11 @@ Nuclear Security Administration
 
 UNCLASSIFIED
 
-114
+end page 114
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -7478,13 +7246,11 @@ SECRET//FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN
 
 UNCLASSIFIED
 
-115
+end page 115
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
 
@@ -7556,13 +7322,11 @@ precedence and commingling rules.
 
 UNCLASSIFIED
 
-116
+end page 116
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Foreign disclosure and release determinations require prior approval of the originating agency.  Until
 
@@ -7587,13 +7351,11 @@ UNCLASSIFIED//DOD UCNI
 
 UNCLASSIFIED
 
-117
+end page 117
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
 
@@ -7665,13 +7427,11 @@ for the classified information
 
 UNCLASSIFIED
 
-118
+end page 118
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notes: Specific physical protection and access requirements apply.
 
@@ -7705,13 +7465,11 @@ UNCLASSIFIED//DOE UCNI
 
 UNCLASSIFIED
 
-119
+end page 119
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION
 
@@ -7790,13 +7548,11 @@ classification and/or declassification equities.  If TFNI is commingled with NSI
 
 UNCLASSIFIED
 
-120
+end page 120
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 the portion mark.  If TFNI is commingled with RD or FRD within a portion, the RD or FRD takes precedence and “RD” or
 “FRD,” as appropriate, is annotated in the portion mark.
@@ -7857,13 +7613,11 @@ SECRET//TFNI//REL TO USA, ACGU
 
 UNCLASSIFIED
 
-121
+end page 121
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 7.  (U) Foreign Government Information Markings
 
@@ -7915,13 +7669,11 @@ Protective Markings appendices of the Register and Manual.
 
 UNCLASSIFIED
 
-122
+end page 122
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) FOREIGN GOVERNMENT INFORMATION
 
@@ -8007,13 +7759,11 @@ that the information, the arrangement, or both, are to be held in confidence; or
 
 UNCLASSIFIED
 
-123
+end page 123
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 
 
@@ -8092,13 +7842,11 @@ endnotes in disseminated analytic products.
 
 UNCLASSIFIED
 
-124
+end page 124
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Documents not marked in accordance with ICD 206 must segregate the FGI from different sources in
 
@@ -8144,13 +7892,11 @@ US product, please see Appendix B- NATO Protective Markings.
 
 UNCLASSIFIED
 
-125
+end page 125
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -8183,13 +7929,11 @@ TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU
 
 UNCLASSIFIED
 
-126
+end page 126
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 2:
 
@@ -8227,13 +7971,11 @@ TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN
 
 UNCLASSIFIED
 
-127
+end page 127
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -8279,13 +8021,11 @@ SECRET//FGI//NOFORN
 
 UNCLASSIFIED
 
-128
+end page 128
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 4:
 
@@ -8322,13 +8062,11 @@ TOP SECRET//FGI CAN DEU//NOFORN
 
 UNCLASSIFIED
 
-129
+end page 129
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 5:
 
@@ -8355,13 +8093,11 @@ SECRET//FGI CAN GBR//REL TO USA, CAN, GBR
 
 UNCLASSIFIED
 
-130
+end page 130
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 8.  (U) Dissemination Control Markings
 
@@ -8417,13 +8153,11 @@ information marked EYES ONLY beginning  01 October 2017.
 
 UNCLASSIFIED
 
-131
+end page 131
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) RISK SENSITIVE
 
@@ -8492,13 +8226,11 @@ statement.  Warnings shall be placed at the top of a document and left justified
 
 UNCLASSIFIED
 
-132
+end page 132
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   For TS//TK//RSEN SAT information:
 
@@ -8551,13 +8283,11 @@ TOP SECRET//TK//RSEN/REL TO USA, ACGU
 
 UNCLASSIFIED
 
-133
+end page 133
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) FOR OFFICIAL USE ONLY
 
@@ -8634,13 +8364,11 @@ FOUO marking only conveys in the portion mark based on the rules provided above 
 
 UNCLASSIFIED
 
-134
+end page 134
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): FOUO information
 may be sourced in accordance with relevant policy and/or procedures.  See above precedence and commingling
@@ -8657,13 +8385,11 @@ UNCLASSIFIED//FOR OFFICIAL USE ONLY
 
 UNCLASSIFIED
 
-135
+end page 135
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED
 BY ORIGINATOR
@@ -8738,13 +8464,11 @@ the banner line.
 
 UNCLASSIFIED
 
-136
+end page 136
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion:
 
@@ -8817,13 +8541,11 @@ restrictions, but rather provide the necessary additional direction.
 
 UNCLASSIFIED
 
-137
+end page 137
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -8839,13 +8561,11 @@ TOP SECRET//ORCON/NOFORN
 
 UNCLASSIFIED
 
-138
+end page 138
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED
 BY ORIGINATOR-USGOV
@@ -8918,13 +8638,11 @@ dissemination list per ICPG 710.1 §E.4.b.
 
 UNCLASSIFIED
 
-139
+end page 139
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   May not be used with ORCON in a portion mark or banner line.
   May be used with NOFORN, REL TO, DISPLAY ONLY.
@@ -8998,13 +8716,11 @@ disseminating it to other organizations outside the Executive Branch or Congress
 
 UNCLASSIFIED
 
-140
+end page 140
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Warnings and Notices: There may be certain types of ORCON-USGOV information that require a distribution or
 warning statement in addition to the marking.  When this occurs, the required distribution or warning statement should
@@ -9044,13 +8760,11 @@ TOP SECRET//ORCON/NOFORN
 
 UNCLASSIFIED
 
-141
+end page 141
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) CONTROLLED IMAGERY
 
@@ -9130,13 +8844,11 @@ and the SATP.
 
 UNCLASSIFIED
 
-142
+end page 142
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 
 
@@ -9209,13 +8921,11 @@ SECRET//IMCON/REL TO USA, AUS, CAN, GBR, NZL
 
 UNCLASSIFIED
 
-143
+end page 143
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 2:
 
@@ -9238,13 +8948,11 @@ TOP SECRET//IMCON/NOFORN
 
 UNCLASSIFIED
 
-144
+end page 144
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) NOT RELEASABLE TO FOREIGN NATIONALS
 
@@ -9322,13 +9030,11 @@ NOFORN at the portion and banner level as circumstances warrant.  Explicit forei
 
 UNCLASSIFIED
 
-145
+end page 145
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 markings are not required on unclassified information.  Follow internal agency procedures for the use of
 NOFORN with unclassified information.
@@ -9376,13 +9082,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-146
+end page 146
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -9402,13 +9106,11 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-147
+end page 147
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) CAUTION-PROPRIETARY INFORMATION INVOLVED
 
@@ -9476,13 +9178,11 @@ rules.
 
 UNCLASSIFIED
 
-148
+end page 148
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -9498,13 +9198,11 @@ SECRET//NOFORN/PROPIN
 
 UNCLASSIFIED
 
-149
+end page 149
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) AUTHORIZED FOR RELEASE TO
 
@@ -9579,13 +9277,11 @@ requirements are met
 
 UNCLASSIFIED
 
-150
+end page 150
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Additional Marking Instructions:
 
@@ -9657,13 +9353,11 @@ classification guide to the new portion mark.  See above precedence and commingl
 
 UNCLASSIFIED
 
-151
+end page 151
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -9715,13 +9409,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-152
+end page 152
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 4:
 
@@ -9768,13 +9460,11 @@ SECRET//REL TO USA, NZL
 
 UNCLASSIFIED
 
-153
+end page 153
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL
 
@@ -9849,13 +9539,11 @@ with unclassified information.
 
 UNCLASSIFIED
 
-154
+end page 154
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): RELIDO information may
 be sourced in accordance with relevant IC policy and/or procedures.  See commingling and precedence rules above.
@@ -9901,13 +9589,11 @@ SECRET//RELIDO
 
 UNCLASSIFIED
 
-155
+end page 155
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -9933,13 +9619,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-156
+end page 156
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) USA/[LIST] EYES ONLY
 
@@ -10004,13 +9688,11 @@ EYES ONLY portions from SIGINT reporting, convert the EYES ONLY portion marks to
 
 UNCLASSIFIED
 
-157
+end page 157
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -10033,13 +9715,11 @@ TOP SECRET//USA/CAN/GBR EYES ONLY
 
 UNCLASSIFIED
 
-158
+end page 158
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DEA SENSITIVE
 
@@ -10118,13 +9798,11 @@ precedence and commingling rules.
 
 UNCLASSIFIED
 
-159
+end page 159
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Foreign disclosure and release determinations require prior approval of the originating agency.  Until
 
@@ -10183,13 +9861,11 @@ SECRET//NOFORN/DEA SENSITIVE
 
 UNCLASSIFIED
 
-160
+end page 160
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) FOREIGN INTELLIGENCE SURVEILLANCE ACT
 
@@ -10260,13 +9936,11 @@ Warning may appear in the header or footer of the document.
 
 UNCLASSIFIED
 
-161
+end page 161
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page:
 
@@ -10284,13 +9958,11 @@ TOP SECRET//NOFORN/FISA
 
 UNCLASSIFIED
 
-162
+end page 162
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) DISPLAY ONLY
 
@@ -10375,13 +10047,11 @@ circumstances.
 
 UNCLASSIFIED
 
-163
+end page 163
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Precedence Rules for Banner Line Guidance: Refer to Section D.2., Table 3 FD&R Markings Precedence
 Rules for Banner Line Roll-Up.
@@ -10436,13 +10106,11 @@ portion mark.  Removal of this warning is required once authorization is receive
 
 UNCLASSIFIED
 
-164
+end page 164
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -10483,13 +10151,11 @@ SECRET//DISPLAY ONLY AFG
 
 UNCLASSIFIED
 
-165
+end page 165
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -10531,13 +10197,11 @@ SECRET//DISPLAY ONLY IRQ
 
 UNCLASSIFIED
 
-166
+end page 166
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 5:
 
@@ -10575,13 +10239,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-167
+end page 167
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 7:
 
@@ -10602,13 +10264,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-168
+end page 168
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 9.  (U) Non-Intelligence Community Dissemination Control Markings
 
@@ -10645,13 +10305,11 @@ they appear in the Register:
 
 UNCLASSIFIED
 
-169
+end page 169
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) LIMITED DISTRIBUTION
 
@@ -10727,13 +10385,11 @@ FOUO information.
 
 UNCLASSIFIED
 
-170
+end page 170
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   Do not apply the LIMDIS warning when the LIMDIS information reused in a document with classified
 
@@ -10779,13 +10435,11 @@ Directive and General Marking Guidance Section of this document for more informa
 
 UNCLASSIFIED
 
-171
+end page 171
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) EXCLUSIVE DISTRIBUTION
 
@@ -10867,13 +10521,11 @@ ICD 206, Sourcing Requirements for Disseminated Analytic Products, dated 17 Octo
 
 UNCLASSIFIED
 
-172
+end page 172
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   The XD marking is conveyed in the portion mark (unless commingled with NODIS, see previous rule).
   The EXDIS information must be identified in the source reference citations as endnotes keyed to the
@@ -10909,13 +10561,11 @@ SECRET//NOFORN//EXDIS
 
 UNCLASSIFIED
 
-173
+end page 173
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) NO DISTRIBUTION
 
@@ -10997,13 +10647,11 @@ ICD 206, Sourcing Requirements for Disseminated Analytic Products, dated 17 Octo
 
 UNCLASSIFIED
 
-174
+end page 174
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   The NODIS information must be identified in the source reference citations as endnotes keyed to the
 
@@ -11038,13 +10686,11 @@ SECRET//NOFORN//NODIS
 
 UNCLASSIFIED
 
-175
+end page 175
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SENSITIVE BUT UNCLASSIFIED
 
@@ -11120,13 +10766,11 @@ must be segregated from all non-SBU portions.
 
 UNCLASSIFIED
 
-176
+end page 176
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products):
 
@@ -11173,13 +10817,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-177
+end page 177
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SENSITIVE BUT UNCLASSIFIED NOFORN
 
@@ -11264,13 +10906,11 @@ must be segregated from all non-SBU-NF portions.
 
 UNCLASSIFIED
 
-178
+end page 178
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Derivative Use (i.e., re-use of information in whole or in part in intelligence products): SBU-NF information
 may be sourced in accordance with relevant policy and/or procedures.  See above precedence and commingling rules
@@ -11308,13 +10948,11 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-179
+end page 179
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 3:
 
@@ -11343,13 +10981,11 @@ UNCLASSIFIED//NOFORN//SBU
 
 UNCLASSIFIED
 
-180
+end page 180
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) LAW ENFORCEMENT SENSITIVE
 
@@ -11423,13 +11059,11 @@ Requirements for Disseminated Analytic Products, dated 17 October 2007.
 
 UNCLASSIFIED
 
-181
+end page 181
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
   The LES information must be identified in the source reference citations as endnotes keyed to the relevant
 
@@ -11495,13 +11129,11 @@ UNCLASSIFIED//LES
 
 UNCLASSIFIED
 
-182
+end page 182
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 2:
 
@@ -11539,13 +11171,11 @@ SECRET//REL TO USA, FVEY//LES
 
 UNCLASSIFIED
 
-183
+end page 183
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 4:
 
@@ -11568,13 +11198,11 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-184
+end page 184
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) LAW ENFORCEMENT SENSITIVE NOFORN
 
@@ -11649,13 +11277,11 @@ FD&R markings guidance.
 
 UNCLASSIFIED
 
-185
+end page 185
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion:
 
@@ -11729,13 +11355,11 @@ from subsequently posting the information marked LES NOFORN on a website or an u
 
 UNCLASSIFIED
 
-186
+end page 186
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 1:
 
@@ -11786,13 +11410,11 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-187
+end page 187
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 4:
 
@@ -11836,13 +11458,11 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-188
+end page 188
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SENSITIVE SECURITY INFORMATION
 
@@ -11917,13 +11537,11 @@ guidance.
 
 UNCLASSIFIED
 
-189
+end page 189
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Commingling Rule(s) Within a Portion:
 
@@ -11982,13 +11600,11 @@ UNCLASSIFIED//NOFORN//SSI
 
 UNCLASSIFIED
 
-190
+end page 190
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Notional Example Page 2:
 
@@ -12015,13 +11631,11 @@ SECRET//REL TO USA, ACGU//SSI
 
 UNCLASSIFIED
 
-191
+end page 191
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 I. (U) Banner Line Syntax History
 
@@ -12130,13 +11744,9 @@ on the first page of each
 classified document,
 regardless of media.
 
-192
+end page 192
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Effective Date  Change Description
 
@@ -12171,13 +11781,11 @@ reflect the current standard.
 
 UNCLASSIFIED
 
-193
+end page 193
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 J.  (U) Marking Examples
 
@@ -12229,13 +11837,11 @@ Portion Mark: (TS//HCS-P JJJ-P DDDD//OC/NF)
 
 UNCLASSIFIED
 
-194
+end page 194
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) Multiple SCI and Notional SAP Example:
 
@@ -12289,13 +11895,11 @@ Portion Mark: (//JOINT S//REL)
 
 UNCLASSIFIED
 
-195
+end page 195
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 Note: The “JOINT [class level]” and “REL” abbreviations may be used when the portion’s JOINT and REL TO
 [LIST] matches the JOINT and REL TO markings’ [LIST] values in the banner line.
@@ -12341,13 +11945,11 @@ Portion Mark: (U//SSI)
 
 UNCLASSIFIED
 
-196
+end page 196
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 K.  (U) Acronym List
 
@@ -12459,13 +12061,11 @@ Gamma
 
 UNCLASSIFIED
 
-197
+end page 197
+
+---
 
 Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
-
-UNCLASSIFIED
-
-This document is not approved for public release.
 
 GENC
 GEOINT
@@ -12581,13 +12181,11 @@ NATO Secret
 
 UNCLASSIFIED
 
-198
+end page 198
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 NSA
 NSAT
@@ -12703,13 +12301,11 @@ Transclassified Foreign Nuclear Information
 
 UNCLASSIFIED
 
-199
+end page 199
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 TK
 TS
@@ -12743,7 +12339,9 @@ Extensible Markup Language
 
 UNCLASSIFIED
 
-200
+end page 200
+
+---
 
 
 

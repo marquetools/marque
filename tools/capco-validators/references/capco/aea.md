@@ -14,13 +14,11 @@
 
 UNCLASSIFIED
 
-5
+end page 5
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SIGMA [#] ........................................................................................................................................................ 113
 

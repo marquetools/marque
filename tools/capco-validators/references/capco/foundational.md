@@ -45,13 +45,11 @@ C.  (U) PORTION MARKS ..........................................................
 
 UNCLASSIFIED
 
-3
+end page 3
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 
 D.  (U) BANNER LINE .................................................................................................................................................. 27

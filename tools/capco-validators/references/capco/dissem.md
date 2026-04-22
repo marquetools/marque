@@ -43,13 +43,11 @@
 
 UNCLASSIFIED
 
-6
+end page 6
 
-Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
+---
 
-UNCLASSIFIED
-
-This document is not approved for public release.
+Approved for release by ODNI on 07-07-2021, FOIA Case # DF-2019-00061
 
 (U) SENSITIVE BUT UNCLASSIFIED NOFORN .................................................................................................. 178
 
