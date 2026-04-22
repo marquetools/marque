@@ -47,8 +47,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
-    Span, TokenKind, TokenSpan, sar_sort_key,
+    IsmAttributes, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
+    sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -67,6 +67,13 @@ impl Default for CapcoRuleSet {
 
 impl CapcoRuleSet {
     pub fn new() -> Self {
+        use crate::rules_declarative::{
+            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCnwdiConstraintRule,
+            DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
+            DeclarativeJointFgiRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
+            DeclarativeNonUsMissingDissemRule, DeclarativeRdPrecedenceRule,
+            DeclarativeUcniClassificationRule,
+        };
         Self {
             rules: vec![
                 Box::new(BannerAbbreviationRule),
@@ -80,24 +87,33 @@ impl CapcoRuleSet {
                 Box::new(UnknownTokenRule),
                 Box::new(DeprecatedMarkingWarningRule),
                 Box::new(CorrectionsMapRule),
-                Box::new(BareHcsRule),
+                // T035: 11 declarative wrappers replace the hand-
+                // written `Rule` impls for E010/E012/E014-E017/E021/
+                // E022/E024/E025/W002. Catalog in `crate::scheme`
+                // owns the predicate; wrappers own span/message/fix
+                // construction for byte-identical output.
+                Box::new(DeclarativeBareHcsRule),
                 Box::new(MissingNonUsPrefix),
-                Box::new(DualClassificationRule),
+                Box::new(DeclarativeDualClassificationRule),
                 Box::new(DelimiterMismatchRule),
-                Box::new(CominglingWarningRule),
-                Box::new(JointRelToRule),
-                Box::new(NonUsMissingDissemRule),
+                Box::new(DeclarativeCominglingWarningRule),
+                Box::new(DeclarativeJointRelToRule),
+                Box::new(DeclarativeNonUsMissingDissemRule),
                 Box::new(NonIcInClassifiedBannerRule),
-                Box::new(JointRestrictedRule),
-                Box::new(JointFgiRule),
+                Box::new(DeclarativeJointRestrictedRule),
+                Box::new(DeclarativeJointFgiRule),
+                // E018 + E019 retained as hand-written impls pending
+                // T035b. See `crate::scheme::build_constraints` doc
+                // block; their predicates over-restrict per CAPCO
+                // §H.3 lines 4140-4146.
                 Box::new(JointIcDissemRule),
                 Box::new(JointNonIcDissemRule),
                 Box::new(CountryCodeOrderingRule),
-                Box::new(AeaNofornRule),
-                Box::new(CnwdiConstraintRule),
+                Box::new(DeclarativeAeaNofornRule),
+                Box::new(DeclarativeCnwdiConstraintRule),
                 Box::new(SigmaValidationRule),
-                Box::new(RdPrecedenceRule),
-                Box::new(UcniClassificationRule),
+                Box::new(DeclarativeRdPrecedenceRule),
+                Box::new(DeclarativeUcniClassificationRule),
                 Box::new(SarPortionFormRule),
                 Box::new(SarClassificationRule),
                 Box::new(SarProgramOrderRule),
@@ -1241,109 +1257,6 @@ impl Rule for PortionAbbreviationRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E010 — Bare HCS without compartment suffix
-// ---------------------------------------------------------------------------
-
-/// Since ~2009, bare `HCS` is no longer valid — it must be `HCS-P` (product)
-/// or `HCS-O` (operations). `HCS-P` is correct ~99% of the time; `HCS-O`
-/// is rare and typically only appears when the document explicitly involves
-/// operational source information.
-///
-/// The rule checks whether `HCS-O` appears alongside `HCS` in the same
-/// marking. If it does, it's ambiguous and confidence drops. Otherwise
-/// `HCS-P` is suggested at 0.95 confidence.
-struct BareHcsRule;
-
-impl Rule for BareHcsRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E010")
-    }
-    fn name(&self) -> &'static str {
-        "bare-hcs"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{SciControl, SciControlBare};
-
-        // Detect bare HCS through both the legacy `sci_controls` projection
-        // (exact-match CVE path: bare `HCS` → SciControl::Hcs) AND the
-        // spec 003-sci-compartments structural path (a SciMarking anchored
-        // on SciControlBare::Hcs with NO compartments is a bare HCS). When
-        // HCS has compartments (e.g., `HCS-P`, `HCS-O`), E010 does not fire
-        // regardless of source.
-        let has_bare_hcs_enum = attrs.sci_controls.contains(&SciControl::Hcs);
-        let has_bare_hcs_structural = attrs.sci_markings.iter().any(|m| {
-            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
-                && m.compartments.is_empty()
-        });
-        if !has_bare_hcs_enum && !has_bare_hcs_structural {
-            return vec![];
-        }
-
-        let has_hcs_o = attrs.sci_controls.contains(&SciControl::HcsO);
-        let has_hcs_p = attrs.sci_controls.contains(&SciControl::HcsP);
-
-        // If HCS-O or HCS-P already appears alongside bare HCS, the bare
-        // HCS is redundant — but we still flag it because it needs a suffix.
-        // If HCS-O is present, the document may deal with operational info,
-        // so we lower confidence on the HCS-P suggestion.
-        let (confidence, message) = if has_hcs_o {
-            (
-                0.5,
-                "bare HCS requires a compartment suffix (-O or -P); \
-                 HCS-O appears in this marking — verify whether HCS should be HCS-O or HCS-P"
-                    .to_owned(),
-            )
-        } else if has_hcs_p {
-            (
-                0.95,
-                "bare HCS requires a compartment suffix; \
-                 HCS-P already present — this HCS likely should be HCS-P"
-                    .to_owned(),
-            )
-        } else {
-            (
-                0.95,
-                "bare HCS requires a compartment suffix (-O or -P); \
-                 use HCS-P unless this involves operational source information"
-                    .to_owned(),
-            )
-        };
-
-        // Find the token span for the bare HCS entry.
-        let sci_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::SciControl)
-            .collect();
-        let hcs_idx = attrs
-            .sci_controls
-            .iter()
-            .position(|s| *s == SciControl::Hcs);
-        let span = hcs_idx
-            .and_then(|i| sci_spans.get(i))
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span,
-            message,
-            citation: "CAPCO-2016 §H.4",
-            original: "HCS".to_owned(),
-            replacement: "HCS-P".to_owned(),
-            confidence,
-            migration_ref: None,
-        })]
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Rule: E011 — Missing leading // on non-US classification
 // ---------------------------------------------------------------------------
 
@@ -1447,99 +1360,6 @@ fn looks_like_fgi_classification(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E012 — Dual classification (conflict)
-// ---------------------------------------------------------------------------
-
-/// A marking must have exactly one classification system. When both a US and
-/// foreign classification appear (e.g., `SECRET//NATO SECRET//NOFORN`), the
-/// US classification wins at the greater of the two levels, and the foreign
-/// part becomes an FGI marker.
-struct DualClassificationRule;
-
-impl Rule for DualClassificationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E012")
-    }
-    fn name(&self) -> &'static str {
-        "dual-classification"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let Some(MarkingClassification::Conflict { us, foreign }) = &attrs.classification else {
-            return vec![];
-        };
-
-        let foreign_desc = match foreign.as_ref() {
-            ForeignClassification::Nato(n) => format!("NATO ({})", n.banner_str()),
-            ForeignClassification::Fgi(f) => {
-                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
-                if countries.is_empty() {
-                    "FGI".to_owned()
-                } else {
-                    format!("FGI {}", countries.join(" "))
-                }
-            }
-            ForeignClassification::Joint(j) => {
-                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
-                format!("JOINT {}", countries.join(" "))
-            }
-        };
-
-        let fgi_replacement = match foreign.as_ref() {
-            ForeignClassification::Nato(_) => "FGI NATO".to_owned(),
-            ForeignClassification::Fgi(f) => {
-                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
-                if countries.is_empty() {
-                    "FGI".to_owned()
-                } else {
-                    format!("FGI {}", countries.join(" "))
-                }
-            }
-            ForeignClassification::Joint(j) => {
-                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
-                format!("FGI {}", countries.join(" "))
-            }
-        };
-
-        // Find the foreign classification token span (the second Classification token).
-        let class_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::Classification)
-            .collect();
-        let span = class_spans
-            .get(1)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-        let original = class_spans
-            .get(1)
-            .map(|t| t.text.to_string())
-            .unwrap_or_default();
-
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span,
-            message: format!(
-                "marking has both US ({}) and foreign ({foreign_desc}) classification; \
-                 US wins at {}; move foreign to FGI block",
-                us.banner_str(),
-                us.banner_str(),
-            ),
-            citation: "CAPCO-2016 §B.1",
-            original,
-            replacement: fgi_replacement,
-            confidence: 0.90,
-            migration_ref: None,
-        })]
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Rule: E013 — JOINT/REL TO delimiter mismatch
 // ---------------------------------------------------------------------------
 
@@ -1638,174 +1458,6 @@ impl Rule for DelimiterMismatchRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: W002 — US + FGI comingling in portion
-// ---------------------------------------------------------------------------
-
-/// A portion mark with both a US classification and an FGI marker is
-/// comingling US and foreign information. This isn't strictly invalid but
-/// is bad practice — the content should be split into separate paragraphs:
-/// one US-classified and one foreign-classified.
-struct CominglingWarningRule;
-
-impl Rule for CominglingWarningRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("W002")
-    }
-    fn name(&self) -> &'static str {
-        "us-fgi-comingling"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Warn
-    }
-
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::MarkingType;
-        if ctx.marking_type != MarkingType::Portion {
-            return vec![];
-        }
-
-        // US classification + FGI marker = comingling.
-        if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::FgiMarker)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "portion mark comingles US classification with FGI; \
-             consider splitting into separate US and foreign paragraphs",
-            "CAPCO-2016 §H.7",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E014 — JOINT participants missing from REL TO
-// ---------------------------------------------------------------------------
-
-/// All countries in a JOINT classification must also appear in the REL TO
-/// list. `//JOINT S USA GBR//REL TO USA, GBR` is correct;
-/// `//JOINT S USA GBR//NF` is invalid because JOINT participants must be
-/// in the REL TO.
-struct JointRelToRule;
-
-impl Rule for JointRelToRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E014")
-    }
-    fn name(&self) -> &'static str {
-        "joint-rel-to"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let joint = match &attrs.classification {
-            Some(MarkingClassification::Joint(j)) => j,
-            _ => return vec![],
-        };
-
-        let missing: Vec<&str> = joint
-            .countries
-            .iter()
-            .filter(|c| !attrs.rel_to.contains(c))
-            .map(|c| c.as_str())
-            .collect();
-
-        if missing.is_empty() {
-            return vec![];
-        }
-
-        // Point at the classification token span.
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::Classification)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            format!(
-                "JOINT participants [{}] must appear in REL TO list",
-                missing.join(", "),
-            ),
-            "CAPCO-2016 §H.3",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E015 — Non-US classification without dissem control
-// ---------------------------------------------------------------------------
-
-/// Non-US classifications (FGI, NATO, JOINT) must always be accompanied by
-/// a dissemination control (which includes REL TO statements). A non-US
-/// marking without any dissem control is invalid.
-struct NonUsMissingDissemRule;
-
-impl Rule for NonUsMissingDissemRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E015")
-    }
-    fn name(&self) -> &'static str {
-        "non-us-missing-dissem"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let is_non_us = matches!(
-            &attrs.classification,
-            Some(
-                MarkingClassification::Fgi(_)
-                    | MarkingClassification::Nato(_)
-                    | MarkingClassification::Joint(_)
-            )
-        );
-        if !is_non_us {
-            return vec![];
-        }
-
-        let has_dissem = !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty();
-        if has_dissem {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::Classification)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "non-US classification must be accompanied by a dissemination control \
-             (e.g., REL TO, NOFORN)",
-            "CAPCO-2016 §B.3",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Rule: W003 — Non-IC dissem in classified banner
 // ---------------------------------------------------------------------------
 
@@ -1890,99 +1542,6 @@ impl Rule for NonIcInClassifiedBannerRule {
         }
 
         diagnostics
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E016 — RESTRICTED not allowed with JOINT
-// ---------------------------------------------------------------------------
-
-/// Since the US is always a co-owner in JOINT markings, and RESTRICTED has
-/// no US equivalent classification, RESTRICTED may not be used with JOINT.
-struct JointRestrictedRule;
-
-impl Rule for JointRestrictedRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E016")
-    }
-    fn name(&self) -> &'static str {
-        "joint-restricted"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let joint = match &attrs.classification {
-            Some(MarkingClassification::Joint(j)) => j,
-            _ => return vec![],
-        };
-        if joint.level != marque_ism::Classification::Restricted {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::Classification)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RESTRICTED may not be used with JOINT — the US has no equivalent \
-             classification level for RESTRICTED",
-            "CAPCO-2016 §H.3",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E017 — JOINT may not be used with FGI
-// ---------------------------------------------------------------------------
-
-/// JOINT markings may not be used with FGI markers. A marking is either
-/// JOINT (co-owned) or FGI (foreign-originated), not both.
-struct JointFgiRule;
-
-impl Rule for JointFgiRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E017")
-    }
-    fn name(&self) -> &'static str {
-        "joint-fgi"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
-            return vec![];
-        }
-        if attrs.fgi_marker.is_none() {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::FgiMarker)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
-             or foreign-originated (FGI), not both",
-            "CAPCO-2016 §H.3",
-            None,
-        )]
     }
 }
 
@@ -2232,127 +1791,6 @@ fn check_trigraph_ordering(
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E021 — RD/FRD requires NOFORN
-// ---------------------------------------------------------------------------
-
-/// RD and FRD information must always be marked NOFORN unless a sharing
-/// agreement exists per the Atomic Energy Act (Sections 123 and 144).
-///
-/// Default severity: Error. Users working in contexts with established
-/// sharing agreements can override to Warn in `.marque.toml`.
-struct AeaNofornRule;
-
-impl Rule for AeaNofornRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E021")
-    }
-    fn name(&self) -> &'static str {
-        "aea-noforn"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::AeaMarking;
-
-        let has_rd_or_frd = attrs
-            .aea_markings
-            .iter()
-            .any(|a| matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni));
-        if !has_rd_or_frd {
-            return vec![];
-        }
-
-        let has_noforn = attrs.dissem_controls.iter().any(|d| d.as_str() == "NF");
-        if has_noforn {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::AeaMarking)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
-             per the Atomic Energy Act; override to warn via rule severity \
-             config if sharing agreements apply",
-            "CAPCO-2016 §H.6",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E022 — CNWDI only with TS or S RD
-// ---------------------------------------------------------------------------
-
-/// CNWDI may only be used with TOP SECRET or SECRET Restricted Data.
-/// It cannot appear standalone, with FRD, or with CONFIDENTIAL.
-struct CnwdiConstraintRule;
-
-impl Rule for CnwdiConstraintRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E022")
-    }
-    fn name(&self) -> &'static str {
-        "cnwdi-constraint"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::AeaMarking;
-
-        let has_cnwdi = attrs
-            .aea_markings
-            .iter()
-            .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi));
-        if !has_cnwdi {
-            return vec![];
-        }
-
-        // CNWDI requires TS or S classification.
-        let level = attrs.us_classification();
-        let valid = matches!(
-            level,
-            Some(marque_ism::Classification::TopSecret | marque_ism::Classification::Secret)
-        );
-        if valid {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::AeaMarking)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            format!(
-                "CNWDI may only be used with TOP SECRET or SECRET RD; \
-                 current classification is {level_str}"
-            ),
-            "CAPCO-2016 §H.6",
-            None,
-        )]
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Rule: E023 — SIGMA valid values and numerical order
 // ---------------------------------------------------------------------------
 
@@ -2455,124 +1893,6 @@ impl Rule for SigmaValidationRule {
             }
         }
         diagnostics
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E024 — RD precedence over FRD/TFNI
-// ---------------------------------------------------------------------------
-
-/// When both RD and FRD (or TFNI) appear in the same marking, only RD
-/// should be used — RD takes precedence in both banners and portions.
-struct RdPrecedenceRule;
-
-impl Rule for RdPrecedenceRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E024")
-    }
-    fn name(&self) -> &'static str {
-        "rd-precedence"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::AeaMarking;
-
-        let has_rd = attrs
-            .aea_markings
-            .iter()
-            .any(|a| matches!(a, AeaMarking::Rd(_)));
-        if !has_rd {
-            return vec![];
-        }
-
-        let mut diagnostics = Vec::new();
-        for (idx, aea) in attrs.aea_markings.iter().enumerate() {
-            let superseded = match aea {
-                AeaMarking::Frd(_) => "FRD",
-                AeaMarking::Tfni => "TFNI",
-                _ => continue,
-            };
-
-            let aea_spans: Vec<&TokenSpan> = attrs
-                .token_spans
-                .iter()
-                .filter(|t| t.kind == TokenKind::AeaMarking)
-                .collect();
-            let span = aea_spans
-                .get(idx)
-                .map(|t| t.span)
-                .unwrap_or(Span::new(0, 0));
-
-            diagnostics.push(Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                format!(
-                    "{superseded} should not appear alongside RD; \
-                     RD takes precedence over {superseded} in both banners and portions"
-                ),
-                "CAPCO-2016 §H.6",
-                None,
-            ));
-        }
-        diagnostics
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rule: E025 — UCNI only with UNCLASSIFIED
-// ---------------------------------------------------------------------------
-
-/// DOD UCNI and DOE UCNI apply only to unclassified information.
-struct UcniClassificationRule;
-
-impl Rule for UcniClassificationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E025")
-    }
-    fn name(&self) -> &'static str {
-        "ucni-classification"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::AeaMarking;
-
-        let has_ucni = attrs
-            .aea_markings
-            .iter()
-            .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni));
-        if !has_ucni {
-            return vec![];
-        }
-
-        let is_unclassified = attrs
-            .us_classification()
-            .is_some_and(|c| c == marque_ism::Classification::Unclassified);
-        if is_unclassified {
-            return vec![];
-        }
-
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::AeaMarking)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
-            "CAPCO-2016 §H.6",
-            None,
-        )]
     }
 }
 
@@ -3894,20 +3214,20 @@ fn render_sar_block(
 
 /// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
 /// positional helper signature so call sites read top-down by name.
-struct FixDiagnosticParams {
-    rule: RuleId,
-    severity: Severity,
-    source: FixSource,
-    span: Span,
-    message: String,
-    citation: &'static str,
-    original: String,
-    replacement: String,
-    confidence: f32,
-    migration_ref: Option<&'static str>,
+pub(crate) struct FixDiagnosticParams {
+    pub rule: RuleId,
+    pub severity: Severity,
+    pub source: FixSource,
+    pub span: Span,
+    pub message: String,
+    pub citation: &'static str,
+    pub original: String,
+    pub replacement: String,
+    pub confidence: f32,
+    pub migration_ref: Option<&'static str>,
 }
 
-fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
+pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
     let proposal = FixProposal::new(
         p.rule.clone(),
         p.source,
