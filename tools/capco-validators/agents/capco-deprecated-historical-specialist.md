@@ -192,16 +192,11 @@ SIGMA ,  respectively  when  RD  and  FRD  information  is  commingled  in  the 
 - Added guidance that EXDIS and NODIS information requires Department of State approval, providing POC and phone number.
 - Noted that SSI warning should be placed at bottom of each page of a document containing SSI
 
--ORCON-nAdded™1ss1ngRe*ationship(s)  to  Other  Markings  paragraph  and  Included  applicable  guidance. 
-?RCRXteh?p(s)  to  Other  Markings -Clarified  that  the  marking  may  not  be  used  with  RELIDO. .  Revised  the  Notes  section  to  separate  the  electronic  systems  paragraph  into  two  bulleted  Items  for  further 
-clarification,  one  for  Intelligence  Information  and  one  for  finished  intelligence  products. 
-•  DEA  SENSITIVE  -  Added  note  at  top  of  template  that  the  marking  will  be  evaluated  for  continued  CAPCO 
-registration  with  implementation  of  the  Controlled  Unclassified  Information  (CUI)  Program. .  Non-IC  Dissemination  Control  Markings  ,  _  .  .  , 
--  EXDIS  and  NOD1S  -  Added  guidance  that  reuse  of  EXDIS  and  NODIS  information  requires  Department  of 
-State  approval,  and  provided  point  of  contact  and  phone  number. 
--  SSI  -  Noted  that  the  SSI  warning  Is  placed  at  the  bottom  of  each  page  of  a  document  “nta'™g  SS' 
-Information,  and  replaced  note  at  top  of  template  to  match  other  notes  on  similar  temp  ates  that  the  marking 
-will  be  evaluated  for  continued 
+- ORCON - Added missing relationship guidance to the Other Markings paragraph and included applicable guidance.
+- ORCON - Clarified that the marking may not be used with RELIDO. Revised the Notes section to separate the electronic systems paragraph into two bulleted items for further clarification: one for Intelligence Information and one for finished intelligence products.
+- DEA SENSITIVE - Added a note at the top of the template that the marking will be evaluated for continued CAPCO registration with implementation of the Controlled Unclassified Information (CUI) Program.
+- EXDIS and NODIS - Added guidance that reuse of EXDIS and NODIS information requires Department of State approval, and provided a point of contact and phone number.
+- SSI - Noted that the SSI warning is placed at the bottom of each page of a document containing SSI information, and replaced the note at the top of the template to match other notes on similar templates.
 
 ---
 

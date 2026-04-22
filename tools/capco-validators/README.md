@@ -74,10 +74,6 @@ capco-validators/
 ├── skills/
 │   └── capco-validate/
 │       └── SKILL.md           (orchestration guide + quick selection)
-├── references/
-│   ├── capco/                 (extracted CAPCO-2016 sections)
-│   ├── ism-enums/             (ISM-v2022-DEC CVE data)
-│   └── README.md              (original validator system documentation)
 └── README.md
 ```
 

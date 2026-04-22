@@ -17,7 +17,7 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 #
 # The graph looks like this:
 # `marque` [dev dependency] -> `insta` -> `tempfile` -> `getrandom` -> `r-efi`
-# `getrandom` only uses `r-efi` when the target triple os `uefi` and the getrandom backend is `efi_rng`.
+# `getrandom` only uses `r-efi` when the target triple is `uefi` and the getrandom backend is `efi_rng`.
 # so `r-efi` is not actually used in our build, and the license is not relevant to us.
 # Why `cargo deny list` shows this, but doesn't error here is a mystery to me.
 # If it can figure out we don't use it, why list it?

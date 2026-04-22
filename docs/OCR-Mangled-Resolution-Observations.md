@@ -1,6 +1,6 @@
 # Notes on Mangled Classifications in scans and document conversions
 
-these were observed in the course of converting the CAPCO manual to markdown, and serve as a baseline for parsing OCR'd markings.
+These were observed in the course of converting the CAPCO manual to markdown, and serve as a baseline for parsing OCR'd markings.
 
 ## Irregular Spacing
 
@@ -14,7 +14,7 @@ Like many OCR'd texts, spacing can often appear at unusual intervals, observed e
 - `SE CRET//REL TO USA, AFG/DISPLAY ONLY IR Q`
 - `( U//SB U)`
 
-### Unexpected Line Endings or Spaces-in-Lieue
+### Unexpected Line Endings or Spaces-in-Lieu
 
 - `TOP SECRET \n//REL TO USA, FVEY`
 - `SECRET//   REL TO USA, DEU, FRA, FVEY`

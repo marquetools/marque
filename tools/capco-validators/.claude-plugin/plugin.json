@@ -1,7 +1,7 @@
 {
   "name": "capco-validators",
   "version": "1.0.0",
-  "description": "Specialized CAPCO/ISM validator agents and orchestration skill for the marque rule engine. Provides 14 focused expert agents covering every marking category plus a skill for coordinating validation workflows.",
+  "description": "Specialized CAPCO/ISM validator agents and orchestration skill for the marque rule engine. Provides 13 focused expert agents covering every marking category plus a skill for coordinating validation workflows.",
   "author": {
     "name": "Adam Poulemanos"
   },
