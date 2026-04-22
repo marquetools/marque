@@ -3972,9 +3972,9 @@ mod tests {
         // This parser-driven test does not reliably provide positive
         // E036 coverage because the grammar may not surface HCS in
         // a JOINT banner at this point. What it *does* verify is
-        // that the retired legacy JOINT+HCS diagnostics (E017/E018/
-        // E019) never appear on this input path. Positive E036
-        // coverage lives in scheme-level tests
+        // that the retired legacy JOINT rules (E017/E018/E019)
+        // never appear on this input path. Positive E036 coverage
+        // lives in scheme-level tests
         // (`scheme_equivalence::e036_fires_on_joint_with_bare_hcs` /
         // `_with_hcs_p`) where attrs can be constructed directly.
         let diags = lint_banner("//JOINT S USA GBR//HCS-P//REL TO USA, GBR");
