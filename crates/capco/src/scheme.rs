@@ -694,14 +694,25 @@ impl CapcoScheme {
         // construct `Diagnostic` values with byte-identical
         // message/span/fix output.
         //
-        // E018 (`joint-conflicts-ic-dissem`) and E019
-        // (`joint-conflicts-non-ic-dissem`) are intentionally NOT
-        // declared here. Both rules' predicates contradict
-        // CAPCO-2016 §H.3 lines 4140-4146, which explicitly permit
-        // JOINT with IC and non-IC dissem controls (excluding only
-        // NOFORN and HCS). Predicate fix is tracked as T035b; the
-        // existing hand-written rules remain registered (with their
-        // legacy citations) until T035b lands.
+        // T035b audit (2026-04-21): E017, E018, and E019 were
+        // retired as over-restrictive relative to CAPCO-2016 §H.3
+        // lines 4140-4146:
+        //
+        // - §H.3 line 4140 lists "FGI, IC and Non-IC dissemination
+        //   control markings (excluding NOFORN)" among markings
+        //   JOINT "may be used with, as appropriate"
+        // - §H.3 line 4146 names only two explicit exclusions:
+        //   HCS markings and NOFORN markings
+        // - §H.3 lines 4163-4164 cross-reference §H.7 for FGI
+        //   content marker syntax on JOINT documents — FGI marker
+        //   presence is a content indicator, not a competing
+        //   classification type
+        //
+        // The JOINT+NOFORN exclusion is caught indirectly: E014
+        // requires JOINT to carry REL TO, and
+        // `capco/noforn-conflicts-rel-to` fires when NOFORN and REL
+        // TO co-occur. The JOINT+HCS exclusion has no such indirect
+        // coverage, so it gets its own catalog entry below as E036.
         vec![
             // ---- E010: HCS subsystem rules (CAPCO-2016 §H.4) -----
             //
@@ -768,17 +779,32 @@ impl CapcoScheme {
                 right: TokenRef::Token(TOK_RESTRICTED),
                 label: "CAPCO-2016 §H.3 p55",
             },
-            // ---- E017: JOINT conflicts FGI marker (§H.3 p56) -----
+            // ---- E036: JOINT conflicts HCS markings (§H.3 p57) ---
             //
-            // §H.3 line 4017-4018 (mutually-exclusive systems);
-            // p57 lines 4163-4164: "If FGI information is used in a
-            // JOINT classified document, refer to Section H.7." A
-            // JOINT marking with a separate FGI block is malformed.
+            // §H.3 line 4146: "May not be used with the HCS markings
+            // or NOFORN markings." Line 4140 reinforces: JOINT may
+            // use "SCI (excluding HCS markings), SAP, AEA, FGI, IC
+            // and Non-IC dissemination control markings (excluding
+            // NOFORN)".
+            //
+            // The JOINT-NOFORN exclusion is already caught indirectly
+            // by `capco/noforn-conflicts-rel-to` + E014's REL TO
+            // requirement (NOFORN in a JOINT document either conflicts
+            // with the required REL TO or leaves REL TO empty). The
+            // HCS exclusion has no such indirect coverage, so it
+            // gets its own catalog entry.
+            //
+            // Supersedes the retired E017/E018/E019 which over-
+            // restricted JOINT against FGI content markers, arbitrary
+            // IC dissem, and non-IC dissem respectively. Those rules
+            // forbade combinations §H.3 line 4140 explicitly permits.
+            // See T035b retirement commit and project memory
+            // `feedback_audit_predicates_against_source.md`.
             Constraint::Conflicts {
-                name: "E017/joint-conflicts-fgi",
+                name: "E036/joint-conflicts-hcs",
                 left: TokenRef::Token(TOK_JOINT),
-                right: TokenRef::Token(TOK_FGI_MARKER),
-                label: "CAPCO-2016 §H.3 p56",
+                right: TokenRef::Token(TOK_HCS),
+                label: "CAPCO-2016 §H.3 p57 line 4146",
             },
             // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
             //
@@ -961,8 +987,18 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            // "HCS markings" is plural in CAPCO §H.3 line 4146 — it
+            // covers the bare `HCS` token AND the compound forms
+            // `HCS-O` / `HCS-P` / `HCS-O-P`. CVE-projection variants
+            // `Hcs`, `HcsO`, `HcsP` are all matched explicitly; the
+            // structural path via `sci_markings` covers any compound
+            // anchored on `SciControlBare::Hcs` regardless of the
+            // specific compartments attached.
             TOK_HCS => {
-                attrs.sci_controls.contains(&SciControl::Hcs)
+                attrs
+                    .sci_controls
+                    .iter()
+                    .any(|s| matches!(s, SciControl::Hcs | SciControl::HcsO | SciControl::HcsP))
                     || attrs.sci_markings.iter().any(|m| {
                         matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
                     })
@@ -978,6 +1014,13 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
                         | MarkingClassification::Joint(_)
                 )
             ),
+            // `TOK_IC_DISSEM` and `TOK_NON_IC_DISSEM` have no live
+            // consumers — the legacy E018/E019 constraints that
+            // would have used them were retired in T035b as
+            // over-restrictive. Kept as declared sentinels so any
+            // future narrowly-scoped IC/non-IC dissem invariant
+            // can dispatch against them without re-adding a
+            // `TokenId` constant.
             TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
             _ => false,
         },
