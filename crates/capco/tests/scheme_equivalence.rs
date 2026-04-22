@@ -494,6 +494,103 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// T035a feedback-round-1 regressions
+// ---------------------------------------------------------------------------
+//
+// These tests pin the predicate narrowing applied after the first
+// review pass on PR #70. They guard against the two dyadic-shape
+// mismatches that would silently double-fire diagnostics or fire
+// diagnostics on valid markings:
+//
+// - `e021_does_not_fire_on_u_ucni` — `E021/aea-requires-noforn` must
+//   only fire on RD/FRD/TFNI, not the broader `AnyInCategory(CAT_AEA)`
+//   which sweeps UCNI in. `U//UCNI` is a valid CAPCO §H.6 marking and
+//   must not trip E021.
+// - `e015_does_not_fire_on_dual_classification` — `Conflict` is a
+//   parser-internal dual-classification state handled by E012 alone;
+//   E015's `non-US-requires-dissem` must not also emit on it.
+
+#[test]
+fn e021_does_not_fire_on_u_ucni() {
+    // `U//UCNI` — valid per CAPCO §H.6 lines 7706+ ("Applicable only
+    // to unclassified information"). Legacy `AeaNofornRule` did NOT
+    // fire on UCNI; the T035 catalog must match that behavior.
+    use marque_ism::AeaMarking;
+
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Us(Classification::Unclassified));
+    attrs.aea_markings = vec![AeaMarking::DoeUcni].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "E021/aea-requires-noforn"),
+        "E021 must not fire on U//UCNI (only RD/FRD/TFNI require NOFORN); got: {violations:?}"
+    );
+}
+
+#[test]
+fn e021_fires_on_s_rd_without_noforn() {
+    // Positive anchor for the narrowed predicate: `S//RD` with no
+    // NOFORN MUST fire E021.
+    use marque_ism::{AeaMarking, RdBlock};
+
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+    attrs.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E021/aea-requires-noforn"),
+        "E021 must fire on S//RD without NOFORN; got: {violations:?}"
+    );
+}
+
+#[test]
+fn e015_does_not_fire_on_dual_classification() {
+    // `MarkingClassification::Conflict` is a parser-internal
+    // dual-classification state. E012 (`dual-classification`) handles
+    // it; E015 (`non-us-requires-dissem`) must NOT also fire — the
+    // legacy `NonUsMissingDissemRule` excluded `Conflict` from its
+    // predicate. Catching the `Conflict` arm in CAT_NON_US_CLASSIFICATION
+    // would make E015 double-emit on every dual-classification
+    // marking that lacks dissem.
+    use marque_ism::ForeignClassification;
+
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Conflict {
+        us: Classification::Secret,
+        foreign: Box::new(ForeignClassification::Joint(JointClassification {
+            level: Classification::Secret,
+            countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        })),
+    });
+    // No dissem_controls, no rel_to — would trigger E015 if Conflict
+    // were treated as non-US classification presence.
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "E015/non-us-requires-dissem"),
+        "E015 must not fire on `Conflict` (that's E012's job); got: {violations:?}"
+    );
+    // Sanity: E012 should still fire.
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E012/dual-classification"),
+        "E012 should fire on Conflict; got: {violations:?}"
+    );
+}
+
 #[test]
 fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
     let mut attrs = IsmAttributes::default();

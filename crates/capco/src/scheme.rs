@@ -785,10 +785,15 @@ impl CapcoScheme {
             // §H.6 RD entry line 6811: "Is always used with NOFORN
             // unless a sharing agreement has been established per
             // the Atomic Energy Act. (Ref. Sections 123 and 144...)".
-            Constraint::Requires {
+            // The "always used with NOFORN" requirement applies to
+            // RD, FRD, and TFNI specifically — not UCNI (DOD/DOE
+            // UCNI §H.6 lines 7706+ carry no such requirement) and
+            // not to any future AEA entry added to the category.
+            // Custom (not `Requires { left: AnyInCategory(CAT_AEA) }`)
+            // because that dyadic shape would sweep UCNI in: a valid
+            // `U//UCNI` marking would incorrectly require NOFORN.
+            Constraint::Custom {
                 name: "E021/aea-requires-noforn",
-                left: TokenRef::AnyInCategory(CAT_AEA),
-                right: TokenRef::Token(TOK_NOFORN),
                 label: "CAPCO-2016 §H.6 p104",
             },
             // ---- E022: CNWDI classification floor (§H.6 p106) ----
@@ -999,13 +1004,20 @@ impl MarkingScheme for CapcoScheme {
                 }
                 TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
                 TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
+                // `MarkingClassification::Conflict` is NOT treated as
+                // non-US for presence checks. It is a parser-internal
+                // "both US + foreign classification present" state
+                // that E012 already fires on as a dual-classification
+                // diagnostic. Including it here would cause E015
+                // (`non-US-requires-dissem`) to double-emit on every
+                // dual-classification marking, which the legacy
+                // `NonUsMissingDissemRule` never did.
                 TOK_NON_US_CLASSIFICATION => matches!(
                     &attrs.classification,
                     Some(
                         MarkingClassification::Fgi(_)
                             | MarkingClassification::Nato(_)
                             | MarkingClassification::Joint(_)
-                            | MarkingClassification::Conflict { .. }
                     )
                 ),
                 // T035b sentinels — see method-level note above.
@@ -1014,13 +1026,16 @@ impl MarkingScheme for CapcoScheme {
             },
             TokenRef::AnyInCategory(cat) => match *cat {
                 CAT_CLASSIFICATION => attrs.classification.is_some(),
+                // See `TOK_NON_US_CLASSIFICATION` above — `Conflict`
+                // is deliberately excluded so E015 does not double-
+                // emit on dual-classification markings handled by
+                // E012.
                 CAT_NON_US_CLASSIFICATION => matches!(
                     &attrs.classification,
                     Some(
                         MarkingClassification::Fgi(_)
                             | MarkingClassification::Nato(_)
                             | MarkingClassification::Joint(_)
-                            | MarkingClassification::Conflict { .. }
                     )
                 ),
                 CAT_JOINT_CLASSIFICATION => {
@@ -1067,6 +1082,7 @@ impl MarkingScheme for CapcoScheme {
             }
             "E012/dual-classification" => e012_dual_classification(attrs),
             "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
+            "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
             "E022/CNWDI-classification-floor" => e022_cnwdi_floor(attrs),
             "E024/rd-precedence" => e024_rd_precedence(attrs),
             "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
@@ -1250,6 +1266,38 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
             missing.join(", ")
         ),
         citation: "CAPCO-2016 §H.3 p56",
+    }]
+}
+
+/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement per
+/// AEA §123/§144 exists). CAPCO §H.6 line 6811. Intentionally narrower
+/// than `AnyInCategory(CAT_AEA)` — UCNI variants do not carry the NOFORN
+/// requirement (CAPCO §H.6 lines 7706+).
+fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+    let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Rd(_)
+                | marque_ism::AeaMarking::Frd(_)
+                | marque_ism::AeaMarking::Tfni
+        )
+    });
+    if !has_rd_frd_tfni {
+        return Vec::new();
+    }
+    let has_noforn = attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    if has_noforn {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E021/aea-requires-noforn",
+        message: "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                  per the Atomic Energy Act"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.6 p104",
     }]
 }
 
