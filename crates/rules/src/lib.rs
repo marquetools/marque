@@ -32,7 +32,7 @@ pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 // RuleId
 // ---------------------------------------------------------------------------
 
-/// Unique rule identifier string (e.g., "E001", "capco/banner-abbreviation").
+/// Unique rule identifier string (e.g., "E001", "capco/portion-mark-in-banner").
 ///
 /// The inner `&'static str` is private; construct via [`RuleId::new`] so that
 /// construction is explicit at every call site.
