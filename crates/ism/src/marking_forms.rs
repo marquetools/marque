@@ -129,7 +129,7 @@ pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
 /// Look up the banner-form expansion for a portion-form abbreviation.
 ///
 /// Used by:
-/// - E001 (banner-abbreviation): detects portion abbreviations in banners, suggests expansion
+/// - E001 (portion-mark-in-banner): detects portion marks used in banner lines, suggests banner abbreviation
 ///
 /// Returns `None` if the input is not a known portion form that has a distinct
 /// banner form (i.e., it's already the banner form, or banner = portion).

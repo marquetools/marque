@@ -4,14 +4,14 @@ expression: json
 ---
 [
   {
-    "citation": "CAPCO-2016 §A.6",
+    "citation": "CAPCO-2016 §H.8",
     "fix": {
       "confidence": 1.0,
       "migration_ref": null,
       "replacement": "NOFORN",
       "source": "BuiltinRule"
     },
-    "message": "banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"",
+    "message": "banner contains portion mark \"NF\" for an IC dissem control; use banner abbreviation \"NOFORN\"",
     "rule": "E001",
     "severity": "fix",
     "span": {

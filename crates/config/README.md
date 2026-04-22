@@ -54,7 +54,7 @@ println!("threshold = {}", config.confidence_threshold());
 version = "ISM-v2022-DEC"
 
 [rules]
-banner-abbreviation = "fix"     # off | warn | error | fix
+portion-mark-in-banner = "fix"  # off | warn | error | fix
 missing-usa-trigraph = "warn"
 
 [corrections]
