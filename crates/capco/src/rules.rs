@@ -3910,12 +3910,16 @@ mod tests {
     // diagnostics would regress CAPCO-2016 fidelity.
 
     #[test]
-    fn e017_does_not_fire_on_joint_with_fgi_marker() {
-        // Parser typically doesn't surface fgi_marker on a JOINT
-        // classification via the banner grammar (fgi_marker is a
-        // US-document content marker), so we can't drive this case
-        // via `lint_banner`. Instead, verify through the full
-        // diagnostic stream on a mixed JOINT+FGI input: no E017.
+    fn e017_does_not_fire_on_joint_rel_to_banner() {
+        // Generic retirement check: E017 (JOINT + FGI marker) is
+        // retired — the rule ID must never appear on the diagnostic
+        // stream regardless of input. This test uses a plain
+        // JOINT+REL TO banner, which does NOT exercise an FGI-marker
+        // path (the parser's banner grammar does not surface
+        // `fgi_marker` on a JOINT classification). True FGI-marker
+        // coverage requires constructing `IsmAttributes` directly;
+        // that's covered at the scheme level in
+        // `scheme_equivalence.rs::no_legacy_e017_e018_e019_constraints_in_catalog`.
         let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E017"),
@@ -3963,27 +3967,23 @@ mod tests {
     // --- E036: JOINT + HCS markings (T035b replacement) ---
 
     #[test]
-    fn e036_fires_on_joint_with_hcs() {
+    fn legacy_joint_hcs_rules_do_not_fire_on_parser_path() {
         // §H.3 line 4146: "May not be used with the HCS markings".
-        // The parser may not recognize HCS in a JOINT banner via
-        // the grammar, so this test is light; byte-level fixture
-        // coverage will emerge from the corpus harness once a
-        // matching fixture exists. Positive anchor: a direct
-        // scheme-level check is in `scheme_equivalence.rs`.
+        // This parser-driven test does not reliably provide positive
+        // E036 coverage because the grammar may not surface HCS in
+        // a JOINT banner at this point. What it *does* verify is
+        // that the retired legacy JOINT+HCS diagnostics (E017/E018/
+        // E019) never appear on this input path. Positive E036
+        // coverage lives in scheme-level tests
+        // (`scheme_equivalence::e036_fires_on_joint_with_bare_hcs` /
+        // `_with_hcs_p`) where attrs can be constructed directly.
         let diags = lint_banner("//JOINT S USA GBR//HCS-P//REL TO USA, GBR");
-        let e036: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E036").collect();
-        // Parser support for HCS in JOINT banners may be incomplete;
-        // accept either "E036 fires" OR "parser didn't recognize
-        // HCS here" as long as no legacy E017/E018/E019 fires.
         assert!(
             diags
                 .iter()
-                .all(|d| { !matches!(d.rule.as_str(), "E017" | "E018" | "E019") }),
+                .all(|d| !matches!(d.rule.as_str(), "E017" | "E018" | "E019")),
             "legacy E017/E018/E019 must not fire post-T035b: {diags:?}"
         );
-        let _ = e036; // may be empty if parser path doesn't produce
-        // HCS in this grammar — scheme-level test is
-        // authoritative.
     }
 
     #[test]

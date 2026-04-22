@@ -499,11 +499,20 @@ impl Rule for DeclarativeJointHcsRule {
             return vec![];
         }
 
-        // Span selection: point at the first SCI control token —
-        // that's the HCS entry whose presence triggered the
-        // violation. The JOINT classification itself is not in error;
+        // Span selection: point at the offending HCS SCI control
+        // token. When multiple SCI controls are present (e.g.,
+        // `SI//HCS-P`), the first SciControl span may be SI, which
+        // is not the violation. Prefer the first span whose text
+        // starts with "HCS"; fall back to the first SciControl span
+        // only if no HCS-prefixed token span is attached (parser
+        // gaps). The JOINT classification itself is not in error;
         // the user needs to remove or re-categorize HCS.
-        let span = first_span_of(attrs, TokenKind::SciControl);
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SciControl && t.text.starts_with("HCS"))
+            .map(|t| t.span)
+            .unwrap_or_else(|| first_span_of(attrs, TokenKind::SciControl));
 
         vec![Diagnostic::new(
             self.id(),
