@@ -25,6 +25,25 @@
 //! `attrs.token_spans` the same way the retired hand-written rule
 //! did.
 //!
+//! ## Citation policy: wrappers carry byte-identity-frozen citations
+//!
+//! Every `Diagnostic` emitted here carries the *legacy* rule's
+//! citation string verbatim — typically a section-only reference like
+//! `"CAPCO-2016 §H.6"`. The **authoritative** citation with specific
+//! page + line numbers lives on the matching catalog entry in
+//! `crate::scheme::build_constraints`. We do not unify them in this
+//! PR because the corpus NDJSON output is a stable surface and
+//! changing the citation string breaks SC-008 byte-identity.
+//!
+//! When two diverge on *section* (not just precision) — currently
+//! E012 (`§B.1` in wrapper vs `§H.3 p55` in catalog) and E015
+//! (`§B.3` vs `§H.7 + §B.3.d`) — the catalog is correct and the
+//! wrapper is pending a citation update in a follow-up that can
+//! bump the NDJSON schema or carry a migration note. For now,
+//! per-wrapper inline comments flag the divergence so a future
+//! author reading the wrapper doesn't take `§B.1` / `§B.3` as
+//! authoritative without cross-checking the catalog.
+//!
 //! ## E018 / E019 are NOT retired here
 //!
 //! `JointIcDissemRule` (E018) and `JointNonIcDissemRule` (E019) stay
@@ -260,6 +279,10 @@ impl Rule for DeclarativeDualClassificationRule {
                 us.banner_str(),
                 us.banner_str(),
             ),
+            // Byte-identity freeze. Catalog cites §H.3 p55 (correct
+            // authoritative passage); §B.1 is the legacy wrapper
+            // citation — update in a separate NDJSON-schema-migration
+            // PR. See module-level "Citation policy" doc.
             citation: "CAPCO-2016 §B.1",
             original,
             replacement: fgi_replacement,
@@ -354,6 +377,10 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
             span,
             "non-US classification must be accompanied by a dissemination control \
              (e.g., REL TO, NOFORN)",
+            // Byte-identity freeze. Catalog cites §H.7 + §B.3.d
+            // (correct authoritative passages — FGI commingling +
+            // FD&R procedures); §B.3 alone is the legacy wrapper
+            // citation. See module-level "Citation policy" doc.
             "CAPCO-2016 §B.3",
             None,
         )]

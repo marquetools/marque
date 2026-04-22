@@ -1314,6 +1314,18 @@ fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
 /// E025 — UCNI may only be used with UNCLASSIFIED. Fires when DOD/DOE UCNI
 /// is present AND the classification level is above UNCLASSIFIED.
 /// CAPCO §H.6 line 7706/7710.
+///
+/// Note on T035 refactor: the Phase 3 catalog entry was
+/// `Conflicts { left: TOK_UCNI, right: AnyInCategory(CAT_CLASSIFICATION) }`.
+/// That shape would fire on `classification.is_some()` — including
+/// `Some(Unclassified)` — because `satisfies(AnyInCategory(CAT_CLASSIFICATION))`
+/// is `true` whenever a classification field is populated at all. The
+/// hand-written legacy rule fires only when `classification >
+/// Unclassified`. Converting to `Custom` closed that semantic gap: a
+/// valid `U//UCNI` marking (CAPCO §H.6) would have tripped the
+/// `Conflicts` variant but passes the hand-written predicate. This
+/// helper matches the hand-written predicate exactly (early-return
+/// on `Some(Unclassified)`).
 fn e025_ucni_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_ucni = attrs.aea_markings.iter().any(|a| {
         matches!(
