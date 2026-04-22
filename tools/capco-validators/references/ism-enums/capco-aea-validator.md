@@ -1,0 +1,23 @@
+# ISM CVE Enumerations - capco-aea-validator
+
+**ISM-v2022-DEC Authorized Markings Reference**
+
+## CVEnumISMAtomicEnergyMarkings
+
+| Value | Description |
+|-------|-------------|
+| `RD` | RESTRICTED DATA |
+| `RD-CNWDI` | RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION |
+| `RD-SG-14` | RD-SIGMA-14 |
+| `RD-SG-15` | RD-SIGMA-15 |
+| `RD-SG-18` | RD-SIGMA-18 |
+| `RD-SG-20` | RD-SIGMA-20 |
+| `FRD` | FORMERLY RESTRICTED DATA |
+| `FRD-SG-14` | RD-SIGMA-14 |
+| `FRD-SG-15` | RD-SIGMA-15 |
+| `FRD-SG-18` | RD-SIGMA-18 |
+| `FRD-SG-20` | RD-SIGMA-20 |
+| `DCNI` | DoD CONTROLLED NUCLEAR INFORMATION |
+| `UCNI` | DoE CONTROLLED NUCLEAR INFORMATION |
+| `TFNI` | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION |
+
