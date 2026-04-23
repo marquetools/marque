@@ -221,6 +221,16 @@ pub enum FixSource {
     DecoderPosterior,
 }
 
+/// Canonical citation string for diagnostics whose authority is the user's
+/// `[corrections]` config entry (C001 and the engine's pre-scanner text-scan
+/// path). C001 is not a CAPCO rule — no CAPCO passage governs user-defined
+/// typo replacements — so the citation is a config pointer rather than a
+/// §/page/line reference. Holding the string in one place prevents silent
+/// drift between the rule-pipeline emission site in `marque-capco` and the
+/// pre-scanner emission site in `marque-engine`; both paths produce the
+/// same audit-record shape.
+pub const CORRECTIONS_MAP_CITATION: &str = "CONFIG:[corrections]";
+
 // ---------------------------------------------------------------------------
 // FixProposal
 // ---------------------------------------------------------------------------
