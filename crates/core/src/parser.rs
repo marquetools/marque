@@ -352,7 +352,7 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
-            } else if let Some(nic) = NonIcDissem::parse(trimmed) {
+            } else if let Some(nic) = parse_non_ic_full_form(trimmed) {
                 non_ic.push(nic);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::NonIcDissem,
@@ -462,7 +462,7 @@ impl<'t> Parser<'t> {
                             nic: None,
                             aea: None,
                         });
-                    } else if let Some(nic) = NonIcDissem::parse(sub_tok) {
+                    } else if let Some(nic) = parse_non_ic_full_form(sub_tok) {
                         results.push(SubResult {
                             kind: SubKind::NonIc,
                             tok: sub_tok,
@@ -846,7 +846,7 @@ fn is_alnum_upper(s: &str) -> bool {
 fn is_known_non_sci_token(s: &str) -> bool {
     DissemControl::parse(s).is_some()
         || parse_dissem_full_form(s).is_some()
-        || NonIcDissem::parse(s).is_some()
+        || parse_non_ic_full_form(s).is_some()
         || AeaMarking::parse(s).is_some()
         || DeclassExemption::parse(s).is_some()
 }
@@ -1043,8 +1043,29 @@ fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
 ///
 /// Mapping data sourced from [`marque_ism::marking_forms`].
 fn parse_dissem_full_form(s: &str) -> Option<DissemControl> {
-    let portion = marque_ism::marking_forms::banner_to_portion(s)?;
+    // Accept both the Banner Line Abbreviation (e.g., "NOFORN") and the
+    // long Marking Title (e.g., "NOT RELEASABLE TO FOREIGN NATIONALS")
+    // per CAPCO-2016 §A.6 line 317: "Any control markings in the banner
+    // line may be spelled out per the 'Marking Title' ... or abbreviated
+    // as per the 'Authorized Abbreviation' ... in accordance with the
+    // Register". Long-title acceptance is what lets the S001 style rule
+    // observe banner-form tokens that use the full title — without it
+    // the parser would tag those as Unknown and E008 would fire instead.
+    let portion = marque_ism::marking_forms::banner_to_portion(s)
+        .or_else(|| marque_ism::marking_forms::title_to_portion(s))?;
     DissemControl::parse(portion)
+}
+
+/// Non-IC dissemination control parser covering both the Banner Line
+/// Abbreviation (e.g., `"LIMDIS"`) and the long "Marking Title" form
+/// (e.g., `"LIMITED DISTRIBUTION"`). Mirror of [`parse_dissem_full_form`]
+/// for the §9 non-IC marking set so the S001 style rule can see title
+/// tokens across both categories.
+fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
+    NonIcDissem::parse(s).or_else(|| {
+        let portion = marque_ism::marking_forms::title_to_portion(s)?;
+        NonIcDissem::parse(portion)
+    })
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
