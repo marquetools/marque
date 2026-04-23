@@ -122,9 +122,7 @@ impl SciSet {
             }
             for comp in m.compartments.iter() {
                 let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
-                for sub in comp.sub_compartments.iter() {
-                    sub_set.insert(sub.to_string());
-                }
+                sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
         out
@@ -212,9 +210,7 @@ impl Lattice for SciSet {
             let out_comps = out.systems.entry(sys.clone()).or_default();
             for (cid, subs) in comp_map {
                 let out_subs = out_comps.entry(cid.clone()).or_default();
-                for s in subs {
-                    out_subs.insert(s.clone());
-                }
+                out_subs.extend(subs.iter().cloned());
             }
         }
         out
@@ -302,9 +298,7 @@ impl SarSet {
             let comps = out.programs.entry(prog.identifier.to_string()).or_default();
             for comp in prog.compartments.iter() {
                 let subs = comps.entry(comp.identifier.to_string()).or_default();
-                for sub in comp.sub_compartments.iter() {
-                    subs.insert(sub.to_string());
-                }
+                subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
         out
@@ -372,9 +366,7 @@ impl Lattice for SarSet {
             let out_comps = out.programs.entry(pid.clone()).or_default();
             for (cid, subs) in comp_map {
                 let out_subs = out_comps.entry(cid.clone()).or_default();
-                for s in subs {
-                    out_subs.insert(s.clone());
-                }
+                out_subs.extend(subs.iter().cloned());
             }
         }
         out
