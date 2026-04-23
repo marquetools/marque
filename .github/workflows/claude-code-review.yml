@@ -35,9 +35,15 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Try to Fix anthropic Bug
+        id: fix-anthropics
+        run: |
+           contents="$(ls -lad /home/runner/work/_actions/anthropics/claude-code-action/)"
+           echo "claude action dir contents: ${contents}"
+
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@632a368e81692f2e33c14b7133a7ef56ae6d35e1
+        uses: anthropics/claude-code-action@6ee201f0231fbb762d22664f12aad2e7ae0401ae
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'

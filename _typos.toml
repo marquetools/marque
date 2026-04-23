@@ -38,6 +38,12 @@ SECRECT = "SECRECT"
 SECERT = "SECERT"
 CONFIDENTAL = "CONFIDENTAL"
 ND = "ND"
+# Intentional misspellings used in fuzzy vocab matcher tests and documentation
+SERCET = "SERCET"
+NOFRON = "NOFRON"
+CONFIDETIAL = "CONFIDETIAL"
+SECRRET = "SECRRET"
+UNCLASSIFEID = "UNCLASSIFEID"
 
 [default.extend-identifiers]
 # Hyphenated "mis-splice" is intentional in rule comments
