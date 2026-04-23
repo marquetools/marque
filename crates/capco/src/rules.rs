@@ -2006,13 +2006,24 @@ impl Rule for DelimiterMismatchRule {
                 let text = token.text.as_ref();
                 if text.contains(',') {
                     // Replace `,` with a space and normalize whitespace.
-                    // `split_whitespace().join(" ")` handles all of:
-                    //   `USA,GBR`     → `USA GBR` (no space after comma)
-                    //   `USA, GBR`    → `USA GBR` (canonical-ish comma)
-                    //   `USA,  GBR`   → `USA GBR` (extra whitespace)
-                    // Preserves the "JOINT <level> " prefix correctly
-                    // because split_whitespace + join(" ") normalizes
-                    // the whole string, not just the country list.
+                    // `split_whitespace().join(" ")` handles any run of
+                    // whitespace and preserves the "JOINT <level> "
+                    // prefix because it normalizes the whole string.
+                    //
+                    // Parser boundary: this branch only runs once the
+                    // JOINT block has already parsed successfully, so
+                    // it applies to inputs where commas coexist with
+                    // whitespace token boundaries:
+                    //   `USA, GBR`   → `USA GBR` (comma + trailing space)
+                    //   `USA,  GBR`  → `USA GBR` (comma + extra spaces)
+                    //
+                    // A bare `USA,GBR` (comma, no whitespace) does NOT
+                    // reach this branch: `parse_joint_classification`
+                    // tokenizes on whitespace, so the list fails grammar
+                    // entirely and `attrs.classification` is not
+                    // `Joint(_)`. Fixing that shape would require parser-
+                    // level degradation tolerance and is out of scope
+                    // for this rule.
                     let fixed: String = text
                         .replace(',', " ")
                         .split_whitespace()
