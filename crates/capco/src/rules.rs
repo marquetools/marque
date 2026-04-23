@@ -4561,14 +4561,22 @@ mod tests {
     #[test]
     fn e008_suppressed_on_migration_backed_unknown() {
         // `25X1-` is an Unknown token that the seed MIGRATIONS table
-        // captures. E007 owns X-shorthand; E008 must step aside to
-        // avoid double-firing on the same span.
+        // captures. E007 owns X-shorthand; E008 must step aside AND
+        // E007 must actually fire — otherwise a future change that
+        // breaks E007's migration lookup could produce a silent
+        // suppression with no diagnostic at all.
         let diags = lint_banner("SECRET//25X1-//NOFORN");
         let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
         assert!(
             e008.is_empty(),
             "E008 must be suppressed for migration-backed X-shorthand \
              (E007 owns this path): {diags:?}"
+        );
+        assert!(
+            !e007.is_empty(),
+            "E007 must fire for migration-backed X-shorthand — \
+             otherwise suppression is a silent drop: {diags:?}"
         );
     }
 
@@ -4577,13 +4585,21 @@ mod tests {
         // `25X9-` is not in the seed MIGRATIONS table but matches the
         // X-shorthand pattern E007 catches via fallback. E008 must
         // still step aside — see the suppression path 2 in the rule
-        // doc comment.
+        // doc comment. Also assert that E007 actually fires so this
+        // cannot regress into a silent drop where E008 is suppressed
+        // but no owning diagnostic is emitted.
         let diags = lint_banner("SECRET//25X9-//NOFORN");
         let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        let e007: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E007").collect();
         assert!(
             e008.is_empty(),
             "E008 must be suppressed for pattern-matched X-shorthand \
              even when not in seed MIGRATIONS (E007 owns): {diags:?}"
+        );
+        assert!(
+            !e007.is_empty(),
+            "E007 must fire for pattern-matched X-shorthand — \
+             otherwise suppression is a silent drop: {diags:?}"
         );
     }
 
