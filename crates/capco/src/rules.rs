@@ -271,22 +271,26 @@ impl Rule for PortionMarkInBannerRule {
 // Rule: E002 — Missing USA in REL TO trigraph list
 // ---------------------------------------------------------------------------
 
-/// E002 enforces two invariants from the REL TO marking template in
-/// CAPCO-2016 §H.8 (p150–151, "Additional Marking Instructions"):
+/// E002 detects missing or misplaced `USA` in the REL TO marking template
+/// from CAPCO-2016 §H.8 (p150–151, "Additional Marking Instructions"):
 ///
 /// - Line 3713: "'USA' must always appear first whenever the REL TO string
 ///   is used to communicate release decisions either by the US or a Non-US
 ///   entity."
+///
+/// When E002 fires, its fix also produces a canonical REL TO list in a
+/// single pass by placing `USA` first and alphabetizing the remaining
+/// trigraphs. That canonicalization aligns the output with line 3714:
+///
 /// - Line 3714: "After 'USA', list the required one or more trigraph country
 ///   codes in alphabetical order followed by tetragraph codes listed in
 ///   alphabetical order. Each code is separated by a comma and a space."
 ///
-/// The fix produces the fully canonical REL TO list (USA first + remaining
-/// trigraphs alphabetical) in a single pass. This absorbs what E020 would
-/// otherwise catch on a second pass — E020's USA-first gate skips the rule
-/// when E002 is firing, so if E002's fix preserved original input order the
-/// output would still carry a latent alphabetical-ordering violation. The
-/// 0.97 confidence is predicated on single-pass canonicalization.
+/// E002 does not, by itself, detect line-3714 ordering errors when `USA` is
+/// already present and first; those cases are handled by E020. The 0.97
+/// confidence is predicated on single-pass canonicalization so an E002 fix
+/// does not leave behind a latent alphabetical-ordering violation for a
+/// second pass.
 ///
 /// Scope boundaries:
 /// - Tetragraph alphabetization is deferred: `Trigraph` is 3-byte only
@@ -3473,7 +3477,8 @@ mod tests {
 
         // Round 2: feed the canonicalized REL TO back through the linter;
         // neither E002 nor E020 should fire on the rewritten banner.
-        let diags_round2 = lint_banner("CONFIDENTIAL//REL TO USA, DEU, FRA");
+        let round2_banner = format!("CONFIDENTIAL//REL TO {fixed}");
+        let diags_round2 = lint_banner(&round2_banner);
         assert!(
             diags_round2
                 .iter()
