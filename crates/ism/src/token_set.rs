@@ -20,6 +20,24 @@ pub trait TokenSet: Send + Sync {
 
     /// Returns true if `token` is a known country trigraph.
     fn is_trigraph(&self, token: &str) -> bool;
+
+    /// Returns the vocabulary slice used for fuzzy correction lookups.
+    ///
+    /// This is the token vocabulary against which unknown tokens are compared
+    /// by the `marque_core::fuzzy` module. Must be sorted and deduplicated
+    /// (binary search is used for the "is already valid" check).
+    ///
+    /// The returned slice is borrowed from the implementor, which allows
+    /// implementations to hold the vocabulary on `self` (e.g., in a `Vec`
+    /// built at construction time) rather than in a global static. Each
+    /// entry is `&'static str` because the fuzzy matcher returns canonical
+    /// tokens with `'static` lifetime in `FuzzyCorrection::token`.
+    ///
+    /// The default implementation returns an empty slice, disabling fuzzy
+    /// correction for external `TokenSet` implementors that do not override it.
+    fn correction_vocab(&self) -> &[&'static str] {
+        &[]
+    }
 }
 
 /// Aho-Corasick automaton over all CVE tokens — built once from generated data.
@@ -48,6 +66,10 @@ impl TokenSet for CapcoTokenSet {
         // binary_search is O(log n) over ~340 entries instead of the old
         // O(n) `.contains()` linear scan. Hot path for every REL TO parse.
         values::TRIGRAPHS.binary_search(&token).is_ok()
+    }
+
+    fn correction_vocab(&self) -> &[&'static str] {
+        values::ALL_CVE_TOKENS
     }
 }
 
@@ -118,5 +140,30 @@ mod tests {
     fn unknown_string_is_not_a_trigraph() {
         let set = CapcoTokenSet;
         assert!(!set.is_trigraph("XYZ_NOT_A_COUNTRY"));
+    }
+
+    #[test]
+    fn correction_vocab_returns_sorted_nonempty_slice() {
+        let vocab = CapcoTokenSet.correction_vocab();
+        assert!(!vocab.is_empty(), "correction vocab must not be empty");
+        for window in vocab.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "correction_vocab must be strictly sorted: {:?} >= {:?}",
+                window[0],
+                window[1],
+            );
+        }
+    }
+
+    #[test]
+    fn correction_vocab_contains_core_classification_tokens() {
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &["SECRET", "CONFIDENTIAL", "UNCLASSIFIED"] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab must contain {expected:?}"
+            );
+        }
     }
 }
