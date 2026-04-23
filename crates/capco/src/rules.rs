@@ -3243,10 +3243,9 @@ impl Rule for SarCompartmentOrderRule {
 /// December-2011 repeat-rule change with the October 2003 category
 /// move (§I line 4713: "Moved Special Access Required (SAR) from
 /// Non-Intelligence Community Dissemination Control Markings to a
-/// new category"). The two changes are unrelated. §I is history and
-/// not a valid predicate-citation target (project memory
-/// `project_capco_doc_structure`), but is cited here for doc
-/// context only.
+/// new category"). The two changes are unrelated. §I is historical
+/// background rather than a valid predicate-citation target, but is
+/// cited here for documentation context only.
 ///
 /// Repeated indicators in modern documents are therefore an error
 /// this rule must surface, even though older corpus material
