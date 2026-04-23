@@ -4492,9 +4492,10 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
 //           Insertion fix when banner already has a Non-IC dissem
 //           category block; no-fix Error otherwise.
 //   E041  — In a portion with both NODIS and EXDIS, NODIS supersedes
-//           EXDIS. Warn-severity with auto-fix that removes the EXDIS
-//           token plus an adjacent `/` separator. Portion-only; the
+//           EXDIS. Warn-severity with no fix. Portion-only; the
 //           banner case is owned by E037 (mutual exclusion, Error).
+//           See the in-rule "# No auto-fix" section for why the
+//           supersession is not auto-applied.
 
 // ---------------------------------------------------------------------------
 // Rule: E039 — REL TO not allowed in banner when portion has NODIS/EXDIS
@@ -4733,9 +4734,11 @@ impl Rule for NodisExdisBannerRollupRule {
 // Rule: E041 — Portion-level NODIS supersedes EXDIS
 // ---------------------------------------------------------------------------
 
-/// Fires when a portion carries BOTH NODIS and EXDIS. Offers an
-/// auto-fix that removes the EXDIS token (keeping NODIS) per the
-/// supersession rule in §H.9.
+/// Fires when a portion carries BOTH NODIS and EXDIS. Emits a
+/// `Warn` diagnostic pointing at the EXDIS token; no auto-fix
+/// (see the "# No auto-fix" section below). Per the supersession
+/// rule in §H.9, NODIS survives and the user removes EXDIS
+/// manually.
 ///
 /// Authority:
 /// - **CAPCO-2016 §H.9 p172 line 4246** (EXDIS Commingling): *"When a
@@ -4759,9 +4762,10 @@ impl Rule for NodisExdisBannerRollupRule {
 /// EXDIS cannot coexist" rule from line 4235/4295). When a portion
 /// has both tokens, both rules fire:
 /// - E037 (`Error`, no fix) states the violation.
-/// - E041 (`Warn`, with fix) provides the supersession-based auto-fix.
+/// - E041 (`Warn`, no fix) states the supersession rule: NODIS wins,
+///   so EXDIS must be removed from the portion marking.
 ///
-/// Applying E041's fix removes EXDIS; re-linting clears both
+/// After the user manually removes EXDIS, re-linting clears both
 /// diagnostics.
 ///
 /// # Severity
@@ -7055,7 +7059,7 @@ mod tests {
 
     #[test]
     fn e040_emits_no_fix_when_banner_has_no_non_ic_dissem_block() {
-        // Banner has classification + IC dissem + REL TO but NO
+        // Banner has classification + IC dissem only, but NO
         // Non-IC dissem block at all. Inserting a new category block
         // is unsafe (needs separator-positioning), so E040 emits a
         // no-fix Error.
