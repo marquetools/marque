@@ -6659,10 +6659,13 @@ mod tests {
 
     #[test]
     fn e029_sub_compartment_arm_cites_line_2405() {
-        // Sub-compartments out of order (K15 before J12 under J12).
-        // The existing `e029_fires_on_out_of_order_sub_compartments`
-        // test uses this shape; replicate here so the citation
-        // lockdown is self-contained.
+        // Sub-compartments out of order (K15 before J54 within J12).
+        // Parser reads `BP-J12 K15 J54` as compartment J12 with
+        // sub-compartments [K15, J54]; alphanumeric order requires
+        // J54 before K15. The existing
+        // `e029_fires_on_out_of_order_sub_compartments` test uses
+        // this shape; replicate here so the citation lockdown is
+        // self-contained.
         let diags = lint_banner("SECRET//SAR-BP-J12 K15 J54//NOFORN");
         let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
         assert_eq!(e029.len(), 1);
