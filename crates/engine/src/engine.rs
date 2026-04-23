@@ -104,6 +104,13 @@ impl Engine {
         scheme: S,
         clock: Box<dyn Clock>,
     ) -> Result<Self, EngineConstructionError> {
+        // Canonicalize [rules] overrides against the registered rule
+        // set: accept either the rule ID (e.g. "E001") or the rule
+        // name (e.g. "portion-mark-in-banner"), resolve both to the
+        // canonical ID before the engine stores the map, and hard-fail
+        // on any unknown key. See `canonicalize_rule_overrides`.
+        canonicalize_rule_overrides(&mut config, &rule_sets)?;
+
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
@@ -580,6 +587,163 @@ impl Engine {
 }
 
 // ---------------------------------------------------------------------------
+// Rule-override canonicalization (task #49)
+// ---------------------------------------------------------------------------
+
+/// Resolve every key in `config.rules.overrides` against the registered
+/// rule sets. Both the rule ID (`"E001"`) and the rule name
+/// (`"portion-mark-in-banner"`) are accepted — after canonicalization
+/// the override map keys by canonical ID only, and the per-rule lookup
+/// in `lint()` / `fix_inner()` keeps working unchanged.
+///
+/// Fails closed on:
+/// - **Unknown keys** — `E999 = "warn"` or `not-a-rule = "error"` → the
+///   user has almost certainly typo'd a rule reference. Silent acceptance
+///   (the pre-#49 behavior) means the user thought they were configuring
+///   the rule, but nothing happened at lint time. Emits
+///   `EngineConstructionError::UnknownRuleOverride` with a best-effort
+///   `did_you_mean` suggestion (Levenshtein ≤ 3 against the union of
+///   known IDs and names).
+/// - **Conflicting duplicate forms** — `E001 = "warn"` AND
+///   `portion-mark-in-banner = "error"` in the same merged config →
+///   the two entries resolved to the same rule but with different
+///   severities. One form would have silently won the HashMap race.
+///   Emits `EngineConstructionError::ConflictingRuleOverride`.
+///
+/// Duplicate forms with the *same* severity are silently accepted —
+/// a user writing both `E001 = "warn"` and `portion-mark-in-banner =
+/// "warn"` (intentionally or via copy-paste across config layers) gets
+/// the expected behavior.
+fn canonicalize_rule_overrides(
+    config: &mut Config,
+    rule_sets: &[Box<dyn RuleSet>],
+) -> Result<(), EngineConstructionError> {
+    if config.rules.overrides.is_empty() {
+        return Ok(());
+    }
+
+    // Build the ID-and-name → canonical-ID lookup. Both sides live in
+    // `&'static str` (RuleId's inner slice, rule.name()), so the map's
+    // keys and values are all `'static`.
+    let mut known: HashMap<&'static str, &'static str> = HashMap::new();
+    for rule_set in rule_sets {
+        for rule in rule_set.rules() {
+            let id_str = rule.id().as_str();
+            let name = rule.name();
+            known.insert(id_str, id_str);
+            known.insert(name, id_str);
+        }
+    }
+
+    // Walk the raw overrides; resolve each key to its canonical ID, and
+    // track which source key contributed each canonical entry so we can
+    // report both sides of a conflict.
+    let raw = std::mem::take(&mut config.rules.overrides);
+    let mut by_rule: HashMap<&'static str, (String, String)> = HashMap::new();
+    for (key, value) in raw {
+        match known.get(key.as_str()) {
+            Some(&canonical_id) => {
+                if let Some((prev_key, prev_sev)) = by_rule.get(canonical_id) {
+                    if prev_sev != &value {
+                        return Err(EngineConstructionError::ConflictingRuleOverride {
+                            rule_id: canonical_id.to_owned(),
+                            keys: Box::new([prev_key.clone(), key]),
+                            severities: Box::new([prev_sev.clone(), value]),
+                        });
+                    }
+                    // Duplicate form, same severity — accept silently.
+                } else {
+                    by_rule.insert(canonical_id, (key, value));
+                }
+            }
+            None => {
+                let did_you_mean =
+                    suggest_closest(&key, known.keys().copied());
+                return Err(EngineConstructionError::UnknownRuleOverride {
+                    key,
+                    did_you_mean,
+                });
+            }
+        }
+    }
+
+    config.rules.overrides = by_rule
+        .into_iter()
+        .map(|(id, (_, sev))| (id.to_owned(), sev))
+        .collect();
+    Ok(())
+}
+
+/// Return the closest known rule key (ID or name) to `needle` by
+/// Levenshtein distance, if the closest candidate is within a small
+/// edit-distance threshold. Threshold scales with `needle.len()`: short
+/// strings only match on ≤ 1 edit, longer strings tolerate more.
+///
+/// Returns `None` when no candidate is close enough to be useful —
+/// "did you mean 'REL-TO-noforn-supersession'?" for a user who typed
+/// "E999" would be worse than no suggestion at all.
+fn suggest_closest<'a, I>(needle: &str, candidates: I) -> Option<String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    // Keep the threshold tight so we don't suggest matches that share
+    // only a couple of characters. The max-distance formula mirrors
+    // what rustc uses for its "did you mean" hints:
+    //   - length 0–3: 1 edit max (too short to suggest at all, really)
+    //   - length 4–7: 2 edits max
+    //   - length 8+:  3 edits max
+    let max_distance = match needle.len() {
+        0..=3 => 1,
+        4..=7 => 2,
+        _ => 3,
+    };
+
+    let mut best: Option<(&'a str, usize)> = None;
+    for cand in candidates {
+        let dist = levenshtein(needle, cand);
+        if dist > max_distance {
+            continue;
+        }
+        match best {
+            Some((_, prev_dist)) if dist >= prev_dist => {}
+            _ => best = Some((cand, dist)),
+        }
+    }
+    best.map(|(cand, _)| cand.to_owned())
+}
+
+/// Levenshtein edit distance between two byte strings. Small, inlineable,
+/// no external dependency — the engine crate is on the WASM-safe surface
+/// and adding a new runtime dep for a once-per-construction helper would
+/// be a disproportionate trade (Constitution III).
+///
+/// Operates on bytes, not `char`s: rule IDs and names are ASCII by
+/// construction, so the byte-level diff equals the codepoint-level diff.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let (m, n) = (a.len(), b.len());
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    // Two-row DP: only the previous row is needed at any step.
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr: Vec<usize> = vec![0; n + 1];
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1039,5 +1203,257 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 1);
         assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AAA");
+    }
+
+    // -----------------------------------------------------------------------
+    // Task #49 — rule-alias canonicalization + fail-loud on unknown keys
+    // -----------------------------------------------------------------------
+
+    /// Stub rule with distinct, test-controlled id and name so we can
+    /// exercise the alias-resolution logic. The base `StubRule` hardcodes
+    /// `name() -> "stub"`, which collides across multiple rules and
+    /// doesn't model real CAPCO rules.
+    struct NamedStub {
+        id: &'static str,
+        name: &'static str,
+    }
+
+    impl Rule for NamedStub {
+        fn id(&self) -> RuleId {
+            RuleId::new(self.id)
+        }
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Warn
+        }
+        fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+            vec![]
+        }
+    }
+
+    fn named_rule_set(rules: &[(&'static str, &'static str)]) -> Box<dyn RuleSet> {
+        let rules: Vec<Box<dyn Rule>> = rules
+            .iter()
+            .map(|(id, name)| Box::new(NamedStub { id, name }) as Box<dyn Rule>)
+            .collect();
+        Box::new(StubSet(rules))
+    }
+
+    fn config_with_overrides(pairs: &[(&str, &str)]) -> Config {
+        let mut config = Config::default();
+        for (k, v) in pairs {
+            config
+                .rules
+                .overrides
+                .insert((*k).to_owned(), (*v).to_owned());
+        }
+        config
+    }
+
+    #[test]
+    fn canonicalize_accepts_rule_id_form_unchanged() {
+        let mut config = config_with_overrides(&[("E001", "warn")]);
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        assert_eq!(
+            config.rules.overrides.get("E001"),
+            Some(&"warn".to_owned()),
+            "ID-form override keeps its key"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_rule_name_form_and_resolves_to_id() {
+        let mut config = config_with_overrides(&[("portion-mark-in-banner", "error")]);
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        assert_eq!(
+            config.rules.overrides.get("E001"),
+            Some(&"error".to_owned()),
+            "name-form override resolves to canonical ID"
+        );
+        assert!(
+            !config.rules.overrides.contains_key("portion-mark-in-banner"),
+            "pre-canonicalization name key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_rejects_unknown_key_with_suggestion_for_near_miss() {
+        let mut config = config_with_overrides(&[("E00l", "warn")]); // lowercase-L, not 1
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        match err {
+            EngineConstructionError::UnknownRuleOverride { key, did_you_mean } => {
+                assert_eq!(key, "E00l");
+                assert_eq!(
+                    did_you_mean.as_deref(),
+                    Some("E001"),
+                    "single-character typo should suggest the canonical ID"
+                );
+            }
+            other => panic!("expected UnknownRuleOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn canonicalize_rejects_unknown_key_without_suggestion_when_nothing_close() {
+        // No candidate is within edit distance 3, so did_you_mean must be None
+        // — a nonsense suggestion is worse than no suggestion.
+        let mut config = config_with_overrides(&[("totally-made-up-rule-name", "error")]);
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        match err {
+            EngineConstructionError::UnknownRuleOverride { key, did_you_mean } => {
+                assert_eq!(key, "totally-made-up-rule-name");
+                assert!(
+                    did_you_mean.is_none(),
+                    "distant misses must not emit a suggestion; got {did_you_mean:?}"
+                );
+            }
+            other => panic!("expected UnknownRuleOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn canonicalize_rejects_conflicting_id_and_name_forms_with_different_severity() {
+        let mut config = config_with_overrides(&[
+            ("E001", "warn"),
+            ("portion-mark-in-banner", "error"),
+        ]);
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        match err {
+            EngineConstructionError::ConflictingRuleOverride {
+                rule_id,
+                keys,
+                severities,
+            } => {
+                assert_eq!(rule_id, "E001");
+                // HashMap iteration order isn't deterministic — verify by set.
+                let k: std::collections::HashSet<&str> =
+                    keys.iter().map(|s| s.as_str()).collect();
+                assert!(k.contains("E001"));
+                assert!(k.contains("portion-mark-in-banner"));
+                let s: std::collections::HashSet<&str> =
+                    severities.iter().map(|s| s.as_str()).collect();
+                assert!(s.contains("warn"));
+                assert!(s.contains("error"));
+            }
+            other => panic!("expected ConflictingRuleOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn canonicalize_accepts_duplicate_forms_with_same_severity() {
+        // A user who writes both `E001 = "warn"` and `portion-mark-in-banner
+        // = "warn"` (e.g., via copy-paste across layers) is unambiguous and
+        // should not be punished.
+        let mut config = config_with_overrides(&[
+            ("E001", "warn"),
+            ("portion-mark-in-banner", "warn"),
+        ]);
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        canonicalize_rule_overrides(&mut config, &sets)
+            .expect("duplicate forms with same severity must succeed");
+        assert_eq!(config.rules.overrides.len(), 1);
+        assert_eq!(
+            config.rules.overrides.get("E001"),
+            Some(&"warn".to_owned())
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_overrides_across_multiple_rule_sets() {
+        // Two rule sets registered; aliases from each must resolve.
+        let mut config = config_with_overrides(&[
+            ("portion-mark-in-banner", "error"), // name from set A
+            ("M500", "warn"),                    // ID from set B
+        ]);
+        let sets = vec![
+            named_rule_set(&[("E001", "portion-mark-in-banner")]),
+            named_rule_set(&[("M500", "some-other-domain-rule")]),
+        ];
+        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        assert_eq!(
+            config.rules.overrides.get("E001"),
+            Some(&"error".to_owned())
+        );
+        assert_eq!(
+            config.rules.overrides.get("M500"),
+            Some(&"warn".to_owned())
+        );
+    }
+
+    #[test]
+    fn canonicalize_empty_overrides_is_noop() {
+        let mut config = Config::default();
+        let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
+        canonicalize_rule_overrides(&mut config, &sets).expect("empty overrides must succeed");
+        assert!(config.rules.overrides.is_empty());
+    }
+
+    #[test]
+    fn unknown_rule_override_exit_code_is_dataerr() {
+        let err = EngineConstructionError::UnknownRuleOverride {
+            key: "E999".into(),
+            did_you_mean: None,
+        };
+        assert_eq!(err.exit_code(), 65, "EX_DATAERR for user-config errors");
+    }
+
+    #[test]
+    fn conflicting_rule_override_exit_code_is_dataerr() {
+        let err = EngineConstructionError::ConflictingRuleOverride {
+            rule_id: "E001".into(),
+            keys: Box::new(["E001".into(), "portion-mark-in-banner".into()]),
+            severities: Box::new(["warn".into(), "error".into()]),
+        };
+        assert_eq!(err.exit_code(), 65);
+    }
+
+    #[test]
+    fn rewrite_cycle_exit_code_is_unavailable() {
+        // Scheme defects (not user-config errors) stay on EX_UNAVAILABLE.
+        use marque_scheme::CategoryId;
+        let err = EngineConstructionError::RewriteCycle {
+            axis: CategoryId(0),
+            members: Box::new(["a", "b"]),
+        };
+        assert_eq!(err.exit_code(), 69);
+    }
+
+    #[test]
+    fn levenshtein_matches_reference_values() {
+        // Spot-check against hand-computed distances to catch regressions
+        // in the DP implementation.
+        assert_eq!(super::levenshtein("", ""), 0);
+        assert_eq!(super::levenshtein("E001", "E001"), 0);
+        assert_eq!(super::levenshtein("E001", "E002"), 1);
+        assert_eq!(super::levenshtein("E001", "E00l"), 1);
+        assert_eq!(super::levenshtein("kitten", "sitting"), 3);
+        assert_eq!(super::levenshtein("", "abc"), 3);
+        assert_eq!(super::levenshtein("abc", ""), 3);
+    }
+
+    #[test]
+    fn suggest_closest_prefers_smaller_distance() {
+        let cands = ["E001", "E002", "E010"];
+        // "E00l" has dist 1 to E001, dist 2 to E002 (two edits: 0→0, l→2),
+        // dist 2 to E010 (two edits). So the suggestion must be E001.
+        assert_eq!(
+            super::suggest_closest("E00l", cands.iter().copied()),
+            Some("E001".to_owned())
+        );
+    }
+
+    #[test]
+    fn suggest_closest_returns_none_when_nothing_is_close_enough() {
+        let cands = ["portion-mark-in-banner", "missing-usa-trigraph"];
+        // Very short needle with no near neighbors — threshold is 1 for
+        // length 3, and the closest candidate is many edits away.
+        assert!(super::suggest_closest("xyz", cands.iter().copied()).is_none());
     }
 }
