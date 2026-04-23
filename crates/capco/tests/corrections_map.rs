@@ -9,11 +9,14 @@
 //! rule emits `FixSource::CorrectionsMap` with citation
 //! `marque_rules::CORRECTIONS_MAP_CITATION` for audit-trail fidelity.
 
-use marque_capco::capco_rules;
+use marque_capco::{CapcoRuleSet, capco_rules};
 use marque_config::Config;
+use marque_core::{Parser, Scanner};
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::{CORRECTIONS_MAP_CITATION, FixSource};
+use marque_ism::{CapcoTokenSet, MarkingType};
+use marque_rules::{CORRECTIONS_MAP_CITATION, FixSource, RuleContext, RuleId, RuleSet};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
@@ -38,47 +41,110 @@ fn engine_default() -> Engine {
 // C001 basics
 // -----------------------------------------------------------------------
 
+/// Walk a rule set and invoke only the C001 rule's `check` method on a
+/// parsed banner. Used by `c001_rule_pipeline_citation_equals_constant`
+/// to exercise the rule-pipeline path in isolation — `Engine::lint` runs
+/// both the rule pipeline AND the pre-scanner text scan, so routing
+/// through it cannot distinguish which path emitted a diagnostic and a
+/// regression in one path can be masked by the other.
+fn run_c001_rule_pipeline_only(
+    source: &[u8],
+    corrections: HashMap<String, String>,
+) -> Vec<marque_rules::Diagnostic> {
+    let token_set = CapcoTokenSet;
+    let parser = Parser::new(&token_set);
+    let candidates = Scanner::scan(source);
+    let rule_set = CapcoRuleSet::new();
+    let corrections_arc = Arc::new(corrections);
+
+    let mut out = Vec::new();
+    for candidate in &candidates {
+        if candidate.kind == MarkingType::PageBreak {
+            continue;
+        }
+        let Ok(parsed) = parser.parse(candidate, source) else {
+            continue;
+        };
+        let ctx = RuleContext {
+            marking_type: candidate.kind,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: Some(corrections_arc.clone()),
+        };
+        for rule in rule_set.rules() {
+            if rule.id() == RuleId::new("C001") {
+                out.extend(rule.check(&parsed.attrs, &ctx));
+            }
+        }
+    }
+    out
+}
+
 #[test]
-fn c001_citation_equals_correction_map_constant() {
-    // T035c-15 audit guard: the C001 citation string must be the canonical
-    // `CORRECTIONS_MAP_CITATION` constant defined in `marque-rules`. Both
-    // the rule-pipeline path (`CorrectionsMapRule::check` in
-    // `crates/capco/src/rules.rs`) and the pre-scanner text-scan path
-    // (`Engine::lint` in `crates/engine/src/engine.rs`) MUST route through
-    // the same constant so audit records cannot silently diverge.
+fn c001_rule_pipeline_citation_equals_constant() {
+    // T035c-15 audit guard — rule-pipeline path in isolation.
     //
-    // Case 1: rule-pipeline emission. "NF" is a known dissem token, so the
-    // scanner detects `SECRET//NF` as a banner and the parser produces a
-    // `TokenSpan` that C001's `check` method matches against the map.
+    // This test invokes `CorrectionsMapRule::check` directly via the
+    // rule-set iterator, bypassing `Engine::lint` entirely so the
+    // engine's pre-scanner text-scan path cannot mask a regression
+    // in the rule-pipeline path. `Engine::lint` runs both paths on
+    // the same source and dedupes by span, so a test that asserts
+    // "some C001 diagnostic fired with the right citation" after
+    // `engine.lint(...)` cannot distinguish which path produced it —
+    // a regression in the rule-pipeline's citation string would be
+    // invisible if the pre-scanner still fired on the same span.
+    //
+    // Input `SECRET//NF` with corrections `NF → NOFORN` ensures the
+    // rule pipeline has a matching TokenSpan to walk. No pre-scanner
+    // runs in this test harness.
     let mut corrections = HashMap::new();
     corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-    let result = engine.lint(b"SECRET//NF\n");
-    let c001: Vec<_> = result
-        .diagnostics
+
+    let diags = run_c001_rule_pipeline_only(b"SECRET//NF\n", corrections);
+    let c001: Vec<_> = diags
         .iter()
         .filter(|d| d.rule.as_str() == "C001")
         .collect();
-    assert!(!c001.is_empty(), "rule-pipeline C001 must fire");
+    assert_eq!(
+        c001.len(),
+        1,
+        "rule-pipeline path must emit exactly one C001 diagnostic: {diags:?}"
+    );
     assert_eq!(
         c001[0].citation, CORRECTIONS_MAP_CITATION,
         "rule-pipeline C001 citation must equal CORRECTIONS_MAP_CITATION"
     );
+}
 
-    // Case 2: pre-scanner emission. "SERCET" is not a known classification
-    // prefix so the scanner does NOT detect the marking; the pre-scanner
-    // text-scan path in `Engine::lint` produces the C001 diagnostic
-    // instead. Both paths must produce byte-identical citations.
+#[test]
+fn c001_pre_scanner_citation_equals_constant() {
+    // T035c-15 audit guard — pre-scanner path in isolation.
+    //
+    // Input `SERCET//NF` (not `SECRET`): the scanner does not
+    // recognize `SERCET` as a classification prefix, so it produces
+    // no banner candidate, the parser runs no rule-pipeline passes,
+    // and `CorrectionsMapRule::check` cannot fire. The pre-scanner
+    // text-scan path in `Engine::lint` is the only codepath that
+    // can emit a C001 diagnostic for this input. Pairing this with
+    // `c001_rule_pipeline_citation_equals_constant` locks down
+    // both emission paths against silent divergence.
     let mut corrections = HashMap::new();
     corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
     let engine = engine_with_corrections(corrections);
     let result = engine.lint(b"SERCET//NF\n");
+
     let c001: Vec<_> = result
         .diagnostics
         .iter()
         .filter(|d| d.rule.as_str() == "C001")
         .collect();
-    assert!(!c001.is_empty(), "pre-scanner C001 must fire");
+    assert_eq!(
+        c001.len(),
+        1,
+        "pre-scanner path must emit exactly one C001 diagnostic: {:?}",
+        result.diagnostics
+    );
     assert_eq!(
         c001[0].citation, CORRECTIONS_MAP_CITATION,
         "pre-scanner C001 citation must equal CORRECTIONS_MAP_CITATION"
