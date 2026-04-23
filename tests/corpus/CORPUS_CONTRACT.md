@@ -20,7 +20,7 @@ The corpus MUST contain **at least 3 known-bad fixtures per rule**:
 | E002 | 3 | REL TO list missing USA trigraph |
 | E003 | 3 | Misordered banner blocks |
 | E004 | 3 | Separator count normalization |
-| E005 | 3 | Declassification info in banner |
+| E005 | 3 | Declassification info misplaced (banner or portion; belongs in CAB) |
 | E006 | 3 | Deprecated dissem control |
 | E007 | 3 | X-shorthand declassification date |
 | E008 | 3 | Unrecognized token in marking |
