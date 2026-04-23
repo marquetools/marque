@@ -1,0 +1,6 @@
+{
+  "diagnostics": [
+    {"rule": "E040", "span": {"start": 12, "end": 18}}
+  ],
+  "_note": "E040 nodis-exdis-banner-rollup: portion carries NODIS; banner has no Non-IC dissem block. Per §H.9 p174 line 4300, NODIS in any portion must appear in the banner. Banner has no Non-IC dissem category to extend, so E040 emits a no-fix Error (byte-positioning a new category block from rule context alone is unsafe). Span points at the first banner token (SECRET) because the banner has no Non-IC dissem anchor."
+}
