@@ -5,7 +5,7 @@ description: Validate CAPCO/ISM rule citations, token predicates, and marking lo
 
 # CAPCO Validate
 
-Orchestration guide for the 14 CAPCO/ISM validator agents in the `capco-validators` plugin. Each agent is a focused domain expert — this skill tells you which to invoke and when.
+Orchestration guide for the 13 CAPCO/ISM validator agents in the `capco-validators` plugin. Each agent is a focused domain expert — this skill tells you which to invoke and when.
 
 ## When to Use This Skill
 
@@ -29,12 +29,11 @@ Invoke a validator whenever you:
 | `capco-sar-validator` | SAR/SAP markings | §H.5 | SAP program identifiers, compartment hierarchy |
 | `capco-dissem-validator` | Dissemination controls | §H.8–9 | REL TO, NOFORN, FOUO, FISA, RELIDO, OC |
 | `capco-aea-validator` | Atomic Energy Act markings | §H.6 | RD, FRD, CNWDI, SIGMA, DCNI, UCNI, TFNI |
-| `capco-fgi-validator` | Foreign Government Information | §H.7 | FGI trigraphs, tetragraphs, NATO/coalition codes |
-| `capco-nato-validator` | JOINT/NATO markings | §H.3 | JOINT classification, NATO caveats, allied markings |
-| `capco-classification-validator` | US classification levels | §H.1–2 | TOP SECRET, SECRET, CONFIDENTIAL, UNCLASSIFIED |
+| `capco-fgi-validator` | Foreign Government Information | §H.7 | FGI trigraphs, tetragraphs, international org codes |
+| `capco-classification-validator` | US, Non-US, and JOINT classification levels | §H.1–3 | TOP SECRET/SECRET/CONFIDENTIAL/UNCLASSIFIED, non-IC levels, JOINT markings |
 | `capco-declassification-validator` | CAB declassification guidance | §E | Declassify-on dates, 25X/50X exemptions, hierarchies |
-| `capco-cui-validator` | CUI BASIC/SPECIFIED | §F | CUI category application, FOUO legacy status |
-| `capco-legacy-validator` | Deprecated markings | §F | Obsolete marking detection, migration recommendations |
+| `capco-legacy-validator` | Deprecated control markings | §F | Obsolete marking detection, migration recommendations |
+| `capco-non-ic-validator` | Non-IC dissemination control markings | §H.9 | LIMITED DISTRIBUTION, EXCLUSIVE DISTRIBUTION, LES, SSI, SBU, NO DISTRIBUTION |
 
 ### Invoke these for cross-cutting questions:
 
@@ -128,8 +127,8 @@ Question involves dissem controls (REL TO, NOFORN, FOUO, FISA)?
 Question involves AEA (RD, FRD, SIGMA, nuclear markings)?
   → capco-aea-validator
 
-Question involves NATO, JOINT, or allied markings?
-  → capco-nato-validator
+Question involves JOINT classification, non-US classification levels?
+  → capco-classification-validator
 
 Question involves CAB structure, authority chains, or derivation?
   → capco-cab-specialist
@@ -140,8 +139,8 @@ Question involves historical banner declassification syntax or historical→mode
 Question involves why a marking was deprecated or FOUO→CUI mapping?
   → capco-deprecated-historical-specialist
 
-Question involves CUI BASIC or CUI SPECIFIED categories?
-  → capco-cui-validator
+Question involves non-IC markings (LES, SSI, SBU, LIMITED DISTRIBUTION, etc.)?
+  → capco-non-ic-validator
 
 Question involves US classification levels (TS/S/C/U)?
   → capco-classification-validator
@@ -152,7 +151,7 @@ Question involves declassify-on dates, 25X exemptions, or CAB declassification?
 Question involves FGI country/org codes?
   → capco-fgi-validator
 
-Question involves deprecated/obsolete markings?
+Question involves deprecated/obsolete control markings?
   → capco-legacy-validator
 
 Question involves portion mark syntax, banner format, general marking rules?
