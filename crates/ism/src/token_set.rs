@@ -27,9 +27,15 @@ pub trait TokenSet: Send + Sync {
     /// by the `marque_core::fuzzy` module. Must be sorted and deduplicated
     /// (binary search is used for the "is already valid" check).
     ///
+    /// The returned slice is borrowed from the implementor, which allows
+    /// implementations to hold the vocabulary on `self` (e.g., in a `Vec`
+    /// built at construction time) rather than in a global static. Each
+    /// entry is `&'static str` because the fuzzy matcher returns canonical
+    /// tokens with `'static` lifetime in `FuzzyCorrection::token`.
+    ///
     /// The default implementation returns an empty slice, disabling fuzzy
     /// correction for external `TokenSet` implementors that do not override it.
-    fn correction_vocab(&self) -> &'static [&'static str] {
+    fn correction_vocab(&self) -> &[&'static str] {
         &[]
     }
 }
@@ -62,7 +68,7 @@ impl TokenSet for CapcoTokenSet {
         values::TRIGRAPHS.binary_search(&token).is_ok()
     }
 
-    fn correction_vocab(&self) -> &'static [&'static str] {
+    fn correction_vocab(&self) -> &[&'static str] {
         values::ALL_CVE_TOKENS
     }
 }

@@ -72,9 +72,12 @@ pub struct FuzzyCorrection {
 /// Vocabulary-aware fuzzy corrector for a closed token set.
 ///
 /// Construct once per engine session from the vocabulary slice exposed by
-/// [`marque_ism::TokenSet::correction_vocab`]. The vocab must be **sorted
-/// and deduplicated** (`binary_search`, through `CapcoTokenSet`, requires
-/// sorted, unique, input.
+/// `marque_ism::TokenSet::correction_vocab`. The vocab must be sorted and
+/// deduplicated: the "is already valid" fast path uses [`slice::binary_search`],
+/// and the ambiguity check assumes each candidate appears at most once. For
+/// [`marque_ism::CapcoTokenSet`] the invariant is enforced at the source —
+/// `ALL_CVE_TOKENS` is emitted sorted and deduplicated by
+/// `marque-ism/build.rs` and verified by `token_set::tests`.
 ///
 /// # Example
 /// ```
@@ -95,17 +98,20 @@ pub struct FuzzyCorrection {
 /// // Too ambiguous → no correction
 /// // (tokens equidistant from the input → ambiguous, return None)
 /// ```
-pub struct FuzzyVocabMatcher {
-    vocab: &'static [&'static str],
+pub struct FuzzyVocabMatcher<'v> {
+    vocab: &'v [&'static str],
 }
 
-impl FuzzyVocabMatcher {
+impl<'v> FuzzyVocabMatcher<'v> {
     /// Create a new matcher over `vocab`.
     ///
     /// `vocab` must be the sorted, deduplicated CVE token slice returned by
     /// [`TokenSet::correction_vocab`]. Construction is `O(1)` — the slice is
-    /// not copied or indexed.
-    pub fn new(vocab: &'static [&'static str]) -> Self {
+    /// not copied or indexed. The slice itself may live on the caller's
+    /// `TokenSet` implementation (e.g., a `Vec<&'static str>` field), but each
+    /// entry must be `&'static str` so that [`FuzzyCorrection::token`] — which
+    /// borrows directly from the vocabulary — outlives the matcher.
+    pub fn new(vocab: &'v [&'static str]) -> Self {
         Self { vocab }
     }
 
@@ -113,30 +119,51 @@ impl FuzzyVocabMatcher {
     ///
     /// Returns `None` when:
     /// - `token` is already a known vocabulary entry (no correction needed).
-    /// - `token` is too short (< `MIN_FUZZY_LEN` characters).
+    /// - `token` is too short (< `MIN_FUZZY_LEN` bytes).
     /// - No vocabulary entry is within [`MAX_EDIT_DISTANCE`] edits.
     /// - Multiple vocabulary entries tie at the closest distance (ambiguous).
     ///
     /// Returns `Some(FuzzyCorrection)` only when the correction is unambiguous.
+    ///
+    /// # ASCII invariant
+    ///
+    /// Length checks and the underlying edit-distance computation both operate
+    /// on byte counts. The CAPCO vocabulary is pure ASCII (classification
+    /// levels, SCI/dissem/SAR tokens, etc.), so byte count and character count
+    /// coincide for every expected input. Non-ASCII input is compared byte-wise
+    /// and will not produce meaningful corrections — which is the intended
+    /// behavior, since no non-ASCII candidate exists in the closed vocab.
     pub fn correct(&self, token: &str) -> Option<FuzzyCorrection> {
         // Fast path: token is already valid → nothing to correct.
         if self.vocab.binary_search(&token).is_ok() {
             return None;
         }
 
-        let token_len = token.chars().count();
+        let token_len = token.len();
 
         // Very short tokens are too noisy for edit-distance correction.
         if token_len < MIN_FUZZY_LEN {
             return None;
         }
 
+        // Scratch buffers reused across every candidate in this call. The
+        // rolling two-row array needs `shorter + 1` slots, where
+        // `shorter = min(token.len(), candidate.len())`. The length-diff
+        // filter below guarantees `|token.len() - candidate.len()| <=
+        // MAX_EDIT_DISTANCE`, so `shorter <= token_len`, and a single
+        // allocation of `token_len + 1` fits every candidate. This avoids
+        // the ~2 heap allocations per candidate (~100 per correction attempt)
+        // that allocating inside the levenshtein helper would incur.
+        let scratch_len = token_len + 1;
+        let mut prev = vec![0u8; scratch_len];
+        let mut curr = vec![0u8; scratch_len];
+
         let mut best_dist = u8::MAX;
         let mut best_token: Option<&'static str> = None;
         let mut ambiguous = false;
 
         for &candidate in self.vocab {
-            let cand_len = candidate.chars().count();
+            let cand_len = candidate.len();
 
             // Skip candidates whose length difference alone exceeds our bound.
             // This is a fast filter before the full Levenshtein computation.
@@ -145,7 +172,7 @@ impl FuzzyVocabMatcher {
                 continue;
             }
 
-            let d = levenshtein(token, candidate);
+            let d = levenshtein_with_scratch(token, candidate, &mut prev, &mut curr);
 
             if d < best_dist {
                 best_dist = d;
@@ -262,7 +289,34 @@ fn correction_confidence(distance: u8, token_len: usize) -> f32 {
 ///
 /// Returns the edit distance clamped to `u8::MAX` (any distance > 255 is
 /// already far beyond the useful range for CAPCO corrections).
+///
+/// Operates on bytes: two characters are "equal" iff they have the same byte
+/// representation. The CAPCO vocabulary is pure ASCII, so this matches a
+/// character-level edit distance for every expected input.
+///
+/// This wrapper allocates two `Vec<u8>` buffers per call. On hot paths that
+/// call Levenshtein for each of many candidates (e.g.,
+/// [`FuzzyVocabMatcher::correct`]), prefer [`levenshtein_with_scratch`] and
+/// reuse the scratch buffers across candidates.
+#[cfg(test)]
 pub(crate) fn levenshtein(a: &str, b: &str) -> u8 {
+    let shorter = a.len().min(b.len());
+    let mut prev = vec![0u8; shorter + 1];
+    let mut curr = vec![0u8; shorter + 1];
+    levenshtein_with_scratch(a, b, &mut prev, &mut curr)
+}
+
+/// Same as [`levenshtein`] but reuses caller-owned scratch buffers.
+///
+/// `prev_buf` and `curr_buf` must each have length strictly greater than
+/// `min(a.len(), b.len())`; their contents are overwritten. In debug builds
+/// this is enforced by a `debug_assert!`.
+pub(crate) fn levenshtein_with_scratch(
+    a: &str,
+    b: &str,
+    prev_buf: &mut [u8],
+    curr_buf: &mut [u8],
+) -> u8 {
     // Ensure `a` is the shorter string (minimizes inner-loop iterations).
     let (a, b) = if a.len() <= b.len() { (a, b) } else { (b, a) };
 
@@ -275,12 +329,20 @@ pub(crate) fn levenshtein(a: &str, b: &str) -> u8 {
         return m.min(u8::MAX as usize) as u8;
     }
 
+    debug_assert!(
+        prev_buf.len() > n && curr_buf.len() > n,
+        "scratch buffers must have len > min(a.len(), b.len())"
+    );
+
+    // Local mutable bindings so `mem::swap` can rotate which buffer is `prev`
+    // and which is `curr` without moving bytes.
+    let (mut prev, mut curr) = (prev_buf, curr_buf);
+
     // prev[i] holds the distance between a[0..i] and the previous b prefix
     // (before the loop: b[0..0], and at outer iteration j: b[0..j-1]).
-    let mut prev: Vec<u8> = (0..=n)
-        .map(|i| i.min(u8::MAX as usize) as u8)
-        .collect();
-    let mut curr = vec![0u8; n + 1];
+    for (i, slot) in prev.iter_mut().enumerate().take(n + 1) {
+        *slot = i.min(u8::MAX as usize) as u8;
+    }
 
     for j in 1..=m {
         curr[0] = j.min(u8::MAX as usize) as u8;
@@ -367,7 +429,7 @@ mod tests {
         "UNCLASSIFIED",
     ];
 
-    fn matcher() -> FuzzyVocabMatcher {
+    fn matcher() -> FuzzyVocabMatcher<'static> {
         FuzzyVocabMatcher::new(TEST_VOCAB)
     }
 

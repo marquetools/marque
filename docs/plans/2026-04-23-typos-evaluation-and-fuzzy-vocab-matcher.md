@@ -197,8 +197,11 @@ decoder (see `2026-04-19-recursive-lattice-and-decoder.md`). The wiring path:
 
 ### Immediate (shipped)
 
-- `marque-core::fuzzy` module: `FuzzyVocabMatcher`, `FuzzyCorrection`,
-  `levenshtein`, `correction_confidence` — all public.
+- `marque-core::fuzzy` module public surface: `FuzzyVocabMatcher`,
+  `FuzzyCorrection`, `MIN_FUZZY_LEN`, `MAX_EDIT_DISTANCE`. The
+  `levenshtein` helper is `pub(crate)` (exposed for in-crate tests, not
+  API) and `correction_confidence` is a private implementation detail
+  of `FuzzyVocabMatcher::correct`.
 - `marque-ism::TokenSet::correction_vocab()` — exposes vocab for injection.
 - Tests: 17 unit tests covering distance computation, correction logic,
   ambiguity suppression, confidence scaling.
