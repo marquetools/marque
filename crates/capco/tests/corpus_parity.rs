@@ -66,16 +66,21 @@ fn rule_count_reflects_registration_changes() {
     // (dos-dissem-noforn) per CAPCO-2016 §H.9 NODIS/EXDIS templates
     // (p172 + p174). Net: 40.
     //
+    // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to) +
+    // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
+    // -in-portion). Net: 43.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        40,
+        43,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
-         (retired W001) + T035c-21 PR-A (added E037, E038). Adjust \
-         this assertion only when rule registration actually changes."
+         (retired W001) + T035c-21 PR-A (added E037, E038) + \
+         T035c-21 PR-B (added E039, E040, E041). Adjust this \
+         assertion only when rule registration actually changes."
     );
 }
 

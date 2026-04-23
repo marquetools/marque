@@ -48,6 +48,9 @@
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
 //!   E037 = NODIS and EXDIS must not coexist (T035c-21 PR-A)
 //!   E038 = NODIS / EXDIS require NOFORN (T035c-21 PR-A)
+//!   E039 = REL TO not allowed in banner with NODIS/EXDIS portion (T035c-21 PR-B)
+//!   E040 = banner must roll up NODIS (or EXDIS if no NODIS) (T035c-21 PR-B)
+//!   E041 = NODIS supersedes EXDIS in portion (T035c-21 PR-B)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -147,6 +150,13 @@ impl CapcoRuleSet {
                 // chain.
                 Box::new(crate::rules_declarative::DeclarativeNodisConflictsExdisRule),
                 Box::new(crate::rules_declarative::DeclarativeDosDissemNofornRule),
+                // T035c-21 PR-B: NODIS/EXDIS page-level + portion-level
+                // hand-written rules. E039 (REL TO clear), E040
+                // (banner roll-up), E041 (NODIS supersedes EXDIS in
+                // portion). See §H.9 p172 + p174 for each citation.
+                Box::new(NodisExdisClearsBannerRelToRule),
+                Box::new(NodisExdisBannerRollupRule),
+                Box::new(NodisSupersedesExdisInPortionRule),
             ],
         }
     }
@@ -4467,6 +4477,378 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
     )
 }
 
+// ===========================================================================
+// T035c-21 PR-B: NODIS / EXDIS page-level + portion-level rules (§H.9)
+// ===========================================================================
+//
+// Three hand-written rules that can't ride the declarative-constraint
+// path (all three need either page_context access or token-level fix
+// proposals):
+//
+//   E039  — REL TO not authorized in banner when any portion has NODIS
+//           or EXDIS. No fix (removing REL TO from a banner is multi-
+//           span and requires human judgment on what to convey instead).
+//   E040  — Banner must roll up NODIS (or EXDIS if no NODIS anywhere).
+//           Insertion fix when banner already has a Non-IC dissem
+//           category block; no-fix Error otherwise.
+//   E041  — In a portion with both NODIS and EXDIS, NODIS supersedes
+//           EXDIS. Warn-severity with auto-fix that removes the EXDIS
+//           token plus an adjacent `/` separator. Portion-only; the
+//           banner case is owned by E037 (mutual exclusion, Error).
+
+// ---------------------------------------------------------------------------
+// Rule: E039 — REL TO not allowed in banner when portion has NODIS/EXDIS
+// ---------------------------------------------------------------------------
+
+/// Fires when the banner's REL TO list is populated and any portion on
+/// the page carries NODIS or EXDIS.
+///
+/// Authority:
+/// - **CAPCO-2016 §H.9 p172 line 4241** (EXDIS): *"REL TO is not
+///   authorized in the banner line if any portion contains EXDIS
+///   information. In this case, NOFORN would convey in the banner
+///   line."*
+/// - **CAPCO-2016 §H.9 p174 line 4301** (NODIS): same for NODIS.
+///
+/// # Why no fix
+///
+/// Removing REL TO from a banner is multi-span (the whole RelToBlock
+/// comes out, along with its `//` separators), and the replacement
+/// depends on whether the user wants to convert to NOFORN-only (the
+/// source suggests) or take some other action. Emit an `Error`
+/// diagnostic with no fix; the user decides manually.
+struct NodisExdisClearsBannerRelToRule;
+
+impl Rule for NodisExdisClearsBannerRelToRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E039")
+    }
+    fn name(&self) -> &'static str {
+        "nodis-exdis-clears-banner-rel-to"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{MarkingType, NonIcDissem};
+
+        // Banner-only (and CAB, since CABs can carry REL TO). Portion
+        // candidates are the input; they don't trigger on themselves.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        if attrs.rel_to.is_empty() {
+            return vec![];
+        }
+
+        let Some(page) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        let (expected_non_ic, _needs_nf) = page.expected_non_ic_dissem();
+        let has_nodis_or_exdis = expected_non_ic
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Nodis | NonIcDissem::Exdis));
+        if !has_nodis_or_exdis {
+            return vec![];
+        }
+
+        // Point at the first RelToBlock (or RelToTrigraph) span so the
+        // user sees exactly where the offending REL TO is.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+            .or_else(|| {
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::RelToTrigraph)
+            })
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "REL TO is not authorized in the banner line when any portion \
+             contains NODIS or EXDIS; NOFORN conveys the foreign-release \
+             decision in this case per CAPCO-2016 §H.9",
+            concat!(
+                "CAPCO-2016 §H.9 p172 line 4241 (EXDIS) + ",
+                "p174 line 4301 (NODIS)",
+            ),
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E040 — Banner must roll up NODIS (or EXDIS if no NODIS anywhere)
+// ---------------------------------------------------------------------------
+
+/// Fires when portions carry NODIS or EXDIS but the banner's Non-IC
+/// dissem category omits the required token.
+///
+/// Authority:
+/// - **CAPCO-2016 §H.9 p174 line 4300** (NODIS): *"If NODIS is contained
+///   in any portion of a document, it must appear in the banner line."*
+/// - **CAPCO-2016 §H.9 p172 line 4240** (EXDIS): *"If EXDIS is contained
+///   in any portion of a document that does not contain one or more
+///   NODIS portions, EXDIS must appear in the banner line."*
+/// - **Banner priority** (both §H.9 p172 line 4239 + p174 line 4299):
+///   *"NODIS has priority over EXDIS in the banner line if both NODIS
+///   and EXDIS portions are in the same document."*
+///
+/// # Required banner token
+///
+/// Derived from the page's portions:
+/// - Any portion has NODIS → banner must have NODIS.
+/// - No portion has NODIS AND any portion has EXDIS → banner must have
+///   EXDIS.
+///
+/// # Fix
+///
+/// When the banner already has a Non-IC dissem category block
+/// (`TokenKind::NonIcDissem` present in `attrs.token_spans`), emit a
+/// zero-width insertion at the end of that block adding `/NODIS` or
+/// `/EXDIS` — mirrors E031's insertion pattern so it coexists with
+/// other rules on the same span under the C-1 overlap guard.
+///
+/// When the banner has no Non-IC dissem block at all, emit at `Error`
+/// severity with no fix — inserting a new category requires
+/// byte-positioning between the IC dissem and declassify-on blocks,
+/// which the engine's single-pass architecture cannot reliably support
+/// from rule-level information alone. Same policy as E031's no-SAR-
+/// block arm and E035's no-SCI-block arm.
+struct NodisExdisBannerRollupRule;
+
+impl Rule for NodisExdisBannerRollupRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E040")
+    }
+    fn name(&self) -> &'static str {
+        "nodis-exdis-banner-rollup"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{MarkingType, NonIcDissem};
+
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        let Some(page) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        let (expected_non_ic, _) = page.expected_non_ic_dissem();
+        let portions_have_nodis = expected_non_ic.iter().any(|d| matches!(d, NonIcDissem::Nodis));
+        let portions_have_exdis = expected_non_ic.iter().any(|d| matches!(d, NonIcDissem::Exdis));
+
+        // Determine what the banner MUST carry per §H.9. NODIS has
+        // priority over EXDIS; if any portion has NODIS, the banner
+        // must have NODIS even if other portions have EXDIS.
+        let required = if portions_have_nodis {
+            NonIcDissem::Nodis
+        } else if portions_have_exdis {
+            NonIcDissem::Exdis
+        } else {
+            return vec![];
+        };
+
+        let banner_has_required = attrs.non_ic_dissem.contains(&required);
+        if banner_has_required {
+            return vec![];
+        }
+
+        let required_str = required.banner_str();
+        let message = format!(
+            "banner is missing {required_str} required by portions \
+             (§H.9 roll-up rule: {required_str} in any portion must \
+             appear in the banner)"
+        );
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §H.9 p172 line 4240 (EXDIS) + ",
+            "p174 line 4300 (NODIS); banner priority p172 line 4239 + ",
+            "p174 line 4299",
+        );
+
+        // Fix: if banner has at least one Non-IC dissem token, emit a
+        // zero-width insertion at the end of that category block
+        // appending `/<required>`. Otherwise, no-fix Error.
+        let last_non_ic_span = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .map(|t| t.span)
+            .next_back();
+
+        match last_non_ic_span {
+            Some(last_span) => {
+                let insertion = Span::new(last_span.end, last_span.end);
+                let replacement = format!("/{required_str}");
+                vec![make_fix_diagnostic(FixDiagnosticParams {
+                    rule: self.id(),
+                    severity: self.default_severity(),
+                    source: FixSource::BuiltinRule,
+                    span: insertion,
+                    message,
+                    citation: CITATION,
+                    original: String::new(),
+                    replacement,
+                    confidence: 0.9,
+                    migration_ref: None,
+                })]
+            }
+            None => {
+                // No Non-IC dissem block in banner at all. Byte-
+                // positioning a new block requires separator offsets
+                // the rule cannot safely supply. No fix.
+                let span = attrs
+                    .token_spans
+                    .first()
+                    .map(|t| t.span)
+                    .unwrap_or(Span::new(0, 0));
+                vec![Diagnostic::new(
+                    self.id(),
+                    Severity::Error,
+                    span,
+                    message,
+                    CITATION,
+                    None,
+                )]
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E041 — Portion-level NODIS supersedes EXDIS
+// ---------------------------------------------------------------------------
+
+/// Fires when a portion carries BOTH NODIS and EXDIS. Offers an
+/// auto-fix that removes the EXDIS token (keeping NODIS) per the
+/// supersession rule in §H.9.
+///
+/// Authority:
+/// - **CAPCO-2016 §H.9 p172 line 4246** (EXDIS Commingling): *"When a
+///   portion contains both EXDIS and NODIS information, NODIS (ND)
+///   supersedes EXDIS (XD) in the portion mark."*
+/// - **CAPCO-2016 §H.9 p174 line 4306** (NODIS Commingling): *"If a
+///   portion contains both NODIS and EXDIS information, NODIS (ND)
+///   supersedes EXDIS (XD) in the portion mark."*
+///
+/// # Scope
+///
+/// Portion-only per both source passages ("in the portion mark").
+/// The banner-level mutual exclusion is E037's territory — it fires
+/// as `Error` there with no fix because banner-level resolution
+/// depends on which portions carry which token (see E040's roll-up
+/// rule for how the banner should be composed).
+///
+/// # Interaction with E037
+///
+/// E037 also fires in portion context (it's a general "NODIS and
+/// EXDIS cannot coexist" rule from line 4235/4295). When a portion
+/// has both tokens, both rules fire:
+/// - E037 (`Error`, no fix) states the violation.
+/// - E041 (`Warn`, with fix) provides the supersession-based auto-fix.
+///
+/// Applying E041's fix removes EXDIS; re-linting clears both
+/// diagnostics.
+///
+/// # Severity
+///
+/// `Warn` — the diagnostic surfaces the supersession rule; the user
+/// resolves manually by removing EXDIS. Orgs that want to escalate
+/// can configure `E041 = "error"` in `.marque.toml`.
+///
+/// # No auto-fix
+///
+/// The source is unambiguous about which marking survives (NODIS),
+/// but auto-removing EXDIS would require constructing a clean
+/// `FixProposal.original` spanning `XD` + an adjacent `/` separator.
+/// The parser emits `TokenKind::Separator` only for between-category
+/// `//` — within-category `/` is gap bytes the rule cannot safely
+/// reconstruct. A fix implementation that overruns the single
+/// within-category byte risks corrupting the audit record per
+/// Constitution V. E041 therefore ships as a no-fix diagnostic;
+/// a follow-up PR can add the auto-fix once within-category
+/// separator handling lands in the parser.
+struct NodisSupersedesExdisInPortionRule;
+
+impl Rule for NodisSupersedesExdisInPortionRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E041")
+    }
+    fn name(&self) -> &'static str {
+        "nodis-supersedes-exdis-in-portion"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{MarkingType, NonIcDissem};
+
+        if ctx.marking_type != MarkingType::Portion {
+            return vec![];
+        }
+
+        let has_nodis = attrs
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Nodis));
+        let has_exdis = attrs
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Exdis));
+        if !(has_nodis && has_exdis) {
+            return vec![];
+        }
+
+        // Locate the EXDIS token span for the diagnostic pointer.
+        // The parser emits one `TokenKind::NonIcDissem` token per
+        // entry in `attrs.non_ic_dissem` in source order.
+        let non_ic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        let Some(exdis_idx) = attrs
+            .non_ic_dissem
+            .iter()
+            .position(|d| matches!(d, NonIcDissem::Exdis))
+        else {
+            return vec![];
+        };
+        let Some(exdis_span_tok) = non_ic_spans.get(exdis_idx) else {
+            return vec![];
+        };
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            exdis_span_tok.span,
+            "portion contains both NODIS and EXDIS; NODIS (ND) supersedes \
+             EXDIS (XD) per §H.9 — remove EXDIS from the portion mark",
+            concat!(
+                "CAPCO-2016 §H.9 p172 line 4246 (EXDIS) + ",
+                "p174 line 4306 (NODIS): NODIS supersedes EXDIS in the ",
+                "portion mark when both are present",
+            ),
+            None,
+        )]
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -4526,6 +4908,9 @@ mod tests {
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
         assert!(ids.contains(&"E038"));
+        assert!(ids.contains(&"E039"));
+        assert!(ids.contains(&"E040"));
+        assert!(ids.contains(&"E041"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -4535,7 +4920,10 @@ mod tests {
         // but legal"). Net: 38.
         // T035c-21 PR-A: added E037 (nodis-conflicts-exdis) + E038
         // (dos-dissem-noforn) per §H.9 NODIS/EXDIS templates. Net: 40.
-        assert_eq!(set.rules().len(), 40);
+        // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to)
+        // + E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-
+        // exdis-in-portion). Net: 43.
+        assert_eq!(set.rules().len(), 43);
     }
 
     #[test]
@@ -6516,6 +6904,249 @@ mod tests {
             1,
             "E038 must fire exactly once even when both NODIS and EXDIS \
              are present: {diags:?}"
+        );
+    }
+
+    // --- E039: REL TO cleared from banner when portion has NODIS/EXDIS ---
+
+    #[test]
+    fn e039_fires_on_banner_rel_to_with_nodis_portion() {
+        // Portion carries NODIS; banner carries REL TO. §H.9 p174
+        // line 4301: REL TO not authorized in banner when any portion
+        // has NODIS.
+        let source = "(S//NF//ND)\nSECRET//NOFORN//NODIS//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let e039: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E039").collect();
+        assert_eq!(
+            e039.len(),
+            1,
+            "E039 must fire when banner has REL TO and portion has NODIS: {diags:?}"
+        );
+        assert!(
+            e039[0].fix.is_none(),
+            "E039 emits no fix (removing REL TO is multi-span and \
+             requires human judgment): {:?}",
+            e039[0].fix
+        );
+        assert!(
+            e039[0].citation.contains("§H.9 p172 line 4241"),
+            "E039 citation must pin §H.9 p172 line 4241 (EXDIS); got: {:?}",
+            e039[0].citation
+        );
+        assert!(
+            e039[0].citation.contains("p174 line 4301"),
+            "E039 citation must pin p174 line 4301 (NODIS); got: {:?}",
+            e039[0].citation
+        );
+    }
+
+    #[test]
+    fn e039_fires_on_banner_rel_to_with_exdis_portion() {
+        let source = "(S//NF//XD)\nSECRET//NOFORN//EXDIS//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let e039: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E039").collect();
+        assert_eq!(
+            e039.len(),
+            1,
+            "E039 must fire when banner has REL TO and portion has EXDIS: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e039_does_not_fire_without_nodis_or_exdis_in_portions() {
+        // Banner has REL TO, portion has no NODIS/EXDIS — E039 must
+        // stay silent (this is a normal REL TO banner).
+        let source = "(S//NF)\nSECRET//NOFORN//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E039"),
+            "E039 must not fire without NODIS/EXDIS in any portion: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e039_does_not_fire_when_banner_has_no_rel_to() {
+        let source = "(S//NF//ND)\nSECRET//NOFORN//NODIS";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E039"),
+            "E039 must not fire when banner has no REL TO: {diags:?}"
+        );
+    }
+
+    // --- E040: Banner must roll up NODIS (or EXDIS if no NODIS) ---
+
+    #[test]
+    fn e040_fires_when_banner_missing_nodis_from_portion() {
+        // Portion has NODIS; banner has no NODIS. §H.9 p174 line
+        // 4300: NODIS in any portion must appear in the banner.
+        // Banner already has a non-IC dissem block (LIMDIS), so fix
+        // is an insertion at the end of that block.
+        let source = "(S//NF//ND)\nSECRET//NOFORN//LIMDIS";
+        let diags = lint_banner(source);
+        let e040: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E040").collect();
+        assert_eq!(
+            e040.len(),
+            1,
+            "E040 must fire when banner omits NODIS: {diags:?}"
+        );
+        assert!(
+            e040[0].message.contains("NODIS"),
+            "E040 message must name the missing token; got: {:?}",
+            e040[0].message
+        );
+        let fix = e040[0].fix.as_ref().expect("E040 must carry a fix");
+        assert_eq!(
+            fix.span.start, fix.span.end,
+            "E040 fix must be a zero-width insertion"
+        );
+        assert_eq!(fix.replacement.as_ref(), "/NODIS");
+    }
+
+    #[test]
+    fn e040_fires_when_banner_missing_exdis_and_no_nodis_anywhere() {
+        // Portion has EXDIS; no NODIS anywhere; banner has no EXDIS.
+        // §H.9 p172 line 4240.
+        let source = "(S//NF//XD)\nSECRET//NOFORN//LIMDIS";
+        let diags = lint_banner(source);
+        let e040: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E040").collect();
+        assert_eq!(
+            e040.len(),
+            1,
+            "E040 must fire when banner omits EXDIS with no NODIS: {diags:?}"
+        );
+        let fix = e040[0].fix.as_ref().expect("fix expected");
+        assert_eq!(fix.replacement.as_ref(), "/EXDIS");
+    }
+
+    #[test]
+    fn e040_nodis_has_priority_over_exdis_when_both_in_portions() {
+        // Portions have both NODIS and EXDIS; banner has neither.
+        // §H.9 p172 line 4239 / p174 line 4299: NODIS has priority
+        // over EXDIS in the banner. Banner must carry NODIS (not
+        // EXDIS).
+        let source = "(S//NF//ND)\n(S//NF//XD)\nSECRET//NOFORN//LIMDIS";
+        let diags = lint_banner(source);
+        let e040: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E040").collect();
+        assert_eq!(e040.len(), 1);
+        assert!(
+            e040[0].message.contains("NODIS"),
+            "E040 must require NODIS (not EXDIS) when both are in portions; \
+             got message: {:?}",
+            e040[0].message
+        );
+        let fix = e040[0].fix.as_ref().expect("fix expected");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "/NODIS",
+            "fix must add NODIS, not EXDIS"
+        );
+    }
+
+    #[test]
+    fn e040_does_not_fire_when_banner_already_has_required_token() {
+        let source = "(S//NF//ND)\nSECRET//NOFORN//NODIS";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E040"),
+            "E040 must not fire when banner already has NODIS: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e040_emits_no_fix_when_banner_has_no_non_ic_dissem_block() {
+        // Banner has classification + IC dissem + REL TO but NO
+        // Non-IC dissem block at all. Inserting a new category block
+        // is unsafe (needs separator-positioning), so E040 emits a
+        // no-fix Error.
+        let source = "(S//NF//ND)\nSECRET//NOFORN";
+        let diags = lint_banner(source);
+        let e040: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E040").collect();
+        assert_eq!(e040.len(), 1);
+        assert!(
+            e040[0].fix.is_none(),
+            "E040 must not carry a fix when banner has no Non-IC dissem \
+             block (byte-positioning a new block is unsafe): {:?}",
+            e040[0].fix
+        );
+    }
+
+    // --- E041: NODIS supersedes EXDIS in a portion ---
+
+    #[test]
+    fn e041_fires_on_portion_with_both_nodis_and_exdis() {
+        // §H.9 p172 line 4246 / p174 line 4306: when a portion has
+        // both, NODIS supersedes EXDIS. E041 surfaces the diagnostic
+        // at Warn severity with no auto-fix (user removes EXDIS
+        // manually). See the rule doc for why the auto-fix is
+        // deferred.
+        let diags = lint_portion("(S//NF//ND/XD)");
+        let e041: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E041").collect();
+        assert_eq!(
+            e041.len(),
+            1,
+            "E041 must fire on portion with both NODIS and EXDIS: {diags:?}"
+        );
+        assert_eq!(e041[0].severity, Severity::Warn);
+        assert!(
+            e041[0].fix.is_none(),
+            "E041 emits no auto-fix (the parser does not emit within-\
+             category `/` as a Separator token; see rule doc); got: \
+             {:?}",
+            e041[0].fix
+        );
+        assert!(
+            e041[0].message.contains("NODIS") && e041[0].message.contains("EXDIS"),
+            "E041 message must name both tokens; got: {:?}",
+            e041[0].message
+        );
+    }
+
+    #[test]
+    fn e041_points_at_exdis_token_in_both_orderings() {
+        // E041's diagnostic span should point at the EXDIS token
+        // regardless of whether it appears before or after NODIS in
+        // the portion. Exercise both orderings.
+        for src in ["(S//NF//ND/XD)", "(S//NF//XD/ND)"] {
+            let diags = lint_portion(src);
+            let e041: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E041").collect();
+            assert_eq!(
+                e041.len(),
+                1,
+                "E041 must fire on {src:?}: {diags:?}"
+            );
+            let span_text = e041[0].span.as_str(src.as_bytes()).unwrap();
+            assert_eq!(
+                span_text, "XD",
+                "E041 span must point at the EXDIS token in {src:?}; \
+                 got: {span_text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn e041_does_not_fire_on_portion_with_only_nodis() {
+        let diags = lint_portion("(S//NF//ND)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E041"),
+            "E041 must not fire on portion with only NODIS: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e041_does_not_fire_on_banner_even_when_both_present() {
+        // E041 is portion-only per §H.9 p172 line 4246 / p174 line
+        // 4306 ("in the portion mark"). The banner case is owned by
+        // E037 (mutual exclusion, Error).
+        let diags = lint_banner("SECRET//NOFORN//NODIS/EXDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E041"),
+            "E041 must not fire on banner context: {diags:?}"
+        );
+        // But E037 must still fire.
+        assert!(
+            diags.iter().any(|d| d.rule.as_str() == "E037"),
+            "E037 must still fire on banner NODIS+EXDIS: {diags:?}"
         );
     }
 
