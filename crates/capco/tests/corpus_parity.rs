@@ -53,15 +53,17 @@ fn rule_count_reflects_registration_changes() {
     //
     // T035c-1b: added S001 (prefer-banner-abbreviation, style). Net: 38.
     //
+    // T035c-8: added S002 (banner-consistent-form, style). Net: 39.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        38,
+        39,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
-         T035c-1b (added S001). Adjust this assertion only when rule \
-         registration actually changes."
+         T035c-1b (added S001) + T035c-8 (added S002). Adjust this \
+         assertion only when rule registration actually changes."
     );
 }
 
