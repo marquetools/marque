@@ -1,6 +1,6 @@
 {
-  "_note": "E035 fires on banner missing sub-compartment ABCD that is present in the preceding portion's SI-G marking. Fix rolls up the portion's sub-compartments into the banner SCI block.",
+  "_note": "E035 fires on banner missing sub-compartment ABCD that is present in the preceding portion's SI-G marking. Fix rolls up the portion's sub-compartments into the banner SCI block. Fixture updated for T035d: banner + portion now use TS + ORCON + NOFORN to satisfy §H.4 p80 (SI-G requires TS + ORCON); only E035 remains as the intended diagnostic.",
   "diagnostics": [
-    {"rule": "E035", "span": {"start": 40, "end": 44}}
+    {"rule": "E035", "span": {"start": 48, "end": 52}}
   ]
 }

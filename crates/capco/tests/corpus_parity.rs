@@ -76,17 +76,33 @@ fn rule_count_reflects_registration_changes() {
     // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
     // -in-portion). Net: 44.
     //
+    // T035d: added 10 per-SCI-system constraint rules (E042–E051)
+    // covering §H.4 class-ceiling and required-companion constraints
+    // under the fix-and-warn pattern:
+    //   E042 HCS-O companions (ORCON+NOFORN req, ORCON-USGOV forbidden)
+    //   E043 HCS-P requires NOFORN
+    //   E044 HCS-P sub-compartment TS-only
+    //   E045 HCS class ceiling (TS or S; warn only, ambiguous)
+    //   E046 SI compartment TS-only (GAMMA or non-GAMMA)
+    //   E047 SI-G companions (ORCON req, ORCON-USGOV forbidden)
+    //   E048 RSV class ceiling (TS or S; warn only)
+    //   E049 TK class ceiling (TS or S; warn only)
+    //   E050 TK-BLFH TS-only
+    //   E051 TK compartment NOFORN requirement (BLFH/IDIT/KAND)
+    // Net: 44 + 10 = 54.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        44,
+        54,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
          S003 (added joint-usa-first) + T035c-21 PR-B (added \
-         E039, E040, E041). Adjust this assertion only when rule \
+         E039, E040, E041) + T035d (added E042–E051 per-SCI-system \
+         constraints). Adjust this assertion only when rule \
          registration actually changes."
     );
 }

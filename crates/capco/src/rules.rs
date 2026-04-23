@@ -163,6 +163,20 @@ impl CapcoRuleSet {
                 // pure alpha for JOINT, but IC convention puts USA
                 // first. See JointUsaFirstRule doc.
                 Box::new(JointUsaFirstRule),
+                // T035d: per-SCI-system constraint rules (E042–E051)
+                // implementing §H.4 class-ceiling and required-
+                // companion constraints under the fix-and-warn pattern.
+                // See `rules_sci_per_system` module doc.
+                Box::new(crate::rules_sci_per_system::HcsOCompanionsRule),
+                Box::new(crate::rules_sci_per_system::HcsPRequiresNofornRule),
+                Box::new(crate::rules_sci_per_system::HcsPSubcompartmentTsOnlyRule),
+                Box::new(crate::rules_sci_per_system::HcsClassificationCeilingRule),
+                Box::new(crate::rules_sci_per_system::SiCompartmentTopSecretRule),
+                Box::new(crate::rules_sci_per_system::SiGammaCompanionsRule),
+                Box::new(crate::rules_sci_per_system::RsvClassificationCeilingRule),
+                Box::new(crate::rules_sci_per_system::TkClassificationCeilingRule),
+                Box::new(crate::rules_sci_per_system::TkBlfhTopSecretRule),
+                Box::new(crate::rules_sci_per_system::TkCompartmentRequiresNofornRule),
             ],
         }
     }
@@ -5076,6 +5090,16 @@ mod tests {
         assert!(ids.contains(&"E040"));
         assert!(ids.contains(&"E041"));
         assert!(ids.contains(&"S003"));
+        assert!(ids.contains(&"E042"));
+        assert!(ids.contains(&"E043"));
+        assert!(ids.contains(&"E044"));
+        assert!(ids.contains(&"E045"));
+        assert!(ids.contains(&"E046"));
+        assert!(ids.contains(&"E047"));
+        assert!(ids.contains(&"E048"));
+        assert!(ids.contains(&"E049"));
+        assert!(ids.contains(&"E050"));
+        assert!(ids.contains(&"E051"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -5092,7 +5116,11 @@ mod tests {
         // §H.3 is silent on USA-first for JOINT; S003 encodes the
         // IC convention that §H.8 p151 sets across US-authored country
         // lists. Net: 44.
-        assert_eq!(set.rules().len(), 44);
+        // T035d: added 10 per-SCI-system constraint rules (E042–E051)
+        // covering §H.4 class ceilings and required-companion
+        // constraints under the fix-and-warn pattern. See
+        // `rules_sci_per_system` module doc. Net: 44 + 10 = 54.
+        assert_eq!(set.rules().len(), 54);
     }
 
     #[test]
@@ -8863,9 +8891,14 @@ mod tests {
 /// Internal test support module — drives the parser and rules directly,
 /// without depending on the engine crate. This avoids a circular dependency
 /// (`marque-capco` is below `marque-engine` in the workspace graph).
+///
+/// `pub(crate)` so sibling rule modules (`rules_sci_per_system`, any
+/// future per-cluster module) can share the same test harness rather
+/// than duplicating the parser-driving boilerplate. Gated on `cfg(test)`
+/// so it never ships in release builds.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod marque_capco_test_support {
+pub(crate) mod marque_capco_test_support {
     use super::CapcoRuleSet;
     use marque_core::{Parser, Scanner};
     use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
@@ -8919,11 +8952,11 @@ mod marque_capco_test_support {
         out
     }
 
-    pub fn lint_banner(s: &str) -> Vec<Diagnostic> {
+    pub(crate) fn lint_banner(s: &str) -> Vec<Diagnostic> {
         run(s.as_bytes())
     }
 
-    pub fn lint_portion(s: &str) -> Vec<Diagnostic> {
+    pub(crate) fn lint_portion(s: &str) -> Vec<Diagnostic> {
         run(s.as_bytes())
     }
 }

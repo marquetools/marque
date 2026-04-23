@@ -50,6 +50,16 @@ pub enum Format {
     Json,
 }
 
+/// Branding suffix appended to every human-format diagnostic header line.
+///
+/// Only applied on the pretty-printed terminal output path. Structured
+/// outputs — NDJSON (`diagnostic_to_json`), JSON audit records
+/// (`applied_fix_to_audit_json`), and `contracts/diagnostic.json`-schema
+/// consumers — keep `Diagnostic::message` byte-identical so downstream
+/// tooling (CI annotations, editor plugins, the planned ABAC
+/// cross-checker) does not have to strip brand text back out.
+const BRAND_SUFFIX: &str = "—Marque";
+
 /// Effective color mode after honoring `--no-color`, `NO_COLOR`, `TERM=dumb`,
 /// and TTY detection.
 pub fn use_color(no_color_flag: bool) -> bool {
@@ -105,11 +115,18 @@ pub fn render_human(
     let rule_styled = paint(color, AnsiStyle::Bold, &format!("[{}]", diag.rule));
 
     // ---- Header line ----
-    // banner.txt:1:17 error[E001] banner uses abbreviated dissem control "NF"; use "NOFORN"
+    // banner.txt:1:17 error[E001] banner uses abbreviated dissem control "NF"; use "NOFORN" —Marque
+    //
+    // Branding suffix is appended centrally here (human render path only),
+    // never at Diagnostic::new() and never in NDJSON / JSON output — those
+    // are consumed by tooling (CI scripts, editor plugins, ABAC consumers)
+    // that should not have to strip branding text out of the `message`
+    // field.
     writeln!(
         out,
-        "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {}",
-        diag.message
+        "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {} {}",
+        diag.message,
+        BRAND_SUFFIX,
     )?;
 
     // ---- Source snippet ----
@@ -560,6 +577,36 @@ mod tests {
         assert!(
             rendered.contains('\x1b'),
             "color=true must emit ANSI escapes, got:\n{rendered:?}"
+        );
+    }
+
+    #[test]
+    fn render_human_appends_marque_brand_suffix_to_header_line() {
+        // Branding invariant: the human-pretty-print path appends "—Marque"
+        // to every diagnostic header. Structured outputs (NDJSON / JSON)
+        // MUST NOT carry the suffix — they keep `diag.message` byte-
+        // identical so downstream tooling does not have to strip it.
+        let src = b"TOP SECRET//SI//NF\n";
+        let span = Span::new(16, 18);
+        let diag = make_diagnostic("E001", span, "test message", None);
+
+        let mut human_out = Vec::new();
+        render_human(&mut human_out, "x.txt", src, &diag, false).unwrap();
+        let human = String::from_utf8(human_out).unwrap();
+        assert!(
+            human.contains("test message —Marque"),
+            "human header must end with \" —Marque\"; got:\n{human}"
+        );
+
+        // NDJSON path must not carry the brand suffix.
+        let json = diagnostic_to_json(&diag);
+        assert_eq!(
+            json.message, "test message",
+            "NDJSON `message` field must stay byte-identical to Diagnostic.message"
+        );
+        assert!(
+            !json.message.contains("Marque"),
+            "NDJSON message field must never be branded"
         );
     }
 

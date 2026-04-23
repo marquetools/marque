@@ -1,6 +1,6 @@
 {
-  "_note": "E033 emits one diagnostic per out-of-order marking; fix span covers the whole compartment+sub-compartment region (matches SAR E029 shape). Span starts at the G compartment token, ends after the last DEFG sub-compartment.",
+  "_note": "E033 emits one diagnostic per out-of-order marking; fix span covers the whole compartment+sub-compartment region (matches SAR E029 shape). Span starts at the G compartment token, ends after the last DEFG sub-compartment. Fixture updated for T035d: banner now TS + ORCON so §H.4 p80-81 (SI-G requires TS and ORCON) are satisfied and only E033 remains.",
   "diagnostics": [
-    {"rule": "E033", "span": {"start": 11, "end": 22}}
+    {"rule": "E033", "span": {"start": 15, "end": 26}}
   ]
 }
