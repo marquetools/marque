@@ -1185,7 +1185,7 @@ fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
 ///   - A first SAR parsed successfully (`attrs.sar_markings.is_some()`).
 ///   - The Unknown text starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
 ///   - The suffix after the prefix is non-empty (E030 skips empties at
-///     rules.rs:2312).
+///     rules.rs:2561-2563).
 ///
 /// When any of these fails, E008 must fire — the token is not something
 /// E030 will surface. Without this gate, a malformed first SAR like
@@ -1266,7 +1266,9 @@ impl Rule for UnknownTokenRule {
         // repeated-SAR suppression path below must only fire when E030's
         // own preconditions are met; otherwise a malformed FIRST SAR
         // block would be silently dropped (E030 early-exits, E008
-        // suppresses). See rules.rs:2294 and 2312 for E030's gates.
+        // suppresses). See E030 in rules.rs starting around line 2514;
+        // its relevant gates are `attrs.sar_markings.is_none()`
+        // (2542-2545) and `stripped.is_empty()` (2561-2563).
         let has_first_sar = attrs.sar_markings.is_some();
         attrs
             .token_spans
@@ -4221,7 +4223,8 @@ mod tests {
         assert!(e008.fix.is_none(), "FR-012: E008 must not propose a fix");
     }
 
-    // T035c-12: pin-down tests for E008's four suppression paths.
+    // T035c-12: pin-down tests for E008's four suppression paths,
+    // plus regression guards that confirm E008 still fires when expected.
 
     #[test]
     fn e008_suppressed_on_migration_backed_unknown() {
