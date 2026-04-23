@@ -79,6 +79,7 @@ impl CapcoRuleSet {
             rules: vec![
                 Box::new(PortionMarkInBannerRule),
                 Box::new(PortionAbbreviationRule),
+                Box::new(PreferBannerAbbreviationRule),
                 Box::new(MissingUsaTrigraphRule),
                 Box::new(MisorderedBlocksRule),
                 Box::new(SeparatorCountRule),
@@ -1405,19 +1406,46 @@ impl Rule for CorrectionsMapRule {
     }
 }
 
-/// E009: Portion markings must use abbreviated forms, not banner-style expansions.
+/// E009: Portion markings must use abbreviated forms, not banner-style
+/// expansions.
 ///
 /// Mirror of E001: whereas E001 catches portion abbreviations in banners
 /// (e.g., `NF` → `NOFORN`), E009 catches banner expansions in portions
 /// (e.g., `NOFORN` → `NF`, `SECRET` → `S`).
 ///
-/// The rule checks two token categories:
-/// - **Classification**: banner form like "SECRET" should be "S"
-/// - **Dissem controls**: banner form like "NOFORN" should be "NF"
+/// Authority chain: CAPCO-2016 §G.1 line 748 ("All markings used in a
+/// banner line and portion mark must be in accordance with the values
+/// listed in the Register") + Table 4 / §H per-template entries, which
+/// list three forms per marking (Banner Line Marking Title, Banner Line
+/// Abbreviation, Authorized Portion Mark). This rule specifically
+/// detects portion text matching banner-form classification strings
+/// (for US classifications the title and banner abbreviation coincide,
+/// e.g., `SECRET`) or banner-form dissem abbreviations (e.g., `NOFORN`,
+/// `ORCON`, `LIMDIS`) — both authorized only in a banner line, not a
+/// portion mark. Long dissem marking titles (e.g., `ORIGINATOR
+/// CONTROLLED`) are out of scope today: the dissem branch keys on
+/// `marking_forms::banner_to_portion()` which only indexes banner
+/// abbreviations, and the parser does not accept long titles in either
+/// banners or portions on this branch. Adding title-form coverage is a
+/// follow-up once the parser and `marking_forms` lookup grow a
+/// title column. Branch citations match E001's per-branch convention:
+///
+/// - **Classification**: CAPCO-2016 §H.1 (US Classification Markings,
+///   Authorized Portion Mark per template). E.g., TOP SECRET→TS
+///   (p47 line 988), SECRET→S (p48), CONFIDENTIAL→C (p50 line 1074),
+///   UNCLASSIFIED→U (p51 line 1114).
+/// - **Dissem controls**: CAPCO-2016 §H.8 (Authorized Portion Mark per
+///   template). E.g., NOFORN→NF, ORCON→OC.
+/// - **Non-IC dissem controls**: CAPCO-2016 §H.9 (Authorized Portion
+///   Mark per template). E.g., LIMDIS→DS. SBU/LES/SSI are skipped
+///   because their banner and portion forms are identical, so no
+///   substitution is possible.
 ///
 /// Data sources:
 /// - Classification: `Classification::banner_str()` / `portion_str()` (hand-written in marque-ism)
-/// - Dissem controls: `contract_dissem_to_portion()` (inverse of E001's `expand_dissem_abbreviation`)
+/// - Dissem controls: `marking_forms::banner_to_portion()` (inverse of E001's path)
+/// - Non-IC dissem: `NonIcDissem::banner_str()` / `portion_str()` with
+///   equal-form guard
 struct PortionAbbreviationRule;
 
 impl Rule for PortionAbbreviationRule {
@@ -1462,7 +1490,7 @@ impl Rule for PortionAbbreviationRule {
                         message: format!(
                             "portion uses banner-form classification {banner:?}; use {portion:?}"
                         ),
-                        citation: "CAPCO-2016 §C.1",
+                        citation: "CAPCO-2016 §H.1 (US Classification Markings)",
                         original: banner.to_owned(),
                         replacement: portion.to_owned(),
                         confidence: 1.0,
@@ -1497,7 +1525,7 @@ impl Rule for PortionAbbreviationRule {
                 message: format!(
                     "portion uses banner-form dissem control {text:?}; use {portion:?}"
                 ),
-                citation: "CAPCO-2016 §C.1",
+                citation: "CAPCO-2016 §H.8",
                 original: text.to_owned(),
                 replacement: portion.to_owned(),
                 confidence: 1.0,
@@ -1529,13 +1557,131 @@ impl Rule for PortionAbbreviationRule {
                     message: format!(
                         "portion uses banner-form non-IC dissem {text:?}; use {portion:?}"
                     ),
-                    citation: "CAPCO-2016 §C.1",
+                    citation: "CAPCO-2016 §H.9",
                     original: text.to_owned(),
                     replacement: portion.to_owned(),
                     confidence: 1.0,
                     migration_ref: None,
                 }));
             }
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: S001 — prefer-banner-abbreviation (style)
+// ---------------------------------------------------------------------------
+
+/// S001: Prefer the Banner Line Abbreviation over the long "Marking Title"
+/// form inside a banner line.
+///
+/// CAPCO-2016 §A.6 line 317 authorizes both forms:
+///
+/// > Any control markings in the banner line may be spelled out per the
+/// > "Marking Title" (e.g., TALENT KEYHOLE) or abbreviated as per the
+/// > "Authorized Abbreviation" (e.g., TK) in accordance with the Register,
+/// > unless otherwise directed by IC element policy or procedures to use
+/// > one form over the other.
+///
+/// Both forms are legal; neither is canonically required at the CAPCO
+/// level. S001 encodes the common IC-element preference for the shorter
+/// Banner Line Abbreviation — shorter markings are easier to scan and
+/// keep banners on a single line. This is a **style** rule (severity
+/// `Info` by default), not a correctness rule: the diagnostic is informative
+/// and the fix is non-destructive (abbreviation and title refer to the
+/// same marking per §G.1 Table 4).
+///
+/// Rows where the Register lists no distinct abbreviation
+/// (`DEA SENSITIVE` — §G.1 Table 4 line 831 shows `None` under the
+/// abbreviation column) are skipped: no substitution is possible.
+///
+/// Complementary rules:
+/// - **E001** (`portion-mark-in-banner`, correctness) — catches the
+///   portion abbreviation in a banner (`NF`), which is categorically wrong.
+/// - **E009** (`portion-abbreviation`, correctness) — catches banner or
+///   title forms in a portion, which are categorically wrong.
+/// - **S002** (`banner-consistent-form`, style, T035c-8) — catches
+///   banners that mix long-title and abbreviation forms.
+struct PreferBannerAbbreviationRule;
+
+impl Rule for PreferBannerAbbreviationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S001")
+    }
+    fn name(&self) -> &'static str {
+        "prefer-banner-abbreviation"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Info
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        let citation = "CAPCO-2016 §A.6 line 317 + §G.1 Table 4";
+
+        // IC dissem block — scan each DissemControl span for a long-title
+        // match in MARKING_FORMS. `title_to_banner` gates on `title !=
+        // banner`, so the DEA-SENSITIVE row is correctly skipped.
+        let dissem_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl)
+            .collect();
+        for token_span in &dissem_spans {
+            let text = token_span.text.as_ref();
+            let Some(abbrev) = marque_ism::marking_forms::title_to_banner(text) else {
+                continue;
+            };
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "banner uses long-title dissem form {text:?}; prefer \
+                     banner abbreviation {abbrev:?}"
+                ),
+                citation,
+                original: text.to_owned(),
+                replacement: abbrev.to_owned(),
+                confidence: 1.0,
+                migration_ref: None,
+            }));
+        }
+
+        // Non-IC dissem block — same pattern.
+        let non_ic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+        for token_span in &non_ic_spans {
+            let text = token_span.text.as_ref();
+            let Some(abbrev) = marque_ism::marking_forms::title_to_banner(text) else {
+                continue;
+            };
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span: token_span.span,
+                message: format!(
+                    "banner uses long-title non-IC dissem form {text:?}; \
+                     prefer banner abbreviation {abbrev:?}"
+                ),
+                citation,
+                original: text.to_owned(),
+                replacement: abbrev.to_owned(),
+                confidence: 1.0,
+                migration_ref: None,
+            }));
         }
 
         diagnostics
@@ -3565,6 +3711,7 @@ mod tests {
         assert!(ids.contains(&"E007"));
         assert!(ids.contains(&"E008"));
         assert!(ids.contains(&"E009"));
+        assert!(ids.contains(&"S001"));
         assert!(ids.contains(&"E010"));
         assert!(ids.contains(&"E011"));
         assert!(ids.contains(&"E012"));
@@ -3599,8 +3746,9 @@ mod tests {
         assert!(ids.contains(&"E035"));
         assert!(ids.contains(&"E036"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
-        // Net count: 39 - 3 + 1 = 37.
-        assert_eq!(set.rules().len(), 37);
+        // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
+        // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
+        assert_eq!(set.rules().len(), 38);
     }
 
     #[test]
@@ -4362,22 +4510,43 @@ mod tests {
     fn e009_fires_on_banner_form_classification_in_portion() {
         let diags = lint_portion("(SECRET//NF)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(SECRET//NF)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "SECRET");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "S");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // classification uses §H.1 (US Classification Markings).
+        assert_eq!(
+            e009[0].citation,
+            "CAPCO-2016 §H.1 (US Classification Markings)",
+            "classification branch must cite §H.1 per T035c-13"
+        );
     }
 
     #[test]
     fn e009_fires_on_banner_form_dissem_in_portion() {
         let diags = lint_portion("(S//NOFORN)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(S//NOFORN)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "NOFORN");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "NF");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // IC dissem controls cite §H.8.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.8",
+            "IC dissem branch must cite §H.8 per T035c-13"
+        );
     }
 
     #[test]
@@ -4417,6 +4586,12 @@ mod tests {
         assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "DS");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // Non-IC dissem controls cite §H.9.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.9",
+            "Non-IC dissem branch must cite §H.9 per T035c-13"
+        );
     }
 
     #[test]
@@ -4436,6 +4611,144 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E009"),
             "E009 must not fire when banner=portion for LES: {diags:?}"
+        );
+    }
+
+    // T035c-13: pin-down tests for per-branch citation coverage and
+    // classification-level + dissem-form breadth.
+
+    #[test]
+    fn e009_fires_on_top_secret_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p47 line 988): TOP SECRET → TS.
+        let diags = lint_portion("(TOP SECRET//NF)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on TOP SECRET in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "TS");
+    }
+
+    #[test]
+    fn e009_fires_on_confidential_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p50 line 1074): CONFIDENTIAL → C.
+        let diags = lint_portion("(CONFIDENTIAL)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on CONFIDENTIAL in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "C");
+    }
+
+    #[test]
+    fn e009_fires_on_unclassified_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p51 line 1114): UNCLASSIFIED → U.
+        let diags = lint_portion("(UNCLASSIFIED)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on UNCLASSIFIED in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "U");
+    }
+
+    #[test]
+    fn e009_fires_on_orcon_banner_form_in_portion() {
+        // CAPCO-2016 §H.8: ORCON → OC. Different dissem control from
+        // NOFORN, so this locks breadth beyond the single NOFORN case.
+        let diags = lint_portion("(S//ORCON)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on ORCON in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "OC");
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_dissem_with_equal_banner_portion() {
+        // RELIDO has identical banner and portion forms — no
+        // substitution possible. E009 must stay silent rather than
+        // firing with an empty replacement.
+        let diags = lint_portion("(S//RELIDO)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when banner=portion for RELIDO: {diags:?}"
+    // T035c-1b: S001 prefer-banner-abbreviation (style). Fires when a
+    // banner uses the long "Marking Title" form where a distinct
+    // abbreviation is authorized. Severity is Info — both forms are
+    // legal per CAPCO-2016 §A.6 line 317; the rule encodes the common
+    // IC-element preference for the shorter abbreviation.
+
+    #[test]
+    fn s001_fires_on_long_title_dissem_in_banner() {
+        // "NOT RELEASABLE TO FOREIGN NATIONALS" is the §G.1 Table 4
+        // long title for NOFORN. S001 proposes the NOFORN abbreviation.
+        let diags = lint_banner("SECRET//NOT RELEASABLE TO FOREIGN NATIONALS");
+        let s001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S001").collect();
+        assert_eq!(s001.len(), 1, "{diags:?}");
+        let fix = s001[0].fix.as_ref().expect("S001 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "NOFORN");
+        assert_eq!(s001[0].severity, marque_rules::Severity::Info);
+    }
+
+    #[test]
+    fn s001_fires_on_long_title_orcon_in_banner() {
+        let diags = lint_banner("SECRET//ORIGINATOR CONTROLLED");
+        let s001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S001").collect();
+        assert_eq!(s001.len(), 1, "{diags:?}");
+        let fix = s001[0].fix.as_ref().expect("S001 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "ORCON");
+    }
+
+    #[test]
+    fn s001_fires_on_long_title_non_ic_dissem_in_banner() {
+        // "LIMITED DISTRIBUTION" is the long title for LIMDIS — non-IC
+        // branch. S001 must cover both dissem and non-IC categories.
+        let diags = lint_banner("SECRET//NOFORN//LIMITED DISTRIBUTION");
+        let s001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S001").collect();
+        assert_eq!(s001.len(), 1, "{diags:?}");
+        let fix = s001[0].fix.as_ref().expect("S001 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "LIMDIS");
+    }
+
+    #[test]
+    fn s001_does_not_fire_on_banner_abbrev_form() {
+        // Abbreviation is already the preferred form — no diag.
+        let diags = lint_banner("SECRET//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S001"),
+            "S001 must not fire on abbreviation form: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s001_does_not_fire_in_portion() {
+        // Portion form E009 owns; S001 is banner-only (would
+        // otherwise double-fire on a portion that contains a long
+        // title).
+        let diags = lint_portion("(S//NOT RELEASABLE TO FOREIGN NATIONALS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S001"),
+            "S001 must not fire in portion context: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s001_does_not_fire_on_dea_sensitive() {
+        // §G.1 Table 4 line 831: DEA SENSITIVE has no distinct
+        // abbreviation (`| DEA SENSITIVE | None | DSEN |`). S001 must
+        // stay silent — no substitution is possible, and proposing a
+        // no-op replacement would be noise.
+        let diags = lint_banner("SECRET//DEA SENSITIVE");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S001"),
+            "S001 must not fire on DEA SENSITIVE (no distinct abbrev per §G.1 line 831): {diags:?}"
         );
     }
 
