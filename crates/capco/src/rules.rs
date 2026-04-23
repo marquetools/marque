@@ -1555,11 +1555,25 @@ impl Rule for DelimiterMismatchRule {
 // Rule: W003 — Non-IC dissem in classified banner
 // ---------------------------------------------------------------------------
 
-/// Some non-IC dissemination controls should not appear in classified banners.
+/// Some non-IC dissemination controls must not appear in classified banners.
 ///
-/// LIMDIS, LES, LES-NF, and SSI propagate to classified banners and are fine.
-/// EXDIS, NODIS, SBU, and SBU-NF do NOT propagate — they belong only in
-/// portion markings (or in UNCLASSIFIED banners).
+/// Per CAPCO-2016 §H.9 "Precedence Rules for Banner Line Guidance" (see
+/// the per-marking rows on [`marque_ism::NonIcDissem::propagates_to_classified_banner`]):
+///
+/// - **Propagate to classified banners** (no W003): EXDIS, NODIS, LES,
+///   LES-NF, SSI.
+/// - **Do NOT propagate** (W003 fires): LIMDIS, SBU, SBU-NF. These
+///   markings are "applicable only to unclassified information" per
+///   §H.9 and their precedence rules explicitly say the marking is
+///   stripped from the banner when the document is classified.
+///
+/// W003 is banner-only — a non-IC dissem control in a *portion* marking
+/// is fine at any classification.
+///
+/// (LES-NF has a further §H.9 canonicalization — the banner form
+/// `SECRET//NOFORN//LES` rather than `SECRET//LES NOFORN`. That split
+/// is a page-rewrite concern, not a W003 concern, so LES-NF is
+/// considered propagating here.)
 struct NonIcInClassifiedBannerRule;
 
 impl Rule for NonIcInClassifiedBannerRule {
@@ -4041,32 +4055,114 @@ mod tests {
     }
 
     #[test]
-    fn w003_does_not_fire_on_limdis_in_classified_banner() {
-        // LIMDIS (NGA Title 10) propagates to classified banners.
+    fn w003_fires_on_limdis_in_classified_banner() {
+        // CAPCO-2016 §H.9 line 4180: "When a document contains LIMDIS
+        // and classified portions, LIMDIS is not used in the banner
+        // line." Prior impl incorrectly placed LIMDIS in the
+        // propagating set on a paraphrased "NGA Title 10" justification;
+        // §H.9 is explicit that LIMDIS is stripped from classified
+        // banners.
         let diags = lint_banner("SECRET//LIMDIS");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(
+            w003.len(),
+            1,
+            "W003 must fire on LIMDIS in classified banner (§H.9 line 4180): {diags:?}"
+        );
+        assert!(w003[0].message.contains("LIMDIS"));
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_exdis_in_classified_banner() {
+        // CAPCO-2016 §H.9 line 4240: "If EXDIS is contained in any
+        // portion of a document that does not contain one or more NODIS
+        // portions, EXDIS must appear in the banner line." Example
+        // banner on p173: SECRET//NOFORN//EXDIS. Prior impl excluded
+        // EXDIS from the propagating set; the §H.9 rule is the
+        // opposite.
+        let diags = lint_banner("SECRET//NOFORN//EXDIS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LIMDIS propagates to classified banners: {diags:?}"
+            "EXDIS propagates to classified banners per §H.9 line 4240: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_nodis_in_classified_banner() {
+        // CAPCO-2016 §H.9 line 4300: "If NODIS is contained in any
+        // portion of a document, it must appear in the banner line."
+        // Example banner on p174: SECRET//NOFORN//NODIS. Prior impl
+        // excluded NODIS from the propagating set; the §H.9 rule is
+        // the opposite.
+        let diags = lint_banner("SECRET//NOFORN//NODIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "NODIS propagates to classified banners per §H.9 line 4300: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_fires_on_sbu_nf_in_classified_banner() {
+        // CAPCO-2016 §H.9 line 4408: SBU NOFORN "Applicable only to
+        // unclassified information." p179 example 2 shows a
+        // `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF
+        // absent from banner. The NOFORN half of SBU-NF *does*
+        // propagate via `PageContext::expected_non_ic_dissem` (it
+        // splits portion-level SBU-NF into SBU + NF-flag, emitting
+        // NOFORN into the classified banner's dissem block). What
+        // W003 catches is the literal `SBU NOFORN` *banner* form in a
+        // classified document — that surface form is non-canonical
+        // per §H.9, independent of whether NOFORN itself propagates.
+        let diags = lint_banner("SECRET//SBU NOFORN");
+        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
+        assert_eq!(
+            w003.len(),
+            1,
+            "W003 must fire on literal SBU-NF in classified banner (§H.9 line 4408): {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_les_in_classified_banner() {
-        // LES propagates to classified banners.
+        // CAPCO-2016 §H.9 line 4479: "The LES marking always appears in
+        // the banner line if contained in any portion, regardless of
+        // classification level." Example banners on p183: SECRET//REL
+        // TO USA, FVEY//LES, SECRET//NOFORN//LES.
         let diags = lint_banner("SECRET//LES");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LES propagates to classified banners: {diags:?}"
+            "LES propagates to classified banners per §H.9 line 4479: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn w003_does_not_fire_on_les_nf_in_classified_banner() {
+        // CAPCO-2016 §H.9 line 4557: "The LES marking always appears
+        // in the banner line if LES information (either LES or LES
+        // NOFORN) is contained in the document, regardless of the
+        // document's classification level." The §H.9 canonical form
+        // in classified docs is "LES" at banner with NOFORN split into
+        // the dissem block (line 4558), but `LES NOFORN` in a
+        // classified banner is not a W003 concern — the canonicalization
+        // is a separate page-rewrite concern.
+        let diags = lint_banner("SECRET//LES NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "W003"),
+            "LES-NF propagates to classified banners per §H.9 line 4557: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_ssi_in_classified_banner() {
-        // SSI propagates to classified banners.
+        // CAPCO-2016 §H.9 line 4651: "If the SSI marking is contained
+        // in any portion of a document it must appear in the banner
+        // line, regardless of the document's overall classification
+        // level." Example banner on p191: SECRET//REL TO USA,
+        // ACGU//SSI.
         let diags = lint_banner("SECRET//SSI");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "SSI propagates to classified banners: {diags:?}"
+            "SSI propagates to classified banners per §H.9 line 4651: {diags:?}"
         );
     }
 
