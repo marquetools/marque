@@ -66,38 +66,28 @@ fn rule_count_reflects_registration_changes() {
     // (dos-dissem-noforn) per CAPCO-2016 §H.9 NODIS/EXDIS templates
     // (p172 + p174). Net: 40.
     //
-<<<<<<< 004-s003-joint-usa-first
+    // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to) +
+    // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
+    // -in-portion). Net: 43.
+    //
     // S003 (follow-up from #97 / T035c-18): added joint-usa-first
     // style rule. §H.3 line 1258 prescribes pure alphabetical for
     // JOINT with no USA-first carve-out; S003 encodes the convention
     // observed in REL TO §H.8 line 3714 across US-authored country
-    // lists. Info severity. Net: 41.
-=======
-    // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to) +
-    // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
-    // -in-portion). Net: 43.
->>>>>>> main
+    // lists. Info severity. Net: 44.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-<<<<<<< 004-s003-joint-usa-first
-        41,
+        44,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
+         T035c-21 PR-B (added E039, E040, E041) + \
          S003 (added joint-usa-first). Adjust this assertion only \
          when rule registration actually changes."
-=======
-        43,
-        "rule count: T035b (retired E017/E018/E019, added E036) + \
-         T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
-         (retired W001) + T035c-21 PR-A (added E037, E038) + \
-         T035c-21 PR-B (added E039, E040, E041). Adjust this \
-         assertion only when rule registration actually changes."
->>>>>>> main
     );
 }
 

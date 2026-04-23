@@ -48,13 +48,10 @@
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
 //!   E037 = NODIS and EXDIS must not coexist (T035c-21 PR-A)
 //!   E038 = NODIS / EXDIS require NOFORN (T035c-21 PR-A)
-<<<<<<< 004-s003-joint-usa-first
-//!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
-=======
 //!   E039 = REL TO not allowed in banner with NODIS/EXDIS portion (T035c-21 PR-B)
 //!   E040 = banner must roll up NODIS (or EXDIS if no NODIS) (T035c-21 PR-B)
 //!   E041 = NODIS supersedes EXDIS in portion (T035c-21 PR-B)
->>>>>>> main
+//!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -154,13 +151,6 @@ impl CapcoRuleSet {
                 // chain.
                 Box::new(crate::rules_declarative::DeclarativeNodisConflictsExdisRule),
                 Box::new(crate::rules_declarative::DeclarativeDosDissemNofornRule),
-<<<<<<< 004-s003-joint-usa-first
-                // S003: joint-usa-first style rule. Info severity.
-                // Follow-up from PR #97 (T035c-18) — §H.3 prescribes
-                // pure alpha for JOINT, but IC convention puts USA
-                // first. See JointUsaFirstRule doc.
-                Box::new(JointUsaFirstRule),
-=======
                 // T035c-21 PR-B: NODIS/EXDIS page-level + portion-level
                 // hand-written rules. E039 (REL TO clear), E040
                 // (banner roll-up), E041 (NODIS supersedes EXDIS in
@@ -168,7 +158,11 @@ impl CapcoRuleSet {
                 Box::new(NodisExdisClearsBannerRelToRule),
                 Box::new(NodisExdisBannerRollupRule),
                 Box::new(NodisSupersedesExdisInPortionRule),
->>>>>>> main
+                // S003: joint-usa-first style rule. Info severity.
+                // Follow-up from PR #97 (T035c-18) — §H.3 prescribes
+                // pure alpha for JOINT, but IC convention puts USA
+                // first. See JointUsaFirstRule doc.
+                Box::new(JointUsaFirstRule),
             ],
         }
     }
@@ -5080,13 +5074,10 @@ mod tests {
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
         assert!(ids.contains(&"E038"));
-<<<<<<< 004-s003-joint-usa-first
-        assert!(ids.contains(&"S003"));
-=======
         assert!(ids.contains(&"E039"));
         assert!(ids.contains(&"E040"));
         assert!(ids.contains(&"E041"));
->>>>>>> main
+        assert!(ids.contains(&"S003"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -5096,18 +5087,14 @@ mod tests {
         // but legal"). Net: 38.
         // T035c-21 PR-A: added E037 (nodis-conflicts-exdis) + E038
         // (dos-dissem-noforn) per §H.9 NODIS/EXDIS templates. Net: 40.
-<<<<<<< 004-s003-joint-usa-first
-        // S003 (follow-up from #97): added joint-usa-first style rule.
-        // §H.3 is silent on USA-first for JOINT; S003 encodes the
-        // convention that REL TO §H.8 line 3714 sets across
-        // US-authored country lists. Net: 41.
-        assert_eq!(set.rules().len(), 41);
-=======
         // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to)
         // + E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-
         // exdis-in-portion). Net: 43.
-        assert_eq!(set.rules().len(), 43);
->>>>>>> main
+        // S003 (follow-up from #97): added joint-usa-first style rule.
+        // §H.3 is silent on USA-first for JOINT; S003 encodes the
+        // convention that REL TO §H.8 line 3714 sets across
+        // US-authored country lists. Net: 44.
+        assert_eq!(set.rules().len(), 44);
     }
 
     #[test]
