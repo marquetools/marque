@@ -581,7 +581,7 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E004 — Wrong separator count (should always be exactly `//`)
+// Rule: E004 — Wrong separator: `//` between categories, `/` within a category
 // ---------------------------------------------------------------------------
 
 /// E004 detects two distinct separator errors, each with its own
