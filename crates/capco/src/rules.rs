@@ -1181,19 +1181,27 @@ fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
     true
 }
 
-/// Whether an `Unknown` token represents a repeated SAR block that E030
-/// will pick up. Mirrors E030's actual preconditions (see
-/// `SarIndicatorRepeatRule::check`):
+/// Whether an `Unknown` token matches the repeated-SAR shape that E008
+/// suppresses in favor of E030.
+///
+/// This helper intentionally implements only the subset of checks needed
+/// here — a cheap, string-only predicate on the `Unknown` token itself:
 ///   - A first SAR parsed successfully (`attrs.sar_markings.is_some()`).
 ///   - The Unknown text starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
-///   - The suffix after the prefix is non-empty (E030 skips empties at
-///     rules.rs:2561-2563).
+///   - The suffix after the prefix is non-empty.
 ///
-/// When any of these fails, E008 must fire — the token is not something
-/// E030 will surface. Without this gate, a malformed first SAR like
-/// `SAR-` (empty program) would be silently dropped: E030 early-exits
-/// on `sar_markings.is_none()`, and E008's prefix-only suppression
-/// would swallow it.
+/// `SarIndicatorRepeatRule::check` applies additional gates before it
+/// emits (preceding-Separator lookup, byte-contiguity between the
+/// separator and the Unknown token). Those gates are kept inside E030
+/// — when they fail E030 emits a no-fix diagnostic so the shape is
+/// still surfaced to the user rather than being silently dropped. This
+/// helper therefore does NOT need to model them.
+///
+/// When any of this helper's checks fails, E008 must fire — the token
+/// is not something E030 treats as a repeated-SAR shape. Without this
+/// gate, a malformed first SAR like `SAR-` (empty program) would be
+/// silently dropped: E030 early-exits on `sar_markings.is_none()`, and
+/// E008's old prefix-only suppression would swallow the token.
 fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
     if !has_first_sar {
         return false;
@@ -1237,15 +1245,20 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 ///    same-marking SAR block as `Unknown` whose text starts with
 ///    `SAR-` or `SPECIAL ACCESS REQUIRED-` AND has a non-empty
 ///    suffix. E030 (sar-indicator-repeat) owns those; E008 steps
-///    aside. The suppression predicate mirrors E030's actual
-///    preconditions (see `SarIndicatorRepeatRule::check` at
-///    rules.rs:2294 and 2312) so a malformed FIRST SAR block —
-///    which leaves `sar_markings = None` or has an empty suffix —
-///    still fires E008. Without this tightening a marking like
-///    `SECRET//SAR-` would be silently dropped: the first SAR fails
-///    grammar (no `SarMarking` produced), E008's old prefix-only
-///    suppression matched anyway, and E030 early-exited on the
-///    `is_none()` gate.
+///    aside. The suppression predicate matches the token-shape
+///    preconditions `SarIndicatorRepeatRule::check` keys on: it
+///    only applies when `attrs.sar_markings.is_some()` and the
+///    stripped SAR suffix is non-empty, so a malformed FIRST SAR
+///    block — which leaves `sar_markings = None` or has an empty
+///    suffix — still fires E008. Without this tightening a marking
+///    like `SECRET//SAR-` would be silently dropped: the first SAR
+///    fails grammar (no `SarMarking` produced), E008's old
+///    prefix-only suppression matched anyway, and E030 early-exited
+///    on its `attrs.sar_markings.is_none()` gate. Note E030 also
+///    applies a byte-contiguity gate between the Unknown token and
+///    its preceding separator; this helper does not model that gate
+///    because E030 emits a no-fix diagnostic when contiguity fails,
+///    so the shape is still surfaced to the user.
 ///
 /// Malformed SCI-shaped tokens the structural subparser rejected
 /// (e.g., `SI-`, `SI--G`) DO fire E008 — users see a real error,
@@ -1266,11 +1279,11 @@ impl Rule for UnknownTokenRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
-        // own preconditions are met; otherwise a malformed FIRST SAR
-        // block would be silently dropped (E030 early-exits, E008
-        // suppresses). See E030 in rules.rs starting around line 2514;
-        // its relevant gates are `attrs.sar_markings.is_none()`
-        // (2542-2545) and `stripped.is_empty()` (2561-2563).
+        // own token-shape preconditions are met; otherwise a malformed
+        // FIRST SAR block would be silently dropped (E030 early-exits,
+        // E008 suppresses). The relevant gates inside
+        // `SarIndicatorRepeatRule::check` are the `attrs.sar_markings
+        // .is_none()` early-exit and the `stripped.is_empty()` skip.
         let has_first_sar = attrs.sar_markings.is_some();
         attrs
             .token_spans
@@ -2804,6 +2817,21 @@ impl Rule for SarCompartmentOrderRule {
 /// This rule finds those Unknown tokens, extends the fix span backward
 /// over the preceding `//` category separator, and coalesces the
 /// repeated block into the preceding block.
+///
+/// Historical note: prior to roughly 2003 the SAR indicator was required
+/// to be repeated for every SAP. CAPCO-2016 §H.5 p100 Syntax Rules bullet
+/// 5 now requires a single indicator with `/` between programs. Repeated
+/// indicators in modern documents are therefore an error this rule must
+/// surface, even though older corpus material may legitimately contain
+/// them.
+///
+/// When the repeated-SAR token shape is detected but the rule cannot
+/// produce a clean fix — e.g., the parser trimmed whitespace between
+/// the `//` separator and the Unknown token, so the fix span cannot
+/// honestly reconstruct `FixProposal.original` — this rule still emits
+/// a no-fix diagnostic. Suppressing entirely would silently drop the
+/// shape (E008 also steps aside for repeated-SAR prefixes; see
+/// `UnknownTokenRule`), so the user would see nothing at all.
 struct SarIndicatorRepeatRule;
 
 impl Rule for SarIndicatorRepeatRule {
@@ -2840,6 +2868,9 @@ impl Rule for SarIndicatorRepeatRule {
             if stripped.is_empty() {
                 continue;
             }
+            let message = "SAR category indicator must not be repeated; \
+                 multiple programs use a single indicator with '/' separator";
+            let citation = "CAPCO-2016 §H.5";
             // Find the closest preceding Separator token. The parser
             // trims leading whitespace per block, so the token's own
             // span does not necessarily sit flush against the `//`.
@@ -2849,15 +2880,37 @@ impl Rule for SarIndicatorRepeatRule {
                 .find(|t| t.kind == TokenKind::Separator)
             else {
                 // No preceding separator — shouldn't happen for a valid
-                // SAR-prefixed Unknown token, but skip defensively.
+                // SAR-prefixed Unknown token, but emit a no-fix
+                // diagnostic rather than drop it silently. E008
+                // suppresses this token in favor of E030, so skipping
+                // here would leave the user with no diagnostic at all.
+                diagnostics.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    tok.span,
+                    message.to_owned(),
+                    citation,
+                    None,
+                ));
                 continue;
             };
-            // Only emit a fix when the separator and the Unknown token are
-            // byte-contiguous (no whitespace gap between them). If there is
-            // a gap we cannot honestly reconstruct the original bytes in
-            // `FixProposal.original` without preserving the raw source, so
-            // we skip to avoid fabricating `original` content.
+            // A fix requires the separator and the Unknown token to be
+            // byte-contiguous: splicing is by span, and fabricating
+            // `FixProposal.original` bytes for a gap we don't have a
+            // copy of would corrupt the audit record. When a gap is
+            // present (e.g., `//  SAR-FOO` with leading whitespace the
+            // parser trimmed), emit a no-fix diagnostic instead of
+            // skipping — skipping combined with E008's suppression
+            // would silently drop the repeated-SAR shape entirely.
             if sep_tok.span.end != tok.span.start {
+                diagnostics.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    tok.span,
+                    message.to_owned(),
+                    citation,
+                    None,
+                ));
                 continue;
             }
             let fix_span = Span::new(sep_tok.span.start, tok.span.end);
@@ -2870,10 +2923,8 @@ impl Rule for SarIndicatorRepeatRule {
                 severity: self.default_severity(),
                 source: FixSource::BuiltinRule,
                 span: fix_span,
-                message: "SAR category indicator must not be repeated; \
-                     multiple programs use a single indicator with '/' separator"
-                    .to_owned(),
-                citation: "CAPCO-2016 §H.5",
+                message: message.to_owned(),
+                citation,
                 original,
                 replacement,
                 confidence: 0.9,
@@ -4587,7 +4638,8 @@ mod tests {
     fn e008_fires_on_malformed_first_sar_with_empty_program() {
         // `SAR-` alone (no program identifier) fails SAR grammar. The
         // parser does not produce a `SarMarking`, so `attrs.sar_markings`
-        // stays `None` and E030 early-exits (rules.rs:2294). An earlier
+        // stays `None` and `SarIndicatorRepeatRule::check` returns early
+        // at its `attrs.sar_markings.is_none()` guard. An earlier
         // version of E008's suppression matched on prefix only, so this
         // malformed token was silently dropped. Tightening the
         // suppression to require `attrs.sar_markings.is_some()` AND a
@@ -4812,6 +4864,9 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E009"),
             "E009 must not fire when banner=portion for RELIDO: {diags:?}"
+        );
+    }
+
     // T035c-1b: S001 prefer-banner-abbreviation (style). Fires when a
     // banner uses the long "Marking Title" form where a distinct
     // abbreviation is authorized. Severity is Info — both forms are
@@ -6023,6 +6078,42 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E030"),
             "E030 must not fire when programs coalesce in one block: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e030_emits_no_fix_diagnostic_when_separator_has_whitespace_gap() {
+        // Parser trims leading whitespace per block, so a source like
+        // `// SAR-CD` leaves a byte gap between the Separator and the
+        // Unknown SAR token. The earlier implementation silently
+        // skipped emitting in that case, which combined with E008's
+        // suppression dropped the repeated-SAR shape entirely. E030
+        // must now emit a no-fix diagnostic so the user sees the
+        // problem — a fix still cannot be honestly reconstructed
+        // without the raw gap bytes.
+        let src = "SECRET//SAR-BP// SAR-CD//NOFORN";
+        let diags = lint_banner(src);
+        let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert_eq!(
+            e030.len(),
+            1,
+            "E030 must still emit a diagnostic on repeated SAR even \
+             when the separator has a whitespace gap — otherwise E008 \
+             suppression silently drops it: {diags:?}"
+        );
+        assert!(
+            e030[0].fix.is_none(),
+            "E030 must NOT carry a fix when contiguity fails — \
+             reconstructing `FixProposal.original` without the raw gap \
+             bytes would corrupt the audit record: {e030:?}"
+        );
+        assert!(
+            e008.is_empty(),
+            "E008 must still step aside for the repeated-SAR shape \
+             (the token matches the prefix + non-empty suffix + \
+             has_first_sar predicate); E030 owns the diagnostic: \
+             {diags:?}"
         );
     }
 
