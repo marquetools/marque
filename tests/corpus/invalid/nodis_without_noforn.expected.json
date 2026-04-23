@@ -1,0 +1,6 @@
+{
+  "diagnostics": [
+    {"rule": "E038", "span": {"start": 8, "end": 13}}
+  ],
+  "_note": "E038 dos-dissem-noforn: NODIS without NOFORN violates CAPCO-2016 §H.9 p174 line 4296 (NODIS 'May be used only with NOFORN information'). E038 fires on the first NonIcDissem token (NODIS at byte 8)."
+}

@@ -735,3 +735,100 @@ impl Rule for DeclarativeCominglingWarningRule {
         )]
     }
 }
+
+// ---------------------------------------------------------------------------
+// E037 — NODIS and EXDIS must not coexist (T035c-21 PR-A)
+// ---------------------------------------------------------------------------
+//
+// CAPCO-2016 §H.9 p172 line 4235 (EXDIS) and §H.9 p174 line 4295
+// (NODIS) both state the same mutual-exclusion invariant: NODIS and
+// EXDIS MUST NOT coexist on the same information. This is the
+// canonical conflict rule — two-way textually stated in both
+// template entries, no carve-out.
+//
+// Declarative: modeled as a symmetric `Conflicts { TOK_NODIS,
+// TOK_EXDIS }` constraint on `CapcoScheme`. The wrapper below
+// dispatches via the constraint's `name` and emits the user-facing
+// diagnostic.
+
+pub(crate) struct DeclarativeNodisConflictsExdisRule;
+
+impl Rule for DeclarativeNodisConflictsExdisRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E037")
+    }
+    fn name(&self) -> &'static str {
+        "nodis-conflicts-exdis"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
+            return vec![];
+        }
+
+        // Point at the first non-IC dissem token span. Either NODIS
+        // or EXDIS is the first offender per source order; the user
+        // needs to remove one of them to resolve.
+        let span = first_span_of(attrs, TokenKind::NonIcDissem);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "NODIS and EXDIS must not coexist; each State Department \
+             dissem control is mutually exclusive per CAPCO-2016 §H.9",
+            "CAPCO-2016 §H.9 p172 line 4235 + p174 line 4295",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E038 — NODIS / EXDIS require NOFORN (T035c-21 PR-A)
+// ---------------------------------------------------------------------------
+//
+// CAPCO-2016 §H.9 EXDIS entry line 4236 and NODIS entry line 4296
+// both state: "May be used only with NOFORN information." A marking
+// carrying NODIS or EXDIS without NOFORN violates both template
+// entries.
+//
+// Declarative via `Constraint::Custom` because folding "NODIS OR
+// EXDIS without NOFORN" into a single predicate — one diagnostic
+// ID, one violation — keeps the wrapper trivial. Splitting into two
+// separate `Requires` constraints would produce two distinct
+// violation names for one rule ID.
+
+pub(crate) struct DeclarativeDosDissemNofornRule;
+
+impl Rule for DeclarativeDosDissemNofornRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E038")
+    }
+    fn name(&self) -> &'static str {
+        "dos-dissem-noforn"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
+            return vec![];
+        }
+
+        let span = first_span_of(attrs, TokenKind::NonIcDissem);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "NODIS and EXDIS may be used only with NOFORN information; \
+             add NOFORN to the dissem controls",
+            "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
+            None,
+        )]
+    }
+}

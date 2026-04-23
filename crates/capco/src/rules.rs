@@ -46,6 +46,8 @@
 //!   E034 = SCI custom (unpublished) control-system audit visibility
 //!   E035 = SCI banner rollup (missing compartments from portions)
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
+//!   E037 = NODIS and EXDIS must not coexist (T035c-21 PR-A)
+//!   E038 = NODIS / EXDIS require NOFORN (T035c-21 PR-A)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -138,6 +140,13 @@ impl CapcoRuleSet {
                 Box::new(SciCompartmentOrderRule),
                 Box::new(SciCustomControlInfoRule),
                 Box::new(SciBannerRollupRule),
+                // T035c-21 PR-A: NODIS/EXDIS constraint rules per
+                // CAPCO-2016 §H.9. E037 (mutual exclusion) and E038
+                // (require NOFORN). Declarative — see
+                // `CapcoScheme::constraints()` for the source citation
+                // chain.
+                Box::new(crate::rules_declarative::DeclarativeNodisConflictsExdisRule),
+                Box::new(crate::rules_declarative::DeclarativeDosDissemNofornRule),
             ],
         }
     }
@@ -4515,6 +4524,8 @@ mod tests {
         assert!(ids.contains(&"E034"));
         assert!(ids.contains(&"E035"));
         assert!(ids.contains(&"E036"));
+        assert!(ids.contains(&"E037"));
+        assert!(ids.contains(&"E038"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -4522,7 +4533,9 @@ mod tests {
         // T035c-14: retired W001 (deprecated-marking-warning; §F
         // treats legacy markings as unauthorized, not "deprecated
         // but legal"). Net: 38.
-        assert_eq!(set.rules().len(), 38);
+        // T035c-21 PR-A: added E037 (nodis-conflicts-exdis) + E038
+        // (dos-dissem-noforn) per §H.9 NODIS/EXDIS templates. Net: 40.
+        assert_eq!(set.rules().len(), 40);
     }
 
     #[test]
@@ -6385,6 +6398,124 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E036"),
             "E036 must not fire without HCS present: {diags:?}"
+        );
+    }
+
+    // --- E037: NODIS ⊥ EXDIS (T035c-21 PR-A, §H.9 p172 + p174) ---
+
+    #[test]
+    fn e037_fires_when_nodis_and_exdis_coexist() {
+        // Banner carries both NODIS and EXDIS — mutually exclusive per
+        // §H.9 p172 line 4235 + p174 line 4295. NOFORN is also
+        // required (E038), so include it so we only see E037.
+        let diags = lint_banner("SECRET//NOFORN//NODIS//EXDIS");
+        let e037: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E037").collect();
+        assert_eq!(
+            e037.len(),
+            1,
+            "E037 must fire when both NODIS and EXDIS are present: {diags:?}"
+        );
+        assert!(
+            e037[0].citation.contains("§H.9 p172 line 4235"),
+            "E037 citation must pin §H.9 p172 line 4235; got: {:?}",
+            e037[0].citation
+        );
+        assert!(
+            e037[0].citation.contains("p174 line 4295"),
+            "E037 citation must pin p174 line 4295 (NODIS authority); \
+             got: {:?}",
+            e037[0].citation
+        );
+    }
+
+    #[test]
+    fn e037_does_not_fire_with_only_nodis() {
+        let diags = lint_banner("SECRET//NOFORN//NODIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E037"),
+            "E037 must not fire when only NODIS present: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e037_does_not_fire_with_only_exdis() {
+        let diags = lint_banner("SECRET//NOFORN//EXDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E037"),
+            "E037 must not fire when only EXDIS present: {diags:?}"
+        );
+    }
+
+    // --- E038: NODIS / EXDIS require NOFORN (T035c-21 PR-A, §H.9) ---
+
+    #[test]
+    fn e038_fires_on_nodis_without_noforn() {
+        // §H.9 p174 line 4296: NODIS "May be used only with NOFORN
+        // information." Banner with NODIS and no NOFORN is a
+        // violation.
+        let diags = lint_banner("SECRET//NODIS");
+        let e038: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E038").collect();
+        assert_eq!(
+            e038.len(),
+            1,
+            "E038 must fire on NODIS without NOFORN: {diags:?}"
+        );
+        assert!(
+            e038[0].citation.contains("§H.9 p172 line 4236"),
+            "E038 citation must pin §H.9 p172 line 4236 (EXDIS authority); \
+             got: {:?}",
+            e038[0].citation
+        );
+        assert!(
+            e038[0].citation.contains("p174 line 4296"),
+            "E038 citation must pin p174 line 4296 (NODIS authority); \
+             got: {:?}",
+            e038[0].citation
+        );
+    }
+
+    #[test]
+    fn e038_fires_on_exdis_without_noforn() {
+        let diags = lint_banner("SECRET//EXDIS");
+        let e038: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E038").collect();
+        assert_eq!(
+            e038.len(),
+            1,
+            "E038 must fire on EXDIS without NOFORN: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e038_does_not_fire_when_nodis_has_noforn() {
+        let diags = lint_banner("SECRET//NOFORN//NODIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E038"),
+            "E038 must not fire when NOFORN is present: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e038_does_not_fire_when_exdis_has_noforn() {
+        let diags = lint_banner("SECRET//NOFORN//EXDIS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E038"),
+            "E038 must not fire when NOFORN is present: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e038_fires_only_once_when_both_nodis_and_exdis_lack_noforn() {
+        // A single marking with both NODIS and EXDIS (invalid per
+        // E037) AND no NOFORN should fire E037 once + E038 once —
+        // not E038 twice. The declarative Custom constraint fuses
+        // the NODIS/EXDIS disjunction into a single violation.
+        let diags = lint_banner("SECRET//NODIS//EXDIS");
+        let e038: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E038").collect();
+        assert_eq!(
+            e038.len(),
+            1,
+            "E038 must fire exactly once even when both NODIS and EXDIS \
+             are present: {diags:?}"
         );
     }
 

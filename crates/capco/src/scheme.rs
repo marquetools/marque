@@ -79,6 +79,13 @@ pub const TOK_IC_DISSEM: TokenId = TokenId(119);
 pub const TOK_NON_IC_DISSEM: TokenId = TokenId(120);
 pub const TOK_NON_US_CLASSIFICATION: TokenId = TokenId(121);
 
+// T035c-21: NODIS / EXDIS sentinels for E037 (Conflicts) + E038
+// (Requires NOFORN). Resolved via `satisfies_attrs` against
+// `attrs.non_ic_dissem`, where the `NonIcDissem::Nodis` and
+// `NonIcDissem::Exdis` variants live.
+pub const TOK_NODIS: TokenId = TokenId(122);
+pub const TOK_EXDIS: TokenId = TokenId(123);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over IsmAttributes implementing Lattice
 // ---------------------------------------------------------------------------
@@ -897,6 +904,41 @@ impl CapcoScheme {
                 name: "capco/joint-requires-usa",
                 label: "CAPCO-2016 §H.3 p55",
             },
+            // ---- E037: NODIS ⊥ EXDIS (§H.9 p172 + p174) ----------
+            //
+            // §H.9 EXDIS entry line 4235 and NODIS entry line 4295
+            // both state the same mutual-exclusion invariant: NODIS
+            // and EXDIS MUST NOT coexist on the same information.
+            // A portion (or banner) carrying both is malformed.
+            //
+            // Modeled as a dyadic `Conflicts` constraint — the
+            // symmetric shape fits built-in Conflicts exactly, no
+            // cross-category coupling, no level comparison.
+            Constraint::Conflicts {
+                name: "E037/nodis-conflicts-exdis",
+                left: TokenRef::Token(TOK_NODIS),
+                right: TokenRef::Token(TOK_EXDIS),
+                label: "CAPCO-2016 §H.9 p172 line 4235 + p174 line 4295",
+            },
+            // ---- E038: NODIS / EXDIS require NOFORN (§H.9) -------
+            //
+            // §H.9 EXDIS entry line 4236: "May be used only with
+            // NOFORN information." NODIS entry line 4296: same.
+            // A marking carrying NODIS or EXDIS without NOFORN is a
+            // violation of both template entries.
+            //
+            // Custom (not two separate `Requires` constraints)
+            // because the rule emits a SINGLE diagnostic ID — E038 —
+            // and the dispatch layer in `rules_declarative.rs`
+            // works by filtering violations by constraint `name`.
+            // Splitting into two `Requires` constraints would create
+            // two distinct violation names for one rule ID and force
+            // the wrapper to OR them. Folding the disjunction into a
+            // single Custom predicate keeps the wrapper trivial.
+            Constraint::Custom {
+                name: "E038/nodis-or-exdis-requires-noforn",
+                label: "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
+            },
         ]
     }
 }
@@ -1022,6 +1064,17 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
             // can dispatch against them without re-adding a
             // `TokenId` constant.
             TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
+            // T035c-21 PR-A: NODIS / EXDIS live in `non_ic_dissem`.
+            // Both are DoS non-IC dissem controls per §H.9 (NODIS p174
+            // line 4271; EXDIS p172 line 4211).
+            TOK_NODIS => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Nodis)),
+            TOK_EXDIS => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis)),
             _ => false,
         },
         TokenRef::AnyInCategory(cat) => match *cat {
@@ -1067,6 +1120,7 @@ fn evaluate_custom_by_attrs(
         "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
         "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
+        "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
         _ => Vec::new(),
     }
 }
@@ -1442,6 +1496,37 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
                   per the Atomic Energy Act"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
+    }]
+}
+
+/// E038 — NODIS / EXDIS require NOFORN. CAPCO-2016 §H.9 p172 line 4236
+/// (EXDIS: "May be used only with NOFORN information") and p174 line
+/// 4296 (NODIS: same). Emits a single ConstraintViolation when the
+/// marking carries NODIS or EXDIS without NOFORN present.
+fn e038_dos_dissem_requires_noforn(
+    attrs: &marque_ism::IsmAttributes,
+) -> Vec<ConstraintViolation> {
+    let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
+        matches!(
+            d,
+            marque_ism::NonIcDissem::Nodis | marque_ism::NonIcDissem::Exdis
+        )
+    });
+    if !has_nodis_or_exdis {
+        return Vec::new();
+    }
+    let has_noforn = attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    if has_noforn {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E038/nodis-or-exdis-requires-noforn",
+        message: "NODIS and EXDIS may be used only with NOFORN information"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
     }]
 }
 
