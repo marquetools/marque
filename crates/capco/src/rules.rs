@@ -335,22 +335,20 @@ impl Rule for MissingUsaTrigraphRule {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Build the fully canonical list: USA first, then non-USA entries
-        // sorted alphabetically per CAPCO-2016 §H.8 line 3714. Producing
-        // the canonical form in a single pass is required because E020's
-        // alphabetical-ordering check gates on `rel_to[0] == USA` and is
+        // Build the fully canonical list (USA first, non-USA entries
+        // alphabetical per CAPCO-2016 §H.8 line 3714) via the shared
+        // helper used by E020. When USA is missing from input we add it
+        // before canonicalizing so the output always has USA first; the
+        // helper itself treats USA as "first if present" without
+        // injecting it (E020 must not synthesize countries that aren't
+        // there). Producing the canonical form in a single pass is
+        // required because E020 gates on `rel_to[0] == USA` and is
         // therefore silent whenever E002 fires.
-        let mut rest: Vec<&str> = attrs
-            .rel_to
-            .iter()
-            .filter(|t| **t != marque_ism::Trigraph::USA)
-            .map(|t| t.as_str())
-            .collect();
-        rest.sort_unstable();
-        let mut fixed_parts: Vec<&str> = Vec::with_capacity(rest.len() + 1);
-        fixed_parts.push("USA");
-        fixed_parts.extend(rest);
-        let fixed = fixed_parts.join(", ");
+        let mut codes: Vec<marque_ism::Trigraph> = attrs.rel_to.to_vec();
+        if !has_usa {
+            codes.push(marque_ism::Trigraph::USA);
+        }
+        let fixed = canonicalize_trigraph_list(&codes).join(", ");
 
         let message = if !has_usa {
             "REL TO list missing required USA trigraph"
@@ -358,17 +356,22 @@ impl Rule for MissingUsaTrigraphRule {
             "USA must be the first trigraph in REL TO list"
         };
 
-        // Span: the first REL TO trigraph in the marking. This points the
-        // user at the leading edge of the offending list.
-        let span = attrs
+        // Span: first→last `RelToTrigraph` token so `Engine::fix` can
+        // splice the entire offending list with the canonical replacement.
+        // Using only the first-trigraph span would corrupt the banner
+        // because the replacement covers all entries, not just one.
+        let rel_to_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
-            .find(|t| t.kind == TokenKind::RelToTrigraph)
-            .map(|t| t.span)
+            .filter(|t| t.kind == TokenKind::RelToTrigraph)
+            .collect();
+        let span = match (rel_to_spans.first(), rel_to_spans.last()) {
+            (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
             // Defensive: if there's no token span (shouldn't happen given
             // attrs.rel_to is non-empty), use a zero-length span which the
             // engine's fix path will filter rather than mis-splice.
-            .unwrap_or(Span::new(0, 0));
+            _ => Span::new(0, 0),
+        };
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -1763,6 +1766,32 @@ impl Rule for CountryCodeOrderingRule {
     }
 }
 
+/// Canonicalize a trigraph list per CAPCO-2016 §H.8 line 3713–3714:
+/// `USA` first when present, then remaining trigraphs alphabetically.
+///
+/// This is the shared ordering rule for E002 (REL TO, fix path) and E020
+/// (REL TO + JOINT, both check and fix paths). Extracting it prevents the
+/// two rules from drifting if the ordering rule changes (tetragraph
+/// sorting, delimiter normalization, etc.).
+///
+/// Tetragraph handling is deferred — `Trigraph` is 3-byte only today and
+/// cannot represent tetragraph codes. When a broader `CountryCode` type
+/// lands, this helper should be extended to sort trigraphs before
+/// tetragraphs per line 3714.
+fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
+    let has_usa = codes.contains(&marque_ism::Trigraph::USA);
+    let mut sorted: Vec<&str> = codes
+        .iter()
+        .filter(|t| **t != marque_ism::Trigraph::USA)
+        .map(|t| t.as_str())
+        .collect();
+    sorted.sort_unstable();
+    if has_usa {
+        sorted.insert(0, "USA");
+    }
+    sorted
+}
+
 /// Check that a trigraph list is ordered: USA first (if present), then
 /// remaining codes alphabetically.
 fn check_trigraph_ordering(
@@ -1772,17 +1801,7 @@ fn check_trigraph_ordering(
     severity: Severity,
     attrs: &IsmAttributes,
 ) -> Option<Diagnostic> {
-    // Build the expected sorted order: USA first, then rest alphabetical.
-    let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
-    let has_usa = sorted.contains(&"USA");
-
-    // Remove USA, sort the rest, put USA back at front.
-    sorted.retain(|s| *s != "USA");
-    sorted.sort_unstable();
-    if has_usa {
-        sorted.insert(0, "USA");
-    }
-
+    let sorted = canonicalize_trigraph_list(codes);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
     if actual == sorted {
         return None;
@@ -3415,12 +3434,14 @@ mod tests {
 
     #[test]
     fn e002_fires_when_usa_missing_with_real_span() {
-        let diags = lint_banner("SECRET//REL TO GBR, AUS");
+        let src_str = "SECRET//REL TO GBR, AUS";
+        let diags = lint_banner(src_str);
         let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
         assert_eq!(e002.len(), 1);
-        // Span points at the first trigraph in the list.
-        let src = b"SECRET//REL TO GBR, AUS";
-        assert_eq!(e002[0].span.as_str(src).unwrap(), "GBR");
+        // Span covers the full REL TO trigraph list (first → last), not
+        // just the first trigraph — required so `Engine::fix` can splice
+        // the full list with the canonical replacement in one step.
+        assert_eq!(e002[0].span.as_str(src_str.as_bytes()).unwrap(), "GBR, AUS");
     }
 
     // T035c-10: fix canonicalization — E002's replacement must produce

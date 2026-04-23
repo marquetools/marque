@@ -266,3 +266,60 @@ fn dry_run_parity_rule_ids_match() {
         "remaining diagnostic rule IDs must match between Apply and DryRun"
     );
 }
+
+// --- T035c-10: E002 REL TO canonicalization round-trip ---
+//
+// Verifies that E002's fix splices the canonical REL TO list into the
+// banner as a single replacement. The rule's span covers first → last
+// `RelToTrigraph` so `Engine::fix` replaces the entire offending list,
+// not just the first trigraph — a narrow span plus a full-list
+// replacement would corrupt the banner (e.g., leave a stale `, AUS`
+// tail after the canonical list).
+
+#[test]
+fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
+    let engine = test_engine();
+
+    // USA missing from an unsorted REL TO list. Canonical form per
+    // CAPCO-2016 §H.8 lines 3713–3714 is `USA, AUS, GBR`.
+    let source = b"SECRET//REL TO GBR, AUS\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+
+    let e002_applied: Vec<_> = result
+        .applied
+        .iter()
+        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .collect();
+    assert_eq!(
+        e002_applied.len(),
+        1,
+        "E002 must apply once: {:?}",
+        result.applied
+    );
+
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert_eq!(
+        fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
+        "E002's splice must rewrite the full REL TO list, not just the \
+         first trigraph (narrow-span + full-replacement would corrupt the \
+         banner)"
+    );
+}
+
+#[test]
+fn e002_fix_rewrites_banner_when_usa_misplaced() {
+    let engine = test_engine();
+
+    // USA present but not first, and non-USA entries unsorted. Canonical
+    // form: `USA, AUS, GBR`. This exercises the USA-already-present
+    // branch of the canonicalization path.
+    let source = b"SECRET//REL TO GBR, USA, AUS\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert_eq!(
+        fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
+        "E002 must canonicalize a misplaced USA + unsorted rest in one \
+         pass"
+    );
+}
