@@ -2656,12 +2656,22 @@ impl Rule for SigmaValidationRule {
 // ---------------------------------------------------------------------------
 
 /// Portion marks must use the `SAR-` abbreviation, not the full
-/// `SPECIAL ACCESS REQUIRED-` form (CAPCO-2016 §H.5 p101 "Authorized
-/// Portion Mark"). When all program identifiers are already abbrev-shaped
-/// (2–3 alphanumeric characters), a low-confidence (0.35) suggestion is
-/// proposed to replace the full indicator with the `SAR-` prefix.
-/// Otherwise no fix is proposed because abbreviating an arbitrary
-/// program nickname requires human judgment.
+/// `SPECIAL ACCESS REQUIRED-` form.
+///
+/// Authority: CAPCO-2016 §H.5 p101 line 2432 — "Authorized Portion
+/// Mark: SAR-[program identifier abbreviation]". The banner may use
+/// either the full `SPECIAL ACCESS REQUIRED-` (line 2428) or the
+/// abbreviation (line 2430); the portion entry lists the abbreviation
+/// only.
+///
+/// When all program identifiers are already abbrev-shaped (2–3
+/// alphanumeric characters per §H.5 p101 line 2454 — "A program
+/// identifier abbreviation is the two or three-character designator
+/// for the program"), a low-confidence (0.35) suggestion is proposed
+/// to replace the full indicator with the `SAR-` prefix. Otherwise no
+/// fix is proposed — abbreviating an arbitrary program nickname (e.g.,
+/// `BUTTER POPCORN` → `BP`) requires a registry lookup the engine
+/// does not have.
 struct SarPortionFormRule;
 
 impl Rule for SarPortionFormRule {
@@ -2725,7 +2735,7 @@ impl Rule for SarPortionFormRule {
             span,
             "portion marks must use the SAR- abbreviation, not the \
              SPECIAL ACCESS REQUIRED- full form",
-            "CAPCO-2016 §H.5",
+            "CAPCO-2016 §H.5 p101 line 2432 (Authorized Portion Mark)",
             fix,
         )]
     }
@@ -2736,8 +2746,24 @@ impl Rule for SarPortionFormRule {
 // ---------------------------------------------------------------------------
 
 /// SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL
-/// classifications (CAPCO-2016 §H.5 p101 "Relationship(s) to Other
-/// Markings"). `UNCLASSIFIED//SAR-*` is invalid and requires human review.
+/// classifications.
+///
+/// Authority: CAPCO-2016 §H.5 p101 line 2456 — "Relationship(s) to Other
+/// Markings: May only be used with TOP SECRET, SECRET, or CONFIDENTIAL."
+/// All three classification levels are explicitly permitted; no
+/// TS-only or C-excluded carve-out exists in §H.5.
+///
+/// The rule also fires when `attrs.classification` is `None` — §H.5
+/// p101 line 2452 ("Applicable only to classified information") makes
+/// this position derivative: a SAR block without any classification
+/// token is malformed, not merely Unclassified. Treating the two
+/// invalid states together (no classification vs Unclassified) is
+/// defensible because both fail the §H.5 "classified information"
+/// gate; the diagnostic message names the three valid classifications
+/// so the user sees the remedy either way.
+///
+/// `UNCLASSIFIED//SAR-*` requires human review — no automated fix is
+/// offered because the correct classification is outside the marking.
 struct SarClassificationRule;
 
 impl Rule for SarClassificationRule {
@@ -2776,7 +2802,7 @@ impl Rule for SarClassificationRule {
             span,
             "SAR markings may only be used with TOP SECRET, SECRET, or \
              CONFIDENTIAL classifications",
-            "CAPCO-2016 §H.5",
+            "CAPCO-2016 §H.5 p101 line 2456 (Relationship(s) to Other Markings)",
             None,
         )]
     }
@@ -2787,8 +2813,16 @@ impl Rule for SarClassificationRule {
 // ---------------------------------------------------------------------------
 
 /// Programs within a SAR block must be listed in ascending sort order
-/// with numbered values first, followed by alphabetic values (CAPCO-2016
-/// §H.5 p99).
+/// with numbered values first, followed by alphabetic values.
+///
+/// Authority: CAPCO-2016 §H.5 p99 line 2391 — "Multiple program
+/// identifiers are listed in ascending sort order with numbered values
+/// first, followed by alphabetic values." Reinforced by §H.5 p100 line
+/// 2402 Syntax Rules bullet 4 (same sort rule, `/` separator without
+/// interjected spaces).
+///
+/// Note: SAR's ordering authority is solely §H.5. §A.6 covers SCI
+/// ordering and is NOT a valid citation target for SAR rules.
 ///
 /// When programs are out of order, the fix also sorts compartments and
 /// sub-compartments within each program in a single whole-block rewrite
@@ -2857,7 +2891,8 @@ impl Rule for SarProgramOrderRule {
             message: "SAR programs must be in ascending order (numeric first, \
                  then alphabetic)"
                 .to_owned(),
-            citation: "CAPCO-2016 §H.5",
+            citation: "CAPCO-2016 §H.5 p99 line 2391 \
+                       (programs: ascending, numeric first, then alpha)",
             original,
             replacement,
             confidence: 0.85,
@@ -2871,7 +2906,24 @@ impl Rule for SarProgramOrderRule {
 // ---------------------------------------------------------------------------
 
 /// Compartments within a program — and sub-compartments within a
-/// compartment — must be in ascending sort order per CAPCO-2016 §H.5 p99.
+/// compartment — must be in ascending sort order.
+///
+/// Authority (per level):
+/// - **Compartments**: CAPCO-2016 §H.5 p100 line 2404 — "Compartment(s)
+///   (if any), must be kept with the SAP program identifier, listed
+///   in ascending sort order with numbered values first, followed by
+///   alphabetic values, and separated by a hyphen".
+/// - **Sub-compartments**: CAPCO-2016 §H.5 p100 line 2405 — "Sub-
+///   compartment(s) (if any), must be kept with the compartment,
+///   listed alphanumerically, and separated by a single space."
+///
+/// The line-2405 phrasing ("alphanumerically") is terser than the
+/// compartment/program phrasing, but the Table 7 example on line 2411
+/// (`BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB`) shows sub-compartments
+/// like `YYY 456 689` following the same numeric-first-then-alpha
+/// convention. The rule applies the uniform `sar_sort_key` across
+/// both levels, and the diagnostic's citation is chosen by level
+/// below.
 ///
 /// One diagnostic is emitted **per out-of-order program** (not one for the
 /// whole SAR block). This gives each program a non-overlapping fix span so
@@ -2954,10 +3006,18 @@ impl Rule for SarCompartmentOrderRule {
             );
             let replacement = render_single_program(&sorted_prog);
 
-            let level = if !comps_ok {
-                "compartments"
+            let (level, citation) = if !comps_ok {
+                (
+                    "compartments",
+                    "CAPCO-2016 §H.5 p100 line 2404 \
+                     (compartments: ascending, numeric first, then alpha)",
+                )
             } else {
-                "sub-compartments"
+                (
+                    "sub-compartments",
+                    "CAPCO-2016 §H.5 p100 line 2405 \
+                     (sub-compartments: alphanumerically, single space)",
+                )
             };
 
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -2969,7 +3029,7 @@ impl Rule for SarCompartmentOrderRule {
                     "SAR {level} must be in ascending order (numeric first, \
                      then alphabetic)"
                 ),
-                citation: "CAPCO-2016 §H.5",
+                citation,
                 original,
                 replacement,
                 confidence: 0.85,
@@ -6524,6 +6584,101 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E029"),
             "E029 must not fire on J12 K15 (sorted): {diags:?}"
+        );
+    }
+
+    // T035c-19 PR-A: per-rule citation lockdown for E026–E029. Each
+    // rule's citation was previously the whole-section `"CAPCO-2016
+    // §H.5"`; tightened to per-page/per-line pointers so a regression
+    // to the whole-section form (or propagation to a wrong subsection)
+    // fails re-verifiability per Constitution VIII. E029 has two
+    // citation strings (compartments vs sub-compartments) keyed by
+    // diagnostic level.
+
+    #[test]
+    fn e026_cites_portion_mark_line_2432() {
+        let diags = lint_portion("(S//SPECIAL ACCESS REQUIRED-BP)");
+        let e026: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E026").collect();
+        assert_eq!(e026.len(), 1);
+        assert!(
+            e026[0].citation.contains("§H.5 p101 line 2432"),
+            "E026 citation must pin §H.5 p101 line 2432 \
+             (Authorized Portion Mark); got: {:?}",
+            e026[0].citation
+        );
+    }
+
+    #[test]
+    fn e027_cites_relationship_line_2456() {
+        let diags = lint_banner("UNCLASSIFIED//SAR-BP");
+        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
+        assert_eq!(e027.len(), 1);
+        assert!(
+            e027[0].citation.contains("§H.5 p101 line 2456"),
+            "E027 citation must pin §H.5 p101 line 2456 \
+             (Relationship(s) to Other Markings); got: {:?}",
+            e027[0].citation
+        );
+    }
+
+    #[test]
+    fn e028_cites_program_ordering_line_2391() {
+        let diags = lint_banner("SECRET//SAR-CD/BP//NOFORN");
+        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        assert_eq!(e028.len(), 1);
+        assert!(
+            e028[0].citation.contains("§H.5 p99 line 2391"),
+            "E028 citation must pin §H.5 p99 line 2391; got: {:?}",
+            e028[0].citation
+        );
+        assert!(
+            !e028[0].citation.contains("§A.6"),
+            "E028 citation must NOT reference §A.6 (that is SCI's \
+             ordering authority, not SAR's); got: {:?}",
+            e028[0].citation
+        );
+    }
+
+    #[test]
+    fn e029_compartment_arm_cites_line_2404() {
+        // Compartments out of order (K15 before J12 within BP).
+        let diags = lint_banner("SECRET//SAR-BP-K15-J12//NOFORN");
+        let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
+        assert_eq!(e029.len(), 1);
+        assert!(
+            e029[0].message.contains("compartments"),
+            "expected compartment-level message; got: {:?}",
+            e029[0].message
+        );
+        assert!(
+            e029[0].citation.contains("§H.5 p100 line 2404"),
+            "E029 compartment arm must pin §H.5 p100 line 2404; got: {:?}",
+            e029[0].citation
+        );
+    }
+
+    #[test]
+    fn e029_sub_compartment_arm_cites_line_2405() {
+        // Sub-compartments out of order (K15 before J54 within J12).
+        // Parser reads `BP-J12 K15 J54` as compartment J12 with
+        // sub-compartments [K15, J54]; alphanumeric order requires
+        // J54 before K15. The existing
+        // `e029_fires_on_out_of_order_sub_compartments` test uses
+        // this shape; replicate here so the citation lockdown is
+        // self-contained.
+        let diags = lint_banner("SECRET//SAR-BP-J12 K15 J54//NOFORN");
+        let e029: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E029").collect();
+        assert_eq!(e029.len(), 1);
+        assert!(
+            e029[0].message.contains("sub-compartments"),
+            "expected sub-compartment-level message; got: {:?}",
+            e029[0].message
+        );
+        assert!(
+            e029[0].citation.contains("§H.5 p100 line 2405"),
+            "E029 sub-compartment arm must pin §H.5 p100 line 2405; \
+             got: {:?}",
+            e029[0].citation
         );
     }
 
