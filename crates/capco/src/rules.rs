@@ -860,10 +860,28 @@ fn is_abbreviation_expansion(from: &str, to: &str) -> bool {
     )
 }
 
+/// Returns `true` if `replacement` is one of the dissemination-control
+/// replacements that E006 is allowed to claim from MIGRATIONS.
+///
+/// This is intentionally a narrow allowlist, not a general "is this a
+/// current CAPCO dissem control?" predicate. E006 uses it as a guard
+/// because the migration table can also contain non-dissem replacements
+/// (for example, declass-shorthand entries like `25X1-` → `25X1`, which
+/// E007 owns), and those MUST NOT dispatch as E006. Active dissem
+/// controls absent from this allowlist (e.g., FOUO) simply never appear
+/// as a replacement today — adding one is a deliberate E006 scope change,
+/// not a passive widening.
+///
+/// `CUI` is intentionally excluded. Per CAPCO-2016 §F (and
+/// `CVEnumISMDissem.xml`), `CUI` is not a CAPCO dissem control — it is a
+/// NARA marking system. No MIGRATIONS entry currently has `CUI` as a
+/// replacement (a prior `FOUO → CUI` entry was removed as factually
+/// incorrect; see `crates/ism/build.rs` MIGRATIONS doc block). Keeping
+/// `CUI` out of this set defends against re-introduction.
 fn is_dissem_replacement(replacement: &str) -> bool {
     matches!(
         replacement,
-        "RELIDO" | "CUI" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE" | "PROPIN"
+        "RELIDO" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE" | "PROPIN"
     )
 }
 
@@ -3655,6 +3673,48 @@ mod tests {
         assert_eq!(fix.replacement.as_ref(), "25X1");
         // Table confidence from the seed MIGRATIONS entry (0.97).
         assert!((fix.confidence.combined() - 0.97).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn migrations_table_contains_no_fouo_entry() {
+        // FOUO remains a valid CAPCO dissem control per CVEnumISMDissem.xml
+        // and CAPCO-2016 §F. CUI is a separate (NARA) marking system, not a
+        // CAPCO dissem control. A prior `FOUO → CUI` migration entry was
+        // removed as factually incorrect; this regression guard prevents
+        // re-introduction. Any future "suggest CUI on non-IC documents"
+        // behavior must live in a CUI adapter gated by opt-in config.
+        use marque_ism::generated::migrations::find_migration;
+        assert!(
+            find_migration("FOUO").is_none(),
+            "FOUO must not appear in MIGRATIONS (see crates/ism/build.rs doc block)"
+        );
+    }
+
+    #[test]
+    fn migrations_table_contains_no_limdis_entry() {
+        // LIMDIS is a current non-IC dissem control (CAPCO-2016 §H.9).
+        // A prior `LIMDIS → RELIDO` migration entry was removed as
+        // factually incorrect; this regression guard prevents
+        // re-introduction.
+        use marque_ism::generated::migrations::find_migration;
+        assert!(
+            find_migration("LIMDIS").is_none(),
+            "LIMDIS must not appear in MIGRATIONS (see crates/ism/build.rs doc block)"
+        );
+    }
+
+    #[test]
+    fn e006_does_not_fire_on_fouo_in_banner() {
+        // Full-pipeline regression: the absence of a FOUO migration entry
+        // must produce no E006 diagnostic in a banner containing FOUO.
+        // The policy question "FOUO in a classified banner" is handled at
+        // the PageContext roll-up (FOUO drops from classified banners) and
+        // in Phase C as a declarative `Constraint::Conflicts(FOUO, Classified)`.
+        let diags = lint_banner("UNCLASSIFIED//FOUO");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E006"),
+            "E006 must not fire on FOUO: {diags:?}"
+        );
     }
 
     #[test]
