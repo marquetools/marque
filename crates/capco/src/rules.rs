@@ -15,7 +15,7 @@
 //!   E002 = REL TO missing USA trigraph (T031)
 //!   E003 = misordered banner blocks (T032)
 //!   E004 = separator-count normalization (T033)
-//!   E005 = declassification in banner (T034)
+//!   E005 = declassification misplaced (banner or portion; belongs in CAB) (T034)
 //!   E006 = deprecated dissem control (T035)
 //!   E007 = X-shorthand declass date (T036)
 //!   E008 = unrecognized token (T037)
@@ -86,7 +86,7 @@ impl CapcoRuleSet {
                 Box::new(MissingUsaTrigraphRule),
                 Box::new(MisorderedBlocksRule),
                 Box::new(SeparatorCountRule),
-                Box::new(DeclassifyInBannerRule),
+                Box::new(DeclassifyMisplacedRule),
                 Box::new(DeprecatedDissemRule),
                 Box::new(XShorthandDateRule),
                 Box::new(UnknownTokenRule),
@@ -877,17 +877,55 @@ fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E005 — Declassification marking in banner (should be in CAB)
+// Rule: E005 — Declassification instruction misplaced (belongs in CAB)
 // ---------------------------------------------------------------------------
 
-struct DeclassifyInBannerRule;
+/// E005 fires when a declassification exemption or `Declassify On` date
+/// appears inside a banner or portion marking rather than the Classification
+/// Authority Block (CAB).
+///
+/// # Authority
+///
+/// Two CAPCO-2016 passages together establish the invariant:
+///
+/// - **§E.1 p31** enumerates `Declassify On` as a CAB line and lists its
+///   valid values: YYYYMMDD dates, events, `25X#`, `50X#`, `75X#`,
+///   `50X1-HUM`, `50X2-WMD`, `25X1, EO 12951`, and the `N/A …` forms.
+///   This is the authoritative "declass values live here" list.
+///   §E.2 p32 reaffirms it for derivative classification: "Only a single
+///   value must be used on the `Declassify On` line of the classification
+///   authority block."
+/// - **§D.1 p27** enumerates the banner syntax's permitted categories —
+///   classification, SCI, SAP, AEA, Dissem, Non-IC Dissem. Declassification
+///   is **not** on this closed list, and §C.1 p26 lines 525ff gives
+///   portions the same category set. A declass token appearing between
+///   `//` separators of a banner or portion is unambiguously misplaced.
+///
+/// The invariant is safely broader than CAPCO's OCA (§E.1) vs derivative
+/// (§E.2) vs FGI (§E.4) distinctions — all variants place declass in the
+/// CAB, so the predicate does not branch on classification source.
+///
+/// # Scope
+///
+/// Fires on `MarkingType::Banner` and `MarkingType::Portion`. Explicitly
+/// does NOT fire on `MarkingType::Cab` — that is the correct location for
+/// declass info and a CAB candidate carrying `declassify_on` /
+/// `declass_exemption` is well-formed, not violating.
+///
+/// # Fix
+///
+/// None. Repairing a misplaced declass marking requires moving the token
+/// from the banner/portion into a CAB, which is multi-span document-level
+/// rewriting rather than a local replacement. E005 surfaces the
+/// diagnostic; the author resolves manually.
+struct DeclassifyMisplacedRule;
 
-impl Rule for DeclassifyInBannerRule {
+impl Rule for DeclassifyMisplacedRule {
     fn id(&self) -> RuleId {
         RuleId::new("E005")
     }
     fn name(&self) -> &'static str {
-        "declassify-in-banner"
+        "declassify-misplaced"
     }
     fn default_severity(&self) -> Severity {
         Severity::Error
@@ -895,7 +933,10 @@ impl Rule for DeclassifyInBannerRule {
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
-        if ctx.marking_type != MarkingType::Banner {
+        // Fire on banner AND portion. CAB candidates are the correct
+        // location for declass info and must be skipped. PageBreak is
+        // not a marking and carries no attributes.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
             return vec![];
         }
         if attrs.declassify_on.is_none() && attrs.declass_exemption.is_none() {
@@ -914,11 +955,13 @@ impl Rule for DeclassifyInBannerRule {
             self.id(),
             self.default_severity(),
             span,
-            "declassification marking belongs in Classification Authority Block \
-             (Declassify On:), not in the banner — remove from banner and add to CAB",
-            "CAPCO-2016 §E",
-            None, // Fix requires document-level context (multi-span);
-                  // confidence 0.55 per T034 — suggestion only.
+            "declassification marking belongs on the Declassify On line of \
+             the Classification Authority Block, not in a banner or portion \
+             — remove the declass token here and add it to the CAB",
+            "CAPCO-2016 §E.1 p31 (Declassify On is a CAB line) + \
+             §D.1 p27 (banner categories do not include declassification)",
+            None, // Fix requires document-level context (moving a token
+                  // from banner/portion into a CAB is multi-span).
         )]
     }
 }
@@ -4509,6 +4552,51 @@ mod tests {
         assert_eq!(e005.len(), 1);
         let src = b"SECRET//25X1//NOFORN";
         assert_eq!(e005[0].span.as_str(src).unwrap(), "25X1");
+    }
+
+    // T035c-16: E005 audit — scope expansion and citation lockdown.
+
+    #[test]
+    fn e005_fires_on_declass_exemption_in_portion() {
+        // Portion-scope coverage: CAPCO §D.1 p27's closed category list
+        // for banners is mirrored for portions (§C.1 p26 lines 525ff),
+        // so `25X1` between `//` separators in a portion is just as
+        // misplaced as in a banner. Before T035c-16 this fired nothing
+        // (the rule was banner-only); the audit extended scope to cover
+        // portions.
+        let diags = lint_portion("(S//25X1//NF)");
+        let e005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E005").collect();
+        assert_eq!(
+            e005.len(),
+            1,
+            "E005 must fire on declass exemption inside a portion: {diags:?}"
+        );
+        let src = b"(S//25X1//NF)";
+        assert_eq!(e005[0].span.as_str(src).unwrap(), "25X1");
+    }
+
+    #[test]
+    fn e005_citation_points_at_specific_sections() {
+        // Lock down the T035c-16 citation retargeting — `§E.1 p31` and
+        // `§D.1 p27` are the specific passages that jointly establish
+        // the invariant. A future regression that drifts to a bare
+        // `§E` would pass Constitution VIII's surface check but fail
+        // re-verifiability, which is the whole point.
+        let diags = lint_banner("SECRET//25X1//NOFORN");
+        let e005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E005").collect();
+        assert_eq!(e005.len(), 1);
+        assert!(
+            e005[0].citation.contains("§E.1 p31"),
+            "E005 citation must reference §E.1 p31 (Declassify On is a CAB line); \
+             got: {:?}",
+            e005[0].citation
+        );
+        assert!(
+            e005[0].citation.contains("§D.1 p27"),
+            "E005 citation must reference §D.1 p27 (banner categories exclude \
+             declassification); got: {:?}",
+            e005[0].citation
+        );
     }
 
     #[test]
