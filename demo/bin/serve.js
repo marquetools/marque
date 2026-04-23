@@ -122,7 +122,12 @@ function handleRequest(req, res) {
 
 function serveFile(res, absPath) {
   // Basic path traversal guard
-  if (!absPath.startsWith(DEMO_ROOT) && !(wasmRoot && absPath.startsWith(wasmRoot))) {
+  const relDemo = path.relative(DEMO_ROOT, absPath);
+  const isSafeDemo = relDemo === '' || (!relDemo.startsWith('..' + path.sep) && relDemo !== '..' && !path.isAbsolute(relDemo));
+  const relWasm = wasmRoot ? path.relative(wasmRoot, absPath) : null;
+  const isSafeWasm = relWasm === '' || (relWasm && !relWasm.startsWith('..' + path.sep) && relWasm !== '..' && !path.isAbsolute(relWasm));
+
+  if (!isSafeDemo && !isSafeWasm) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('403 Forbidden');
     return;
