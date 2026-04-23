@@ -1570,10 +1570,16 @@ impl Rule for DelimiterMismatchRule {
 /// W003 is banner-only — a non-IC dissem control in a *portion* marking
 /// is fine at any classification.
 ///
-/// (LES-NF has a further §H.9 canonicalization — the banner form
+/// ## Important Exceptions
+/// 
+/// `LES-NF` has a further §H.9 canonicalization — the banner form
 /// `SECRET//NOFORN//LES` rather than `SECRET//LES NOFORN`. That split
 /// is a page-rewrite concern, not a W003 concern, so LES-NF is
-/// considered propagating here.)
+/// considered propagating here.
+///
+/// Importantly, SBU-NF behaves similarly to LES-NF. 'SBU'
+/// never propagates to a classified marking, but its
+/// `NF` attribute *does*.
 struct NonIcInClassifiedBannerRule;
 
 impl Rule for NonIcInClassifiedBannerRule {
