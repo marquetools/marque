@@ -860,11 +860,17 @@ fn is_abbreviation_expansion(from: &str, to: &str) -> bool {
     )
 }
 
-/// Returns `true` if `replacement` names a current dissemination control.
+/// Returns `true` if `replacement` is one of the dissemination-control
+/// replacements that E006 is allowed to claim from MIGRATIONS.
 ///
-/// E006 uses this as a guard: the migration table can contain non-dissem
-/// replacements (e.g., declass-shorthand entries like `25X1-` → `25X1`
-/// which E007 owns), and those MUST NOT dispatch as E006.
+/// This is intentionally a narrow allowlist, not a general "is this a
+/// current CAPCO dissem control?" predicate. E006 uses it as a guard
+/// because the migration table can also contain non-dissem replacements
+/// (for example, declass-shorthand entries like `25X1-` → `25X1`, which
+/// E007 owns), and those MUST NOT dispatch as E006. Active dissem
+/// controls absent from this allowlist (e.g., FOUO) simply never appear
+/// as a replacement today — adding one is a deliberate E006 scope change,
+/// not a passive widening.
 ///
 /// `CUI` is intentionally excluded. Per CAPCO-2016 §F (and
 /// `CVEnumISMDissem.xml`), `CUI` is not a CAPCO dissem control — it is a

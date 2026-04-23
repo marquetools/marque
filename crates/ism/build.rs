@@ -727,12 +727,14 @@ pub struct MigrationEntry {
 ///   it was filtered out by `E006 is_abbreviation_expansion` anyway.
 ///
 /// - **FOUO → CUI**: FOUO remains a valid CAPCO dissem control per
-///   CVEnumISMDissem.xml (still enumerated in the active CVE) and per
-///   project memory `project_fouo_cui_transition.md`. CUI is a separate
-///   marking system under NARA jurisdiction. A prior entry was removed
-///   in Phase E (2026-04-19 recursive-lattice plan). Any "suggest CUI
-///   on non-IC documents" behavior belongs in a future CUI adapter,
-///   gated by `[agency]` / `[cui]` config.
+///   CVEnumISMDissem.xml (still enumerated in the active CVE). CUI is a
+///   separate marking system under NARA jurisdiction. A prior entry was
+///   removed in Phase E of
+///   `docs/plans/2026-04-19-recursive-lattice-and-decoder.md` (§14 "What
+///   we dropped" — explicit `FOUO → CUI` bullet). Any "suggest CUI on
+///   non-IC documents" behavior belongs in a future CUI adapter, gated
+///   by `[agency] is_ic_member` / `[cui] migrate_fouo` config gates
+///   (Phase F), not as a blanket CAPCO-level migration.
 ///
 /// - **LIMDIS → RELIDO**: LIMDIS is a current non-IC dissem control
 ///   per CAPCO-2016 §H.9 (p18 of the 2008 manual, §H.9 of 2016). A
