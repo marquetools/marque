@@ -1713,7 +1713,7 @@ impl Rule for DelimiterMismatchRule {
 /// is fine at any classification.
 ///
 /// ## Important Exceptions
-/// 
+///
 /// `LES-NF` has a further §H.9 canonicalization — the banner form
 /// `SECRET//NOFORN//LES` rather than `SECRET//LES NOFORN`. That split
 /// is a page-rewrite concern, not a W003 concern, so LES-NF is
