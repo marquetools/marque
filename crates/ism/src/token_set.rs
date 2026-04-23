@@ -23,10 +23,15 @@ pub trait TokenSet: Send + Sync {
 
     /// Returns the vocabulary slice used for fuzzy correction lookups.
     ///
-    /// This is the set of non-trigraph CVE tokens against which unknown tokens
-    /// are compared by the `marque_core::fuzzy` module. Must be sorted and
-    /// deduplicated (binary search is used for the "is already valid" check).
-    fn correction_vocab(&self) -> &'static [&'static str];
+    /// This is the token vocabulary against which unknown tokens are compared
+    /// by the `marque_core::fuzzy` module. Must be sorted and deduplicated
+    /// (binary search is used for the "is already valid" check).
+    ///
+    /// The default implementation returns an empty slice, disabling fuzzy
+    /// correction for external `TokenSet` implementors that do not override it.
+    fn correction_vocab(&self) -> &'static [&'static str] {
+        &[]
+    }
 }
 
 /// Aho-Corasick automaton over all CVE tokens — built once from generated data.

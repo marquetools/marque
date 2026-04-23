@@ -274,7 +274,8 @@ pub(crate) fn levenshtein(a: &str, b: &str) -> u8 {
         return m.min(u8::MAX as usize) as u8;
     }
 
-    // prev[j] = distance between a[0..i-1] and b[0..j]
+    // prev[i] holds the distance between a[0..i] and the previous b prefix
+    // (before the loop: b[0..0], and at outer iteration j: b[0..j-1]).
     let mut prev: Vec<u8> = (0..=n)
         .map(|i| i.min(u8::MAX as usize) as u8)
         .collect();
@@ -320,7 +321,7 @@ mod tests {
 
     #[test]
     fn lev_single_transpose() {
-        // SERCET: E and C swapped — that's a substitution at position 2 and 3,
+        // SERCET: R and C swapped — that's a substitution at position 3 and 4,
         // which is distance 2 in standard Levenshtein (no transposition op).
         // But the user's intuition is "one swap", which is distance 2.
         assert_eq!(levenshtein("SERCET", "SECRET"), 2);
@@ -400,7 +401,7 @@ mod tests {
 
     #[test]
     fn sercet_corrects_to_secret() {
-        // Most common OCR variant: E and R transposed (positions 2 and 3 swapped).
+        // Common transposition typo: R and C transposed in "SERCET" vs "SECRET".
         // Standard Levenshtein counts this as distance 2 (two substitutions).
         let result = matcher().correct("SERCET");
         assert_eq!(result.as_ref().map(|c| c.token), Some("SECRET"));
