@@ -2055,11 +2055,23 @@ fn looks_like_fgi_classification(s: &str) -> bool {
 ///   whitespace.
 /// - **REL TO**: fires when the RelToBlock's country-list region does
 ///   not match the canonical `alpha(, alpha)*` form. Split on any
-///   mixture of comma-and-whitespace characters, then re-join with
-///   `", "`. This catches:
+///   mixture of comma-and-whitespace characters, then compare the
+///   input's list region (the slice starting at the first non-keyword
+///   code) against the joined-with-`", "` canonical form. This catches:
 ///   - space-only delimiters: `REL TO USA GBR`
 ///   - missing-space-after-comma: `REL TO USA,GBR`
 ///   - mixed delimiters: `REL TO USA GBR,AUS`
+///   - trailing-delimiter artifacts inside a multi-country list
+///     (e.g., `REL TO USA, GBR,` — trailing `,` between `GBR` and
+///     end-of-block)
+///
+///   Prefix-only issues (extra whitespace between `REL` and `TO` or
+///   between `TO` and the first code, when the country list itself is
+///   already canonical) are deliberately out of scope. E013's message
+///   describes a list-delimiter mismatch; firing on a prefix problem
+///   would be misleading. When the list IS non-canonical, the fix
+///   produces the full canonical block text, which incidentally
+///   cleans any prefix whitespace as a side effect.
 ///
 /// Token order is preserved in both fixes — E020
 /// (country-code-ordering) owns ordering.
@@ -2161,16 +2173,32 @@ impl Rule for DelimiterMismatchRule {
                 .collect();
             if codes.len() < 2 {
                 // Single code (or zero) cannot have a delimiter mismatch —
-                // there is nothing to separate.
+                // there is nothing to separate. Trailing-delimiter
+                // artifacts on a one-country list (e.g., `REL TO USA,`)
+                // fall outside E013's delimiter-between-codes scope
+                // and are handled by E002 in its own fix path.
                 return diagnostics;
             }
-            // Canonical form: `REL TO <code>(, <code>)*`. Compare
-            // against the full block text so a non-canonical prefix
-            // (e.g., extra whitespace between `REL` and `TO`) or
-            // stale trailing whitespace inside the list also triggers
-            // the fix.
-            let canonical_text = format!("REL TO {}", codes.join(", "));
-            if canonical_text != text {
+            let canonical_list = codes.join(", ");
+            // Compare canonical_list to the input's list region (the
+            // slice starting at the first non-`REL`/`TO` code), NOT
+            // the full block text. This scopes E013 to its actual name
+            // — a list-delimiter mismatch — so it does not fire on
+            // prefix-only whitespace issues like `REL  TO USA, GBR`
+            // (double space between `REL` and `TO`, list itself
+            // canonical). When E013 does fire, its fix produces the
+            // full canonical block text, which incidentally cleans up
+            // prefix whitespace as a side effect.
+            //
+            // `text.find(codes[0])` is safe here: `codes[0]` is
+            // whatever survived after skipping leading `REL`/`TO`
+            // keywords, and neither keyword nor any valid country
+            // trigraph/tetragraph contains the other as a substring,
+            // so the first occurrence is the actual list start.
+            let list_start = text.find(codes[0]).unwrap_or(0);
+            let list_region = &text[list_start..];
+            if list_region != canonical_list {
+                let canonical_text = format!("REL TO {canonical_list}");
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
@@ -5507,26 +5535,66 @@ mod tests {
         // / `TO` keywords, which is robust to non-canonical prefix
         // whitespace.
         //
-        // NOTE: this exercises the rule directly via `lint_banner`.
-        // Whether the scanner actually emits `RelToBlock` tokens for
-        // non-canonical prefixes like `REL  TO` depends on scanner
-        // behavior; when it does, this test proves the rule itself
-        // is safe.
+        // Acceptable outcomes for this input (either passes — it
+        // depends on whether the scanner normalizes the prefix
+        // whitespace before the rule sees it):
+        //   A) E013 does not fire — scanner normalized the prefix.
+        //   B) E013 fires with `replacement == "REL TO USA, GBR"`.
+        //
+        // What is NOT acceptable:
+        //   C) E013 fires with `replacement` containing the phantom
+        //      `TO, USA` / `TO TO` that the old buggy prefix
+        //      stripping would produce.
+        //   D) E013 fires WITHOUT a fix (every E013 diagnostic must
+        //      carry a FixProposal today).
         let diags = lint_banner("SECRET//REL  TO USA GBR");
         let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
-        for d in &e013 {
+        assert!(
+            e013.len() <= 1,
+            "E013 fires at most once per REL TO block: {diags:?}"
+        );
+        if let Some(d) = e013.first() {
+            let fix = d
+                .fix
+                .as_ref()
+                .expect("E013 diagnostics must carry a FixProposal");
+            assert_eq!(
+                fix.replacement.as_ref(),
+                "REL TO USA, GBR",
+                "canonical fix must drop leading REL/TO keywords and not \
+                 reinterpret `TO` as a country code"
+            );
+        }
+    }
+
+    #[test]
+    fn e013_does_not_fire_on_prefix_only_whitespace_with_canonical_list() {
+        // E013 is a delimiter-mismatch rule. Prefix-only issues like
+        // extra whitespace between `REL` and `TO`, when the country
+        // list itself is already comma-space canonical, are out of
+        // scope. A future rule targeting prefix normalization can
+        // own that case. Scoping E013 strictly to the list region
+        // keeps the diagnostic message ("REL TO country list must use
+        // comma-space delimiters…") accurate — it would be misleading
+        // to fire for a problem the message doesn't describe.
+        //
+        // Whether this input actually produces a RelToBlock with
+        // non-canonical prefix depends on scanner behavior; the rule
+        // must be correct either way, so we accept both "no E013" and
+        // "E013 does not fire" — the only failure mode would be if
+        // E013 fired with a canonical-ish fix on a list that was
+        // already canonical.
+        let diags = lint_banner("SECRET//REL  TO USA, GBR");
+        for d in diags.iter().filter(|d| d.rule.as_str() == "E013") {
             if let Some(fix) = d.fix.as_ref() {
-                let replacement = fix.replacement.as_ref();
-                assert!(
-                    !replacement.contains("TO TO") && !replacement.contains(", TO,"),
-                    "E013 fix must not treat keyword `TO` as a country code; \
-                     got replacement: {replacement:?}"
-                );
-                // When the rule does produce a fix for this input, it
-                // should be the canonical form without phantom codes.
-                assert_eq!(
-                    replacement, "REL TO USA, GBR",
-                    "canonical fix must drop leading REL/TO keywords"
+                // If the rule does fire here, it would be because
+                // the scanner preserved the double space AND the
+                // rule chose to treat that as a list problem — which
+                // is the scope violation we're guarding against.
+                panic!(
+                    "E013 must not fire on prefix-only whitespace when \
+                     the list itself is canonical; got replacement: {:?}",
+                    fix.replacement.as_ref()
                 );
             }
         }
