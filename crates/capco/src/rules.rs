@@ -48,6 +48,7 @@
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
 //!   E037 = NODIS and EXDIS must not coexist (T035c-21 PR-A)
 //!   E038 = NODIS / EXDIS require NOFORN (T035c-21 PR-A)
+//!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -147,6 +148,11 @@ impl CapcoRuleSet {
                 // chain.
                 Box::new(crate::rules_declarative::DeclarativeNodisConflictsExdisRule),
                 Box::new(crate::rules_declarative::DeclarativeDosDissemNofornRule),
+                // S003: joint-usa-first style rule. Info severity.
+                // Follow-up from PR #97 (T035c-18) — §H.3 prescribes
+                // pure alpha for JOINT, but IC convention puts USA
+                // first. See JointUsaFirstRule doc.
+                Box::new(JointUsaFirstRule),
             ],
         }
     }
@@ -1909,6 +1915,162 @@ impl Rule for BannerConsistentFormRule {
             "CAPCO-2016 §A.6 line 317 + §G.1 Table 4",
             None,
         )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: S003 — joint-usa-first (style)
+// ---------------------------------------------------------------------------
+
+/// S003: Prefer USA first in JOINT country lists.
+///
+/// # Authority: convention, not §H.3
+///
+/// CAPCO-2016 §H.3 p56 line 1258 prescribes **pure alphabetical** order
+/// for JOINT country lists ("Country trigraph codes are listed
+/// alphabetically followed by tetragraph codes in alphabetical order").
+/// The section has NO USA-first carve-out. Prior to PR #97 / T035c-18,
+/// E020's JOINT fix incorrectly elevated USA to the front — that was
+/// an authority-drift violation of Constitution VIII. #97 narrowed
+/// E020's JOINT path to pure alpha.
+///
+/// However, every other US-authored country list **does** lead with
+/// USA — REL TO §H.8 p150–151 line 3714 is explicit ("After 'USA',
+/// list the required one or more trigraph country codes..."). The IC
+/// practice of rendering USA first in JOINT lists is a widespread
+/// convention that extends this REL-TO pattern across all
+/// country-list contexts, even where CAPCO is silent.
+///
+/// S003 encodes that convention as a **style rule** (`Severity::Info`
+/// by default). It does not claim §H.3 authority; the rule doc and
+/// diagnostic citation make the "convention, not mandate" framing
+/// explicit. Orgs that want strict §H.3 conformance can disable S003
+/// via `S003 = "off"` in `.marque.toml`. Orgs that want USA-first
+/// auto-applied can configure `S003 = "fix"`.
+///
+/// # Predicate
+///
+/// Fires on a banner-context `MarkingClassification::Joint` when the
+/// country list contains USA AND USA is NOT the first country. The
+/// rule only fires on banners (matching S001/S002's banner-only
+/// scope) — portion-form JOINT is rarely used, and applying
+/// convention-based style to portions is a judgment call best
+/// deferred.
+///
+/// # Interaction with E020
+///
+/// E020 and S003 can both fire on the same JOINT list when it is
+/// neither pure-alpha nor USA-first (e.g., `AUS USA GBR` is pure
+/// alpha? No — A < U < G is wrong; actual: `GBR USA AUS` is not
+/// alpha AND not USA-first). Both fixes target the same Classification
+/// token span:
+///
+/// - E020 fix: `AUS GBR USA` (pure alpha per §H.3).
+/// - S003 fix: `USA AUS GBR` (USA first, rest alpha per convention).
+///
+/// Under FR-016's rule-id tiebreaker ("E020" < "S003" lexically),
+/// E020 wins the overlap guard and applies. On re-lint, E020 is
+/// silent (list now pure-alpha) and S003 still wants USA first;
+/// running fix again converges to `USA AUS GBR`. Two passes. Orgs
+/// that want single-pass USA-first convergence can disable E020
+/// for JOINT (currently not configurable; would need a per-list-type
+/// severity override — follow-up).
+///
+/// Complementary rules:
+/// - **E020** (`country-code-ordering`, correctness) — pure-alpha
+///   ordering per §H.3 / §H.8 (depending on list type). For REL TO,
+///   E020 encodes USA-first by authority (§H.8 line 3714). For JOINT,
+///   E020 encodes pure-alpha (§H.3 line 1258, post-T035c-18).
+/// - **S001**/`S002` (style) — banner-abbreviation preferences.
+struct JointUsaFirstRule;
+
+impl Rule for JointUsaFirstRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S003")
+    }
+    fn name(&self) -> &'static str {
+        "joint-usa-first"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Info
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{MarkingType, Trigraph};
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+        let Some(MarkingClassification::Joint(j)) = &attrs.classification else {
+            return vec![];
+        };
+        if j.countries.len() < 2 {
+            // Single-country JOINT (or zero) can't have USA out of
+            // first position meaningfully.
+            return vec![];
+        }
+        if !j.countries.contains(&Trigraph::USA) {
+            // JOINT without USA is anomalous per §H.3 line 4025 but
+            // not S003's concern. Let other rules flag it.
+            return vec![];
+        }
+        if j.countries.first() == Some(&Trigraph::USA) {
+            return vec![];
+        }
+
+        // Canonicalize: USA first, remaining trigraphs alphabetical.
+        let canonical = canonicalize_trigraph_list(&j.countries, true);
+
+        // JOINT span covers the full `Classification` token. Preserve
+        // the `JOINT <level>` prefix by anchoring on the first
+        // source-order country's position in the token text. Mirrors
+        // the identical trick used in E020's JOINT fix
+        // (`check_trigraph_ordering`).
+        let Some(classification_tok) = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+        else {
+            return vec![];
+        };
+        let classification_text = classification_tok.text.as_ref();
+        let actual_first = j.countries[0].as_str();
+        let prefix_end = classification_text
+            .find(actual_first)
+            .unwrap_or(classification_text.len());
+        let prefix = &classification_text[..prefix_end];
+
+        let joined_actual: Vec<&str> =
+            j.countries.iter().map(|t| t.as_str()).collect();
+        let joined_actual_str = joined_actual.join(" ");
+        let joined_canonical_str = canonical.join(" ");
+        let replacement = format!("{prefix}{joined_canonical_str}");
+
+        let message = format!(
+            "JOINT country list does not lead with USA: [{joined_actual_str}] \
+             → [{joined_canonical_str}] (IC convention — §H.3 prescribes \
+             pure alphabetical but every other US-authored country list \
+             leads with USA; style rule, disable via S003 = \"off\")"
+        );
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: classification_tok.span,
+            message,
+            citation: concat!(
+                "IC convention (not CAPCO mandate) — §H.3 p56 line 1258 ",
+                "prescribes pure alphabetical for JOINT with no USA-first ",
+                "carve-out; S003 encodes the convention observed in REL TO ",
+                "§H.8 p150-151 line 3714 across all US-authored country ",
+                "lists. Style rule; configure S003 = \"off\" for strict ",
+                "§H.3 conformance.",
+            ),
+            original: classification_text.to_owned(),
+            replacement,
+            confidence: 1.0,
+            migration_ref: None,
+        })]
     }
 }
 
@@ -4526,6 +4688,7 @@ mod tests {
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
         assert!(ids.contains(&"E038"));
+        assert!(ids.contains(&"S003"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -4535,7 +4698,11 @@ mod tests {
         // but legal"). Net: 38.
         // T035c-21 PR-A: added E037 (nodis-conflicts-exdis) + E038
         // (dos-dissem-noforn) per §H.9 NODIS/EXDIS templates. Net: 40.
-        assert_eq!(set.rules().len(), 40);
+        // S003 (follow-up from #97): added joint-usa-first style rule.
+        // §H.3 is silent on USA-first for JOINT; S003 encodes the
+        // convention that REL TO §H.8 line 3714 sets across
+        // US-authored country lists. Net: 41.
+        assert_eq!(set.rules().len(), 41);
     }
 
     #[test]
@@ -5701,6 +5868,146 @@ mod tests {
             s002.len(),
             1,
             "S002 must fire exactly once per banner: {diags:?}"
+        );
+    }
+
+    // --- S003: joint-usa-first (style) ---
+
+    #[test]
+    fn s003_fires_when_joint_usa_not_first() {
+        // `AUS GBR USA` is pure-alpha canonical per §H.3 line 1258
+        // (E020 is silent), but USA is last. S003 fires at Info
+        // severity and offers a fix that reorders to USA-first.
+        let src = "//JOINT S AUS GBR USA";
+        let diags = lint_banner(src);
+        let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
+        assert_eq!(
+            s003.len(),
+            1,
+            "S003 must fire on JOINT with USA not first: {diags:?}"
+        );
+        assert_eq!(s003[0].severity, Severity::Info);
+
+        let fix = s003[0].fix.as_ref().expect("S003 must carry a fix");
+        // Span covers the full Classification token.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "JOINT S AUS GBR USA",
+            "S003 span must cover the full Classification token"
+        );
+        assert_eq!(fix.original.as_ref(), "JOINT S AUS GBR USA");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "JOINT S USA AUS GBR",
+            "S003 fix must move USA to first, rest alphabetical"
+        );
+
+        // Applied splice: preserves `//JOINT S ` banner prefix and
+        // produces the canonical USA-first list.
+        let mut buf = src.as_bytes().to_vec();
+        buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+        let applied = std::str::from_utf8(&buf).unwrap();
+        assert_eq!(
+            applied, "//JOINT S USA AUS GBR",
+            "applied fix must produce canonical USA-first JOINT block"
+        );
+    }
+
+    #[test]
+    fn s003_does_not_fire_when_usa_already_first() {
+        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S003"),
+            "S003 must not fire when USA is already first: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s003_does_not_fire_without_usa_in_joint_list() {
+        // Anomalous per §H.3 line 4025 (USA always in JOINT), but
+        // S003 only fires when USA IS present but not first. Other
+        // rules flag the missing-USA case.
+        let diags = lint_banner("//JOINT S GBR AUS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S003"),
+            "S003 must not fire when USA is absent: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s003_does_not_fire_on_single_country_joint() {
+        // Single-country JOINT (just USA) — nothing to reorder.
+        let diags = lint_banner("//JOINT S USA");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S003"),
+            "S003 must not fire on single-country JOINT: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s003_does_not_fire_in_portion() {
+        // S003 is banner-only, matching S001/S002's scope. Portion-
+        // form JOINT is rarely used; convention-based style rules
+        // are banner-focused.
+        let diags = lint_portion("(//JOINT S AUS GBR USA)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S003"),
+            "S003 must not fire in portion context: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s003_citation_frames_as_convention_not_mandate() {
+        // Constitution VIII: the citation MUST make clear that S003
+        // encodes convention, not a CAPCO mandate. §H.3 is explicitly
+        // silent on USA-first. Lock the "IC convention" framing so a
+        // regression that fabricates a §H.3 carve-out fails here.
+        let diags = lint_banner("//JOINT S AUS GBR USA");
+        let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
+        assert_eq!(s003.len(), 1);
+        let citation = s003[0].citation;
+        assert!(
+            citation.contains("IC convention"),
+            "S003 citation must frame as IC convention (not CAPCO \
+             mandate); got: {citation:?}"
+        );
+        assert!(
+            citation.contains("§H.3 p56 line 1258"),
+            "S003 citation must reference the §H.3 passage it defers to \
+             (pure alpha); got: {citation:?}"
+        );
+        assert!(
+            citation.contains("§H.8 p150-151 line 3714"),
+            "S003 citation must reference the REL TO USA-first source \
+             that establishes the convention; got: {citation:?}"
+        );
+    }
+
+    #[test]
+    fn s003_and_e020_both_fire_when_list_is_neither_alpha_nor_usa_first() {
+        // Input `GBR USA AUS`: neither pure alpha (G before A wrong,
+        // U > A) nor USA-first. Both E020 and S003 want to fire. The
+        // two fixes target the same Classification token span with
+        // different replacements. FR-016's rule-id tiebreaker (`E020`
+        // < `S003` lex) means E020 wins the overlap guard and
+        // applies. Re-linting would then see pure-alpha `AUS GBR USA`
+        // and S003 fires again.
+        //
+        // This test locks that BOTH rules fire on first-pass lint
+        // (before the overlap guard) — so the user can see both the
+        // alpha violation and the convention violation.
+        let diags = lint_banner("//JOINT S GBR USA AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
+        assert_eq!(
+            e020.len(),
+            1,
+            "E020 must fire on non-alpha JOINT: {diags:?}"
+        );
+        assert_eq!(
+            s003.len(),
+            1,
+            "S003 must fire on JOINT with USA not first: {diags:?}"
         );
     }
 

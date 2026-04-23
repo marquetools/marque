@@ -23,7 +23,7 @@ Rule structs are zero-size and stateless. All config-dependent behavior (severit
 
 ## Rule Inventory
 
-38 rules currently implemented: errors `E001`–`E036` (core CAPCO, SAR, SCI; `E017`/`E018`/`E019` retired in T035b), style `S001`–`S002`, warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
+41 rules currently implemented: errors `E001`–`E038` (core CAPCO, SAR, SCI, NODIS/EXDIS; `E017`/`E018`/`E019` retired in T035b), style `S001`–`S003`, warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
 
 ## Usage
 
