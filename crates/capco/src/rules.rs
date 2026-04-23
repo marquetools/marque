@@ -6408,7 +6408,7 @@ mod tests {
         // Banner carries both NODIS and EXDIS — mutually exclusive per
         // §H.9 p172 line 4235 + p174 line 4295. NOFORN is also
         // required (E038), so include it so we only see E037.
-        let diags = lint_banner("SECRET//NOFORN//NODIS//EXDIS");
+        let diags = lint_banner("SECRET//NOFORN//NODIS/EXDIS");
         let e037: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E037").collect();
         assert_eq!(
             e037.len(),
