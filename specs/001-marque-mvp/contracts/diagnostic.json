@@ -14,8 +14,8 @@
     },
     "severity": {
       "type": "string",
-      "enum": ["info", "warn", "error", "fix"],
-      "description": "Effective severity after applying the merged configuration. Per FR-008, rules configured to severity `off` never execute and never produce a diagnostic, so `off` is unrepresentable on emitted records. `info` (added T035c-2) is for audit-visible diagnostics that keep the CLI exit code at 0; `warn` produces EX_DIAG_WARN (exit 2); `error` and `fix` produce EX_DIAG_ERROR (exit 1)."
+      "enum": ["warn", "error", "fix"],
+      "description": "Effective severity after applying the merged configuration. Per FR-008, rules configured to severity `off` never execute and never produce a diagnostic, so `off` is unrepresentable on emitted records."
     },
     "span": {
       "type": "object",

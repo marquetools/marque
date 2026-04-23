@@ -45,12 +45,7 @@ fn build_input(target_bytes: usize) -> Vec<u8> {
 
 fn linear_scaling_benchmark(c: &mut Criterion) {
     let sizes: &[usize] = &[1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000];
-    let engine = Engine::new(
-        Config::default(),
-        marque_engine::default_ruleset(),
-        marque_engine::default_scheme(),
-    )
-    .expect("default CAPCO scheme has no rewrite cycles");
+    let engine = Engine::new(Config::default(), marque_engine::default_ruleset());
 
     let mut group = c.benchmark_group("lint_scaling");
     for &size in sizes {

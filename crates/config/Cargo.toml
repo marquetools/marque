@@ -17,9 +17,6 @@ include = [
   "src/**/*.rs",
 ]
 
-[lints]
-workspace = true
-
 [dependencies]
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
@@ -29,13 +26,3 @@ toml = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-
-[features]
-# Gate the corpus-override parsing codepath. Parsing lives in
-# `crates/config/src/corpus_override.rs` (US2 / T065); the feature gate
-# here mirrors the gate in `marque-capco` and `marque-engine` so the
-# WASM artifact (default-features = false on engine, no corpus-override)
-# compiles out the parser entirely. CLI-only, rejected by
-# `marque-server` at the handler layer (FR-013 / T3 enforcement).
-default = []
-corpus-override = []

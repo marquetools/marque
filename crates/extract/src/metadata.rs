@@ -69,33 +69,3 @@ pub enum WarningSeverity {
     /// High sensitivity — GPS coordinates, revision history with PII.
     High,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn metadata_report_has_warnings_empty() {
-        let report = MetadataReport::default();
-        assert!(!report.has_warnings());
-    }
-
-    #[test]
-    fn metadata_report_has_warnings_populated() {
-        let warning = MetadataWarning {
-            field: MetadataField {
-                category: MetadataCategory::DocumentProperties,
-                key: "Author".to_string(),
-                value: "John Doe".to_string(),
-            },
-            severity: WarningSeverity::Warn,
-            reason: "Reveals author identity".to_string(),
-            strippable: true,
-        };
-        let report = MetadataReport {
-            fields: vec![],
-            warnings: vec![warning],
-        };
-        assert!(report.has_warnings());
-    }
-}

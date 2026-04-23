@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-server — REST microservice exposing marque as an API.
 //!
@@ -128,7 +127,7 @@ async fn lint_handler(
             end: d.span.end,
             fix: d.fix.as_ref().map(|f| FixJson {
                 replacement: f.replacement.to_string(),
-                confidence: f.confidence.combined(),
+                confidence: f.confidence,
                 migration_ref: f.migration_ref.map(str::to_owned),
             }),
         })
@@ -189,17 +188,7 @@ async fn main() {
         }
     };
 
-    let engine = match Engine::new(
-        config,
-        vec![Box::new(capco_rules())],
-        marque_engine::default_scheme(),
-    ) {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("error: failed to construct engine: {err}");
-            std::process::exit(69);
-        }
-    };
+    let engine = Engine::new(config, vec![Box::new(capco_rules())]);
     let state = AppState {
         engine: Arc::new(engine),
     };
@@ -211,9 +200,7 @@ async fn main() {
         .route("/v1/fix", post(fix_handler))
         .with_state(state);
 
-    // Security Convention: Default to binding to the local loopback interface
-    // (127.0.0.1) instead of all interfaces (0.0.0.0) to prevent unintentional external exposure.
-    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
+    let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
 
     tracing::info!("marque-server listening on {addr}");
 

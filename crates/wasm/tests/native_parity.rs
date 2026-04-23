@@ -21,14 +21,7 @@ use std::sync::OnceLock;
 /// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
 fn shared_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| {
-        Engine::new(
-            Config::default(),
-            marque_engine::default_ruleset(),
-            marque_engine::default_scheme(),
-        )
-        .expect("default CAPCO scheme has no rewrite cycles")
-    })
+    ENGINE.get_or_init(|| Engine::new(Config::default(), marque_engine::default_ruleset()))
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +60,6 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
-        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -84,7 +76,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
         fix: d.fix.as_ref().map(|f| FixJson {
             source: fix_source_str(f.source),
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
+            confidence: f.confidence,
             migration_ref: f.migration_ref,
         }),
     }
@@ -527,9 +519,13 @@ fn test_generate_cab_unclassified_empty() {
     assert_eq!(cab, "");
 }
 
+// ---------------------------------------------------------------------------
+// compute_banner
+// ---------------------------------------------------------------------------
+
 #[test]
-fn test_generate_cab_ignores_non_portions() {
-    // Banner and CAB candidates should be ignored for rollup purposes in generate_cab_native
+fn test_compute_banner_ignores_non_portions() {
+    // Banner and CAB candidates should be ignored for rollup purposes.
     let text = "SECRET//NOFORN\n(S//NF) Portion 1";
     let banner1 = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
     assert_eq!(banner1, "SECRET//NOFORN");
@@ -538,10 +534,6 @@ fn test_generate_cab_ignores_non_portions() {
     let banner2 = marque_wasm::compute_banner_native(text2).expect("compute_banner failed");
     assert_eq!(banner2, "SECRET//NOFORN");
 }
-
-// ---------------------------------------------------------------------------
-// compute_banner
-// ---------------------------------------------------------------------------
 
 #[test]
 fn test_compute_banner_basic() {

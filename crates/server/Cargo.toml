@@ -21,9 +21,6 @@ include = [
 name = "marque-server"
 path = "src/main.rs"
 
-[lints]
-workspace = true
-
 [dependencies]
 axum = { workspace = true }
 marque-capco = { workspace = true }

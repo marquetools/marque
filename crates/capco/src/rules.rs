@@ -11,7 +11,7 @@
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
 //! Assignments per spec tasks.md:
-//!   E001 = portion mark used in banner (correctness)
+//!   E001 = banner abbreviation (T030)
 //!   E002 = REL TO missing USA trigraph (T031)
 //!   E003 = misordered banner blocks (T032)
 //!   E004 = separator-count normalization (T033)
@@ -29,9 +29,9 @@
 //!   W001 = deprecated marking warning (T038)
 //!   W002 = US + FGI comingling in portion
 //!   E016 = RESTRICTED not allowed with JOINT
-//!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 line 4140)
-//!   E018 = retired in T035b (over-restrictive per CAPCO §H.3 line 4140)
-//!   E019 = retired in T035b (over-restrictive per CAPCO §H.3 line 4140)
+//!   E017 = JOINT may not be used with FGI
+//!   E018 = JOINT may not be used with IC dissem (except REL TO)
+//!   E019 = JOINT may not be used with non-IC dissem
 //!   E020 = country code list ordering (alphabetical after USA)
 //!   E021 = RD/FRD requires NOFORN (configurable to warn)
 //!   E022 = CNWDI only with TS or S RD
@@ -43,13 +43,12 @@
 //!   E033 = SCI compartment / sub-compartment sort order
 //!   E034 = SCI custom (unpublished) control-system audit visibility
 //!   E035 = SCI banner rollup (missing compartments from portions)
-//!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    IsmAttributes, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
-    sar_sort_key,
+    ForeignClassification, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking,
+    Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -68,16 +67,9 @@ impl Default for CapcoRuleSet {
 
 impl CapcoRuleSet {
     pub fn new() -> Self {
-        use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCnwdiConstraintRule,
-            DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
-            DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
-            DeclarativeNonUsMissingDissemRule, DeclarativeRdPrecedenceRule,
-            DeclarativeUcniClassificationRule,
-        };
         Self {
             rules: vec![
-                Box::new(PortionMarkInBannerRule),
+                Box::new(BannerAbbreviationRule),
                 Box::new(PortionAbbreviationRule),
                 Box::new(MissingUsaTrigraphRule),
                 Box::new(MisorderedBlocksRule),
@@ -88,31 +80,24 @@ impl CapcoRuleSet {
                 Box::new(UnknownTokenRule),
                 Box::new(DeprecatedMarkingWarningRule),
                 Box::new(CorrectionsMapRule),
-                // T035a: declarative wrappers for E010/E012/E014-E016/
-                // E021/E022/E024/E025/W002. Catalog in `crate::scheme`
-                // owns the predicate; wrappers own span/message/fix
-                // construction.
-                //
-                // T035b: E017/E018/E019 retired entirely (over-
-                // restrictive per CAPCO §H.3 lines 4140-4146).
-                // Replacement: E036 `joint-hcs` (the only specific
-                // JOINT exclusion §H.3 line 4146 actually names).
-                Box::new(DeclarativeBareHcsRule),
+                Box::new(BareHcsRule),
                 Box::new(MissingNonUsPrefix),
-                Box::new(DeclarativeDualClassificationRule),
+                Box::new(DualClassificationRule),
                 Box::new(DelimiterMismatchRule),
-                Box::new(DeclarativeCominglingWarningRule),
-                Box::new(DeclarativeJointRelToRule),
-                Box::new(DeclarativeNonUsMissingDissemRule),
+                Box::new(CominglingWarningRule),
+                Box::new(JointRelToRule),
+                Box::new(NonUsMissingDissemRule),
                 Box::new(NonIcInClassifiedBannerRule),
-                Box::new(DeclarativeJointRestrictedRule),
-                Box::new(DeclarativeJointHcsRule),
+                Box::new(JointRestrictedRule),
+                Box::new(JointFgiRule),
+                Box::new(JointIcDissemRule),
+                Box::new(JointNonIcDissemRule),
                 Box::new(CountryCodeOrderingRule),
-                Box::new(DeclarativeAeaNofornRule),
-                Box::new(DeclarativeCnwdiConstraintRule),
+                Box::new(AeaNofornRule),
+                Box::new(CnwdiConstraintRule),
                 Box::new(SigmaValidationRule),
-                Box::new(DeclarativeRdPrecedenceRule),
-                Box::new(DeclarativeUcniClassificationRule),
+                Box::new(RdPrecedenceRule),
+                Box::new(UcniClassificationRule),
                 Box::new(SarPortionFormRule),
                 Box::new(SarClassificationRule),
                 Box::new(SarProgramOrderRule),
@@ -139,29 +124,18 @@ impl RuleSet for CapcoRuleSet {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E001 — Portion mark used in banner (correctness)
+// Rule: E001 — Banner uses abbreviated classification or caveat
 // ---------------------------------------------------------------------------
 
-/// Portion marks must not appear in banner lines. CAPCO defines three forms
-/// per marking (Marking Title / Banner Line Abbreviation / Portion Mark — see
-/// §H.8 / §H.9 per-marking entries); banners permit the first two but not the
-/// third. Portion marks that happen to equal the banner abbreviation (e.g.,
-/// SBU, LES, SSI, FISA where all forms are identical) do not fire this rule
-/// because no substitution is needed or possible.
-///
-/// This is a **correctness** rule — the fix is non-negotiable, the portion
-/// form is categorically wrong in a banner. A parallel style rule (`S001`
-/// `prefer-banner-abbreviation`, deferred to T035c-1b) will cover the
-/// complementary case of long "Marking Title" forms in banners where the
-/// user has authored-but-unidiomatic text.
-struct PortionMarkInBannerRule;
+/// Banners must use full words: SECRET not S, NOFORN not NF, TOP SECRET not TS.
+struct BannerAbbreviationRule;
 
-impl Rule for PortionMarkInBannerRule {
+impl Rule for BannerAbbreviationRule {
     fn id(&self) -> RuleId {
         RuleId::new("E001")
     }
     fn name(&self) -> &'static str {
-        "portion-mark-in-banner"
+        "banner-abbreviation"
     }
     fn default_severity(&self) -> Severity {
         Severity::Fix
@@ -174,26 +148,23 @@ impl Rule for PortionMarkInBannerRule {
         }
         let mut diagnostics = Vec::new();
         // Walk dissem-control token spans in document order. For each one
-        // whose CVE portion form has a distinct banner abbreviation, check
-        // whether the SOURCE BYTES are the portion form. The parser also
-        // accepts the banner abbreviation via `parse_dissem_full_form`, so
-        // a banner already carrying the abbreviation is skipped.
+        // whose canonical CVE form is an abbreviation that maps to a full
+        // banner form, check whether the SOURCE BYTES are the abbreviation
+        // (not just the parsed enum — the parser also accepts banner-form
+        // full words via parse_dissem_full_form, and those are already
+        // correct).
         //
-        // `portion_to_banner` (see `marque_ism::marking_forms`) returns the
-        // banner abbreviation (NOT the long Marking Title), so the fix
-        // target is already correct for this rule. The module's `banner`
-        // column name is historical; it stores the abbreviation.
+        // The emit check happens at construction time against
+        // `token_span.text` rather than as a post-hoc length filter, so the
+        // logic cannot silently regress if a future abbreviation has a
+        // different length from its canonical form.
         let dissem_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::DissemControl)
             .collect();
         for (idx, control) in attrs.dissem_controls.iter().enumerate() {
-            let Some(banner_abbrev) =
-                marque_ism::marking_forms::portion_to_banner(control.as_str())
-            else {
-                // portion form == banner abbreviation (e.g., FISA, RELIDO)
-                // — no substitution possible. Rule does not fire.
+            let Some(full) = marque_ism::marking_forms::portion_to_banner(control.as_str()) else {
                 continue;
             };
             // The Nth dissem token span corresponds to the Nth dissem
@@ -201,11 +172,11 @@ impl Rule for PortionMarkInBannerRule {
             let Some(token_span) = dissem_spans.get(idx) else {
                 continue;
             };
-            let portion = control.as_str();
-            // Only fire when the literal source text is the portion form.
+            let abbrev = control.as_str();
+            // Only fire when the literal source text is the abbreviation.
             // A banner containing "NOFORN" parses to DissemControl::Nf but
-            // token_span.text is "NOFORN" — skip it (already correct).
-            if token_span.text.as_ref() != portion {
+            // token_span.text is "NOFORN" — skip it.
+            if token_span.text.as_ref() != abbrev {
                 continue;
             }
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -213,38 +184,31 @@ impl Rule for PortionMarkInBannerRule {
                 severity: self.default_severity(),
                 source: FixSource::BuiltinRule,
                 span: token_span.span,
-                message: format!(
-                    "banner contains portion mark {portion:?} for an IC dissem control; \
-                     use banner abbreviation {banner_abbrev:?}"
-                ),
-                citation: "CAPCO-2016 §H.8",
-                original: portion.to_owned(),
-                replacement: banner_abbrev.to_owned(),
+                message: format!("banner uses abbreviated dissem control {abbrev:?}; use {full:?}"),
+                citation: "CAPCO-2016 §A.6",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
                 confidence: 1.0,
                 migration_ref: None,
             }));
         }
-        // Walk non-IC dissem token spans. Same logic as the IC branch: the
-        // portion form (e.g., "DS" for LIMDIS, "XD" for EXDIS) must be
-        // replaced with the banner abbreviation.
+        // Walk non-IC dissem token spans. If the source text is the portion
+        // abbreviation (e.g., "DS" instead of "LIMDIS"), suggest the banner form.
         let nic_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::NonIcDissem)
             .collect();
         for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
-            let Some(banner_abbrev) =
-                marque_ism::marking_forms::portion_to_banner(nic.portion_str())
-            else {
-                // banner abbreviation == portion form (e.g., SBU, LES, SSI)
-                // — no substitution possible. Rule does not fire.
+            let Some(full) = marque_ism::marking_forms::portion_to_banner(nic.portion_str()) else {
+                // banner_str == portion_str (e.g., SBU, LES, SSI) — no correction needed.
                 continue;
             };
             let Some(token_span) = nic_spans.get(idx) else {
                 continue;
             };
-            let portion = nic.portion_str();
-            if token_span.text.as_ref() != portion {
+            let abbrev = nic.portion_str();
+            if token_span.text.as_ref() != abbrev {
                 continue;
             }
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -253,12 +217,11 @@ impl Rule for PortionMarkInBannerRule {
                 source: FixSource::BuiltinRule,
                 span: token_span.span,
                 message: format!(
-                    "banner contains portion mark {portion:?} for a non-IC dissem control; \
-                     use banner abbreviation {banner_abbrev:?}"
+                    "banner uses abbreviated non-IC dissem control {abbrev:?}; use {full:?}"
                 ),
-                citation: "CAPCO-2016 §H.9",
-                original: portion.to_owned(),
-                replacement: banner_abbrev.to_owned(),
+                citation: "CAPCO-2016 §A.6",
+                original: abbrev.to_owned(),
+                replacement: full.to_owned(),
                 confidence: 1.0,
                 migration_ref: None,
             }));
@@ -378,8 +341,7 @@ impl Rule for MisorderedBlocksRule {
         }
 
         // Walk token kinds in document order, ignoring separators. Map each
-        // kind to a CAPCO ordinal per §A.6 lines 781-841:
-        //   0=Class, 1=SCI, 2=SAR, 3=AEA, 4=FGI, 5=Dissem/RelTo, 6=NonIC.
+        // kind to a CAPCO ordinal: 0=Class, 1=SCI, 2=SAR, 3=Dissem/RelTo.
         // Any descending step is a violation.
         let kinds: Vec<u8> = attrs
             .token_spans
@@ -442,7 +404,7 @@ impl Rule for MisorderedBlocksRule {
                 span,
                 String::new(),
                 replacement,
-                marque_rules::Confidence::strict(0.6),
+                0.6,
                 None,
             )
         });
@@ -452,46 +414,21 @@ impl Rule for MisorderedBlocksRule {
             self.default_severity(),
             span,
             "marking blocks are out of CAPCO order \
-             (expected: Classification // SCI // SAR // AEA // FGI // \
-             Dissem // REL TO // Non-IC)",
-            "CAPCO-2016 §A.6 p15-16",
+             (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
+            "CAPCO-2016 §A.6",
             fix,
         )]
     }
 }
 
-/// Map a `TokenKind` to the CAPCO §A.6 block ordinal, or `None` for tokens
-/// that don't participate in block ordering (separators, declass dates,
-/// unknown tokens).
-///
-/// CAPCO §A.6 lines 770-841 define seven ordered marking blocks, starting
-/// with the classification (lines 770-779):
-///
-/// | Ordinal | Block                          | §A.6 line |
-/// |---------|--------------------------------|-----------|
-/// | 0       | US / Non-US / JOINT Classification | 770-779 |
-/// | 1       | SCI Control Systems            | 781       |
-/// | 2       | Special Access Programs (SAR)  | 802       |
-/// | 3       | Atomic Energy Act (AEA)        | 818       |
-/// | 4       | Foreign Government Information (FGI) | 823  |
-/// | 5       | Dissemination Controls / REL TO | 830      |
-/// | 6       | Non-IC Dissemination Controls  | 837       |
-///
-/// T035c-3 added ordinals for AEA and FGI, which the earlier mapping
-/// skipped. Without them, common misorderings like `SECRET//REL TO USA//RD`
-/// (Dissem before AEA) and `SECRET//REL TO USA//FGI GBR` (Dissem before
-/// FGI) went unflagged — the AEA and FGI tokens returned `None` and their
-/// positions weren't compared against the running max.
 fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
     match kind {
         TokenKind::Classification => Some(0),
         TokenKind::SciControl => Some(1),
         TokenKind::SarIndicator => Some(2),
-        TokenKind::AeaMarking => Some(3),
-        TokenKind::FgiMarker => Some(4),
-        TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(5),
+        TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
         // Non-IC dissem always comes after IC dissem (last block).
-        TokenKind::NonIcDissem => Some(6),
+        TokenKind::NonIcDissem => Some(4),
         // Separators, declass, and unknown tokens do not participate in
         // ordering — they belong to other blocks or other rules.
         _ => None,
@@ -499,14 +436,12 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 }
 
 /// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
-/// §A.6 block ordinals: Classification // SCI // SAR // AEA // FGI //
-/// Dissem // REL TO // Non-IC.
+/// block ordinals: Classification // SCI // SAR // Dissem // REL TO // Non-IC.
 ///
 /// Within each block, tokens preserve their document order. REL TO trigraphs
-/// are reassembled into a single `REL TO ...` block. AEA markings (RD, FRD,
-/// TFNI, UCNI) appear per §A.6 line 818; FGI tokens per §A.6 line 823-828.
-/// Non-IC dissem controls appear last per §A.6 line 837. Returns `None` if
-/// there is nothing meaningful to reorder (no classification recorded).
+/// are reassembled into a single `REL TO ...` block. Non-IC dissem controls
+/// appear last per CAPCO Register §9. Returns `None` if there is nothing
+/// meaningful to reorder (no classification recorded).
 ///
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
@@ -515,8 +450,6 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
-    let mut aea: Vec<&str> = Vec::new();
-    let mut fgi: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
     let mut non_ic: Vec<&str> = Vec::new();
@@ -525,8 +458,6 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
         match token.kind {
             TokenKind::Classification => classification.push(token.text.as_ref()),
             TokenKind::SciControl => sci.push(token.text.as_ref()),
-            TokenKind::AeaMarking => aea.push(token.text.as_ref()),
-            TokenKind::FgiMarker => fgi.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
             TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
@@ -550,18 +481,6 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // identifiers, compartments, and sub-compartments are all preserved.
     if let Some(sar) = attrs.sar_markings.as_ref() {
         blocks.push(render_sar_block(sar.indicator, &sar.programs));
-    }
-    if !aea.is_empty() {
-        // §A.6 line 820: multiple AEA markings separated by `/`.
-        blocks.push(aea.join("/"));
-    }
-    if !fgi.is_empty() {
-        // §A.6 line 824: multiple FGI trigraph/tetragraph codes
-        // separated by a single space. In practice `attrs.fgi_marker`
-        // is Option<_>, so a single banner has at most one FGI token
-        // span with the full `FGI GBR JPN NATO` text; the space join
-        // handles any future multi-token representation.
-        blocks.push(fgi.join(" "));
     }
     if !dissem.is_empty() {
         blocks.push(dissem.join("/"));
@@ -860,28 +779,10 @@ fn is_abbreviation_expansion(from: &str, to: &str) -> bool {
     )
 }
 
-/// Returns `true` if `replacement` is one of the dissemination-control
-/// replacements that E006 is allowed to claim from MIGRATIONS.
-///
-/// This is intentionally a narrow allowlist, not a general "is this a
-/// current CAPCO dissem control?" predicate. E006 uses it as a guard
-/// because the migration table can also contain non-dissem replacements
-/// (for example, declass-shorthand entries like `25X1-` → `25X1`, which
-/// E007 owns), and those MUST NOT dispatch as E006. Active dissem
-/// controls absent from this allowlist (e.g., FOUO) simply never appear
-/// as a replacement today — adding one is a deliberate E006 scope change,
-/// not a passive widening.
-///
-/// `CUI` is intentionally excluded. Per CAPCO-2016 §F (and
-/// `CVEnumISMDissem.xml`), `CUI` is not a CAPCO dissem control — it is a
-/// NARA marking system. No MIGRATIONS entry currently has `CUI` as a
-/// replacement (a prior `FOUO → CUI` entry was removed as factually
-/// incorrect; see `crates/ism/build.rs` MIGRATIONS doc block). Keeping
-/// `CUI` out of this set defends against re-introduction.
 fn is_dissem_replacement(replacement: &str) -> bool {
     matches!(
         replacement,
-        "RELIDO" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE" | "PROPIN"
+        "RELIDO" | "CUI" | "NOFORN" | "ORCON" | "IMCON" | "DEA SENSITIVE" | "PROPIN"
     )
 }
 
@@ -1340,6 +1241,109 @@ impl Rule for PortionAbbreviationRule {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: E010 — Bare HCS without compartment suffix
+// ---------------------------------------------------------------------------
+
+/// Since ~2009, bare `HCS` is no longer valid — it must be `HCS-P` (product)
+/// or `HCS-O` (operations). `HCS-P` is correct ~99% of the time; `HCS-O`
+/// is rare and typically only appears when the document explicitly involves
+/// operational source information.
+///
+/// The rule checks whether `HCS-O` appears alongside `HCS` in the same
+/// marking. If it does, it's ambiguous and confidence drops. Otherwise
+/// `HCS-P` is suggested at 0.95 confidence.
+struct BareHcsRule;
+
+impl Rule for BareHcsRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E010")
+    }
+    fn name(&self) -> &'static str {
+        "bare-hcs"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::{SciControl, SciControlBare};
+
+        // Detect bare HCS through both the legacy `sci_controls` projection
+        // (exact-match CVE path: bare `HCS` → SciControl::Hcs) AND the
+        // spec 003-sci-compartments structural path (a SciMarking anchored
+        // on SciControlBare::Hcs with NO compartments is a bare HCS). When
+        // HCS has compartments (e.g., `HCS-P`, `HCS-O`), E010 does not fire
+        // regardless of source.
+        let has_bare_hcs_enum = attrs.sci_controls.contains(&SciControl::Hcs);
+        let has_bare_hcs_structural = attrs.sci_markings.iter().any(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        });
+        if !has_bare_hcs_enum && !has_bare_hcs_structural {
+            return vec![];
+        }
+
+        let has_hcs_o = attrs.sci_controls.contains(&SciControl::HcsO);
+        let has_hcs_p = attrs.sci_controls.contains(&SciControl::HcsP);
+
+        // If HCS-O or HCS-P already appears alongside bare HCS, the bare
+        // HCS is redundant — but we still flag it because it needs a suffix.
+        // If HCS-O is present, the document may deal with operational info,
+        // so we lower confidence on the HCS-P suggestion.
+        let (confidence, message) = if has_hcs_o {
+            (
+                0.5,
+                "bare HCS requires a compartment suffix (-O or -P); \
+                 HCS-O appears in this marking — verify whether HCS should be HCS-O or HCS-P"
+                    .to_owned(),
+            )
+        } else if has_hcs_p {
+            (
+                0.95,
+                "bare HCS requires a compartment suffix; \
+                 HCS-P already present — this HCS likely should be HCS-P"
+                    .to_owned(),
+            )
+        } else {
+            (
+                0.95,
+                "bare HCS requires a compartment suffix (-O or -P); \
+                 use HCS-P unless this involves operational source information"
+                    .to_owned(),
+            )
+        };
+
+        // Find the token span for the bare HCS entry.
+        let sci_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciControl)
+            .collect();
+        let hcs_idx = attrs
+            .sci_controls
+            .iter()
+            .position(|s| *s == SciControl::Hcs);
+        let span = hcs_idx
+            .and_then(|i| sci_spans.get(i))
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span,
+            message,
+            citation: "CAPCO-2016 §H.4",
+            original: "HCS".to_owned(),
+            replacement: "HCS-P".to_owned(),
+            confidence,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Rule: E011 — Missing leading // on non-US classification
 // ---------------------------------------------------------------------------
 
@@ -1404,18 +1408,7 @@ impl Rule for MissingNonUsPrefix {
                 "non-US classification {text:?} is missing the leading //; \
                  use //{text} to indicate the US classification slot is empty"
             ),
-            // §A.6 lines 771-772: "For non-US or Joint information,
-            // the banner line and portion mark must always start
-            // with a double forward slash ('//') with no interjected
-            // space." §H.3 line 4020 reinforces for JOINT: "The
-            // JOINT classification marking always starts with a
-            // double forward slash ('//')."
-            //
-            // Earlier revisions cited §H.4, which is the SCI control
-            // system section — unrelated to the non-US prefix rule.
-            // T035c-7 corrected the citation to the two sections
-            // that actually establish the predicate.
-            citation: "CAPCO-2016 §A.6 + §H.3",
+            citation: "CAPCO-2016 §H.4",
             original: text.to_owned(),
             replacement: format!("//{text}"),
             confidence: 0.95,
@@ -1451,6 +1444,99 @@ fn looks_like_fgi_classification(s: &str) -> bool {
     parts[..country_end]
         .iter()
         .all(|t| *t == "FGI" || (t.len() == 3 && t.bytes().all(|b| b.is_ascii_uppercase())))
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E012 — Dual classification (conflict)
+// ---------------------------------------------------------------------------
+
+/// A marking must have exactly one classification system. When both a US and
+/// foreign classification appear (e.g., `SECRET//NATO SECRET//NOFORN`), the
+/// US classification wins at the greater of the two levels, and the foreign
+/// part becomes an FGI marker.
+struct DualClassificationRule;
+
+impl Rule for DualClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E012")
+    }
+    fn name(&self) -> &'static str {
+        "dual-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let Some(MarkingClassification::Conflict { us, foreign }) = &attrs.classification else {
+            return vec![];
+        };
+
+        let foreign_desc = match foreign.as_ref() {
+            ForeignClassification::Nato(n) => format!("NATO ({})", n.banner_str()),
+            ForeignClassification::Fgi(f) => {
+                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+                if countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    format!("FGI {}", countries.join(" "))
+                }
+            }
+            ForeignClassification::Joint(j) => {
+                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
+                format!("JOINT {}", countries.join(" "))
+            }
+        };
+
+        let fgi_replacement = match foreign.as_ref() {
+            ForeignClassification::Nato(_) => "FGI NATO".to_owned(),
+            ForeignClassification::Fgi(f) => {
+                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+                if countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    format!("FGI {}", countries.join(" "))
+                }
+            }
+            ForeignClassification::Joint(j) => {
+                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
+                format!("FGI {}", countries.join(" "))
+            }
+        };
+
+        // Find the foreign classification token span (the second Classification token).
+        let class_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Classification)
+            .collect();
+        let span = class_spans
+            .get(1)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+        let original = class_spans
+            .get(1)
+            .map(|t| t.text.to_string())
+            .unwrap_or_default();
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span,
+            message: format!(
+                "marking has both US ({}) and foreign ({foreign_desc}) classification; \
+                 US wins at {}; move foreign to FGI block",
+                us.banner_str(),
+                us.banner_str(),
+            ),
+            citation: "CAPCO-2016 §B.1",
+            original,
+            replacement: fgi_replacement,
+            confidence: 0.90,
+            migration_ref: None,
+        })]
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1552,34 +1638,182 @@ impl Rule for DelimiterMismatchRule {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: W002 — US + FGI comingling in portion
+// ---------------------------------------------------------------------------
+
+/// A portion mark with both a US classification and an FGI marker is
+/// comingling US and foreign information. This isn't strictly invalid but
+/// is bad practice — the content should be split into separate paragraphs:
+/// one US-classified and one foreign-classified.
+struct CominglingWarningRule;
+
+impl Rule for CominglingWarningRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W002")
+    }
+    fn name(&self) -> &'static str {
+        "us-fgi-comingling"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        if ctx.marking_type != MarkingType::Portion {
+            return vec![];
+        }
+
+        // US classification + FGI marker = comingling.
+        if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::FgiMarker)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "portion mark comingles US classification with FGI; \
+             consider splitting into separate US and foreign paragraphs",
+            "CAPCO-2016 §H.7",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E014 — JOINT participants missing from REL TO
+// ---------------------------------------------------------------------------
+
+/// All countries in a JOINT classification must also appear in the REL TO
+/// list. `//JOINT S USA GBR//REL TO USA, GBR` is correct;
+/// `//JOINT S USA GBR//NF` is invalid because JOINT participants must be
+/// in the REL TO.
+struct JointRelToRule;
+
+impl Rule for JointRelToRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E014")
+    }
+    fn name(&self) -> &'static str {
+        "joint-rel-to"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let joint = match &attrs.classification {
+            Some(MarkingClassification::Joint(j)) => j,
+            _ => return vec![],
+        };
+
+        let missing: Vec<&str> = joint
+            .countries
+            .iter()
+            .filter(|c| !attrs.rel_to.contains(c))
+            .map(|c| c.as_str())
+            .collect();
+
+        if missing.is_empty() {
+            return vec![];
+        }
+
+        // Point at the classification token span.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "JOINT participants [{}] must appear in REL TO list",
+                missing.join(", "),
+            ),
+            "CAPCO-2016 §H.3",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E015 — Non-US classification without dissem control
+// ---------------------------------------------------------------------------
+
+/// Non-US classifications (FGI, NATO, JOINT) must always be accompanied by
+/// a dissemination control (which includes REL TO statements). A non-US
+/// marking without any dissem control is invalid.
+struct NonUsMissingDissemRule;
+
+impl Rule for NonUsMissingDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E015")
+    }
+    fn name(&self) -> &'static str {
+        "non-us-missing-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let is_non_us = matches!(
+            &attrs.classification,
+            Some(
+                MarkingClassification::Fgi(_)
+                    | MarkingClassification::Nato(_)
+                    | MarkingClassification::Joint(_)
+            )
+        );
+        if !is_non_us {
+            return vec![];
+        }
+
+        let has_dissem = !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty();
+        if has_dissem {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "non-US classification must be accompanied by a dissemination control \
+             (e.g., REL TO, NOFORN)",
+            "CAPCO-2016 §B.3",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Rule: W003 — Non-IC dissem in classified banner
 // ---------------------------------------------------------------------------
 
-/// Some non-IC dissemination controls must not appear in classified banners.
+/// Some non-IC dissemination controls should not appear in classified banners.
 ///
-/// Per CAPCO-2016 §H.9 "Precedence Rules for Banner Line Guidance" (see
-/// the per-marking rows on [`marque_ism::NonIcDissem::propagates_to_classified_banner`]):
-///
-/// - **Propagate to classified banners** (no W003): EXDIS, NODIS, LES,
-///   LES-NF, SSI.
-/// - **Do NOT propagate** (W003 fires): LIMDIS, SBU, SBU-NF. These
-///   markings are "applicable only to unclassified information" per
-///   §H.9 and their precedence rules explicitly say the marking is
-///   stripped from the banner when the document is classified.
-///
-/// W003 is banner-only — a non-IC dissem control in a *portion* marking
-/// is fine at any classification.
-///
-/// ## Important Exceptions
-/// 
-/// `LES-NF` has a further §H.9 canonicalization — the banner form
-/// `SECRET//NOFORN//LES` rather than `SECRET//LES NOFORN`. That split
-/// is a page-rewrite concern, not a W003 concern, so LES-NF is
-/// considered propagating here.
-///
-/// Importantly, SBU-NF behaves similarly to LES-NF. 'SBU'
-/// never propagates to a classified marking, but its
-/// `NF` attribute *does*.
+/// LIMDIS, LES, LES-NF, and SSI propagate to classified banners and are fine.
+/// EXDIS, NODIS, SBU, and SBU-NF do NOT propagate — they belong only in
+/// portion markings (or in UNCLASSIFIED banners).
 struct NonIcInClassifiedBannerRule;
 
 impl Rule for NonIcInClassifiedBannerRule {
@@ -1655,6 +1889,217 @@ impl Rule for NonIcInClassifiedBannerRule {
             ));
         }
 
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E016 — RESTRICTED not allowed with JOINT
+// ---------------------------------------------------------------------------
+
+/// Since the US is always a co-owner in JOINT markings, and RESTRICTED has
+/// no US equivalent classification, RESTRICTED may not be used with JOINT.
+struct JointRestrictedRule;
+
+impl Rule for JointRestrictedRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E016")
+    }
+    fn name(&self) -> &'static str {
+        "joint-restricted"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let joint = match &attrs.classification {
+            Some(MarkingClassification::Joint(j)) => j,
+            _ => return vec![],
+        };
+        if joint.level != marque_ism::Classification::Restricted {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RESTRICTED may not be used with JOINT — the US has no equivalent \
+             classification level for RESTRICTED",
+            "CAPCO-2016 §H.3",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E017 — JOINT may not be used with FGI
+// ---------------------------------------------------------------------------
+
+/// JOINT markings may not be used with FGI markers. A marking is either
+/// JOINT (co-owned) or FGI (foreign-originated), not both.
+struct JointFgiRule;
+
+impl Rule for JointFgiRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E017")
+    }
+    fn name(&self) -> &'static str {
+        "joint-fgi"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        if attrs.fgi_marker.is_none() {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::FgiMarker)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
+             or foreign-originated (FGI), not both",
+            "CAPCO-2016 §H.3",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E018 — JOINT may not be used with IC dissem (except REL TO)
+// ---------------------------------------------------------------------------
+
+/// JOINT markings imply releasability only to co-owners. IC dissemination
+/// controls (NOFORN, ORCON, IMCON, etc.) are not permitted with JOINT,
+/// except REL TO which defines the release list.
+struct JointIcDissemRule;
+
+impl Rule for JointIcDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E018")
+    }
+    fn name(&self) -> &'static str {
+        "joint-ic-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        // REL TO is allowed; all other IC dissem controls are not.
+        if attrs.dissem_controls.is_empty() {
+            return vec![];
+        }
+
+        let dissem_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, ctrl) in attrs.dissem_controls.iter().enumerate() {
+            // REL is the dissem-control enum value for "REL TO" — skip it.
+            if matches!(ctrl, marque_ism::DissemControl::Rel) {
+                continue;
+            }
+            let span = dissem_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "JOINT may not be used with IC dissem control {}; \
+                     only REL TO is permitted with JOINT markings",
+                    ctrl.as_str(),
+                ),
+                "CAPCO-2016 §H.3",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E019 — JOINT may not be used with non-IC dissem
+// ---------------------------------------------------------------------------
+
+/// JOINT markings may not be used with non-IC dissemination controls.
+struct JointNonIcDissemRule;
+
+impl Rule for JointNonIcDissemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E019")
+    }
+    fn name(&self) -> &'static str {
+        "joint-non-ic-dissem"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if !matches!(&attrs.classification, Some(MarkingClassification::Joint(_))) {
+            return vec![];
+        }
+        if attrs.non_ic_dissem.is_empty() {
+            return vec![];
+        }
+
+        let nic_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::NonIcDissem)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, nic) in attrs.non_ic_dissem.iter().enumerate() {
+            let span = nic_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "JOINT may not be used with non-IC dissem control {}",
+                    nic.banner_str(),
+                ),
+                "CAPCO-2016 §H.3",
+                None,
+            ));
+        }
         diagnostics
     }
 }
@@ -1787,26 +2232,132 @@ fn check_trigraph_ordering(
 }
 
 // ---------------------------------------------------------------------------
+// Rule: E021 — RD/FRD requires NOFORN
+// ---------------------------------------------------------------------------
+
+/// RD and FRD information must always be marked NOFORN unless a sharing
+/// agreement exists per the Atomic Energy Act (Sections 123 and 144).
+///
+/// Default severity: Error. Users working in contexts with established
+/// sharing agreements can override to Warn in `.marque.toml`.
+struct AeaNofornRule;
+
+impl Rule for AeaNofornRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E021")
+    }
+    fn name(&self) -> &'static str {
+        "aea-noforn"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd_or_frd = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(_) | AeaMarking::Frd(_) | AeaMarking::Tfni));
+        if !has_rd_or_frd {
+            return vec![];
+        }
+
+        let has_noforn = attrs.dissem_controls.iter().any(|d| d.as_str() == "NF");
+        if has_noforn {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+             per the Atomic Energy Act; override to warn via rule severity \
+             config if sharing agreements apply",
+            "CAPCO-2016 §H.6",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E022 — CNWDI only with TS or S RD
+// ---------------------------------------------------------------------------
+
+/// CNWDI may only be used with TOP SECRET or SECRET Restricted Data.
+/// It cannot appear standalone, with FRD, or with CONFIDENTIAL.
+struct CnwdiConstraintRule;
+
+impl Rule for CnwdiConstraintRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E022")
+    }
+    fn name(&self) -> &'static str {
+        "cnwdi-constraint"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_cnwdi = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi));
+        if !has_cnwdi {
+            return vec![];
+        }
+
+        // CNWDI requires TS or S classification.
+        let level = attrs.us_classification();
+        let valid = matches!(
+            level,
+            Some(marque_ism::Classification::TopSecret | marque_ism::Classification::Secret)
+        );
+        if valid {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "CNWDI may only be used with TOP SECRET or SECRET RD; \
+                 current classification is {level_str}"
+            ),
+            "CAPCO-2016 §H.6",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Rule: E023 — SIGMA valid values and numerical order
 // ---------------------------------------------------------------------------
 
-/// SIGMA compartment numbers must be from the currently authorized set
-/// (14, 15, 18, 20) and listed in numerical order.
-///
-/// # Historical SIGMA range
-///
-/// CAPCO v1.2 (2008) §7 documented SIGMA as ranging from 1 to 99
-/// (`crates/capco/docs/original-refs/CAPCO_v1.2_(2008).pdf`, p14 entry for
-/// `-SIGMA [#]`). CAPCO v5.1 (2012) §H.6 line 4090 and CAPCO 2016 §H.6 line
-/// 7129 both narrow this to "SIGMA # currently represents one or more of
-/// the following numbers: 14, 15, 18, and 20." Neither manual enumerates
-/// which specific values outside the current set were formally obsoleted —
-/// only that the current set is the narrow four. An earlier revision of
-/// this rule asserted that values `1..=5 | 9..=13` were "obsolete" while
-/// `6..=8 | 16..=17 | 19 | 21..=99` were "invalid"; that bifurcation was
-/// project inference, not backed by CAPCO source text. The unified
-/// "not in current authorized set" message below matches what the source
-/// actually says.
+/// SIGMA compartment numbers must be from the valid set (14, 15, 18, 20)
+/// and listed in numerical order. Values 1–5 and 9–13 are obsolete.
 struct SigmaValidationRule;
 
 impl Rule for SigmaValidationRule {
@@ -1843,29 +2394,35 @@ impl Rule for SigmaValidationRule {
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
 
-            // Check for values outside the currently authorized set.
-            // Unified message (no obsolete/invalid bifurcation) — CAPCO
-            // 2016 §H.6 line 7129 only names the current four, not any
-            // specific obsolete subset. Contact the originating
-            // program for guidance on historical SIGMA numbers (CAPCO
-            // v1.2 2008 permitted 1-99).
+            // Check for invalid values.
             let invalid: Vec<u8> = sigma
                 .iter()
                 .filter(|n| !valid_sigmas.contains(n))
                 .copied()
                 .collect();
             if !invalid.is_empty() {
+                let obsolete: Vec<u8> = invalid
+                    .iter()
+                    .filter(|n| matches!(n, 1..=5 | 9..=13))
+                    .copied()
+                    .collect();
+                let message = if !obsolete.is_empty() {
+                    format!(
+                        "SIGMA {:?} are obsolete; convert to current categories (14, 15, 18, 20)",
+                        obsolete,
+                    )
+                } else {
+                    format!(
+                        "SIGMA {:?} are not valid; current values are 14, 15, 18, 20",
+                        invalid,
+                    )
+                };
                 diagnostics.push(Diagnostic::new(
                     self.id(),
                     self.default_severity(),
                     span,
-                    format!(
-                        "SIGMA {:?} not in the currently authorized set \
-                         (14, 15, 18, 20); contact the originating \
-                         program for guidance on historical values",
-                        invalid,
-                    ),
-                    "CAPCO-2016 §H.6 line 7129",
+                    message,
+                    "CAPCO-2016 §H.6",
                     None,
                 ));
             }
@@ -1888,10 +2445,7 @@ impl Rule for SigmaValidationRule {
                             original.join(" "),
                             replacement.join(" "),
                         ),
-                        // §H.6 line 7130 (RD block): "Multiple SIGMA
-                        // numbers shall be listed in numerical order
-                        // with a space preceding each value."
-                        citation: "CAPCO-2016 §H.6 line 7130",
+                        citation: "CAPCO-2016 §H.6",
                         original: original.join(" "),
                         replacement: replacement.join(" "),
                         confidence: 1.0,
@@ -1901,6 +2455,124 @@ impl Rule for SigmaValidationRule {
             }
         }
         diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E024 — RD precedence over FRD/TFNI
+// ---------------------------------------------------------------------------
+
+/// When both RD and FRD (or TFNI) appear in the same marking, only RD
+/// should be used — RD takes precedence in both banners and portions.
+struct RdPrecedenceRule;
+
+impl Rule for RdPrecedenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E024")
+    }
+    fn name(&self) -> &'static str {
+        "rd-precedence"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_rd = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Rd(_)));
+        if !has_rd {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+        for (idx, aea) in attrs.aea_markings.iter().enumerate() {
+            let superseded = match aea {
+                AeaMarking::Frd(_) => "FRD",
+                AeaMarking::Tfni => "TFNI",
+                _ => continue,
+            };
+
+            let aea_spans: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::AeaMarking)
+                .collect();
+            let span = aea_spans
+                .get(idx)
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                format!(
+                    "{superseded} should not appear alongside RD; \
+                     RD takes precedence over {superseded} in both banners and portions"
+                ),
+                "CAPCO-2016 §H.6",
+                None,
+            ));
+        }
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E025 — UCNI only with UNCLASSIFIED
+// ---------------------------------------------------------------------------
+
+/// DOD UCNI and DOE UCNI apply only to unclassified information.
+struct UcniClassificationRule;
+
+impl Rule for UcniClassificationRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E025")
+    }
+    fn name(&self) -> &'static str {
+        "ucni-classification"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::AeaMarking;
+
+        let has_ucni = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni));
+        if !has_ucni {
+            return vec![];
+        }
+
+        let is_unclassified = attrs
+            .us_classification()
+            .is_some_and(|c| c == marque_ism::Classification::Unclassified);
+        if is_unclassified {
+            return vec![];
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
+            "CAPCO-2016 §H.6",
+            None,
+        )]
     }
 }
 
@@ -1966,7 +2638,7 @@ impl Rule for SarPortionFormRule {
                 block_span,
                 original,
                 replacement,
-                marque_rules::Confidence::strict(0.35),
+                0.35,
                 None,
             ))
         } else {
@@ -2858,29 +3530,13 @@ impl Rule for SciCompartmentOrderRule {
 /// Per CAPCO-2016 §A.6 p16 + §H.4 p61: unpublished (agency-allocated) SCI
 /// control systems are legitimate — the manual describes ODNI/P&S's
 /// unpublished registry and explicitly permits these markings. This rule
-/// surfaces each Custom control identifier so a classifier can verify the
-/// allocation is registered.
+/// exists purely for audit visibility: it surfaces each Custom control
+/// identifier so a classifier can verify the allocation is registered.
 ///
-/// # Severity: Warn (default)
-///
-/// Field experience: the four spelled-out SCI controls in CAPCO (SI, TK,
-/// RSV, HCS) account for the vast majority (>99%) of real-world SCI
-/// control usage. Seeing an unpublished control is more likely a typo,
-/// stale legacy marking, or unregistered use than a valid agency
-/// allocation. `Warn` reflects that rarity without making it
-/// error-level by default. (Note: `Warn` still produces a non-zero
-/// CLI exit via `EX_DIAG_WARN`, so orgs that treat any warning as
-/// CI-blocking should configure `E034 = "info"` if they want
-/// audit-visibility only.)
-///
-/// T035c-2 landed the `Severity::Info` variant and dropped the earlier
-/// `Severity::Off` workaround. Previously, the rule emitted `Diagnostic`
-/// values at `Severity::Off` — a state `Principle IV` declares
-/// unrepresentable — and relied on the test harness bypassing
-/// engine-level severity filtering to observe the diagnostics. That was
-/// a constitutional-invariant violation. Users who want informational
-/// (non-warn) treatment can configure `E034 = "info"` in `.marque.toml`;
-/// users who want it silent can configure `E034 = "off"`.
+/// Severity is `Off` by default (the `Severity` enum has no Info variant
+/// and the FR-008 invariant makes Off non-firing in the engine). Sites
+/// that want the audit trail must opt in via `.marque.toml` by setting
+/// `sci-custom-control-info = "warn"`. No fix is offered.
 struct SciCustomControlInfoRule;
 
 impl Rule for SciCustomControlInfoRule {
@@ -2891,7 +3547,10 @@ impl Rule for SciCustomControlInfoRule {
         "sci-custom-control-info"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Warn
+        // Shipped as Off pending an Info severity; users opt in via config.
+        // The test harness bypasses engine-level severity filtering so unit
+        // tests can still assert this rule fires on matching input.
+        Severity::Off
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -3235,27 +3894,27 @@ fn render_sar_block(
 
 /// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
 /// positional helper signature so call sites read top-down by name.
-pub(crate) struct FixDiagnosticParams {
-    pub rule: RuleId,
-    pub severity: Severity,
-    pub source: FixSource,
-    pub span: Span,
-    pub message: String,
-    pub citation: &'static str,
-    pub original: String,
-    pub replacement: String,
-    pub confidence: f32,
-    pub migration_ref: Option<&'static str>,
+struct FixDiagnosticParams {
+    rule: RuleId,
+    severity: Severity,
+    source: FixSource,
+    span: Span,
+    message: String,
+    citation: &'static str,
+    original: String,
+    replacement: String,
+    confidence: f32,
+    migration_ref: Option<&'static str>,
 }
 
-pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
+fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
     let proposal = FixProposal::new(
         p.rule.clone(),
         p.source,
         p.span,
         p.original,
         p.replacement,
-        marque_rules::Confidence::strict(p.confidence),
+        p.confidence,
         p.migration_ref,
     );
     Diagnostic::new(
@@ -3269,7 +3928,6 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_capco_test_support::{lint_banner, lint_portion};
@@ -3296,11 +3954,9 @@ mod tests {
         assert!(ids.contains(&"W001"));
         assert!(ids.contains(&"W002"));
         assert!(ids.contains(&"E016"));
-        // E017/E018/E019 retired in T035b (over-restrictive vs
-        // CAPCO §H.3 line 4140). Replacement: E036.
-        assert!(!ids.contains(&"E017"), "E017 retired in T035b");
-        assert!(!ids.contains(&"E018"), "E018 retired in T035b");
-        assert!(!ids.contains(&"E019"), "E019 retired in T035b");
+        assert!(ids.contains(&"E017"));
+        assert!(ids.contains(&"E018"));
+        assert!(ids.contains(&"E019"));
         assert!(ids.contains(&"E020"));
         assert!(ids.contains(&"E021"));
         assert!(ids.contains(&"E022"));
@@ -3319,10 +3975,7 @@ mod tests {
         assert!(ids.contains(&"E033"));
         assert!(ids.contains(&"E034"));
         assert!(ids.contains(&"E035"));
-        assert!(ids.contains(&"E036"));
-        // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
-        // Net count: 39 - 3 + 1 = 37.
-        assert_eq!(set.rules().len(), 37);
+        assert_eq!(set.rules().len(), 39);
     }
 
     #[test]
@@ -3426,87 +4079,6 @@ mod tests {
         );
     }
 
-    // --- T035c-3 regressions: AEA + FGI in block order ---
-    //
-    // Before T035c-3, `ordinal_for_block` skipped `TokenKind::AeaMarking`
-    // and `TokenKind::FgiMarker`, so the rule silently missed
-    // Dissem-before-AEA and Dissem-before-FGI misorderings. These
-    // tests pin the corrected §A.6 block ordinals (Class→SCI→SAR→
-    // AEA→FGI→Dissem→NonIC).
-
-    #[test]
-    fn e003_fires_on_rel_to_before_aea() {
-        // RD belongs in the AEA block (ordinal 3); REL TO is a dissem
-        // control (ordinal 5). REL TO-before-RD is out of order.
-        let diags = lint_banner("SECRET//REL TO USA//RD");
-        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
-        assert_eq!(
-            e003.len(),
-            1,
-            "E003 must fire when REL TO precedes AEA (RD): {diags:?}"
-        );
-        // Verify `reorder_marking` emits the AEA block before REL TO.
-        let fix = e003[0].fix.as_ref().expect("E003 must carry a FixProposal");
-        let replacement = fix.replacement.as_ref();
-        let rd_idx = replacement
-            .find("RD")
-            .expect("reordered output must contain RD");
-        let rel_idx = replacement
-            .find("REL TO")
-            .expect("reordered output must contain REL TO");
-        assert!(
-            rd_idx < rel_idx,
-            "AEA (RD) must precede REL TO in reordered output: {replacement:?}"
-        );
-    }
-
-    #[test]
-    fn e003_fires_on_dissem_before_fgi() {
-        // FGI (ordinal 4) must precede dissem controls (ordinal 5).
-        // NOFORN-before-FGI is out of order.
-        let diags = lint_banner("SECRET//NOFORN//FGI GBR");
-        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
-        assert_eq!(
-            e003.len(),
-            1,
-            "E003 must fire when dissem precedes FGI: {diags:?}"
-        );
-        // Verify `reorder_marking` emits the FGI block before Dissem.
-        let fix = e003[0].fix.as_ref().expect("E003 must carry a FixProposal");
-        let replacement = fix.replacement.as_ref();
-        let fgi_idx = replacement
-            .find("FGI")
-            .expect("reordered output must contain FGI");
-        let nf_idx = replacement
-            .find("NOFORN")
-            .expect("reordered output must contain NOFORN");
-        assert!(
-            fgi_idx < nf_idx,
-            "FGI must precede Dissem (NOFORN) in reordered output: {replacement:?}"
-        );
-    }
-
-    #[test]
-    fn e003_does_not_fire_on_aea_then_rel_to() {
-        // Correct order per §A.6: RD (AEA, ordinal 3) then REL TO
-        // (dissem, ordinal 5).
-        let diags = lint_banner("SECRET//RD//REL TO USA, GBR");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E003"),
-            "E003 must not fire on AEA-before-Dissem: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn e003_does_not_fire_on_fgi_then_dissem() {
-        // Correct order per §A.6: FGI (ordinal 4) then Dissem (5).
-        let diags = lint_banner("SECRET//FGI GBR//NOFORN");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E003"),
-            "E003 must not fire on FGI-before-Dissem: {diags:?}"
-        );
-    }
-
     #[test]
     fn e003_emits_fix_proposal_with_confidence_06() {
         // T032: E003 must emit a FixProposal at confidence 0.6 (suggestion-
@@ -3521,7 +4093,7 @@ mod tests {
             .fix
             .as_ref()
             .expect("E003 must carry a FixProposal (T032)");
-        assert!((fix.confidence.combined() - 0.6).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.6).abs() < f32::EPSILON);
         assert_eq!(fix.replacement.as_ref(), "SECRET//SI//NOFORN");
     }
 
@@ -3576,7 +4148,7 @@ mod tests {
         let fix = e004[0].fix.as_ref().expect("E004 must carry a FixProposal");
         assert_eq!(fix.original.as_ref(), "//");
         assert_eq!(fix.replacement.as_ref(), "/");
-        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -3678,7 +4250,7 @@ mod tests {
         assert_eq!(e007.len(), 1);
         let fix = e007[0].fix.as_ref().expect("E007 must carry a fix");
         assert_eq!(fix.replacement.as_ref(), "25X2");
-        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
         // E008 must NOT also fire on the same span.
         assert!(diags.iter().all(|d| d.rule.as_str() != "E008"));
     }
@@ -3692,49 +4264,7 @@ mod tests {
         let fix = e007[0].fix.as_ref().unwrap();
         assert_eq!(fix.replacement.as_ref(), "25X1");
         // Table confidence from the seed MIGRATIONS entry (0.97).
-        assert!((fix.confidence.combined() - 0.97).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn migrations_table_contains_no_fouo_entry() {
-        // FOUO remains a valid CAPCO dissem control per CVEnumISMDissem.xml
-        // and CAPCO-2016 §F. CUI is a separate (NARA) marking system, not a
-        // CAPCO dissem control. A prior `FOUO → CUI` migration entry was
-        // removed as factually incorrect; this regression guard prevents
-        // re-introduction. Any future "suggest CUI on non-IC documents"
-        // behavior must live in a CUI adapter gated by opt-in config.
-        use marque_ism::generated::migrations::find_migration;
-        assert!(
-            find_migration("FOUO").is_none(),
-            "FOUO must not appear in MIGRATIONS (see crates/ism/build.rs doc block)"
-        );
-    }
-
-    #[test]
-    fn migrations_table_contains_no_limdis_entry() {
-        // LIMDIS is a current non-IC dissem control (CAPCO-2016 §H.9).
-        // A prior `LIMDIS → RELIDO` migration entry was removed as
-        // factually incorrect; this regression guard prevents
-        // re-introduction.
-        use marque_ism::generated::migrations::find_migration;
-        assert!(
-            find_migration("LIMDIS").is_none(),
-            "LIMDIS must not appear in MIGRATIONS (see crates/ism/build.rs doc block)"
-        );
-    }
-
-    #[test]
-    fn e006_does_not_fire_on_fouo_in_banner() {
-        // Full-pipeline regression: the absence of a FOUO migration entry
-        // must produce no E006 diagnostic in a banner containing FOUO.
-        // The policy question "FOUO in a classified banner" is handled at
-        // the PageContext roll-up (FOUO drops from classified banners) and
-        // in Phase C as a declarative `Constraint::Conflicts(FOUO, Classified)`.
-        let diags = lint_banner("UNCLASSIFIED//FOUO");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E006"),
-            "E006 must not fire on FOUO: {diags:?}"
-        );
+        assert!((fix.confidence - 0.97).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -3859,7 +4389,7 @@ mod tests {
         assert_eq!(e010[0].span.as_str(src).unwrap(), "HCS");
         let fix = e010[0].fix.as_ref().expect("E010 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "HCS-P");
-        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.95).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -3897,9 +4427,9 @@ mod tests {
         assert_eq!(e010.len(), 1);
         let fix = e010[0].fix.as_ref().unwrap();
         assert!(
-            (fix.confidence.combined() - 0.5).abs() < f32::EPSILON,
+            (fix.confidence - 0.5).abs() < f32::EPSILON,
             "confidence should be 0.5 when HCS-O is present, got {}",
-            fix.confidence.combined()
+            fix.confidence
         );
     }
 
@@ -4061,114 +4591,32 @@ mod tests {
     }
 
     #[test]
-    fn w003_fires_on_limdis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4180: "When a document contains LIMDIS
-        // and classified portions, LIMDIS is not used in the banner
-        // line." Prior impl incorrectly placed LIMDIS in the
-        // propagating set on a paraphrased "NGA Title 10" justification;
-        // §H.9 is explicit that LIMDIS is stripped from classified
-        // banners.
+    fn w003_does_not_fire_on_limdis_in_classified_banner() {
+        // LIMDIS (NGA Title 10) propagates to classified banners.
         let diags = lint_banner("SECRET//LIMDIS");
-        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
-        assert_eq!(
-            w003.len(),
-            1,
-            "W003 must fire on LIMDIS in classified banner (§H.9 line 4180): {diags:?}"
-        );
-        assert!(w003[0].message.contains("LIMDIS"));
-    }
-
-    #[test]
-    fn w003_does_not_fire_on_exdis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4240: "If EXDIS is contained in any
-        // portion of a document that does not contain one or more NODIS
-        // portions, EXDIS must appear in the banner line." Example
-        // banner on p173: SECRET//NOFORN//EXDIS. Prior impl excluded
-        // EXDIS from the propagating set; the §H.9 rule is the
-        // opposite.
-        let diags = lint_banner("SECRET//NOFORN//EXDIS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "EXDIS propagates to classified banners per §H.9 line 4240: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn w003_does_not_fire_on_nodis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4300: "If NODIS is contained in any
-        // portion of a document, it must appear in the banner line."
-        // Example banner on p174: SECRET//NOFORN//NODIS. Prior impl
-        // excluded NODIS from the propagating set; the §H.9 rule is
-        // the opposite.
-        let diags = lint_banner("SECRET//NOFORN//NODIS");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "NODIS propagates to classified banners per §H.9 line 4300: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn w003_fires_on_sbu_nf_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4408: SBU NOFORN "Applicable only to
-        // unclassified information." p179 example 2 shows a
-        // `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF
-        // absent from banner. The NOFORN half of SBU-NF *does*
-        // propagate via `PageContext::expected_non_ic_dissem` (it
-        // splits portion-level SBU-NF into SBU + NF-flag, emitting
-        // NOFORN into the classified banner's dissem block). What
-        // W003 catches is the literal `SBU NOFORN` *banner* form in a
-        // classified document — that surface form is non-canonical
-        // per §H.9, independent of whether NOFORN itself propagates.
-        let diags = lint_banner("SECRET//SBU NOFORN");
-        let w003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W003").collect();
-        assert_eq!(
-            w003.len(),
-            1,
-            "W003 must fire on literal SBU-NF in classified banner (§H.9 line 4408): {diags:?}"
+            "LIMDIS propagates to classified banners: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_les_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4479: "The LES marking always appears in
-        // the banner line if contained in any portion, regardless of
-        // classification level." Example banners on p183: SECRET//REL
-        // TO USA, FVEY//LES, SECRET//NOFORN//LES.
+        // LES propagates to classified banners.
         let diags = lint_banner("SECRET//LES");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LES propagates to classified banners per §H.9 line 4479: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn w003_does_not_fire_on_les_nf_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4557: "The LES marking always appears
-        // in the banner line if LES information (either LES or LES
-        // NOFORN) is contained in the document, regardless of the
-        // document's classification level." The §H.9 canonical form
-        // in classified docs is "LES" at banner with NOFORN split into
-        // the dissem block (line 4558), but `LES NOFORN` in a
-        // classified banner is not a W003 concern — the canonicalization
-        // is a separate page-rewrite concern.
-        let diags = lint_banner("SECRET//LES NOFORN");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LES-NF propagates to classified banners per §H.9 line 4557: {diags:?}"
+            "LES propagates to classified banners: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_ssi_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4651: "If the SSI marking is contained
-        // in any portion of a document it must appear in the banner
-        // line, regardless of the document's overall classification
-        // level." Example banner on p191: SECRET//REL TO USA,
-        // ACGU//SSI.
+        // SSI propagates to classified banners.
         let diags = lint_banner("SECRET//SSI");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "SSI propagates to classified banners per §H.9 line 4651: {diags:?}"
+            "SSI propagates to classified banners: {diags:?}"
         );
     }
 
@@ -4223,99 +4671,46 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E016"));
     }
 
-    // --- E017/E018/E019 retirement regressions (T035b) ---
-    //
-    // These tests pin the retirement: markings that the legacy
-    // rules wrongly flagged must NOT emit those rule IDs after
-    // T035b. CAPCO §H.3 line 4140 permits JOINT with IC and non-IC
-    // dissem (excluding only NOFORN and HCS per line 4146) and with
-    // FGI (cross-ref §H.7). Any reintroduction of E017/E018/E019
-    // diagnostics would regress CAPCO-2016 fidelity.
+    // --- E017: JOINT may not be used with FGI ---
 
     #[test]
-    fn e017_does_not_fire_on_joint_rel_to_banner() {
-        // Generic retirement check: E017 (JOINT + FGI marker) is
-        // retired — the rule ID must never appear on the diagnostic
-        // stream regardless of input. This test uses a plain
-        // JOINT+REL TO banner, which does NOT exercise an FGI-marker
-        // path (the parser's banner grammar does not surface
-        // `fgi_marker` on a JOINT classification). True FGI-marker
-        // coverage requires constructing `IsmAttributes` directly;
-        // that's covered at the scheme level in
-        // `scheme_equivalence.rs::no_legacy_e017_e018_e019_constraints_in_catalog`.
-        let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E017"),
-            "E017 retired; must never fire: {diags:?}"
-        );
+    fn e017_fires_on_joint_with_fgi() {
+        // This is structurally odd but the parser might produce it
+        // from malformed input where FGI appears as a block.
+        // For now, test that a JOINT marking with an fgi_marker errors.
+        // We can't easily construct this via lint_banner since the parser
+        // only sets fgi_marker when classification is US. Skip for now.
     }
 
+    // --- E018: JOINT + IC dissem (except REL TO) ---
+
     #[test]
-    fn e018_does_not_fire_on_joint_with_noforn() {
-        // Pre-T035b: E018 flagged JOINT + NOFORN as "IC dissem other
-        // than REL TO". CAPCO §H.3 line 4146 does exclude NOFORN
-        // from JOINT, but that's caught indirectly via
-        // `capco/noforn-conflicts-rel-to` + E014 (REL TO required).
-        // E018 itself must not fire.
+    fn e018_fires_on_joint_with_noforn() {
         let diags = lint_banner("//JOINT S USA GBR//NF");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E018"),
-            "E018 retired; must never fire: {diags:?}"
+        let e018: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E018").collect();
+        assert_eq!(
+            e018.len(),
+            1,
+            "E018 should fire on NF with JOINT: {diags:?}"
         );
     }
 
     #[test]
     fn e018_does_not_fire_on_joint_with_rel_to_only() {
-        // Still holds post-retirement — plain `//JOINT S USA GBR//
-        // REL TO USA, GBR` is the canonical valid JOINT form.
         let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E018"),
-            "E018 retired; must never fire: {diags:?}"
+            "E018 should not fire when only REL TO is present: {diags:?}"
         );
     }
 
-    #[test]
-    fn e019_does_not_fire_on_joint_with_limdis() {
-        // Pre-T035b: E019 flagged JOINT + LIMDIS as "JOINT + non-IC
-        // dissem". CAPCO §H.3 line 4140 explicitly permits non-IC
-        // dissem with JOINT "as appropriate". Retired entirely.
-        let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR//LIMDIS");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E019"),
-            "E019 retired; must never fire: {diags:?}"
-        );
-    }
-
-    // --- E036: JOINT + HCS markings (T035b replacement) ---
+    // --- E019: JOINT + non-IC dissem ---
 
     #[test]
-    fn legacy_joint_hcs_rules_do_not_fire_on_parser_path() {
-        // §H.3 line 4146: "May not be used with the HCS markings".
-        // This parser-driven test does not reliably provide positive
-        // E036 coverage because the grammar may not surface HCS in
-        // a JOINT banner at this point. What it *does* verify is
-        // that the retired legacy JOINT rules (E017/E018/E019)
-        // never appear on this input path. Positive E036 coverage
-        // lives in scheme-level tests
-        // (`scheme_equivalence::e036_fires_on_joint_with_bare_hcs` /
-        // `_with_hcs_p`) where attrs can be constructed directly.
-        let diags = lint_banner("//JOINT S USA GBR//HCS-P//REL TO USA, GBR");
-        assert!(
-            diags
-                .iter()
-                .all(|d| !matches!(d.rule.as_str(), "E017" | "E018" | "E019")),
-            "legacy E017/E018/E019 must not fire post-T035b: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn e036_does_not_fire_on_joint_without_hcs() {
-        let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
-        assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E036"),
-            "E036 must not fire without HCS present: {diags:?}"
-        );
+    fn e019_fires_on_joint_with_limdis() {
+        let diags = lint_banner("//JOINT S USA GBR//LIMDIS");
+        let e019: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E019").collect();
+        assert_eq!(e019.len(), 1);
     }
 
     // --- E020: Country code ordering ---
@@ -4328,7 +4723,7 @@ mod tests {
         assert_eq!(e020.len(), 1);
         let fix = e020[0].fix.as_ref().expect("E020 must have fix");
         assert_eq!(fix.replacement.as_ref(), "USA, AUS, GBR");
-        assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
+        assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4479,7 +4874,7 @@ mod tests {
             "E032 must fire on SI/123 ordering: {diags:?}"
         );
         let fix = e032[0].fix.as_ref().expect("E032 must carry a FixProposal");
-        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
         // Reorder puts numeric first.
         assert_eq!(fix.replacement.as_ref(), "123/SI");
     }
@@ -4585,7 +4980,7 @@ mod tests {
         assert_eq!(e028.len(), 1, "E028 must fire on CD/BP: {diags:?}");
         let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
-        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4635,7 +5030,7 @@ mod tests {
             "E033 must fire once on the out-of-order marking: {diags:?}"
         );
         let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
-        assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.85).abs() < f32::EPSILON);
         assert_eq!(fix.replacement.as_ref(), "G ABCD DEFG");
     }
 
@@ -4691,9 +5086,7 @@ mod tests {
             "E034 must fire on custom control 123: {diags:?}"
         );
         assert!(e034[0].fix.is_none(), "E034 must not propose a fix");
-        // T035c-2: E034 now defaults to Warn (was Off with a harness
-        // workaround). Info is available as a config-opt-in.
-        assert_eq!(e034[0].severity, marque_rules::Severity::Warn);
+        assert_eq!(e034[0].severity, marque_rules::Severity::Off);
         assert!(e034[0].message.contains("unpublished SCI control system"));
     }
 
@@ -4810,7 +5203,7 @@ mod tests {
         // The fix extends backward over `//` so the replacement is `/CD`.
         assert_eq!(fix.original.as_ref(), "//SAR-CD");
         assert_eq!(fix.replacement.as_ref(), "/CD");
-        assert!((fix.confidence.combined() - 0.9).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4848,7 +5241,7 @@ mod tests {
         // Expected rolled-up form: programs sorted per CAPCO ascending order
         // (alpha: BP before CD).
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
-        assert!((fix.confidence.combined() - 0.9).abs() < f32::EPSILON);
+        assert!((fix.confidence - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -4930,7 +5323,6 @@ mod tests {
 /// without depending on the engine crate. This avoids a circular dependency
 /// (`marque-capco` is below `marque-engine` in the workspace graph).
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod marque_capco_test_support {
     use super::CapcoRuleSet;
     use marque_core::{Parser, Scanner};

@@ -19,10 +19,8 @@ fn test_engine() -> Engine {
     Engine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
-        marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
-    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 #[test]
@@ -53,16 +51,9 @@ fn applied_fix_has_all_required_fields() {
             marque_rules::FixSource::BuiltinRule => "BuiltinRule",
             marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
             marque_rules::FixSource::MigrationTable => "MigrationTable",
-            marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
         };
         assert!(
-            [
-                "BuiltinRule",
-                "CorrectionsMap",
-                "MigrationTable",
-                "DecoderPosterior"
-            ]
-            .contains(&source_str),
+            ["BuiltinRule", "CorrectionsMap", "MigrationTable"].contains(&source_str),
             "source must be a valid enum variant"
         );
 
@@ -80,10 +71,10 @@ fn applied_fix_has_all_required_fields() {
         );
 
         // confidence: in [0.0, 1.0]
-        let combined = fix.proposal.confidence.combined();
         assert!(
-            (0.0..=1.0).contains(&combined),
-            "confidence must be in [0.0, 1.0], got: {combined}"
+            (0.0..=1.0).contains(&fix.proposal.confidence),
+            "confidence must be in [0.0, 1.0], got: {}",
+            fix.proposal.confidence
         );
 
         // timestamp: must be after UNIX epoch
@@ -107,10 +98,10 @@ fn sub_threshold_proposals_never_in_applied() {
 
     // E003 is sub-threshold — it must NOT appear in applied.
     for fix in &result.applied {
-        let combined = fix.proposal.confidence.combined();
         assert!(
-            combined >= 0.95,
-            "sub-threshold fix (confidence {combined}) must not appear in applied"
+            fix.proposal.confidence >= 0.95,
+            "sub-threshold fix (confidence {}) must not appear in applied",
+            fix.proposal.confidence
         );
     }
 

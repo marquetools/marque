@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+#![forbid(unsafe_code)]
+
 //! marque-wasm — WASM target for browser and web worker use.
 //!
 //! Compiled with `wasm-pack build --target web` (or `--target bundler`).
@@ -18,20 +21,6 @@
 //! per `contracts/audit-record.json`), and `remaining` (diagnostics per
 //! `contracts/diagnostic.json`).
 
-// TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
-// TalcLock is tuned for multi-threaded workloads (i.e. browser)
-// if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocator_api2::Allocator` on stable
-// TODO: implement JavaScript calling instead of serializing to JSON using newer WASM 2.0 features
-
-#![cfg_attr(
-    not(all(
-        target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
-    )),
-    forbid(unsafe_code)
-)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-
 use marque_config::Config;
 use marque_engine::{Clock, Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
@@ -41,50 +30,7 @@ use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-#[cfg(all(target_arch = "wasm32", feature = "simd128"))]
-mod simd128_placeholder {}
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
-use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
-
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
-// Extra headroom beyond Talc's minimum first heap size so typical WASM lint/fix
-// workloads do not immediately trigger heap growth. Tune this alongside expected
-// input sizes and allocator behavior.
-const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
-
-#[cfg_attr(
-    all(
-        target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
-    ),
-    global_allocator
-)]
-#[cfg(all(
-    target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
-))]
-static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(
-    // SAFETY: `INITIAL_HEAP` is a private static buffer used only to seed the
-    // global allocator during this one-time initialization. We pass a raw
-    // mutable pointer with `&raw mut`, so no Rust reference is created, and the
-    // buffer is handed off to Talc for allocator-managed access. This module
-    // does not access `INITIAL_HEAP` anywhere else, so there are no competing
-    // aliases to the storage after the claim is created.
-    unsafe {
-        static mut INITIAL_HEAP: [u8; min_first_heap_size::<DefaultBinning>()
-            + INITIAL_HEAP_EXTRA_BYTES] =
-            [0; min_first_heap_size::<DefaultBinning>() + INITIAL_HEAP_EXTRA_BYTES];
-
-        Claim::array(&raw mut INITIAL_HEAP)
-    },
-);
 
 // ---------------------------------------------------------------------------
 // WASM-compatible clock — Date.now() via wasm_bindgen extern
@@ -177,7 +123,6 @@ fn fix_source_str(source: FixSource) -> &'static str {
         FixSource::BuiltinRule => "BuiltinRule",
         FixSource::CorrectionsMap => "CorrectionsMap",
         FixSource::MigrationTable => "MigrationTable",
-        FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -194,7 +139,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
         fix: d.fix.as_ref().map(|f| FixJson {
             source: fix_source_str(f.source),
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
+            confidence: f.confidence,
             migration_ref: f.migration_ref,
         }),
     }
@@ -234,7 +179,7 @@ fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson<'_> {
         },
         original: &fix.proposal.original,
         replacement: &fix.proposal.replacement,
-        confidence: fix.proposal.confidence.combined(),
+        confidence: fix.proposal.confidence,
         migration_ref: fix.proposal.migration_ref,
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
         classifier_id: fix.classifier_id.as_deref(),
@@ -345,15 +290,12 @@ fn with_engine<T>(
 
         if needs_rebuild {
             let config = parse_config(config_json)?;
-            let engine = Engine::with_clock(
-                config,
-                marque_engine::default_ruleset(),
-                marque_engine::default_scheme(),
-                Box::new(WasmClock),
-            )
-            .map_err(|e| format!("engine construction failed: {e}"))?;
             *cache = Some(CachedEngine {
-                engine,
+                engine: Engine::with_clock(
+                    config,
+                    marque_engine::default_ruleset(),
+                    Box::new(WasmClock),
+                ),
                 config_key: config_json.clone(),
             });
         }

@@ -54,8 +54,8 @@ println!("threshold = {}", config.confidence_threshold());
 version = "ISM-v2022-DEC"
 
 [rules]
-E001 = "fix"                    # portion-mark-in-banner; off | info | warn | error | fix
-E002 = "warn"                   # missing-usa-trigraph
+banner-abbreviation = "fix"     # off | warn | error | fix
+missing-usa-trigraph = "warn"
 
 [corrections]
 "SERCET" = "SECRET"

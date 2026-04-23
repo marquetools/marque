@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-extract — document text and metadata extraction.
 //!

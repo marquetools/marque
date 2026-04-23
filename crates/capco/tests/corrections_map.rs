@@ -23,10 +23,8 @@ fn engine_with_corrections(corrections: HashMap<String, String>) -> Engine {
     Engine::with_clock(
         config,
         vec![Box::new(capco_rules())],
-        marque_capco::scheme::CapcoScheme::new(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
-    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 fn engine_default() -> Engine {
@@ -63,7 +61,7 @@ fn c001_fires_on_corrections_map_match() {
     let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
     assert_eq!(fix.source, FixSource::CorrectionsMap);
     assert_eq!(fix.replacement.as_ref(), "NOFORN");
-    assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
+    assert!((fix.confidence - 1.0).abs() < f32::EPSILON);
     assert_eq!(fix.migration_ref, None);
 }
 
@@ -184,10 +182,8 @@ fn classifier_id_propagated_into_audit_records() {
     let engine = Engine::with_clock(
         config,
         vec![Box::new(capco_rules())],
-        marque_capco::scheme::CapcoScheme::new(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
-    )
-    .expect("default CAPCO scheme has no rewrite cycles");
+    );
 
     let source = b"SECRET//NF\n";
     let result = engine.fix(source, FixMode::Apply);

@@ -17,9 +17,6 @@ include = [
   "src/**/*.rs",
 ]
 
-[lints]
-workspace = true
-
 [dependencies]
 marque-ism = { workspace = true }
 serde = { workspace = true, optional = true }

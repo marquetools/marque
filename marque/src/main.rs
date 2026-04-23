@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque — a fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules.
 //!
@@ -254,17 +253,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         return run_explain_config(&config);
     }
 
-    let engine = match Engine::new(
-        config,
-        vec![Box::new(capco_rules())],
-        marque_engine::default_scheme(),
-    ) {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("error: failed to construct engine: {err}");
-            return EX_UNAVAILABLE;
-        }
-    };
+    let engine = Engine::new(config, vec![Box::new(capco_rules())]);
     let format: render::Format = common
         .format
         .map(Into::into)
@@ -421,22 +410,10 @@ fn run_fix(
         Engine::with_clock(
             config,
             vec![Box::new(capco_rules())],
-            marque_engine::default_scheme(),
             Box::new(marque_engine::FixedClock::new(ts)),
         )
     } else {
-        Engine::new(
-            config,
-            vec![Box::new(capco_rules())],
-            marque_engine::default_scheme(),
-        )
-    };
-    let engine = match engine {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("error: failed to construct engine: {err}");
-            return EX_UNAVAILABLE;
-        }
+        Engine::new(config, vec![Box::new(capco_rules())])
     };
 
     let engine_mode = if dry_run {

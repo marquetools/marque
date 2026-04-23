@@ -151,7 +151,7 @@ pub fn render_human(
                     format!(
                         " replace with {:?} (confidence {:.0}%)",
                         f.replacement.as_ref(),
-                        f.confidence.combined() * 100.0
+                        f.confidence * 100.0
                     )
                 })
                 .unwrap_or_default();
@@ -200,7 +200,6 @@ fn level_str(severity: marque_rules::Severity) -> &'static str {
     match severity {
         marque_rules::Severity::Error => "error",
         marque_rules::Severity::Warn => "warning",
-        marque_rules::Severity::Info => "info",
         marque_rules::Severity::Fix => "fix",
         marque_rules::Severity::Off => "off", // unreachable in practice
     }
@@ -270,10 +269,9 @@ pub fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
                 marque_rules::FixSource::BuiltinRule => "BuiltinRule",
                 marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
                 marque_rules::FixSource::MigrationTable => "MigrationTable",
-                marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
             },
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
+            confidence: f.confidence,
             migration_ref: f.migration_ref,
         }),
     }
@@ -335,7 +333,6 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
-        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -351,7 +348,7 @@ pub fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
         },
         original: fix.proposal.original.to_string(),
         replacement: fix.proposal.replacement.to_string(),
-        confidence: fix.proposal.confidence.combined(),
+        confidence: fix.proposal.confidence,
         migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
         classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
@@ -435,7 +432,6 @@ pub fn label_for(path: Option<&Path>) -> String {
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::Span;
@@ -499,7 +495,7 @@ mod tests {
             span,
             "NF".to_owned(),
             "NOFORN".to_owned(),
-            marque_rules::Confidence::strict(1.0),
+            1.0,
             None,
         );
         let diag = make_diagnostic(
@@ -623,7 +619,7 @@ mod tests {
             Span::new(8, 10),
             "NF",
             "NOFORN",
-            marque_rules::Confidence::strict(1.0),
+            1.0,
             Some("CAPCO-2016 §A.6"),
         );
         // Intentional test-only exception to the engine-only __engine_promote

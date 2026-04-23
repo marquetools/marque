@@ -23,14 +23,7 @@ use std::sync::OnceLock;
 static ENGINE: OnceLock<Engine> = OnceLock::new();
 
 fn get_engine() -> &'static Engine {
-    ENGINE.get_or_init(|| {
-        Engine::new(
-            Config::default(),
-            default_ruleset(),
-            marque_engine::default_scheme(),
-        )
-        .expect("default CAPCO scheme has no rewrite cycles")
-    })
+    ENGINE.get_or_init(|| Engine::new(Config::default(), default_ruleset()))
 }
 
 fuzz_target!(|data: &[u8]| {

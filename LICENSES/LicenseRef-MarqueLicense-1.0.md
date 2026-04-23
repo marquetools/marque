@@ -3,18 +3,20 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: MIT OR Apache-2.0
 NOTE: SPDX identifiers at the top of a file apply only to that file.
 The *text* of the Marque License is licensed under MIT OR Apache-2.0, copyright Knitli Inc.
-The Marque License (below) covers the project's source code (Rust/.rs and Python/.py files).
+The Marque License (below) covers the project's source code and some other select files, such as technical specs and plans.
 -->
 
 # Marque License 1.0
 
 Copyright 2026, Knitli Inc.
 
-Knitli Inc. owns and produces the Marque software ("Marque") and other related works covered by this license.
+Knitli Inc. owns and produces the Marque software ("Marque").
 
 ## Bottom Line: Marque Is Free for Internal Use
 
-For internal use, Marque is free. For external or commercial use, you need a [commercial license](#commercial-use).
+For internal use, the Marque is free. For external or commercial use, you need a [commercial license](#commercial-use).
+
+Marque is open source under U.S. law[^open-source]. It is not open source or libre as defined by the Open Source Initiative (OSI) or the Free Software Foundation (FSF).
 
 ---
 
@@ -58,28 +60,28 @@ When using Marque internally, you must:
 Without a [commercial license](#commercial-use):
 
 - **You can't include, adapt, or integrate Marque** (or any of its components or functionality) **as part of a product, application, or service for <u>external</u> use** — meaning use by people or organizations outside your own.
-- **You can't offer Marque's functionality as a hosted or managed service to third parties.** 
+- **You can't offer Marque's functionality as a hosted or managed service to third parties.** If the primary value of the service comes from Marque's functionality, it requires a commercial license.
 - **You can't relicense, distribute, or provide Marque** (or any of its components or functionality) **to a third party outside your organization**, such as in a product or service you are building for, providing to, or selling to the Government or another organization.
 
 ---
 
 ## Patent Rights
 
-If any part of Marque is covered by patents that Knitli owns or controls, Knitli grants you a free, worldwide, permanent patent license to make, use, and import Marque — but only for uses that this license permits. This patent license, and all other rights under the Marque License, ends immediately if you bring a patent lawsuit against Knitli or any Marque user claiming that Marque infringes a patent.
+If any part of Marque is covered by patents that Knitli owns or controls, Knitli grants you a free, worldwide, permanent patent license to make, use, and import Marque if you agree to and follow the terms of this license. If you bring a patent lawsuit against Knitli or any Marque user claiming that Marque infringes a patent, this patent license (and only this patent license) ends immediately for you.
 
 ---
 
 ## Contributions
 
-Contributions to Marque are governed by the [Marque Contributor License Agreement](https://github.com/marquetools/marque/CLA.md). By contributing, you agree to the CLA's terms.
+Any contributions to Marque must follow the terms of the [Marque Contributor License Agreement](https://github.com/marquetools/marque/CLA.md).
 
 ---
 
 ## Termination and Cure
 
-If you use Marque in a way that this license doesn't allow, or if you don't follow [the requirements](#requirements), your license ends automatically and immediately.
+If you break these terms — by not following the requirements, or by using Marque in a way this license doesn't allow — your license ends automatically and immediately.
 
-You can get your license back after you identify or learn of the violation, **if you**:
+You may fix the violation. Once you identify or learn of the broken terms, you must:
 
 1. Immediately [contact Knitli](mailto:license_violations@knitli.com) and tell us what happened.
 2. Fix it within 30 days. If this isn't enough time, describe why and request an extension from Knitli. Knitli may grant or deny extensions for any reason.
@@ -142,7 +144,7 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: Can I fork Marque?**
 
-**A:** You can modify Marque for your own internal use. You can't distribute a fork externally or offer it as a product or service without a commercial license.
+**A:** You can fork and modify Marque for your own internal use [if you follow the requirements](#requirements). You can't distribute a fork externally or offer any part of it as a product or service without a commercial license.
 
 **Q: What if I'm not sure whether my use is internal or external?**
 
@@ -150,5 +152,8 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: Is this FAQ part of the license?**
 
-**A:** Yes.
+**A:** Yes. These answers have the same standing as the rest of this document.
 
+---
+
+[^open-source]: [Public Law 115-232](https://www.congress.gov/115/plaws/publ232/PLAW-115publ232.pdf) defines open source software as "software for which the human-readable source code is available for use, study, re-use, modification, enhancement, and re-distribution by the users of such software." Marque's source code is publicly available and meets this definition for internal use. Marque does not meet the [Open Source Definition](https://opensource.org/osd) maintained by the Open Source Initiative or the [Free Software Definition](https://www.gnu.org/philosophy/free-sw.html) maintained by the Free Software Foundation, because it restricts commercial redistribution.

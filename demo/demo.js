@@ -110,6 +110,10 @@ function classificationClass(banner) {
   return 'level-unclassified';
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // ---------------------------------------------------------------------------
 // Banner update
 // ---------------------------------------------------------------------------
@@ -170,49 +174,15 @@ function prependAuditEntry(fix, stream, emptyEl) {
   const entry = document.createElement('div');
   entry.className = 'audit-entry';
   entry.setAttribute('role', 'log');
-  const spanTime = document.createElement('span');
-  spanTime.className = 'audit-time';
-  spanTime.textContent = timeStr;
-
-  const spanRule = document.createElement('span');
-  spanRule.className = 'audit-rule';
-  spanRule.textContent = fix.rule;
-
-  const spanOriginal = document.createElement('span');
-  spanOriginal.className = 'audit-original';
-  spanOriginal.textContent = fix.original;
-
-  const spanArrow = document.createElement('span');
-  spanArrow.className = 'audit-arrow';
-  spanArrow.textContent = '→';
-
-  const spanReplacement = document.createElement('span');
-  spanReplacement.className = 'audit-replacement';
-  spanReplacement.textContent = fix.replacement;
-
-  const spanSource = document.createElement('span');
-  spanSource.className = 'audit-source';
-  spanSource.textContent = sourceLabel;
-
-  const spanConfidence = document.createElement('span');
-  spanConfidence.className = 'audit-confidence';
-  spanConfidence.textContent = `${pct}%`;
-
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanTime);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanRule);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanOriginal);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanArrow);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanReplacement);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanSource);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanConfidence);
-  entry.appendChild(document.createTextNode('\n  '));
+  entry.innerHTML = `
+    <span class="audit-time">${timeStr}</span>
+    <span class="audit-rule">${escapeHtml(fix.rule)}</span>
+    <span class="audit-original">${escapeHtml(fix.original)}</span>
+    <span class="audit-arrow">→</span>
+    <span class="audit-replacement">${escapeHtml(fix.replacement)}</span>
+    <span class="audit-source">${escapeHtml(sourceLabel)}</span>
+    <span class="audit-confidence">${pct}%</span>
+  `;
 
   // Prepend: insert before the first child (or append if empty)
   if (stream.firstChild) {
@@ -396,27 +366,11 @@ async function main() {
       create() {
         const dom = document.createElement('div');
         dom.className = 'marque-tooltip';
-
-        const divRule = document.createElement('div');
-        divRule.className = 'tip-rule';
-        divRule.textContent = match.rule;
-
-        const divMessage = document.createElement('div');
-        divMessage.className = 'tip-message';
-        divMessage.textContent = match.message;
-
-        const divCitation = document.createElement('div');
-        divCitation.className = 'tip-citation';
-        divCitation.textContent = match.citation;
-
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divRule);
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divMessage);
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divCitation);
-        dom.appendChild(document.createTextNode('\n        '));
-
+        dom.innerHTML = `
+          <div class="tip-rule">${escapeHtml(match.rule)}</div>
+          <div class="tip-message">${escapeHtml(match.message)}</div>
+          <div class="tip-citation">${escapeHtml(match.citation)}</div>
+        `;
         return { dom };
       },
     };

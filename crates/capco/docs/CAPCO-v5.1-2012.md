@@ -64,9 +64,7 @@ ONCIX/MID/Policy
 
 UNCLASSIFIED
 
-end page 2
-
----
+2
 
 UNCLASSIFIED
 
@@ -122,9 +120,7 @@ Table of Contents
 
 UNCLASSIFIED
 
-end page 3
-
----
+3
 
 UNCLASSIFIED
 
@@ -170,9 +166,7 @@ Table of Contents
 
 UNCLASSIFIED
 
-end page 4
-
----
+4
 
 UNCLASSIFIED
 
@@ -226,7 +220,7 @@ Table of Contents
 
 (U) DEA SENSITIVE ....................................................................................................................................................... 123
 
-end page 5
+5
 
 UNCLASSIFIED
 
@@ -264,9 +258,7 @@ Table of Contents
 
 UNCLASSIFIED
 
-end page 6
-
----
+6
 
 UNCLASSIFIED
 
@@ -351,9 +343,7 @@ markings” includes the classification block elements, banner line, and portion
 
 UNCLASSIFIED
 
-end page 7
-
----
+7
 
 UNCLASSIFIED
 
@@ -411,7 +401,7 @@ Community Dissemination Control Markings are restricted for use by specific agen
 guidance on handling information that bears them. Their inclusion in this document does not authorize other agencies to
 use these markings.  Non-US Protective Markings are used to translate (as appropriate) protective markings received
 
-end page 8
+8
 
 UNCLASSIFIED
 
@@ -475,9 +465,7 @@ always have the classification marking capitalized and spelled out; no abbreviat
 
 UNCLASSIFIED
 
-end page 9
-
----
+9
 
 UNCLASSIFIED
 
@@ -535,9 +523,7 @@ described in this section and detailed in this document.
 
 UNCLASSIFIED
 
-end page 10
-
----
+10
 
 UNCLASSIFIED
 
@@ -572,9 +558,7 @@ help@dni.gov and provide in the subject line of the e-mail “Request access to 
 
 UNCLASSIFIED
 
-end page 11
-
----
+11
 
 UNCLASSIFIED
 
@@ -600,9 +584,7 @@ mail on JWICS at DNI-SSD-CAPCO@dni.ic.gov or by phone at (571) 204-6500.
 
 UNCLASSIFIED
 
-end page 12
-
----
+12
 
 UNCLASSIFIED
 
@@ -656,9 +638,7 @@ circumstances under which the individual portions constitute a classified compil
 
 UNCLASSIFIED
 
-end page 13
-
----
+13
 
 UNCLASSIFIED
 
@@ -709,9 +689,7 @@ IC element point of contact and contact instructions
 
 UNCLASSIFIED
 
-end page 14
-
----
+14
 
 UNCLASSIFIED
 
@@ -748,9 +726,7 @@ Attachments, this document is (Classification Level).
 
 UNCLASSIFIED
 
-end page 15
-
----
+15
 
 UNCLASSIFIED
 
@@ -834,9 +810,7 @@ Audio/video files
 
 UNCLASSIFIED
 
-end page 16
-
----
+16
 
 UNCLASSIFIED
 
@@ -862,9 +836,7 @@ information, the document must be portion marked.
 
 UNCLASSIFIED
 
-end page 17
-
----
+17
 
 UNCLASSIFIED
 
@@ -939,7 +911,7 @@ of:
 
 Taking the highest classification level of all the portions and using that as the banner line classification marking.
 
-end page 18
+18
 
 UNCLASSIFIED
 
@@ -972,9 +944,7 @@ circumstances under which the individual portions constitute a classified compil
 
 UNCLASSIFIED
 
-end page 19
-
----
+19
 
 UNCLASSIFIED
 
@@ -1050,7 +1020,7 @@ not to be used at any time.”
 that is already determined to be classified by an OCA either in a source document, classification guide, or other OCA
 guidance document.  Unless superseded by OCA guidance, a derivative classifier should observe and respect the original
 
-end page 20
+20
 
 UNCLASSIFIED
 
@@ -1124,7 +1094,7 @@ event.  The following shall be annotated on the “Declassify On” line: “Not
 appropriate] portions” and “See source list for NSI portions” separated by a period.  The National Security Information
 (NSI) source list, as described in ISOO Implementing Directive, § 2001.22(c)(1)(ii), must include the declassification
 
-end page 21
+21
 
 UNCLASSIFIED
 
@@ -1216,9 +1186,7 @@ block, refer to EO 13526 and the ISOO Implementing Directive, Subparts A-C.
 
 UNCLASSIFIED
 
-end page 22
-
----
+22
 
 UNCLASSIFIED
 
@@ -1353,9 +1321,7 @@ None
 
 UNCLASSIFIED
 
-end page 23
-
----
+23
 
 UNCLASSIFIED
 
@@ -1501,7 +1467,7 @@ or
 FGI [non-US classification
 portion mark]
 
-end page 24
+24
 
 UNCLASSIFIED
 
@@ -1609,9 +1575,7 @@ country.  Refer to the REL TO marking template in the Manual for “[LIST]” fo
 
 UNCLASSIFIED
 
-end page 25
-
----
+25
 
 UNCLASSIFIED
 
@@ -1670,9 +1634,7 @@ and/or the foreign release process.
 
 UNCLASSIFIED
 
-end page 26
-
----
+26
 
 UNCLASSIFIED
 
@@ -1709,9 +1671,7 @@ information.
 
 UNCLASSIFIED
 
-end page 27
-
----
+27
 
 UNCLASSIFIED
 
@@ -1785,9 +1745,7 @@ TOP SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 28
-
----
+28
 
 UNCLASSIFIED
 
@@ -1862,9 +1820,7 @@ SECRET//RELIDO
 
 UNCLASSIFIED
 
-end page 29
-
----
+29
 
 UNCLASSIFIED
 
@@ -1939,9 +1895,7 @@ CONFIDENTIAL//RELIDO
 
 UNCLASSIFIED
 
-end page 30
-
----
+30
 
 UNCLASSIFIED
 
@@ -2020,9 +1974,7 @@ any classification markings.
 
 UNCLASSIFIED
 
-end page 31
-
----
+31
 
 UNCLASSIFIED
 
@@ -2036,9 +1988,7 @@ UNCLASSIFIED
 
 UNCLASSIFIED
 
-end page 32
-
----
+32
 
 UNCLASSIFIED
 
@@ -2066,9 +2016,7 @@ sharing agreements or arrangements with the source country or international orga
 
 UNCLASSIFIED
 
-end page 33
-
----
+33
 
 UNCLASSIFIED
 
@@ -2101,9 +2049,7 @@ G.
 
 UNCLASSIFIED
 
-end page 34
-
----
+34
 
 UNCLASSIFIED
 
@@ -2192,9 +2138,7 @@ line REL TO country trigraph and/or tetragraph list.
 
 UNCLASSIFIED
 
-end page 35
-
----
+35
 
 UNCLASSIFIED
 
@@ -2257,9 +2201,7 @@ JOINT classified documents that reflect US as a co-owner requires a classificati
 
 UNCLASSIFIED
 
-end page 36
-
----
+36
 
 UNCLASSIFIED
 
@@ -2314,9 +2256,7 @@ more information.
 
 UNCLASSIFIED
 
-end page 37
-
----
+37
 
 UNCLASSIFIED
 
@@ -2346,9 +2286,7 @@ SECRET//FGI GBR //REL TO USA, AUS, CAN, GBR, NZL
 
 UNCLASSIFIED
 
-end page 38
-
----
+38
 
 UNCLASSIFIED
 
@@ -2427,7 +2365,7 @@ registered but unpublished SCI control systems.  These must remain unpublished d
 registered but unpublished SCI control systems.  These must remain unpublished due to sensitivity and restrictive access
 registered but unpublished SCI control systems.  These must remain unpublished due to sensitivity and restrictive access
 
-end page 39
+39
 
 UNCLASSIFIED
 
@@ -2507,9 +2445,7 @@ Dissemination Control Markings ORCON, NOFORN
 
 UNCLASSIFIED
 
-end page 40
-
----
+40
 
 UNCLASSIFIED
 
@@ -2536,9 +2472,7 @@ sourcing scenario may jeopardize the information and/or the foreign release proc
 
 UNCLASSIFIED
 
-end page 41
-
----
+41
 
 UNCLASSIFIED
 
@@ -2606,9 +2540,7 @@ sourced in accordance with relevant IC policy and/or procedures.  See above prec
 
 UNCLASSIFIED
 
-end page 42
-
----
+42
 
 (U) Notional Example Page:
 
@@ -2626,9 +2558,7 @@ SECRET//HCS//NOFORN
 
 UNCLASSIFIED
 
-end page 43
-
----
+43
 
 UNCLASSIFIED
 
@@ -2663,17 +2593,13 @@ in the banner line.
 
 UNCLASSIFIED
 
-end page 44
-
----
+44
 
 UNCLASSIFIED
 
 UNCLASSIFIED
 
-end page 45
-
----
+45
 
 UNCLASSIFIED
 
@@ -2703,17 +2629,13 @@ in the banner line.
 
 UNCLASSIFIED
 
-end page 46
-
----
+46
 
 UNCLASSIFIED
 
 UNCLASSIFIED
 
-end page 47
-
----
+47
 
 UNCLASSIFIED
 
@@ -2741,17 +2663,13 @@ in the banner line.
 
 UNCLASSIFIED
 
-end page 48
-
----
+48
 
 UNCLASSIFIED
 
 UNCLASSIFIED
 
-end page 49
-
----
+49
 
 UNCLASSIFIED
 
@@ -2781,17 +2699,13 @@ in the banner line.
 
 UNCLASSIFIED
 
-end page 50
-
----
+50
 
 UNCLASSIFIED
 
 UNCLASSIFIED
 
-end page 51
-
----
+51
 
 UNCLASSIFIED
 
@@ -2859,9 +2773,7 @@ sourced in accordance with relevant IC policy and/or procedures.  See above prec
 
 UNCLASSIFIED
 
-end page 52
-
----
+52
 
 (U) Notional Example Page:
 
@@ -2879,9 +2791,7 @@ TOP SECRET//KDK//NOFORN
 
 UNCLASSIFIED
 
-end page 53
-
----
+53
 
 UNCLASSIFIED
 
@@ -2947,9 +2857,7 @@ be sourced.
 
 UNCLASSIFIED
 
-end page 54
-
----
+54
 
 UNCLASSIFIED
 
@@ -2968,9 +2876,7 @@ TOP SECRET//RSV-ABC//NOFORN
 
 UNCLASSIFIED
 
-end page 55
-
----
+55
 
 UNCLASSIFIED
 
@@ -3041,9 +2947,7 @@ be sourced.
 
 UNCLASSIFIED
 
-end page 56
-
----
+56
 
 UNCLASSIFIED
 
@@ -3065,9 +2969,7 @@ TOP SECRET//RSV-123-ABC//NOFORN
 
 UNCLASSIFIED
 
-end page 57
-
----
+57
 
 UNCLASSIFIED
 
@@ -3139,9 +3041,7 @@ sourced in accordance with relevant policy and/or procedures.  See above precede
 
 UNCLASSIFIED
 
-end page 58
-
----
+58
 
 UNCLASSIFIED
 
@@ -3160,9 +3060,7 @@ SECRET//SI//REL TO USA, FVEY
 
 UNCLASSIFIED
 
-end page 59
-
----
+59
 
 UNCLASSIFIED
 
@@ -3235,9 +3133,7 @@ commingling rules.
 
 UNCLASSIFIED
 
-end page 60
-
----
+60
 
 (U) Notional Example Page:
 
@@ -3255,9 +3151,7 @@ TOP SECRET//SI-ABC//NOFORN
 
 UNCLASSIFIED
 
-end page 61
-
----
+61
 
 UNCLASSIFIED
 
@@ -3333,9 +3227,7 @@ TOP SECRET//SI-G//ORCON/NOFORN
 
 UNCLASSIFIED
 
-end page 62
-
----
+62
 
 UNCLASSIFIED
 
@@ -3404,9 +3296,7 @@ be sourced in accordance with relevant policy and/or procedures.  See above prec
 
 UNCLASSIFIED
 
-end page 63
-
----
+63
 
 UNCLASSIFIED
 
@@ -3427,9 +3317,7 @@ TOP SECRET//SI-G ABCD//ORCON/NOFORN
 
 UNCLASSIFIED
 
-end page 64
-
----
+64
 
 UNCLASSIFIED
 
@@ -3497,9 +3385,7 @@ sourced in accordance with relevant policy and/or procedures.  See above precede
 
 UNCLASSIFIED
 
-end page 65
-
----
+65
 
 (U) Notional Example Page:
 
@@ -3518,9 +3404,7 @@ SECRET//TK//RELIDO
 
 UNCLASSIFIED
 
-end page 66
-
----
+66
 
 UNCLASSIFIED
 
@@ -3600,9 +3484,7 @@ the IC SAP Marking Standard is not intended to show
 
 UNCLASSIFIED
 
-end page 67
-
----
+67
 
 UNCLASSIFIED
 
@@ -3682,9 +3564,7 @@ NOFORN
 
 UNCLASSIFIED
 
-end page 68
-
----
+68
 
 UNCLASSIFIED
 
@@ -3722,9 +3602,7 @@ originating agency or local foreign disclosure office for further guidance.
 
 UNCLASSIFIED
 
-end page 69
-
----
+69
 
 UNCLASSIFIED
 
@@ -3793,9 +3671,7 @@ banner line.
 
 UNCLASSIFIED
 
-end page 70
-
----
+70
 
 UNCLASSIFIED
 
@@ -3815,9 +3691,7 @@ TOP SECRET//SAR-BP//NOFORN
 
 UNCLASSIFIED
 
-end page 71
-
----
+71
 
 UNCLASSIFIED
 
@@ -3877,9 +3751,7 @@ TRANSCLASSIFIED FOREIGN NATIONAL INFORMATION (TFNI)
 
 UNCLASSIFIED
 
-end page 72
-
----
+72
 
 UNCLASSIFIED
 
@@ -3961,9 +3833,7 @@ foreign disclosure/release determination is needed.
 
 UNCLASSIFIED
 
-end page 73
-
----
+73
 
 UNCLASSIFIED
 
@@ -4016,9 +3886,7 @@ SECRET//RESTRICTED DATA//NOFORN
 
 UNCLASSIFIED
 
-end page 74
-
----
+74
 
 UNCLASSIFIED
 
@@ -4101,9 +3969,7 @@ Applicable (or N/A) to RD portions” and “See source list for NSI portions”
 
 UNCLASSIFIED
 
-end page 75
-
----
+75
 
 UNCLASSIFIED
 
@@ -4163,9 +4029,7 @@ SECRET//RD-CNWDI//NOFORN
 
 UNCLASSIFIED
 
-end page 76
-
----
+76
 
 UNCLASSIFIED
 
@@ -4248,9 +4112,7 @@ disclosure/release determination is needed.
 
 UNCLASSIFIED
 
-end page 77
-
----
+77
 
 UNCLASSIFIED
 
@@ -4300,9 +4162,7 @@ SECRET//RESTRICTED DATA-SIGMA 20//NOFORN
 
 UNCLASSIFIED
 
-end page 78
-
----
+78
 
 UNCLASSIFIED
 
@@ -4387,9 +4247,7 @@ provided that:
 
 UNCLASSIFIED
 
-end page 79
-
----
+79
 
 UNCLASSIFIED
 
@@ -4434,9 +4292,7 @@ SECRET//FORMERLY RESTRICTED DATA//NOFORN
 
 UNCLASSIFIED
 
-end page 80
-
----
+80
 
 UNCLASSIFIED
 
@@ -4516,9 +4372,7 @@ needed.
 
 UNCLASSIFIED
 
-end page 81
-
----
+81
 
 UNCLASSIFIED
 
@@ -4582,9 +4436,7 @@ SECRET//FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN
 
 UNCLASSIFIED
 
-end page 82
-
----
+82
 
 UNCLASSIFIED
 
@@ -4654,9 +4506,7 @@ warning statement found on the face of the document.
 
 UNCLASSIFIED
 
-end page 83
-
----
+83
 
 UNCLASSIFIED
 
@@ -4671,9 +4521,7 @@ UNCLASSIFIED//DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
 
 UNCLASSIFIED
 
-end page 84
-
----
+84
 
 UNCLASSIFIED
 
@@ -4752,9 +4600,7 @@ Official must coordinate the decontrol review with that DOE organization or othe
 
 UNCLASSIFIED
 
-end page 85
-
----
+85
 
 UNCLASSIFIED
 
@@ -4769,9 +4615,7 @@ UNCLASSIFIED//DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
 
 UNCLASSIFIED
 
-end page 86
-
----
+86
 
 UNCLASSIFIED
 
@@ -4853,9 +4697,7 @@ disclosure and release of classified NSI.
 
 UNCLASSIFIED
 
-end page 87
-
----
+87
 
 UNCLASSIFIED
 
@@ -4905,9 +4747,7 @@ SECRET//TFNI//REL TO USA, ACGU
 
 UNCLASSIFIED
 
-end page 88
-
----
+88
 
 UNCLASSIFIED
 
@@ -4965,9 +4805,7 @@ information and/or the foreign release process.
 
 UNCLASSIFIED
 
-end page 89
-
----
+89
 
 UNCLASSIFIED
 
@@ -4980,9 +4818,7 @@ markings with unclassified FGI.
 
 UNCLASSIFIED
 
-end page 90
-
----
+90
 
 UNCLASSIFIED
 
@@ -5071,9 +4907,7 @@ Information received and treated as "Foreign Government Information" under the t
 
 UNCLASSIFIED
 
-end page 91
-
----
+91
 
 UNCLASSIFIED
 
@@ -5163,9 +4997,7 @@ dated 17 October 2007, must keep the FGI from different sources segregated in se
 
 UNCLASSIFIED
 
-end page 92
-
----
+92
 
 UNCLASSIFIED
 
@@ -5219,9 +5051,7 @@ TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU
 
 UNCLASSIFIED
 
-end page 93
-
----
+93
 
 UNCLASSIFIED
 
@@ -5261,9 +5091,7 @@ TOP SECRET//FGI AUS CAN DEU NATO//NOFORN
 
 UNCLASSIFIED
 
-end page 94
-
----
+94
 
 UNCLASSIFIED
 
@@ -5311,9 +5139,7 @@ SECRET//FGI//NOFORN
 
 UNCLASSIFIED
 
-end page 95
-
----
+95
 
 UNCLASSIFIED
 
@@ -5352,9 +5178,7 @@ TOP SECRET//FGI CAN DEU//NOFORN
 
 UNCLASSIFIED
 
-end page 96
-
----
+96
 
 UNCLASSIFIED
 
@@ -5388,9 +5212,7 @@ SECRET//FGI CAN GBR//REL TO USA, CAN, GBR
 
 UNCLASSIFIED
 
-end page 97
-
----
+97
 
 UNCLASSIFIED
 
@@ -5427,9 +5249,7 @@ TOP SECRET//FGI CAN GBR//REL TO USA, AUS, CAN, GBR
 
 UNCLASSIFIED
 
-end page 98
-
----
+98
 
 UNCLASSIFIED
 
@@ -5487,9 +5307,7 @@ between the non-IC organization and the IC element on handling requirements (inc
 
 UNCLASSIFIED
 
-end page 99
-
----
+99
 
 UNCLASSIFIED
 
@@ -5540,9 +5358,7 @@ FOREIGN INTELLIGENCE SURVEILLANCE ACT (DNI)
 
 UNCLASSIFIED
 
-end page 100
-
----
+100
 
 UNCLASSIFIED
 
@@ -5602,9 +5418,7 @@ be sourced in accordance with relevant IC policy and/or procedures.   See above 
 
 UNCLASSIFIED
 
-end page 101
-
----
+101
 
 UNCLASSIFIED
 
@@ -5624,9 +5438,7 @@ TOP SECRET//TK//RSEN/REL TO USA, ACGU
 
 UNCLASSIFIED
 
-end page 102
-
----
+102
 
 UNCLASSIFIED
 
@@ -5704,9 +5516,7 @@ be sourced in accordance with relevant policy and/or procedures.  See above prec
 
 UNCLASSIFIED
 
-end page 103
-
----
+103
 
 UNCLASSIFIED
 
@@ -5721,9 +5531,7 @@ UNCLASSIFIED//FOR OFFICIAL USE ONLY
 
 UNCLASSIFIED
 
-end page 104
-
----
+104
 
 UNCLASSIFIED
 
@@ -5806,9 +5614,7 @@ commingling rules.
 
 UNCLASSIFIED
 
-end page 105
-
----
+105
 
 UNCLASSIFIED
 
@@ -5836,9 +5642,7 @@ TOP SECRET//ORCON/NOFORN
 
 UNCLASSIFIED
 
-end page 106
-
----
+106
 
 UNCLASSIFIED
 
@@ -5914,9 +5718,7 @@ other entities is prohibited without the prior written approval of the originati
 
 UNCLASSIFIED
 
-end page 107
-
----
+107
 
 UNCLASSIFIED
 
@@ -5970,9 +5772,7 @@ SECRET//IMCON/REL TO USA, AUS, CAN, GBR, NZL
 
 UNCLASSIFIED
 
-end page 108
-
----
+108
 
 UNCLASSIFIED
 
@@ -5997,9 +5797,7 @@ TOP SECRET//IMCON/NOFORN
 
 UNCLASSIFIED
 
-end page 109
-
----
+109
 
 UNCLASSIFIED
 
@@ -6087,9 +5885,7 @@ NF marking is conveyed in the portion mark.
 
 UNCLASSIFIED
 
-end page 110
-
----
+110
 
 UNCLASSIFIED
 
@@ -6136,9 +5932,7 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 111
-
----
+111
 
 UNCLASSIFIED
 
@@ -6205,9 +5999,7 @@ be sourced in accordance with relevant IC policy and/or procedures.  See above p
 
 UNCLASSIFIED
 
-end page 112
-
----
+112
 
 UNCLASSIFIED
 
@@ -6225,9 +6017,7 @@ CONFIDENTIAL//NOFORN/PROPIN
 
 UNCLASSIFIED
 
-end page 113
-
----
+113
 
 UNCLASSIFIED
 
@@ -6305,7 +6095,7 @@ Register, Annex A and B tetragraph code(s) used with the REL TO marking.  USA is
 when the REL TO string is invoked for automated decision making in systems that rely on the first code to
 represent the originating country.
 
-end page 114
+114
 
 UNCLASSIFIED
 
@@ -6391,9 +6181,7 @@ See above precedence and commingling rules.
 
 UNCLASSIFIED
 
-end page 115
-
----
+115
 
 UNCLASSIFIED
 
@@ -6439,9 +6227,7 @@ SECRET//REL TO USA, NZL
 
 UNCLASSIFIED
 
-end page 116
-
----
+116
 
 UNCLASSIFIED
 
@@ -6465,9 +6251,7 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 117
-
----
+117
 
 UNCLASSIFIED
 
@@ -6546,9 +6330,7 @@ internal agency procedures for the use of RELIDO with unclassified information.
 
 UNCLASSIFIED
 
-end page 118
-
----
+118
 
 UNCLASSIFIED
 
@@ -6601,9 +6383,7 @@ SECRET//RELIDO
 
 UNCLASSIFIED
 
-end page 119
-
----
+119
 
 (U) Notional Example Page 3:
 
@@ -6630,9 +6410,7 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 120
-
----
+120
 
 UNCLASSIFIED
 
@@ -6706,9 +6484,7 @@ ONLY portions from SIGINT reporting, convert the EYES ONLY portion marks to REL 
 
 UNCLASSIFIED
 
-end page 121
-
----
+121
 
 UNCLASSIFIED
 
@@ -6730,9 +6506,7 @@ TOP SECRET//USA/CAN/GBR EYES ONLY
 
 UNCLASSIFIED
 
-end page 122
-
----
+122
 
 UNCLASSIFIED
 
@@ -6800,9 +6574,7 @@ distribution of this document, without authorization by the DEA, is strictly pro
 
 UNCLASSIFIED
 
-end page 123
-
----
+123
 
 UNCLASSIFIED
 
@@ -6836,9 +6608,7 @@ SECRET//NOFORN//DEA SENSITIVE
 
 UNCLASSIFIED
 
-end page 124
-
----
+124
 
 UNCLASSIFIED
 
@@ -6915,9 +6685,7 @@ FISA Warning may appear in the header or footer of the document.
 
 UNCLASSIFIED
 
-end page 125
-
----
+125
 
 UNCLASSIFIED
 
@@ -6937,9 +6705,7 @@ TOP SECRET//NOFORN/FISA
 
 UNCLASSIFIED
 
-end page 126
-
----
+126
 
 UNCLASSIFIED
 
@@ -7028,9 +6794,7 @@ may authorize the use of REL TO in conjunction with DISPLAY ONLY under certain c
 
 UNCLASSIFIED
 
-end page 127
-
----
+127
 
 UNCLASSIFIED
 
@@ -7097,7 +6861,7 @@ purposes or for disclosure or release and disclosure to other countries, interna
 coalitions not specified in the banner line or portion marking.  Removal of this caveat is required once
 authorization is received by the originating agency.
 
-end page 128
+128
 
 UNCLASSIFIED
 
@@ -7139,9 +6903,7 @@ SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG
 
 UNCLASSIFIED
 
-end page 129
-
----
+129
 
 UNCLASSIFIED
 
@@ -7180,9 +6942,7 @@ SECRET//DISPLAY ONLY IRQ
 
 UNCLASSIFIED
 
-end page 130
-
----
+130
 
 UNCLASSIFIED
 
@@ -7215,9 +6975,7 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 131
-
----
+131
 
 UNCLASSIFIED
 
@@ -7288,9 +7046,7 @@ SPECIAL SECURITY INFORMATION (DHS)
 
 UNCLASSIFIED
 
-end page 132
-
----
+132
 
 UNCLASSIFIED
 
@@ -7357,9 +7113,7 @@ Notional Example for the text of the required LIMDIS caveat (bolded text).
 
 UNCLASSIFIED
 
-end page 133
-
----
+133
 
 UNCLASSIFIED
 
@@ -7394,9 +7148,7 @@ SECRET//NOFORN//LIMITED DISTRIBUTION
 
 UNCLASSIFIED
 
-end page 134
-
----
+134
 
 UNCLASSIFIED
 
@@ -7476,9 +7228,7 @@ must be treated as NOFORN. See above precedence and commingling rules.
 
 UNCLASSIFIED
 
-end page 135
-
----
+135
 
 (U) Notional Example Page:
 
@@ -7496,9 +7246,7 @@ SECRET//NOFORN//EXDIS
 
 UNCLASSIFIED
 
-end page 136
-
----
+136
 
 UNCLASSIFIED
 
@@ -7575,9 +7323,7 @@ must be treated as NOFORN.  See above precedence and commingling rules.
 
 UNCLASSIFIED
 
-end page 137
-
----
+137
 
 (U) Notional Example Page:
 
@@ -7595,9 +7341,7 @@ SECRET//NOFORN//NODIS
 
 UNCLASSIFIED
 
-end page 138
-
----
+138
 
 UNCLASSIFIED
 
@@ -7667,9 +7411,7 @@ UNCLASSIFIED//SBU
 
 UNCLASSIFIED
 
-end page 139
-
----
+139
 
 UNCLASSIFIED
 
@@ -7730,9 +7472,7 @@ be sourced in accordance with relevant policy and/or procedures.  See above prec
 
 UNCLASSIFIED
 
-end page 140
-
----
+140
 
 UNCLASSIFIED
 
@@ -7768,9 +7508,7 @@ SECRET//NOFORN
 
 UNCLASSIFIED
 
-end page 141
-
----
+141
 
 UNCLASSIFIED
 
@@ -7851,9 +7589,7 @@ ENFORCEMENT SENSITIVE” or “UNCLASSIFIED//LES” as the banner line.
 
 UNCLASSIFIED
 
-end page 142
-
----
+142
 
 UNCLASSIFIED
 
@@ -7926,9 +7662,7 @@ UNCLASSIFIED//LES
 
 UNCLASSIFIED
 
-end page 143
-
----
+143
 
 UNCLASSIFIED
 
@@ -7967,9 +7701,7 @@ SECRET//REL TO USA, FVEY//LES
 
 UNCLASSIFIED
 
-end page 144
-
----
+144
 
 (U) Notional Example Page 4:
 
@@ -7994,9 +7726,7 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-end page 145
-
----
+145
 
 UNCLASSIFIED
 
@@ -8082,9 +7812,7 @@ contained in the document, regardless of the document’s classification level.
 
 UNCLASSIFIED
 
-end page 146
-
----
+146
 
 UNCLASSIFIED
 
@@ -8152,9 +7880,7 @@ network.
 
 UNCLASSIFIED
 
-end page 147
-
----
+147
 
 UNCLASSIFIED
 
@@ -8205,9 +7931,7 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-end page 148
-
----
+148
 
 UNCLASSIFIED
 
@@ -8233,9 +7957,7 @@ SECRET//NOFORN//LES
 
 UNCLASSIFIED
 
-end page 149
-
----
+149
 
 UNCLASSIFIED
 
@@ -8322,9 +8044,7 @@ Applicable level(s) of classification:  May be used only with UNCLASSIFIED.
 
 UNCLASSIFIED
 
-end page 150
-
----
+150
 
 UNCLASSIFIED
 
@@ -8387,9 +8107,7 @@ UNCLASSIFIED//SSI
 
 UNCLASSIFIED
 
-end page 151
-
----
+151
 
 UNCLASSIFIED
 
@@ -8410,9 +8128,7 @@ SECRET//REL TO USA, ACGU//SSI
 
 UNCLASSIFIED
 
-end page 152
-
----
+152
 
 UNCLASSIFIED
 
@@ -8442,9 +8158,7 @@ information)
 
 UNCLASSIFIED
 
-end page 153
-
----
+153
 
 UNCLASSIFIED
 
@@ -8564,9 +8278,7 @@ reflect the current standard.
 
 UNCLASSIFIED
 
-end page 154
-
----
+154
 
 UNCLASSIFIED
 
@@ -8611,9 +8323,7 @@ Portion Mark: (TS//ANB/SI/TK/XNB//NF)
 
 UNCLASSIFIED
 
-end page 155
-
----
+155
 
 UNCLASSIFIED
 
@@ -8652,9 +8362,7 @@ Portion Mark Example 3: (//NS//ATOMAL//OC)
 
 UNCLASSIFIED
 
-end page 156
-
----
+156
 
 UNCLASSIFIED
 
@@ -8696,8 +8404,6 @@ Portion Mark: (U//SSI)
 
 UNCLASSIFIED
 
-end page 157
-
----
+157
 
 

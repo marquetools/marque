@@ -17,9 +17,6 @@ include = [
   "src/**/*.rs",
 ]
 
-[lints]
-workspace = true
-
 [[bin]]
 name = "marque"
 path = "src/main.rs"
@@ -45,17 +42,3 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 assert_cmd = { workspace = true }
 tempfile = { workspace = true }
-
-[features]
-# Phase-D / US2 wiring. The CLI is the one target that ships the
-# corpus-override surface — server rejects it at the handler layer,
-# WASM excludes it at compile time (Constitution III + FR-013 + T3).
-# Proxying through `marque-engine/corpus-override` pulls the matching
-# gates in capco + config along with it.
-default = []
-corpus-override = ["marque-engine/corpus-override"]
-# Harness pass-throughs for convenience on the CLI crate; individual
-# harnesses are exercised from `marque-capco` and `marque-engine`
-# integration tests, not from the CLI binary itself.
-corpus-harness = ["marque-engine/corpus-harness"]
-decoder-harness = ["marque-engine/decoder-harness"]
