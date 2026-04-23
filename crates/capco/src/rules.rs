@@ -455,7 +455,8 @@ impl Rule for MissingUsaTrigraphRule {
         if !has_usa {
             codes.push(marque_ism::Trigraph::USA);
         }
-        let fixed = canonicalize_trigraph_list(&codes).join(", ");
+        // E002 is REL TO only; pass `usa_first: true` per §H.8 line 3714.
+        let fixed = canonicalize_trigraph_list(&codes, true).join(", ");
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -2334,12 +2335,62 @@ impl Rule for NonIcInClassifiedBannerRule {
 // Rule: E020 — Country code list ordering
 // ---------------------------------------------------------------------------
 
-/// Country/entity code lists (REL TO, JOINT, FGI) must be alphabetically
-/// ordered after USA (which is always first when present). Trigraphs come
-/// before tetragraphs, both groups sorted alphabetically.
+/// REL TO and JOINT country lists must be alphabetically ordered.
 ///
-/// This is a fixable error — the correct order can be computed with
-/// complete confidence.
+/// # Authority (per-template)
+///
+/// - **REL TO, §H.8 p150–151 line 3714**: "After 'USA', list the
+///   required one or more trigraph country codes in alphabetical
+///   order followed by tetragraph codes listed in alphabetical
+///   order." REL TO elevates USA to the front.
+/// - **JOINT, §H.3 p56 line 1258**: "Country trigraph codes are
+///   listed alphabetically followed by tetragraph codes in
+///   alphabetical order." JOINT prescribes **pure alphabetical** —
+///   no USA-first carve-out.
+///
+/// `canonicalize_trigraph_list` takes a `usa_first: bool` flag so
+/// each caller selects its authoritative convention. The REL TO
+/// path passes `true`; the JOINT path passes `false`.
+///
+/// # JOINT USA-first convention is style, not rule
+///
+/// The widespread IC practice of rendering USA first in JOINT
+/// lists — because every other US-authored country list leads
+/// with USA — is convention, not CAPCO text. E020 does NOT encode
+/// it as a correctness error. A follow-up style rule
+/// (S003 `joint-usa-first`, `Severity::Info`) will surface
+/// deviations without conflating them with ordering violations.
+///
+/// # Scope
+///
+/// Fires on REL TO (`attrs.rel_to`) and JOINT (`attrs.classification`
+/// when it is `MarkingClassification::Joint`). Does NOT currently
+/// cover:
+///
+/// - **FGI ordering** (`attrs.fgi_marker.countries`) — §A.6 p15-16
+///   line 332 establishes the same trigraph-then-tetragraph alpha
+///   rule for FGI, but extending E020 to cover it is a future
+///   follow-up; no FGI-ordering test fixtures exist today.
+/// - **Tetragraph sorting** — `Trigraph` is a 3-byte type and cannot
+///   represent 4-byte codes, so `canonicalize_trigraph_list` treats
+///   every entry as a trigraph. When a broader `CountryCode` type
+///   lands, the helper should sort trigraphs before tetragraphs per
+///   the per-template passages above.
+///
+/// # Interaction with E002
+///
+/// REL TO ordering is skipped entirely when USA is missing or not
+/// first (see `attrs.rel_to` guard). E002's fix produces the fully
+/// canonical list in a single pass (USA first, non-USA entries
+/// alphabetical), so E020's concern is already absorbed whenever E002
+/// is active. This prevents double-firing on the same span.
+///
+/// This is a fixable error. Fix confidence is `1.0` for both paths —
+/// the sort is deterministic with exact trigraph matches and no
+/// fuzzy matching today. When fuzzy matching lands in a future
+/// decoder phase, per-candidate confidence may need to plumb
+/// through `check_trigraph_ordering`; this helper signature is
+/// designed to accommodate that change.
 struct CountryCodeOrderingRule;
 
 impl Rule for CountryCodeOrderingRule {
@@ -2379,12 +2430,19 @@ impl Rule for CountryCodeOrderingRule {
                 .iter()
                 .filter(|t| t.kind == TokenKind::RelToBlock)
                 .collect();
+            // `concat!` avoids any ambiguity around whether `\<newline>`
+            // preserves embedded whitespace in the resulting string.
+            const REL_TO_CITATION: &str = concat!(
+                "CAPCO-2016 §H.8 p150-151 line 3714 ",
+                "(REL TO: trigraphs alpha, then tetragraphs alpha, USA first)",
+            );
             if rel_to_blocks.len() > 1 {
                 // Suppress the fix rather than risk cross-block corruption.
                 // Span the first block so downstream consumers have a
                 // location to display.
                 let actual: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
-                let sorted = canonicalize_trigraph_list(&attrs.rel_to);
+                // REL TO is USA-first per §H.8 line 3714.
+                let sorted = canonicalize_trigraph_list(&attrs.rel_to, true);
                 if actual != sorted {
                     diagnostics.push(Diagnostic::new(
                         self.id(),
@@ -2398,7 +2456,7 @@ impl Rule for CountryCodeOrderingRule {
                             actual.join(", "),
                             sorted.join(", "),
                         ),
-                        "CAPCO-2016 §H.8",
+                        REL_TO_CITATION,
                         None,
                     ));
                 }
@@ -2410,6 +2468,8 @@ impl Rule for CountryCodeOrderingRule {
                     self.default_severity(),
                     attrs,
                     Some(block.span),
+                    REL_TO_CITATION,
+                    true, // REL TO: USA-first per §H.8 line 3714
                 ) {
                     diagnostics.push(diag);
                 }
@@ -2422,8 +2482,20 @@ impl Rule for CountryCodeOrderingRule {
         // Check JOINT country ordering. JOINT countries live inside a
         // single `Classification` token, so the multi-block concern
         // that motivates REL TO's block scoping does not apply here.
+        // JOINT's ordering rule lives in §H.3 (its own template), not
+        // §H.8 (REL TO's template), and §H.3 line 1258 prescribes
+        // pure alphabetical order — no USA-first carve-out. The
+        // widespread IC practice of rendering USA first in JOINT
+        // lists is style convention, not CAPCO rule; a planned
+        // follow-up S003 `joint-usa-first` style rule will surface
+        // deviations without conflating them with a correctness
+        // error.
         if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
             if j.countries.len() >= 2 {
+                const JOINT_CITATION: &str = concat!(
+                    "CAPCO-2016 §H.3 p56 line 1258 ",
+                    "(JOINT: trigraphs alpha, then tetragraphs alpha)",
+                );
                 if let Some(diag) = check_trigraph_ordering(
                     &j.countries,
                     "JOINT",
@@ -2431,6 +2503,8 @@ impl Rule for CountryCodeOrderingRule {
                     self.default_severity(),
                     attrs,
                     None,
+                    JOINT_CITATION,
+                    false, // JOINT: pure alpha per §H.3 line 1258 (no USA-first)
                 ) {
                     diagnostics.push(diag);
                 }
@@ -2441,34 +2515,61 @@ impl Rule for CountryCodeOrderingRule {
     }
 }
 
-/// Canonicalize a trigraph list per CAPCO-2016 §H.8 line 3713–3714:
-/// `USA` first when present, then remaining trigraphs alphabetically.
+/// Canonicalize a country code list. The `usa_first` flag selects the
+/// convention:
 ///
-/// This is the shared ordering rule for E002 (REL TO, fix path) and E020
-/// (REL TO + JOINT, both check and fix paths). Extracting it prevents the
-/// two rules from drifting if the ordering rule changes (tetragraph
-/// sorting, delimiter normalization, etc.).
+/// - `usa_first = true` — REL TO convention per CAPCO-2016 §H.8 line
+///   3714: "After 'USA', list the required one or more trigraph
+///   country codes in alphabetical order." USA is elevated to the
+///   front when present; remaining codes are alphabetical.
+/// - `usa_first = false` — JOINT convention per CAPCO-2016 §H.3 line
+///   1258: "Country trigraph codes are listed alphabetically followed
+///   by tetragraph codes in alphabetical order." Pure alphabetical;
+///   USA is NOT elevated.
 ///
-/// Tetragraph handling is deferred — `Trigraph` is 3-byte only today and
-/// cannot represent tetragraph codes. When a broader `CountryCode` type
-/// lands, this helper should be extended to sort trigraphs before
-/// tetragraphs per line 3714.
-fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
-    let has_usa = codes.contains(&marque_ism::Trigraph::USA);
-    let mut sorted: Vec<&str> = codes
-        .iter()
-        .filter(|t| **t != marque_ism::Trigraph::USA)
-        .map(|t| t.as_str())
-        .collect();
-    sorted.sort_unstable();
-    if has_usa {
-        sorted.insert(0, "USA");
+/// The IC practice of rendering USA first in JOINT lists is widespread
+/// but is convention, not CAPCO rule. A style rule (S003
+/// `joint-usa-first`) to flag deviations is a planned follow-up; this
+/// helper does NOT encode the convention into correctness.
+///
+/// This is the shared ordering rule for E002 (REL TO, fix path) and
+/// E020 (REL TO + JOINT, both check and fix paths). Extracting it
+/// prevents the two rules from drifting if the ordering rule changes
+/// (tetragraph sorting, delimiter normalization, etc.).
+///
+/// Tetragraph handling is deferred — `Trigraph` is 3-byte only today
+/// and cannot represent tetragraph codes. When a broader `CountryCode`
+/// type lands, this helper should be extended to sort trigraphs before
+/// tetragraphs per §H.3 line 1258 and §H.8 line 3714.
+fn canonicalize_trigraph_list(
+    codes: &[marque_ism::Trigraph],
+    usa_first: bool,
+) -> Vec<&str> {
+    if usa_first {
+        let has_usa = codes.contains(&marque_ism::Trigraph::USA);
+        let mut sorted: Vec<&str> = codes
+            .iter()
+            .filter(|t| **t != marque_ism::Trigraph::USA)
+            .map(|t| t.as_str())
+            .collect();
+        sorted.sort_unstable();
+        if has_usa {
+            sorted.insert(0, "USA");
+        }
+        sorted
+    } else {
+        let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
+        sorted.sort_unstable();
+        sorted
     }
-    sorted
 }
 
-/// Check that a trigraph list is ordered: USA first (if present), then
-/// remaining codes alphabetically.
+/// Check that a country code list is in the expected order.
+///
+/// `usa_first` selects the canonicalization convention — see
+/// `canonicalize_trigraph_list` for the per-list authorities. For
+/// REL TO (§H.8 line 3714), USA is elevated; for JOINT (§H.3 line
+/// 1258), the order is pure alphabetical with no USA carve-out.
 ///
 /// `block_span`, when `Some`, restricts the trigraph-token search to
 /// spans that fall inside it. This is required for REL TO because a
@@ -2477,6 +2578,10 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
 /// across blocks would delete intervening `//...//` content. Callers
 /// that cover a whole-marking list (JOINT sits inside a single
 /// `Classification` token) pass `None`.
+///
+/// `citation` is caller-supplied so each list type cites its own
+/// authoritative passage verbatim (Constitution VIII).
+#[allow(clippy::too_many_arguments)]
 fn check_trigraph_ordering(
     codes: &[marque_ism::Trigraph],
     list_name: &str,
@@ -2484,14 +2589,28 @@ fn check_trigraph_ordering(
     severity: Severity,
     attrs: &IsmAttributes,
     block_span: Option<Span>,
+    citation: &'static str,
+    usa_first: bool,
 ) -> Option<Diagnostic> {
-    let sorted = canonicalize_trigraph_list(codes);
+    let sorted = canonicalize_trigraph_list(codes, usa_first);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
     if actual == sorted {
         return None;
     }
 
-    // Compute a span covering the entire country list (first → last trigraph).
+    // Compute the fix span. The kind differs by list type:
+    // - REL TO: `RelToTrigraph` is one token per country, so first→last
+    //   covers exactly the country-list region of the `RelToBlock`.
+    //   Fix `original`/`replacement` are the joined country strings —
+    //   clean splice.
+    // - JOINT: the parser emits a single `Classification` token
+    //   covering the whole block (e.g., `"JOINT S USA GBR AUS"`).
+    //   There is no per-country sub-token. A replacement of just the
+    //   joined country list would splice out the `JOINT <level>`
+    //   prefix and corrupt the marking. We therefore widen the JOINT
+    //   `replacement` to include the original `JOINT <level>` prefix
+    //   byte-for-byte, and set `original` to the full classification
+    //   token text to match `span`.
     let kind = if list_name == "REL TO" {
         TokenKind::RelToTrigraph
     } else {
@@ -2510,21 +2629,69 @@ fn check_trigraph_ordering(
         _ => Span::new(0, 0),
     };
 
-    // Separator for the list: REL TO uses ", "; JOINT/FGI use " ".
+    // Separator for the list: REL TO uses ", "; JOINT uses " ".
     let sep = if list_name == "REL TO" { ", " } else { " " };
-    let original = actual.join(sep);
-    let replacement = sorted.join(sep);
+    let joined_actual = actual.join(sep);
+    let joined_sorted = sorted.join(sep);
+
+    // Build span-matching `original` + `replacement`.
+    let (original, replacement) = if list_name == "REL TO" {
+        // REL TO span covers exactly the country list.
+        (joined_actual.clone(), joined_sorted.clone())
+    } else {
+        // JOINT span covers the full Classification token. Preserve
+        // the `JOINT <level>` prefix by anchoring on the first
+        // source-order country's position in the token text.
+        // `actual[0]` is a 3-letter trigraph; neither the keyword
+        // `JOINT` nor any valid Classification-level spelling
+        // (`TS`, `S`, `C`, `U`, `TOP SECRET`, `SECRET`,
+        // `CONFIDENTIAL`, `UNCLASSIFIED`, `RESTRICTED`) contains a
+        // trigraph as a substring, so the first occurrence of
+        // `actual[0]` in the token text is the start of the country
+        // list.
+        let classification_text = matching_spans
+            .first()
+            .map(|t| t.text.as_ref())
+            .unwrap_or("");
+        let first_country = actual[0];
+        let prefix_end = classification_text
+            .find(first_country)
+            .unwrap_or(classification_text.len());
+        let prefix = &classification_text[..prefix_end];
+        (
+            classification_text.to_owned(),
+            format!("{prefix}{joined_sorted}"),
+        )
+    };
+
+    // Message reports the country-list delta (not the full block
+    // text) so it stays readable regardless of list type. REL TO's
+    // "USA first when present" clause is only correct for REL TO;
+    // JOINT's pure-alpha rule has no USA carve-out in the source.
+    let message = if usa_first {
+        format!(
+            "{list_name} country codes must be alphabetically ordered \
+             (USA first when present): [{joined_actual}] → [{joined_sorted}]"
+        )
+    } else {
+        format!(
+            "{list_name} country codes must be alphabetically ordered: \
+             [{joined_actual}] → [{joined_sorted}]"
+        )
+    };
 
     Some(make_fix_diagnostic(FixDiagnosticParams {
         rule,
         severity,
         source: FixSource::BuiltinRule,
         span,
-        message: format!(
-            "{list_name} country codes must be alphabetically ordered \
-             (USA first when present): [{original}] → [{replacement}]"
-        ),
-        citation: "CAPCO-2016 §H.8",
+        message,
+        citation,
+        // Fix confidence is 1.0 — the sort is deterministic with
+        // exact trigraph matches (no fuzzy matching). When fuzzy
+        // matching lands in a future decoder phase, callers may want
+        // to plumb a lower per-candidate confidence through this
+        // helper; today the value is uniformly 1.0 for all list types.
         original,
         replacement,
         confidence: 1.0,
@@ -6140,6 +6307,218 @@ mod tests {
             fix.span.as_str(src.as_bytes()).unwrap(),
             "USA, GBR, AUS",
             "fix span must cover the full trigraph range inside the block"
+        );
+    }
+
+    // T035c-18: E020 standalone audit — per-branch citation lockdown
+    // and JOINT fix-shape assertion.
+
+    #[test]
+    fn e020_joint_fix_produces_pure_alpha_ordering() {
+        // JOINT ordering per §H.3 line 1258 is pure alphabetical —
+        // no USA-first carve-out. Input `USA GBR AUS` sorts to
+        // `AUS GBR USA`. The widespread IC practice of rendering USA
+        // first in JOINT lists is style convention and will be owned
+        // by a follow-up S003 `joint-usa-first` rule, not encoded into
+        // E020's correctness fix.
+        //
+        // E020's JOINT fix span covers the full Classification token
+        // (`JOINT S USA GBR AUS`). The replacement must therefore
+        // include the `JOINT S` prefix byte-for-byte — replacing with
+        // just the country list would corrupt the marking. This test
+        // asserts the span, original, and replacement shapes together
+        // so a regression that reverts to country-list-only replacement
+        // fails here.
+        let src = "//JOINT S USA GBR AUS//REL TO USA, AUS, GBR";
+        let diags = lint_banner(src);
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(
+            e020_joint.len(),
+            1,
+            "E020 must fire exactly once for JOINT: {diags:?}"
+        );
+        let fix = e020_joint[0].fix.as_ref().expect("E020 JOINT must have fix");
+
+        // Span must cover exactly the Classification token's bytes:
+        // `JOINT S USA GBR AUS` (no leading `//`, no trailing `//`).
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "JOINT S USA GBR AUS",
+            "JOINT fix span must cover the full Classification token"
+        );
+
+        // `original` must match the span's source slice byte-for-byte.
+        assert_eq!(
+            fix.original.as_ref(),
+            "JOINT S USA GBR AUS",
+            "FixProposal.original must equal the span's source bytes"
+        );
+
+        // `replacement` must preserve the `JOINT S` prefix and produce
+        // the pure-alpha-ordered country list.
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "JOINT S AUS GBR USA",
+            "JOINT fix replacement must preserve the `JOINT <level>` \
+             prefix and produce pure-alpha country order"
+        );
+
+        // Simulate applying the fix: splice `replacement` in place of
+        // `span`'s byte range. The resulting buffer must still start
+        // with `//JOINT S` — proving the fix does not corrupt the
+        // marking.
+        let mut buf = src.as_bytes().to_vec();
+        buf.splice(
+            fix.span.start..fix.span.end,
+            fix.replacement.as_ref().bytes(),
+        );
+        let applied = std::str::from_utf8(&buf).unwrap();
+        assert!(
+            applied.starts_with("//JOINT S "),
+            "applied fix must preserve the `//JOINT S ` banner prefix; \
+             got: {applied:?}"
+        );
+        assert!(
+            applied.contains("//JOINT S AUS GBR USA//"),
+            "applied fix must emit the pure-alpha country list between \
+             the expected `//` separators; got: {applied:?}"
+        );
+
+        // Message wording differs from REL TO: no "USA first when
+        // present" clause.
+        assert!(
+            !e020_joint[0]
+                .message
+                .contains("USA first when present"),
+            "JOINT message must NOT claim 'USA first' since §H.3 has \
+             no such carve-out; got: {:?}",
+            e020_joint[0].message
+        );
+    }
+
+    #[test]
+    fn e020_joint_fix_preserves_portion_form_level() {
+        // Regression guard for the JOINT prefix-preservation logic:
+        // with portion-form level `S` (single character), the
+        // `JOINT S ` prefix must still be preserved. The prior bug
+        // would have spliced `JOINT S` out entirely, leaving just
+        // `AUS GBR USA` between the `//` separators — a malformed
+        // marking.
+        let src = "//JOINT S GBR AUS USA";
+        let diags = lint_banner(src);
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(e020_joint.len(), 1);
+        let fix = e020_joint[0].fix.as_ref().expect("fix expected");
+        assert_eq!(fix.replacement.as_ref(), "JOINT S AUS GBR USA");
+        assert_eq!(fix.original.as_ref(), "JOINT S GBR AUS USA");
+    }
+
+    #[test]
+    fn e020_joint_does_not_fire_on_pure_alpha_list() {
+        // `AUS GBR USA` is the pure-alpha canonical JOINT order.
+        // E020 must stay silent even though USA is not first —
+        // firing here would re-introduce the style-as-correctness
+        // confusion the audit is correcting.
+        let diags = lint_banner("//JOINT S AUS GBR USA");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E020"),
+            "E020 must not fire on pure-alpha JOINT even when USA is \
+             last (style guidance is a separate follow-up rule): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e020_citations_have_no_stray_whitespace() {
+        // Guard against citation strings accidentally embedding
+        // multiple consecutive spaces — the previous impl used
+        // `\<newline>` line continuations with indented continuations.
+        // Rust normally strips those, but `concat!` is explicit and
+        // immune to any edge-case drift. This test fails loud if
+        // future editors reintroduce the pattern.
+        let rel_to_diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
+        let rel_to: Vec<_> = rel_to_diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020")
+            .collect();
+        assert_eq!(rel_to.len(), 1);
+        assert!(
+            !rel_to[0].citation.contains("  "),
+            "REL TO citation must not contain double spaces; got: {:?}",
+            rel_to[0].citation
+        );
+
+        let joint_diags = lint_banner("//JOINT S USA GBR AUS");
+        let joint: Vec<_> = joint_diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(joint.len(), 1);
+        assert!(
+            !joint[0].citation.contains("  "),
+            "JOINT citation must not contain double spaces; got: {:?}",
+            joint[0].citation
+        );
+    }
+
+    #[test]
+    fn e020_rel_to_cites_section_h8() {
+        // T035c-18: REL TO's ordering rule is authoritatively in
+        // §H.8 p150-151 line 3714. Previously cited as bare `§H.8`.
+        // Lock the tightened pointer so a regression to a whole-section
+        // citation fails here rather than silently drifting.
+        let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        assert!(
+            e020[0].citation.contains("§H.8 p150-151 line 3714"),
+            "REL TO citation must pin §H.8 p150-151 line 3714; got: {:?}",
+            e020[0].citation
+        );
+    }
+
+    #[test]
+    fn e020_joint_cites_section_h3_not_h8() {
+        // T035c-18: JOINT's ordering rule is in §H.3 (its own template),
+        // NOT §H.8 (REL TO's template). Previously both paths cited
+        // bare `§H.8`, which was source-incorrect for JOINT. Lock that
+        // JOINT now cites its own section.
+        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(e020_joint.len(), 1);
+        assert!(
+            e020_joint[0].citation.contains("§H.3 p56 line 1258"),
+            "JOINT citation must pin §H.3 p56 line 1258; got: {:?}",
+            e020_joint[0].citation
+        );
+        assert!(
+            !e020_joint[0].citation.contains("§H.8"),
+            "JOINT citation must NOT reference §H.8 (REL TO template); got: {:?}",
+            e020_joint[0].citation
+        );
+    }
+
+    #[test]
+    fn e020_multi_block_suppression_cites_section_h8() {
+        // The multi-block no-fix path builds its diagnostic directly
+        // rather than going through `check_trigraph_ordering`, so it
+        // has a separate citation-emission site that must also carry
+        // the tightened §H.8 p150-151 line 3714 pointer.
+        let diags = lint_banner("SECRET//REL TO USA, GBR//NF//REL TO AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        assert!(
+            e020[0].citation.contains("§H.8 p150-151 line 3714"),
+            "multi-block E020 citation must pin §H.8 p150-151 line 3714; got: {:?}",
+            e020[0].citation
         );
     }
 
