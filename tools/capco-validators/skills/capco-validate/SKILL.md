@@ -18,7 +18,7 @@ Invoke a validator whenever you:
 
 **You cannot skip validation and maintain citation integrity.** If a validator flags an issue, the rule does not ship.
 
-## The 14 Validator Agents
+## The 13 Validator Agents
 
 ### Invoke these for category-specific questions:
 
