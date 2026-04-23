@@ -271,6 +271,31 @@ impl Rule for PortionMarkInBannerRule {
 // Rule: E002 — Missing USA in REL TO trigraph list
 // ---------------------------------------------------------------------------
 
+/// E002 enforces two invariants from the REL TO marking template in
+/// CAPCO-2016 §H.8 (p150–151, "Additional Marking Instructions"):
+///
+/// - Line 3713: "'USA' must always appear first whenever the REL TO string
+///   is used to communicate release decisions either by the US or a Non-US
+///   entity."
+/// - Line 3714: "After 'USA', list the required one or more trigraph country
+///   codes in alphabetical order followed by tetragraph codes listed in
+///   alphabetical order. Each code is separated by a comma and a space."
+///
+/// The fix produces the fully canonical REL TO list (USA first + remaining
+/// trigraphs alphabetical) in a single pass. This absorbs what E020 would
+/// otherwise catch on a second pass — E020's USA-first gate skips the rule
+/// when E002 is firing, so if E002's fix preserved original input order the
+/// output would still carry a latent alphabetical-ordering violation. The
+/// 0.97 confidence is predicated on single-pass canonicalization.
+///
+/// Scope boundaries:
+/// - Tetragraph alphabetization is deferred: `Trigraph` is 3-byte only
+///   (see `marque_ism::Trigraph` doc). When the broader `CountryCode` type
+///   lands, E002 should be extended to sort trigraphs before tetragraphs
+///   per line 3714.
+/// - "REL TO USA" alone (line 3715, a non-authorized marking with no
+///   following country codes) is out of scope. E002 does not fire when
+///   USA is present and first; a separate rule is needed for that case.
 struct MissingUsaTrigraphRule;
 
 impl Rule for MissingUsaTrigraphRule {
@@ -306,13 +331,21 @@ impl Rule for MissingUsaTrigraphRule {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Build corrected list: USA first, then the rest in original order.
-        let mut fixed_parts: Vec<&str> = vec!["USA"];
-        for t in attrs.rel_to.iter() {
-            if *t != marque_ism::Trigraph::USA {
-                fixed_parts.push(t.as_str());
-            }
-        }
+        // Build the fully canonical list: USA first, then non-USA entries
+        // sorted alphabetically per CAPCO-2016 §H.8 line 3714. Producing
+        // the canonical form in a single pass is required because E020's
+        // alphabetical-ordering check gates on `rel_to[0] == USA` and is
+        // therefore silent whenever E002 fires.
+        let mut rest: Vec<&str> = attrs
+            .rel_to
+            .iter()
+            .filter(|t| **t != marque_ism::Trigraph::USA)
+            .map(|t| t.as_str())
+            .collect();
+        rest.sort_unstable();
+        let mut fixed_parts: Vec<&str> = Vec::with_capacity(rest.len() + 1);
+        fixed_parts.push("USA");
+        fixed_parts.extend(rest);
         let fixed = fixed_parts.join(", ");
 
         let message = if !has_usa {
@@ -339,7 +372,7 @@ impl Rule for MissingUsaTrigraphRule {
             source: FixSource::BuiltinRule,
             span,
             message: message.to_owned(),
-            citation: "CAPCO-2016 §H.8",
+            citation: "CAPCO-2016 §H.8 (REL TO, p150–151)",
             original: current,
             replacement: fixed,
             confidence: 0.97, // per spec T031
@@ -1686,7 +1719,10 @@ impl Rule for CountryCodeOrderingRule {
         let mut diagnostics = Vec::new();
 
         // Check REL TO ordering. Skip if USA is missing or not first —
-        // E002 handles that case and its fix implicitly corrects ordering.
+        // E002 fires for those cases and its fix produces the fully
+        // canonical list (USA first, non-USA entries alphabetical per
+        // CAPCO-2016 §H.8 line 3714), so E020's concern is already
+        // absorbed when E002 is active.
         if attrs.rel_to.len() >= 2
             && attrs
                 .rel_to
@@ -3381,6 +3417,69 @@ mod tests {
         // Span points at the first trigraph in the list.
         let src = b"SECRET//REL TO GBR, AUS";
         assert_eq!(e002[0].span.as_str(src).unwrap(), "GBR");
+    }
+
+    // T035c-10: fix canonicalization — E002's replacement must produce
+    // the fully canonical REL TO list (USA first + non-USA entries
+    // alphabetical per CAPCO-2016 §H.8 line 3714) in a single pass. This
+    // is required because E020 gates on `rel_to[0] == USA` and so is
+    // silent whenever E002 fires; if E002's fix preserved input order,
+    // the output would still carry a latent alphabetical-ordering
+    // violation that only a second pass would catch.
+
+    #[test]
+    fn e002_fix_sorts_non_usa_trigraphs_when_usa_missing() {
+        // USA absent and non-USA entries in non-alphabetical order.
+        // Canonical form: USA, AUS, GBR.
+        let diags = lint_banner("SECRET//REL TO GBR, AUS");
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a FixProposal");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 must produce canonical REL TO (USA first + alphabetical rest)"
+        );
+    }
+
+    #[test]
+    fn e002_fix_sorts_non_usa_trigraphs_when_usa_misplaced() {
+        // USA present but not first, and non-USA entries unsorted.
+        // Canonical form: USA, AUS, GBR.
+        let diags = lint_banner("SECRET//REL TO GBR, USA, AUS");
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a FixProposal");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 must produce canonical REL TO in one pass: {}",
+            fix.replacement.as_ref()
+        );
+    }
+
+    #[test]
+    fn e002_fix_output_does_not_trigger_e020() {
+        // Apply E002's fix as the new input and confirm E020 stays silent —
+        // this is the invariant that lets E020 gate on `rel_to[0] == USA`.
+        let diags_round1 = lint_banner("CONFIDENTIAL//REL TO FRA, DEU");
+        let e002: Vec<_> = diags_round1
+            .iter()
+            .filter(|d| d.rule.as_str() == "E002")
+            .collect();
+        assert_eq!(e002.len(), 1);
+        let fixed = e002[0].fix.as_ref().unwrap().replacement.as_ref();
+        assert_eq!(fixed, "USA, DEU, FRA");
+
+        // Round 2: feed the canonicalized REL TO back through the linter;
+        // neither E002 nor E020 should fire on the rewritten banner.
+        let diags_round2 = lint_banner("CONFIDENTIAL//REL TO USA, DEU, FRA");
+        assert!(
+            diags_round2
+                .iter()
+                .all(|d| d.rule.as_str() != "E002" && d.rule.as_str() != "E020"),
+            "E002's canonical output must not fire E002 or E020: {diags_round2:?}"
+        );
     }
 
     #[test]
