@@ -2598,7 +2598,19 @@ fn check_trigraph_ordering(
         return None;
     }
 
-    // Compute a span covering the entire country list (first → last trigraph).
+    // Compute the fix span. The kind differs by list type:
+    // - REL TO: `RelToTrigraph` is one token per country, so first→last
+    //   covers exactly the country-list region of the `RelToBlock`.
+    //   Fix `original`/`replacement` are the joined country strings —
+    //   clean splice.
+    // - JOINT: the parser emits a single `Classification` token
+    //   covering the whole block (e.g., `"JOINT S USA GBR AUS"`).
+    //   There is no per-country sub-token. A replacement of just the
+    //   joined country list would splice out the `JOINT <level>`
+    //   prefix and corrupt the marking. We therefore widen the JOINT
+    //   `replacement` to include the original `JOINT <level>` prefix
+    //   byte-for-byte, and set `original` to the full classification
+    //   token text to match `span`.
     let kind = if list_name == "REL TO" {
         TokenKind::RelToTrigraph
     } else {
@@ -2619,21 +2631,52 @@ fn check_trigraph_ordering(
 
     // Separator for the list: REL TO uses ", "; JOINT uses " ".
     let sep = if list_name == "REL TO" { ", " } else { " " };
-    let original = actual.join(sep);
-    let replacement = sorted.join(sep);
+    let joined_actual = actual.join(sep);
+    let joined_sorted = sorted.join(sep);
 
-    // Message matches the canonicalization: REL TO's "USA first when
-    // present" clause is only correct for REL TO; JOINT's pure-alpha
-    // rule has no USA carve-out in the source.
+    // Build span-matching `original` + `replacement`.
+    let (original, replacement) = if list_name == "REL TO" {
+        // REL TO span covers exactly the country list.
+        (joined_actual.clone(), joined_sorted.clone())
+    } else {
+        // JOINT span covers the full Classification token. Preserve
+        // the `JOINT <level>` prefix by anchoring on the first
+        // source-order country's position in the token text.
+        // `actual[0]` is a 3-letter trigraph; neither the keyword
+        // `JOINT` nor any valid Classification-level spelling
+        // (`TS`, `S`, `C`, `U`, `TOP SECRET`, `SECRET`,
+        // `CONFIDENTIAL`, `UNCLASSIFIED`, `RESTRICTED`) contains a
+        // trigraph as a substring, so the first occurrence of
+        // `actual[0]` in the token text is the start of the country
+        // list.
+        let classification_text = matching_spans
+            .first()
+            .map(|t| t.text.as_ref())
+            .unwrap_or("");
+        let first_country = actual[0];
+        let prefix_end = classification_text
+            .find(first_country)
+            .unwrap_or(classification_text.len());
+        let prefix = &classification_text[..prefix_end];
+        (
+            classification_text.to_owned(),
+            format!("{prefix}{joined_sorted}"),
+        )
+    };
+
+    // Message reports the country-list delta (not the full block
+    // text) so it stays readable regardless of list type. REL TO's
+    // "USA first when present" clause is only correct for REL TO;
+    // JOINT's pure-alpha rule has no USA carve-out in the source.
     let message = if usa_first {
         format!(
             "{list_name} country codes must be alphabetically ordered \
-             (USA first when present): [{original}] → [{replacement}]"
+             (USA first when present): [{joined_actual}] → [{joined_sorted}]"
         )
     } else {
         format!(
             "{list_name} country codes must be alphabetically ordered: \
-             [{original}] → [{replacement}]"
+             [{joined_actual}] → [{joined_sorted}]"
         )
     };
 
@@ -6278,7 +6321,16 @@ mod tests {
         // first in JOINT lists is style convention and will be owned
         // by a follow-up S003 `joint-usa-first` rule, not encoded into
         // E020's correctness fix.
-        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        //
+        // E020's JOINT fix span covers the full Classification token
+        // (`JOINT S USA GBR AUS`). The replacement must therefore
+        // include the `JOINT S` prefix byte-for-byte — replacing with
+        // just the country list would corrupt the marking. This test
+        // asserts the span, original, and replacement shapes together
+        // so a regression that reverts to country-list-only replacement
+        // fails here.
+        let src = "//JOINT S USA GBR AUS//REL TO USA, AUS, GBR";
+        let diags = lint_banner(src);
         let e020_joint: Vec<_> = diags
             .iter()
             .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
@@ -6289,11 +6341,52 @@ mod tests {
             "E020 must fire exactly once for JOINT: {diags:?}"
         );
         let fix = e020_joint[0].fix.as_ref().expect("E020 JOINT must have fix");
+
+        // Span must cover exactly the Classification token's bytes:
+        // `JOINT S USA GBR AUS` (no leading `//`, no trailing `//`).
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "JOINT S USA GBR AUS",
+            "JOINT fix span must cover the full Classification token"
+        );
+
+        // `original` must match the span's source slice byte-for-byte.
+        assert_eq!(
+            fix.original.as_ref(),
+            "JOINT S USA GBR AUS",
+            "FixProposal.original must equal the span's source bytes"
+        );
+
+        // `replacement` must preserve the `JOINT S` prefix and produce
+        // the pure-alpha-ordered country list.
         assert_eq!(
             fix.replacement.as_ref(),
-            "AUS GBR USA",
-            "JOINT fix must produce pure-alpha order (no USA-first per §H.3)"
+            "JOINT S AUS GBR USA",
+            "JOINT fix replacement must preserve the `JOINT <level>` \
+             prefix and produce pure-alpha country order"
         );
+
+        // Simulate applying the fix: splice `replacement` in place of
+        // `span`'s byte range. The resulting buffer must still start
+        // with `//JOINT S` — proving the fix does not corrupt the
+        // marking.
+        let mut buf = src.as_bytes().to_vec();
+        buf.splice(
+            fix.span.start..fix.span.end,
+            fix.replacement.as_ref().bytes(),
+        );
+        let applied = std::str::from_utf8(&buf).unwrap();
+        assert!(
+            applied.starts_with("//JOINT S "),
+            "applied fix must preserve the `//JOINT S ` banner prefix; \
+             got: {applied:?}"
+        );
+        assert!(
+            applied.contains("//JOINT S AUS GBR USA//"),
+            "applied fix must emit the pure-alpha country list between \
+             the expected `//` separators; got: {applied:?}"
+        );
+
         // Message wording differs from REL TO: no "USA first when
         // present" clause.
         assert!(
@@ -6304,6 +6397,26 @@ mod tests {
              no such carve-out; got: {:?}",
             e020_joint[0].message
         );
+    }
+
+    #[test]
+    fn e020_joint_fix_preserves_portion_form_level() {
+        // Regression guard for the JOINT prefix-preservation logic:
+        // with portion-form level `S` (single character), the
+        // `JOINT S ` prefix must still be preserved. The prior bug
+        // would have spliced `JOINT S` out entirely, leaving just
+        // `AUS GBR USA` between the `//` separators — a malformed
+        // marking.
+        let src = "//JOINT S GBR AUS USA";
+        let diags = lint_banner(src);
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(e020_joint.len(), 1);
+        let fix = e020_joint[0].fix.as_ref().expect("fix expected");
+        assert_eq!(fix.replacement.as_ref(), "JOINT S AUS GBR USA");
+        assert_eq!(fix.original.as_ref(), "JOINT S GBR AUS USA");
     }
 
     #[test]
