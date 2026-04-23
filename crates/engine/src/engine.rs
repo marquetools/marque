@@ -1441,8 +1441,9 @@ mod tests {
     #[test]
     fn suggest_closest_prefers_smaller_distance() {
         let cands = ["E001", "E002", "E010"];
-        // "E00l" has dist 1 to E001, dist 2 to E002 (two edits: 0→0, l→2),
-        // dist 2 to E010 (two edits). So the suggestion must be E001.
+        // "E00l" has dist 1 to E001 and dist 1 to E002 (single substitution),
+        // and dist 2 to E010. E001 should win the tie-break because it appears
+        // first among the equally close candidates.
         assert_eq!(
             super::suggest_closest("E00l", cands.iter().copied()),
             Some("E001".to_owned())
