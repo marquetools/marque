@@ -960,13 +960,55 @@ impl NonIcDissem {
 
     /// Returns true if this control propagates to classified banners.
     ///
-    /// Most non-IC dissem controls are stripped from banners in classified
-    /// documents. These exceptions propagate:
-    /// - LIMDIS: NGA Title 10 marking, appears in classified banners
-    /// - LES: propagates to banners; LES-NF propagates as NOFORN//LES
-    /// - SSI: propagates to banners
+    /// Authoritative source: `crates/capco/docs/CAPCO-2016.md` §H.9
+    /// "Precedence Rules for Banner Line Guidance" for each marking.
+    /// The per-marking rows below cite the specific line of the vendored
+    /// manual.
+    ///
+    /// | Marking  | Propagates | Source (CAPCO-2016 §H.9)                                                                                            |
+    /// |----------|------------|----------------------------------------------------------------------------------------------------------------------|
+    /// | LIMDIS   | no         | line 4180: "When a document contains LIMDIS and classified portions, LIMDIS is not used in the banner line."         |
+    /// | EXDIS    | yes        | line 4240: "If EXDIS is contained in any portion … EXDIS must appear in the banner line." Example banner: `SECRET//NOFORN//EXDIS` |
+    /// | NODIS    | yes        | line 4300: "If NODIS is contained in any portion of a document, it must appear in the banner line." Example banner: `SECRET//NOFORN//NODIS` |
+    /// | SBU      | no         | line 4358: "When a document contains SBU and classified portions, SBU is not used in the banner line."               |
+    /// | SBU-NF   | no (†)     | line 4408: SBU NOFORN "Applicable only to unclassified information." (The §H.9 notional example on p179 shows a `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF absent from banner.) |
+    /// | LES      | yes        | line 4479: "The LES marking always appears in the banner line if contained in any portion, regardless of classification level." |
+    /// | LES-NF   | yes (*)    | line 4557: "The LES marking always appears in the banner line if LES information (either LES or LES NOFORN) is contained in the document, regardless of the document's classification level." |
+    /// | SSI      | yes        | line 4651: "If the SSI marking is contained in any portion of a document it must appear in the banner line, regardless of the document's overall classification level." |
+    ///
+    /// (*) LES-NF carries a §H.9 canonicalization that is **not modeled
+    ///     here**: in classified docs, `LES NOFORN` → `LES` at the banner
+    ///     with NOFORN split into the dissem block (line 4558: "the 'LES'
+    ///     marking is used in the banner line and the NOFORN marking is
+    ///     applied as a Dissemination Control Marking. For example:
+    ///     `SECRET//NOFORN//LES`."). The split itself is handled by
+    ///     [`crate::PageContext::expected_non_ic_dissem`]; this predicate
+    ///     only answers the binary "does the marking appear in the
+    ///     banner at all?" question, which is what W003 consumes.
+    ///     Treating `SECRET//LES NOFORN` as non-canonical (so that the
+    ///     canonicalization becomes fixable) is a separate page-rewrite
+    ///     concern, not a W003 concern.
+    ///
+    /// (†) "Does not propagate" for SBU-NF refers to the **SBU** half of
+    ///     the marking — the literal `SBU NOFORN` banner form is
+    ///     non-canonical in a classified document per §H.9 line 4408
+    ///     ("applicable only to unclassified information"). The **NOFORN
+    ///     half does propagate** via
+    ///     [`crate::PageContext::expected_non_ic_dissem`], which splits a
+    ///     portion-level `SBU-NF` into `SBU + NF-flag` and emits the
+    ///     resulting NOFORN into the classified banner's dissem block.
+    ///     So a document with a `(U//SBU-NF)` portion rolls up to a
+    ///     `SECRET//NOFORN` banner (NOFORN present, SBU dropped), not
+    ///     `SECRET//SBU NOFORN`. W003 therefore fires on the literal
+    ///     `SECRET//SBU NOFORN` banner input because that surface form
+    ///     is the non-canonical one, not because NOFORN is disallowed.
     pub fn propagates_to_classified_banner(self) -> bool {
-        matches!(self, Self::Limdis | Self::Les | Self::LesNf | Self::Ssi)
+        match self {
+            // Do NOT propagate — banner-absent in classified documents.
+            Self::Limdis | Self::Sbu | Self::SbuNf => false,
+            // DO propagate — "must appear in the banner line" per §H.9.
+            Self::Exdis | Self::Nodis | Self::Les | Self::LesNf | Self::Ssi => true,
+        }
     }
 
     /// All valid values.

@@ -68,7 +68,7 @@ pub enum ConfigError {
     /// Rule severity string in config is not one of the recognized values.
     #[error(
         "rule {rule:?} has unrecognized severity {value:?} — expected one of \
-         \"off\", \"warn\", \"error\", \"fix\""
+         \"off\", \"info\", \"warn\", \"error\", \"fix\""
     )]
     UnknownSeverity { rule: String, value: String },
 }
@@ -337,8 +337,8 @@ fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
 
 fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
     // H-6: validate every severity override at load time. A typo like
-    // `banner-abbreviation = "err"` must fail loudly, not silently fall back
-    // to the rule default.
+    // `E001 = "err"` must fail loudly, not silently fall back to the rule
+    // default.
     for (rule, value) in &file.rules {
         if Severity::parse_config(value).is_none() {
             return Err(ConfigError::UnknownSeverity {

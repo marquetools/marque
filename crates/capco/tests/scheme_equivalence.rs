@@ -591,6 +591,135 @@ fn e015_does_not_fire_on_dual_classification() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// T035b regressions — E017/E018/E019 retirement + E036 addition
+// ---------------------------------------------------------------------------
+//
+// CAPCO §H.3 line 4140 permits JOINT with SCI (excluding HCS), SAP,
+// AEA, FGI, IC and non-IC dissem controls (excluding NOFORN). Line
+// 4146 names the two hard exclusions: HCS and NOFORN. The legacy
+// E017/E018/E019 rules broadly forbade JOINT+FGI, JOINT+IC dissem
+// (except REL TO), and JOINT+non-IC dissem — all over-restrictive.
+// T035b retired them and added the narrowed E036 for the HCS case.
+// JOINT+NOFORN is covered indirectly by `capco/noforn-conflicts-
+// rel-to` + E014's REL TO requirement.
+
+#[test]
+fn e036_fires_on_joint_with_bare_hcs() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+    }));
+    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    // Structural HCS marking (bare: no compartments).
+    attrs.sci_markings = vec![SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Hcs),
+        Box::<[SciCompartment]>::from(Vec::new()),
+        None,
+    )]
+    .into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E036/joint-conflicts-hcs"),
+        "E036 must fire on JOINT+HCS per §H.3 line 4146; got: {violations:?}"
+    );
+}
+
+#[test]
+fn e036_fires_on_joint_with_hcs_p() {
+    // §H.3 line 4146 "HCS markings" is plural — covers HCS-P/HCS-O
+    // too. `TOK_HCS` in satisfies_attrs matches Hcs|HcsO|HcsP.
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+    }));
+    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.sci_controls = vec![SciControl::HcsP].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E036/joint-conflicts-hcs"),
+        "E036 must fire on JOINT+HCS-P; got: {violations:?}"
+    );
+}
+
+#[test]
+fn e036_does_not_fire_on_joint_without_hcs() {
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+    }));
+    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    // SI is permitted with JOINT (§H.3 line 4140 says SCI "excluding
+    // HCS" is allowed).
+    attrs.sci_controls = vec![SciControl::Si].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "E036/joint-conflicts-hcs"),
+        "E036 must NOT fire on JOINT+SI (SCI sans HCS is permitted); got: {violations:?}"
+    );
+}
+
+#[test]
+fn e036_does_not_fire_on_non_joint_with_hcs() {
+    // US TS//HCS-P is valid. E036 is JOINT-specific.
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    let mut attrs = IsmAttributes::default();
+    attrs.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    attrs.sci_markings = vec![SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Hcs),
+        vec![SciCompartment::new(
+            "P".to_owned().into_boxed_str(),
+            Box::new([]),
+        )]
+        .into(),
+        None,
+    )]
+    .into();
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "E036/joint-conflicts-hcs"),
+        "E036 must not fire on US+HCS (rule is JOINT-specific); got: {violations:?}"
+    );
+}
+
+#[test]
+fn no_legacy_e017_e018_e019_constraints_in_catalog() {
+    // Catalog regression: the retired rule IDs must not reappear.
+    // If someone re-adds them (e.g. via a revert), this test
+    // catches it before byte-identity drift sets in.
+    let scheme = CapcoScheme::new();
+    let labels: Vec<&str> = scheme.constraints().iter().map(|c| c.name()).collect();
+    for retired in ["E017/", "E018/", "E019/"] {
+        assert!(
+            !labels.iter().any(|l| l.starts_with(retired)),
+            "retired rule {retired} must not have a catalog entry; got: {labels:?}"
+        );
+    }
+}
+
 #[test]
 fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
     let mut attrs = IsmAttributes::default();

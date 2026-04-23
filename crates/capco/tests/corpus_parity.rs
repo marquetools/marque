@@ -42,23 +42,24 @@ fn engine() -> Engine {
 }
 
 #[test]
-fn phase_3_rule_count_matches_pre_migration_baseline() {
-    // Phase 3 keeps the 39-rule baseline intact. The 12 declarative
-    // `Constraint` entries added by T033 live in the scheme's
-    // constraint catalog, not as registered rules — they will
-    // subsume rule impls only when the engine rewires lint to drive
-    // evaluation through `scheme.validate()` (Phase 3b / Phase 4).
+fn rule_count_reflects_t035b_net_change() {
+    // T035a: 1-for-1 swap of 11 hand-written rules → 11 declarative
+    // wrappers. Count stayed at 39.
+    //
+    // T035b: retired 3 over-restrictive JOINT rules (E017, E018,
+    // E019) that contradicted CAPCO-2016 §H.3 line 4140; added 1
+    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 line
+    // 4146. Net: 39 - 3 + 1 = 37.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        39,
-        "Phase 3 preserves the pre-migration rule count; retirement \
-         (T035) is deferred so the corpus diff stays byte-identical \
-         while the declarative catalog comes online. Adjust this \
-         assertion only when rule registration actually changes."
+        37,
+        "T035b rule count: retired E017/E018/E019, added E036. \
+         Adjust this assertion only when rule registration actually \
+         changes."
     );
 }
 
