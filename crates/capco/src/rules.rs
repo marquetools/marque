@@ -15,7 +15,7 @@
 //!   E002 = REL TO missing USA trigraph (T031)
 //!   E003 = misordered banner blocks (T032)
 //!   E004 = separator-count normalization (T033)
-//!   E005 = declassification misplaced (banner or portion; belongs in CAB)
+//!   E005 = declassification misplaced (banner or portion; belongs in CAB) (T034)
 //!   E006 = deprecated dissem control (T035)
 //!   E007 = X-shorthand declass date (T036)
 //!   E008 = unrecognized token (T037)
