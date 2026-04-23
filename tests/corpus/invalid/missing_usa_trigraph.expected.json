@@ -1,5 +1,5 @@
 {
   "diagnostics": [
-    {"rule": "E002", "span": {"start": 15, "end": 18}}
+    {"rule": "E002", "span": {"start": 15, "end": 23}}
   ]
 }
