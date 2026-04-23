@@ -453,7 +453,7 @@ impl Rule for MisorderedBlocksRule {
             span,
             "marking blocks are out of CAPCO order \
              (expected: Classification // SCI // SAR // AEA // FGI // \
-             Dissem // Non-IC)",
+             Dissem // REL TO // Non-IC)",
             "CAPCO-2016 §A.6 p15-16",
             fix,
         )]
@@ -464,8 +464,8 @@ impl Rule for MisorderedBlocksRule {
 /// that don't participate in block ordering (separators, declass dates,
 /// unknown tokens).
 ///
-/// CAPCO §A.6 lines 781-841 enumerate six ordered marking blocks following
-/// the classification:
+/// CAPCO §A.6 lines 770-841 define seven ordered marking blocks, starting
+/// with the classification (lines 770-779):
 ///
 /// | Ordinal | Block                          | §A.6 line |
 /// |---------|--------------------------------|-----------|
@@ -3394,6 +3394,19 @@ mod tests {
             1,
             "E003 must fire when REL TO precedes AEA (RD): {diags:?}"
         );
+        // Verify `reorder_marking` emits the AEA block before REL TO.
+        let fix = e003[0].fix.as_ref().expect("E003 must carry a FixProposal");
+        let replacement = fix.replacement.as_ref();
+        let rd_idx = replacement
+            .find("RD")
+            .expect("reordered output must contain RD");
+        let rel_idx = replacement
+            .find("REL TO")
+            .expect("reordered output must contain REL TO");
+        assert!(
+            rd_idx < rel_idx,
+            "AEA (RD) must precede REL TO in reordered output: {replacement:?}"
+        );
     }
 
     #[test]
@@ -3406,6 +3419,19 @@ mod tests {
             e003.len(),
             1,
             "E003 must fire when dissem precedes FGI: {diags:?}"
+        );
+        // Verify `reorder_marking` emits the FGI block before Dissem.
+        let fix = e003[0].fix.as_ref().expect("E003 must carry a FixProposal");
+        let replacement = fix.replacement.as_ref();
+        let fgi_idx = replacement
+            .find("FGI")
+            .expect("reordered output must contain FGI");
+        let nf_idx = replacement
+            .find("NOFORN")
+            .expect("reordered output must contain NOFORN");
+        assert!(
+            fgi_idx < nf_idx,
+            "FGI must precede Dissem (NOFORN) in reordered output: {replacement:?}"
         );
     }
 
