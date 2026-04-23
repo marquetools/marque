@@ -2820,13 +2820,29 @@ impl Rule for SciCompartmentOrderRule {
 /// Per CAPCO-2016 §A.6 p16 + §H.4 p61: unpublished (agency-allocated) SCI
 /// control systems are legitimate — the manual describes ODNI/P&S's
 /// unpublished registry and explicitly permits these markings. This rule
-/// exists purely for audit visibility: it surfaces each Custom control
-/// identifier so a classifier can verify the allocation is registered.
+/// surfaces each Custom control identifier so a classifier can verify the
+/// allocation is registered.
 ///
-/// Severity is `Off` by default (the `Severity` enum has no Info variant
-/// and the FR-008 invariant makes Off non-firing in the engine). Sites
-/// that want the audit trail must opt in via `.marque.toml` by setting
-/// `sci-custom-control-info = "warn"`. No fix is offered.
+/// # Severity: Warn (default)
+///
+/// Field experience: the four spelled-out SCI controls in CAPCO (SI, TK,
+/// RSV, HCS) account for the vast majority (>99%) of real-world SCI
+/// control usage. Seeing an unpublished control is more likely a typo,
+/// stale legacy marking, or unregistered use than a valid agency
+/// allocation. `Warn` reflects that rarity without making it
+/// error-level by default. (Note: `Warn` still produces a non-zero
+/// CLI exit via `EX_DIAG_WARN`, so orgs that treat any warning as
+/// CI-blocking should configure `E034 = "info"` if they want
+/// audit-visibility only.)
+///
+/// T035c-2 landed the `Severity::Info` variant and dropped the earlier
+/// `Severity::Off` workaround. Previously, the rule emitted `Diagnostic`
+/// values at `Severity::Off` — a state `Principle IV` declares
+/// unrepresentable — and relied on the test harness bypassing
+/// engine-level severity filtering to observe the diagnostics. That was
+/// a constitutional-invariant violation. Users who want informational
+/// (non-warn) treatment can configure `E034 = "info"` in `.marque.toml`;
+/// users who want it silent can configure `E034 = "off"`.
 struct SciCustomControlInfoRule;
 
 impl Rule for SciCustomControlInfoRule {
@@ -2837,10 +2853,7 @@ impl Rule for SciCustomControlInfoRule {
         "sci-custom-control-info"
     }
     fn default_severity(&self) -> Severity {
-        // Shipped as Off pending an Info severity; users opt in via config.
-        // The test harness bypasses engine-level severity filtering so unit
-        // tests can still assert this rule fires on matching input.
-        Severity::Off
+        Severity::Warn
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -4516,7 +4529,9 @@ mod tests {
             "E034 must fire on custom control 123: {diags:?}"
         );
         assert!(e034[0].fix.is_none(), "E034 must not propose a fix");
-        assert_eq!(e034[0].severity, marque_rules::Severity::Off);
+        // T035c-2: E034 now defaults to Warn (was Off with a harness
+        // workaround). Info is available as a config-opt-in.
+        assert_eq!(e034[0].severity, marque_rules::Severity::Warn);
         assert!(e034[0].message.contains("unpublished SCI control system"));
     }
 

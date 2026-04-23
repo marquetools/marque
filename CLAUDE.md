@@ -170,7 +170,7 @@ LMDB (`heed` crate) at `.marque/cache.lmdb`. Cache key = `blake3(content) ++ sch
 version = "2023.1"
 
 [rules]
-E001 = "fix"                   # portion-mark-in-banner; off | warn | error | fix
+E001 = "fix"                   # portion-mark-in-banner; off | info | warn | error | fix
 E002 = "fix"                   # missing-usa-trigraph
 
 [corrections]
