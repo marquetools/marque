@@ -1070,6 +1070,33 @@ fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
     true
 }
 
+/// Whether an `Unknown` token represents a repeated SAR block that E030
+/// will pick up. Mirrors E030's actual preconditions (see
+/// `SarIndicatorRepeatRule::check`):
+///   - A first SAR parsed successfully (`attrs.sar_markings.is_some()`).
+///   - The Unknown text starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
+///   - The suffix after the prefix is non-empty (E030 skips empties at
+///     rules.rs:2312).
+///
+/// When any of these fails, E008 must fire — the token is not something
+/// E030 will surface. Without this gate, a malformed first SAR like
+/// `SAR-` (empty program) would be silently dropped: E030 early-exits
+/// on `sar_markings.is_none()`, and E008's prefix-only suppression
+/// would swallow it.
+fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
+    if !has_first_sar {
+        return false;
+    }
+    let suffix = if let Some(rest) = text.strip_prefix("SAR-") {
+        rest
+    } else if let Some(rest) = text.strip_prefix("SPECIAL ACCESS REQUIRED-") {
+        rest
+    } else {
+        return false;
+    };
+    !suffix.is_empty()
+}
+
 // ---------------------------------------------------------------------------
 // Rule: E008 — Unrecognized token inside marking
 // ---------------------------------------------------------------------------
@@ -1094,11 +1121,20 @@ fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
 /// 2. **X-shorthand pattern** — any `\d+X\d+(-[A-Z]+)?-` shape the
 ///    seed table does not enumerate (e.g., `25X2-`, `25X9-`). E007
 ///    catches these via its pattern fallback.
-/// 3. **`SAR-` prefix** — a second SAR category block that the
-///    parser tagged `Unknown` so E030 (sar-indicator-repeat) can
-///    flag the duplicate per §H.5.
-/// 4. **`SPECIAL ACCESS REQUIRED-` prefix** — same as (3) but for the
-///    spelled-out SAR category indicator.
+/// 3. **Repeated SAR block** — when a first SAR parsed successfully
+///    into `attrs.sar_markings`, the parser tags every subsequent
+///    same-marking SAR block as `Unknown` whose text starts with
+///    `SAR-` or `SPECIAL ACCESS REQUIRED-` AND has a non-empty
+///    suffix. E030 (sar-indicator-repeat) owns those; E008 steps
+///    aside. The suppression predicate mirrors E030's actual
+///    preconditions (see `SarIndicatorRepeatRule::check` at
+///    rules.rs:2294 and 2312) so a malformed FIRST SAR block —
+///    which leaves `sar_markings = None` or has an empty suffix —
+///    still fires E008. Without this tightening a marking like
+///    `SECRET//SAR-` would be silently dropped: the first SAR fails
+///    grammar (no `SarMarking` produced), E008's old prefix-only
+///    suppression matched anyway, and E030 early-exited on the
+///    `is_none()` gate.
 ///
 /// Malformed SCI-shaped tokens the structural subparser rejected
 /// (e.g., `SI-`, `SI--G`) DO fire E008 — users see a real error,
@@ -1117,6 +1153,12 @@ impl Rule for UnknownTokenRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Precompute whether a first SAR block parsed successfully. The
+        // repeated-SAR suppression path below must only fire when E030's
+        // own preconditions are met; otherwise a malformed FIRST SAR
+        // block would be silently dropped (E030 early-exits, E008
+        // suppresses). See rules.rs:2294 and 2312 for E030's gates.
+        let has_first_sar = attrs.sar_markings.is_some();
         attrs
             .token_spans
             .iter()
@@ -1126,10 +1168,11 @@ impl Rule for UnknownTokenRule {
             //      25X1-/50X1- for E007).
             //   2. Pattern-matched X-shorthand with a trailing `-` for
             //      forms not in the seed table (25X2-, 25X9-, etc.).
-            //   3. A second/subsequent SAR category block that the parser
-            //      tagged Unknown precisely so E030 can flag the repeated
-            //      indicator (§H.5 p100: the SAR indicator must not be
-            //      repeated). E008 steps aside; E030 owns this shape.
+            //   3. A repeated SAR category block — but ONLY when a
+            //      first SAR succeeded AND the stripped suffix is
+            //      non-empty (E030's actual preconditions). A
+            //      malformed first SAR like `SAR-` (empty suffix)
+            //      must still fire E008, not be silently swallowed.
             // An Unknown that hits any path is not "unrecognized" — it
             // is a deprecated or structurally-owned form another rule
             // will surface.
@@ -1141,8 +1184,7 @@ impl Rule for UnknownTokenRule {
                 // fallback. Only suppress well-known specialized paths.
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
-                    && !text.starts_with("SAR-")
-                    && !text.starts_with("SPECIAL ACCESS REQUIRED-")
+                    && !is_repeated_sar_owned_by_e030(text, has_first_sar)
             })
             .map(|t| {
                 Diagnostic::new(
@@ -3898,13 +3940,22 @@ mod tests {
     fn e008_suppressed_on_second_sar_block_with_abbrev_prefix() {
         // Second SAR block (`SAR-DUPE`) is tagged Unknown by the
         // parser so E030 (sar-indicator-repeat) can surface the
-        // duplicate per CAPCO-2016 §H.5. E008 must step aside.
+        // duplicate per CAPCO-2016 §H.5. E008 must step aside AND
+        // E030 must actually fire — otherwise a future change that
+        // drops E030 (or breaks its preconditions) could produce a
+        // silent suppression with no diagnostic at all.
         let diags = lint_banner("SECRET//SAR-ABC//NF//SAR-DUPE");
         let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
         assert!(
             e008.is_empty(),
             "E008 must be suppressed for second SAR block (E030 owns): \
              {diags:?}"
+        );
+        assert!(
+            !e030.is_empty(),
+            "E030 must fire on the repeated SAR block — otherwise \
+             suppression is a silent drop: {diags:?}"
         );
     }
 
@@ -3913,13 +3964,55 @@ mod tests {
         // Same as above but with the spelled-out `SPECIAL ACCESS
         // REQUIRED-` category indicator. Banner form is rarely used
         // but must be covered — the suppression check keys on the
-        // prefix string.
+        // prefix string. Also asserts E030 is present (see
+        // `e008_suppressed_on_second_sar_block_with_abbrev_prefix`
+        // for the rationale).
         let diags = lint_banner("SECRET//SPECIAL ACCESS REQUIRED-ABC//NF//SPECIAL ACCESS REQUIRED-DUPE");
         let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
         assert!(
             e008.is_empty(),
             "E008 must be suppressed for second `SPECIAL ACCESS \
              REQUIRED-` block (E030 owns): {diags:?}"
+        );
+        assert!(
+            !e030.is_empty(),
+            "E030 must fire on the repeated `SPECIAL ACCESS \
+             REQUIRED-` block — otherwise suppression is a silent \
+             drop: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e008_fires_on_malformed_first_sar_with_empty_program() {
+        // `SAR-` alone (no program identifier) fails SAR grammar. The
+        // parser does not produce a `SarMarking`, so `attrs.sar_markings`
+        // stays `None` and E030 early-exits (rules.rs:2294). An earlier
+        // version of E008's suppression matched on prefix only, so this
+        // malformed token was silently dropped. Tightening the
+        // suppression to require `attrs.sar_markings.is_some()` AND a
+        // non-empty suffix restores the E008 error.
+        let diags = lint_banner("SECRET//SAR-//NOFORN");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            !e008.is_empty(),
+            "E008 must fire on malformed first SAR (empty program) — \
+             E030 cannot run without a successful first SAR, so E008 \
+             is the only rule that can surface this: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e008_fires_on_malformed_first_spelled_sar_with_empty_program() {
+        // Same regression as above for the `SPECIAL ACCESS REQUIRED-`
+        // prefix. `SPECIAL ACCESS REQUIRED-` with no program must not
+        // be silently dropped.
+        let diags = lint_banner("SECRET//SPECIAL ACCESS REQUIRED-//NOFORN");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            !e008.is_empty(),
+            "E008 must fire on malformed first `SPECIAL ACCESS \
+             REQUIRED-` (empty program): {diags:?}"
         );
     }
 
