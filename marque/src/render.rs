@@ -200,6 +200,7 @@ fn level_str(severity: marque_rules::Severity) -> &'static str {
     match severity {
         marque_rules::Severity::Error => "error",
         marque_rules::Severity::Warn => "warning",
+        marque_rules::Severity::Info => "info",
         marque_rules::Severity::Fix => "fix",
         marque_rules::Severity::Off => "off", // unreachable in practice
     }
