@@ -80,6 +80,7 @@ impl CapcoRuleSet {
                 Box::new(PortionMarkInBannerRule),
                 Box::new(PortionAbbreviationRule),
                 Box::new(PreferBannerAbbreviationRule),
+                Box::new(BannerConsistentFormRule),
                 Box::new(MissingUsaTrigraphRule),
                 Box::new(MisorderedBlocksRule),
                 Box::new(SeparatorCountRule),
@@ -1685,6 +1686,136 @@ impl Rule for PreferBannerAbbreviationRule {
         }
 
         diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: S002 — banner-consistent-form (style)
+// ---------------------------------------------------------------------------
+
+/// S002: A banner line should use a single form consistently for its dissem
+/// and non-IC dissem entries — either all long "Marking Titles" or all
+/// Banner Line Abbreviations, but not a mix of both within the same banner.
+///
+/// Both forms are legal per CAPCO-2016 §A.6 line 317 ("may be spelled out
+/// per the 'Marking Title' ... or abbreviated as per the 'Authorized
+/// Abbreviation' ... unless otherwise directed by IC element policy"), and
+/// §G.1 Table 4 lists both columns per marking. Neither CAPCO nor the
+/// Register prescribes consistency within a single banner — this rule
+/// encodes the readability convention followed by most IC-element
+/// style guides: a reader scanning a banner shouldn't have to context-
+/// switch between "NOFORN" and "CAUTION-PROPRIETARY INFORMATION INVOLVED"
+/// in the same line.
+///
+/// Severity: `Info`. Style guidance, not correctness.
+///
+/// # Scoring
+///
+/// For each dissem / non-IC token in the banner, classify by its
+/// `MARKING_FORMS` match:
+///
+/// - **title-form**: source text equals a `title` of a row where
+///   `title != banner` (long form used where an abbreviation exists).
+/// - **abbrev-form**: source text equals a `banner` of a row where
+///   `title != banner` (abbreviation used where a distinct long form
+///   exists).
+/// - **same-form**: `title == banner` (e.g., `DEA SENSITIVE`) — the
+///   marking has only one form; excluded from the count.
+/// - **other**: token not in `MARKING_FORMS` with a distinct title
+///   (e.g., `RELIDO`, `HCS`, `FISA`) — excluded from the count.
+///
+/// The banner is "mixed" when `title-form count ≥ 1` AND `abbrev-form
+/// count ≥ 1`. S002 fires **once per banner** with a single diagnostic
+/// spanning the first title-form token. The diagnostic carries no
+/// `FixProposal` — per-token normalization is S001's job, and running
+/// `marque fix` with S001 enabled will drive the banner to a consistent
+/// all-abbrev form, resolving S002 on the next pass.
+///
+/// # Relationship to S001
+///
+/// - S001 fires on every long-title token (mixed or not).
+/// - S002 fires exactly once per banner when mixing is detected.
+///
+/// When a banner is mixed, both rules fire; their messages carry
+/// different information (S001 says "prefer abbrev for this token",
+/// S002 says "this banner has mixed forms"). Users running `marque
+/// fix` see S001's fixes applied; S002's diagnostic remains visible
+/// so reviewers can audit the intent.
+struct BannerConsistentFormRule;
+
+impl Rule for BannerConsistentFormRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S002")
+    }
+    fn name(&self) -> &'static str {
+        "banner-consistent-form"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Info
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+        use marque_ism::marking_forms::MARKING_FORMS;
+
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+
+        // Walk dissem + non-IC spans in document order. For each, check
+        // MARKING_FORMS for a match where title != banner; classify the
+        // token as title-form or abbrev-form. Ignore tokens that map to
+        // same-form rows or aren't in the table.
+        let mut first_title_span: Option<Span> = None;
+        let mut first_title_text: Option<&str> = None;
+        let mut first_abbrev_text: Option<&str> = None;
+
+        for token in attrs.token_spans.iter() {
+            if !matches!(
+                token.kind,
+                TokenKind::DissemControl | TokenKind::NonIcDissem
+            ) {
+                continue;
+            }
+            let text = token.text.as_ref();
+            let Some(form) = MARKING_FORMS
+                .iter()
+                .find(|f| f.title != f.banner && (f.title == text || f.banner == text))
+            else {
+                continue;
+            };
+            if form.title == text {
+                if first_title_span.is_none() {
+                    first_title_span = Some(token.span);
+                    first_title_text = Some(text);
+                }
+            } else if first_abbrev_text.is_none() {
+                first_abbrev_text = Some(text);
+            }
+        }
+
+        // Mixed only when both a title-form and an abbrev-form were
+        // seen. Same-form rows (DEA SENSITIVE) and opaque tokens
+        // (RELIDO) neither count nor block firing.
+        let (Some(span), Some(long_text), Some(abbrev_text)) =
+            (first_title_span, first_title_text, first_abbrev_text)
+        else {
+            return vec![];
+        };
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            format!(
+                "banner mixes long-title and abbreviation forms \
+                 (saw {long_text:?} and {abbrev_text:?}); normalize to a \
+                 single form — prefer the banner abbreviation (S001) for \
+                 readability"
+            ),
+            "CAPCO-2016 §A.6 line 317 + §G.1 Table 4",
+            None,
+        )]
     }
 }
 
@@ -3712,6 +3843,7 @@ mod tests {
         assert!(ids.contains(&"E008"));
         assert!(ids.contains(&"E009"));
         assert!(ids.contains(&"S001"));
+        assert!(ids.contains(&"S002"));
         assert!(ids.contains(&"E010"));
         assert!(ids.contains(&"E011"));
         assert!(ids.contains(&"E012"));
@@ -3748,7 +3880,8 @@ mod tests {
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
-        assert_eq!(set.rules().len(), 38);
+        // T035c-8: added S002 (banner-consistent-form). Net: 39.
+        assert_eq!(set.rules().len(), 39);
     }
 
     #[test]
@@ -4749,6 +4882,105 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "S001"),
             "S001 must not fire on DEA SENSITIVE (no distinct abbrev per §G.1 line 831): {diags:?}"
+        );
+    }
+
+    // T035c-8: S002 banner-consistent-form (style). Fires exactly once
+    // per banner when a mix of long-title and abbreviation forms is
+    // detected. Carries no FixProposal — S001 handles per-token
+    // normalization and running `marque fix` with S001 enabled will
+    // drive the banner to all-abbrev form.
+
+    #[test]
+    fn s002_fires_on_mixed_title_and_abbrev_forms() {
+        // Long title "ORIGINATOR CONTROLLED" + abbrev "NOFORN" in one
+        // banner. S002 should fire exactly once.
+        let diags = lint_banner("SECRET//ORIGINATOR CONTROLLED/NOFORN");
+        let s002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S002").collect();
+        assert_eq!(s002.len(), 1, "{diags:?}");
+        assert!(s002[0].fix.is_none(), "S002 must not carry a fix");
+        assert_eq!(s002[0].severity, marque_rules::Severity::Info);
+    }
+
+    #[test]
+    fn s002_does_not_fire_on_all_abbrev_banner() {
+        // Canonical all-abbrev form — not mixed.
+        let diags = lint_banner("SECRET//ORCON/NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S002"),
+            "S002 must not fire on all-abbrev banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_does_not_fire_on_all_title_banner() {
+        // All long titles — not mixed. S001 still fires per token.
+        let diags = lint_banner("SECRET//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S002"),
+            "S002 must not fire on all-title banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_does_not_fire_on_single_token_banner() {
+        // One token can't mix with itself. Lock this so an off-by-one
+        // in the counter doesn't silently fire.
+        let diags = lint_banner("SECRET//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S002"),
+            "S002 must not fire on single-token banner: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_does_not_fire_on_dea_sensitive_plus_abbrev() {
+        // DEA SENSITIVE has `title == banner` per §G.1 line 831 — it
+        // does NOT count as either title-form or abbrev-form for the
+        // mix scoring. A banner of DEA SENSITIVE + NOFORN is not mixed.
+        let diags = lint_banner("SECRET//NOFORN/DEA SENSITIVE");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S002"),
+            "S002 must not fire when same-form rows (DEA SENSITIVE) \
+             appear alongside abbreviations: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_fires_on_non_ic_mixed_with_dissem() {
+        // Mix across categories: dissem long-title + non-IC abbreviation.
+        let diags = lint_banner("SECRET//NOT RELEASABLE TO FOREIGN NATIONALS//LIMDIS");
+        let s002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S002").collect();
+        assert_eq!(
+            s002.len(),
+            1,
+            "S002 must count tokens across dissem and non-IC categories: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_does_not_fire_in_portion() {
+        // S002 is banner-only — portion doesn't authorize either form
+        // of long title anyway (E009 catches them).
+        let diags = lint_portion("(S//ORCON/NOT RELEASABLE TO FOREIGN NATIONALS)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "S002"),
+            "S002 must not fire in portion context: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s002_fires_exactly_once_regardless_of_long_title_count() {
+        // Three long titles + one abbrev. S002 should fire exactly
+        // once per banner, not per token.
+        let diags = lint_banner(
+            "SECRET//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS/CAUTION-PROPRIETARY INFORMATION INVOLVED//LIMDIS",
+        );
+        let s002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S002").collect();
+        assert_eq!(
+            s002.len(),
+            1,
+            "S002 must fire exactly once per banner: {diags:?}"
         );
     }
 
