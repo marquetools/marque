@@ -1366,9 +1366,49 @@ impl Rule for DeprecatedMarkingWarningRule {
 /// `[corrections]` in `.marque.toml`. Each match produces a fix proposal with
 /// `FixSource::CorrectionsMap` and `confidence = 1.0`.
 ///
-/// FR-009: user corrections take precedence over built-in rules on the same
-/// span. This is automatic under FR-016 sort order — `"C001" < "E001"`
-/// lexicographically, so C001 wins under the C-1 overlap guard.
+/// # Not a CAPCO rule
+///
+/// C001 is intentionally NOT anchored to a CAPCO passage. No CAPCO section
+/// governs user-defined typo replacements — they are organization-specific
+/// mappings supplied through `.marque.toml`. The citation string
+/// [`marque_rules::CORRECTIONS_MAP_CITATION`] (`"CONFIG:[corrections]"`) is
+/// a config pointer rather than a §/page/line reference. This is deliberate
+/// and Constitution VIII-compliant: fabricating a CAPCO citation for a
+/// user-defined mapping would be worse than no citation. Auditors
+/// distinguish C001 fixes from CAPCO-authoritative fixes via
+/// `FixSource::CorrectionsMap` in the audit record.
+///
+/// # FR-009 precedence (spec: `specs/001-marque-mvp/spec.md` §Functional
+/// Requirements, FR-009)
+///
+/// User corrections take precedence over built-in rules on the same span.
+/// This is automatic under FR-016 sort order — `"C001" < "E001"`
+/// lexicographically, so C001 wins under the C-1 overlap guard. No
+/// special-case code in the engine; the invariant falls out of the sort
+/// key alone. Exercised by
+/// `fr009_c001_wins_over_builtin_rule_on_same_span` in
+/// `crates/capco/tests/corrections_map.rs`.
+///
+/// # `migration_ref = None`
+///
+/// C001 emits `migration_ref: None`. `migration_ref` identifies a
+/// deterministic migration-table entry (FR-004a, `FixSource::MigrationTable`)
+/// — C001 is a user map, not an ODNI migration, so there is no ref to
+/// carry. PR #6 review explicitly rejected the earlier
+/// `Some("corrections-map")` placeholder; the `FixSource` enum already
+/// distinguishes provenance without a string label.
+///
+/// # Emission paths
+///
+/// Two call sites emit C001 diagnostics:
+/// 1. This rule's `check` method — triggered when the scanner detected a
+///    marking and the parser produced a `TokenSpan` whose text matches a
+///    corrections key.
+/// 2. `Engine::lint` pre-scanner text scan — triggered when the scanner
+///    missed a marking (e.g., `SERCET//NF` whose classification prefix is
+///    not recognized). Both paths use
+///    [`marque_rules::CORRECTIONS_MAP_CITATION`] so the audit record shape
+///    is identical.
 struct CorrectionsMapRule;
 
 impl Rule for CorrectionsMapRule {
@@ -1409,7 +1449,7 @@ impl Rule for CorrectionsMapRule {
                 source: FixSource::CorrectionsMap,
                 span: token_span.span,
                 message: format!("corrections map: {text:?} → {replacement:?}"),
-                citation: "CONFIG:[corrections]",
+                citation: marque_rules::CORRECTIONS_MAP_CITATION,
                 original: text.to_owned(),
                 replacement: replacement.clone(),
                 confidence: 1.0,

@@ -11,7 +11,10 @@ use crate::scheduler::schedule_rewrites;
 use aho_corasick::AhoCorasick;
 use marque_config::Config;
 use marque_ism::Span;
-use marque_rules::{AppliedFix, Diagnostic, FixProposal, FixSource, RuleId, RuleSet, Severity};
+use marque_rules::{
+    AppliedFix, CORRECTIONS_MAP_CITATION, Diagnostic, FixProposal, FixSource, RuleId, RuleSet,
+    Severity,
+};
 use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -309,7 +312,7 @@ impl Engine {
                             c001_severity,
                             span,
                             format!("corrections map: {key:?} → {value:?}"),
-                            "CONFIG:[corrections]",
+                            CORRECTIONS_MAP_CITATION,
                             Some(proposal),
                         ));
                     }

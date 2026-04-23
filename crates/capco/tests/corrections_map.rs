@@ -4,14 +4,15 @@
 
 //! Phase 5 — Corrections-map integration tests (T054).
 //!
-//! Exercises FR-009: user corrections take precedence over built-in rules
-//! when both match the same span. The C001 rule emits `FixSource::CorrectionsMap`
-//! and `FixSource::CorrectionsMap` for audit trail fidelity.
+//! Exercises FR-009 (`specs/001-marque-mvp/spec.md`): user corrections take
+//! precedence over built-in rules when both match the same span. The C001
+//! rule emits `FixSource::CorrectionsMap` with citation
+//! `marque_rules::CORRECTIONS_MAP_CITATION` for audit-trail fidelity.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::FixSource;
+use marque_rules::{CORRECTIONS_MAP_CITATION, FixSource};
 use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -36,6 +37,53 @@ fn engine_default() -> Engine {
 // -----------------------------------------------------------------------
 // C001 basics
 // -----------------------------------------------------------------------
+
+#[test]
+fn c001_citation_equals_correction_map_constant() {
+    // T035c-15 audit guard: the C001 citation string must be the canonical
+    // `CORRECTIONS_MAP_CITATION` constant defined in `marque-rules`. Both
+    // the rule-pipeline path (`CorrectionsMapRule::check` in
+    // `crates/capco/src/rules.rs`) and the pre-scanner text-scan path
+    // (`Engine::lint` in `crates/engine/src/engine.rs`) MUST route through
+    // the same constant so audit records cannot silently diverge.
+    //
+    // Case 1: rule-pipeline emission. "NF" is a known dissem token, so the
+    // scanner detects `SECRET//NF` as a banner and the parser produces a
+    // `TokenSpan` that C001's `check` method matches against the map.
+    let mut corrections = HashMap::new();
+    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
+    let engine = engine_with_corrections(corrections);
+    let result = engine.lint(b"SECRET//NF\n");
+    let c001: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+    assert!(!c001.is_empty(), "rule-pipeline C001 must fire");
+    assert_eq!(
+        c001[0].citation, CORRECTIONS_MAP_CITATION,
+        "rule-pipeline C001 citation must equal CORRECTIONS_MAP_CITATION"
+    );
+
+    // Case 2: pre-scanner emission. "SERCET" is not a known classification
+    // prefix so the scanner does NOT detect the marking; the pre-scanner
+    // text-scan path in `Engine::lint` produces the C001 diagnostic
+    // instead. Both paths must produce byte-identical citations.
+    let mut corrections = HashMap::new();
+    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
+    let engine = engine_with_corrections(corrections);
+    let result = engine.lint(b"SERCET//NF\n");
+    let c001: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "C001")
+        .collect();
+    assert!(!c001.is_empty(), "pre-scanner C001 must fire");
+    assert_eq!(
+        c001[0].citation, CORRECTIONS_MAP_CITATION,
+        "pre-scanner C001 citation must equal CORRECTIONS_MAP_CITATION"
+    );
+}
 
 #[test]
 fn c001_fires_on_corrections_map_match() {
