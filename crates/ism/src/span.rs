@@ -103,21 +103,29 @@ pub enum DocumentPosition {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
     #[test]
     fn span_new_accepts_equal_bounds() {
         let s = Span::new(5, 5);
-        assert!(s.is_empty());
         assert_eq!(s.len(), 0);
     }
 
     #[test]
     fn span_new_accepts_normal_range() {
         let s = Span::new(2, 7);
-        assert!(!s.is_empty());
         assert_eq!(s.len(), 5);
+    }
+
+    #[test]
+    fn span_len_calculates_correctly() {
+        assert_eq!(Span::new(0, 0).len(), 0);
+        assert_eq!(Span::new(0, 10).len(), 10);
+        assert_eq!(Span::new(5, 10).len(), 5);
+        assert_eq!(Span::new(100, 100).len(), 0);
+        assert_eq!(Span::new(100, 250).len(), 150);
     }
 
     #[test]
@@ -145,5 +153,40 @@ mod tests {
         let buf = b"abc";
         let s = Span::new(0, 3);
         assert_eq!(s.as_str(buf).unwrap(), "abc");
+    }
+
+    #[test]
+    fn span_is_empty_returns_true_when_bounds_are_equal() {
+        let s = Span::new(42, 42);
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn span_is_empty_returns_false_when_bounds_differ() {
+        let s = Span::new(42, 43);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn as_slice_returns_bytes_when_in_bounds() {
+        let buf = b"hello";
+        let s = Span::new(1, 4);
+        assert_eq!(s.as_slice(buf), b"ell");
+    }
+
+    #[test]
+    #[should_panic]
+    fn as_slice_panics_when_end_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(2, 100);
+        let _ = s.as_slice(buf);
+    }
+
+    #[test]
+    #[should_panic]
+    fn as_slice_panics_when_start_out_of_bounds() {
+        let buf = b"hello";
+        let s = Span::new(100, 101);
+        let _ = s.as_slice(buf);
     }
 }

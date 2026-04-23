@@ -57,7 +57,12 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
 
 fn lint_latency_benchmark(c: &mut Criterion) {
     let input = build_representative_input(10_000);
-    let engine = Engine::new(Config::default(), marque_engine::default_ruleset());
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     c.bench_function("lint_10kb", |b| {
         b.iter(|| engine.lint(black_box(&input)));

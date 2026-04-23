@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-capco — CAPCO rule implementations for marque.
 //!
@@ -16,9 +17,13 @@
 //! `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI
 //! publishes spec updates.
 
+pub mod lattice;
 pub mod rules;
+pub(crate) mod rules_declarative;
 pub mod scheme;
+pub mod vocab;
 
+pub use lattice::{FgiSet, SarSet, SciSet};
 pub use marque_ism::CapcoTokenSet;
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoScheme};

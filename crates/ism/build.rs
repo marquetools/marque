@@ -712,38 +712,59 @@ pub struct MigrationEntry {
 
 /// Deprecated-marking migration table.
 ///
-/// Includes CAPCO policy-driven replacements and X-shorthand date markings.
-/// All entries have confidence >= 0.95 per FR-004a.
+/// Policy-driven replacements for markings that CAPCO has formally retired
+/// or renamed. All entries have confidence >= 0.95 per FR-004a, and every
+/// `reference` cites a real passage in `crates/capco/docs/CAPCO-2016.md`
+/// per Constitution VIII.
+///
+/// # What is NOT a migration
+///
+/// - **Abbreviation ↔ banner form** (e.g., `NF` ↔ `NOFORN`): these are
+///   the two authorized forms of the same marking, not a deprecation.
+///   `E001 portion-mark-in-banner` owns the portion-form-in-banner check;
+///   `E009 portion-abbreviation` owns the banner-form-in-portion check.
+///   A prior `NF → NOFORN` entry was removed in T035c-4 as misleading —
+///   it was filtered out by `E006 is_abbreviation_expansion` anyway.
+///
+/// - **FOUO → CUI**: FOUO remains a valid CAPCO dissem control per
+///   CVEnumISMDissem.xml (still enumerated in the active CVE). CUI is a
+///   separate marking system under NARA jurisdiction. A prior entry was
+///   removed in Phase E of
+///   `docs/plans/2026-04-19-recursive-lattice-and-decoder.md` (§14 "What
+///   we dropped" — explicit `FOUO → CUI` bullet). Any "suggest CUI on
+///   non-IC documents" behavior belongs in a future CUI adapter, gated
+///   by `[agency] is_ic_member` / `[cui] migrate_fouo` config gates
+///   (Phase F), not as a blanket CAPCO-level migration.
+///
+/// - **LIMDIS → RELIDO**: LIMDIS is a current non-IC dissem control
+///   per CAPCO-2016 §H.9 (p18 of the 2008 manual, §H.9 of 2016). A
+///   prior entry was incorrect.
 pub static MIGRATIONS: &[MigrationEntry] = &[
-    // Dissemination control deprecations
-    // Note: LIMDIS is NOT deprecated — it is a current non-IC dissem control
-    // (CAPCO Register §9). A prior entry mapping LIMDIS→RELIDO was incorrect.
+    // X-shorthand date marking patterns (FR-004a, research R-3).
     //
-    // Note: FOUO → CUI is NOT a CAPCO-level migration. FOUO remains valid in
-    // CAPCO ISM (see DissemControl::Fouo, still enumerated in the active CVE);
-    // CUI is a separate marking system under NARA jurisdiction. A prior
-    // entry mapping FOUO→CUI was removed in Phase E of the recursive-lattice
-    // design (2026-04-19 plan). Any "suggest CUI on non-IC documents"
-    // behavior lives in a future CUI adapter, gated by [agency] / [cui] config.
-    MigrationEntry {
-        deprecated: "NF",
-        replacement: "NOFORN",
-        confidence: 0.99,
-        reference: "CAPCO-2022-§3.2",
-    },
-    // X-shorthand date marking patterns (FR-004a, research R-3)
-    // These match the pattern 25X1-, 25X2-, etc.
+    // CAPCO-2016 §E.6 "Retired or Invalid Declassify On Values" (line
+    // 689 heading). Lines 711-714 enumerate retired exemption forms
+    // including "25X1 - human" (retired by ISOO Notice 2012-02, line
+    // 664) and "25X1" through "25X9" without a required date or
+    // event. The migrations below catch specific corrupt/truncated
+    // forms (trailing hyphen, no suffix) that can appear in real
+    // documents and rewrite them to canonical forms. E007
+    // `XShorthandDateRule` handles the broader pattern-based cases.
     MigrationEntry {
         deprecated: "25X1-",
         replacement: "25X1",
         confidence: 0.97,
-        reference: "CAPCO-2019-§5.1",
+        reference: "CAPCO-2016 §E.6 line 689",
     },
     MigrationEntry {
         deprecated: "50X1-",
         replacement: "50X1-HUM",
         confidence: 0.95,
-        reference: "CAPCO-2019-§5.2",
+        // §E.6 line 664: "Per ISOO Notice 2012-02, '25X1 - human' is
+        // no longer authorized; '50X1 - HUM' replaces it." The
+        // trailing-hyphen form `50X1-` is canonicalized to the
+        // full replacement form.
+        reference: "CAPCO-2016 §E.6 line 664",
     },
 ];
 

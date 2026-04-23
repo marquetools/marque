@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 #![forbid(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 //! marque-config — layered configuration loading.
 //!
@@ -67,7 +68,7 @@ pub enum ConfigError {
     /// Rule severity string in config is not one of the recognized values.
     #[error(
         "rule {rule:?} has unrecognized severity {value:?} — expected one of \
-         \"off\", \"warn\", \"error\", \"fix\""
+         \"off\", \"info\", \"warn\", \"error\", \"fix\""
     )]
     UnknownSeverity { rule: String, value: String },
 }
@@ -336,8 +337,8 @@ fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
 
 fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
     // H-6: validate every severity override at load time. A typo like
-    // `banner-abbreviation = "err"` must fail loudly, not silently fall back
-    // to the rule default.
+    // `E001 = "err"` must fail loudly, not silently fall back to the rule
+    // default.
     for (rule, value) in &file.rules {
         if Severity::parse_config(value).is_none() {
             return Err(ConfigError::UnknownSeverity {
@@ -427,6 +428,7 @@ fn validate_schema_version(config: &Config) -> Result<(), ConfigError> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
@@ -669,6 +671,44 @@ classifier_id = "from-sub"
             Some("from-root"),
             "local config must be the one alongside .marque.toml, not in sub"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn load_returns_read_error_for_unreadable_project_config() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = make_tmpdir("load-err-proj");
+        let project_config = root.join(".marque.toml");
+        fs::write(&project_config, b"").unwrap();
+
+        let mut perms = fs::metadata(&project_config).unwrap().permissions();
+        perms.set_mode(0o000); // remove read permission
+        fs::set_permissions(&project_config, perms).unwrap();
+
+        let err = super::load(&root).unwrap_err();
+        assert!(matches!(err, ConfigError::ReadError { .. }));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn load_returns_read_error_for_unreadable_local_config() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = make_tmpdir("load-err-local");
+        fs::write(root.join(".marque.toml"), b"").unwrap();
+
+        let local_config = root.join(".marque.local.toml");
+        fs::write(&local_config, b"").unwrap();
+
+        let mut perms = fs::metadata(&local_config).unwrap().permissions();
+        perms.set_mode(0o000); // remove read permission
+        fs::set_permissions(&local_config, perms).unwrap();
+
+        let err = super::load(&root).unwrap_err();
+        assert!(matches!(err, ConfigError::ReadError { .. }));
+
         let _ = fs::remove_dir_all(&root);
     }
 }

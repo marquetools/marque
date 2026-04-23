@@ -21,7 +21,14 @@ use std::sync::OnceLock;
 /// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
 fn shared_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| Engine::new(Config::default(), marque_engine::default_ruleset()))
+    ENGINE.get_or_init(|| {
+        Engine::new(
+            Config::default(),
+            marque_engine::default_ruleset(),
+            marque_engine::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +67,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     }
 }
 
@@ -76,7 +84,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
         fix: d.fix.as_ref().map(|f| FixJson {
             source: fix_source_str(f.source),
             replacement: f.replacement.as_ref(),
-            confidence: f.confidence,
+            confidence: f.confidence.combined(),
             migration_ref: f.migration_ref,
         }),
     }
@@ -440,4 +448,43 @@ fn lint_batch_parity_with_single_lint() {
 fn lint_batch_invalid_json_returns_error() {
     let result = marque_wasm::lint_batch_native("not json", None);
     assert!(result.is_err());
+}
+
+// ---------------------------------------------------------------------------
+// generate_cab
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_generate_cab_basic() {
+    let text = "(S//NF) This is secret.\n(TS//SI//REL TO USA, GBR) This is top secret.";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Classified By: Derivative Classifier"));
+    assert!(cab.contains("Derived From: Multiple Sources"));
+    assert!(cab.contains("Declassify On:"));
+    // Since TS is present, it's definitely classified.
+}
+
+#[test]
+fn test_generate_cab_with_explicit_declass() {
+    let text = "(S//NF//20401231) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 20401231"));
+}
+
+#[test]
+fn test_generate_cab_unclassified_empty() {
+    let text = "(U) Unclassified portion";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert_eq!(cab, "");
+}
+
+// ---------------------------------------------------------------------------
+// compute_banner
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compute_banner_basic() {
+    let text = "(S//NF) Portion 1\n(TS//SI//NF) Portion 2";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
+    assert_eq!(banner, "TOP SECRET//SI//NOFORN");
 }

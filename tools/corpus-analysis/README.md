@@ -1,6 +1,22 @@
 # Corpus Analysis Tool
 
-Measures how often classification marking tokens appear in general (non-IC) English text. The output provides empirical base rates for the probabilistic recognition engine — specifically, P(token | not a marking) for each token in a vocabulary.
+Three modes of operation over a text corpus, selected via `--mode`:
+
+- **`baseline`** — token-frequency analysis. Measures how often
+  classification marking tokens appear in general (non-IC) English text
+  and in what structural contexts. Output: JSON frequency table
+  (`corpus_stats`, `tokens`, `cooccurrence_pairs`, …). This is the
+  original behavior and the default mode.
+- **`priors`** — corpus-derived priors for the Phase-D decoder. Runs
+  the baseline analysis, then reshapes into the schema consumed by
+  `crates/capco/build.rs` at compile time (see
+  `crates/capco/corpus/README.md`). Output: single `priors.json`.
+- **`mangled`** — labeled mangled-marking fixtures for the decoder
+  accuracy harness. Walks a corpus, finds high-confidence classification
+  markings, applies one of six labeled mangling transforms, and emits
+  one JSON file per case under `tests/fixtures/mangled/<class>/` (see
+  `tests/fixtures/mangled/README.md`). Required case count matches the
+  SC-004 gate (default `--min-cases 200`).
 
 ## Quick Start
 
@@ -8,17 +24,27 @@ Measures how often classification marking tokens appear in general (non-IC) Engl
 # Install dependencies
 pip3 install -r requirements.txt
 
-# Run against Enron corpus (downloads ~423MB on first run, cached after)
+# Baseline: token frequencies against Enron (downloads ~423MB first run)
 python3 analyze.py --output output/enron-full.json
 
-# Quick test with limited docs
+# Baseline with a limited doc count
 python3 analyze.py --max-docs 1000 --output output/enron-sample.json
 
-# Custom corpus
+# Baseline against a custom corpus
 python3 analyze.py --corpus /path/to/text/files/ --output output/custom.json
 
 # Custom token vocabulary
 python3 analyze.py --tokens tokens/my-vocab.json
+
+# Priors: corpus-derived priors for the Phase-D decoder build.rs
+python3 analyze.py --mode priors \
+    --output ../../crates/capco/corpus/priors.json
+
+# Mangled fixtures: produce ≥200 labeled cases for the decoder harness
+MARQUE_ENRON_CORPUS=/path/to/enron \
+  python3 analyze.py --mode mangled \
+    --output ../../tests/fixtures/mangled/ \
+    --min-cases 200 --seed 0
 ```
 
 ## Token Vocabulary
@@ -56,3 +82,41 @@ JSON with:
 - Co-occurrence of 2+ CAPCO tokens near `//` is effectively zero in non-IC text
 
 See `docs/plans/2026-04-16-probabilistic-recognition.md` for the full analysis and architecture design.
+
+## Phase-D artifacts
+
+### `priors.json` schema
+
+See `crates/capco/corpus/README.md` for the full schema contract. In
+short: `schema_version` (pinned; `build.rs` refuses unknown versions),
+`token_base_rates` (count + precomputed Laplace-smoothed `log_prior`),
+`template_base_rates`, and `strict_context_priors` (FR-011 floors).
+Output floats are rounded to 6 decimal places for diff stability across
+runs with the same corpus.
+
+### Mangled fixture set
+
+Six classes, one directory each. Per-fixture schema is
+`{observed, expected, mangling_class, source_confidence}` — see
+`tests/fixtures/mangled/README.md`. The generator is deterministic
+given the same corpus and `--seed`, so committing the fixture set is
+reproducible.
+
+The generator:
+- Only emits fixtures for **canonical-looking** markings it finds in
+  the corpus (portions with `(CLASS//DISSEM)` or banners with
+  `CLASS//…`). Bare `(C)` and other ambiguous shapes are intentionally
+  skipped — they collide with copyright and aren't useful for
+  accuracy training.
+- Skips identity transforms (transform produces output == input).
+- Deduplicates by content digest so identical generated outputs are
+  only emitted once; fixture sets are reproducible for the same
+  corpus and `--seed`. Different seeds will generally produce
+  different `observed` strings (the transforms are RNG-driven) and
+  therefore different digests/filenames.
+- Clears stale `*.json` fixtures from each class directory before
+  writing so a re-run with a different corpus/seed cannot silently
+  accumulate leftover cases (non-JSON files such as the README or
+  `.gitkeep` sentinels are preserved).
+- Raises if fewer than `--min-cases` fixtures materialize across the
+  six classes combined.
