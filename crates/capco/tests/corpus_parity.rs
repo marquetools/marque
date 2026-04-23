@@ -55,15 +55,23 @@ fn rule_count_reflects_registration_changes() {
     //
     // T035c-8: added S002 (banner-consistent-form, style). Net: 39.
     //
+    // T035c-14: retired W001 (DeprecatedMarkingWarningRule).
+    // CAPCO-2016 §F (Legacy Control Markings, p35) treats legacy
+    // markings as unauthorized — an error category owned by
+    // E006/E008 — not "deprecated but still legal." No
+    // authoritative bucket exists for a warning-severity
+    // vocabulary-deprecation rule. Net: 38.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        39,
+        38,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
-         T035c-1b (added S001) + T035c-8 (added S002). Adjust this \
-         assertion only when rule registration actually changes."
+         T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
+         (retired W001). Adjust this assertion only when rule \
+         registration actually changes."
     );
 }
 

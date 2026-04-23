@@ -26,7 +26,9 @@
 //!   E013 = JOINT/REL TO delimiter mismatch
 //!   E014 = JOINT participants missing from REL TO
 //!   E015 = non-US classification without dissem control
-//!   W001 = deprecated marking warning (T038)
+//!   W001 = retired in T035c-14 (CAPCO-2016 §F treats legacy
+//!           markings as unauthorized, not "deprecated but legal";
+//!           no authoritative bucket for a warning-severity rule)
 //!   W002 = US + FGI comingling in portion
 //!   E016 = RESTRICTED not allowed with JOINT
 //!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 line 4140)
@@ -88,7 +90,18 @@ impl CapcoRuleSet {
                 Box::new(DeprecatedDissemRule),
                 Box::new(XShorthandDateRule),
                 Box::new(UnknownTokenRule),
-                Box::new(DeprecatedMarkingWarningRule),
+                // T035c-14: W001 (DeprecatedMarkingWarningRule) retired.
+                // CAPCO-2016 §F "Legacy Control Markings" (p35) treats
+                // legacy markings as unauthorized — an error category
+                // owned by E006 / E008 — not "deprecated but still legal."
+                // §I "Banner Line Syntax History" (p192–193 Table 8) is
+                // syntax-history, not token-deprecation guidance, and is
+                // non-normative for citations. No CAPCO-2016 passage
+                // sanctions a warning-severity "legal but preferred-newer"
+                // vocabulary tier, so the rule stub had no authoritative
+                // ground to populate. If org-policy deprecations (FOUO-
+                // style transitional warnings) later need a home, that is
+                // a separate rule with org-config authority, not CAPCO §F.
                 Box::new(CorrectionsMapRule),
                 // T035a: declarative wrappers for E010/E012/E014-E016/
                 // E021/E022/E024/E025/W002. Catalog in `crate::scheme`
@@ -1328,35 +1341,9 @@ impl Rule for UnknownTokenRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: W001 — Deprecated marking warning
+// W001 retired in T035c-14. See registration-site comment in
+// `CapcoRuleSet::new()` for the §F / §I rationale.
 // ---------------------------------------------------------------------------
-
-/// W001 surfaces markings that are still legal but have a newer canonical
-/// form. The seed migration table has no W001-flagged entries, so this rule
-/// fires zero diagnostics in Phase 3 against real corpus content. Synthetic
-/// entries can be injected through a custom `RuleSet` for tests; see
-/// `tests/rules_us1.rs`.
-struct DeprecatedMarkingWarningRule;
-
-impl Rule for DeprecatedMarkingWarningRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("W001")
-    }
-    fn name(&self) -> &'static str {
-        "deprecated-marking-warning"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Warn
-    }
-
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        // Phase 3: no W001-flagged migration entries exist yet. The rule is
-        // wired so that adding a `is_warning_only: true` field to
-        // MigrationEntry in a future build.rs change starts firing
-        // diagnostics with no other code changes.
-        vec![]
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Rule: C001 — Corrections-map typo replacement
@@ -3901,7 +3888,10 @@ mod tests {
         assert!(ids.contains(&"E013"));
         assert!(ids.contains(&"E014"));
         assert!(ids.contains(&"E015"));
-        assert!(ids.contains(&"W001"));
+        // W001 retired in T035c-14 (CAPCO-2016 §F treats legacy markings
+        // as unauthorized, not "deprecated but legal" — no authoritative
+        // bucket for a warning-severity rule).
+        assert!(!ids.contains(&"W001"), "W001 retired in T035c-14");
         assert!(ids.contains(&"W002"));
         assert!(ids.contains(&"E016"));
         // E017/E018/E019 retired in T035b (over-restrictive vs
@@ -3932,7 +3922,10 @@ mod tests {
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
         // T035c-8: added S002 (banner-consistent-form). Net: 39.
-        assert_eq!(set.rules().len(), 39);
+        // T035c-14: retired W001 (deprecated-marking-warning; §F
+        // treats legacy markings as unauthorized, not "deprecated
+        // but legal"). Net: 38.
+        assert_eq!(set.rules().len(), 38);
     }
 
     #[test]
