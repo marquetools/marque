@@ -183,9 +183,7 @@ impl PageContext {
                 let comp_map = acc.entry(key).or_default();
                 for comp in marking.compartments.iter() {
                     let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
-                    for sub in comp.sub_compartments.iter() {
-                        sub_set.insert(sub.to_string());
-                    }
+                    sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
                 }
             }
         }
@@ -252,9 +250,7 @@ impl PageContext {
                 let comps = programs.entry(prog.identifier.to_string()).or_default();
                 for comp in prog.compartments.iter() {
                     let subs = comps.entry(comp.identifier.to_string()).or_default();
-                    for sub in comp.sub_compartments.iter() {
-                        subs.insert(sub.to_string());
-                    }
+                    subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
                 }
             }
         }
@@ -538,15 +534,11 @@ impl PageContext {
                         if rd.cnwdi {
                             rd_cnwdi = true;
                         }
-                        for &s in rd.sigma.iter() {
-                            rd_sigma.insert(s);
-                        }
+                        rd_sigma.extend(rd.sigma.iter().copied());
                     }
                     AeaMarking::Frd(frd) => {
                         has_frd = true;
-                        for &s in frd.sigma.iter() {
-                            frd_sigma.insert(s);
-                        }
+                        frd_sigma.extend(frd.sigma.iter().copied());
                     }
                     AeaMarking::Tfni => has_tfni = true,
                     AeaMarking::DodUcni => has_dod_ucni = true,
@@ -616,9 +608,7 @@ impl PageContext {
                 if marker.countries.is_empty() {
                     has_source_concealed = true;
                 } else {
-                    for &c in marker.countries.iter() {
-                        countries.insert(c.as_str().to_owned());
-                    }
+                    countries.extend(marker.countries.iter().map(|c| c.as_str().to_owned()));
                 }
             }
 
