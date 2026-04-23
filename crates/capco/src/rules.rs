@@ -4634,7 +4634,8 @@ mod tests {
         // prefix string. Also asserts E030 is present (see
         // `e008_suppressed_on_second_sar_block_with_abbrev_prefix`
         // for the rationale).
-        let diags = lint_banner("SECRET//SPECIAL ACCESS REQUIRED-ABC//NF//SPECIAL ACCESS REQUIRED-DUPE");
+        let diags =
+            lint_banner("SECRET//SPECIAL ACCESS REQUIRED-ABC//NF//SPECIAL ACCESS REQUIRED-DUPE");
         let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
         let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
         assert!(
@@ -4723,8 +4724,7 @@ mod tests {
         // Lock down T035c-13 per-branch citation retargeting:
         // classification uses §H.1 (US Classification Markings).
         assert_eq!(
-            e009[0].citation,
-            "CAPCO-2016 §H.1 (US Classification Markings)",
+            e009[0].citation, "CAPCO-2016 §H.1 (US Classification Markings)",
             "classification branch must cite §H.1 per T035c-13"
         );
     }
@@ -4986,7 +4986,8 @@ mod tests {
     #[test]
     fn s002_does_not_fire_on_all_title_banner() {
         // All long titles — not mixed. S001 still fires per token.
-        let diags = lint_banner("SECRET//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS");
+        let diags =
+            lint_banner("SECRET//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "S002"),
             "S002 must not fire on all-title banner: {diags:?}"
