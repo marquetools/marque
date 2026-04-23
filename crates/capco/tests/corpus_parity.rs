@@ -47,9 +47,9 @@ fn rule_count_reflects_registration_changes() {
     // wrappers. Count stayed at 39.
     //
     // T035b: retired 3 over-restrictive JOINT rules (E017, E018,
-    // E019) that contradicted CAPCO-2016 §H.3 line 4140; added 1
-    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 line
-    // 4146. Net: 39 - 3 + 1 = 37.
+    // E019) that contradicted CAPCO-2016 §H.3 p169; added 1
+    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 p169.
+    // Net: 39 - 3 + 1 = 37.
     //
     // T035c-1b: added S001 (prefer-banner-abbreviation, style). Net: 38.
     //
@@ -66,38 +66,28 @@ fn rule_count_reflects_registration_changes() {
     // (dos-dissem-noforn) per CAPCO-2016 §H.9 NODIS/EXDIS templates
     // (p172 + p174). Net: 40.
     //
-<<<<<<< 004-s003-joint-usa-first
     // S003 (follow-up from #97 / T035c-18): added joint-usa-first
-    // style rule. §H.3 line 1258 prescribes pure alphabetical for
-    // JOINT with no USA-first carve-out; S003 encodes the convention
-    // observed in REL TO §H.8 line 3714 across US-authored country
+    // style rule. §H.3 p56 prescribes pure alphabetical for JOINT
+    // with no USA-first carve-out; S003 encodes the convention
+    // observed in REL TO §H.8 p150–151 across US-authored country
     // lists. Info severity. Net: 41.
-=======
+    //
     // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to) +
     // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
-    // -in-portion). Net: 43.
->>>>>>> main
+    // -in-portion). Net: 44.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-<<<<<<< 004-s003-joint-usa-first
-        41,
+        44,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
-         S003 (added joint-usa-first). Adjust this assertion only \
-         when rule registration actually changes."
-=======
-        43,
-        "rule count: T035b (retired E017/E018/E019, added E036) + \
-         T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
-         (retired W001) + T035c-21 PR-A (added E037, E038) + \
-         T035c-21 PR-B (added E039, E040, E041). Adjust this \
-         assertion only when rule registration actually changes."
->>>>>>> main
+         S003 (added joint-usa-first) + T035c-21 PR-B (added \
+         E039, E040, E041). Adjust this assertion only when rule \
+         registration actually changes."
     );
 }
 
