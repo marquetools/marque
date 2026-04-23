@@ -2785,7 +2785,11 @@ impl Rule for SciCompartmentOrderRule {
 /// RSV, HCS) account for the vast majority (>99%) of real-world SCI
 /// control usage. Seeing an unpublished control is more likely a typo,
 /// stale legacy marking, or unregistered use than a valid agency
-/// allocation. `Warn` reflects that rarity without blocking.
+/// allocation. `Warn` reflects that rarity without making it
+/// error-level by default. (Note: `Warn` still produces a non-zero
+/// CLI exit via `EX_DIAG_WARN`, so orgs that treat any warning as
+/// CI-blocking should configure `E034 = "info"` if they want
+/// audit-visibility only.)
 ///
 /// T035c-2 landed the `Severity::Info` variant and dropped the earlier
 /// `Severity::Off` workaround. Previously, the rule emitted `Diagnostic`
