@@ -1,0 +1,18 @@
+{
+  "name": "capco-validators-dev",
+  "description": "Development marketplace for capco-validators plugin",
+  "owner": {
+    "name": "Adam Poulemanos"
+  },
+  "plugins": [
+    {
+      "name": "capco-validators",
+      "description": "CAPCO/ISM validator agents and skill for marque rule engine development",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Adam Poulemanos"
+      }
+    }
+  ]
+}
