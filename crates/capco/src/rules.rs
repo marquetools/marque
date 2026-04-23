@@ -6509,7 +6509,7 @@ mod tests {
         // E037) AND no NOFORN should fire E037 once + E038 once —
         // not E038 twice. The declarative Custom constraint fuses
         // the NODIS/EXDIS disjunction into a single violation.
-        let diags = lint_banner("SECRET//NODIS//EXDIS");
+        let diags = lint_banner("SECRET//NODIS/EXDIS");
         let e038: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E038").collect();
         assert_eq!(
             e038.len(),
