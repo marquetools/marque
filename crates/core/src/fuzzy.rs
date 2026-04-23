@@ -333,7 +333,9 @@ mod tests {
     }
 
     #[test]
-    fn lev_deletion() {
+    fn lev_transposition() {
+        // Adjacent transposition (O and R swapped) → distance 2 in standard
+        // Levenshtein (two substitutions: position 3 O→R, position 4 R→O).
         assert_eq!(levenshtein("NOFORN", "NOFRON"), 2);
     }
 
@@ -391,7 +393,7 @@ mod tests {
 
     #[test]
     fn nofron_corrects_to_noforn() {
-        // Two transpositions (O and R swapped) → distance 2.
+        // Adjacent transposition (O and R swapped) → distance 2 in Levenshtein.
         let result = matcher().correct("NOFRON");
         assert_eq!(result.map(|c| c.token), Some("NOFORN"));
     }
