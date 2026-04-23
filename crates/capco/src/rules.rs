@@ -273,6 +273,35 @@ impl Rule for PortionMarkInBannerRule {
 // Rule: E002 — Missing USA in REL TO trigraph list
 // ---------------------------------------------------------------------------
 
+/// E002 detects missing or misplaced `USA` in the REL TO marking template
+/// from CAPCO-2016 §H.8 (p150–151, "Additional Marking Instructions"):
+///
+/// - Line 3713: "'USA' must always appear first whenever the REL TO string
+///   is used to communicate release decisions either by the US or a Non-US
+///   entity."
+///
+/// When E002 fires, its fix also produces a canonical REL TO list in a
+/// single pass by placing `USA` first and alphabetizing the remaining
+/// trigraphs. That canonicalization aligns the output with line 3714:
+///
+/// - Line 3714: "After 'USA', list the required one or more trigraph country
+///   codes in alphabetical order followed by tetragraph codes listed in
+///   alphabetical order. Each code is separated by a comma and a space."
+///
+/// E002 does not, by itself, detect line-3714 ordering errors when `USA` is
+/// already present and first; those cases are handled by E020. The 0.97
+/// confidence is predicated on single-pass canonicalization so an E002 fix
+/// does not leave behind a latent alphabetical-ordering violation for a
+/// second pass.
+///
+/// Scope boundaries:
+/// - Tetragraph alphabetization is deferred: `Trigraph` is 3-byte only
+///   (see `marque_ism::Trigraph` doc). When the broader `CountryCode` type
+///   lands, E002 should be extended to sort trigraphs before tetragraphs
+///   per line 3714.
+/// - "REL TO USA" alone (line 3715, a non-authorized marking with no
+///   following country codes) is out of scope. E002 does not fire when
+///   USA is present and first; a separate rule is needed for that case.
 struct MissingUsaTrigraphRule;
 
 impl Rule for MissingUsaTrigraphRule {
@@ -308,32 +337,112 @@ impl Rule for MissingUsaTrigraphRule {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Build corrected list: USA first, then the rest in original order.
-        let mut fixed_parts: Vec<&str> = vec!["USA"];
-        for t in attrs.rel_to.iter() {
-            if *t != marque_ism::Trigraph::USA {
-                fixed_parts.push(t.as_str());
-            }
-        }
-        let fixed = fixed_parts.join(", ");
-
         let message = if !has_usa {
             "REL TO list missing required USA trigraph"
         } else {
             "USA must be the first trigraph in REL TO list"
         };
+        let citation = "CAPCO-2016 §H.8 (REL TO, p150–151)";
 
-        // Span: the first REL TO trigraph in the marking. This points the
-        // user at the leading edge of the offending list.
-        let span = attrs
+        // Locate the `RelToBlock` this diagnostic refers to. If the
+        // marking has more than one REL TO block (e.g.,
+        // `SECRET//REL TO GBR//NF//REL TO AUS`), a single first→last
+        // splice would delete intervening `//...//` content. In that
+        // case we emit a diagnostic with no FixProposal and let the
+        // author resolve manually.
+        let rel_to_blocks: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
-            .find(|t| t.kind == TokenKind::RelToTrigraph)
-            .map(|t| t.span)
-            // Defensive: if there's no token span (shouldn't happen given
-            // attrs.rel_to is non-empty), use a zero-length span which the
-            // engine's fix path will filter rather than mis-splice.
-            .unwrap_or(Span::new(0, 0));
+            .filter(|t| t.kind == TokenKind::RelToBlock)
+            .collect();
+        let Some(&block) = rel_to_blocks.first() else {
+            // No block tagging (defensive: `attrs.rel_to` non-empty
+            // should imply at least one `RelToBlock` token). Emit
+            // diagnostic without a fix rather than risk mis-splice.
+            return vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                Span::new(0, 0),
+                message.to_owned(),
+                citation,
+                None,
+            )];
+        };
+        if rel_to_blocks.len() > 1 {
+            return vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                block.span,
+                format!(
+                    "{message} (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)"
+                ),
+                citation,
+                None,
+            )];
+        }
+
+        // Collect RelToTrigraph spans that fall inside the single
+        // RelToBlock. Filtering on block containment is defensive
+        // against future parser changes that might surface trigraph
+        // tokens outside their block.
+        let rel_to_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| {
+                t.kind == TokenKind::RelToTrigraph
+                    && t.span.start >= block.span.start
+                    && t.span.end <= block.span.end
+            })
+            .collect();
+        let (first, last) = match (rel_to_spans.first(), rel_to_spans.last()) {
+            (Some(f), Some(l)) => (f, l),
+            _ => {
+                return vec![Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    block.span,
+                    message.to_owned(),
+                    citation,
+                    None,
+                )];
+            }
+        };
+
+        // Span: first→last `RelToTrigraph` within this block, extended
+        // through any trailing `,`/whitespace tail *only when* the
+        // remainder of the RelToBlock after the last trigraph is
+        // delimiter-only. This consumes stale delimiters like the
+        // trailing `,` in `REL TO GBR, AUS,` so the splice leaves a
+        // clean list. We gate on delimiter-only to preserve any
+        // content we can't tokenize as a trigraph today (tetragraphs
+        // are 4-byte and don't fit `Trigraph`; deleting them would be
+        // wrong).
+        let start = first.span.start;
+        let mut end = last.span.end;
+        let tail_offset = end - block.span.start;
+        let block_bytes = block.text.as_bytes();
+        if tail_offset <= block_bytes.len() {
+            let tail = &block_bytes[tail_offset..];
+            if tail.iter().all(|b| matches!(b, b',' | b' ' | b'\t')) {
+                end = block.span.end;
+            }
+        }
+        let span = Span::new(start, end);
+
+        // Build the fully canonical list (USA first, non-USA entries
+        // alphabetical per CAPCO-2016 §H.8 line 3714) via the shared
+        // helper used by E020. When USA is missing from input we add
+        // it before canonicalizing so the output always has USA first;
+        // the helper itself treats USA as "first if present" without
+        // injecting it (E020 must not synthesize countries that aren't
+        // there). Producing the canonical form in a single pass is
+        // required because E020 gates on `rel_to[0] == USA` and is
+        // therefore silent whenever E002 fires.
+        let mut codes: Vec<marque_ism::Trigraph> = attrs.rel_to.to_vec();
+        if !has_usa {
+            codes.push(marque_ism::Trigraph::USA);
+        }
+        let fixed = canonicalize_trigraph_list(&codes).join(", ");
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -341,7 +450,7 @@ impl Rule for MissingUsaTrigraphRule {
             source: FixSource::BuiltinRule,
             span,
             message: message.to_owned(),
-            citation: "CAPCO-2016 §H.8",
+            citation,
             original: current,
             replacement: fixed,
             confidence: 0.97, // per spec T031
@@ -1227,19 +1336,46 @@ impl Rule for CorrectionsMapRule {
     }
 }
 
-/// E009: Portion markings must use abbreviated forms, not banner-style expansions.
+/// E009: Portion markings must use abbreviated forms, not banner-style
+/// expansions.
 ///
 /// Mirror of E001: whereas E001 catches portion abbreviations in banners
 /// (e.g., `NF` → `NOFORN`), E009 catches banner expansions in portions
 /// (e.g., `NOFORN` → `NF`, `SECRET` → `S`).
 ///
-/// The rule checks two token categories:
-/// - **Classification**: banner form like "SECRET" should be "S"
-/// - **Dissem controls**: banner form like "NOFORN" should be "NF"
+/// Authority chain: CAPCO-2016 §G.1 line 748 ("All markings used in a
+/// banner line and portion mark must be in accordance with the values
+/// listed in the Register") + Table 4 / §H per-template entries, which
+/// list three forms per marking (Banner Line Marking Title, Banner Line
+/// Abbreviation, Authorized Portion Mark). This rule specifically
+/// detects portion text matching banner-form classification strings
+/// (for US classifications the title and banner abbreviation coincide,
+/// e.g., `SECRET`) or banner-form dissem abbreviations (e.g., `NOFORN`,
+/// `ORCON`, `LIMDIS`) — both authorized only in a banner line, not a
+/// portion mark. Long dissem marking titles (e.g., `ORIGINATOR
+/// CONTROLLED`) are out of scope today: the dissem branch keys on
+/// `marking_forms::banner_to_portion()` which only indexes banner
+/// abbreviations, and the parser does not accept long titles in either
+/// banners or portions on this branch. Adding title-form coverage is a
+/// follow-up once the parser and `marking_forms` lookup grow a
+/// title column. Branch citations match E001's per-branch convention:
+///
+/// - **Classification**: CAPCO-2016 §H.1 (US Classification Markings,
+///   Authorized Portion Mark per template). E.g., TOP SECRET→TS
+///   (p47 line 988), SECRET→S (p48), CONFIDENTIAL→C (p50 line 1074),
+///   UNCLASSIFIED→U (p51 line 1114).
+/// - **Dissem controls**: CAPCO-2016 §H.8 (Authorized Portion Mark per
+///   template). E.g., NOFORN→NF, ORCON→OC.
+/// - **Non-IC dissem controls**: CAPCO-2016 §H.9 (Authorized Portion
+///   Mark per template). E.g., LIMDIS→DS. SBU/LES/SSI are skipped
+///   because their banner and portion forms are identical, so no
+///   substitution is possible.
 ///
 /// Data sources:
 /// - Classification: `Classification::banner_str()` / `portion_str()` (hand-written in marque-ism)
-/// - Dissem controls: `contract_dissem_to_portion()` (inverse of E001's `expand_dissem_abbreviation`)
+/// - Dissem controls: `marking_forms::banner_to_portion()` (inverse of E001's path)
+/// - Non-IC dissem: `NonIcDissem::banner_str()` / `portion_str()` with
+///   equal-form guard
 struct PortionAbbreviationRule;
 
 impl Rule for PortionAbbreviationRule {
@@ -1284,7 +1420,7 @@ impl Rule for PortionAbbreviationRule {
                         message: format!(
                             "portion uses banner-form classification {banner:?}; use {portion:?}"
                         ),
-                        citation: "CAPCO-2016 §C.1",
+                        citation: "CAPCO-2016 §H.1 (US Classification Markings)",
                         original: banner.to_owned(),
                         replacement: portion.to_owned(),
                         confidence: 1.0,
@@ -1319,7 +1455,7 @@ impl Rule for PortionAbbreviationRule {
                 message: format!(
                     "portion uses banner-form dissem control {text:?}; use {portion:?}"
                 ),
-                citation: "CAPCO-2016 §C.1",
+                citation: "CAPCO-2016 §H.8",
                 original: text.to_owned(),
                 replacement: portion.to_owned(),
                 confidence: 1.0,
@@ -1351,7 +1487,7 @@ impl Rule for PortionAbbreviationRule {
                     message: format!(
                         "portion uses banner-form non-IC dissem {text:?}; use {portion:?}"
                     ),
-                    citation: "CAPCO-2016 §C.1",
+                    citation: "CAPCO-2016 §H.9",
                     original: text.to_owned(),
                     replacement: portion.to_owned(),
                     confidence: 1.0,
@@ -1959,25 +2095,71 @@ impl Rule for CountryCodeOrderingRule {
         let mut diagnostics = Vec::new();
 
         // Check REL TO ordering. Skip if USA is missing or not first —
-        // E002 handles that case and its fix implicitly corrects ordering.
+        // E002 fires for those cases and its fix produces the fully
+        // canonical list (USA first, non-USA entries alphabetical per
+        // CAPCO-2016 §H.8 line 3714), so E020's concern is already
+        // absorbed when E002 is active.
         if attrs.rel_to.len() >= 2
             && attrs
                 .rel_to
                 .first()
                 .is_some_and(|t| *t == marque_ism::Trigraph::USA)
         {
-            if let Some(diag) = check_trigraph_ordering(
-                &attrs.rel_to,
-                "REL TO",
-                self.id(),
-                self.default_severity(),
-                attrs,
-            ) {
-                diagnostics.push(diag);
+            // Locate the `RelToBlock` for this list. A single first→last
+            // `RelToTrigraph` splice across the whole marking would
+            // delete intervening `//...//` content when more than one
+            // REL TO block is present (e.g.,
+            // `SECRET//REL TO USA, GBR//NF//REL TO AUS`). Mirrors E002
+            // (line 345) in scoping the fix to a single block and
+            // suppressing it when multiple blocks are present.
+            let rel_to_blocks: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::RelToBlock)
+                .collect();
+            if rel_to_blocks.len() > 1 {
+                // Suppress the fix rather than risk cross-block corruption.
+                // Span the first block so downstream consumers have a
+                // location to display.
+                let actual: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
+                let sorted = canonicalize_trigraph_list(&attrs.rel_to);
+                if actual != sorted {
+                    diagnostics.push(Diagnostic::new(
+                        self.id(),
+                        self.default_severity(),
+                        rel_to_blocks[0].span,
+                        format!(
+                            "REL TO country codes must be alphabetically ordered \
+                             (USA first when present): [{}] → [{}] \
+                             (multiple REL TO blocks present; fix suppressed to avoid \
+                             cross-block corruption — resolve manually)",
+                            actual.join(", "),
+                            sorted.join(", "),
+                        ),
+                        "CAPCO-2016 §H.8",
+                        None,
+                    ));
+                }
+            } else if let Some(&block) = rel_to_blocks.first() {
+                if let Some(diag) = check_trigraph_ordering(
+                    &attrs.rel_to,
+                    "REL TO",
+                    self.id(),
+                    self.default_severity(),
+                    attrs,
+                    Some(block.span),
+                ) {
+                    diagnostics.push(diag);
+                }
             }
+            // If `rel_to_blocks` is empty while `attrs.rel_to` is
+            // populated, the parser is in an inconsistent state; skip
+            // silently rather than synthesize a span.
         }
 
-        // Check JOINT country ordering.
+        // Check JOINT country ordering. JOINT countries live inside a
+        // single `Classification` token, so the multi-block concern
+        // that motivates REL TO's block scoping does not apply here.
         if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
             if j.countries.len() >= 2 {
                 if let Some(diag) = check_trigraph_ordering(
@@ -1986,6 +2168,7 @@ impl Rule for CountryCodeOrderingRule {
                     self.id(),
                     self.default_severity(),
                     attrs,
+                    None,
                 ) {
                     diagnostics.push(diag);
                 }
@@ -1996,26 +2179,51 @@ impl Rule for CountryCodeOrderingRule {
     }
 }
 
+/// Canonicalize a trigraph list per CAPCO-2016 §H.8 line 3713–3714:
+/// `USA` first when present, then remaining trigraphs alphabetically.
+///
+/// This is the shared ordering rule for E002 (REL TO, fix path) and E020
+/// (REL TO + JOINT, both check and fix paths). Extracting it prevents the
+/// two rules from drifting if the ordering rule changes (tetragraph
+/// sorting, delimiter normalization, etc.).
+///
+/// Tetragraph handling is deferred — `Trigraph` is 3-byte only today and
+/// cannot represent tetragraph codes. When a broader `CountryCode` type
+/// lands, this helper should be extended to sort trigraphs before
+/// tetragraphs per line 3714.
+fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
+    let has_usa = codes.contains(&marque_ism::Trigraph::USA);
+    let mut sorted: Vec<&str> = codes
+        .iter()
+        .filter(|t| **t != marque_ism::Trigraph::USA)
+        .map(|t| t.as_str())
+        .collect();
+    sorted.sort_unstable();
+    if has_usa {
+        sorted.insert(0, "USA");
+    }
+    sorted
+}
+
 /// Check that a trigraph list is ordered: USA first (if present), then
 /// remaining codes alphabetically.
+///
+/// `block_span`, when `Some`, restricts the trigraph-token search to
+/// spans that fall inside it. This is required for REL TO because a
+/// marking may contain multiple `RelToBlock`s (e.g.,
+/// `...REL TO USA, GBR//NF//REL TO AUS...`) and a first→last splice
+/// across blocks would delete intervening `//...//` content. Callers
+/// that cover a whole-marking list (JOINT sits inside a single
+/// `Classification` token) pass `None`.
 fn check_trigraph_ordering(
     codes: &[marque_ism::Trigraph],
     list_name: &str,
     rule: RuleId,
     severity: Severity,
     attrs: &IsmAttributes,
+    block_span: Option<Span>,
 ) -> Option<Diagnostic> {
-    // Build the expected sorted order: USA first, then rest alphabetical.
-    let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
-    let has_usa = sorted.contains(&"USA");
-
-    // Remove USA, sort the rest, put USA back at front.
-    sorted.retain(|s| *s != "USA");
-    sorted.sort_unstable();
-    if has_usa {
-        sorted.insert(0, "USA");
-    }
-
+    let sorted = canonicalize_trigraph_list(codes);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
     if actual == sorted {
         return None;
@@ -2030,7 +2238,10 @@ fn check_trigraph_ordering(
     let matching_spans: Vec<&TokenSpan> = attrs
         .token_spans
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| {
+            t.kind == kind
+                && block_span.is_none_or(|b| t.span.start >= b.start && t.span.end <= b.end)
+        })
         .collect();
     let span = match (matching_spans.first(), matching_spans.last()) {
         (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
@@ -3652,12 +3863,144 @@ mod tests {
 
     #[test]
     fn e002_fires_when_usa_missing_with_real_span() {
+        let src_str = "SECRET//REL TO GBR, AUS";
+        let diags = lint_banner(src_str);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        // Span covers the full REL TO trigraph list (first → last), not
+        // just the first trigraph — required so `Engine::fix` can splice
+        // the full list with the canonical replacement in one step.
+        assert_eq!(e002[0].span.as_str(src_str.as_bytes()).unwrap(), "GBR, AUS");
+    }
+
+    // T035c-10: fix canonicalization — E002's replacement must produce
+    // the fully canonical REL TO list (USA first + non-USA entries
+    // alphabetical per CAPCO-2016 §H.8 line 3714) in a single pass. This
+    // is required because E020 gates on `rel_to[0] == USA` and so is
+    // silent whenever E002 fires; if E002's fix preserved input order,
+    // the output would still carry a latent alphabetical-ordering
+    // violation that only a second pass would catch.
+
+    #[test]
+    fn e002_fix_sorts_non_usa_trigraphs_when_usa_missing() {
+        // USA absent and non-USA entries in non-alphabetical order.
+        // Canonical form: USA, AUS, GBR.
         let diags = lint_banner("SECRET//REL TO GBR, AUS");
         let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
         assert_eq!(e002.len(), 1);
-        // Span points at the first trigraph in the list.
-        let src = b"SECRET//REL TO GBR, AUS";
-        assert_eq!(e002[0].span.as_str(src).unwrap(), "GBR");
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a FixProposal");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 must produce canonical REL TO (USA first + alphabetical rest)"
+        );
+    }
+
+    #[test]
+    fn e002_fix_sorts_non_usa_trigraphs_when_usa_misplaced() {
+        // USA present but not first, and non-USA entries unsorted.
+        // Canonical form: USA, AUS, GBR.
+        let diags = lint_banner("SECRET//REL TO GBR, USA, AUS");
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a FixProposal");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 must produce canonical REL TO in one pass: {}",
+            fix.replacement.as_ref()
+        );
+    }
+
+    // T035c-10 second-round review fixes: trailing-delimiter tail
+    // consumption and multi-block suppression.
+
+    #[test]
+    fn e002_fix_consumes_trailing_comma_in_rel_to_block() {
+        // `REL TO GBR, AUS,` has a trailing `,` inside the RelToBlock.
+        // Splicing only `GBR, AUS` (first→last trigraph) would leave
+        // the trailing `,` behind: `REL TO USA, AUS, GBR,` — still
+        // malformed. The fix span must extend through the delimiter
+        // tail so the rewritten banner is clean.
+        let src = "SECRET//REL TO GBR, AUS,";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "GBR, AUS,",
+            "fix span must cover the delimiter-only tail so splicing \
+             leaves no stale `,`/whitespace behind"
+        );
+    }
+
+    #[test]
+    fn e002_fix_span_stops_at_non_delimiter_tail() {
+        // When the block tail contains non-delimiter content (here the
+        // literal unknown token `FVEY`, which is a tetragraph marker
+        // that we cannot represent as a 3-byte `Trigraph` today), the
+        // fix span must NOT extend through it — otherwise the splice
+        // would silently delete the user's tetragraph. Lock this.
+        let src = "SECRET//REL TO GBR, AUS, FVEY";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
+        // Span must stop at end-of-AUS, not swallow `, FVEY`.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "GBR, AUS",
+            "fix span must not swallow tetragraph content in the tail"
+        );
+    }
+
+    #[test]
+    fn e002_suppresses_fix_on_multiple_rel_to_blocks() {
+        // If the parser sees more than one REL TO block in a marking,
+        // a single first→last splice would delete intervening `//...//`
+        // content (here `//NF//`). The rule must emit a diagnostic
+        // without a FixProposal so the engine cannot corrupt the
+        // source.
+        let src = "SECRET//REL TO GBR//NF//REL TO AUS";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(
+            e002.len(),
+            1,
+            "E002 must still fire (diagnostic present): {diags:?}"
+        );
+        assert!(
+            e002[0].fix.is_none(),
+            "E002 must NOT carry a fix when multiple REL TO blocks \
+             are present (cross-block splice would delete intervening \
+             `//NF//`): {e002:?}"
+        );
+    }
+
+    #[test]
+    fn e002_fix_output_does_not_trigger_e020() {
+        // Apply E002's fix as the new input and confirm E020 stays silent —
+        // this is the invariant that lets E020 gate on `rel_to[0] == USA`.
+        let diags_round1 = lint_banner("CONFIDENTIAL//REL TO FRA, DEU");
+        let e002: Vec<_> = diags_round1
+            .iter()
+            .filter(|d| d.rule.as_str() == "E002")
+            .collect();
+        assert_eq!(e002.len(), 1);
+        let fixed = e002[0].fix.as_ref().unwrap().replacement.as_ref();
+        assert_eq!(fixed, "USA, DEU, FRA");
+
+        // Round 2: feed the canonicalized REL TO back through the linter;
+        // neither E002 nor E020 should fire on the rewritten banner.
+        let round2_banner = format!("CONFIDENTIAL//REL TO {fixed}");
+        let diags_round2 = lint_banner(&round2_banner);
+        assert!(
+            diags_round2
+                .iter()
+                .all(|d| d.rule.as_str() != "E002" && d.rule.as_str() != "E020"),
+            "E002's canonical output must not fire E002 or E020: {diags_round2:?}"
+        );
     }
 
     #[test]
@@ -4117,22 +4460,43 @@ mod tests {
     fn e009_fires_on_banner_form_classification_in_portion() {
         let diags = lint_portion("(SECRET//NF)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(SECRET//NF)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "SECRET");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "S");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // classification uses §H.1 (US Classification Markings).
+        assert_eq!(
+            e009[0].citation,
+            "CAPCO-2016 §H.1 (US Classification Markings)",
+            "classification branch must cite §H.1 per T035c-13"
+        );
     }
 
     #[test]
     fn e009_fires_on_banner_form_dissem_in_portion() {
         let diags = lint_portion("(S//NOFORN)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(S//NOFORN)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "NOFORN");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "NF");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // IC dissem controls cite §H.8.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.8",
+            "IC dissem branch must cite §H.8 per T035c-13"
+        );
     }
 
     #[test]
@@ -4172,6 +4536,12 @@ mod tests {
         assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "DS");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // Non-IC dissem controls cite §H.9.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.9",
+            "Non-IC dissem branch must cite §H.9 per T035c-13"
+        );
     }
 
     #[test]
@@ -4194,6 +4564,71 @@ mod tests {
         );
     }
 
+    // T035c-13: pin-down tests for per-branch citation coverage and
+    // classification-level + dissem-form breadth.
+
+    #[test]
+    fn e009_fires_on_top_secret_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p47 line 988): TOP SECRET → TS.
+        let diags = lint_portion("(TOP SECRET//NF)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on TOP SECRET in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "TS");
+    }
+
+    #[test]
+    fn e009_fires_on_confidential_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p50 line 1074): CONFIDENTIAL → C.
+        let diags = lint_portion("(CONFIDENTIAL)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on CONFIDENTIAL in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "C");
+    }
+
+    #[test]
+    fn e009_fires_on_unclassified_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p51 line 1114): UNCLASSIFIED → U.
+        let diags = lint_portion("(UNCLASSIFIED)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on UNCLASSIFIED in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "U");
+    }
+
+    #[test]
+    fn e009_fires_on_orcon_banner_form_in_portion() {
+        // CAPCO-2016 §H.8: ORCON → OC. Different dissem control from
+        // NOFORN, so this locks breadth beyond the single NOFORN case.
+        let diags = lint_portion("(S//ORCON)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on ORCON in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "OC");
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_dissem_with_equal_banner_portion() {
+        // RELIDO has identical banner and portion forms — no
+        // substitution possible. E009 must stay silent rather than
+        // firing with an empty replacement.
+        let diags = lint_portion("(S//RELIDO)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when banner=portion for RELIDO: {diags:?}"
     // T035c-1b: S001 prefer-banner-abbreviation (style). Fires when a
     // banner uses the long "Marking Title" form where a distinct
     // abbreviation is authorized. Severity is Info — both forms are
@@ -4866,6 +5301,74 @@ mod tests {
         assert!(
             !e020.is_empty(),
             "E020 should fire on unordered JOINT countries: {diags:?}"
+        );
+    }
+
+    // T035c-10 fourth-round review: multi-RelToBlock safety.
+    // Mirrors the E002 cross-block guard. A first→last `RelToTrigraph`
+    // splice across the whole marking would delete intervening `//...//`
+    // content when more than one REL TO block is present.
+
+    #[test]
+    fn e020_suppresses_fix_on_multiple_rel_to_blocks() {
+        // USA, GBR, AUS is unordered (alphabetical after USA should be
+        // AUS, GBR). With two RelToBlocks, E020 must still report the
+        // ordering problem but MUST NOT carry a FixProposal — a single
+        // first→last splice across the two blocks would delete the
+        // intervening `//NF//` content.
+        let src = "SECRET//REL TO USA, GBR//NF//REL TO AUS";
+        let diags = lint_banner(src);
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(
+            e020.len(),
+            1,
+            "E020 must still fire (diagnostic present): {diags:?}"
+        );
+        assert!(
+            e020[0].fix.is_none(),
+            "E020 must NOT carry a fix when multiple REL TO blocks \
+             are present (cross-block splice would delete intervening \
+             `//NF//`): {e020:?}"
+        );
+        assert!(
+            e020[0].message.contains("multiple REL TO blocks"),
+            "suppression message must explain why no fix is offered: {}",
+            e020[0].message
+        );
+    }
+
+    #[test]
+    fn e020_silent_on_ordered_list_across_multiple_rel_to_blocks() {
+        // USA, AUS, GBR is already canonical; E020 must not fire even
+        // when the canonical list is split across two RelToBlocks.
+        let src = "SECRET//REL TO USA, AUS//NF//REL TO GBR";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E020"),
+            "E020 must not fire on canonically-ordered list, even \
+             across multiple REL TO blocks: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e020_fix_span_stays_inside_single_rel_to_block() {
+        // When exactly one RelToBlock is present, the fix span must
+        // cover first→last trigraph WITHIN that block — not stretch
+        // across unrelated trigraphs elsewhere in the token stream.
+        // This is the positive counterpart to the multi-block guard:
+        // the block_span scope must be applied on the single-block
+        // happy path too.
+        let src = "SECRET//REL TO USA, GBR, AUS";
+        let diags = lint_banner(src);
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        let fix = e020[0].fix.as_ref().expect("E020 must carry a fix");
+        // Span should cover exactly `USA, GBR, AUS` — the first→last
+        // trigraph range — not leak outside.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "USA, GBR, AUS",
+            "fix span must cover the full trigraph range inside the block"
         );
     }
 
