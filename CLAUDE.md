@@ -170,8 +170,8 @@ LMDB (`heed` crate) at `.marque/cache.lmdb`. Cache key = `blake3(content) ++ sch
 version = "2023.1"
 
 [rules]
-banner-abbreviation = "fix"    # Severity: fix | warn | error | off
-missing-usa-trigraph = "fix"
+E001 = "fix"                   # portion-mark-in-banner; off | warn | error | fix
+E002 = "fix"                   # missing-usa-trigraph
 
 [corrections]
 "SERCET" = "SECRET"

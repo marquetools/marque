@@ -54,13 +54,29 @@
 //! author reading the wrapper doesn't take `§B.1` / `§B.3` as
 //! authoritative without cross-checking the catalog.
 //!
-//! ## E018 / E019 are NOT retired here
+//! ## T035b audit: E017/E018/E019 retired, E036 added
 //!
-//! `JointIcDissemRule` (E018) and `JointNonIcDissemRule` (E019) stay
-//! as hand-written impls in `crate::rules` pending T035b. CAPCO-2016
-//! §H.3 lines 4140-4146 explicitly permit JOINT with IC and non-IC
-//! dissem controls (excluding only NOFORN and HCS); both existing
-//! rules are over-restrictive relative to the source.
+//! The T035b correctness audit (2026-04-21) retired three
+//! over-restrictive JOINT rules that contradicted CAPCO-2016
+//! §H.3 lines 4140-4146:
+//!
+//! - **E017** (`JointFgiRule`) — JOINT + FGI marker forbidden.
+//!   Wrong: §H.3 line 4140 lists FGI among markings JOINT "may be
+//!   used with"; lines 4163-4164 cross-reference §H.7 for the
+//!   syntax. Retired entirely.
+//! - **E018** (`JointIcDissemRule`) — JOINT + any non-REL IC
+//!   dissem control forbidden. Wrong: §H.3 line 4140 permits
+//!   IC dissem "as appropriate"; line 4146 calls out only
+//!   NOFORN and HCS as specific exclusions. Retired entirely
+//!   (see replacement below).
+//! - **E019** (`JointNonIcDissemRule`) — JOINT + any non-IC
+//!   dissem forbidden. Wrong: §H.3 line 4140 permits non-IC
+//!   dissem with JOINT "as appropriate". Retired entirely.
+//!
+//! Replacement: **E036** (`DeclarativeJointHcsRule`) — the only
+//! specific exclusion CAPCO actually calls out. JOINT + NOFORN is
+//! covered indirectly by `capco/noforn-conflicts-rel-to` + E014's
+//! REL TO requirement.
 
 use std::sync::LazyLock;
 
@@ -451,36 +467,61 @@ impl Rule for DeclarativeJointRestrictedRule {
 }
 
 // ---------------------------------------------------------------------------
-// E017 — JOINT cannot be used with FGI marker
+// E036 — JOINT cannot be used with HCS markings
 // ---------------------------------------------------------------------------
+//
+// Replaces the retired E017/E018/E019 (T035b audit). CAPCO-2016 §H.3
+// line 4146: "May not be used with the HCS markings or NOFORN
+// markings." The JOINT-NOFORN exclusion is already enforced
+// indirectly via `capco/noforn-conflicts-rel-to` + E014's REL TO
+// requirement. The HCS exclusion is the only remaining specific
+// constraint this rule fires on.
+//
+// "HCS markings" is plural — covers `HCS`, `HCS-O`, `HCS-P`, and any
+// compound anchored on `SciControlBare::Hcs` in `sci_markings`.
+// `TOK_HCS` in `satisfies_attrs` matches all of them.
 
-pub(crate) struct DeclarativeJointFgiRule;
+pub(crate) struct DeclarativeJointHcsRule;
 
-impl Rule for DeclarativeJointFgiRule {
+impl Rule for DeclarativeJointHcsRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E017")
+        RuleId::new("E036")
     }
     fn name(&self) -> &'static str {
-        "joint-fgi"
+        "joint-hcs"
     }
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, "E017/joint-conflicts-fgi").is_empty() {
+        if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
         }
 
-        let span = first_span_of(attrs, TokenKind::FgiMarker);
+        // Span selection: point at the offending HCS SCI control
+        // token. When multiple SCI controls are present (e.g.,
+        // `SI//HCS-P`), the first SciControl span may be SI, which
+        // is not the violation. Prefer the first span whose text
+        // starts with "HCS"; fall back to the first SciControl span
+        // only if no HCS-prefixed token span is attached (parser
+        // gaps). The JOINT classification itself is not in error;
+        // the user needs to remove or re-categorize HCS.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::SciControl && t.text.starts_with("HCS"))
+            .map(|t| t.span)
+            .unwrap_or_else(|| first_span_of(attrs, TokenKind::SciControl));
 
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             span,
-            "JOINT may not be used with FGI — a marking is either co-owned (JOINT) \
-             or foreign-originated (FGI), not both",
-            "CAPCO-2016 §H.3",
+            "HCS markings may not be used with JOINT classification \
+             (CAPCO-2016 §H.3 explicitly excludes HCS from JOINT \
+             documents; use a US classification marking with HCS instead)",
+            "CAPCO-2016 §H.3 p57",
             None,
         )]
     }
