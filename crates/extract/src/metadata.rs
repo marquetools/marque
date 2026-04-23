@@ -75,13 +75,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_metadata_report_has_warnings_empty() {
+    fn metadata_report_has_warnings_empty() {
         let report = MetadataReport::default();
         assert!(!report.has_warnings());
     }
 
     #[test]
-    fn test_metadata_report_has_warnings_populated() {
+    fn metadata_report_has_warnings_populated() {
         let warning = MetadataWarning {
             field: MetadataField {
                 category: MetadataCategory::DocumentProperties,
