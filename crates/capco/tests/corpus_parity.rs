@@ -42,7 +42,7 @@ fn engine() -> Engine {
 }
 
 #[test]
-fn rule_count_reflects_t035b_net_change() {
+fn rule_count_reflects_registration_changes() {
     // T035a: 1-for-1 swap of 11 hand-written rules → 11 declarative
     // wrappers. Count stayed at 39.
     //
@@ -51,15 +51,17 @@ fn rule_count_reflects_t035b_net_change() {
     // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 line
     // 4146. Net: 39 - 3 + 1 = 37.
     //
+    // T035c-1b: added S001 (prefer-banner-abbreviation, style). Net: 38.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        37,
-        "T035b rule count: retired E017/E018/E019, added E036. \
-         Adjust this assertion only when rule registration actually \
-         changes."
+        38,
+        "rule count: T035b (retired E017/E018/E019, added E036) + \
+         T035c-1b (added S001). Adjust this assertion only when rule \
+         registration actually changes."
     );
 }
 
