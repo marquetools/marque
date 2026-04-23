@@ -16,6 +16,7 @@
 
 pub mod attrs;
 pub mod error;
+pub mod fuzzy;
 pub mod parser;
 pub mod scanner;
 pub mod span;

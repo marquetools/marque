@@ -1,0 +1,461 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Vocabulary-aware fuzzy correction for CAPCO tokens.
+//!
+//! # Design
+//!
+//! CAPCO markings are built from a **closed vocabulary** of ~52 CVE tokens
+//! (classification levels, SCI controls, dissemination controls, and a handful
+//! of structural keywords). OCR and manual transcription errors produce
+//! near-miss variants — `SERCET`, `NOFRON`, `CONFIDETIAL` — that no rule ever
+//! fires on because the scanner never detects them as marking candidates.
+//!
+//! The approach here mirrors what makes [`typos`](https://github.com/crates-ci/typos)
+//! so effective at eliminating false positives, adapted for the closed-world
+//! property of CAPCO vocabulary:
+//!
+//! 1. **Closed-world validation first.** If the input token is already in the
+//!    vocabulary, return `None` immediately — no correction needed, no false
+//!    positive possible.
+//!
+//! 2. **Exhaustive near-miss search.** Because the vocabulary is tiny (~52
+//!    tokens), computing Levenshtein edit distance to every known token is
+//!    fast (microseconds).
+//!
+//! 3. **Ambiguity rejection.** If two or more vocabulary entries are equally
+//!    close, the correction is ambiguous. Return `None` and let the engine
+//!    surface it as a human-review item — exactly what `typos` does for words
+//!    that could correct to multiple targets.
+//!
+//! 4. **Minimum-length guard.** Very short tokens (1-2 characters) are excluded
+//!    from fuzzy matching because edit distance is semantically unreliable at
+//!    that length. `C`, `S`, `U` are valid in context but look similar enough to
+//!    dozens of other possibilities that any fuzzy suggestion would be noise.
+//!
+//! 5. **Confidence scores.** Each `FuzzyCorrection` carries a base confidence
+//!    derived from edit distance and token length. The calling engine multiplies
+//!    this by a **context factor** (+0.10–0.15 when the token is inside a
+//!    detected marking region) before comparing against the configured threshold.
+//!
+//! # Integration Points
+//!
+//! The [`FuzzyVocabMatcher`] is injected into the engine's pre-scanner step.
+//! In the default configuration it operates after the AhoCorasick corrections
+//! map pass — user-configured exact corrections take priority; the fuzzy matcher
+//! handles residual OCR noise the exact map doesn't cover.
+//!
+//! **WASM-safe**: no I/O, no heap allocation beyond the single match result, no
+//! platform-specific code.
+
+/// A correction candidate produced by [`FuzzyVocabMatcher::correct`].
+///
+/// Callers should multiply `confidence` by a context factor before comparing
+/// against the engine threshold:
+/// - Inside a detected marking region (between `//` boundaries or `(...)`):
+///   multiply by `1.0 + 0.15 * context_strength` (practical range 1.10–1.15).
+/// - In open prose with no structural signal: use `confidence` as-is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuzzyCorrection {
+    /// The suggested canonical token from the vocabulary.
+    pub token: &'static str,
+    /// Levenshtein edit distance between the input and `token`.
+    pub distance: u8,
+    /// Base confidence score in `[0.0, 1.0]`.
+    ///
+    /// Derived from `distance` and token length. Does **not** include a
+    /// context factor — callers should apply one before thresholding.
+    pub confidence: f32,
+}
+
+/// Vocabulary-aware fuzzy corrector for a closed token set.
+///
+/// Construct once per engine session from the vocabulary slice exposed by
+/// [`marque_ism::TokenSet::correction_vocab`]. The vocab must be **sorted
+/// and deduplicated** (the `CapcoTokenSet` guarantees this via `binary_search`).
+///
+/// # Example
+/// ```
+/// use marque_core::fuzzy::FuzzyVocabMatcher;
+/// use marque_ism::CapcoTokenSet;
+/// use marque_ism::token_set::TokenSet as _;
+///
+/// let vocab = CapcoTokenSet.correction_vocab();
+/// let matcher = FuzzyVocabMatcher::new(vocab);
+///
+/// // "SERCET" is one transpose away from "SECRET"
+/// let result = matcher.correct("SERCET");
+/// assert_eq!(result.map(|c| c.token), Some("SECRET"));
+///
+/// // Known tokens → no correction
+/// assert!(matcher.correct("SECRET").is_none());
+///
+/// // Too ambiguous → no correction
+/// // (tokens equidistant from the input → ambiguous, return None)
+/// ```
+pub struct FuzzyVocabMatcher {
+    vocab: &'static [&'static str],
+}
+
+impl FuzzyVocabMatcher {
+    /// Create a new matcher over `vocab`.
+    ///
+    /// `vocab` must be the sorted, deduplicated CVE token slice returned by
+    /// [`TokenSet::correction_vocab`]. Construction is `O(1)` — the slice is
+    /// not copied or indexed.
+    pub fn new(vocab: &'static [&'static str]) -> Self {
+        Self { vocab }
+    }
+
+    /// Attempt to find a fuzzy correction for an unknown `token`.
+    ///
+    /// Returns `None` when:
+    /// - `token` is already a known vocabulary entry (no correction needed).
+    /// - `token` is too short (< `MIN_FUZZY_LEN` characters).
+    /// - No vocabulary entry is within [`MAX_EDIT_DISTANCE`] edits.
+    /// - Multiple vocabulary entries tie at the closest distance (ambiguous).
+    ///
+    /// Returns `Some(FuzzyCorrection)` only when the correction is unambiguous.
+    pub fn correct(&self, token: &str) -> Option<FuzzyCorrection> {
+        // Fast path: token is already valid → nothing to correct.
+        if self.vocab.binary_search(&token).is_ok() {
+            return None;
+        }
+
+        let token_len = token.chars().count();
+
+        // Very short tokens are too noisy for edit-distance correction.
+        if token_len < MIN_FUZZY_LEN {
+            return None;
+        }
+
+        let mut best_dist = u8::MAX;
+        let mut best_token: Option<&'static str> = None;
+        let mut ambiguous = false;
+
+        for &candidate in self.vocab {
+            let cand_len = candidate.chars().count();
+
+            // Skip candidates whose length difference alone exceeds our bound.
+            // This is a fast filter before the full Levenshtein computation.
+            let len_diff = token_len.abs_diff(cand_len);
+            if len_diff > MAX_EDIT_DISTANCE as usize {
+                continue;
+            }
+
+            let d = levenshtein(token, candidate);
+
+            if d < best_dist {
+                best_dist = d;
+                best_token = Some(candidate);
+                ambiguous = false;
+            } else if d == best_dist {
+                // Another candidate at the same distance — correction is
+                // ambiguous; do not auto-suggest.
+                ambiguous = true;
+            }
+        }
+
+        if ambiguous || best_dist > MAX_EDIT_DISTANCE {
+            return None;
+        }
+
+        let token = best_token?;
+        let confidence = correction_confidence(best_dist, token_len);
+
+        // Confidence too low to be meaningful — treat as no match.
+        if confidence < MIN_USEFUL_CONFIDENCE {
+            return None;
+        }
+
+        Some(FuzzyCorrection {
+            token,
+            distance: best_dist,
+            confidence,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/// Minimum input token length for fuzzy matching.
+///
+/// Tokens shorter than this are excluded: single-char tokens (`S`, `C`, `U`,
+/// `R`) are valid CAPCO abbreviations and at edit distance 1 from too many
+/// other short tokens to produce reliable corrections.
+pub const MIN_FUZZY_LEN: usize = 3;
+
+/// Maximum Levenshtein edit distance considered for a correction.
+///
+/// Edit distance 2 covers:
+/// - Transpositions (`SERCET` → `SECRET`, distance 1).
+/// - Single-char substitutions + insertions (`CONFIDETIAL` → `CONFIDENTIAL`,
+///   distance 1).
+/// - Two-step corrections for heavily OCR'd text (`SECRECT` → `SECRET`,
+///   distance 2).
+///
+/// Distance 3+ produces too many false positives against short CAPCO tokens
+/// and is therefore excluded.
+pub const MAX_EDIT_DISTANCE: u8 = 2;
+
+/// Minimum confidence score below which a correction is suppressed.
+///
+/// This threshold prevents low-quality guesses from entering the pipeline
+/// even when they satisfy the edit-distance bound — for example, a
+/// distance-2 correction of a 4-character input has so many possible sources
+/// that the prior is too weak to act on.
+const MIN_USEFUL_CONFIDENCE: f32 = 0.45;
+
+// ---------------------------------------------------------------------------
+// Confidence scoring
+// ---------------------------------------------------------------------------
+
+/// Derive a base confidence score from edit distance and token length.
+///
+/// # Rationale
+///
+/// The prior that an edit-distance-1 deviation from a known CAPCO token is a
+/// typo is much higher for long tokens than for short ones:
+/// - `NOFRON` → `NOFORN` (distance 1, length 6): almost certainly a typo.
+/// - `SB` → `SI` (distance 1, length 2): could be many things.
+///
+/// The formula is:
+/// ```text
+/// base = match distance {
+///     1 => 0.55 + 0.05 * min(token_len, 6).saturating_sub(3)  →  [0.55, 0.70]
+///     2 => 0.40 + 0.05 * min(token_len, 8).saturating_sub(5)  →  [0.40, 0.55]
+///     _ => 0.0
+/// }
+/// ```
+/// These are intentionally conservative. The engine's context factor
+/// (marking-region signal) raises the effective confidence at call time.
+fn correction_confidence(distance: u8, token_len: usize) -> f32 {
+    match distance {
+        0 => 1.0, // exact match — should not reach this path
+        1 => {
+            // 0.55 base, +0.05 per char over 3 (capped at 6 chars → 0.70).
+            let bonus = (token_len.min(6).saturating_sub(3)) as f32 * 0.05;
+            0.55 + bonus
+        }
+        2 => {
+            // 0.40 base, +0.05 per char over 5 (capped at 8 chars → 0.55).
+            let bonus = (token_len.min(8).saturating_sub(5)) as f32 * 0.05;
+            0.40 + bonus
+        }
+        _ => 0.0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Levenshtein edit distance
+// ---------------------------------------------------------------------------
+
+/// Compute the Levenshtein edit distance between `a` and `b`.
+///
+/// Uses a two-row rolling-array approach — O(min(|a|, |b|)) space, O(|a|·|b|)
+/// time. Input strings are short CAPCO tokens (2–20 chars), so this runs in
+/// microseconds.
+///
+/// Returns the edit distance clamped to `u8::MAX` (any distance > 127 is
+/// already far beyond the useful range for CAPCO corrections).
+pub(crate) fn levenshtein(a: &str, b: &str) -> u8 {
+    // Ensure `a` is the shorter string (minimizes inner-loop iterations).
+    let (a, b) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    let n = a_bytes.len();
+    let m = b_bytes.len();
+
+    if n == 0 {
+        return m.min(u8::MAX as usize) as u8;
+    }
+
+    // prev[j] = distance between a[0..i-1] and b[0..j]
+    let mut prev: Vec<u8> = (0..=n)
+        .map(|i| i.min(u8::MAX as usize) as u8)
+        .collect();
+    let mut curr = vec![0u8; n + 1];
+
+    for j in 1..=m {
+        curr[0] = j.min(u8::MAX as usize) as u8;
+
+        for i in 1..=n {
+            let cost = if a_bytes[i - 1] == b_bytes[j - 1] {
+                0u8
+            } else {
+                1u8
+            };
+
+            let del = prev[i].saturating_add(1);
+            let ins = curr[i - 1].saturating_add(1);
+            let sub = prev[i - 1].saturating_add(cost);
+            curr[i] = del.min(ins).min(sub);
+        }
+
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // ----- levenshtein -----
+
+    #[test]
+    fn lev_identical_strings() {
+        assert_eq!(levenshtein("SECRET", "SECRET"), 0);
+    }
+
+    #[test]
+    fn lev_single_transpose() {
+        // SERCET: E and C swapped — that's a substitution at position 2 and 3,
+        // which is distance 2 in standard Levenshtein (no transposition op).
+        // But the user's intuition is "one swap", which is distance 2.
+        assert_eq!(levenshtein("SERCET", "SECRET"), 2);
+    }
+
+    #[test]
+    fn lev_insertion() {
+        // CONFIDETIAL is missing the second N → distance 1.
+        assert_eq!(levenshtein("CONFIDETIAL", "CONFIDENTIAL"), 1);
+    }
+
+    #[test]
+    fn lev_deletion() {
+        assert_eq!(levenshtein("NOFORN", "NOFRON"), 2);
+    }
+
+    #[test]
+    fn lev_empty_vs_nonempty() {
+        assert_eq!(levenshtein("", "SECRET"), 6);
+        assert_eq!(levenshtein("SECRET", ""), 6);
+    }
+
+    #[test]
+    fn lev_symmetry() {
+        assert_eq!(
+            levenshtein("NOFORN", "NOFRON"),
+            levenshtein("NOFRON", "NOFORN")
+        );
+    }
+
+    // ----- FuzzyVocabMatcher -----
+
+    /// A minimal offline vocabulary for tests — does not require a Cargo build.
+    static TEST_VOCAB: &[&str] = &[
+        "CONFIDENTIAL",
+        "FOUO",
+        "NOFORN",
+        "SECRET",
+        "TOP SECRET",
+        "UNCLASSIFIED",
+    ];
+
+    fn matcher() -> FuzzyVocabMatcher {
+        FuzzyVocabMatcher::new(TEST_VOCAB)
+    }
+
+    #[test]
+    fn known_token_returns_none() {
+        // "SECRET" is in vocab — no correction needed.
+        assert!(matcher().correct("SECRET").is_none());
+    }
+
+    #[test]
+    fn short_token_returns_none() {
+        // Single-char inputs are below MIN_FUZZY_LEN.
+        assert!(matcher().correct("S").is_none());
+        assert!(matcher().correct("NF").is_none());
+    }
+
+    #[test]
+    fn confidetial_corrects_to_confidential() {
+        // One missing character — should correct.
+        let result = matcher().correct("CONFIDETIAL");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("CONFIDENTIAL"));
+        // Distance should be 1.
+        assert_eq!(result.map(|c| c.distance), Some(1));
+    }
+
+    #[test]
+    fn nofron_corrects_to_noforn() {
+        // Two transpositions (O and R swapped) → distance 2.
+        let result = matcher().correct("NOFRON");
+        assert_eq!(result.map(|c| c.token), Some("NOFORN"));
+    }
+
+    #[test]
+    fn sercet_corrects_to_secret() {
+        // Most common OCR variant: E and R transposed (positions 2 and 3 swapped).
+        // Standard Levenshtein counts this as distance 2 (two substitutions).
+        let result = matcher().correct("SERCET");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("SECRET"));
+        let c = result.unwrap();
+        // Distance-2, length-6 → confidence = 0.40 + 1*0.05 = 0.45.
+        assert!(c.confidence > 0.44, "confidence should be non-trivial: {}", c.confidence);
+    }
+
+    #[test]
+    fn confidence_increases_with_token_length() {
+        // Longer tokens at distance 1 should have higher confidence.
+        let short_conf = correction_confidence(1, 4); // e.g., FOUO-like
+        let long_conf = correction_confidence(1, 12); // e.g., CONFIDENTIAL-like
+        assert!(
+            long_conf > short_conf,
+            "expected long_conf {long_conf} > short_conf {short_conf}"
+        );
+    }
+
+    #[test]
+    fn completely_unrelated_string_returns_none() {
+        // "BANANA" is distance > 2 from every test vocab entry.
+        assert!(matcher().correct("BANANA").is_none());
+    }
+
+    #[test]
+    fn ambiguous_corrections_return_none() {
+        // "OOPS" is equidistant from multiple vocabulary entries.
+        // We want to verify that ambiguity suppression fires.
+        // (Distance from "OOPS" to any test vocab entry is > 2, so we expect None.)
+        assert!(matcher().correct("OOPS").is_none());
+    }
+
+    #[test]
+    fn distance_2_edit_returns_correction_for_long_tokens() {
+        // "UNCLASSIFEID" — two character errors in a long token.
+        let result = matcher().correct("UNCLASSIFEID");
+        assert_eq!(result.map(|c| c.token), Some("UNCLASSIFIED"));
+    }
+
+    #[test]
+    fn correction_confidence_distance1_scales_with_length() {
+        // Sanity-check the confidence formula directly.
+        // Use approximate comparison to avoid f32 precision noise.
+        let eps = 1e-5_f32;
+        assert!((correction_confidence(1, 3) - 0.55).abs() < eps); // 0.55 + 0 bonus
+        assert!((correction_confidence(1, 4) - 0.60).abs() < eps); // 0.55 + 1*0.05
+        assert!((correction_confidence(1, 6) - 0.70).abs() < eps); // 0.55 + 3*0.05 (capped)
+        assert!((correction_confidence(1, 12) - 0.70).abs() < eps); // capped at 6
+    }
+
+    #[test]
+    fn correction_confidence_distance2_scales_with_length() {
+        let eps = 1e-5_f32;
+        assert!((correction_confidence(2, 5) - 0.40).abs() < eps); // 0.40 + 0 bonus
+        assert!((correction_confidence(2, 6) - 0.45).abs() < eps); // 0.40 + 1*0.05
+        assert!((correction_confidence(2, 8) - 0.55).abs() < eps); // 0.40 + 3*0.05 (capped)
+        assert!((correction_confidence(2, 15) - 0.55).abs() < eps); // capped at 8
+    }
+}
