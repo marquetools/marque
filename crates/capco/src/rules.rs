@@ -3405,14 +3405,21 @@ impl Rule for SarIndicatorRepeatRule {
 ///
 /// # Fix semantics
 ///
-/// - If the banner has a SAR block, replace it in-place at confidence
-///   0.9 (severity `Fix`). The replacement **preserves the observed
-///   banner's existing programs with whatever hierarchy they already
-///   show**, and appends each missing program as a bare program
-///   identifier (no compartments). This minimum-change fix honors the
+/// - If the banner has a SAR block, emit a zero-width insertion at the
+///   end of that block at confidence 0.9 (severity `Fix`). The
+///   insertion **preserves the observed banner's existing programs
+///   with whatever hierarchy they already show** (by not touching
+///   their bytes at all) and appends each missing program as a bare
+///   program identifier (no compartments) in the form
+///   `/<PROG1>/<PROG2>…`. This minimum-change fix honors the
 ///   "hierarchy is optional" rule — the user chose how much hierarchy
 ///   to show for the programs that were there, and we do not override
-///   that choice for the programs that were missing.
+///   that choice for the programs that were missing. The zero-width
+///   insertion shape is also what lets E031 coexist with E028
+///   (program-order, whole-block span) and E029 (compartment-order,
+///   per-program span) under the engine's C-1 overlap guard — see
+///   the in-body comment on the `Some(_observed)` arm for the FR-016
+///   argument.
 /// - If the banner has no SAR block at all, emit at severity `Error`
 ///   with no fix — inserting a new block requires byte-positioning
 ///   between the SCI and AEA blocks, which the engine's single-pass
@@ -3475,13 +3482,12 @@ impl Rule for SarBannerRollupRule {
         let mut sorted_missing = missing_ids.clone();
         sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
 
-        let message = format!(
-            "banner SAR block is missing programs present in portions: {}",
-            sorted_missing.join(", "),
-        );
-
         match attrs.sar_markings.as_ref() {
             Some(_observed) => {
+                let message = format!(
+                    "banner SAR block is missing programs present in portions: {}",
+                    sorted_missing.join(", "),
+                );
                 // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
                 // fix at the end of the block so it does not overlap
                 // with E028 (program-order, whole-block span) or E029
@@ -3542,7 +3548,15 @@ impl Rule for SarBannerRollupRule {
                 // No SAR block in the banner at all. Byte-positioning a new
                 // block between SCI and AEA from rule context alone is
                 // unsafe — report at Error severity with no fix and let a
-                // human place the block.
+                // human place the block. The message wording describes the
+                // actual shape of the violation (a whole missing block,
+                // not a partial one) so the user isn't misled into
+                // looking for a block to edit.
+                let message = format!(
+                    "banner is missing an SAR block required by portions: \
+                     {}",
+                    sorted_missing.join(", "),
+                );
                 let span = attrs
                     .token_spans
                     .first()
@@ -7620,6 +7634,23 @@ mod tests {
         );
         // And severity escalates to Error for this variant.
         assert_eq!(e031[0].severity, Severity::Error);
+
+        // PR #101 review: the no-block message must describe a whole
+        // missing block, NOT read like the block exists but is
+        // missing internal programs. Pin the distinct wording so a
+        // regression that re-merges the two branches' messages
+        // fails here.
+        let msg = &e031[0].message;
+        assert!(
+            msg.contains("missing an SAR block"),
+            "no-block message must state that the SAR block itself is \
+             missing; got: {msg:?}"
+        );
+        assert!(
+            !msg.contains("SAR block is missing programs"),
+            "no-block message must NOT reuse the with-block \
+             'block is missing programs' wording; got: {msg:?}"
+        );
     }
 
     #[test]
