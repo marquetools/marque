@@ -378,7 +378,8 @@ impl Rule for MisorderedBlocksRule {
         }
 
         // Walk token kinds in document order, ignoring separators. Map each
-        // kind to a CAPCO ordinal: 0=Class, 1=SCI, 2=SAR, 3=Dissem/RelTo.
+        // kind to a CAPCO ordinal per §A.6 lines 781-841:
+        //   0=Class, 1=SCI, 2=SAR, 3=AEA, 4=FGI, 5=Dissem/RelTo, 6=NonIC.
         // Any descending step is a violation.
         let kinds: Vec<u8> = attrs
             .token_spans
@@ -451,21 +452,46 @@ impl Rule for MisorderedBlocksRule {
             self.default_severity(),
             span,
             "marking blocks are out of CAPCO order \
-             (expected: Classification // SCI // SAR // Dissem // REL TO // Non-IC)",
-            "CAPCO-2016 §A.6",
+             (expected: Classification // SCI // SAR // AEA // FGI // \
+             Dissem // Non-IC)",
+            "CAPCO-2016 §A.6 p15-16",
             fix,
         )]
     }
 }
 
+/// Map a `TokenKind` to the CAPCO §A.6 block ordinal, or `None` for tokens
+/// that don't participate in block ordering (separators, declass dates,
+/// unknown tokens).
+///
+/// CAPCO §A.6 lines 781-841 enumerate six ordered marking blocks following
+/// the classification:
+///
+/// | Ordinal | Block                          | §A.6 line |
+/// |---------|--------------------------------|-----------|
+/// | 0       | US / Non-US / JOINT Classification | 770-779 |
+/// | 1       | SCI Control Systems            | 781       |
+/// | 2       | Special Access Programs (SAR)  | 802       |
+/// | 3       | Atomic Energy Act (AEA)        | 818       |
+/// | 4       | Foreign Government Information (FGI) | 823  |
+/// | 5       | Dissemination Controls / REL TO | 830      |
+/// | 6       | Non-IC Dissemination Controls  | 837       |
+///
+/// T035c-3 added ordinals for AEA and FGI, which the earlier mapping
+/// skipped. Without them, common misorderings like `SECRET//REL TO USA//RD`
+/// (Dissem before AEA) and `SECRET//REL TO USA//FGI GBR` (Dissem before
+/// FGI) went unflagged — the AEA and FGI tokens returned `None` and their
+/// positions weren't compared against the running max.
 fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
     match kind {
         TokenKind::Classification => Some(0),
         TokenKind::SciControl => Some(1),
         TokenKind::SarIndicator => Some(2),
-        TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(3),
+        TokenKind::AeaMarking => Some(3),
+        TokenKind::FgiMarker => Some(4),
+        TokenKind::DissemControl | TokenKind::RelToTrigraph => Some(5),
         // Non-IC dissem always comes after IC dissem (last block).
-        TokenKind::NonIcDissem => Some(4),
+        TokenKind::NonIcDissem => Some(6),
         // Separators, declass, and unknown tokens do not participate in
         // ordering — they belong to other blocks or other rules.
         _ => None,
@@ -473,12 +499,14 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 }
 
 /// Rebuild a marking string from `attrs.token_spans`, ordered by CAPCO
-/// block ordinals: Classification // SCI // SAR // Dissem // REL TO // Non-IC.
+/// §A.6 block ordinals: Classification // SCI // SAR // AEA // FGI //
+/// Dissem // REL TO // Non-IC.
 ///
 /// Within each block, tokens preserve their document order. REL TO trigraphs
-/// are reassembled into a single `REL TO ...` block. Non-IC dissem controls
-/// appear last per CAPCO Register §9. Returns `None` if there is nothing
-/// meaningful to reorder (no classification recorded).
+/// are reassembled into a single `REL TO ...` block. AEA markings (RD, FRD,
+/// TFNI, UCNI) appear per §A.6 line 818; FGI tokens per §A.6 line 823-828.
+/// Non-IC dissem controls appear last per §A.6 line 837. Returns `None` if
+/// there is nothing meaningful to reorder (no classification recorded).
 ///
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
@@ -487,6 +515,8 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
+    let mut aea: Vec<&str> = Vec::new();
+    let mut fgi: Vec<&str> = Vec::new();
     let mut dissem: Vec<&str> = Vec::new();
     let mut rel_to: Vec<&str> = Vec::new();
     let mut non_ic: Vec<&str> = Vec::new();
@@ -495,6 +525,8 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
         match token.kind {
             TokenKind::Classification => classification.push(token.text.as_ref()),
             TokenKind::SciControl => sci.push(token.text.as_ref()),
+            TokenKind::AeaMarking => aea.push(token.text.as_ref()),
+            TokenKind::FgiMarker => fgi.push(token.text.as_ref()),
             TokenKind::DissemControl => dissem.push(token.text.as_ref()),
             TokenKind::RelToTrigraph => rel_to.push(token.text.as_ref()),
             TokenKind::NonIcDissem => non_ic.push(token.text.as_ref()),
@@ -518,6 +550,18 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
     // identifiers, compartments, and sub-compartments are all preserved.
     if let Some(sar) = attrs.sar_markings.as_ref() {
         blocks.push(render_sar_block(sar.indicator, &sar.programs));
+    }
+    if !aea.is_empty() {
+        // §A.6 line 820: multiple AEA markings separated by `/`.
+        blocks.push(aea.join("/"));
+    }
+    if !fgi.is_empty() {
+        // §A.6 line 824: multiple FGI trigraph/tetragraph codes
+        // separated by a single space. In practice `attrs.fgi_marker`
+        // is Option<_>, so a single banner has at most one FGI token
+        // span with the full `FGI GBR JPN NATO` text; the space join
+        // handles any future multi-token representation.
+        blocks.push(fgi.join(" "));
     }
     if !dissem.is_empty() {
         blocks.push(dissem.join("/"));
@@ -3328,6 +3372,61 @@ mod tests {
             fix.replacement.as_ref().ends_with("//LIMDIS"),
             "non-IC dissem must be last in reordered output: {}",
             fix.replacement.as_ref()
+        );
+    }
+
+    // --- T035c-3 regressions: AEA + FGI in block order ---
+    //
+    // Before T035c-3, `ordinal_for_block` skipped `TokenKind::AeaMarking`
+    // and `TokenKind::FgiMarker`, so the rule silently missed
+    // Dissem-before-AEA and Dissem-before-FGI misorderings. These
+    // tests pin the corrected §A.6 block ordinals (Class→SCI→SAR→
+    // AEA→FGI→Dissem→NonIC).
+
+    #[test]
+    fn e003_fires_on_rel_to_before_aea() {
+        // RD belongs in the AEA block (ordinal 3); REL TO is a dissem
+        // control (ordinal 5). REL TO-before-RD is out of order.
+        let diags = lint_banner("SECRET//REL TO USA//RD");
+        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
+        assert_eq!(
+            e003.len(),
+            1,
+            "E003 must fire when REL TO precedes AEA (RD): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e003_fires_on_dissem_before_fgi() {
+        // FGI (ordinal 4) must precede dissem controls (ordinal 5).
+        // NOFORN-before-FGI is out of order.
+        let diags = lint_banner("SECRET//NOFORN//FGI GBR");
+        let e003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E003").collect();
+        assert_eq!(
+            e003.len(),
+            1,
+            "E003 must fire when dissem precedes FGI: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e003_does_not_fire_on_aea_then_rel_to() {
+        // Correct order per §A.6: RD (AEA, ordinal 3) then REL TO
+        // (dissem, ordinal 5).
+        let diags = lint_banner("SECRET//RD//REL TO USA, GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E003"),
+            "E003 must not fire on AEA-before-Dissem: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e003_does_not_fire_on_fgi_then_dissem() {
+        // Correct order per §A.6: FGI (ordinal 4) then Dissem (5).
+        let diags = lint_banner("SECRET//FGI GBR//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E003"),
+            "E003 must not fire on FGI-before-Dissem: {diags:?}"
         );
     }
 
