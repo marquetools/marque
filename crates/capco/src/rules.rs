@@ -3647,10 +3647,27 @@ fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
 // Rule: E032 — SCI control-system sort order
 // ---------------------------------------------------------------------------
 
-/// Per CAPCO-2016 §A.6 p15: control systems within a single SCI category
-/// block must be listed in ascending sort order (numeric first, then
-/// alphabetic). Walks adjacent pairs in source order; on any out-of-order
-/// pair, emits a single diagnostic with a reordered fix covering the full
+/// Multiple SCI control systems within a single SCI category block must
+/// be listed in ascending sort order — numbered values first, then
+/// alphabetic values.
+///
+/// Authority: CAPCO-2016 §H.4 p61 line 1342 — *"Multiple SCI control
+/// system markings must be listed in ascending sort order with numbered
+/// values first followed by alphabetic values separated by a single
+/// forward slash with no interjected space (`/`)."* The general §A.6
+/// p15 line 319 restates the same mandate across all three hierarchical
+/// levels; §H.4 line 1342 is the narrower per-level citation.
+///
+/// This is a mandate — "must." Unlike SAR (§H.5 p101 line 2460, which
+/// makes banner hierarchy depiction optional), §H.4 contains NO
+/// optional carve-out for SCI ordering at any level. Rule severity
+/// `Error` reflects the mandate; the rule's fix additionally sorts
+/// compartments and sub-compartments so that when E032 and E033 both
+/// detect violations on the same block, applying E032's whole-block
+/// fix fully normalizes it in one pass.
+///
+/// Walks adjacent pairs in source order; on any out-of-order pair,
+/// emits a single diagnostic with a reordered fix covering the full
 /// block. Confidence 0.85.
 struct SciSystemOrderRule;
 
@@ -3742,7 +3759,11 @@ impl Rule for SciSystemOrderRule {
             message: "SCI control systems within a block must be listed in ascending \
                       order (numeric first, then alphabetic)"
                 .to_owned(),
-            citation: "CAPCO-2016 §A.6 p15",
+            citation: concat!(
+                "CAPCO-2016 §H.4 p61 line 1342 ",
+                "(SCI control systems: ascending, numeric first, then alpha; ",
+                "cf. §A.6 p15 line 319)",
+            ),
             original,
             replacement,
             confidence: 0.85,
@@ -3755,10 +3776,26 @@ impl Rule for SciSystemOrderRule {
 // Rule: E033 — SCI compartment / sub-compartment sort order
 // ---------------------------------------------------------------------------
 
-/// Per CAPCO-2016 §A.6 p15 + §H.4 p61: within each SCI control system,
-/// compartments must be listed in ascending sort order (numeric first, then
-/// alphabetic); within each compartment, sub-compartments must also be
-/// ascending.
+/// Within each SCI control system, compartments must be listed in
+/// ascending sort order; within each compartment, sub-compartments must
+/// also be ascending.
+///
+/// Authority (per level):
+/// - **Compartments**: CAPCO-2016 §H.4 p61 line 1344 — *"Multiple
+///   compartments within an SCI control system must be listed in
+///   ascending sort order with numbered values first followed by
+///   alphabetic values separated by a hyphen."*
+/// - **Sub-compartments**: CAPCO-2016 §H.4 p61 line 1346 — *"Multiple
+///   sub-compartments must be listed in ascending sort order with
+///   numbered values first followed by alphabetic values separated by
+///   a space."*
+///
+/// The general §A.6 p15 line 319 restates both in one sentence; §H.4's
+/// per-level sentences are the narrower citations.
+///
+/// Both mandates are "must." Unlike SAR (§H.5 p101 line 2460, which
+/// makes banner hierarchy depiction optional), §H.4 contains NO
+/// optional carve-out for SCI ordering at any hierarchical level.
 ///
 /// Emits **one diagnostic per out-of-order marking** (not one per level).
 /// The fix sorts compartments AND sub-compartments together in a single
@@ -3772,6 +3809,10 @@ impl Rule for SciSystemOrderRule {
 ///     whole-block span supersedes every per-marking E033 span under
 ///     FR-016 ordering, and E032's all-levels fix fully normalizes —
 ///     so dropping E033 is safe.
+///
+/// The diagnostic's citation string is chosen by level (compartment
+/// vs sub-compartment) so auditors land on the specific §H.4 p61
+/// sentence that applies.
 ///
 /// Confidence 0.85.
 struct SciCompartmentOrderRule;
@@ -3905,10 +3946,23 @@ impl Rule for SciCompartmentOrderRule {
             let original = render_comps(&marking.compartments);
             let replacement = render_comps(&sorted_comps);
 
-            let level = if !comps_ok {
-                "compartments"
+            let (level, citation) = if !comps_ok {
+                (
+                    "compartments",
+                    concat!(
+                        "CAPCO-2016 §H.4 p61 line 1344 ",
+                        "(SCI compartments: ascending, numeric first, then alpha)",
+                    ),
+                )
             } else {
-                "sub-compartments"
+                (
+                    "sub-compartments",
+                    concat!(
+                        "CAPCO-2016 §H.4 p61 line 1346 ",
+                        "(SCI sub-compartments: ascending, numeric first, ",
+                        "then alpha)",
+                    ),
+                )
             };
 
             out.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -3920,7 +3974,7 @@ impl Rule for SciCompartmentOrderRule {
                     "SCI {level} must be listed in ascending order (numeric first, \
                      then alphabetic)"
                 ),
-                citation: "CAPCO-2016 §A.6 p15; §H.4 p61",
+                citation,
                 original,
                 replacement,
                 confidence: 0.85,
@@ -4014,18 +4068,42 @@ impl Rule for SciCustomControlInfoRule {
 // Rule: E035 — SCI banner rollup
 // ---------------------------------------------------------------------------
 
-/// Per CAPCO-2016 §H.4 per-system "Precedence Rules for Banner Line
-/// Guidance" (HCS p62 and friends) + §D.2 p28: the banner's SCI block must
-/// contain every compartment and sub-compartment that appears in any
-/// portion marking on the same page. Compares the observed banner's
-/// `sci_markings` against `page_context.expected_sci_markings()`; fires on
-/// any missing compartment or sub-compartment.
+/// The banner's SCI block must contain every control system,
+/// compartment, AND sub-compartment that appears in any portion marking
+/// on the same page.
 ///
-/// **Defensive P4 coupling**: the rollup method on `PageContext` is
-/// delivered by P4 (parallel branch). Until that lands this rule no-ops
-/// gracefully — `expected_sci_markings` is called through a helper that
-/// returns an empty slice when the method is unavailable. Once P4 lands,
-/// the rule activates automatically with no rule-side change.
+/// Authority: CAPCO-2016 §H.4 per-system "Precedence Rules for Banner
+/// Line Guidance" — *"All unique SCI markings contained in the portion
+/// marks must always appear in the banner line."* This identical text
+/// appears in every §H.4 per-system template (18 instances total, e.g.,
+/// HCS p62 line 1397; HCS-O p64 line 1450; HCS-P p66 line 1506; SI p74
+/// line 1819; SI-G p80 line 2025; TK p85 line 2250). Supplemental
+/// authority: §D.2 p28 (general banner/portion consistency).
+///
+/// # SCI/SAR asymmetry — hierarchy required vs optional
+///
+/// Contrast with SAR's E031 (`sar-banner-rollup`): SAR explicitly makes
+/// banner hierarchy depiction OPTIONAL via §H.5 p101 line 2460
+/// (*"Depicting the hierarchical structure of a SAP program below the
+/// program identifier is optional and dependent upon operational
+/// requirements"*) + §H.5 p99 line 2393. E031 was narrowed in T035c-19
+/// PR-C to programs-only to honor that carve-out.
+///
+/// **No equivalent carve-out exists in §H.4 for SCI.** The
+/// per-system Precedence Rules use "All unique SCI markings ... must
+/// always appear" with no hierarchy-optional note anywhere in §H.4 or
+/// §A.6. For SCI, every compartment and sub-compartment that appears
+/// in a portion MUST appear in the banner. E035 correctly enforces
+/// this at every level; the asymmetry between E031 (programs-only)
+/// and E035 (full hierarchy) is a real source-level semantic
+/// distinction, not an inconsistency.
+///
+/// Compares the observed banner's `sci_markings` against
+/// `page_context.expected_sci_markings()`; fires on any missing system,
+/// compartment, or sub-compartment. Confidence 0.9 for the with-fix
+/// path; escalates to `Error` with no fix when the banner has no SCI
+/// block at all (byte-positioning a new block between classification
+/// and the next category from rule context alone is unsafe).
 struct SciBannerRollupRule;
 
 impl Rule for SciBannerRollupRule {
@@ -4130,7 +4208,7 @@ impl Rule for SciBannerRollupRule {
                     "banner is missing an SCI block that portions require: {}",
                     missing.join("; ")
                 ),
-                "CAPCO-2016 §H.4 p62 (HCS precedence); §D.2 p28",
+                E035_CITATION,
                 None,
             )];
         }
@@ -4151,11 +4229,11 @@ impl Rule for SciBannerRollupRule {
             source: FixSource::BuiltinRule,
             span: fix_span,
             message: format!(
-                "banner SCI block is missing compartments present in the page's \
-                 portions: {}",
+                "banner SCI block is missing markings present in the page's \
+                 portions (systems, compartments, and/or sub-compartments): {}",
                 missing.join("; ")
             ),
-            citation: "CAPCO-2016 §H.4 p62 (HCS precedence); §D.2 p28",
+            citation: E035_CITATION,
             original,
             replacement,
             confidence: 0.9,
@@ -4163,6 +4241,20 @@ impl Rule for SciBannerRollupRule {
         })]
     }
 }
+
+/// Citation string for E035 — shared between the with-fix and no-fix
+/// emission paths so they cannot silently diverge. References the
+/// per-system "Precedence Rules for Banner Line Guidance" template
+/// that appears in every §H.4 entry (HCS p62 line 1397 is one of 18
+/// identical instances) plus §D.2 p28 for the general banner/portion
+/// consistency invariant.
+const E035_CITATION: &str = concat!(
+    "CAPCO-2016 §H.4 per-system \"Precedence Rules for Banner Line ",
+    "Guidance\" (e.g. HCS p62 line 1397, SI p74 line 1819, TK p85 line ",
+    "2250) + §D.2 p28 (general banner/portion consistency). All unique ",
+    "SCI markings in portions must appear in the banner line; unlike ",
+    "SAR, SCI has no hierarchy-optional carve-out.",
+);
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -6961,6 +7053,188 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E035"),
             "E035 must no-op without a PageContext: {diags:?}"
+        );
+    }
+
+    // T035c-20: SCI cluster audit — citation lockdowns + E035 full-hierarchy
+    // behavior tests that lock the SCI/SAR asymmetry (E035 requires every
+    // compartment and sub-compartment in the banner; E031 allows hierarchy
+    // depiction to be optional per §H.5 p101 line 2460).
+
+    #[test]
+    fn e032_cites_h4_line_1342() {
+        let diags = lint_banner("TOP SECRET//TK/SI//NOFORN");
+        let e032: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E032").collect();
+        assert_eq!(e032.len(), 1);
+        let fix = e032[0].fix.as_ref().expect("E032 must have fix");
+        assert_eq!(fix.replacement.as_ref(), "SI/TK", "alpha sort: SI before TK");
+        assert!(
+            e032[0].citation.contains("§H.4 p61 line 1342"),
+            "E032 citation must pin §H.4 p61 line 1342; got: {:?}",
+            e032[0].citation
+        );
+    }
+
+    #[test]
+    fn e033_compartment_arm_cites_h4_line_1344() {
+        // Compartments out of order (K before G within SI).
+        let diags = lint_banner("TOP SECRET//SI-K-G//NOFORN");
+        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
+        assert_eq!(e033.len(), 1);
+        assert!(
+            e033[0].message.contains("compartments"),
+            "expected compartment-level message; got: {:?}",
+            e033[0].message
+        );
+        assert!(
+            e033[0].citation.contains("§H.4 p61 line 1344"),
+            "E033 compartment arm must pin §H.4 p61 line 1344; got: {:?}",
+            e033[0].citation
+        );
+    }
+
+    #[test]
+    fn e033_sub_compartment_arm_cites_h4_line_1346() {
+        // Sub-compartments out of order (DEFG before ABCD within G).
+        let diags = lint_banner("TOP SECRET//SI-G DEFG ABCD//NOFORN");
+        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
+        assert_eq!(e033.len(), 1);
+        assert!(
+            e033[0].message.contains("sub-compartments"),
+            "expected sub-compartment-level message; got: {:?}",
+            e033[0].message
+        );
+        assert!(
+            e033[0].citation.contains("§H.4 p61 line 1346"),
+            "E033 sub-compartment arm must pin §H.4 p61 line 1346; got: {:?}",
+            e033[0].citation
+        );
+    }
+
+    #[test]
+    fn e035_fires_on_missing_compartment_sci_asymmetry_with_sar() {
+        // SCI/SAR asymmetry lockdown: portion has `SI-G` (system SI,
+        // compartment G); banner has bare `SI` (no compartment shown).
+        // E035 MUST fire. This is the exact shape that E031 (SAR)
+        // deliberately does NOT fire on after T035c-19 PR-C — §H.5
+        // p101 line 2460 makes SAR hierarchy optional. §H.4 contains
+        // no equivalent carve-out for SCI, so E035 enforces full
+        // hierarchy roll-up. Flipping this test would break the
+        // source-level semantic distinction.
+        let source = "(TS//SI-G//NF)\nTOP SECRET//SI//NOFORN";
+        let diags = lint_banner(source);
+        let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
+        assert_eq!(
+            e035.len(),
+            1,
+            "E035 MUST fire when banner omits compartment G that appears in \
+             a portion — SCI has no hierarchy-optional carve-out: {diags:?}"
+        );
+        assert!(
+            e035[0].message.contains("G"),
+            "message must name the missing compartment; got: {:?}",
+            e035[0].message
+        );
+    }
+
+    #[test]
+    fn e035_fires_on_missing_sub_compartment_sci_asymmetry_with_sar() {
+        // Sibling asymmetry test: portion has `SI-G ABCD` (sub-comp
+        // ABCD under compartment G); banner has `SI-G` (no
+        // sub-compartment). E035 MUST fire; E031 would not for the
+        // SAR-equivalent shape.
+        let source = "(TS//SI-G ABCD//NF)\nTOP SECRET//SI-G//NOFORN";
+        let diags = lint_banner(source);
+        let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
+        assert_eq!(
+            e035.len(),
+            1,
+            "E035 MUST fire when banner omits sub-compartment ABCD present \
+             in a portion: {diags:?}"
+        );
+        assert!(
+            e035[0].message.contains("ABCD"),
+            "message must name the missing sub-compartment; got: {:?}",
+            e035[0].message
+        );
+    }
+
+    #[test]
+    fn e035_does_not_fire_when_banner_covers_full_hierarchy() {
+        // Happy path: banner's hierarchy matches the portion's. E035
+        // must stay silent.
+        let source = "(TS//SI-G ABCD//NF)\nTOP SECRET//SI-G ABCD//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E035"),
+            "E035 must not fire when banner already covers portion hierarchy: \
+             {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e035_message_wording_covers_all_hierarchy_levels() {
+        // PR #102 review: the rule's `missing` list can contain
+        // three shapes — system-missing, compartment-missing, and
+        // sub-compartment-missing. The earlier diagnostic message
+        // said only "missing compartments", which was inaccurate
+        // for the system-missing case (entire SCI control system
+        // absent from banner). This test locks the corrected
+        // wording.
+        //
+        // Scenario: portion carries `TK` (entire system); banner
+        // carries only `SI`. So TK is missing as an ENTIRE SYSTEM,
+        // not just a compartment. The message must reflect that.
+        let source = "(TS//SI/TK//NF)\nTOP SECRET//SI//NOFORN";
+        let diags = lint_banner(source);
+        let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
+        assert_eq!(e035.len(), 1);
+        let msg = &e035[0].message;
+        assert!(
+            msg.contains("systems, compartments, and/or sub-compartments")
+                || msg.contains("markings"),
+            "E035 message must describe the hierarchy-level breadth \
+             accurately (not only 'compartments'); got: {msg:?}"
+        );
+        assert!(
+            msg.contains("TK"),
+            "E035 message must name the missing TK system; got: {msg:?}"
+        );
+        // The per-entry format still specifies the level for each
+        // missing item, so `TK` carries "(system missing from banner)".
+        assert!(
+            msg.contains("system missing from banner"),
+            "E035 per-entry annotation must mark TK as an entirely \
+             missing system; got: {msg:?}"
+        );
+    }
+
+    #[test]
+    fn e035_cites_per_system_precedence_rules() {
+        let source = "(TS//SI-G//NF)\nTOP SECRET//SI//NOFORN";
+        let diags = lint_banner(source);
+        let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
+        assert_eq!(e035.len(), 1);
+        // Cites an example per-system Precedence Rules line (HCS p62
+        // line 1397 stands in for the 18 identical instances across
+        // §H.4) plus the general §D.2 p28 banner/portion consistency
+        // invariant.
+        assert!(
+            e035[0].citation.contains("§H.4"),
+            "E035 citation must reference §H.4; got: {:?}",
+            e035[0].citation
+        );
+        assert!(
+            e035[0].citation.contains("Precedence Rules for Banner Line"),
+            "E035 citation must reference the per-system Precedence Rules \
+             template; got: {:?}",
+            e035[0].citation
+        );
+        assert!(
+            e035[0].citation.contains("§D.2 p28"),
+            "E035 citation must reference §D.2 p28 as the general \
+             banner/portion consistency anchor; got: {:?}",
+            e035[0].citation
         );
     }
 
