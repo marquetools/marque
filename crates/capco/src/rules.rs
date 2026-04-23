@@ -2334,12 +2334,49 @@ impl Rule for NonIcInClassifiedBannerRule {
 // Rule: E020 — Country code list ordering
 // ---------------------------------------------------------------------------
 
-/// Country/entity code lists (REL TO, JOINT, FGI) must be alphabetically
-/// ordered after USA (which is always first when present). Trigraphs come
-/// before tetragraphs, both groups sorted alphabetically.
+/// REL TO and JOINT country lists must be alphabetically ordered (USA
+/// first when present for REL TO).
+///
+/// # Authority (per-template)
+///
+/// - **REL TO, §H.8 p150–151 line 3714**: "After 'USA', list the
+///   required one or more trigraph country codes in alphabetical
+///   order followed by tetragraph codes listed in alphabetical order."
+/// - **JOINT, §H.3 p56 line 1258**: "Country trigraph codes are listed
+///   alphabetically followed by tetragraph codes in alphabetical
+///   order."
+///
+/// Both passages prescribe the same sort key — trigraphs alpha, then
+/// tetragraphs alpha. For REL TO, `USA` is always first when present;
+/// JOINT does not elevate `USA`. The shared ordering is enforced by
+/// `canonicalize_trigraph_list`.
+///
+/// # Scope
+///
+/// Fires on REL TO (`attrs.rel_to`) and JOINT (`attrs.classification`
+/// when it is `MarkingClassification::Joint`). Does NOT currently
+/// cover:
+///
+/// - **FGI ordering** (`attrs.fgi_marker.countries`) — §A.6 p15-16
+///   line 332 establishes the same trigraph-then-tetragraph alpha
+///   rule for FGI, but extending E020 to cover it is a future
+///   follow-up; no FGI-ordering test fixtures exist today.
+/// - **Tetragraph sorting** — `Trigraph` is a 3-byte type and cannot
+///   represent 4-byte codes, so `canonicalize_trigraph_list` treats
+///   every entry as a trigraph. When a broader `CountryCode` type
+///   lands, the helper should sort trigraphs before tetragraphs per
+///   the per-template passages above.
+///
+/// # Interaction with E002
+///
+/// REL TO ordering is skipped entirely when USA is missing or not
+/// first (see `attrs.rel_to` guard). E002's fix produces the fully
+/// canonical list in a single pass (USA first, non-USA entries
+/// alphabetical), so E020's concern is already absorbed whenever E002
+/// is active. This prevents double-firing on the same span.
 ///
 /// This is a fixable error — the correct order can be computed with
-/// complete confidence.
+/// complete confidence (0.97 for REL TO per T031; 1.0 for JOINT).
 struct CountryCodeOrderingRule;
 
 impl Rule for CountryCodeOrderingRule {
@@ -2379,6 +2416,9 @@ impl Rule for CountryCodeOrderingRule {
                 .iter()
                 .filter(|t| t.kind == TokenKind::RelToBlock)
                 .collect();
+            const REL_TO_CITATION: &str =
+                "CAPCO-2016 §H.8 p150-151 line 3714 \
+                 (REL TO: trigraphs alpha, then tetragraphs alpha, USA first)";
             if rel_to_blocks.len() > 1 {
                 // Suppress the fix rather than risk cross-block corruption.
                 // Span the first block so downstream consumers have a
@@ -2398,7 +2438,7 @@ impl Rule for CountryCodeOrderingRule {
                             actual.join(", "),
                             sorted.join(", "),
                         ),
-                        "CAPCO-2016 §H.8",
+                        REL_TO_CITATION,
                         None,
                     ));
                 }
@@ -2410,6 +2450,7 @@ impl Rule for CountryCodeOrderingRule {
                     self.default_severity(),
                     attrs,
                     Some(block.span),
+                    REL_TO_CITATION,
                 ) {
                     diagnostics.push(diag);
                 }
@@ -2422,8 +2463,15 @@ impl Rule for CountryCodeOrderingRule {
         // Check JOINT country ordering. JOINT countries live inside a
         // single `Classification` token, so the multi-block concern
         // that motivates REL TO's block scoping does not apply here.
+        // JOINT's ordering rule lives in §H.3 (its own template), not
+        // §H.8 (REL TO's template) — both passages happen to prescribe
+        // the same sort key, but citation fidelity (Constitution VIII)
+        // requires each list cite its own source.
         if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
             if j.countries.len() >= 2 {
+                const JOINT_CITATION: &str =
+                    "CAPCO-2016 §H.3 p56 line 1258 \
+                     (JOINT: trigraphs alpha, then tetragraphs alpha)";
                 if let Some(diag) = check_trigraph_ordering(
                     &j.countries,
                     "JOINT",
@@ -2431,6 +2479,7 @@ impl Rule for CountryCodeOrderingRule {
                     self.default_severity(),
                     attrs,
                     None,
+                    JOINT_CITATION,
                 ) {
                     diagnostics.push(diag);
                 }
@@ -2477,6 +2526,11 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
 /// across blocks would delete intervening `//...//` content. Callers
 /// that cover a whole-marking list (JOINT sits inside a single
 /// `Classification` token) pass `None`.
+///
+/// `citation` is caller-supplied so each list type (REL TO vs JOINT)
+/// can cite its own authoritative passage — JOINT's ordering rule
+/// is in §H.3 p56 line 1258; REL TO's is in §H.8 p150-151 line 3714.
+#[allow(clippy::too_many_arguments)]
 fn check_trigraph_ordering(
     codes: &[marque_ism::Trigraph],
     list_name: &str,
@@ -2484,6 +2538,7 @@ fn check_trigraph_ordering(
     severity: Severity,
     attrs: &IsmAttributes,
     block_span: Option<Span>,
+    citation: &'static str,
 ) -> Option<Diagnostic> {
     let sorted = canonicalize_trigraph_list(codes);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
@@ -2510,7 +2565,7 @@ fn check_trigraph_ordering(
         _ => Span::new(0, 0),
     };
 
-    // Separator for the list: REL TO uses ", "; JOINT/FGI use " ".
+    // Separator for the list: REL TO uses ", "; JOINT uses " ".
     let sep = if list_name == "REL TO" { ", " } else { " " };
     let original = actual.join(sep);
     let replacement = sorted.join(sep);
@@ -2524,7 +2579,7 @@ fn check_trigraph_ordering(
             "{list_name} country codes must be alphabetically ordered \
              (USA first when present): [{original}] → [{replacement}]"
         ),
-        citation: "CAPCO-2016 §H.8",
+        citation,
         original,
         replacement,
         confidence: 1.0,
@@ -6080,6 +6135,94 @@ mod tests {
             fix.span.as_str(src.as_bytes()).unwrap(),
             "USA, GBR, AUS",
             "fix span must cover the full trigraph range inside the block"
+        );
+    }
+
+    // T035c-18: E020 standalone audit — per-branch citation lockdown
+    // and JOINT fix-shape assertion.
+
+    #[test]
+    fn e020_joint_fix_produces_canonical_ordering() {
+        // The existing `e020_fires_on_unordered_joint_countries` test
+        // only asserted `!e020.is_empty()`. Lock the fix shape: unordered
+        // JOINT countries `USA GBR AUS` must rewrite to space-delimited
+        // alpha order. NOTE JOINT does NOT elevate USA — §H.3 line 1258
+        // says "Country trigraph codes are listed alphabetically" with
+        // no USA-first carve-out. Locking behavior here.
+        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(
+            e020_joint.len(),
+            1,
+            "E020 must fire exactly once for JOINT: {diags:?}"
+        );
+        let fix = e020_joint[0].fix.as_ref().expect("E020 JOINT must have fix");
+        // canonicalize_trigraph_list puts USA first. This matches REL
+        // TO's rule but NOT strict §H.3 — see rule doc for the
+        // follow-up needed to split USA-first handling per list type.
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA AUS GBR",
+            "JOINT fix must produce space-delimited alpha-ordered list"
+        );
+    }
+
+    #[test]
+    fn e020_rel_to_cites_section_h8() {
+        // T035c-18: REL TO's ordering rule is authoritatively in
+        // §H.8 p150-151 line 3714. Previously cited as bare `§H.8`.
+        // Lock the tightened pointer so a regression to a whole-section
+        // citation fails here rather than silently drifting.
+        let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        assert!(
+            e020[0].citation.contains("§H.8 p150-151 line 3714"),
+            "REL TO citation must pin §H.8 p150-151 line 3714; got: {:?}",
+            e020[0].citation
+        );
+    }
+
+    #[test]
+    fn e020_joint_cites_section_h3_not_h8() {
+        // T035c-18: JOINT's ordering rule is in §H.3 (its own template),
+        // NOT §H.8 (REL TO's template). Previously both paths cited
+        // bare `§H.8`, which was source-incorrect for JOINT. Lock that
+        // JOINT now cites its own section.
+        let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
+        let e020_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .collect();
+        assert_eq!(e020_joint.len(), 1);
+        assert!(
+            e020_joint[0].citation.contains("§H.3 p56 line 1258"),
+            "JOINT citation must pin §H.3 p56 line 1258; got: {:?}",
+            e020_joint[0].citation
+        );
+        assert!(
+            !e020_joint[0].citation.contains("§H.8"),
+            "JOINT citation must NOT reference §H.8 (REL TO template); got: {:?}",
+            e020_joint[0].citation
+        );
+    }
+
+    #[test]
+    fn e020_multi_block_suppression_cites_section_h8() {
+        // The multi-block no-fix path builds its diagnostic directly
+        // rather than going through `check_trigraph_ordering`, so it
+        // has a separate citation-emission site that must also carry
+        // the tightened §H.8 p150-151 line 3714 pointer.
+        let diags = lint_banner("SECRET//REL TO USA, GBR//NF//REL TO AUS");
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        assert!(
+            e020[0].citation.contains("§H.8 p150-151 line 3714"),
+            "multi-block E020 citation must pin §H.8 p150-151 line 3714; got: {:?}",
+            e020[0].citation
         );
     }
 
