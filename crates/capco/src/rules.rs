@@ -4183,8 +4183,8 @@ impl Rule for SciBannerRollupRule {
             source: FixSource::BuiltinRule,
             span: fix_span,
             message: format!(
-                "banner SCI block is missing compartments present in the page's \
-                 portions: {}",
+                "banner SCI block is missing markings present in the page's \
+                 portions (systems, compartments, and/or sub-compartments): {}",
                 missing.join("; ")
             ),
             citation: E035_CITATION,
@@ -7123,6 +7123,43 @@ mod tests {
             diags.iter().all(|d| d.rule.as_str() != "E035"),
             "E035 must not fire when banner already covers portion hierarchy: \
              {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e035_message_wording_covers_all_hierarchy_levels() {
+        // PR #102 review: the rule's `missing` list can contain
+        // three shapes — system-missing, compartment-missing, and
+        // sub-compartment-missing. The earlier diagnostic message
+        // said only "missing compartments", which was inaccurate
+        // for the system-missing case (entire SCI control system
+        // absent from banner). This test locks the corrected
+        // wording.
+        //
+        // Scenario: portion carries `TK` (entire system); banner
+        // carries only `SI`. So TK is missing as an ENTIRE SYSTEM,
+        // not just a compartment. The message must reflect that.
+        let source = "(TS//SI/TK//NF)\nTOP SECRET//SI//NOFORN";
+        let diags = lint_banner(source);
+        let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
+        assert_eq!(e035.len(), 1);
+        let msg = &e035[0].message;
+        assert!(
+            msg.contains("systems, compartments, and/or sub-compartments")
+                || msg.contains("markings"),
+            "E035 message must describe the hierarchy-level breadth \
+             accurately (not only 'compartments'); got: {msg:?}"
+        );
+        assert!(
+            msg.contains("TK"),
+            "E035 message must name the missing TK system; got: {msg:?}"
+        );
+        // The per-entry format still specifies the level for each
+        // missing item, so `TK` carries "(system missing from banner)".
+        assert!(
+            msg.contains("system missing from banner"),
+            "E035 per-entry annotation must mark TK as an entirely \
+             missing system; got: {msg:?}"
         );
     }
 
