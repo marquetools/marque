@@ -1053,6 +1053,33 @@ fn looks_like_deprecated_x_shorthand(s: &str) -> bool {
 
 /// FR-012: any token inside a marking candidate boundary that the parser
 /// could not classify is reported as an error with no fix offered.
+///
+/// Authority: CAPCO-2016 §G.1 (Register of Authorized Markings, line 748):
+/// "All markings used in a banner line and portion mark must be in
+/// accordance with the values listed in the Register, unless a waiver
+/// has been obtained from P&S/IMD in accordance with ICD 710 and
+/// applicable ICS." Any token not matching a Register entry (or an
+/// Annex A/B code, or a structurally-valid SCI/SAR/REL TO composition)
+/// is by definition unauthorized and must be surfaced.
+///
+/// Suppression paths (an `Unknown` that hits any is NOT unrecognized —
+/// another rule owns it):
+///
+/// 1. **Migration-table hit** — deprecated forms like `25X1-` that
+///    `crates/ism/build.rs` MIGRATIONS captures. E007 (X-shorthand)
+///    or E006 (migrated-dissem) fires instead.
+/// 2. **X-shorthand pattern** — any `\d+X\d+(-[A-Z]+)?-` shape the
+///    seed table does not enumerate (e.g., `25X2-`, `25X9-`). E007
+///    catches these via its pattern fallback.
+/// 3. **`SAR-` prefix** — a second SAR category block that the
+///    parser tagged `Unknown` so E030 (sar-indicator-repeat) can
+///    flag the duplicate per §H.5.
+/// 4. **`SPECIAL ACCESS REQUIRED-` prefix** — same as (3) but for the
+///    spelled-out SAR category indicator.
+///
+/// Malformed SCI-shaped tokens the structural subparser rejected
+/// (e.g., `SI-`, `SI--G`) DO fire E008 — users see a real error,
+/// not a silent fallback.
 struct UnknownTokenRule;
 
 impl Rule for UnknownTokenRule {
@@ -1101,7 +1128,7 @@ impl Rule for UnknownTokenRule {
                     t.span,
                     "unrecognized token inside marking — does not match any \
                      known CAPCO classification, control, or trigraph",
-                    "CAPCO-2016 §G.1",
+                    "CAPCO-2016 §G.1 (Register of Authorized Markings, line 748)",
                     None, // FR-012: no fix offered
                 )
             })
@@ -3742,6 +3769,66 @@ mod tests {
         let diags = lint_banner("SECRET//XYZZY//NOFORN");
         let e008 = diags.iter().find(|d| d.rule.as_str() == "E008").unwrap();
         assert!(e008.fix.is_none(), "FR-012: E008 must not propose a fix");
+    }
+
+    // T035c-12: pin-down tests for E008's four suppression paths.
+
+    #[test]
+    fn e008_suppressed_on_migration_backed_unknown() {
+        // `25X1-` is an Unknown token that the seed MIGRATIONS table
+        // captures. E007 owns X-shorthand; E008 must step aside to
+        // avoid double-firing on the same span.
+        let diags = lint_banner("SECRET//25X1-//NOFORN");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            e008.is_empty(),
+            "E008 must be suppressed for migration-backed X-shorthand \
+             (E007 owns this path): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e008_suppressed_on_pattern_matched_x_shorthand() {
+        // `25X9-` is not in the seed MIGRATIONS table but matches the
+        // X-shorthand pattern E007 catches via fallback. E008 must
+        // still step aside — see the suppression path 2 in the rule
+        // doc comment.
+        let diags = lint_banner("SECRET//25X9-//NOFORN");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            e008.is_empty(),
+            "E008 must be suppressed for pattern-matched X-shorthand \
+             even when not in seed MIGRATIONS (E007 owns): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e008_suppressed_on_second_sar_block_with_abbrev_prefix() {
+        // Second SAR block (`SAR-DUPE`) is tagged Unknown by the
+        // parser so E030 (sar-indicator-repeat) can surface the
+        // duplicate per CAPCO-2016 §H.5. E008 must step aside.
+        let diags = lint_banner("SECRET//SAR-ABC//NF//SAR-DUPE");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            e008.is_empty(),
+            "E008 must be suppressed for second SAR block (E030 owns): \
+             {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e008_suppressed_on_second_sar_block_with_spelled_prefix() {
+        // Same as above but with the spelled-out `SPECIAL ACCESS
+        // REQUIRED-` category indicator. Banner form is rarely used
+        // but must be covered — the suppression check keys on the
+        // prefix string.
+        let diags = lint_banner("SECRET//SPECIAL ACCESS REQUIRED-ABC//NF//SPECIAL ACCESS REQUIRED-DUPE");
+        let e008: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E008").collect();
+        assert!(
+            e008.is_empty(),
+            "E008 must be suppressed for second `SPECIAL ACCESS \
+             REQUIRED-` block (E030 owns): {diags:?}"
+        );
     }
 
     #[test]

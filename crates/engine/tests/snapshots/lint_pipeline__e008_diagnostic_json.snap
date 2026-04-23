@@ -4,7 +4,7 @@ expression: json
 ---
 [
   {
-    "citation": "CAPCO-2016 §G.1",
+    "citation": "CAPCO-2016 §G.1 (Register of Authorized Markings, line 748)",
     "fix": null,
     "message": "unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph",
     "rule": "E008",
