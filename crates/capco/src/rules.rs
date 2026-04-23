@@ -1828,18 +1828,61 @@ impl Rule for CountryCodeOrderingRule {
                 .first()
                 .is_some_and(|t| *t == marque_ism::Trigraph::USA)
         {
-            if let Some(diag) = check_trigraph_ordering(
-                &attrs.rel_to,
-                "REL TO",
-                self.id(),
-                self.default_severity(),
-                attrs,
-            ) {
-                diagnostics.push(diag);
+            // Locate the `RelToBlock` for this list. A single first→last
+            // `RelToTrigraph` splice across the whole marking would
+            // delete intervening `//...//` content when more than one
+            // REL TO block is present (e.g.,
+            // `SECRET//REL TO USA, GBR//NF//REL TO AUS`). Mirrors E002
+            // (line 345) in scoping the fix to a single block and
+            // suppressing it when multiple blocks are present.
+            let rel_to_blocks: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::RelToBlock)
+                .collect();
+            if rel_to_blocks.len() > 1 {
+                // Suppress the fix rather than risk cross-block corruption.
+                // Span the first block so downstream consumers have a
+                // location to display.
+                let actual: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
+                let sorted = canonicalize_trigraph_list(&attrs.rel_to);
+                if actual != sorted {
+                    diagnostics.push(Diagnostic::new(
+                        self.id(),
+                        self.default_severity(),
+                        rel_to_blocks[0].span,
+                        format!(
+                            "REL TO country codes must be alphabetically ordered \
+                             (USA first when present): [{}] → [{}] \
+                             (multiple REL TO blocks present; fix suppressed to avoid \
+                             cross-block corruption — resolve manually)",
+                            actual.join(", "),
+                            sorted.join(", "),
+                        ),
+                        "CAPCO-2016 §H.8",
+                        None,
+                    ));
+                }
+            } else if let Some(&block) = rel_to_blocks.first() {
+                if let Some(diag) = check_trigraph_ordering(
+                    &attrs.rel_to,
+                    "REL TO",
+                    self.id(),
+                    self.default_severity(),
+                    attrs,
+                    Some(block.span),
+                ) {
+                    diagnostics.push(diag);
+                }
             }
+            // If `rel_to_blocks` is empty while `attrs.rel_to` is
+            // populated, the parser is in an inconsistent state; skip
+            // silently rather than synthesize a span.
         }
 
-        // Check JOINT country ordering.
+        // Check JOINT country ordering. JOINT countries live inside a
+        // single `Classification` token, so the multi-block concern
+        // that motivates REL TO's block scoping does not apply here.
         if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
             if j.countries.len() >= 2 {
                 if let Some(diag) = check_trigraph_ordering(
@@ -1848,6 +1891,7 @@ impl Rule for CountryCodeOrderingRule {
                     self.id(),
                     self.default_severity(),
                     attrs,
+                    None,
                 ) {
                     diagnostics.push(diag);
                 }
@@ -1886,12 +1930,21 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph]) -> Vec<&str> {
 
 /// Check that a trigraph list is ordered: USA first (if present), then
 /// remaining codes alphabetically.
+///
+/// `block_span`, when `Some`, restricts the trigraph-token search to
+/// spans that fall inside it. This is required for REL TO because a
+/// marking may contain multiple `RelToBlock`s (e.g.,
+/// `...REL TO USA, GBR//NF//REL TO AUS...`) and a first→last splice
+/// across blocks would delete intervening `//...//` content. Callers
+/// that cover a whole-marking list (JOINT sits inside a single
+/// `Classification` token) pass `None`.
 fn check_trigraph_ordering(
     codes: &[marque_ism::Trigraph],
     list_name: &str,
     rule: RuleId,
     severity: Severity,
     attrs: &IsmAttributes,
+    block_span: Option<Span>,
 ) -> Option<Diagnostic> {
     let sorted = canonicalize_trigraph_list(codes);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
@@ -1908,7 +1961,10 @@ fn check_trigraph_ordering(
     let matching_spans: Vec<&TokenSpan> = attrs
         .token_spans
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| {
+            t.kind == kind
+                && block_span.is_none_or(|b| t.span.start >= b.start && t.span.end <= b.end)
+        })
         .collect();
     let span = match (matching_spans.first(), matching_spans.last()) {
         (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
@@ -4700,6 +4756,74 @@ mod tests {
         assert!(
             !e020.is_empty(),
             "E020 should fire on unordered JOINT countries: {diags:?}"
+        );
+    }
+
+    // T035c-10 fourth-round review: multi-RelToBlock safety.
+    // Mirrors the E002 cross-block guard. A first→last `RelToTrigraph`
+    // splice across the whole marking would delete intervening `//...//`
+    // content when more than one REL TO block is present.
+
+    #[test]
+    fn e020_suppresses_fix_on_multiple_rel_to_blocks() {
+        // USA, GBR, AUS is unordered (alphabetical after USA should be
+        // AUS, GBR). With two RelToBlocks, E020 must still report the
+        // ordering problem but MUST NOT carry a FixProposal — a single
+        // first→last splice across the two blocks would delete the
+        // intervening `//NF//` content.
+        let src = "SECRET//REL TO USA, GBR//NF//REL TO AUS";
+        let diags = lint_banner(src);
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(
+            e020.len(),
+            1,
+            "E020 must still fire (diagnostic present): {diags:?}"
+        );
+        assert!(
+            e020[0].fix.is_none(),
+            "E020 must NOT carry a fix when multiple REL TO blocks \
+             are present (cross-block splice would delete intervening \
+             `//NF//`): {e020:?}"
+        );
+        assert!(
+            e020[0].message.contains("multiple REL TO blocks"),
+            "suppression message must explain why no fix is offered: {}",
+            e020[0].message
+        );
+    }
+
+    #[test]
+    fn e020_silent_on_ordered_list_across_multiple_rel_to_blocks() {
+        // USA, AUS, GBR is already canonical; E020 must not fire even
+        // when the canonical list is split across two RelToBlocks.
+        let src = "SECRET//REL TO USA, AUS//NF//REL TO GBR";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E020"),
+            "E020 must not fire on canonically-ordered list, even \
+             across multiple REL TO blocks: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e020_fix_span_stays_inside_single_rel_to_block() {
+        // When exactly one RelToBlock is present, the fix span must
+        // cover first→last trigraph WITHIN that block — not stretch
+        // across unrelated trigraphs elsewhere in the token stream.
+        // This is the positive counterpart to the multi-block guard:
+        // the block_span scope must be applied on the single-block
+        // happy path too.
+        let src = "SECRET//REL TO USA, GBR, AUS";
+        let diags = lint_banner(src);
+        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        assert_eq!(e020.len(), 1);
+        let fix = e020[0].fix.as_ref().expect("E020 must carry a fix");
+        // Span should cover exactly `USA, GBR, AUS` — the first→last
+        // trigraph range — not leak outside.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "USA, GBR, AUS",
+            "fix span must cover the full trigraph range inside the block"
         );
     }
 
