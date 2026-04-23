@@ -581,9 +581,32 @@ fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E004 — Wrong separator count (should always be exactly `//`)
+// Rule: E004 — Wrong separator: `//` between categories, `/` within a category
 // ---------------------------------------------------------------------------
 
+/// E004 detects two distinct separator errors, each with its own
+/// authoritative source in CAPCO-2016:
+///
+/// 1. **Redundant `////+` runs** — CAPCO-2016 §D.1 line 558: "No slashes,
+///    hyphens or spaces are used to hold the place of control marking
+///    categories when the control marking is not represented in a
+///    document." Back-to-back `//` separators imply a missing category
+///    between them, which is explicitly disallowed.
+///
+/// 2. **`//` between same-category values** — CAPCO-2016 §A.6
+///    (Formatting, Figure 2). Within-category sibling values are joined
+///    by `/`, not `//`. The per-category statements are at lines 319
+///    (SCI), 328 (SAP), 330 (AEA), 334 (Dissem), and 336 (Non-IC
+///    Dissem). FGI is deliberately excluded from this check because
+///    §A.6 line 332 mandates a SPACE (not `/`) between multiple FGI
+///    codes — an E004 fix proposing `/` would be wrong for FGI, so
+///    `SeparatorCategory` omits it and `category_of` returns `None`
+///    for FGI tokens.
+///
+/// Both branches are gated against double-firing on the same span: the
+/// same-category branch skips separators that are part of a `////+` run
+/// (owned by branch 1), and branch 1 only emits one diagnostic per
+/// run-pair (consecutive windows).
 struct SeparatorCountRule;
 
 impl Rule for SeparatorCountRule {
@@ -622,7 +645,7 @@ impl Rule for SeparatorCountRule {
                     source: FixSource::BuiltinRule,
                     span,
                     message: "redundant block separator: collapse to a single `//`".to_owned(),
-                    citation: "CAPCO-2016 §A.6",
+                    citation: "CAPCO-2016 §D.1 (Banner Line Syntax, line 558)",
                     original,
                     replacement: "//".to_owned(),
                     confidence: 0.99,
@@ -687,7 +710,7 @@ impl Rule for SeparatorCountRule {
                 message: "redundant block separator: consecutive same-category \
                          values must be joined with `/`, not `//`"
                     .to_owned(),
-                citation: "CAPCO-2016 §A.6",
+                citation: "CAPCO-2016 §A.6 (Formatting, Figure 2)",
                 original: "//".to_owned(),
                 replacement: "/".to_owned(),
                 confidence: 0.95,
@@ -3649,6 +3672,75 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E004"),
             "E004 must not fire when either side is Unknown: {diags:?}"
+        );
+    }
+
+    // T035c-11 pin-downs.
+
+    #[test]
+    fn e004_does_not_fire_on_fgi_space_separated_codes() {
+        // Per CAPCO-2016 §A.6 line 332, multiple FGI codes are separated
+        // by a SPACE, not `/`. `SeparatorCategory` intentionally omits
+        // FGI so E004 does not misfire with a `/` fix (which would be
+        // wrong for FGI). Lock this intentional exclusion down.
+        let diags = lint_banner("SECRET//FGI GBR JPN//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire on space-separated FGI codes (§A.6 line \
+             332 mandates space, not /): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_fgi_with_double_slash_between_codes() {
+        // Even when a user writes FGI codes with `//` between them (a
+        // malformed marking), E004 must not propose `/` — that would
+        // replace one wrong separator with another wrong separator. The
+        // correct form uses a single space (§A.6 line 332). A separate
+        // rule would be needed to catch this specific error; E004's
+        // contract is explicitly limited to categories whose sibling
+        // separator is `/`.
+        let diags = lint_banner("SECRET//FGI GBR//JPN//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not propose `/` between FGI codes (would be wrong \
+             fix — correct form uses space): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e004_collapses_longer_separator_runs() {
+        // `//////` (three `//` separators back-to-back) must still
+        // collapse. §D.1 line 558 prohibits any placeholder slashes,
+        // regardless of run length. This locks behavior against a future
+        // regression where only the minimum `////` case is recognized.
+        let diags = lint_banner("SECRET//////NOFORN");
+        let e004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E004").collect();
+        assert!(
+            !e004.is_empty(),
+            "E004 must fire on `//////` (3-separator run): {diags:?}"
+        );
+        // At least one diag must carry a fix that canonicalizes to `//`.
+        assert!(
+            e004.iter().any(|d| d
+                .fix
+                .as_ref()
+                .is_some_and(|f| f.replacement.as_ref() == "//")),
+            "at least one E004 diag must propose `//`: {e004:?}"
+        );
+    }
+
+    #[test]
+    fn e004_does_not_fire_on_hyphen_connected_sci_compartment() {
+        // `SI-G` is SI with compartment G, connected by hyphen per
+        // §A.6 line 319. No `//` exists between SI and G, so E004 has
+        // no separator to fire on. This pins down that E004 does not
+        // misread the hyphen as a category boundary or otherwise
+        // double-fire with the SCI structural parser.
+        let diags = lint_banner("SECRET//SI-G//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E004"),
+            "E004 must not fire on hyphen-connected SCI compartment: {diags:?}"
         );
     }
 
