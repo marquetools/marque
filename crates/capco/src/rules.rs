@@ -1236,10 +1236,18 @@ impl Rule for CorrectionsMapRule {
 /// banner line and portion mark must be in accordance with the values
 /// listed in the Register") + Table 4 / §H per-template entries, which
 /// list three forms per marking (Banner Line Marking Title, Banner Line
-/// Abbreviation, Authorized Portion Mark). A portion text matching the
-/// banner title or abbreviation is categorically wrong per the Register
-/// because those forms are authorized only in a banner line, not a
-/// portion mark. Branch citations match E001's per-branch convention:
+/// Abbreviation, Authorized Portion Mark). This rule specifically
+/// detects portion text matching banner-form classification strings
+/// (for US classifications the title and banner abbreviation coincide,
+/// e.g., `SECRET`) or banner-form dissem abbreviations (e.g., `NOFORN`,
+/// `ORCON`, `LIMDIS`) — both authorized only in a banner line, not a
+/// portion mark. Long dissem marking titles (e.g., `ORIGINATOR
+/// CONTROLLED`) are out of scope today: the dissem branch keys on
+/// `marking_forms::banner_to_portion()` which only indexes banner
+/// abbreviations, and the parser does not accept long titles in either
+/// banners or portions on this branch. Adding title-form coverage is a
+/// follow-up once the parser and `marking_forms` lookup grow a
+/// title column. Branch citations match E001's per-branch convention:
 ///
 /// - **Classification**: CAPCO-2016 §H.1 (US Classification Markings,
 ///   Authorized Portion Mark per template). E.g., TOP SECRET→TS
@@ -3882,22 +3890,43 @@ mod tests {
     fn e009_fires_on_banner_form_classification_in_portion() {
         let diags = lint_portion("(SECRET//NF)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(SECRET//NF)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "SECRET");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "S");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // classification uses §H.1 (US Classification Markings).
+        assert_eq!(
+            e009[0].citation,
+            "CAPCO-2016 §H.1 (US Classification Markings)",
+            "classification branch must cite §H.1 per T035c-13"
+        );
     }
 
     #[test]
     fn e009_fires_on_banner_form_dissem_in_portion() {
         let diags = lint_portion("(S//NOFORN)");
         let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
-        assert_eq!(e009.len(), 1);
+        assert_eq!(
+            e009.len(),
+            1,
+            "single-token fix must produce exactly one E009: {diags:?}"
+        );
         let src = b"(S//NOFORN)";
         assert_eq!(e009[0].span.as_str(src).unwrap(), "NOFORN");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "NF");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // IC dissem controls cite §H.8.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.8",
+            "IC dissem branch must cite §H.8 per T035c-13"
+        );
     }
 
     #[test]
@@ -3937,6 +3966,12 @@ mod tests {
         assert_eq!(e009[0].span.as_str(src).unwrap(), "LIMDIS");
         let fix = e009[0].fix.as_ref().expect("E009 must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "DS");
+        // Lock down T035c-13 per-branch citation retargeting:
+        // Non-IC dissem controls cite §H.9.
+        assert_eq!(
+            e009[0].citation, "CAPCO-2016 §H.9",
+            "Non-IC dissem branch must cite §H.9 per T035c-13"
+        );
     }
 
     #[test]
