@@ -73,7 +73,8 @@ pub struct FuzzyCorrection {
 ///
 /// Construct once per engine session from the vocabulary slice exposed by
 /// [`marque_ism::TokenSet::correction_vocab`]. The vocab must be **sorted
-/// and deduplicated** (the `CapcoTokenSet` guarantees this via `binary_search`).
+/// and deduplicated** (`binary_search`, through `CapcoTokenSet`, requires
+/// sorted, unique, input.
 ///
 /// # Example
 /// ```
