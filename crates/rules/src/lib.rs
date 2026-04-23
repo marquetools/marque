@@ -67,10 +67,20 @@ impl std::fmt::Display for RuleId {
 ///
 /// # Ordering
 ///
-/// The derived `Ord` is `Off < Warn < Error < Fix`. The ordering is
-/// exposed for consumers that want to compare severities (e.g.,
+/// The derived `Ord` is `Off < Info < Warn < Error < Fix`. The ordering
+/// is exposed for consumers that want to compare severities (e.g.,
 /// "is this at least `Error`?") but the config loader does **not** use it
 /// as a merge operator today.
+///
+/// # Exit-code semantics
+///
+/// The `marque` CLI exits non-zero on `Error` or `Fix` counts. `Info` and
+/// `Warn` are emitted but do not fail `check`-mode exit codes — the
+/// difference between them is advisory: `Warn` means "this might be
+/// wrong", `Info` means "FYI, probably intentional but worth surfacing".
+/// Rules like `E034 sci-custom-control-info` (which reports unpublished
+/// SCI control systems — legitimate per CAPCO but rare) are natural
+/// `Info` candidates.
 ///
 /// # Merge semantics (current: last-write-wins)
 ///
@@ -91,7 +101,14 @@ pub enum Severity {
     /// Rule is disabled entirely. FR-008: severity=off is unrepresentable on emitted diagnostics
     /// — a rule at `Off` never fires, so no `Diagnostic` is produced.
     Off,
-    /// Emit warning; do not block.
+    /// Emit informational diagnostic; does not block `check`-mode exit
+    /// code. Intended for "audit-visible but probably intentional"
+    /// signals — cases where the marking may be correct but the user
+    /// may want to verify (e.g., unpublished SCI control systems).
+    Info,
+    /// Emit warning; does not block `check`-mode exit code. Different
+    /// from `Info` in tone: "this might be wrong" vs "FYI, probably
+    /// intentional but worth surfacing".
     Warn,
     /// Emit error; blocks `--check` exit code.
     Error,
@@ -105,6 +122,7 @@ impl Severity {
     pub fn parse_config(s: &str) -> Option<Self> {
         match s {
             "off" => Some(Self::Off),
+            "info" => Some(Self::Info),
             "warn" => Some(Self::Warn),
             "error" => Some(Self::Error),
             "fix" => Some(Self::Fix),
@@ -120,6 +138,7 @@ impl Severity {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Off => "off",
+            Self::Info => "info",
             Self::Warn => "warn",
             Self::Error => "error",
             Self::Fix => "fix",
@@ -435,6 +454,7 @@ mod tests {
     #[test]
     fn severity_parse_config_accepts_known_values() {
         assert_eq!(Severity::parse_config("off"), Some(Severity::Off));
+        assert_eq!(Severity::parse_config("info"), Some(Severity::Info));
         assert_eq!(Severity::parse_config("warn"), Some(Severity::Warn));
         assert_eq!(Severity::parse_config("error"), Some(Severity::Error));
         assert_eq!(Severity::parse_config("fix"), Some(Severity::Fix));
@@ -457,6 +477,7 @@ mod tests {
     fn severity_display_round_trips() {
         for s in [
             Severity::Off,
+            Severity::Info,
             Severity::Warn,
             Severity::Error,
             Severity::Fix,
@@ -468,9 +489,10 @@ mod tests {
 
     #[test]
     fn severity_ord_off_is_lowest() {
-        // Off < Warn < Error < Fix — see the doc comment on Severity for the
-        // intentional design rationale.
-        assert!(Severity::Off < Severity::Warn);
+        // Off < Info < Warn < Error < Fix — see the doc comment on Severity
+        // for the intentional design rationale.
+        assert!(Severity::Off < Severity::Info);
+        assert!(Severity::Info < Severity::Warn);
         assert!(Severity::Warn < Severity::Error);
         assert!(Severity::Error < Severity::Fix);
     }

@@ -68,7 +68,7 @@ pub enum ConfigError {
     /// Rule severity string in config is not one of the recognized values.
     #[error(
         "rule {rule:?} has unrecognized severity {value:?} — expected one of \
-         \"off\", \"warn\", \"error\", \"fix\""
+         \"off\", \"info\", \"warn\", \"error\", \"fix\""
     )]
     UnknownSeverity { rule: String, value: String },
 }

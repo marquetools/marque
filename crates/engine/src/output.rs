@@ -33,6 +33,18 @@ impl LintResult {
             .count()
     }
 
+    /// Number of diagnostics at `Severity::Info` — visible but
+    /// non-blocking, like `Warn`. See `Severity` docs for the tonal
+    /// distinction (`Info` = "probably intentional, worth surfacing";
+    /// `Warn` = "this might be wrong").
+    pub fn info_count(&self) -> usize {
+        use marque_rules::Severity;
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .count()
+    }
+
     /// Number of diagnostics that are configured at `Severity::Fix` AND
     /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
     /// with `fix: None` is not counted, since it cannot produce an
@@ -87,5 +99,54 @@ mod tests {
             )],
         };
         assert!(!dirty_result.is_clean());
+    }
+
+    #[test]
+    fn info_count_isolates_info_from_error_and_warn() {
+        // T035c-2: `Severity::Info` diagnostics count in `info_count()`
+        // only — they do NOT contribute to `error_count()` or
+        // `warn_count()`. Critical because the CLI's non-zero-exit
+        // gate checks `error_count() > 0 || fix_count() > 0`; Info
+        // must not fail that gate.
+        let result = LintResult {
+            diagnostics: vec![
+                Diagnostic::new(
+                    RuleId::new("E034"),
+                    Severity::Info,
+                    Span::new(0, 0),
+                    "info one",
+                    "test",
+                    None,
+                ),
+                Diagnostic::new(
+                    RuleId::new("E034"),
+                    Severity::Info,
+                    Span::new(0, 0),
+                    "info two",
+                    "test",
+                    None,
+                ),
+                Diagnostic::new(
+                    RuleId::new("W003"),
+                    Severity::Warn,
+                    Span::new(0, 0),
+                    "warn",
+                    "test",
+                    None,
+                ),
+                Diagnostic::new(
+                    RuleId::new("E001"),
+                    Severity::Error,
+                    Span::new(0, 0),
+                    "err",
+                    "test",
+                    None,
+                ),
+            ],
+        };
+        assert_eq!(result.info_count(), 2);
+        assert_eq!(result.warn_count(), 1);
+        assert_eq!(result.error_count(), 1);
+        assert_eq!(result.fix_count(), 0);
     }
 }
