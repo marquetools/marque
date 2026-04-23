@@ -33,10 +33,11 @@ impl LintResult {
             .count()
     }
 
-    /// Number of diagnostics at `Severity::Info` — visible but
-    /// non-blocking, like `Warn`. See `Severity` docs for the tonal
-    /// distinction (`Info` = "probably intentional, worth surfacing";
-    /// `Warn` = "this might be wrong").
+    /// Number of diagnostics at `Severity::Info` — visible, but not
+    /// counted toward either the error/fix exit gate
+    /// (`EX_DIAG_ERROR`) or the warn exit gate (`EX_DIAG_WARN`). See
+    /// `Severity` docs for the tonal distinction (`Info` = "probably
+    /// intentional, worth surfacing"; `Warn` = "this might be wrong").
     pub fn info_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics

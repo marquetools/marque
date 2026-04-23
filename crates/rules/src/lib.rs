@@ -116,9 +116,11 @@ pub enum Severity {
     /// signals — cases where the marking may be correct but the user
     /// may want to verify (e.g., unpublished SCI control systems).
     Info,
-    /// Emit warning; does not block `check`-mode exit code. Different
-    /// from `Info` in tone: "this might be wrong" vs "FYI, probably
-    /// intentional but worth surfacing".
+    /// Emit warning; non-error, but still non-zero in `check` mode
+    /// (produces `EX_DIAG_WARN` = 2). Different from `Info` in tone
+    /// *and* exit-code impact: Warn is "this might be wrong" and
+    /// CI-visible; Info is "FYI, probably intentional but worth
+    /// surfacing" and CI-silent (exit 0).
     Warn,
     /// Emit error; blocks `--check` exit code.
     Error,
