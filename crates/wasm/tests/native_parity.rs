@@ -441,3 +441,110 @@ fn lint_batch_invalid_json_returns_error() {
     let result = marque_wasm::lint_batch_native("not json", None);
     assert!(result.is_err());
 }
+
+// ---------------------------------------------------------------------------
+// generate_cab
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_generate_cab_basic() {
+    let text = "(S//NF) This is secret.\n(TS//SI//REL TO USA, GBR) This is top secret.";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Classified By: Derivative Classifier"));
+    assert!(cab.contains("Derived From: Multiple Sources"));
+    assert!(cab.contains("Declassify On:"));
+    // Since TS is present, it's definitely classified.
+}
+
+#[test]
+fn test_generate_cab_with_explicit_declass() {
+    let text = "(S//NF//20401231) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 20401231"));
+}
+
+#[test]
+fn test_generate_cab_with_exemption() {
+    let text = "(S//NF//25X1) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 25X1"));
+}
+
+#[test]
+fn test_generate_cab_with_multiple_portions_ordered() {
+    // First portion has declass, second doesn't.
+    let text = "(S//NF//20401231) Portion 1\n(S//NF) Portion 2";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 20401231"));
+
+    // Second portion has declass, first doesn't.
+    let text = "(S//NF) Portion 1\n(S//NF//20451231) Portion 2";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On: 20451231"));
+}
+
+#[test]
+fn test_generate_cab_fallback_to_25_years() {
+    let text = "(S//NF) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert!(cab.contains("Declassify On:"));
+    // We can't easily assert the exact year because it depends on current_year(),
+    // but we can check it looks like a date.
+    let line = cab
+        .lines()
+        .find(|l| l.starts_with("Declassify On:"))
+        .unwrap();
+    let date = line.strip_prefix("Declassify On: ").unwrap();
+    assert_eq!(date.len(), 8);
+    assert!(date.chars().all(|c| c.is_ascii_digit()));
+}
+
+#[test]
+fn test_generate_cab_custom_authority() {
+    let text = "(S//NF) Portion 1";
+    let cab = marque_wasm::generate_cab_native(
+        text,
+        Some("John Doe".to_owned()),
+        Some("Original Research".to_owned()),
+    )
+    .expect("generate_cab failed");
+    assert!(cab.contains("Classified By: John Doe"));
+    assert!(cab.contains("Derived From: Original Research"));
+}
+
+#[test]
+fn test_generate_cab_unclassified_empty() {
+    let text = "(U) Unclassified portion";
+    let cab = marque_wasm::generate_cab_native(text, None, None).expect("generate_cab failed");
+    assert_eq!(cab, "");
+}
+
+#[test]
+fn test_generate_cab_ignores_non_portions() {
+    // Banner and CAB candidates should be ignored for rollup purposes in generate_cab_native
+    let text = "SECRET//NOFORN\n(S//NF) Portion 1";
+    let banner1 = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
+    assert_eq!(banner1, "SECRET//NOFORN");
+
+    let text2 = "TOP SECRET//SI\n(S//NF) Portion 1";
+    let banner2 = marque_wasm::compute_banner_native(text2).expect("compute_banner failed");
+    assert_eq!(banner2, "SECRET//NOFORN");
+}
+
+// ---------------------------------------------------------------------------
+// compute_banner
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compute_banner_basic() {
+    let text = "(S//NF) Portion 1\n(TS//SI//NF) Portion 2";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
+    assert_eq!(banner, "TOP SECRET//SI//NOFORN");
+}
+
+#[test]
+fn test_compute_banner_empty() {
+    let text = "No markings here";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
+    assert_eq!(banner, "UNCLASSIFIED");
+}
