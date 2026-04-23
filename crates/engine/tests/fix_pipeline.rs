@@ -323,3 +323,57 @@ fn e002_fix_rewrites_banner_when_usa_misplaced() {
          pass"
     );
 }
+
+#[test]
+fn e002_fix_leaves_no_trailing_comma_after_splice() {
+    let engine = test_engine();
+
+    // The RelToBlock ends with a stale `,` after the last trigraph.
+    // If the fix span stopped at the last trigraph, the splice would
+    // leave `REL TO USA, AUS, GBR,` behind (still malformed). The
+    // span must extend through the delimiter tail.
+    let source = b"SECRET//REL TO GBR, AUS,\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert_eq!(
+        fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
+        "E002 splice must consume the trailing `,` inside the \
+         RelToBlock — leaving it behind would be a still-malformed \
+         REL TO list"
+    );
+}
+
+#[test]
+fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
+    let engine = test_engine();
+
+    // Two REL TO blocks with `//NF//` between them. A naïve
+    // first→last splice across both blocks would delete the `//NF//`
+    // content. The fix must be suppressed entirely so Engine::fix
+    // leaves the source untouched (the diagnostic still fires).
+    let source = b"SECRET//REL TO GBR//NF//REL TO AUS\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+
+    // No E002 fix should have been applied — the proposal is None.
+    let e002_applied: Vec<_> = result
+        .applied
+        .iter()
+        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .collect();
+    assert!(
+        e002_applied.is_empty(),
+        "E002 must not apply a fix across multiple REL TO blocks: \
+         {e002_applied:?}"
+    );
+
+    // Intermediate `//NF//` content must survive in the output. Some
+    // other rules may still rewrite other parts of the source (e.g.,
+    // normalizing), so we only assert that NF is preserved.
+    let fixed_text = String::from_utf8(result.source).unwrap();
+    assert!(
+        fixed_text.contains("NF") || fixed_text.contains("NOFORN"),
+        "intermediate NF content must survive multi-block scenario: \
+         {fixed_text:?}"
+    );
+}

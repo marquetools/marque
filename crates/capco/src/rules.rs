@@ -335,11 +335,103 @@ impl Rule for MissingUsaTrigraphRule {
             .collect::<Vec<_>>()
             .join(", ");
 
+        let message = if !has_usa {
+            "REL TO list missing required USA trigraph"
+        } else {
+            "USA must be the first trigraph in REL TO list"
+        };
+        let citation = "CAPCO-2016 §H.8 (REL TO, p150–151)";
+
+        // Locate the `RelToBlock` this diagnostic refers to. If the
+        // marking has more than one REL TO block (e.g.,
+        // `SECRET//REL TO GBR//NF//REL TO AUS`), a single first→last
+        // splice would delete intervening `//...//` content. In that
+        // case we emit a diagnostic with no FixProposal and let the
+        // author resolve manually.
+        let rel_to_blocks: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToBlock)
+            .collect();
+        let Some(&block) = rel_to_blocks.first() else {
+            // No block tagging (defensive: `attrs.rel_to` non-empty
+            // should imply at least one `RelToBlock` token). Emit
+            // diagnostic without a fix rather than risk mis-splice.
+            return vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                Span::new(0, 0),
+                message.to_owned(),
+                citation,
+                None,
+            )];
+        };
+        if rel_to_blocks.len() > 1 {
+            return vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                block.span,
+                format!(
+                    "{message} (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)"
+                ),
+                citation,
+                None,
+            )];
+        }
+
+        // Collect RelToTrigraph spans that fall inside the single
+        // RelToBlock. Filtering on block containment is defensive
+        // against future parser changes that might surface trigraph
+        // tokens outside their block.
+        let rel_to_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| {
+                t.kind == TokenKind::RelToTrigraph
+                    && t.span.start >= block.span.start
+                    && t.span.end <= block.span.end
+            })
+            .collect();
+        let (first, last) = match (rel_to_spans.first(), rel_to_spans.last()) {
+            (Some(f), Some(l)) => (f, l),
+            _ => {
+                return vec![Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    block.span,
+                    message.to_owned(),
+                    citation,
+                    None,
+                )];
+            }
+        };
+
+        // Span: first→last `RelToTrigraph` within this block, extended
+        // through any trailing `,`/whitespace tail *only when* the
+        // remainder of the RelToBlock after the last trigraph is
+        // delimiter-only. This consumes stale delimiters like the
+        // trailing `,` in `REL TO GBR, AUS,` so the splice leaves a
+        // clean list. We gate on delimiter-only to preserve any
+        // content we can't tokenize as a trigraph today (tetragraphs
+        // are 4-byte and don't fit `Trigraph`; deleting them would be
+        // wrong).
+        let start = first.span.start;
+        let mut end = last.span.end;
+        let tail_offset = end - block.span.start;
+        let block_bytes = block.text.as_bytes();
+        if tail_offset <= block_bytes.len() {
+            let tail = &block_bytes[tail_offset..];
+            if tail.iter().all(|b| matches!(b, b',' | b' ' | b'\t')) {
+                end = block.span.end;
+            }
+        }
+        let span = Span::new(start, end);
+
         // Build the fully canonical list (USA first, non-USA entries
         // alphabetical per CAPCO-2016 §H.8 line 3714) via the shared
-        // helper used by E020. When USA is missing from input we add it
-        // before canonicalizing so the output always has USA first; the
-        // helper itself treats USA as "first if present" without
+        // helper used by E020. When USA is missing from input we add
+        // it before canonicalizing so the output always has USA first;
+        // the helper itself treats USA as "first if present" without
         // injecting it (E020 must not synthesize countries that aren't
         // there). Producing the canonical form in a single pass is
         // required because E020 gates on `rel_to[0] == USA` and is
@@ -350,36 +442,13 @@ impl Rule for MissingUsaTrigraphRule {
         }
         let fixed = canonicalize_trigraph_list(&codes).join(", ");
 
-        let message = if !has_usa {
-            "REL TO list missing required USA trigraph"
-        } else {
-            "USA must be the first trigraph in REL TO list"
-        };
-
-        // Span: first→last `RelToTrigraph` token so `Engine::fix` can
-        // splice the entire offending list with the canonical replacement.
-        // Using only the first-trigraph span would corrupt the banner
-        // because the replacement covers all entries, not just one.
-        let rel_to_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::RelToTrigraph)
-            .collect();
-        let span = match (rel_to_spans.first(), rel_to_spans.last()) {
-            (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
-            // Defensive: if there's no token span (shouldn't happen given
-            // attrs.rel_to is non-empty), use a zero-length span which the
-            // engine's fix path will filter rather than mis-splice.
-            _ => Span::new(0, 0),
-        };
-
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
             severity: self.default_severity(),
             source: FixSource::BuiltinRule,
             span,
             message: message.to_owned(),
-            citation: "CAPCO-2016 §H.8 (REL TO, p150–151)",
+            citation,
             original: current,
             replacement: fixed,
             confidence: 0.97, // per spec T031
@@ -3480,6 +3549,72 @@ mod tests {
             "USA, AUS, GBR",
             "E002 must produce canonical REL TO in one pass: {}",
             fix.replacement.as_ref()
+        );
+    }
+
+    // T035c-10 second-round review fixes: trailing-delimiter tail
+    // consumption and multi-block suppression.
+
+    #[test]
+    fn e002_fix_consumes_trailing_comma_in_rel_to_block() {
+        // `REL TO GBR, AUS,` has a trailing `,` inside the RelToBlock.
+        // Splicing only `GBR, AUS` (first→last trigraph) would leave
+        // the trailing `,` behind: `REL TO USA, AUS, GBR,` — still
+        // malformed. The fix span must extend through the delimiter
+        // tail so the rewritten banner is clean.
+        let src = "SECRET//REL TO GBR, AUS,";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "GBR, AUS,",
+            "fix span must cover the delimiter-only tail so splicing \
+             leaves no stale `,`/whitespace behind"
+        );
+    }
+
+    #[test]
+    fn e002_fix_span_stops_at_non_delimiter_tail() {
+        // When the block tail contains non-delimiter content (here the
+        // literal unknown token `FVEY`, which is a tetragraph marker
+        // that we cannot represent as a 3-byte `Trigraph` today), the
+        // fix span must NOT extend through it — otherwise the splice
+        // would silently delete the user's tetragraph. Lock this.
+        let src = "SECRET//REL TO GBR, AUS, FVEY";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
+        // Span must stop at end-of-AUS, not swallow `, FVEY`.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "GBR, AUS",
+            "fix span must not swallow tetragraph content in the tail"
+        );
+    }
+
+    #[test]
+    fn e002_suppresses_fix_on_multiple_rel_to_blocks() {
+        // If the parser sees more than one REL TO block in a marking,
+        // a single first→last splice would delete intervening `//...//`
+        // content (here `//NF//`). The rule must emit a diagnostic
+        // without a FixProposal so the engine cannot corrupt the
+        // source.
+        let src = "SECRET//REL TO GBR//NF//REL TO AUS";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(
+            e002.len(),
+            1,
+            "E002 must still fire (diagnostic present): {diags:?}"
+        );
+        assert!(
+            e002[0].fix.is_none(),
+            "E002 must NOT carry a fix when multiple REL TO blocks \
+             are present (cross-block splice would delete intervening \
+             `//NF//`): {e002:?}"
         );
     }
 
