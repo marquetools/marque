@@ -8,6 +8,13 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> [!IMPORTANT]
+> ## Project Constitution
+>
+>  The project constitution is the authoritative source for principles governing all maintenance.
+
+@.specify/memory/constitution.md
+
 ## What This Is
 
 `marque` is a **general-purpose rule engine for fast text processing** — rules produce warnings, errors, fixes, and transformations, each with a confidence score the engine uses to decide what to apply vs. surface as a suggestion. Built in the style of `ruff`: designed for perceptual instantaneity at any scale, operating on raw byte buffers with SIMD-accelerated scanning and an Aho-Corasick parser.
@@ -61,16 +68,23 @@ cargo check --workspace
 ### Crate Dependency Graph
 
 ```
-marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
-                                    ↓
-                             marque-engine  ←  marque-config
-                              ↑          ↑
-                     marque-extract    marque-wasm
-                              ↑
-                       marque-server
-                              ↑
-                           marque (CLI)
+marque-ism    ←── marque-core ────────────────────┐
+marque-ism    ←── marque-rules ←── marque-capco ──┤
+marque-scheme ←──────────────────  marque-capco ──┤
+                                                  ↓
+                                            marque-engine ←── marque-config
+                                            ↑    ↑
+                                   marque-wasm  marque-extract (non-WASM only)
+                                            ↑
+                                      marque-server
+                                            ↑
+                                       marque (CLI)
 ```
+
+Read `A ←── B` as "`B` depends on `A`". `marque-rules` does NOT depend on
+`marque-core`. `marque-capco` does NOT depend on `marque-core`. `marque-engine`
+is the sole convergence point that pulls both chains together. `marque-scheme`
+has no runtime deps on `marque-ism`/`marque-core`/`marque-rules`.
 
 ### Crate Responsibilities
 
@@ -79,10 +93,10 @@ marque-ism  ←  marque-core  ←  marque-rules  ←  marque-capco
 | `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. Owns `build.rs` + ODNI schemas. |
 | `marque-core` | Scanner + parser. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. Produces `IsmAttributes` from byte buffers. |
 | `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `Severity`, `AppliedFix`. No implementations. |
-| `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`, `Constraint`, `Parsed<M>`. Zero runtime deps; no dependency on `marque-ism`. Phase A scaffolding — see `docs/plans/2026-04-17-marking-scheme-lattice-design.md`. |
-| `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. Also hosts `CapcoScheme`, the `marque-scheme` adapter over `IsmAttributes`. |
+| `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`/`CategoryShape`, `Constraint`, `Parsed<M>`, `Scope`, `PageRewrite`, and built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`). Zero runtime deps; no dependency on `marque-ism`. Phase B landed the recursive-lattice surface — see `docs/plans/2026-04-19-recursive-lattice-and-decoder.md`. |
+| `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. Also hosts `CapcoScheme`, the `marque-scheme` adapter over `IsmAttributes`; `SciSet`/`SarSet`/`FgiSet` lattice types (`marque_capco::lattice`); and tetragraph expansion tables (`marque_capco::vocab`). |
 | `marque-engine` | Pipeline orchestration: `Engine` (single doc) and `BatchEngine` (async concurrent). |
-| `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. **Not in WASM.** |
+| `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. Alternately a narrowing custom or pieced together use of other libraries (Kreuzberg has some licensing complication) **Not in WASM.** |
 | `marque-config` | Layered config loading from `.marque.toml` → `.marque.local.toml` → env vars. |
 | `marque-wasm` | `wasm-pack` target. Exposes `lint`/`fix` to web workers. Format extraction is caller's responsibility. |
 | `marque-server` | axum REST microservice wrapping `marque-engine`. Auth/logging via Tower middleware. |
@@ -111,6 +125,8 @@ SCI markings need more than a flat CVE enum because CAPCO-2016 §A.6 defines a c
 The hybrid approach: the CVE vocabulary generated from `CVEnumISMSCIControls.xml` gives bare-system recognition and the set of pre-registered compounds; a structural subparser (`parse_sci_block` in `marque-core/src/parser.rs`) handles the full §A.6 grammar and emits `SciMarking` entries. The subparser is dispatched before the CVE exact-match path and gated on `contains('-') || contains('/') || is_bare_cve_value || (custom-control shape ∧ ¬ known non-SCI token)` so plain two-letter tokens (NF, RD) still fall through to the dissem/non-IC/SAR/AEA chain, while standalone custom controls like `99` (e.g., `TOP SECRET//99//NOFORN`) reach the structural path.
 
 `IsmAttributes` exposes both `sci_markings: Box<[SciMarking]>` (authoritative structural form — control system + compartments + sub-compartments) and the original `sci_controls: Box<[SciControl]>` (CVE enum projection) for back-compat with existing consumers. `canonical_enum` on a `SciMarking` is populated only when the bare control or `{ctrl}-{first_comp}` matches a CVE value AND no sub-compartments are present; anything richer is structural-only.
+
+**Phase B canonicalization.** Post-Phase-B, `SciSet` (in `marque_capco::lattice`, the lattice form of SCI state) is the canonical page-context storage: it implements `Lattice`, round-trips with `[SciMarking]` via `SciSet::from_markings` / `SciSet::to_markings`, and composes through `CapcoScheme::project(Scope::Page, ...)`. `SciSet` (and `SarSet`) deliberately do **not** implement `BoundedLattice` — SCI control systems and SAR program identifiers are both agency-extensible open sets, so no lawful finite `top` exists. Use `SciSet::empty()` / `SciSet::default()` when you need the lattice bottom. `IsmAttributes::sci_controls` stays populated for rules that currently read it, but is a compatibility view scheduled for removal in Phase C or D when no rule references it. New rules that need compartment / sub-compartment semantics should read `sci_markings` or construct an `SciSet`; rules that just need "which bare control systems appear" can stay on `sci_controls` until the migration closes.
 
 Banner roll-up for SCI (E035) uses `PageContext::expected_sci_markings()`, which unions compartments and sub-compartments across all portions on the page and sorts per §A.6 p15 (numeric first, alpha after). Authority: CAPCO-2016 §A.6 (grammar, canonical example p16) + §H.4 (per-system banner precedence).
 
@@ -154,8 +170,8 @@ LMDB (`heed` crate) at `.marque/cache.lmdb`. Cache key = `blake3(content) ++ sch
 version = "2023.1"
 
 [rules]
-banner-abbreviation = "fix"    # Severity: fix | warn | error | off
-missing-usa-trigraph = "fix"
+E001 = "fix"                   # portion-mark-in-banner; off | info | warn | error | fix
+E002 = "fix"                   # missing-usa-trigraph
 
 [corrections]
 "SERCET" = "SECRET"
@@ -225,13 +241,16 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO ru
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
-- Rust 1.85+ (edition 2024) — pinned by constitution Tech Stack
+- Rust 1.89+ (edition 2024) — pinned by constitution Tech Stack
 - `memchr` 2 — SIMD candidate detection (Phase 1 scanner)
 - `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections
 - `criterion` 0.5 — benchmarking (SC-001, SC-005)
 - `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
+- Rust ≥ 1.85 (edition 2024). Pinned by Constitution Tech Stack. + `memchr` 2 (scanner), `aho-corasick` 1 (token matching; `daachorse` on WASM per Tech Stack), `quick-xml` (build-time ODNI XSD/Schematron parsing, already present), `serde` + `serde_json` (build-time JSON codepath for per-term vocabulary data; runtime deserialization not required — data is emitted as Rust const tables by `build.rs`), `phf` (compile-time replacement lookup, already present). No new runtime crates introduced by Phase D's decoder — log-posterior scoring uses `f64` and Rust standard ops. Corpus-derived priors baked in as `&'static [T]` tables at build time. (004-constraints-decoder-vocab)
+- None at runtime. Build-time inputs: `crates/ism/schemas/ISM-v2022-DEC/` (ODNI XML, vendored), `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored), `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). Test inputs: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable). (004-constraints-decoder-vocab)
 
 ## Recent Changes
+- Phase B (recursive lattice & decoder plan, §12): built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`); `Scope` / `DiffInput` / `CategoryShape` / `PageRewrite` trait-surface additions; `SciSet`/`SarSet`/`FgiSet` lattice types in `marque-capco` with §3.3a equal-depth meet policy; `CapcoScheme::project(Scope, ...)` taking over from `project_banner`; `capco/noforn-clears-rel-to` declared as the first `PageRewrite`; tetragraph expansion tables consolidated in `marque-capco::vocab`; `AggregationOp::Custom` retired from runtime dispatch (build-time shorthand only)
 - Phase 7: Criterion benchmarks (lint_latency, linear_scaling), corpus accuracy harness, WASM parity scaling to full corpus, cargo-fuzz target, bench-check regression gate
 - Phase 6: WASM web worker build with SC-008 parity, `batch` feature flag, CachedAhoCorasick optimization
 - Phase 5: Configurable severity overrides, corrections map with AhoCorasick pre-scanner

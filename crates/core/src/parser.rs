@@ -1366,6 +1366,7 @@ fn split_with_offsets(s: &str, delim: char) -> Vec<(usize, &str)> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
@@ -2254,6 +2255,7 @@ mod tests {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod sar_parse_tests {
     //! Direct unit tests for [`parse_sar_category`] plus integration-level
     //! tests that exercise the dispatch from `parse_marking_string`.

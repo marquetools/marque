@@ -5,7 +5,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Marque: recursive lattices, lossless tokens, and the probabilistic decoder
 
-**Date:** 2026-04-19 (revised)
+**Date:** 2026-04-19 (revised), 2026-04-20 (amended 7a, 12 phase C, 14)
 **Status:** proposed — supersedes §§3–5 of
 `2026-04-17-marking-scheme-lattice-design.md` end-to-end (trait
 surface, probabilistic disambiguation, migration sequence). The phase
@@ -915,16 +915,25 @@ stable so rules don't change.
 
 ### 7a. Cross-category rewrites
 
-One category of CAPCO aggregation can't be expressed as a single-
-category lattice join: **cross-category supersession**. NOFORN lives
-in `dissem`; REL TO lives in `rel_to`. When NOFORN is present in a
-page's dissem roll-up, the REL TO roll-up for the same page clears
-entirely. Today this lives inside `PageContext::expected_rel_to()`
-(see `crates/capco/src/scheme.rs` line 372, where the comment
-explicitly calls out that `AggregationOp::UnionWithSupersession` only
-works within a single category).
+Three categories of CAPCO aggregation can't be expressed as
+single-category lattice joins:
 
-Model this explicitly at `Scope::Page` time:
+- **Cross-axis supersession.** NOFORN lives in `dissem`; REL TO lives
+  in `rel_to`. When NOFORN is present in a page's dissem roll-up, the
+  REL TO roll-up for the same page clears entirely.
+- **Cross-axis promotion.** When a JOINT classification carries US
+  presence alongside non-US partners, the non-US partner content is
+  pulled out of the classification axis and re-routed into the FGI
+  axis as attributed entries (`FGI(GBR)`, `FGI(DEU)`, etc.).
+- **Within-axis absorption.** When FGI carries `unattributed`
+  alongside any attributed entries, the attributed entries collapse
+  into the unattributed top element.
+
+The first shipped in Phase B as a `PageRewrite` (see
+`crates/capco/src/scheme.rs`); the promotion and absorption rewrites
+land in Phase C.
+
+Model these explicitly at `Scope::Page` time:
 
 ```rust
 pub struct PageRewrite<S: MarkingScheme> {
@@ -932,6 +941,10 @@ pub struct PageRewrite<S: MarkingScheme> {
     pub trigger: CategoryPredicate<S>,                // "NOFORN in dissem"
     pub action: CategoryAction<S>,                    // "clear rel_to"
     pub citation: &'static str,                       // "CAPCO-2016-§H.2"
+    /// Categories the trigger inspects. Drives the dependency graph in §7a.2.
+    pub reads: &'static [CategoryId],
+    /// Categories the action mutates. Drives the dependency graph in §7a.2.
+    pub writes: &'static [CategoryId],
 }
 
 pub enum CategoryPredicate<S: MarkingScheme> {
@@ -941,24 +954,151 @@ pub enum CategoryPredicate<S: MarkingScheme> {
 }
 
 pub enum CategoryAction<S: MarkingScheme> {
-    Clear    { category: CategoryId },
-    Replace  { category: CategoryId, with: S::Marking },
+    Clear   { category: CategoryId },
+    Replace { category: CategoryId, with: S::Marking },
+    /// Move content from one axis to another, optionally transforming
+    /// the value during the move. Used for JOINT → FGI promotion.
+    Promote {
+        from: CategoryId,
+        to: CategoryId,
+        transform: fn(&S::Marking) -> S::Marking,
+    },
     Custom(fn(&mut S::Marking)),
+}
+```
+
+For non-`Custom` variants, the `reads` and `writes` slices are
+derivable from each enum's `category` / `from` / `to` fields. The
+`PageRewrite::declarative` constructor populates them at scheme build
+time:
+
+```rust
+impl<S: MarkingScheme> PageRewrite<S> {
+    /// Construct a rewrite with `reads` and `writes` derived from the
+    /// predicate and action enum variants. Compile error if either
+    /// uses `Custom` — Custom requires the explicit constructor below.
+    pub const fn declarative(
+        id: &'static str,
+        trigger: CategoryPredicate<S>,
+        action: CategoryAction<S>,
+        citation: &'static str,
+    ) -> Self;
+
+    /// Construct a rewrite with explicitly-declared axes for `Custom`
+    /// variants. The closure body is opaque to the engine, so the
+    /// engine can't infer the dependency without help.
+    pub const fn custom(
+        id: &'static str,
+        trigger: CategoryPredicate<S>,
+        action: CategoryAction<S>,
+        citation: &'static str,
+        reads: &'static [CategoryId],
+        writes: &'static [CategoryId],
+    ) -> Self;
 }
 ```
 
 `MarkingScheme::page_rewrites() -> &[PageRewrite<Self>]` returns the
 scheme's post-aggregation rewrite table. The engine runs
 `project(Scope::Page, ...)` first (category-wise joins), then applies
-`page_rewrites()` in declaration order, then runs validate. The
-declaration is inspectable: tooling can render "this page will have
-NOFORN⇒REL-TO-cleared applied" without calling scheme code.
+the rewrites in scheduler-determined order (§7a.2), then runs
+validate. The declaration is inspectable: tooling can render "this
+page will have NOFORN ⇒ REL-TO-cleared applied" without calling scheme
+code.
 
-Phase B declares `PageRewrite` for NOFORN⊐REL TO in CAPCO. Phase C
-reviews the 39 existing rules for any others that should be
-expressed as page rewrites rather than rules (e.g., FGI concealment
-transitions from open to known-producers when certain conditions
-apply).
+#### 7a.1 Producers and consumers
+
+Rewrites fall into two patterns with different ordering implications:
+
+- **Producers** write to an axis they don't read from. JOINT-promotion
+  reads `classification`, writes `fgi` — pulls non-US partner content
+  out of `JOINT(USA, GBR)` into `FGI(GBR)` when US is present.
+- **Consumers** read an axis they (also) write to. FGI-absorption
+  reads `fgi` and writes `fgi` — collapses
+  `{unattributed, FGI(GBR), FGI(DEU)}` to `{unattributed}` when the
+  unattributed top element is present.
+
+Producer-then-consumer matters operationally. Take the canonical
+mixed-source page:
+
+```
+(JOINT S USA GBR//REL TO USA, GBR) joint-op portion
+(FGI S//REL TO USA, GBR)            unattributed-source portion
+(TS//SI//REL TO USA, FVEY)          US-only portion with SI
+```
+
+After the category-wise joins, the relevant pre-rewrite axes are:
+`classification = TS` (with portion 1's JOINT structure still carrying
+GBR as an unmigrated partner), `sci = {SI}`, `fgi = {unattributed}`,
+`rel_to = {USA, GBR}` (FVEY's expansion to include GBR is intersected
+back against portions 1 and 2). JOINT-promotion fires because US
+classification is present on the page; it pulls GBR from portion 1's
+JOINT structure into FGI as attributed. State: `fgi = {unattributed,
+FGI(GBR)}`. FGI-absorption fires because unattributed is present
+alongside attributed; it collapses to `fgi = {unattributed}`. Banner:
+`TOP SECRET//SI//FGI//REL TO USA, GBR`.
+
+If absorption ran before JOINT-promotion, the trace would end at
+`fgi = {unattributed, FGI(GBR)}` — wrong. The analyst would expect the
+collapse, and the engine wouldn't have produced it.
+
+Note the survival of `REL TO USA, GBR` in the banner despite
+unattributed FGI being present. Many analysts would expect NOFORN
+there, but absorption operates strictly within FGI — it doesn't write
+to `dissem`. Portion 2's explicit REL TO is the (unknown) source's
+authorization, and the intersection-on-REL-TO carries it through. The
+"unattributed FGI typically NOFORNs" pattern is a social convention
+among classifiers, not a CAPCO rule, and a marking engine that
+imposed it would be wrong on this case. Phase H's diff/feedback rules
+can warn the analyst that the combination looks unusual; the engine
+itself produces the algebraically correct result. (`R-FgiExplicitRel`
+in §12 Phase C verification locks this in as a property test.)
+
+#### 7a.2 Scheduling
+
+The engine treats `page_rewrites()` as a dependency graph: rewrite
+`B` depends on rewrite `A` if `A`'s `writes` set intersects `B`'s
+`reads` set. A topological sort over the graph produces the run
+order. Declaration order is the tiebreaker among rewrites with no
+dependency edge between them.
+
+Two failure modes are caught at scheme construction, not per-document
+evaluation:
+
+1. **Read-after-write cycles.** If A reads from an axis B writes and
+   B reads from an axis A writes (or any longer cycle), no
+   topological order exists. The engine constructor returns
+   `EngineConstructionError::RewriteCycle { axis, members }`. Schemes
+   either break the cycle by re-expressing the rewrites or — if the
+   cycle is genuine policy — encode the resolution as a single
+   combined rewrite with explicit semantics.
+2. **Unannotated `Custom` axes.** `PageRewrite::custom(...)` always
+   takes explicit `reads` and `writes` parameters, so the relevant
+   construction-time failure is not omission at the call-site but an
+   empty or otherwise underspecified axis declaration for a `Custom`
+   rewrite. Scheme construction rejects such cases with
+   `EngineConstructionError::UnannotatedCustomAxes`. Non-`Custom`
+   variants get the annotations for free from
+   `PageRewrite::declarative`.
+
+Confluence beyond what topological ordering guarantees is not
+required. As long as the dependency graph is acyclic and the schedule
+respects it, the result is deterministic regardless of how the
+tiebreaker resolves independents — independents, by construction,
+don't see each other's writes.
+
+Property tests in `marque-capco` cover the realistic combinations
+end-to-end. The topo sort catches structural ordering bugs (a
+producer scheduled after its consumer) but not axis-tagging bugs (a
+producer mistakenly tagged as not writing the axis it actually
+writes). Only an end-to-end test with the right input shape will
+flag the latter.
+
+The Phase-B-shipped NOFORN ⊐ REL TO `PageRewrite` is a single-node
+graph; Phase C retrofits it with the new `reads` / `writes`
+annotations during the same PR that introduces the scheduler. Phase C
+also declares JOINT-promotion and FGI-absorption, exercising the
+producer-before-consumer ordering path.
 
 ## 8. Control blocks as a separate trait
 
@@ -1183,8 +1323,75 @@ Each phase block below lists: **Goal**, **Deliverables**,
     stay as `Rule` impls.
   - Cross-category supersession (NOFORN⊐REL TO) moves from
     `PageContext::expected_rel_to` into a `PageRewrite` declaration.
-    The `TODO(Phase C)` comment in `crates/capco/src/scheme.rs`
-    line 380 is resolved.
+    The Phase C note in `crates/capco/src/scheme.rs` covering
+    cross-category supersession (the CAT_DISSEM / NOFORN ⊐ REL TO
+    aggregation comment and related `build_page_rewrites()` work) is
+    resolved.
+    - **`PageRewrite` axis annotations** (refactor of the
+      Phase-B-shipped type). `PageRewrite` gains
+      `reads: &'static [CategoryId]` and
+      `writes: &'static [CategoryId]` fields per §7a. Two constructors:
+      `PageRewrite::declarative` derives the annotations from the
+      predicate/action enum variants at scheme build time;
+      `PageRewrite::custom` requires explicit declaration. The
+      Phase-B-shipped NOFORN ⊐ REL TO entry switches to
+      `PageRewrite::declarative` (annotations derived:
+      `reads = &[dissem]`, `writes = &[rel_to]`). Existing CAPCO behavior
+      unchanged; the corpus accuracy harness must stay byte-identical
+      across the refactor.
+    - **`CategoryAction::Promote`** variant added per §7a. Move content
+      from one axis to another, optionally transforming the value during
+      the move. Used by JOINT-promotion below.
+    - **Engine-side scheduler** per §7a.2: topological sort over the
+      read/write dependency graph, run at `Engine::new` not per-document.
+      `EngineConstructionError::RewriteCycle` and
+      `EngineConstructionError::UnannotatedCustomAxes` cover the two
+      static failure modes. Unit tests in `marque-scheme` schedule (a)
+      the pre-Phase-C single-entry rewrite set (trivial schedule),
+      (b) the full Phase C rewrite set (three entries, real
+      producer-consumer edge), and (c) a synthetic 4-rewrite cyclic set
+      to exercise the cycle path.
+    - **JOINT-promotion** (`capco/joint-promotes-foreign-to-fgi`)
+      declared as a `PageRewrite` via `PageRewrite::declarative`, using
+      the new `CategoryAction::Promote { from: classification, to: fgi,
+      transform }` variant. Trigger:
+      `CategoryPredicate::Contains { category: classification, token:
+      US_PRESENCE }`, where `US_PRESENCE` is a **planned Phase C
+      placeholder name** for a structural marker emitted/derived by the
+      parser when any portion of the page carries US classification,
+      including as the US member of a JOINT marking. This is not a
+      current token name in the codebase; the implementation should use
+      the existing CAPCO sentinel-token mechanism (today including
+      tokens such as `TOK_USA` and `TOK_JOINT`) or introduce a clearly
+      named equivalent when Phase C is implemented. Citation: TBD
+    - **FGI-absorption** (`capco/unattributed-fgi-absorbs-attributed`)
+      declared as a `PageRewrite` via `PageRewrite::custom` with explicit
+      `reads = &[fgi]` / `writes = &[fgi]`. The within-axis collapse
+      isn't expressible as `Clear` or `Replace` so the action is
+      `Custom`; the trigger is `Custom` because "unattributed" is a
+      structural marker on the FGI value rather than a literal token.
+      Citation: TBD.
+    - **`R-FgiExplicitRel` property test.** A portion contributing
+      `FGI(unattributed)` to the page-level FGI axis, alongside any
+      portion with explicit REL TO content, must produce a banner that
+      retains the explicit REL TO and does *not* introduce NOFORN. Locks
+      in the §7a.1 invariant that absorption is FGI-axis-only and does
+      not propagate restriction to `dissem`. Test corpus includes the
+      three-portion canonical example from §7a.1.
+    - **Scheduler exercise.** Tests verify (a) swapping declaration
+      order of the FGI pair produces the same scheduled run order, (b)
+      inserting NOFORN ⊐ REL TO at any position in the declaration list
+      doesn't change either the schedule or the banner output
+      (independence verified), and (c) introducing a synthetic
+      read-after-write cycle at scheme build time fails with
+      `RewriteCycle` and names both members.
+
+    Phase C verification adds `R-FgiExplicitRel` and the scheduler
+    exercise to its accuracy gate. Phase C gating still requires
+    ≥95% per-rule accuracy on SC-002/SC-003 with no regression from the
+    Phase-B-shipped CAPCO behavior on the existing NOFORN ⊐ REL TO entry
+    across the `PageRewrite` refactor.
+
 - **Verification.** Equivalence test: same diagnostics produced on
   the corpus before/after the rule migration.
 - **Gate.** Rule count reduction does not introduce regression on
@@ -1404,6 +1611,35 @@ For the record, so future readers don't re-propose them.
   burdens the 99% of call sites that don't care about diff.
   Replaced by the dedicated `DiffInput<M>` type per §7.1. `Scope::Diff`
   survives as a marker variant only.
+- **Confluence as a stronger property than topological-acyclic
+  scheduling.** Acyclic + topo order suffices for determinism;
+  confluence (any order produces the same result) is a stronger
+  claim the scheduler doesn't verify and CAPCO's rewrite set doesn't
+  need. Property tests cover the actual combinations end-to-end;
+  confluence-as-an-invariant would be over-specification.
+- **Per-document `EngineContext` for context-conditional rewrites**
+  (e.g., `[agency] is_ic_member` gating a rewrite on/off). The
+  `page_rewrites()` signature returns a static slice; threading
+  per-document context through the rewrite phase is an additive
+  change Phase F's CUI work is the natural place to consider.
+  Deferred to whatever doc covers Phase F config gates.
+- **Parser-side ambiguity** (jumbled SCI tokens with unpublished
+  symbols, country lists detached from their parent identifier).
+  Already covered by §5's `Parsed::Ambiguous { candidates }` plus
+  aggregate-confidence shape. The parser-side and rewrite-side
+  ordering questions are different concerns.
+- **Renaming `Lattice::meet` on `SciSet` to flag the policy choice.**
+  Flagged in review as a documentation hazard (the trait method is
+  the obvious thing to reach for, but `SciSet::common_compartments`
+  is usually what callers want). Worth doing, but orthogonal to the
+  scheduling work in this doc; either land it in the same Phase C PR
+  or in a follow-up note.
+- **A separate "Phase B.1" cleanup PR for the scheduler
+  infrastructure alone, ahead of Phase C.** Considered; rejected on
+  the grounds that the scheduler infrastructure has no consumer
+  until JOINT-promotion and FGI-absorption land, so shipping it
+  alone would introduce dead code with no behavioral test coverage.
+  The Phase C PR is the right place for both.
 
 ## 15. Mapping to prior plans
 

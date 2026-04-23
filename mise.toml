@@ -19,6 +19,7 @@ typos = "latest"
 tombi = "latest"
 rust = "nightly"
 yq = "latest"
+pandoc = "latest"
 
 [settings]
 auto_install = true

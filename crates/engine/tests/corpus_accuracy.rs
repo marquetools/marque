@@ -19,7 +19,12 @@ use marque_test_utils::{
 use std::collections::HashMap;
 
 fn make_engine() -> Engine {
-    Engine::new(Config::default(), marque_engine::default_ruleset())
+    Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 // ---------------------------------------------------------------------------
@@ -148,12 +153,25 @@ fn fix_accuracy_invalid_fixtures() {
             continue;
         }
 
-        // Lint first to discover which rules are fixable (have above-threshold fixes)
+        // Lint first to discover which rules are fixable — i.e., the
+        // rule's fix clears the engine's combined-confidence
+        // threshold gate.
+        //
+        // "Confidence" here is the scalar `Confidence::combined()`
+        // (= recognition × rule) that the engine applies at the
+        // promotion boundary (FR-016). `Confidence` carries additional
+        // axes (`region`, `runner_up_ratio`, feature contributions)
+        // for audit provenance, but this harness and every
+        // threshold-gated consumer compare on `.combined()` only.
         let lint_result = engine.lint(&source);
         let fixable_rules: std::collections::HashSet<String> = lint_result
             .diagnostics
             .iter()
-            .filter(|d| d.fix.as_ref().is_some_and(|f| f.confidence >= threshold))
+            .filter(|d| {
+                d.fix
+                    .as_ref()
+                    .is_some_and(|f| f.confidence.combined() >= threshold)
+            })
             .map(|d| d.rule.as_str().to_owned())
             .collect();
 
@@ -302,7 +320,12 @@ fn c001_corrections_map_accuracy() {
 
     let mut config = Config::default();
     config.corrections = corrections;
-    let engine = Engine::new(config, marque_engine::default_ruleset());
+    let engine = Engine::new(
+        config,
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     let mut matched = 0;
     let mut total = 0;
