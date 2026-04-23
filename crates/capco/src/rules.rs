@@ -4320,7 +4320,7 @@ mod tests {
         // DEA SENSITIVE has `title == banner` per §G.1 line 831 — it
         // does NOT count as either title-form or abbrev-form for the
         // mix scoring. A banner of DEA SENSITIVE + NOFORN is not mixed.
-        let diags = lint_banner("SECRET//NOFORN//DEA SENSITIVE");
+        let diags = lint_banner("SECRET//NOFORN/DEA SENSITIVE");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "S002"),
             "S002 must not fire when same-form rows (DEA SENSITIVE) \
