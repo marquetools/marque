@@ -3214,29 +3214,53 @@ impl Rule for SarCompartmentOrderRule {
 
 /// The SAR category indicator must not be repeated when multiple
 /// programs apply; multiple programs use a single indicator with `/`
-/// separator (CAPCO-2016 §H.5 p100 Syntax Rules bullet 5; see also §A.6).
+/// separator.
 ///
-/// The parser captures the first SAR block into `attrs.sar_markings` and
-/// emits every subsequent same-marking SAR block as an `Unknown` token
-/// whose text still starts with `SAR-` or `SPECIAL ACCESS REQUIRED-`.
-/// This rule finds those Unknown tokens, extends the fix span backward
-/// over the preceding `//` category separator, and coalesces the
-/// repeated block into the preceding block.
+/// Authority: CAPCO-2016 §H.5 p100 line 2403 (Syntax Rules bullet 5)
+/// — "The SAP category indicator must not be repeated if multiple
+/// SAP programs are applicable." Program separator is prescribed in
+/// adjacent bullet 4 at line 2402: "separated by a single forward
+/// slash (`/`) without interjected spaces."
 ///
-/// Historical note: prior to roughly 2003 the SAR indicator was required
-/// to be repeated for every SAP. CAPCO-2016 §H.5 p100 Syntax Rules bullet
-/// 5 now requires a single indicator with `/` between programs. Repeated
-/// indicators in modern documents are therefore an error this rule must
-/// surface, even though older corpus material may legitimately contain
-/// them.
+/// §A.6 governs SCI ordering and is NOT a valid citation target for
+/// SAR rules — this was incorrectly referenced in an earlier
+/// revision of this doc comment.
+///
+/// The parser captures the first SAR block into `attrs.sar_markings`
+/// and emits every subsequent same-marking SAR block as an `Unknown`
+/// token whose text still starts with `SAR-` or `SPECIAL ACCESS
+/// REQUIRED-`. This rule finds those Unknown tokens, extends the fix
+/// span backward over the preceding `//` category separator, and
+/// coalesces the repeated block into the preceding block.
+///
+/// # Historical note
+///
+/// Repeated `SAR-` indicators were permitted until **December 2011**,
+/// when CAPCO removed the requirement (CAPCO-2016 §I Banner Line
+/// Syntax History, p192 line 4700: "Removed repeating `SAR-` for
+/// multiple SAR markings in the SAP category"). An earlier revision
+/// of this doc said "prior to roughly 2003" — that conflated the
+/// December-2011 repeat-rule change with the October 2003 category
+/// move (§I line 4713: "Moved Special Access Required (SAR) from
+/// Non-Intelligence Community Dissemination Control Markings to a
+/// new category"). The two changes are unrelated. §I is history and
+/// not a valid predicate-citation target (project memory
+/// `project_capco_doc_structure`), but is cited here for doc
+/// context only.
+///
+/// Repeated indicators in modern documents are therefore an error
+/// this rule must surface, even though older corpus material
+/// (pre-2011) may legitimately contain them.
+///
+/// # No-fix diagnostic paths
 ///
 /// When the repeated-SAR token shape is detected but the rule cannot
 /// produce a clean fix — e.g., the parser trimmed whitespace between
 /// the `//` separator and the Unknown token, so the fix span cannot
-/// honestly reconstruct `FixProposal.original` — this rule still emits
-/// a no-fix diagnostic. Suppressing entirely would silently drop the
-/// shape (E008 also steps aside for repeated-SAR prefixes; see
-/// `UnknownTokenRule`), so the user would see nothing at all.
+/// honestly reconstruct `FixProposal.original` — this rule still
+/// emits a no-fix diagnostic. Suppressing entirely would silently
+/// drop the shape (E008 also steps aside for repeated-SAR prefixes;
+/// see `UnknownTokenRule`), so the user would see nothing at all.
 struct SarIndicatorRepeatRule;
 
 impl Rule for SarIndicatorRepeatRule {
@@ -3275,7 +3299,11 @@ impl Rule for SarIndicatorRepeatRule {
             }
             let message = "SAR category indicator must not be repeated; \
                  multiple programs use a single indicator with '/' separator";
-            let citation = "CAPCO-2016 §H.5";
+            let citation = concat!(
+                "CAPCO-2016 §H.5 p100 line 2403 ",
+                "(SAP category indicator must not be repeated if \
+                 multiple SAP programs are applicable)",
+            );
             // Find the closest preceding Separator token. The parser
             // trims leading whitespace per block, so the token's own
             // span does not necessarily sit flush against the `//`.
@@ -7122,6 +7150,43 @@ mod tests {
              has_first_sar predicate); E030 owns the diagnostic: \
              {diags:?}"
         );
+    }
+
+    #[test]
+    fn e030_cites_line_2403_not_section_a6() {
+        // T035c-19 PR-B: E030's authority is §H.5 p100 line 2403
+        // (Syntax Rules bullet 5 — "must not be repeated"). An
+        // earlier revision of the doc comment included "see also
+        // §A.6" — §A.6 governs SCI ordering, not SAR, and
+        // propagating that citation to the diagnostic would be a
+        // §I/propagated-stale-citation hazard. This test locks that
+        // the emitted citation pins the specific SAR authority and
+        // does NOT reference §A.6.
+        //
+        // Exercises both emission paths: with-fix (contiguous span)
+        // and no-fix (whitespace gap).
+        for src in [
+            "SECRET//SAR-BP//SAR-CD//NOFORN",       // contiguous, fix present
+            "SECRET//SAR-BP// SAR-CD//NOFORN",      // whitespace gap, no fix
+        ] {
+            let diags = lint_banner(src);
+            let e030: Vec<_> = diags
+                .iter()
+                .filter(|d| d.rule.as_str() == "E030")
+                .collect();
+            assert_eq!(e030.len(), 1, "E030 must fire once on {src:?}: {diags:?}");
+            assert!(
+                e030[0].citation.contains("§H.5 p100 line 2403"),
+                "E030 citation must pin §H.5 p100 line 2403; got: {:?}",
+                e030[0].citation
+            );
+            assert!(
+                !e030[0].citation.contains("§A.6"),
+                "E030 citation must NOT reference §A.6 (that is SCI's \
+                 ordering authority, not SAR's); got: {:?}",
+                e030[0].citation
+            );
+        }
     }
 
     // --- E031: sar-banner-rollup ---
