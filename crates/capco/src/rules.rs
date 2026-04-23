@@ -3368,27 +3368,56 @@ impl Rule for SarIndicatorRepeatRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E031 — SAR banner roll-up
+// Rule: E031 — SAR banner roll-up (programs-only)
 // ---------------------------------------------------------------------------
 
-/// Per CAPCO-2016 §H.5 p101 Precedence Rules for Banner Line Guidance:
-/// "Unique SAPs contained in portion marks must always appear in the banner
-/// line." The banner's SAR block must therefore contain every SAR program,
-/// compartment, and sub-compartment present in any portion marking on the
-/// page.
+/// Every SAR **program** present in a portion mark must also appear in the
+/// banner's SAR block. Banner hierarchy depth (compartments and
+/// sub-compartments) is **optional** and NOT checked by this rule.
 ///
-/// This rule consumes [`PageContext::expected_sar_marking`] (P4a) to compute
-/// the required composite and compares it with the banner's observed SAR
-/// block. Any program / compartment / sub-compartment present in the
-/// expected set but absent from the observed banner is flagged.
+/// # Authority
 ///
-/// Fix semantics:
-/// - If the banner has a SAR block, replace it in-place with the rolled-up
-///   form at confidence 0.9 (severity `Fix`).
-/// - If the banner has no SAR block at all, emit at severity `Error` with
-///   no fix — inserting a new block requires byte-positioning between the
-///   SCI and AEA blocks, which the engine's single-pass architecture does
-///   not reliably support from rule-level information alone.
+/// - **§H.5 p101 line 2458** (Precedence Rules for Banner Line Guidance):
+///   *"Unique SAPs contained in portion marks must always appear in the
+///   banner line."* The "Unique SAPs" language refers to unique program
+///   identifiers — the rule is a program-rollup rule.
+/// - **§H.5 p101 line 2460** (Notes): *"Depicting the hierarchical
+///   structure of a SAP program below the program identifier is optional
+///   and dependent upon operational requirements. It is not mandatory to
+///   reflect a SAP program's hierarchy in either the portion marks or
+///   banner line."*
+/// - **§H.5 p99 line 2393** (general): *"Depiction of the hierarchical
+///   structure of a SAP below the program identifier in the banner line
+///   or portion mark is optional."*
+///
+/// These three passages together establish that programs MUST roll up
+/// to the banner, but compartments and sub-compartments MAY be omitted
+/// from the banner even when present in portions. A banner showing
+/// `SAR-BP` when a portion shows `SAR-BP-J12` is therefore valid.
+///
+/// # Predicate history
+///
+/// An earlier revision of this rule flagged missing compartments and
+/// sub-compartments as violations, producing false positives on
+/// hierarchy-optional banners. T035c-19 PR-C (this change) narrowed
+/// the predicate to programs-only per the §H.5 p101 line 2460
+/// provision. The prior behavior over-restricted relative to source.
+///
+/// # Fix semantics
+///
+/// - If the banner has a SAR block, replace it in-place at confidence
+///   0.9 (severity `Fix`). The replacement **preserves the observed
+///   banner's existing programs with whatever hierarchy they already
+///   show**, and appends each missing program as a bare program
+///   identifier (no compartments). This minimum-change fix honors the
+///   "hierarchy is optional" rule — the user chose how much hierarchy
+///   to show for the programs that were there, and we do not override
+///   that choice for the programs that were missing.
+/// - If the banner has no SAR block at all, emit at severity `Error`
+///   with no fix — inserting a new block requires byte-positioning
+///   between the SCI and AEA blocks, which the engine's single-pass
+///   architecture does not reliably support from rule-level
+///   information alone.
 struct SarBannerRollupRule;
 
 impl Rule for SarBannerRollupRule {
@@ -3421,23 +3450,44 @@ impl Rule for SarBannerRollupRule {
             return vec![];
         }
 
-        // Compute the missing set against the observed banner.
-        let missing = sar_missing_identifiers(attrs.sar_markings.as_ref(), &expected);
-        if missing.is_empty() {
+        // Compute the set of program identifiers missing from the
+        // observed banner. Hierarchy (compartments / sub-compartments)
+        // is deliberately NOT compared — §H.5 p101 line 2460 makes
+        // banner hierarchy depth optional even when portions carry
+        // hierarchy. See the `sar_missing_programs` helper doc for
+        // the authority trail.
+        let missing_programs = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+        if missing_programs.is_empty() {
             return vec![];
         }
 
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §H.5 p101 line 2458 ",
+            "(Unique SAPs contained in portion marks must always appear ",
+            "in the banner line; hierarchy depiction optional per §H.5 ",
+            "p101 line 2460 + p99 line 2393)",
+        );
+
+        let missing_list: Vec<&str> = missing_programs
+            .iter()
+            .map(|p| p.identifier.as_ref())
+            .collect();
         let message = format!(
-            "banner SAR block is missing programs/compartments present in portions: {}",
-            missing.join(", "),
+            "banner SAR block is missing programs present in portions: {}",
+            missing_list.join(", "),
         );
 
         match attrs.sar_markings.as_ref() {
             Some(observed) => {
-                // Banner has a SAR block — replace it in place with the
-                // rolled-up form. Preserve the observed indicator form
-                // (abbreviated vs full) so we don't gratuitously rewrite
-                // `SPECIAL ACCESS REQUIRED-` into `SAR-`.
+                // Banner has a SAR block — replace it in place with a
+                // MINIMUM-CHANGE fix: keep the observed banner's programs
+                // (including whatever hierarchy the author already chose
+                // to show) and append the missing programs as bare
+                // identifiers. §H.5 p101 line 2460 says the author may
+                // depict hierarchy or not — overwriting the observed
+                // banner with `expected.programs` (the full portion
+                // rollup) would force hierarchy onto a banner the
+                // author deliberately kept flat.
                 let Some(span) = sar_block_span(attrs) else {
                     return vec![];
                 };
@@ -3448,11 +3498,29 @@ impl Rule for SarBannerRollupRule {
                     .map(|_| ())
                     .and_then(|_| sar_block_source(attrs, span))
                     .unwrap_or_else(|| render_sar_block(observed.indicator, &observed.programs));
-                let replacement = render_sar_block(observed.indicator, &expected.programs);
+
+                let mut merged_programs: Vec<marque_ism::SarProgram> = observed.programs.to_vec();
+                for missing in &missing_programs {
+                    // Append bare program (no compartments). The fix is
+                    // correctness-minimum; hierarchy is the author's
+                    // choice.
+                    merged_programs.push(marque_ism::SarProgram::new(
+                        missing.identifier.clone(),
+                        Box::new([]),
+                    ));
+                }
+                // Sort merged programs per §H.5 p99 line 2391
+                // (ascending, numeric first, then alpha) so the fix
+                // output is always canonical regardless of the original
+                // banner's order.
+                merged_programs
+                    .sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+                let replacement = render_sar_block(observed.indicator, &merged_programs);
                 if replacement == original_bytes {
-                    // Indicator-form-only difference, missing set was
-                    // computed from identifiers; shouldn't happen, but be
-                    // defensive.
+                    // Defensive: if the observed already matched the
+                    // merged form by text, `missing_programs` should
+                    // have been empty — but skip rather than emit a
+                    // no-op fix.
                     return vec![];
                 }
                 vec![make_fix_diagnostic(FixDiagnosticParams {
@@ -3461,7 +3529,7 @@ impl Rule for SarBannerRollupRule {
                     source: FixSource::BuiltinRule,
                     span,
                     message,
-                    citation: "CAPCO-2016 §H.5",
+                    citation: CITATION,
                     original: original_bytes,
                     replacement,
                     confidence: 0.9,
@@ -3483,7 +3551,7 @@ impl Rule for SarBannerRollupRule {
                     Severity::Error,
                     span,
                     message,
-                    "CAPCO-2016 §H.5",
+                    CITATION,
                     None,
                 )]
             }
@@ -3491,66 +3559,39 @@ impl Rule for SarBannerRollupRule {
     }
 }
 
-/// Collect identifiers that appear in `expected` but not in `observed`.
+/// Collect SAR programs that appear in `expected` but not in `observed`.
 ///
-/// Returns a flat human-readable list in `program` / `program-comp` /
-/// `program-comp sub` form so the diagnostic message is actionable.
-fn sar_missing_identifiers(
+/// Compares by program identifier only. Compartments and sub-compartments
+/// are deliberately NOT compared — per CAPCO-2016 §H.5 p101 line 2460
+/// and §H.5 p99 line 2393, banner hierarchy depiction below the program
+/// level is optional even when portions carry hierarchy. A banner showing
+/// `SAR-BP` when a portion shows `SAR-BP-J12` is therefore compliant and
+/// must not be flagged.
+///
+/// Returned programs carry their original expected-side compartments /
+/// sub-compartments so callers can render informative diagnostic messages
+/// if desired, but the membership test itself is program-id-only.
+fn sar_missing_programs(
     observed: Option<&marque_ism::SarMarking>,
     expected: &marque_ism::SarMarking,
-) -> Vec<String> {
-    use std::collections::HashMap;
+) -> Vec<marque_ism::SarProgram> {
+    use std::collections::HashSet;
 
-    // Build a lookup into observed: program_id -> (comp_id -> set of sub ids).
-    let mut obs_map: HashMap<&str, HashMap<&str, std::collections::HashSet<&str>>> = HashMap::new();
-    if let Some(obs) = observed {
-        for prog in obs.programs.iter() {
-            let comps = obs_map.entry(prog.identifier.as_ref()).or_default();
-            for comp in prog.compartments.iter() {
-                let subs = comps.entry(comp.identifier.as_ref()).or_default();
-                for sub in comp.sub_compartments.iter() {
-                    subs.insert(sub.as_ref());
-                }
-            }
-        }
-    }
+    let observed_ids: HashSet<&str> = match observed {
+        Some(obs) => obs
+            .programs
+            .iter()
+            .map(|p| p.identifier.as_ref())
+            .collect(),
+        None => HashSet::new(),
+    };
 
-    let mut missing: Vec<String> = Vec::new();
-    for prog in expected.programs.iter() {
-        match obs_map.get(prog.identifier.as_ref()) {
-            None => {
-                // Entire program missing — report it (plus its compartments
-                // inline so the reader sees the full shape).
-                let rendered = render_single_program(prog);
-                missing.push(rendered);
-            }
-            Some(obs_comps) => {
-                for comp in prog.compartments.iter() {
-                    match obs_comps.get(comp.identifier.as_ref()) {
-                        None => {
-                            let mut s = format!("{}-{}", prog.identifier, comp.identifier);
-                            for sub in comp.sub_compartments.iter() {
-                                s.push(' ');
-                                s.push_str(sub);
-                            }
-                            missing.push(s);
-                        }
-                        Some(obs_subs) => {
-                            for sub in comp.sub_compartments.iter() {
-                                if !obs_subs.contains(sub.as_ref()) {
-                                    missing.push(format!(
-                                        "{}-{} {}",
-                                        prog.identifier, comp.identifier, sub,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    missing
+    expected
+        .programs
+        .iter()
+        .filter(|p| !observed_ids.contains(p.identifier.as_ref()))
+        .cloned()
+        .collect()
 }
 
 /// Render a single SAR program to its banner-block fragment form (without
@@ -7218,23 +7259,39 @@ mod tests {
     }
 
     #[test]
-    fn e031_fires_when_banner_missing_compartment_from_portion() {
-        // Portion has SAR-BP-J12; banner has only SAR-BP.
+    fn e031_does_not_fire_when_banner_omits_portion_compartment() {
+        // T035c-19 PR-C: narrowed predicate. §H.5 p101 line 2460 and
+        // §H.5 p99 line 2393 make banner hierarchy depth (below the
+        // program identifier) optional. A portion with `SAR-BP-J12`
+        // rolling up to a banner with `SAR-BP` (no compartment shown)
+        // is compliant — the author deliberately omitted hierarchy,
+        // which §H.5 permits. The prior behavior treated this as an
+        // E031 violation; that was over-restriction relative to
+        // source.
         let source = "(S//SAR-BP-J12//NF)\nSECRET//SAR-BP//NOFORN";
         let diags = lint_banner(source);
-        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
-        assert_eq!(
-            e031.len(),
-            1,
-            "E031 must fire when banner omits compartment J12: {diags:?}"
-        );
         assert!(
-            e031[0].message.contains("J12"),
-            "message must name missing compartment: {}",
-            e031[0].message
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must NOT fire on optional-hierarchy banner \
+             (portion has BP-J12, banner has bare BP — §H.5 p101 \
+             line 2460 permits): {diags:?}"
         );
-        let fix = e031[0].fix.as_ref().expect("fix expected");
-        assert_eq!(fix.replacement.as_ref(), "SAR-BP-J12");
+    }
+
+    #[test]
+    fn e031_does_not_fire_when_banner_omits_portion_sub_compartment() {
+        // Sibling case: portion has `SAR-BP-J12 K15` (J12 is a
+        // compartment, K15 is a sub-compartment of J12); banner has
+        // `SAR-BP-J12` (omits the sub-compartment). §H.5 p101 line
+        // 2460 covers sub-compartments too ("hierarchy ... below the
+        // program identifier is optional"). Must not fire.
+        let source = "(S//SAR-BP-J12 K15//NF)\nSECRET//SAR-BP-J12//NOFORN";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E031"),
+            "E031 must NOT fire when banner omits sub-compartment \
+             present in portion (hierarchy is optional): {diags:?}"
+        );
     }
 
     #[test]
@@ -7276,6 +7333,58 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E031"),
             "E031 must not fire without any SAR portions: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e031_fix_preserves_observed_hierarchy_when_adding_missing_program() {
+        // T035c-19 PR-C: the minimum-change fix must preserve the
+        // observed banner's hierarchy for programs that were already
+        // present, and append missing programs as bare identifiers.
+        // §H.5 p101 line 2460 makes hierarchy depiction the author's
+        // choice — the fix honors that for existing programs.
+        //
+        // Portion: SAR-BP-J12 (BP with compartment J12) and SAR-CD.
+        // Banner observed: SAR-BP-J12 (BP with compartment shown, CD missing).
+        // Expected fix: SAR-BP-J12/CD (BP's J12 preserved, CD appended
+        // bare — NOT SAR-BP-J12/CD-YYY or similar that would invent
+        // hierarchy on CD).
+        let source = "(S//SAR-BP-J12//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP-J12//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(e031.len(), 1, "E031 must fire on missing program CD: {diags:?}");
+        let fix = e031[0].fix.as_ref().expect("E031 must have fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "SAR-BP-J12/CD",
+            "fix must preserve observed BP-J12 hierarchy and append bare CD"
+        );
+    }
+
+    #[test]
+    fn e031_cites_line_2458_and_hierarchy_optional_note() {
+        // T035c-19 PR-C citation lockdown. E031's authority is:
+        //   §H.5 p101 line 2458  — programs MUST roll up
+        //   §H.5 p101 line 2460  — hierarchy MAY be omitted
+        // The citation string must reference both so reviewers land
+        // on the two passages that together define the narrowed
+        // predicate.
+        let source = "(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
+        let diags = lint_banner(source);
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(e031.len(), 1);
+        assert!(
+            e031[0].citation.contains("§H.5 p101 line 2458"),
+            "E031 citation must pin §H.5 p101 line 2458 (roll-up rule); \
+             got: {:?}",
+            e031[0].citation
+        );
+        assert!(
+            e031[0].citation.contains("§H.5 p101 line 2460")
+                || e031[0].citation.contains("line 2460"),
+            "E031 citation must reference the hierarchy-optional carve-out \
+             at §H.5 p101 line 2460; got: {:?}",
+            e031[0].citation
         );
     }
 
