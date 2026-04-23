@@ -191,8 +191,9 @@ pub fn portion_to_banner(portion: &str) -> Option<&'static str> {
 ///   `DissemControl` the abbreviation would produce.
 ///
 /// Returns `None` if the input is not a known title, or if the marking has
-/// no distinct title (`title == banner`). The second case avoids shadowing
-/// the dedicated `banner_to_portion` path for inputs like `"DEA SENSITIVE"`.
+/// no distinct banner abbreviation (`title == banner`). The second case
+/// avoids shadowing the dedicated `banner_to_portion` path for inputs like
+/// `"DEA SENSITIVE"`.
 pub fn title_to_portion(title: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
