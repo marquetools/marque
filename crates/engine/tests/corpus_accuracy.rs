@@ -290,9 +290,10 @@ fn precision_prose_zero_diagnostics() {
 /// C001 fixtures require a corrections map in config. The default harness uses
 /// Config::default() (empty corrections), so C001 is tested separately.
 ///
-/// W001 is architecturally dormant — the rule is registered but the migration
-/// table has no W001-flagged entries, so it fires zero diagnostics by design.
-/// W001 fixtures will be added when migration entries are activated.
+/// W001 was retired in T035c-14 — CAPCO-2016 §F treats legacy markings as
+/// unauthorized (error category, owned by E006/E008), not "deprecated but
+/// still legal." No authoritative bucket existed for a warning-severity
+/// vocabulary-deprecation rule, so the stub was removed.
 #[test]
 fn c001_corrections_map_accuracy() {
     let c001_fixtures: Vec<_> = marque_test_utils::fixtures_in("invalid")

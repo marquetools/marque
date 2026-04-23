@@ -236,7 +236,7 @@ Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch
 
 ## Current Status
 
-MVP complete. Full lint → fix → audit pipeline for raw text with 39 CAPCO rules (E001–E035, W001–W003, C001). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
+MVP complete. Full lint → fix → audit pipeline for raw text with 38 CAPCO rules (E001–E016, E020–E036, S001–S002, W002–W003, C001; W001 retired in T035c-14 per CAPCO-2016 §F). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
