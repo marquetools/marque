@@ -3450,14 +3450,15 @@ impl Rule for SarBannerRollupRule {
             return vec![];
         }
 
-        // Compute the set of program identifiers missing from the
+        // Compute the identifiers of programs missing from the
         // observed banner. Hierarchy (compartments / sub-compartments)
         // is deliberately NOT compared — §H.5 p101 line 2460 makes
         // banner hierarchy depth optional even when portions carry
         // hierarchy. See the `sar_missing_programs` helper doc for
         // the authority trail.
-        let missing_programs = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
-        if missing_programs.is_empty() {
+        let missing_ids: Vec<&str> =
+            sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+        if missing_ids.is_empty() {
             return vec![];
         }
 
@@ -3468,69 +3469,70 @@ impl Rule for SarBannerRollupRule {
             "p101 line 2460 + p99 line 2393)",
         );
 
-        let missing_list: Vec<&str> = missing_programs
-            .iter()
-            .map(|p| p.identifier.as_ref())
-            .collect();
+        // Sort missing identifiers per §H.5 p99 line 2391 (ascending,
+        // numeric first, then alpha) so the fix output is
+        // deterministic and self-canonical for the new tail.
+        let mut sorted_missing = missing_ids.clone();
+        sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+
         let message = format!(
             "banner SAR block is missing programs present in portions: {}",
-            missing_list.join(", "),
+            sorted_missing.join(", "),
         );
 
         match attrs.sar_markings.as_ref() {
-            Some(observed) => {
-                // Banner has a SAR block — replace it in place with a
-                // MINIMUM-CHANGE fix: keep the observed banner's programs
-                // (including whatever hierarchy the author already chose
-                // to show) and append the missing programs as bare
-                // identifiers. §H.5 p101 line 2460 says the author may
-                // depict hierarchy or not — overwriting the observed
-                // banner with `expected.programs` (the full portion
-                // rollup) would force hierarchy onto a banner the
-                // author deliberately kept flat.
-                let Some(span) = sar_block_span(attrs) else {
+            Some(_observed) => {
+                // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
+                // fix at the end of the block so it does not overlap
+                // with E028 (program-order, whole-block span) or E029
+                // (compartment-order, last program's span) when they
+                // fire on the same marking.
+                //
+                // Why insertion and not a whole-block rewrite: the
+                // engine's C-1 overlap guard (FR-016 + `span.end <=
+                // boundary`) drops overlapping fixes. If E031's fix
+                // were a whole-block rewrite covering the same
+                // `sar_block_span` as E028, the lexicographic rule-id
+                // tiebreaker would favor E028, silently dropping the
+                // missing-program addition. A zero-width span at the
+                // block's end byte has `span.start == block_end`, so
+                // it sorts FIRST under FR-016 (`span.start DESC`) and
+                // its `span.start` becomes the boundary; E028's
+                // subsequent `span.end == block_end` still satisfies
+                // `<= boundary` and is kept. Both fixes apply.
+                //
+                // Single-apply convergence: when E028 and E031 both
+                // fire, the first apply pass produces
+                // `<observed-sorted>/<missing-sorted>` which may not
+                // be fully canonical (the inserted missing programs
+                // are suffix-appended, not merge-sorted). A second
+                // `marque fix` pass will detect and repair that via
+                // E028 alone. Net: never loses missing programs,
+                // never overflows into E028/E029 territory, and
+                // converges in ≤2 passes. The prior whole-block
+                // fix dropped silently in the overlap case and
+                // required 2 passes anyway — this is strictly
+                // better.
+                let Some(block) = sar_block_span(attrs) else {
                     return vec![];
                 };
-                let original_bytes = attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::SarIndicator)
-                    .map(|_| ())
-                    .and_then(|_| sar_block_source(attrs, span))
-                    .unwrap_or_else(|| render_sar_block(observed.indicator, &observed.programs));
+                let insertion_span = Span::new(block.end, block.end);
+                // Replacement: `/PROG1/PROG2` — leading slash separates
+                // the inserted run from the last existing program
+                // per §H.5 p100 line 2402 bullet 4 (`/` between
+                // program identifiers, no interjected spaces).
+                let replacement = format!("/{}", sorted_missing.join("/"));
 
-                let mut merged_programs: Vec<marque_ism::SarProgram> = observed.programs.to_vec();
-                for missing in &missing_programs {
-                    // Append bare program (no compartments). The fix is
-                    // correctness-minimum; hierarchy is the author's
-                    // choice.
-                    merged_programs.push(marque_ism::SarProgram::new(
-                        missing.identifier.clone(),
-                        Box::new([]),
-                    ));
-                }
-                // Sort merged programs per §H.5 p99 line 2391
-                // (ascending, numeric first, then alpha) so the fix
-                // output is always canonical regardless of the original
-                // banner's order.
-                merged_programs
-                    .sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
-                let replacement = render_sar_block(observed.indicator, &merged_programs);
-                if replacement == original_bytes {
-                    // Defensive: if the observed already matched the
-                    // merged form by text, `missing_programs` should
-                    // have been empty — but skip rather than emit a
-                    // no-op fix.
-                    return vec![];
-                }
                 vec![make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
                     source: FixSource::BuiltinRule,
-                    span,
+                    span: insertion_span,
                     message,
                     citation: CITATION,
-                    original: original_bytes,
+                    // Zero-width insertion: `original` is empty to match
+                    // `span.start..span.end` being a zero-length slice.
+                    original: String::new(),
                     replacement,
                     confidence: 0.9,
                     migration_ref: None,
@@ -3559,7 +3561,8 @@ impl Rule for SarBannerRollupRule {
     }
 }
 
-/// Collect SAR programs that appear in `expected` but not in `observed`.
+/// Collect program identifiers that appear in `expected` but not in
+/// `observed`.
 ///
 /// Compares by program identifier only. Compartments and sub-compartments
 /// are deliberately NOT compared — per CAPCO-2016 §H.5 p101 line 2460
@@ -3568,13 +3571,15 @@ impl Rule for SarBannerRollupRule {
 /// `SAR-BP` when a portion shows `SAR-BP-J12` is therefore compliant and
 /// must not be flagged.
 ///
-/// Returned programs carry their original expected-side compartments /
-/// sub-compartments so callers can render informative diagnostic messages
-/// if desired, but the membership test itself is program-id-only.
-fn sar_missing_programs(
+/// Returns borrowed `&str` views into `expected.programs[i].identifier`.
+/// The caller uses these only for (a) the diagnostic message and (b)
+/// the insertion-fix replacement string; neither path needs the
+/// expected-side compartment/sub-compartment hierarchy, so returning
+/// owned `SarProgram` clones would be unnecessary allocation.
+fn sar_missing_programs<'a>(
     observed: Option<&marque_ism::SarMarking>,
-    expected: &marque_ism::SarMarking,
-) -> Vec<marque_ism::SarProgram> {
+    expected: &'a marque_ism::SarMarking,
+) -> Vec<&'a str> {
     use std::collections::HashSet;
 
     let observed_ids: HashSet<&str> = match observed {
@@ -3590,7 +3595,7 @@ fn sar_missing_programs(
         .programs
         .iter()
         .filter(|p| !observed_ids.contains(p.identifier.as_ref()))
-        .cloned()
+        .map(|p| p.identifier.as_ref())
         .collect()
 }
 
@@ -7234,6 +7239,11 @@ mod tests {
     #[test]
     fn e031_fires_when_banner_missing_program_from_portion() {
         // Portions introduce SAR-BP and SAR-CD; banner only mentions BP.
+        // E031's fix is a zero-width INSERTION at the end of the SAR
+        // block — so the fix span is (block_end, block_end) and the
+        // replacement is `/CD`. This shape lets E031 coexist with E028
+        // / E029 fixes on the same marking under the engine's overlap
+        // guard (see rule doc for the full FR-016 argument).
         let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
         let diags = lint_banner(source);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
@@ -7252,10 +7262,34 @@ mod tests {
             .fix
             .as_ref()
             .expect("E031 must carry a fix when banner has SAR block");
-        // Expected rolled-up form: programs sorted per CAPCO ascending order
-        // (alpha: BP before CD).
-        assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
+
+        // Zero-width insertion span: start == end == end-of-block byte.
+        assert_eq!(
+            fix.span.start, fix.span.end,
+            "E031 fix must be a zero-width insertion"
+        );
+        assert_eq!(
+            fix.original.as_ref(),
+            "",
+            "zero-width insertion must have empty `original`"
+        );
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "/CD",
+            "insertion replacement must be `/<missing>`"
+        );
         assert!((fix.confidence.combined() - 0.9).abs() < f32::EPSILON);
+
+        // Applied output: simulate the splice and confirm the banner now
+        // contains `SAR-BP/CD`.
+        let mut buf = source.as_bytes().to_vec();
+        buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+        let applied = std::str::from_utf8(&buf).unwrap();
+        assert!(
+            applied.contains("SECRET//SAR-BP/CD//NOFORN"),
+            "applied fix must produce `SECRET//SAR-BP/CD//NOFORN`; \
+             got: {applied:?}"
+        );
     }
 
     #[test]
@@ -7338,27 +7372,82 @@ mod tests {
 
     #[test]
     fn e031_fix_preserves_observed_hierarchy_when_adding_missing_program() {
-        // T035c-19 PR-C: the minimum-change fix must preserve the
-        // observed banner's hierarchy for programs that were already
-        // present, and append missing programs as bare identifiers.
-        // §H.5 p101 line 2460 makes hierarchy depiction the author's
-        // choice — the fix honors that for existing programs.
+        // T035c-19 PR-C: the zero-width insertion at end-of-block
+        // preserves the observed banner's hierarchy verbatim (because
+        // it doesn't touch the observed bytes at all) and adds only
+        // the missing programs as bare identifiers. §H.5 p101 line
+        // 2460 makes hierarchy depiction the author's choice — the
+        // fix honors that for existing programs by construction.
         //
         // Portion: SAR-BP-J12 (BP with compartment J12) and SAR-CD.
-        // Banner observed: SAR-BP-J12 (BP with compartment shown, CD missing).
-        // Expected fix: SAR-BP-J12/CD (BP's J12 preserved, CD appended
-        // bare — NOT SAR-BP-J12/CD-YYY or similar that would invent
-        // hierarchy on CD).
+        // Banner observed: SAR-BP-J12 (BP with compartment shown, CD
+        // missing). Applied output: SAR-BP-J12/CD (J12 preserved,
+        // bare CD appended — NO invented hierarchy on CD).
         let source = "(S//SAR-BP-J12//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP-J12//NOFORN";
         let diags = lint_banner(source);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
         assert_eq!(e031.len(), 1, "E031 must fire on missing program CD: {diags:?}");
         let fix = e031[0].fix.as_ref().expect("E031 must have fix");
-        assert_eq!(
-            fix.replacement.as_ref(),
-            "SAR-BP-J12/CD",
-            "fix must preserve observed BP-J12 hierarchy and append bare CD"
+
+        assert_eq!(fix.replacement.as_ref(), "/CD");
+        assert_eq!(fix.span.start, fix.span.end);
+
+        let mut buf = source.as_bytes().to_vec();
+        buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
+        let applied = std::str::from_utf8(&buf).unwrap();
+        assert!(
+            applied.contains("SECRET//SAR-BP-J12/CD//NOFORN"),
+            "applied fix must preserve BP-J12 and append bare CD; \
+             got: {applied:?}"
         );
+    }
+
+    #[test]
+    fn e031_insertion_coexists_with_e028_without_overlap_drop() {
+        // PR #101 review point 1: when E028 (program-order, whole-block
+        // span) and E031 both fire on the same marking, E031's
+        // insertion-at-end fix MUST coexist with E028's fix under the
+        // engine's C-1 overlap guard. Prior to this fix, E031's
+        // whole-block rewrite lost the lexicographic tiebreaker to
+        // E028 and the missing program was silently dropped in
+        // single-apply mode.
+        //
+        // Scenario: banner is `SAR-CD/BP` (two programs, out of order
+        // alphabetically). Portions carry BP, CD, and AA. So:
+        //   - E028 fires: programs unsorted (CD before BP)
+        //   - E031 fires: AA missing
+        // Both must survive the overlap guard.
+        //
+        // This test asserts at the rule-output level (both diagnostics
+        // present with their expected fixes). End-to-end apply
+        // convergence across the engine is verified by the engine
+        // integration test suite.
+        let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\n(S//SAR-AA//NF)\nSECRET//SAR-CD/BP//NOFORN";
+        let diags = lint_banner(source);
+        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+        assert_eq!(e028.len(), 1, "E028 must fire on unsorted CD/BP: {diags:?}");
+        assert_eq!(e031.len(), 1, "E031 must fire on missing AA: {diags:?}");
+
+        // E031 is a zero-width insertion; E028 is a whole-block rewrite.
+        // Their spans must not be equal (which would re-introduce the
+        // overlap-drop hazard).
+        let e028_fix = e028[0].fix.as_ref().expect("E028 fix");
+        let e031_fix = e031[0].fix.as_ref().expect("E031 fix");
+        assert_eq!(
+            e031_fix.span.start, e031_fix.span.end,
+            "E031 must emit a zero-width insertion"
+        );
+        assert!(
+            e028_fix.span.start < e028_fix.span.end,
+            "E028 must emit a non-empty range (whole block)"
+        );
+        assert_eq!(
+            e031_fix.span.start, e028_fix.span.end,
+            "E031's insertion point must be exactly E028's block end \
+             so the C-1 guard keeps both"
+        );
+        assert_eq!(e031_fix.replacement.as_ref(), "/AA");
     }
 
     #[test]
