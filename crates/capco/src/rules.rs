@@ -1202,19 +1202,38 @@ impl Rule for CorrectionsMapRule {
     }
 }
 
-/// E009: Portion markings must use abbreviated forms, not banner-style expansions.
+/// E009: Portion markings must use abbreviated forms, not banner-style
+/// expansions.
 ///
 /// Mirror of E001: whereas E001 catches portion abbreviations in banners
 /// (e.g., `NF` → `NOFORN`), E009 catches banner expansions in portions
 /// (e.g., `NOFORN` → `NF`, `SECRET` → `S`).
 ///
-/// The rule checks two token categories:
-/// - **Classification**: banner form like "SECRET" should be "S"
-/// - **Dissem controls**: banner form like "NOFORN" should be "NF"
+/// Authority chain: CAPCO-2016 §G.1 line 748 ("All markings used in a
+/// banner line and portion mark must be in accordance with the values
+/// listed in the Register") + Table 4 / §H per-template entries, which
+/// list three forms per marking (Banner Line Marking Title, Banner Line
+/// Abbreviation, Authorized Portion Mark). A portion text matching the
+/// banner title or abbreviation is categorically wrong per the Register
+/// because those forms are authorized only in a banner line, not a
+/// portion mark. Branch citations match E001's per-branch convention:
+///
+/// - **Classification**: CAPCO-2016 §H.1 (US Classification Markings,
+///   Authorized Portion Mark per template). E.g., TOP SECRET→TS
+///   (p47 line 988), SECRET→S (p48), CONFIDENTIAL→C (p50 line 1074),
+///   UNCLASSIFIED→U (p51 line 1114).
+/// - **Dissem controls**: CAPCO-2016 §H.8 (Authorized Portion Mark per
+///   template). E.g., NOFORN→NF, ORCON→OC.
+/// - **Non-IC dissem controls**: CAPCO-2016 §H.9 (Authorized Portion
+///   Mark per template). E.g., LIMDIS→DS. SBU/LES/SSI are skipped
+///   because their banner and portion forms are identical, so no
+///   substitution is possible.
 ///
 /// Data sources:
 /// - Classification: `Classification::banner_str()` / `portion_str()` (hand-written in marque-ism)
-/// - Dissem controls: `contract_dissem_to_portion()` (inverse of E001's `expand_dissem_abbreviation`)
+/// - Dissem controls: `marking_forms::banner_to_portion()` (inverse of E001's path)
+/// - Non-IC dissem: `NonIcDissem::banner_str()` / `portion_str()` with
+///   equal-form guard
 struct PortionAbbreviationRule;
 
 impl Rule for PortionAbbreviationRule {
@@ -1259,7 +1278,7 @@ impl Rule for PortionAbbreviationRule {
                         message: format!(
                             "portion uses banner-form classification {banner:?}; use {portion:?}"
                         ),
-                        citation: "CAPCO-2016 §C.1",
+                        citation: "CAPCO-2016 §H.1 (US Classification Markings)",
                         original: banner.to_owned(),
                         replacement: portion.to_owned(),
                         confidence: 1.0,
@@ -1294,7 +1313,7 @@ impl Rule for PortionAbbreviationRule {
                 message: format!(
                     "portion uses banner-form dissem control {text:?}; use {portion:?}"
                 ),
-                citation: "CAPCO-2016 §C.1",
+                citation: "CAPCO-2016 §H.8",
                 original: text.to_owned(),
                 replacement: portion.to_owned(),
                 confidence: 1.0,
@@ -1326,7 +1345,7 @@ impl Rule for PortionAbbreviationRule {
                     message: format!(
                         "portion uses banner-form non-IC dissem {text:?}; use {portion:?}"
                     ),
-                    citation: "CAPCO-2016 §C.1",
+                    citation: "CAPCO-2016 §H.9",
                     original: text.to_owned(),
                     replacement: portion.to_owned(),
                     confidence: 1.0,
@@ -3845,6 +3864,74 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E009"),
             "E009 must not fire when banner=portion for LES: {diags:?}"
+        );
+    }
+
+    // T035c-13: pin-down tests for per-branch citation coverage and
+    // classification-level + dissem-form breadth.
+
+    #[test]
+    fn e009_fires_on_top_secret_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p47 line 988): TOP SECRET → TS.
+        let diags = lint_portion("(TOP SECRET//NF)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on TOP SECRET in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "TS");
+    }
+
+    #[test]
+    fn e009_fires_on_confidential_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p50 line 1074): CONFIDENTIAL → C.
+        let diags = lint_portion("(CONFIDENTIAL)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on CONFIDENTIAL in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "C");
+    }
+
+    #[test]
+    fn e009_fires_on_unclassified_banner_form_in_portion() {
+        // CAPCO-2016 §H.1 (p51 line 1114): UNCLASSIFIED → U.
+        let diags = lint_portion("(UNCLASSIFIED)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on UNCLASSIFIED in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "U");
+    }
+
+    #[test]
+    fn e009_fires_on_orcon_banner_form_in_portion() {
+        // CAPCO-2016 §H.8: ORCON → OC. Different dissem control from
+        // NOFORN, so this locks breadth beyond the single NOFORN case.
+        let diags = lint_portion("(S//ORCON)");
+        let e009: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E009").collect();
+        assert!(
+            !e009.is_empty(),
+            "E009 must fire on ORCON in portion: {diags:?}"
+        );
+        let fix = e009[0].fix.as_ref().expect("E009 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "OC");
+    }
+
+    #[test]
+    fn e009_does_not_fire_on_dissem_with_equal_banner_portion() {
+        // RELIDO has identical banner and portion forms — no
+        // substitution possible. E009 must stay silent rather than
+        // firing with an empty replacement.
+        let diags = lint_portion("(S//RELIDO)");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E009"),
+            "E009 must not fire when banner=portion for RELIDO: {diags:?}"
         );
     }
 
