@@ -8,14 +8,14 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Date:** 2026-04-23
 **Status:** implemented — `marque-core::fuzzy` shipped; Phase D integration queued.
-**Issue:** #94 — Evaluate and adapt crates-ci/typos for typo correction in markings
+**Issue:** #94 — Evaluate and adapt crate-ci/typos for typo correction in markings
 **Relates to:** `2026-04-16-probabilistic-recognition.md` §3 (Layer 3 token resolution)
 
 ---
 
 ## 1. What is `typos` and why is it so good?
 
-[`crates-ci/typos`](https://github.com/crates-ci/typos) is a source-code
+[`crate-ci/typos`](https://github.com/crate-ci/typos) is a source-code
 spellchecker used in CI pipelines for ~26,000 projects. The key crates:
 
 | Crate | Role |
@@ -257,7 +257,7 @@ The `FuzzyVocabMatcher` addresses typo/OCR mutations of individual tokens:
 
 | Mutation type | Example | Edit distance | Covered? |
 |---|---|---|---|
-| Single char substitution | `NOFRON` → `NOFORN` | 2 | ✓ |
+| Adjacent transposition | `NOFRON` → `NOFORN` | 2 | ✓ |
 | Single char deletion | `CONFIDETIAL` → `CONFIDENTIAL` | 1 | ✓ |
 | Single char insertion | `SECRRET` → `SECRET` | 1 | ✓ |
 | Adjacent transposition | `SERCET` → `SECRET` | 2 | ✓ |

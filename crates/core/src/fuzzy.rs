@@ -12,7 +12,7 @@
 //! near-miss variants — `SERCET`, `NOFRON`, `CONFIDETIAL` — that no rule ever
 //! fires on because the scanner never detects them as marking candidates.
 //!
-//! The approach here mirrors what makes [`typos`](https://github.com/crates-ci/typos)
+//! The approach here mirrors what makes [`typos`](https://github.com/crate-ci/typos)
 //! so effective at eliminating false positives, adapted for the closed-world
 //! property of CAPCO vocabulary:
 //!
@@ -46,8 +46,8 @@
 //! map pass — user-configured exact corrections take priority; the fuzzy matcher
 //! handles residual OCR noise the exact map doesn't cover.
 //!
-//! **WASM-safe**: no I/O, no heap allocation beyond the single match result, no
-//! platform-specific code.
+//! **WASM-safe**: no I/O, no platform-specific code, and only small transient
+//! heap allocations during edit-distance computation.
 
 /// A correction candidate produced by [`FuzzyVocabMatcher::correct`].
 ///
@@ -191,7 +191,7 @@ pub const MIN_FUZZY_LEN: usize = 3;
 /// Maximum Levenshtein edit distance considered for a correction.
 ///
 /// Edit distance 2 covers:
-/// - Transpositions (`SERCET` → `SECRET`, distance 1).
+/// - Transpositions (`SERCET` → `SECRET`, distance 2).
 /// - Single-char substitutions + insertions (`CONFIDETIAL` → `CONFIDENTIAL`,
 ///   distance 1).
 /// - Two-step corrections for heavily OCR'd text (`SECRECT` → `SECRET`,
@@ -259,7 +259,7 @@ fn correction_confidence(distance: u8, token_len: usize) -> f32 {
 /// time. Input strings are short CAPCO tokens (2–20 chars), so this runs in
 /// microseconds.
 ///
-/// Returns the edit distance clamped to `u8::MAX` (any distance > 127 is
+/// Returns the edit distance clamped to `u8::MAX` (any distance > 255 is
 /// already far beyond the useful range for CAPCO corrections).
 pub(crate) fn levenshtein(a: &str, b: &str) -> u8 {
     // Ensure `a` is the shorter string (minimizes inner-loop iterations).
@@ -428,10 +428,13 @@ mod tests {
 
     #[test]
     fn ambiguous_corrections_return_none() {
-        // "OOPS" is equidistant from multiple vocabulary entries.
-        // We want to verify that ambiguity suppression fires.
-        // (Distance from "OOPS" to any test vocab entry is > 2, so we expect None.)
-        assert!(matcher().correct("OOPS").is_none());
+        // Use a tiny local vocabulary where the input is tied between two
+        // candidates within MAX_EDIT_DISTANCE, so None is returned because the
+        // best correction is ambiguous rather than because all candidates are
+        // filtered out for being too far away.
+        let vocab = &["BOOK", "COOK"];
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        assert!(matcher.correct("NOOK").is_none());
     }
 
     #[test]
