@@ -105,9 +105,13 @@ mod tests {
     fn info_count_isolates_info_from_error_and_warn() {
         // T035c-2: `Severity::Info` diagnostics count in `info_count()`
         // only — they do NOT contribute to `error_count()` or
-        // `warn_count()`. Critical because the CLI's non-zero-exit
-        // gate checks `error_count() > 0 || fix_count() > 0`; Info
-        // must not fail that gate.
+        // `warn_count()`. Critical because the CLI has two non-zero
+        // exit gates: `error_count() > 0 || fix_count() > 0` maps to
+        // EX_DIAG_ERROR (exit 1), and `warn_count() > 0` maps to
+        // EX_DIAG_WARN (exit 2). Info must land in neither bucket so
+        // that a rule configured at Info keeps the CLI exit code at
+        // 0 — that's the whole point of the severity between Off and
+        // Warn.
         let result = LintResult {
             diagnostics: vec![
                 Diagnostic::new(

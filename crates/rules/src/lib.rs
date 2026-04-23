@@ -74,13 +74,23 @@ impl std::fmt::Display for RuleId {
 ///
 /// # Exit-code semantics
 ///
-/// The `marque` CLI exits non-zero on `Error` or `Fix` counts. `Info` and
-/// `Warn` are emitted but do not fail `check`-mode exit codes — the
-/// difference between them is advisory: `Warn` means "this might be
-/// wrong", `Info` means "FYI, probably intentional but worth surfacing".
-/// Rules like `E034 sci-custom-control-info` (which reports unpublished
-/// SCI control systems — legitimate per CAPCO but rare) are natural
-/// `Info` candidates.
+/// `marque check` maps severities to exit codes as follows:
+///
+/// | Severity counts present | Exit code              |
+/// |-------------------------|------------------------|
+/// | `Error` or `Fix`        | `1` (`EX_DIAG_ERROR`)  |
+/// | `Warn` only             | `2` (`EX_DIAG_WARN`)   |
+/// | `Info` only, or none    | `0` (`EX_OK`)          |
+///
+/// So `Info` is the only severity whose diagnostics are emitted *and*
+/// keep the exit code at zero. `Warn` still fails CI via
+/// `EX_DIAG_WARN`. The tonal distinction between `Info` and `Warn`
+/// remains advisory: `Warn` means "this might be wrong"; `Info` means
+/// "FYI, probably intentional but worth surfacing". Rules like `E034
+/// sci-custom-control-info` (which reports unpublished SCI control
+/// systems — legitimate per CAPCO but rare) are natural `Info`
+/// candidates if an org wants the visibility without the warn-level
+/// exit-code impact.
 ///
 /// # Merge semantics (current: last-write-wins)
 ///
