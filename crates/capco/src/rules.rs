@@ -23,7 +23,7 @@
 //!   E010 = bare HCS without compartment suffix
 //!   E011 = missing leading // on non-US classification
 //!   E012 = dual classification (US + foreign conflict)
-//!   E013 = JOINT/REL TO delimiter mismatch
+//!   E013 = JOINT comma / REL TO delimiter mismatch (§H.3 / §H.8)
 //!   E014 = JOINT participants missing from REL TO
 //!   E015 = non-US classification without dissem control
 //!   W001 = retired in T035c-14 (CAPCO-2016 §F treats legacy
@@ -2020,12 +2020,61 @@ fn looks_like_fgi_classification(s: &str) -> bool {
 // Rule: E013 — JOINT/REL TO delimiter mismatch
 // ---------------------------------------------------------------------------
 
-/// JOINT country lists are space-delimited, REL TO lists are comma-delimited.
-/// A common error is using commas in JOINT or spaces in REL TO.
+/// E013 fires when a JOINT country list uses commas (should be single
+/// spaces) or a REL TO country list fails to use canonical comma-space
+/// delimiters between codes.
 ///
-/// This rule detects:
-/// - Commas in JOINT classification token text (`//JOINT S USA,GBR` → fix to space-delimited)
-/// - Space-only delimiters in REL TO lists (`REL TO USA GBR` → fix to comma-delimited)
+/// # Authority (per-template, most-specific)
+///
+/// - **JOINT, §H.3 p56 line 1258**: "Multiple codes are separated by a
+///   single space."
+/// - **REL TO, §H.8 p150–151 line 3714**: "Each code is separated by a
+///   comma and a space."
+///
+/// The global formatting passage §A.6 p15–16 (rendered inline in the
+/// vendored markdown — `## 6. (U) Formatting` starts at line 317)
+/// reinforces both: FGI/JOINT-style lists use single space (line 332)
+/// and REL TO uses comma-with-interjected-space (line 334). The
+/// per-template sections are cited because they are the narrowest
+/// authoritative passages per Constitution VIII.
+///
+/// # Scope
+///
+/// E013 targets the two most-commonly-confused delimiters. Other CAPCO
+/// delimiter conventions are owned by sibling rules (SCI `/` between
+/// control systems by the SCI cluster; SAR `-` by the SAR cluster; FGI
+/// space handled as part of the FGI rules when they land). Keeping
+/// E013 scoped to JOINT + REL TO keeps its message specific and
+/// actionable.
+///
+/// # Predicate
+///
+/// - **JOINT**: fires when the classification token text for a
+///   `MarkingClassification::Joint` contains any `,`. Fix replaces the
+///   comma delimiters with a single space and normalizes any run of
+///   whitespace.
+/// - **REL TO**: fires when the RelToBlock's country-list region does
+///   not match the canonical `alpha(, alpha)*` form. Split on any
+///   mixture of comma-and-whitespace characters, then compare the
+///   input's list region (the slice starting at the first non-keyword
+///   code) against the joined-with-`", "` canonical form. This catches:
+///   - space-only delimiters: `REL TO USA GBR`
+///   - missing-space-after-comma: `REL TO USA,GBR`
+///   - mixed delimiters: `REL TO USA GBR,AUS`
+///   - trailing-delimiter artifacts inside a multi-country list
+///     (e.g., `REL TO USA, GBR,` — trailing `,` between `GBR` and
+///     end-of-block)
+///
+///   Prefix-only issues (extra whitespace between `REL` and `TO` or
+///   between `TO` and the first code, when the country list itself is
+///   already canonical) are deliberately out of scope. E013's message
+///   describes a list-delimiter mismatch; firing on a prefix problem
+///   would be misleading. When the list IS non-canonical, the fix
+///   produces the full canonical block text, which incidentally
+///   cleans any prefix whitespace as a side effect.
+///
+/// Token order is preserved in both fixes — E020
+/// (country-code-ordering) owns ordering.
 struct DelimiterMismatchRule;
 
 impl Rule for DelimiterMismatchRule {
@@ -2042,7 +2091,7 @@ impl Rule for DelimiterMismatchRule {
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
-        // Check JOINT classification for comma-delimited countries.
+        // --- JOINT: comma delimiter is wrong; canonical is single space.
         if let Some(MarkingClassification::Joint(_)) = &attrs.classification {
             if let Some(token) = attrs
                 .token_spans
@@ -2051,17 +2100,40 @@ impl Rule for DelimiterMismatchRule {
             {
                 let text = token.text.as_ref();
                 if text.contains(',') {
-                    // Strip "JOINT <level> " prefix to get the country part,
-                    // then replace commas with spaces.
-                    let fixed = text.replace(',', "").replace("  ", " ");
+                    // Replace `,` with a space and normalize whitespace.
+                    // `split_whitespace().join(" ")` handles any run of
+                    // whitespace and preserves the "JOINT <level> "
+                    // prefix because it normalizes the whole string.
+                    //
+                    // Parser boundary: this branch only runs once the
+                    // JOINT block has already parsed successfully, so
+                    // it applies to inputs where commas coexist with
+                    // whitespace token boundaries:
+                    //   `USA, GBR`   → `USA GBR` (comma + trailing space)
+                    //   `USA,  GBR`  → `USA GBR` (comma + extra spaces)
+                    //
+                    // A bare `USA,GBR` (comma, no whitespace) does NOT
+                    // reach this branch: `parse_joint_classification`
+                    // tokenizes on whitespace, so the list fails grammar
+                    // entirely and `attrs.classification` is not
+                    // `Joint(_)`. Fixing that shape would require parser-
+                    // level degradation tolerance and is out of scope
+                    // for this rule.
+                    let fixed: String = text
+                        .replace(',', " ")
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                         rule: self.id(),
                         severity: self.default_severity(),
                         source: FixSource::BuiltinRule,
                         span: token.span,
-                        message: "JOINT country list must be space-delimited, not comma-delimited"
+                        message: "JOINT country list must be space-delimited, \
+                                  not comma-delimited"
                             .to_owned(),
-                        citation: "CAPCO-2016 §A.6",
+                        citation: "CAPCO-2016 §H.3 p56 line 1258 \
+                                   (JOINT codes separated by a single space)",
                         original: text.to_owned(),
                         replacement: fixed,
                         confidence: 0.95,
@@ -2071,39 +2143,75 @@ impl Rule for DelimiterMismatchRule {
             }
         }
 
-        // Check REL TO for space-only delimiters (commas required between trigraphs).
+        // --- REL TO: canonical comma-space delimiter.
         if let Some(token) = attrs
             .token_spans
             .iter()
             .find(|t| t.kind == TokenKind::RelToBlock)
         {
             let text = token.text.as_ref();
-            // Strip the "REL TO " / "REL " prefix to isolate the country list.
-            let country_list = text
-                .strip_prefix("REL TO")
-                .or_else(|| text.strip_prefix("REL"))
-                .unwrap_or(text)
-                .trim_start();
-            // Space-delimited error: multiple words, none of which are commas/comma-adjacent.
-            if country_list.split_whitespace().count() > 1 && !country_list.contains(',') {
-                // Build the correctly comma-delimited replacement.
-                let fixed = format!(
-                    "REL TO {}",
-                    country_list
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
+            // Tokenize the whole block on commas + whitespace, then
+            // drop the leading `REL` / `TO` keywords. This is robust
+            // to non-canonical whitespace between the keywords (e.g.,
+            // `REL  TO USA GBR` with a double space between REL and
+            // TO). Stripping literal `"REL TO"` / `"REL"` prefixes —
+            // what the earlier implementation did — would have
+            // fallen through to the `"REL"` branch on double-space
+            // input and left `TO` as an apparent country code,
+            // producing a fix like `REL TO TO, USA, GBR`.
+            //
+            // `skip_while` is safe here because neither `REL` nor
+            // `TO` is a valid ISO 3166 alpha-3 country code, so
+            // dropping them from the list cannot remove a real
+            // country. Only LEADING `REL`/`TO` tokens are dropped;
+            // a pathological `USA REL TO GBR` would not be altered
+            // by the skip.
+            let codes: Vec<&str> = text
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|s| !s.is_empty())
+                .skip_while(|&s| s == "REL" || s == "TO")
+                .collect();
+            if codes.len() < 2 {
+                // Single code (or zero) cannot have a delimiter mismatch —
+                // there is nothing to separate. Trailing-delimiter
+                // artifacts on a one-country list (e.g., `REL TO USA,`)
+                // fall outside E013's delimiter-between-codes scope
+                // and are handled by E002 in its own fix path.
+                return diagnostics;
+            }
+            let canonical_list = codes.join(", ");
+            // Compare canonical_list to the input's list region (the
+            // slice starting at the first non-`REL`/`TO` code), NOT
+            // the full block text. This scopes E013 to its actual name
+            // — a list-delimiter mismatch — so it does not fire on
+            // prefix-only whitespace issues like `REL  TO USA, GBR`
+            // (double space between `REL` and `TO`, list itself
+            // canonical). When E013 does fire, its fix produces the
+            // full canonical block text, which incidentally cleans up
+            // prefix whitespace as a side effect.
+            //
+            // `text.find(codes[0])` is safe here: `codes[0]` is
+            // whatever survived after skipping leading `REL`/`TO`
+            // keywords, and neither keyword nor any valid country
+            // trigraph/tetragraph contains the other as a substring,
+            // so the first occurrence is the actual list start.
+            let list_start = text.find(codes[0]).unwrap_or(0);
+            let list_region = &text[list_start..];
+            if list_region != canonical_list {
+                let canonical_text = format!("REL TO {canonical_list}");
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
                     source: FixSource::BuiltinRule,
                     span: token.span,
-                    message: "REL TO country list must be comma-delimited, not space-delimited"
+                    message: "REL TO country list must use comma-space \
+                              delimiters (\"USA, GBR\"), not plain spaces \
+                              or bare commas"
                         .to_owned(),
-                    citation: "CAPCO-2016 §A.6",
+                    citation: "CAPCO-2016 §H.8 p150-151 line 3714 \
+                               (REL TO codes separated by a comma and a space)",
                     original: text.to_owned(),
-                    replacement: fixed,
+                    replacement: canonical_text,
                     confidence: 0.95,
                     migration_ref: None,
                 }));
@@ -5281,6 +5389,233 @@ mod tests {
     fn w002_does_not_fire_without_fgi_marker() {
         let diags = lint_portion("(S//NF)");
         assert!(diags.iter().all(|d| d.rule.as_str() != "W002"));
+    }
+
+    // --- E013: JOINT/REL TO delimiter mismatch (T035c-17 audit) ---
+
+    #[test]
+    fn e013_fires_on_joint_comma_with_space_after() {
+        // Canonical JOINT uses single space; a trailing-space comma like
+        // `USA, GBR` must fire and fix to `USA GBR`.
+        let diags = lint_banner("//JOINT S USA, GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(e013.len(), 1, "E013 must fire on JOINT with comma: {diags:?}");
+        let fix = e013[0].fix.as_ref().expect("E013 JOINT must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "JOINT S USA GBR",
+            "fix must replace `,` with single space"
+        );
+        assert!(
+            e013[0].citation.contains("§H.3 p56 line 1258"),
+            "JOINT citation must pin §H.3 p56 line 1258; got: {:?}",
+            e013[0].citation
+        );
+    }
+
+    #[test]
+    fn e013_joint_fix_handles_extra_whitespace_in_comma_list() {
+        // Regression: the prior implementation did
+        // `text.replace(',', "").replace("  ", " ")` which handled at
+        // most one run of double spaces. Inputs with three or more
+        // intervening spaces (e.g., `USA,   GBR`) survived as `USA
+        //  GBR` after the naive collapse. The new implementation uses
+        // `split_whitespace().join(" ")` which normalizes any run of
+        // whitespace, so this class of input fixes cleanly.
+        //
+        // Note on the harder case: `USA,GBR` (comma, no space) is a
+        // parser-boundary limitation. The parser's JOINT subparser
+        // requires whitespace between trigraphs, so `USA,GBR` fails
+        // grammar entirely and `attrs.classification` is `None` —
+        // E013 has no JOINT context to inspect. Fixing that case
+        // would require either parser-level degradation tolerance
+        // or a pre-scanner normalization pass; both are out of scope
+        // for this rule-level audit.
+        let diags = lint_banner("//JOINT S USA,   GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(e013.len(), 1, "E013 must fire on comma-plus-spaces JOINT: {diags:?}");
+        let fix = e013[0].fix.as_ref().expect("E013 must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "JOINT S USA GBR",
+            "comma + extra whitespace must normalize to single space"
+        );
+    }
+
+    #[test]
+    fn e013_does_not_fire_on_correctly_space_delimited_joint() {
+        let diags = lint_banner("//JOINT S USA GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E013"),
+            "E013 must not fire on canonical JOINT: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e013_fires_on_rel_to_space_only_delimiter() {
+        let diags = lint_banner("SECRET//REL TO USA GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(e013.len(), 1, "E013 must fire on space-only REL TO: {diags:?}");
+        let fix = e013[0].fix.as_ref().expect("E013 REL TO must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "REL TO USA, GBR");
+        assert!(
+            e013[0].citation.contains("§H.8 p150-151 line 3714"),
+            "REL TO citation must pin §H.8 p150-151 line 3714; got: {:?}",
+            e013[0].citation
+        );
+    }
+
+    #[test]
+    fn e013_fires_on_rel_to_missing_space_after_comma() {
+        // Previous predicate only checked `!contains(',')`, so it
+        // silently passed `USA,GBR` (comma but no space). Canonical
+        // form must insert the space.
+        let diags = lint_banner("SECRET//REL TO USA,GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(
+            e013.len(),
+            1,
+            "E013 must fire on REL TO without space after comma: {diags:?}"
+        );
+        let fix = e013[0].fix.as_ref().expect("E013 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "REL TO USA, GBR");
+    }
+
+    #[test]
+    fn e013_fires_on_rel_to_mixed_delimiters() {
+        // Regression: previously the predicate only fired when the
+        // country list contained NO commas. Mixed-delimiter input
+        // like `USA GBR,AUS` passed silently even though §H.8 line
+        // 3714 requires comma-space between every pair.
+        let diags = lint_banner("SECRET//REL TO USA GBR,AUS");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(
+            e013.len(),
+            1,
+            "E013 must fire on mixed-delimiter REL TO: {diags:?}"
+        );
+        let fix = e013[0].fix.as_ref().expect("E013 must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "REL TO USA, GBR, AUS",
+            "mixed delimiters must canonicalize to comma-space"
+        );
+    }
+
+    #[test]
+    fn e013_does_not_fire_on_canonical_rel_to() {
+        let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E013"),
+            "E013 must not fire on canonical REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e013_does_not_fire_on_rel_to_with_single_country() {
+        // A single country code has no pair to delimit. E013 must be
+        // silent (not synthesize a no-op fix).
+        let diags = lint_banner("SECRET//REL TO USA");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E013"),
+            "E013 must not fire on single-country REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e013_rel_to_fix_does_not_treat_to_as_country_code_on_double_space() {
+        // Regression for PR #95 review: the earlier implementation did
+        // `strip_prefix("REL TO").or_else(|| strip_prefix("REL"))`, so
+        // for input `REL  TO USA GBR` (extra space between `REL` and
+        // `TO`) the first prefix failed to match (no literal single
+        // space), the second succeeded, and `TO` was left in the
+        // token stream to be treated as a country code. The fix then
+        // produced `REL TO TO, USA, GBR`. The new implementation
+        // tokenizes the whole block and `skip_while`s leading `REL`
+        // / `TO` keywords, which is robust to non-canonical prefix
+        // whitespace.
+        //
+        // Acceptable outcomes for this input (either passes — it
+        // depends on whether the scanner normalizes the prefix
+        // whitespace before the rule sees it):
+        //   A) E013 does not fire — scanner normalized the prefix.
+        //   B) E013 fires with `replacement == "REL TO USA, GBR"`.
+        //
+        // What is NOT acceptable:
+        //   C) E013 fires with `replacement` containing the phantom
+        //      `TO, USA` / `TO TO` that the old buggy prefix
+        //      stripping would produce.
+        //   D) E013 fires WITHOUT a fix (every E013 diagnostic must
+        //      carry a FixProposal today).
+        let diags = lint_banner("SECRET//REL  TO USA GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert!(
+            e013.len() <= 1,
+            "E013 fires at most once per REL TO block: {diags:?}"
+        );
+        if let Some(d) = e013.first() {
+            let fix = d
+                .fix
+                .as_ref()
+                .expect("E013 diagnostics must carry a FixProposal");
+            assert_eq!(
+                fix.replacement.as_ref(),
+                "REL TO USA, GBR",
+                "canonical fix must drop leading REL/TO keywords and not \
+                 reinterpret `TO` as a country code"
+            );
+        }
+    }
+
+    #[test]
+    fn e013_does_not_fire_on_prefix_only_whitespace_with_canonical_list() {
+        // E013 is a delimiter-mismatch rule. Prefix-only issues like
+        // extra whitespace between `REL` and `TO`, when the country
+        // list itself is already comma-space canonical, are out of
+        // scope. A future rule targeting prefix normalization can
+        // own that case. Scoping E013 strictly to the list region
+        // keeps the diagnostic message ("REL TO country list must use
+        // comma-space delimiters…") accurate — it would be misleading
+        // to fire for a problem the message doesn't describe.
+        //
+        // Whether this input actually produces a RelToBlock with
+        // non-canonical prefix depends on scanner behavior; the rule
+        // must be correct either way, so we accept both "no E013" and
+        // "E013 does not fire" — the only failure mode would be if
+        // E013 fired with a canonical-ish fix on a list that was
+        // already canonical.
+        let diags = lint_banner("SECRET//REL  TO USA, GBR");
+        for d in diags.iter().filter(|d| d.rule.as_str() == "E013") {
+            if let Some(fix) = d.fix.as_ref() {
+                // If the rule does fire here, it would be because
+                // the scanner preserved the double space AND the
+                // rule chose to treat that as a list problem — which
+                // is the scope violation we're guarding against.
+                panic!(
+                    "E013 must not fire on prefix-only whitespace when \
+                     the list itself is canonical; got replacement: {:?}",
+                    fix.replacement.as_ref()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn e013_preserves_token_order_in_rel_to_fix() {
+        // E020 owns ordering; E013 must canonicalize delimiters
+        // WITHOUT reordering. Input `USA GBR AUS` (space-delimited,
+        // wrong canonical alpha order) gets comma-delimited but
+        // keeps `USA, GBR, AUS`, not `USA, AUS, GBR` — E020 fires
+        // separately for the ordering issue.
+        let diags = lint_banner("SECRET//REL TO USA GBR AUS");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        assert_eq!(e013.len(), 1);
+        let fix = e013[0].fix.as_ref().expect("E013 must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "REL TO USA, GBR, AUS",
+            "E013 fix must preserve input order — E020 handles ordering"
+        );
     }
 
     // --- E014: JOINT participants missing from REL TO ---
