@@ -2138,32 +2138,39 @@ impl Rule for DelimiterMismatchRule {
             .find(|t| t.kind == TokenKind::RelToBlock)
         {
             let text = token.text.as_ref();
-            // Strip the "REL TO " / "REL " prefix to isolate the country list.
-            let country_list = text
-                .strip_prefix("REL TO")
-                .or_else(|| text.strip_prefix("REL"))
-                .unwrap_or(text)
-                .trim_start();
-            // Canonicalize: split on any mixture of commas and whitespace
-            // (drops empty slices), then re-join with ", ". If the
-            // canonical form differs from the input's list portion,
-            // the delimiters are malformed.
-            let codes: Vec<&str> = country_list
+            // Tokenize the whole block on commas + whitespace, then
+            // drop the leading `REL` / `TO` keywords. This is robust
+            // to non-canonical whitespace between the keywords (e.g.,
+            // `REL  TO USA GBR` with a double space between REL and
+            // TO). Stripping literal `"REL TO"` / `"REL"` prefixes —
+            // what the earlier implementation did — would have
+            // fallen through to the `"REL"` branch on double-space
+            // input and left `TO` as an apparent country code,
+            // producing a fix like `REL TO TO, USA, GBR`.
+            //
+            // `skip_while` is safe here because neither `REL` nor
+            // `TO` is a valid ISO 3166 alpha-3 country code, so
+            // dropping them from the list cannot remove a real
+            // country. Only LEADING `REL`/`TO` tokens are dropped;
+            // a pathological `USA REL TO GBR` would not be altered
+            // by the skip.
+            let codes: Vec<&str> = text
                 .split(|c: char| c == ',' || c.is_whitespace())
                 .filter(|s| !s.is_empty())
+                .skip_while(|&s| s == "REL" || s == "TO")
                 .collect();
             if codes.len() < 2 {
                 // Single code (or zero) cannot have a delimiter mismatch —
                 // there is nothing to separate.
                 return diagnostics;
             }
-            let canonical_list = codes.join(", ");
-            // Compare against the input's country-list portion (not the
-            // full `text`), so a trailing separator or stale whitespace
-            // inside the list triggers the fix even though the "REL TO"
-            // prefix matches.
-            if canonical_list != country_list {
-                let fixed = format!("REL TO {canonical_list}");
+            // Canonical form: `REL TO <code>(, <code>)*`. Compare
+            // against the full block text so a non-canonical prefix
+            // (e.g., extra whitespace between `REL` and `TO`) or
+            // stale trailing whitespace inside the list also triggers
+            // the fix.
+            let canonical_text = format!("REL TO {}", codes.join(", "));
+            if canonical_text != text {
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
@@ -2176,7 +2183,7 @@ impl Rule for DelimiterMismatchRule {
                     citation: "CAPCO-2016 §H.8 p150-151 line 3714 \
                                (REL TO codes separated by a comma and a space)",
                     original: text.to_owned(),
-                    replacement: fixed,
+                    replacement: canonical_text,
                     confidence: 0.95,
                     migration_ref: None,
                 }));
@@ -5485,6 +5492,44 @@ mod tests {
             diags.iter().all(|d| d.rule.as_str() != "E013"),
             "E013 must not fire on single-country REL TO: {diags:?}"
         );
+    }
+
+    #[test]
+    fn e013_rel_to_fix_does_not_treat_to_as_country_code_on_double_space() {
+        // Regression for PR #95 review: the earlier implementation did
+        // `strip_prefix("REL TO").or_else(|| strip_prefix("REL"))`, so
+        // for input `REL  TO USA GBR` (extra space between `REL` and
+        // `TO`) the first prefix failed to match (no literal single
+        // space), the second succeeded, and `TO` was left in the
+        // token stream to be treated as a country code. The fix then
+        // produced `REL TO TO, USA, GBR`. The new implementation
+        // tokenizes the whole block and `skip_while`s leading `REL`
+        // / `TO` keywords, which is robust to non-canonical prefix
+        // whitespace.
+        //
+        // NOTE: this exercises the rule directly via `lint_banner`.
+        // Whether the scanner actually emits `RelToBlock` tokens for
+        // non-canonical prefixes like `REL  TO` depends on scanner
+        // behavior; when it does, this test proves the rule itself
+        // is safe.
+        let diags = lint_banner("SECRET//REL  TO USA GBR");
+        let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
+        for d in &e013 {
+            if let Some(fix) = d.fix.as_ref() {
+                let replacement = fix.replacement.as_ref();
+                assert!(
+                    !replacement.contains("TO TO") && !replacement.contains(", TO,"),
+                    "E013 fix must not treat keyword `TO` as a country code; \
+                     got replacement: {replacement:?}"
+                );
+                // When the rule does produce a fix for this input, it
+                // should be the canonical form without phantom codes.
+                assert_eq!(
+                    replacement, "REL TO USA, GBR",
+                    "canonical fix must drop leading REL/TO keywords"
+                );
+            }
+        }
     }
 
     #[test]
