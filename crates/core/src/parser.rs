@@ -1745,6 +1745,23 @@ mod tests {
     }
 
     #[test]
+    fn fgi_non_uppercase_trigraph_rejected() {
+        // `Trigraph::try_new` requires every byte to be ASCII-uppercase
+        // (CAPCO invariant). A 3-byte token with a digit fails that
+        // check and trips the `Trigraph::try_new(...)?` rejection path
+        // in `parse_fgi_classification`.
+        let parsed = parse_banner("//G7B S//NF");
+        assert!(
+            !matches!(
+                parsed.attrs.classification,
+                Some(MarkingClassification::Fgi(_))
+            ),
+            "G7B should not parse as a valid FGI classification: {:?}",
+            parsed.attrs.classification,
+        );
+    }
+
+    #[test]
     fn fgi_no_level_is_error() {
         // //FGI// with no classification level — classification should be None
         let parsed = parse_banner("//FGI//NF");
