@@ -4,6 +4,7 @@ OCR-B is a monospace font originally developed in 1968 by Adrian Frutiger. This 
 
 ## CDN
 
+> Note: The CDN examples below are preserved from the upstream font README for reference only. This project bundles the OCR-B font locally and does not use these jsDelivr URLs.
 CSS import of the latest version
 ```css
 @font-face {
