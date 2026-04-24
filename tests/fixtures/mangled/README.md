@@ -18,24 +18,50 @@ The generator lives at `tools/corpus-analysis/analyze.py` and is invoked
 as:
 
 ```bash
-MARQUE_ENRON_CORPUS=/path/to/enron \
-  python3 tools/corpus-analysis/analyze.py \
+python3 tools/corpus-analysis/analyze.py \
     --mode mangled \
+    --corpus tests/corpus \
     --output tests/fixtures/mangled/ \
-    --min-cases 200
+    --min-cases 200 --seed 0
 ```
 
-The generator reads high-confidence CAPCO markings from the Enron corpus
-(author-supplied, not committed to this repo — see
-`tests/corpus/CORPUS_PROVENANCE.md`), applies one of the six labeled
-mangling transforms below, and emits one JSON file per case under the
-class directory that names its transform. Fixtures are committed; the
-Enron source artifact is not.
+The generator reads high-confidence CAPCO marking canonicals from
+`tests/corpus/` (curated CAPCO-2016 marking fixtures committed to this
+repo — see `tests/corpus/CORPUS_PROVENANCE.md`), applies one of the six
+labeled mangling transforms below, and emits one JSON file per case
+under the class directory that names its transform.
 
-Regenerate whenever the Enron source, the transform set, or the
-minimum-case count changes. The commit that updates the fixtures MUST
-re-run the decoder accuracy harness and update any per-case expectations
-that shifted.
+**Source-narrowing invariant.** `tests/corpus/` is a mixed-validity
+tree: `valid/` holds canonical markings, `invalid/` holds intentional
+rule-violation fixtures (`SECRET//SERCET//NOFORN`,
+`SECRET//XYZZY//NOFORN`, etc.), and `prose/` holds non-marking text.
+If the generator walked the whole tree, its regex would yank
+canonical-*looking* shapes out of `invalid/` and treat the embedded
+typos as ground truth — silently poisoning the `expected` field in
+the fixture and, by extension, the SC-004 accuracy gate. To prevent
+that, `generate_mangled_fixtures` resolves the corpus path through
+`_resolve_canonical_source`: if `<corpus>/valid/` exists, the walk is
+pinned there and the `invalid/` / `prose/` siblings are skipped.
+Homogeneous corpora (no `valid/` subdir) are used unchanged, so an
+Enron-style maildir still works as-is.
+
+**Corpus choice rationale.** Phase-D priors (`crates/capco/corpus/priors.json`)
+are derived from the Enron corpus because Enron measures how often
+CAPCO tokens appear in *non-IC business prose* — that's the question
+the priors answer (region-identification base rates). Mangled fixtures
+answer a different question: "given a span already flagged by the
+Scanner as a marking candidate but failing strict parse, can the
+decoder resolve to the intended canonical?" That test wants
+representative CAPCO-2016 canonical *shapes* as the mangling source,
+which `tests/corpus/` provides directly from curated marking shapes.
+Running the generator against Enron yielded only 5 usable canonicals
+(a real-world reflection of how rare classified markings are in
+non-IC email) — far below SC-004's ≥200-case floor.
+
+Regenerate whenever `tests/corpus/` canonicals change, the transform
+set changes, or the minimum-case count changes. The commit that
+updates the fixtures MUST re-run the decoder accuracy harness and
+update any per-case expectations that shifted.
 
 ## Six mangling classes
 

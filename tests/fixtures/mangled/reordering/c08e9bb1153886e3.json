@@ -1,0 +1,6 @@
+{
+  "observed": "NOFORN//TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN",
+  "expected": "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//EXDIS//NOFORN",
+  "expected": "SECRET//NOFORN//EXDIS",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

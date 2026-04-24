@@ -1,0 +1,164 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a href="/" class="footer__logo" aria-label="Marque home">
+        <span class="footer__logo-mark">(M)</span><span class="footer__logo-name">arque</span>
+      </a>
+      <p class="footer__tagline">The marking engine your tools never had.</p>
+      <p class="footer__legal">
+        Rules trace to <a href="https://www.dni.gov/index.php/who-we-are/organizations/ic-cio/ic-cio-related-menus/ic-cio-related-links/ic-technical-specifications/capco" target="_blank" rel="noopener noreferrer">CAPCO-2016</a> §A–H.
+        Citations, not opinions.
+      </p>
+    </div>
+
+    <div class="footer__col">
+      <h3 class="footer__heading">Product</h3>
+      <ul class="footer__links" role="list">
+        <li><a href="/docs">Documentation</a></li>
+        <li><a href="/docs/rules">Rule Index</a></li>
+        <li><a href="/blog">Blog</a></li>
+      </ul>
+    </div>
+
+    <div class="footer__col">
+      <h3 class="footer__heading">Rules</h3>
+      <ul class="footer__links" role="list">
+        <li><a href="/docs/rules/sci">SCI Controls</a></li>
+        <li><a href="/docs/rules/sar">SAR Programs</a></li>
+        <li><a href="/docs/rules/fgi">Foreign Government</a></li>
+        <li><a href="/docs/rules/dissem">Dissemination</a></li>
+        <li><a href="/docs/rules/declassification">Declassification</a></li>
+      </ul>
+    </div>
+
+    <div class="footer__col">
+      <h3 class="footer__heading">Community</h3>
+      <ul class="footer__links" role="list">
+        <li><a href="https://github.com/marquetools/marque" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer__bottom">
+    <div class="container footer__bottom-inner">
+      <p class="footer__copyright">© {year} Knitli Inc. <a href="/license">Marque License 1.0</a>.</p>
+      <p class="footer__cite font-mono text-muted" style="font-size: var(--text-xs);">
+        (U) Rule citations: CAPCO-2016 §A–H
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer__inner {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: var(--space-12);
+    padding-block: var(--space-16);
+  }
+
+  @media (max-width: 768px) {
+    .footer__inner {
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-8);
+    }
+    .footer__brand {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .footer__inner { grid-template-columns: 1fr; }
+  }
+
+  .footer__logo {
+    display: inline-flex;
+    align-items: baseline;
+    text-decoration: none;
+    margin-bottom: var(--space-3);
+  }
+
+  .footer__logo-mark {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    color: var(--color-accent);
+    letter-spacing: -0.02em;
+  }
+
+  .footer__logo-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 450;
+    color: var(--color-text-primary);
+    letter-spacing: -0.03em;
+  }
+
+  .footer__tagline {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-2);
+    line-height: var(--leading-normal);
+  }
+
+  .footer__legal {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .footer__legal a {
+    color: var(--color-text-muted);
+  }
+
+  .footer__heading {
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-4);
+  }
+
+  .footer__links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2-5);
+  }
+
+  .footer__links a {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition: var(--transition-colors);
+  }
+
+  .footer__links a:hover {
+    color: var(--color-text-primary);
+  }
+
+  .footer__bottom {
+    border-top: var(--border-thin) solid var(--color-border);
+  }
+
+  .footer__bottom-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-block: var(--space-5);
+  }
+
+  .footer__copyright {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    line-height: 1;
+  }
+</style>

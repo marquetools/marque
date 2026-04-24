@@ -18,6 +18,7 @@
 //! publishes spec updates.
 
 pub mod lattice;
+pub mod priors;
 pub mod rules;
 pub(crate) mod rules_declarative;
 pub(crate) mod rules_sci_per_system;
