@@ -69,35 +69,36 @@ fn post_json_with_header(uri: &str, body: &str, header: &str, value: &str) -> Re
 }
 
 // ---------------------------------------------------------------------------
-// Baselines — a request with no override channel returns non-400.
+// Baselines — a valid request with no override channel returns 200.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn baseline_lint_without_override_is_not_bad_request() {
+async fn baseline_lint_without_override_is_ok() {
     let resp = app()
         .oneshot(post_json("/v1/lint", r#"{"text": "SECRET//NF\n"}"#))
         .await
         .unwrap();
-    // 200 on success; 422 on unparseable body. Anything except 400 is
-    // acceptable — the point of the baseline is to rule out a silent
-    // always-400 regression introduced by the refactor.
-    assert_ne!(
+    // This baseline sends valid JSON with the correct content type, so it
+    // should exercise the happy path and return 200. Requiring 200 ensures
+    // regressions in request deserialization or validation do not slip
+    // through while still satisfying a weaker non-400 assertion.
+    assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "baseline lint should not return 400"
+        StatusCode::OK,
+        "baseline lint should return 200"
     );
 }
 
 #[tokio::test]
-async fn baseline_fix_without_override_is_not_bad_request() {
+async fn baseline_fix_without_override_is_ok() {
     let resp = app()
         .oneshot(post_json("/v1/fix", r#"{"text": "SECRET//NF\n"}"#))
         .await
         .unwrap();
-    assert_ne!(
+    assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "baseline fix should not return 400"
+        StatusCode::OK,
+        "baseline fix should return 200"
     );
 }
 

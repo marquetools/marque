@@ -756,7 +756,7 @@ until completion.
   `form_urlencoded::parse` so percent-encoded variants like
   `?corpus%5Foverride=1` cannot bypass the match. Rejection emits a
   `tracing::warn!` entry at target `marque_server::t3` naming the
-  channel only — the payload is never deserialized, examined, or
+  channel only — the payload is never materialized, stored, or
   logged.
   Implementation in `crates/server/src/lib.rs::reject_if_corpus_override`;
   tests in `crates/server/tests/http.rs` (T049, T050, plus the
