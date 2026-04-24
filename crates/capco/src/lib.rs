@@ -20,6 +20,7 @@
 pub mod lattice;
 pub mod rules;
 pub(crate) mod rules_declarative;
+pub(crate) mod rules_sci_per_system;
 pub mod scheme;
 pub mod vocab;
 

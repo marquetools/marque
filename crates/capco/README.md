@@ -23,7 +23,9 @@ Rule structs are zero-size and stateless. All config-dependent behavior (severit
 
 ## Rule Inventory
 
-44 rules currently implemented: errors `E001`–`E041` (core CAPCO, SAR, SCI, NODIS/EXDIS; `E017`/`E018`/`E019` retired in T035b), style `S001`–`S003`, warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
+54 rules currently implemented: errors `E001`–`E051` (core CAPCO, SAR, SCI, NODIS/EXDIS, per-SCI-system constraints; `E017`/`E018`/`E019` retired in T035b), style `S001`–`S003`, warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
+
+The E042–E051 cluster uses the **fix-and-warn** pattern: `Severity::Warn` paired with a `FixProposal` — the fix is applied when confidence clears threshold, AND the warn diagnostic stays in the output so the user sees exactly what was corrected and can override if the intent was actually different. See [`rules_sci_per_system`](src/rules_sci_per_system.rs) module doc for the rationale.
 
 ## Usage
 

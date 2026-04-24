@@ -1,5 +1,6 @@
 {
+  "_note": "E033 fires on SI compartments NK and G in wrong sort order. Fixture updated for T035d: banner now TS + ORCON so §H.4 p76/p80 (SI compartments require TS; SI-G requires ORCON) are satisfied and only E033 remains as the intended diagnostic.",
   "diagnostics": [
-    {"rule": "E033", "span": {"start": 11, "end": 15}}
+    {"rule": "E033", "span": {"start": 15, "end": 19}}
   ]
 }
