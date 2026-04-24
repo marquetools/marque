@@ -252,6 +252,14 @@ impl Rule for HcsOCompanionsRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // §H.4 per-SCI-system constraints are scoped to US
+        // classifications. SCI-on-foreign (pure FGI/NATO/JOINT) is out
+        // of scope; inserting NOFORN on a JOINT marking would in fact
+        // violate §H.8 (JOINT forbids NOFORN). Skip when the observed
+        // level is not US-or-Conflict.
+        if us_level(attrs).is_none() {
+            return vec![];
+        }
         // Does any marking on this portion carry HCS-O (bare-HCS
         // anchor + "O" compartment)?
         let has_hcs_o = attrs
@@ -349,6 +357,12 @@ impl Rule for HcsPRequiresNofornRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Scope guard: §H.4 applies only to US classifications. Skip
+        // pure FGI/NATO/JOINT where a NOFORN insertion would be wrong
+        // (JOINT in particular forbids NOFORN per §H.8).
+        if us_level(attrs).is_none() {
+            return vec![];
+        }
         let has_hcs_p = attrs
             .sci_markings
             .iter()
@@ -410,6 +424,13 @@ impl Rule for HcsPSubcompartmentTsOnlyRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Scope guard: §H.4 applies only to US classifications. Pure
+        // FGI/NATO/JOINT with HCS-P sub is out of scope — both the
+        // class-upgrade path and the ORCON / no-ORCON-USGOV companion
+        // paths must be skipped.
+        let Some(level) = us_level(attrs) else {
+            return vec![];
+        };
         let has_hcs_p_sub = attrs
             .sci_markings
             .iter()
@@ -420,11 +441,8 @@ impl Rule for HcsPSubcompartmentTsOnlyRule {
 
         let mut out = Vec::new();
 
-        // (1) Classification must be TOP SECRET. Fire only when the
-        // observed US level is below TS — foreign-only classifications
-        // are out of §H.4's scope (us_level returns None).
-        let below_ts = matches!(us_level(attrs), Some(level) if level < Classification::TopSecret);
-        if below_ts {
+        // (1) Classification must be TOP SECRET.
+        if level < Classification::TopSecret {
             if let Some((span, original, replacement)) =
                 build_class_upgrade_fix(attrs, ctx, Classification::TopSecret)
             {
@@ -657,6 +675,11 @@ impl Rule for SiGammaCompanionsRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Scope guard: §H.4 applies only to US classifications. SI-G
+        // on pure FGI/NATO/JOINT is out of scope.
+        if us_level(attrs).is_none() {
+            return vec![];
+        }
         let has_si_g = attrs
             .sci_markings
             .iter()
@@ -915,6 +938,12 @@ impl Rule for TkCompartmentRequiresNofornRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // Scope guard: §H.4 applies only to US classifications. Pure
+        // FGI/NATO/JOINT is out of scope — inserting NOFORN on JOINT
+        // would violate §H.8 (JOINT forbids NOFORN).
+        if us_level(attrs).is_none() {
+            return vec![];
+        }
         let applies = attrs.sci_markings.iter().any(is_tk_noforn_compartment);
         if !applies {
             return vec![];
@@ -1474,6 +1503,49 @@ mod tests {
             lint_portion("(TS//TK-BLFH//NF)")
                 .iter()
                 .all(|d| d.rule.as_str() != "E051")
+        );
+    }
+
+    // --- Scope: SCI-on-foreign (pure FGI / NATO / JOINT) is out of §H.4 ---
+    //
+    // §H.4 per-SCI-system constraints are scoped to US classifications.
+    // `us_level()` returns `None` for pure foreign classifications, and
+    // every rule in this module must short-circuit in that case;
+    // otherwise e.g. E042 would try to insert NOFORN on a JOINT banner,
+    // which §H.8 explicitly forbids.
+
+    #[test]
+    fn e042_e043_e044_e047_e051_skip_joint_classifications() {
+        // JOINT banner carrying every SCI marking that has a companion
+        // rule in this module. On `//JOINT ... S ...` the classification
+        // is `MarkingClassification::Joint(_)`, so `us_level` returns
+        // `None` and every companion rule must skip.
+        let src = "//JOINT S USA GBR//HCS-O HCS-P JJJ//SI-G//TK-BLFH//REL TO USA, GBR";
+        let diags = lint_banner(src);
+        for rule in ["E042", "E043", "E044", "E047", "E051"] {
+            let hits: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == rule).collect();
+            assert!(
+                hits.is_empty(),
+                "{rule} must not fire on a JOINT (non-US) classification; \
+                 §H.4 companion constraints are scoped to US markings: \
+                 hits={hits:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn e042_and_e043_still_fire_on_us_classifications() {
+        // Sanity: the scope guard must not mask genuine US-side
+        // violations. A US-classified portion with HCS-O and HCS-P but
+        // no ORCON/NOFORN still fires E042 and E043.
+        let diags = lint_portion("(S//HCS-O HCS-P)");
+        assert!(
+            diags.iter().any(|d| d.rule.as_str() == "E042"),
+            "E042 must fire on US-classified HCS-O without companions: {diags:?}"
+        );
+        assert!(
+            diags.iter().any(|d| d.rule.as_str() == "E043"),
+            "E043 must fire on US-classified HCS-P without NOFORN: {diags:?}"
         );
     }
 
