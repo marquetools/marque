@@ -14,6 +14,7 @@
 #[cfg(feature = "batch")]
 pub mod batch;
 pub mod clock;
+pub mod decoder;
 pub mod engine;
 pub mod errors;
 pub mod output;
@@ -24,6 +25,7 @@ pub mod scheduler;
 #[cfg(feature = "batch")]
 pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
+pub use decoder::{DecoderRecognizer, StrictOrDecoderRecognizer};
 pub use engine::{Engine, FixMode, InvalidThreshold};
 pub use errors::EngineConstructionError;
 pub use output::{FixResult, LintResult};

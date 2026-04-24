@@ -45,6 +45,7 @@ NOFRON = "NOFRON"
 CONFIDETIAL = "CONFIDETIAL"
 SECRRET = "SECRRET"
 UNCLASSIFEID = "UNCLASSIFEID"
+canonicalizations = "canonicalizations"
 
 [default.extend-identifiers]
 # Hyphenated "mis-splice" is intentional in rule comments
