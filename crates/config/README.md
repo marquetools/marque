@@ -119,4 +119,4 @@ return the appropriate code for the CLI.
 
 ## License
 
-Apache-2.0.
+Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). See [LICENSE.md](./LICENSE.md).

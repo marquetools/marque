@@ -61,4 +61,4 @@ curl -s http://localhost:3000/v1/health
 
 ## License
 
-Apache-2.0
+Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). See [LICENSE.md](./LICENSE.md).
