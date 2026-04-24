@@ -747,12 +747,21 @@ until completion.
   channels — JSON body field `corpus_override`, header
   `X-Marque-Corpus-Override`, and query-string parameter
   `corpus_override=...` / `corpus-override=...` (all case-insensitive).
-  Presence on any channel returns `400 Bad Request`; the attempted
-  payload is never deserialized, examined, or logged. The rejection
-  emits a `tracing::warn!` entry naming the channel but no contents.
+  **Presence on any channel returns `400 Bad Request`.** Each channel
+  observes presence without materializing caller-supplied contents:
+  the body-field guard uses a custom `PresenceMarker` deserializer so
+  any value shape (`null`, `{}`, `[]`, strings, numbers, booleans) is
+  rejected on key presence alone; the header guard uses
+  `HeaderMap::contains_key`; the query guard decodes param names via
+  `form_urlencoded::parse` so percent-encoded variants like
+  `?corpus%5Foverride=1` cannot bypass the match. Rejection emits a
+  `tracing::warn!` entry at target `marque_server::t3` naming the
+  channel only — the payload is never deserialized, examined, or
+  logged.
   Implementation in `crates/server/src/lib.rs::reject_if_corpus_override`;
-  tests in `crates/server/tests/http.rs` (T049, T050, plus query-string
-  variants and case-insensitive / null-value negative tests).
+  tests in `crates/server/tests/http.rs` (T049, T050, plus the
+  percent-encoded, case-insensitive, multiple-param, and empty-value-
+  shape variants).
 
 **Status**: `[LANDED]` for T3 corpus-override enforcement (T049 / T050
 / T066); `[PARTIAL]` for the broader surface (auth middleware, body

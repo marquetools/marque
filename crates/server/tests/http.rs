@@ -119,15 +119,31 @@ async fn rejects_corpus_override_body_on_fix() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
-/// The body-field guard keys on presence, not shape. A `null` literal
-/// deserializes to `None` via `#[serde(default)]`, so it MUST NOT trip
-/// the guard — otherwise an innocent caller who explicitly sent
-/// `"corpus_override": null` would see a 400.
+/// The body-field guard keys on **key presence**, not value shape.
+/// Per the contract ("Any such field is rejected with 400"), an
+/// explicit `"corpus_override": null` still names the claim and must
+/// be rejected. `PresenceMarker` records the key regardless of value.
 #[tokio::test]
-async fn null_corpus_override_body_field_is_not_rejected() {
+async fn rejects_null_corpus_override_body_field() {
     let body = r#"{"text": "SECRET//NF\n", "corpus_override": null}"#;
     let resp = app().oneshot(post_json("/v1/fix", body)).await.unwrap();
-    assert_ne!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Same invariant for other "empty-looking" value shapes — `{}`, `[]`,
+/// `""`, `0`. Key presence alone is the claim; the value is never
+/// examined.
+#[tokio::test]
+async fn rejects_empty_value_shapes_in_corpus_override_body() {
+    for value in ["null", "{}", "[]", r#""""#, "0", "false"] {
+        let body = format!(r#"{{"text": "SECRET//NF\n", "corpus_override": {value}}}"#);
+        let resp = app().oneshot(post_json("/v1/fix", &body)).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "corpus_override value {value:?} should trip the T3 body guard"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +237,19 @@ async fn rejects_corpus_override_query_with_hyphen() {
     let resp = app()
         .oneshot(post_json(
             "/v1/fix?corpus-override=1",
+            r#"{"text": "SECRET//NF\n"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn rejects_corpus_override_query_percent_encoded() {
+    // `%5F` decodes to `_` → name becomes `corpus_override`.
+    let resp = app()
+        .oneshot(post_json(
+            "/v1/fix?corpus%5Foverride=1",
             r#"{"text": "SECRET//NF\n"}"#,
         ))
         .await

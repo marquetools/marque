@@ -22,14 +22,16 @@
 //! HTTP callers may not supply runtime corpus overrides. Three channels
 //! are guarded:
 //!
-//! - **Request body:** `LintRequest` / `FixRequest` carry a marker field
-//!   `_corpus_override: Option<serde::de::IgnoredAny>` renamed to
-//!   `corpus_override`. Presence → 400 Bad Request without examining
-//!   contents.
+//! - **Request body:** `LintRequest` / `FixRequest` carry a
+//!   `PresenceMarker` field renamed to `corpus_override`. The marker
+//!   records whether the key was present regardless of the value —
+//!   `null`, `{}`, arrays, and arbitrary JSON all count as presence.
+//!   Key presence → 400 Bad Request without examining contents.
 //! - **Request header:** `X-Marque-Corpus-Override` (case-insensitive).
 //!   Presence → 400.
 //! - **Query string:** any param named `corpus_override` or
-//!   `corpus-override` (case-insensitive). Presence → 400.
+//!   `corpus-override` (case-insensitive, after percent-decoding).
+//!   Presence → 400.
 //!
 //! In all three cases the rejection emits a `tracing::warn!` entry
 //! naming the channel and the endpoint path. The attempted override
@@ -43,8 +45,48 @@ use axum::{
     routing::{get, post},
 };
 use marque_engine::Engine;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
+
+// ---------------------------------------------------------------------------
+// Presence marker — key-present-regardless-of-value detector
+// ---------------------------------------------------------------------------
+
+/// Records whether a JSON key was present, without materializing or
+/// examining the value.
+///
+/// Used by the T3 body-field guard. `#[serde(default)]` on the field
+/// means an absent key deserializes as `PresenceMarker(false)`; any
+/// present key — including `null`, `{}`, `[]`, numbers, strings —
+/// runs the `Deserialize` impl, which consumes the value via
+/// `IgnoredAny` (never stored, never logged) and returns
+/// `PresenceMarker(true)`.
+///
+/// This matches the contract wording "Any such field is rejected
+/// with 400" more precisely than `Option<IgnoredAny>` would, because
+/// the latter cannot distinguish an absent key from an explicit
+/// `null` value.
+#[derive(Default)]
+struct PresenceMarker(bool);
+
+impl PresenceMarker {
+    fn is_present(&self) -> bool {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PresenceMarker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Consume the value without storing it. `IgnoredAny` accepts
+        // any JSON shape — including `null`, objects, arrays — so
+        // presence of the key alone is the observable signal.
+        serde::de::IgnoredAny::deserialize(deserializer)?;
+        Ok(PresenceMarker(true))
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -65,11 +107,13 @@ pub struct LintRequest {
     /// Calling context hint — affects scanner heuristics.
     #[allow(dead_code)]
     pub context: Option<String>,
-    /// T3 guard: if present, the handler rejects with 400. Typed as
-    /// `IgnoredAny` so the contents are never deserialized or stored,
-    /// only their presence is observable.
+    /// T3 guard: if the key is present (regardless of value), the
+    /// handler rejects with 400. `PresenceMarker` records key presence
+    /// without deserializing or storing the payload, so even
+    /// `"corpus_override": null` still trips the guard — matching the
+    /// contract's "any such field is rejected" wording.
     #[serde(default, rename = "corpus_override")]
-    _corpus_override: Option<serde::de::IgnoredAny>,
+    _corpus_override: PresenceMarker,
 }
 
 #[derive(Serialize)]
@@ -107,7 +151,7 @@ pub struct FixRequest {
     pub confidence_threshold: Option<f32>,
     /// T3 guard: see `LintRequest::_corpus_override`.
     #[serde(default, rename = "corpus_override")]
-    _corpus_override: Option<serde::de::IgnoredAny>,
+    _corpus_override: PresenceMarker,
 }
 
 #[derive(Serialize)]
@@ -129,14 +173,15 @@ pub struct HealthResponse {
 
 const CORPUS_OVERRIDE_HEADER: &str = "x-marque-corpus-override";
 
-/// Detect a corpus-override param in the query string by name only.
+/// Detect a corpus-override param in the query string by decoded name.
 ///
-/// Substring-matches param *names* so `?corpus_override=1`,
-/// `?a=b&corpus_override&c=d`, and `?corpus-override=file:...` are all
-/// caught. Values are never examined.
+/// Exact-matches param *names* (case-insensitive) after
+/// percent-decoding so `?corpus_override=1`, `?a=b&corpus_override&c=d`,
+/// `?corpus-override=file:...`, and percent-encoded variants like
+/// `?corpus%5Foverride=1` (where `%5F` → `_`) are all caught. Values
+/// are never examined.
 fn query_carries_corpus_override(query: &str) -> bool {
-    query.split('&').any(|pair| {
-        let name = pair.split('=').next().unwrap_or("");
+    form_urlencoded::parse(query.as_bytes()).any(|(name, _value)| {
         name.eq_ignore_ascii_case("corpus_override") || name.eq_ignore_ascii_case("corpus-override")
     })
 }
@@ -204,7 +249,12 @@ pub async fn lint_handler(
     headers: HeaderMap,
     Json(req): Json<LintRequest>,
 ) -> Result<Json<LintResponse>, StatusCode> {
-    reject_if_corpus_override("/v1/lint", &uri, &headers, req._corpus_override.is_some())?;
+    reject_if_corpus_override(
+        "/v1/lint",
+        &uri,
+        &headers,
+        req._corpus_override.is_present(),
+    )?;
 
     let result = state.engine.lint(req.text.as_bytes());
 
@@ -239,7 +289,7 @@ pub async fn fix_handler(
     headers: HeaderMap,
     Json(req): Json<FixRequest>,
 ) -> Result<Json<FixResponse>, StatusCode> {
-    reject_if_corpus_override("/v1/fix", &uri, &headers, req._corpus_override.is_some())?;
+    reject_if_corpus_override("/v1/fix", &uri, &headers, req._corpus_override.is_present())?;
 
     let result = state
         .engine
@@ -291,15 +341,28 @@ mod tests {
     }
 
     #[test]
+    fn query_carries_corpus_override_percent_encoded() {
+        // `%5F` decodes to `_`, `%2D` decodes to `-`. A param name
+        // using either encoding must still match after decoding.
+        assert!(query_carries_corpus_override("corpus%5Foverride=1"));
+        assert!(query_carries_corpus_override("corpus%5foverride=1"));
+        assert!(query_carries_corpus_override("corpus%2Doverride=1"));
+        assert!(query_carries_corpus_override("a=b&corpus%5Foverride&c=d"));
+    }
+
+    #[test]
     fn query_carries_corpus_override_negatives() {
         assert!(!query_carries_corpus_override(""));
         assert!(!query_carries_corpus_override("text=hi"));
-        // Substring-only matches on param VALUE should NOT trigger —
-        // we match on param NAME to avoid false positives where a
-        // legitimate field value contains the literal string.
+        // Substring-only matches on param VALUE must NOT trigger —
+        // we match on decoded param NAME to avoid false positives
+        // where a legitimate field value contains the literal string.
         assert!(!query_carries_corpus_override("text=corpus_override"));
         assert!(!query_carries_corpus_override(
             "text=my_corpus_override_is_cool"
         ));
+        // A percent-encoded form of the name appearing only as a VALUE
+        // must also not trigger — only decoded names are checked.
+        assert!(!query_carries_corpus_override("text=corpus%5Foverride"));
     }
 }
