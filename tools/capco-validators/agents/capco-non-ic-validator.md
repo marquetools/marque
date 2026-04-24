@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-non-ic-validator
 description: Specialist validator for Non-IC Markings
 category: capco-validator

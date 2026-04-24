@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-validate
 description: Validate CAPCO/ISM rule citations, token predicates, and marking logic against authoritative sources before committing rules to marque. Use when adding new rules (E###/W###/C###), auditing token definitions, migrating rule logic, or verifying citations.
 ---

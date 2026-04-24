@@ -1,7 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2026 Knitli Inc.
 
-SPDX-License-Identifier: CC-BY-4.0
+SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
 # CAPCO corpus-derived priors
@@ -126,3 +126,7 @@ effect.
 - Content-ignorance applies transitively: `priors.json` contains only
   token frequencies and log-priors, never document-level text fragments
   from the source corpus (Constitution V).
+
+  ## License
+
+  `priors.json` is licensed under the `Marque License 1.0`.

@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-declassification-validator
 description: Specialist validator for Classification Authority Blocks and declassification guidance per CAPCO §E. Covers declassify-on dates, exemptions, declassification events, and multiple source hierarchies.
 category: capco-validator
