@@ -59,7 +59,9 @@ use marque_ism::{
     Classification, DissemControl, IsmAttributes, MarkingClassification, MarkingType,
     SciControlBare, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
 };
-use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity};
+use marque_rules::{
+    Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity,
+};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 
@@ -74,9 +76,7 @@ fn anchors_on(m: &SciMarking, system: SciControlBare) -> bool {
 
 /// Does any compartment under this marking carry the given identifier?
 fn has_compartment(m: &SciMarking, id: &str) -> bool {
-    m.compartments
-        .iter()
-        .any(|c| c.identifier.as_ref() == id)
+    m.compartments.iter().any(|c| c.identifier.as_ref() == id)
 }
 
 /// Does the specific compartment carry at least one sub-compartment?
@@ -319,8 +319,7 @@ impl Rule for HcsOCompanionsRule {
                 severity: Severity::Warn,
                 source: FixSource::BuiltinRule,
                 span,
-                message: "HCS-O forbids ORCON-USGOV (§H.4 p64) — replace with ORCON"
-                    .to_owned(),
+                message: "HCS-O forbids ORCON-USGOV (§H.4 p64) — replace with ORCON".to_owned(),
                 citation: "CAPCO-2016 §H.4 p64 — HCS-O may not be used with ORCON-USGOV",
                 original: text.to_owned(),
                 replacement,
@@ -544,9 +543,10 @@ impl Rule for HcsClassificationCeilingRule {
         // Pre-empt HCS-P-with-sub-compartment: E044 will emit the
         // unambiguous TS-only upgrade. Firing E045 here too would be
         // redundant no-fix noise on top of an actionable fix.
-        let has_hcs_p_sub = attrs.sci_markings.iter().any(|m| {
-            anchors_on(m, SciControlBare::Hcs) && compartment_has_sub(m, "P")
-        });
+        let has_hcs_p_sub = attrs
+            .sci_markings
+            .iter()
+            .any(|m| anchors_on(m, SciControlBare::Hcs) && compartment_has_sub(m, "P"));
         if has_hcs_p_sub {
             return vec![];
         }
@@ -717,8 +717,7 @@ impl Rule for SiGammaCompanionsRule {
                 severity: Severity::Warn,
                 source: FixSource::BuiltinRule,
                 span,
-                message: "SI-G forbids ORCON-USGOV (§H.4 p80) — replace with ORCON"
-                    .to_owned(),
+                message: "SI-G forbids ORCON-USGOV (§H.4 p80) — replace with ORCON".to_owned(),
                 citation: "CAPCO-2016 §H.4 p80 — SI-G may not be used with ORCON-USGOV",
                 original: text.to_owned(),
                 replacement: form.orcon().to_owned(),
@@ -1247,7 +1246,10 @@ mod tests {
             .iter()
             .find(|d| d.message.contains("TOP SECRET"))
             .expect("upgrade diag");
-        assert_eq!(class_upgrade.fix.as_ref().unwrap().replacement.as_ref(), "TS");
+        assert_eq!(
+            class_upgrade.fix.as_ref().unwrap().replacement.as_ref(),
+            "TS"
+        );
         let forbid = e044
             .iter()
             .find(|d| d.message.contains("forbids ORCON-USGOV"))
@@ -1292,7 +1294,10 @@ mod tests {
         // MUST be suppressed for this case.
         let diags = lint_portion("(C//HCS-P JJJ//OC/NF)");
         let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
-        assert!(!e044.is_empty(), "E044 should fire on below-TS HCS-P sub: {diags:?}");
+        assert!(
+            !e044.is_empty(),
+            "E044 should fire on below-TS HCS-P sub: {diags:?}"
+        );
         let e045: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E045").collect();
         assert!(
             e045.is_empty(),
@@ -1414,8 +1419,16 @@ mod tests {
 
     #[test]
     fn e049_does_not_fire_at_secret_or_above() {
-        assert!(lint_portion("(S//TK)").iter().all(|d| d.rule.as_str() != "E049"));
-        assert!(lint_portion("(TS//TK)").iter().all(|d| d.rule.as_str() != "E049"));
+        assert!(
+            lint_portion("(S//TK)")
+                .iter()
+                .all(|d| d.rule.as_str() != "E049")
+        );
+        assert!(
+            lint_portion("(TS//TK)")
+                .iter()
+                .all(|d| d.rule.as_str() != "E049")
+        );
     }
 
     #[test]
@@ -1427,7 +1440,10 @@ mod tests {
         // include BLFH.
         let diags = lint_portion("(C//TK-BLFH//NF)");
         let e050: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E050").collect();
-        assert!(!e050.is_empty(), "E050 should fire on below-TS TK-BLFH: {diags:?}");
+        assert!(
+            !e050.is_empty(),
+            "E050 should fire on below-TS TK-BLFH: {diags:?}"
+        );
         let e049: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E049").collect();
         assert!(
             e049.is_empty(),
