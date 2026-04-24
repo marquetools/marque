@@ -7,14 +7,18 @@
 use crate::clock::{Clock, SystemClock};
 use crate::errors::EngineConstructionError;
 use crate::output::{FixResult, LintResult};
+use crate::recognizer::{StrictRecognizer, shift_token_spans};
 use crate::scheduler::schedule_rewrites;
 use aho_corasick::AhoCorasick;
+use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{
     AppliedFix, CORRECTIONS_MAP_CITATION, Diagnostic, FixProposal, FixSource, RuleId, RuleSet,
     Severity,
 };
+use marque_scheme::ambiguity::Parsed;
+use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -69,6 +73,14 @@ pub struct Engine {
     /// order (Kahn's algorithm seeded in declaration order). Empty
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
+    /// Strict-path recognizer used by `lint()` to resolve each scanner
+    /// candidate to an `IsmAttributes`. Held behind `Arc<dyn Recognizer>`
+    /// so Phase 4 PR-3 can swap in a `DecoderRecognizer` or combined
+    /// strict→decoder dispatcher at construction time without touching
+    /// the lint loop. Shared across threads unchanged — the recognizer
+    /// trait is `Send + Sync` and `BatchEngine` workers hold the same
+    /// `Arc` reference (Constitution VI, FR-023).
+    recognizer: Arc<dyn Recognizer<CapcoScheme>>,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -156,6 +168,7 @@ impl Engine {
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
+            recognizer: Arc::new(StrictRecognizer::new()),
         })
     }
 
@@ -171,12 +184,10 @@ impl Engine {
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
     pub fn lint(&self, source: &[u8]) -> LintResult {
-        use marque_core::{Parser, Scanner};
-        use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
+        use marque_core::Scanner;
+        use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
 
-        let token_set = CapcoTokenSet;
-        let parser = Parser::new(&token_set);
         let candidates = Scanner::scan(source);
 
         // corrections_arc was built once at Engine construction; each clone here
@@ -197,6 +208,15 @@ impl Engine {
         // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
 
+        // Strict-path parse context — PR-2 dispatches only via the strict
+        // recognizer; PR-3 / T063 adds deep-scan dispatch keyed off
+        // `strict_evidence` and rule-escalation signals.
+        let strict_cx = ParseContext {
+            strict_evidence: true,
+            zone: None,
+            position: None,
+        };
+
         for candidate in &candidates {
             // Page-break candidates are scanner-emitted boundaries with no
             // parsable content. Reset the context BEFORE attempting to parse
@@ -208,15 +228,31 @@ impl Engine {
                 continue;
             }
 
-            let Ok(parsed) = parser.parse(candidate, source) else {
+            // Route each candidate's bytes through the recognizer. Zero-
+            // candidate `Ambiguous` means "no plausible interpretation" —
+            // skip, same as a strict-path parser error would in the old
+            // flow (foundational-plan line 609-612). `Unambiguous` returns
+            // a `CapcoMarking` whose `token_spans` are zero-origin relative
+            // to the candidate bytes; shift them back to source-relative
+            // offsets before rules see them.
+            let start = candidate.span.start.min(source.len());
+            let end = candidate.span.end.min(source.len());
+            if start >= end {
+                continue;
+            }
+            let bytes = &source[start..end];
+            let Parsed::Unambiguous(mut marking) = self.recognizer.recognize(bytes, &strict_cx)
+            else {
                 continue;
             };
+            shift_token_spans(&mut marking.0, start);
+            let attrs = marking.0;
 
             // Accumulate portions before running banner/CAB rules so that
             // when we reach a banner candidate the context already reflects
             // all preceding portion data.
-            if parsed.kind == MarkingType::Portion {
-                page_context.add_portion(parsed.attrs.clone());
+            if candidate.kind == MarkingType::Portion {
+                page_context.add_portion(attrs.clone());
                 // Invalidate the cached Arc so the next banner/CAB gets a
                 // fresh snapshot. We rebuild it lazily below.
                 page_context_arc = None;
@@ -226,7 +262,7 @@ impl Engine {
             // until a structural scanner pass can prove them. The previous
             // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
             // lie to any future rule that read them.
-            let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+            let ctx_page = if candidate.kind != MarkingType::Portion && !page_context.is_empty() {
                 // Lazily wrap the accumulated context in an Arc once per
                 // page-context snapshot; subsequent banner/CAB candidates on
                 // the same page clone only the cheap Arc pointer.
@@ -260,7 +296,7 @@ impl Engine {
                         continue;
                     }
 
-                    let mut diags = rule.check(&parsed.attrs, &ctx);
+                    let mut diags = rule.check(&attrs, &ctx);
                     // Apply configured severity override.
                     for d in &mut diags {
                         d.severity = configured_severity;
@@ -657,12 +693,8 @@ fn canonicalize_rule_overrides(
                 }
             }
             None => {
-                let did_you_mean =
-                    suggest_closest(&key, known.keys().copied());
-                return Err(EngineConstructionError::UnknownRuleOverride {
-                    key,
-                    did_you_mean,
-                });
+                let did_you_mean = suggest_closest(&key, known.keys().copied());
+                return Err(EngineConstructionError::UnknownRuleOverride { key, did_you_mean });
             }
         }
     }
@@ -1275,7 +1307,10 @@ mod tests {
             "name-form override resolves to canonical ID"
         );
         assert!(
-            !config.rules.overrides.contains_key("portion-mark-in-banner"),
+            !config
+                .rules
+                .overrides
+                .contains_key("portion-mark-in-banner"),
             "pre-canonicalization name key must not survive"
         );
     }
@@ -1319,10 +1354,8 @@ mod tests {
 
     #[test]
     fn canonicalize_rejects_conflicting_id_and_name_forms_with_different_severity() {
-        let mut config = config_with_overrides(&[
-            ("E001", "warn"),
-            ("portion-mark-in-banner", "error"),
-        ]);
+        let mut config =
+            config_with_overrides(&[("E001", "warn"), ("portion-mark-in-banner", "error")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
         let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
         match err {
@@ -1333,8 +1366,7 @@ mod tests {
             } => {
                 assert_eq!(rule_id, "E001");
                 // HashMap iteration order isn't deterministic — verify by set.
-                let k: std::collections::HashSet<&str> =
-                    keys.iter().map(|s| s.as_str()).collect();
+                let k: std::collections::HashSet<&str> = keys.iter().map(|s| s.as_str()).collect();
                 assert!(k.contains("E001"));
                 assert!(k.contains("portion-mark-in-banner"));
                 let s: std::collections::HashSet<&str> =
@@ -1351,18 +1383,13 @@ mod tests {
         // A user who writes both `E001 = "warn"` and `portion-mark-in-banner
         // = "warn"` (e.g., via copy-paste across layers) is unambiguous and
         // should not be punished.
-        let mut config = config_with_overrides(&[
-            ("E001", "warn"),
-            ("portion-mark-in-banner", "warn"),
-        ]);
+        let mut config =
+            config_with_overrides(&[("E001", "warn"), ("portion-mark-in-banner", "warn")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
         canonicalize_rule_overrides(&mut config, &sets)
             .expect("duplicate forms with same severity must succeed");
         assert_eq!(config.rules.overrides.len(), 1);
-        assert_eq!(
-            config.rules.overrides.get("E001"),
-            Some(&"warn".to_owned())
-        );
+        assert_eq!(config.rules.overrides.get("E001"), Some(&"warn".to_owned()));
     }
 
     #[test]
@@ -1381,10 +1408,7 @@ mod tests {
             config.rules.overrides.get("E001"),
             Some(&"error".to_owned())
         );
-        assert_eq!(
-            config.rules.overrides.get("M500"),
-            Some(&"warn".to_owned())
-        );
+        assert_eq!(config.rules.overrides.get("M500"), Some(&"warn".to_owned()));
     }
 
     #[test]
