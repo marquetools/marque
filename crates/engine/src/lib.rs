@@ -18,6 +18,7 @@ pub mod engine;
 pub mod errors;
 pub mod output;
 pub mod pipeline;
+pub mod recognizer;
 pub mod scheduler;
 
 #[cfg(feature = "batch")]
@@ -26,6 +27,7 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use engine::{Engine, FixMode, InvalidThreshold};
 pub use errors::EngineConstructionError;
 pub use output::{FixResult, LintResult};
+pub use recognizer::{StrictRecognizer, shift_token_spans};
 
 /// Returns the default rule set for marque (CAPCO rules).
 ///
