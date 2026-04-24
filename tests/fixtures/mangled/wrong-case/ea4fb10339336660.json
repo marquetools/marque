@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Sar-Bp-J12 J54-K15/Cd-Yyy 456 689/Xr-Xra Rb//Noforn",
+  "expected": "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Special Access Required-Butter Popcorn//Noforn",
+  "expected": "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}
