@@ -153,10 +153,7 @@ impl std::fmt::Display for EngineConstructionError {
                 keys,
                 severities,
             } => {
-                write!(
-                    f,
-                    "conflicting severity overrides for rule {rule_id}: "
-                )?;
+                write!(f, "conflicting severity overrides for rule {rule_id}: ")?;
                 let mut first = true;
                 for (k, s) in keys.iter().zip(severities.iter()) {
                     if !first {

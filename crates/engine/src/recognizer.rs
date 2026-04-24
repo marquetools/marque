@@ -78,10 +78,7 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let leading_ws = if matches!(kind, MarkingType::Portion) {
-            bytes
-                .iter()
-                .take_while(|b| b.is_ascii_whitespace())
-                .count()
+            bytes.iter().take_while(|b| b.is_ascii_whitespace()).count()
         } else {
             0
         };

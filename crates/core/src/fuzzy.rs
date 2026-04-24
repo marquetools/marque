@@ -470,7 +470,11 @@ mod tests {
         assert_eq!(result.as_ref().map(|c| c.token), Some("SECRET"));
         let c = result.unwrap();
         // Distance-2, length-6 → confidence = 0.40 + 1*0.05 = 0.45.
-        assert!(c.confidence > 0.44, "confidence should be non-trivial: {}", c.confidence);
+        assert!(
+            c.confidence > 0.44,
+            "confidence should be non-trivial: {}",
+            c.confidence
+        );
     }
 
     #[test]

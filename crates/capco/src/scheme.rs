@@ -1503,9 +1503,7 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
 /// (EXDIS: "May be used only with NOFORN information") and p174 line
 /// 4296 (NODIS: same). Emits a single ConstraintViolation when the
 /// marking carries NODIS or EXDIS without NOFORN present.
-fn e038_dos_dissem_requires_noforn(
-    attrs: &marque_ism::IsmAttributes,
-) -> Vec<ConstraintViolation> {
+fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
         matches!(
             d,
@@ -1524,8 +1522,7 @@ fn e038_dos_dissem_requires_noforn(
     }
     vec![ConstraintViolation {
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
-        message: "NODIS and EXDIS may be used only with NOFORN information"
-            .to_owned(),
+        message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
         citation: "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
     }]
 }
