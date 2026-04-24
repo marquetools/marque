@@ -1340,7 +1340,7 @@ impl MarkingScheme for CapcoScheme {
                             CategoryAction::Replace { category, with } => {
                                 capco_category_replace(&mut out, *category, with);
                             }
-                            CategoryAction::Promote { from: _, to: _, .. } => {
+                            CategoryAction::Promote { .. } => {
                                 // Phase 3 T034 declares the JOINT-
                                 // promotion and FGI-absorption rewrites
                                 // for the scheduler + catalog surface,

@@ -972,11 +972,8 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
             continue;
         }
         if token.len() == 3 {
-            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
-                countries.push(t);
-            } else {
-                return None; // Invalid trigraph
-            }
+            let t = Trigraph::try_new(token.as_bytes().try_into().ok()?)?;
+            countries.push(t);
         } else {
             return None; // Not a trigraph or "FGI"
         }
@@ -1246,11 +1243,8 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
         }
         let program_base = base + chunk_offset;
 
-        if let Some(program) = parse_sar_program(prog_chunk, program_base, indicator, &mut spans) {
-            programs.push(program);
-        } else {
-            return None;
-        }
+        let program = parse_sar_program(prog_chunk, program_base, indicator, &mut spans)?;
+        programs.push(program);
         chunk_offset += prog_chunk.len();
     }
 
@@ -1748,6 +1742,23 @@ mod tests {
             }
             other => panic!("expected Fgi, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn fgi_non_uppercase_trigraph_rejected() {
+        // `Trigraph::try_new` requires every byte to be ASCII-uppercase
+        // (CAPCO invariant). A 3-byte token with a digit fails that
+        // check and trips the `Trigraph::try_new(...)?` rejection path
+        // in `parse_fgi_classification`.
+        let parsed = parse_banner("//G7B S//NF");
+        assert!(
+            !matches!(
+                parsed.attrs.classification,
+                Some(MarkingClassification::Fgi(_))
+            ),
+            "G7B should not parse as a valid FGI classification: {:?}",
+            parsed.attrs.classification,
+        );
     }
 
     #[test]
