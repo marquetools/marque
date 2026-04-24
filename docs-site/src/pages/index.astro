@@ -1,0 +1,553 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="The marking engine your tools never had"
+  description="Marque corrects CAPCO classification markings in real time — automatically, with a full audit trail. 44 rules. p95 ≤ 16ms. Know before you send it."
+>
+
+  <!-- Classification banner decoration (visual motif, not a real banner) -->
+  <div class="home-banner-deco" aria-hidden="true">
+    <span class="font-mono text-muted" style="font-size: var(--text-xs); letter-spacing: var(--tracking-wide);">
+      (U) UNCLASSIFIED — for demonstration only
+    </span>
+  </div>
+
+  <!-- ─── HERO ─────────────────────────────────────────────── -->
+  <section class="hero hero--home" aria-labelledby="hero-heading">
+    <div class="container hero__content">
+
+      <div class="hero__eyebrow">
+        <span class="marking marking--u marking--sm">UNCLASSIFIED</span>
+        <span class="hero__eyebrow-rule">E001–E044</span>
+      </div>
+
+      <h1 class="hero__title" id="hero-heading">
+        The marking engine<br />your tools never had.
+      </h1>
+
+      <p class="hero__subtitle">
+        Know before you send it. Marque corrects your classification markings
+        in real time — automatically, with a full audit trail.
+        Every fix cites the section. No checkboxes. No guessing.
+      </p>
+
+      <div class="hero__actions">
+        <a href="#demo" class="btn btn--accent btn--lg">See it correct</a>
+        <a href="/docs/api" class="btn btn--outline btn--lg btn--mono">
+          <code>GET /v1/fix</code>
+        </a>
+      </div>
+
+      <div class="hero__numbers" aria-label="Key metrics">
+        <div class="hero__number">
+          <span class="hero__number-value">44</span>
+          <span class="hero__number-label">rules</span>
+        </div>
+        <div class="hero__number-divider" aria-hidden="true"></div>
+        <div class="hero__number">
+          <span class="hero__number-value">≤16ms</span>
+          <span class="hero__number-label">p95 latency</span>
+        </div>
+        <div class="hero__number-divider" aria-hidden="true"></div>
+        <div class="hero__number">
+          <span class="hero__number-value">≥0.97</span>
+          <span class="hero__number-label">confidence</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terminal demo -->
+    <div class="container" id="demo">
+      <div class="terminal hero__terminal" role="region" aria-label="Live demo: marque fix">
+        <div class="terminal__chrome" aria-hidden="true">
+          <span class="terminal__dot terminal__dot--close"></span>
+          <span class="terminal__dot terminal__dot--min"></span>
+          <span class="terminal__dot terminal__dot--max"></span>
+          <span class="terminal__title">marque fix — classified_memo.txt</span>
+        </div>
+        <div class="terminal__body">
+<pre class="terminal__output"><span class="t-prompt">$</span> <span class="t-cmd">marque fix</span> classified_memo.txt
+
+<span class="t-muted">── Scanning ───────────────────────────────────────</span>
+<span class="t-mark">  E001</span> <span class="t-warn">WARN</span>  Portion mark in banner line         <span class="t-muted">line 1</span>
+<span class="t-mark">  E020</span> <span class="t-warn">WARN</span>  Country codes out of order           <span class="t-muted">line 3</span>
+<span class="t-mark">  E031</span> <span class="t-error">ERR </span>  SAR program missing classification   <span class="t-muted">line 3</span>
+<span class="t-mark">  C001</span> <span class="t-ok">FIX </span>  Correcting "SERCET" → "SECRET"       <span class="t-muted">line 2</span>
+
+<span class="t-muted">── Applying fixes (confidence ≥ 0.95) ─────────────</span>
+<span class="t-fix">  ✔ E001</span>  Banner corrected                     <span class="t-conf">conf 0.99</span>  <span class="t-muted">§H.1</span>
+<span class="t-fix">  ✔ E020</span>  AUS, CAN, GBR, NZL, USA              <span class="t-conf">conf 0.99</span>  <span class="t-muted">§H.8</span>
+<span class="t-fix">  ✔ E031</span>  ORCON//SAR-PROGRAM-A (S)             <span class="t-conf">conf 0.97</span>  <span class="t-muted">§H.5</span>
+<span class="t-fix">  ✔ C001</span>  Spelling corrected                   <span class="t-conf">conf 1.00</span>
+
+<span class="t-ok">4 corrections applied.</span> Audit log: .marque/audit-2026-04-23T1432Z.ndjson</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── FIX, NOT FLAG ────────────────────────────────────── -->
+  <section class="section section--fix" aria-labelledby="fix-heading">
+    <div class="container">
+      <div class="section-label" aria-hidden="true">What's different</div>
+      <div class="fix-split">
+        <div class="fix-split__before">
+          <div class="fix-split__label font-mono text-muted" style="font-size: var(--text-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; margin-bottom: var(--space-4);">
+            Every other tool
+          </div>
+          <div class="card card--inset">
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-relaxed);">
+              ⚠ <strong>E001:</strong> Portion mark detected in banner line.<br />
+              ⚠ <strong>E020:</strong> REL TO country codes may be out of order.<br />
+              ⚠ <strong>C001:</strong> Possible misspelling detected.<br />
+              <br />
+              <span style="color: var(--color-text-muted);">3 issues found. Refer to CAPCO manual for guidance.</span>
+            </p>
+          </div>
+          <p class="fix-split__caption">
+            Flags what's wrong. Doesn't fix it. Doesn't explain why.
+            Doesn't validate portions against the banner.
+            Often wrong about what's wrong.
+          </p>
+        </div>
+
+        <div class="fix-split__arrow" aria-hidden="true">→</div>
+
+        <div class="fix-split__after">
+          <div class="fix-split__label font-mono" style="font-size: var(--text-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; margin-bottom: var(--space-4); color: var(--color-accent);">
+            Marque
+          </div>
+          <div class="card card--authority">
+            <div class="diagnostic diagnostic--ok" style="border: none; padding: 0; background: none;">
+              <div class="diagnostic__header">
+                <span class="diagnostic__severity">CORRECTED</span>
+                <span class="diagnostic__rule font-mono">C001</span>
+              </div>
+              <p class="diagnostic__message">
+                "SERCET" → "SECRET" — spelling corrected automatically.
+              </p>
+              <div class="diagnostic__citation font-mono">
+                <span>conf 1.00</span>
+                <span>·</span>
+                <span>Audit logged</span>
+              </div>
+            </div>
+          </div>
+          <p class="fix-split__caption" style="color: var(--color-accent);">
+            Corrects it. Cites the section. Logs the change with timestamp,
+            rule ID, and confidence. Every time.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── FEATURES ─────────────────────────────────────────── -->
+  <section class="section" aria-labelledby="features-heading">
+    <div class="container">
+      <div class="section-label" aria-hidden="true">How it works</div>
+      <h2 id="features-heading" class="section__heading">
+        Built for the people who have to get it right.
+      </h2>
+      <p class="section__lead">
+        Marque is a rule engine, not a linter. The rules ship as the engine's first application —
+        44 of them, each traced to CAPCO-2016. The same engine runs everywhere your documents do.
+      </p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <span class="marking marking--ts marking--sm">TS</span>
+          </div>
+          <h3 class="feature-card__title">Corrects as you write</h3>
+          <p class="feature-card__body">
+            Live correction in editors, browser extensions, and Office add-ins.
+            By the time you hit send, your markings are right.
+            Not flagged. Fixed.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <span class="font-mono" style="font-size: var(--text-lg); color: var(--color-accent);">§H.8</span>
+          </div>
+          <h3 class="feature-card__title">Every fix cites the section</h3>
+          <p class="feature-card__body">
+            Not "per CAPCO guidelines." Every diagnostic cites the exact section —
+            §H.4 for SCI, §H.5 for SAR, §H.8 for dissemination controls.
+            Look it up yourself.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <span class="font-mono" style="font-size: var(--text-sm); color: var(--color-text-muted);">audit.ndjson</span>
+          </div>
+          <h3 class="feature-card__title">Full audit trail</h3>
+          <p class="feature-card__body">
+            Every applied fix logs what changed, which rule, confidence score,
+            and who triggered it. Automation you can defend to a compliance officer.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <code class="font-mono" style="font-size: var(--text-sm); color: var(--color-interactive);">≤16ms p95</code>
+          </div>
+          <h3 class="feature-card__title">Perceptually instant</h3>
+          <p class="feature-card__body">
+            SIMD-accelerated scanning. Aho-Corasick token matching. p95 under 16ms
+            on 10KB inputs. WASM-safe for browser and Office environments.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <span class="font-mono" style="font-size: var(--text-sm); color: var(--color-text-secondary);">REST · CLI · WASM</span>
+          </div>
+          <h3 class="feature-card__title">One engine, every surface</h3>
+          <p class="feature-card__body">
+            The same rule engine runs as a REST API, CLI binary, and WASM module.
+            Integrate at the layer that fits your stack.
+            CLI and API produce byte-identical output.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">
+            <span class="font-mono" style="font-size: var(--text-sm); color: var(--color-text-muted);">0.95 threshold</span>
+          </div>
+          <h3 class="feature-card__title">Governance-grade confidence</h3>
+          <p class="feature-card__body">
+            The confidence threshold is a governance control, not an uncertainty dial.
+            Set it for your organization. Everything below threshold surfaces as a review item.
+            Everything at or above is applied and logged.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── AUDIENCE SPLIT ───────────────────────────────────── -->
+  <section class="section section--split" aria-labelledby="audience-heading">
+    <div class="container">
+      <h2 id="audience-heading" class="sr-only">Who it's for</h2>
+      <div class="audience-grid">
+        <div class="audience-card audience-card--practitioner">
+          <div class="banner-line audience-card__banner" aria-hidden="true">FOR PRACTITIONERS</div>
+          <h3 class="audience-card__title">
+            Finally — markings that fix themselves.
+          </h3>
+          <p class="audience-card__body">
+            If you've ever classified a document, you know the pain.
+            Gray boxes. Dropdown templates. Webforms that validate banners but ignore portions.
+            Tools that tell you something's wrong but not why — and half the time they're wrong about what's wrong.
+          </p>
+          <p class="audience-card__body">
+            Marque corrects portion markings in real time, validates them against the banner,
+            and tells you exactly what changed and why. Before you send it.
+          </p>
+          <a href="#demo" class="btn btn--accent">See it correct →</a>
+        </div>
+
+        <div class="audience-card audience-card--developer">
+          <div class="banner-line audience-card__banner" aria-hidden="true">FOR DEVELOPERS</div>
+          <h3 class="audience-card__title">
+            A rule engine you can actually integrate.
+          </h3>
+          <p class="audience-card__body">
+            44 rules. REST API. WASM-safe core. p95 ≤ 16ms. Confidence-scored fixes.
+            Full NDJSON audit trail. Configurable severity overrides per rule.
+            Byte-identical output from CLI and API.
+          </p>
+          <p class="audience-card__body">
+            Add it to your document pipeline, ETL, or ABAC stack.
+            The engine handles ISM/CAPCO today; CUI and other marking domains follow the same interface.
+          </p>
+          <a href="/docs/api" class="btn btn--outline btn--mono">
+            <code>POST /v1/fix</code>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CALLOUT / CTA ────────────────────────────────────── -->
+  <section class="section section--cta" aria-labelledby="cta-heading">
+    <div class="container container--md" style="text-align: center;">
+      <div class="banner-line" aria-hidden="true">Get started</div>
+
+      <div class="install" style="margin-block: var(--space-8);">
+        <div class="install__body">
+          <code class="install__cmd">cargo install marque</code>
+        </div>
+        <button class="install__copy btn btn--ghost btn--sm" aria-label="Copy install command">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </button>
+      </div>
+
+      <p style="color: var(--color-text-muted); font-size: var(--text-sm);">
+        Or start with the <a href="/docs/api">REST API</a> · <a href="/docs">Read the docs</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Classification banner decoration (bottom) -->
+  <div class="home-banner-deco home-banner-deco--bottom" aria-hidden="true">
+    <span class="font-mono text-muted" style="font-size: var(--text-xs); letter-spacing: var(--tracking-wide);">
+      (U) UNCLASSIFIED — for demonstration only
+    </span>
+  </div>
+
+</BaseLayout>
+
+<style>
+  /* ── Page-level layout ─────────────────────────────────── */
+
+  .home-banner-deco {
+    background-color: var(--color-surface);
+    border-bottom: var(--border-thin) solid var(--color-border);
+    text-align: center;
+    padding: var(--space-1-5) var(--space-4);
+  }
+
+  .home-banner-deco--bottom {
+    border-bottom: none;
+    border-top: var(--border-thin) solid var(--color-border);
+    margin-top: var(--space-16);
+  }
+
+  /* ── Hero ──────────────────────────────────────────────── */
+
+  .hero--home {
+    padding-block: var(--space-20) var(--space-12);
+  }
+
+  .hero__content {
+    text-align: center;
+    max-width: 780px;
+    margin-inline: auto;
+    margin-bottom: var(--space-16);
+  }
+
+  .hero__eyebrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+  }
+
+  .hero__eyebrow-rule {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .hero__title {
+    font-size: clamp(2.5rem, 5vw + 1rem, 4.5rem);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.05;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-6);
+  }
+
+  .hero__subtitle {
+    font-size: var(--text-lg);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    max-width: 600px;
+    margin-inline: auto;
+    margin-bottom: var(--space-10);
+  }
+
+  .hero__actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-12);
+  }
+
+  .hero__numbers {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-8);
+  }
+
+  .hero__number {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .hero__number-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-primary);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+  }
+
+  .hero__number-label {
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .hero__number-divider {
+    width: 1px;
+    height: 32px;
+    background-color: var(--color-border);
+  }
+
+  .hero__terminal {
+    max-width: 720px;
+    margin-inline: auto;
+  }
+
+  /* ── Sections ──────────────────────────────────────────── */
+
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section--fix {
+    background-color: var(--color-surface);
+    border-block: var(--border-thin) solid var(--color-border);
+  }
+
+  .section__heading {
+    font-size: var(--text-3xl);
+    margin-bottom: var(--space-4);
+    margin-top: var(--space-6);
+  }
+
+  .section__lead {
+    font-size: var(--text-lg);
+    color: var(--color-text-secondary);
+    max-width: 680px;
+    margin-bottom: var(--space-12);
+    line-height: var(--leading-relaxed);
+  }
+
+  /* ── Fix split (before/after) ──────────────────────────── */
+
+  .fix-split {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--space-6);
+    align-items: start;
+    margin-top: var(--space-8);
+  }
+
+  @media (max-width: 768px) {
+    .fix-split { grid-template-columns: 1fr; }
+    .fix-split__arrow { display: none; }
+  }
+
+  .fix-split__arrow {
+    font-size: var(--text-2xl);
+    color: var(--color-text-muted);
+    align-self: center;
+    padding-top: var(--space-10);
+  }
+
+  .fix-split__caption {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    margin-top: var(--space-4);
+    line-height: var(--leading-relaxed);
+  }
+
+  /* ── Audience grid ─────────────────────────────────────── */
+
+  .section--split {
+    background-color: var(--color-bg);
+  }
+
+  .audience-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+  }
+
+  @media (max-width: 768px) {
+    .audience-grid { grid-template-columns: 1fr; }
+  }
+
+  .audience-card {
+    padding: var(--space-10);
+    border-radius: var(--radius-2xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .audience-card--practitioner {
+    background-color: var(--color-surface);
+    border: var(--border-thin) solid var(--color-border);
+  }
+
+  /* Developer card is always dark — it's a deliberate contrast surface */
+  .audience-card--developer {
+    background-color: #1a1f1e;
+    border: 1px solid #3a4240;
+    color: #e8edeb;
+  }
+
+  .audience-card__banner {
+    font-size: var(--text-xs);
+    margin-bottom: var(--space-2);
+  }
+
+  .audience-card__title {
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .audience-card--developer .audience-card__title {
+    color: var(--charcoal-50, #f5f7f6);
+  }
+
+  .audience-card__body {
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
+    color: var(--color-text-secondary);
+  }
+
+  .audience-card--developer .audience-card__body {
+    color: var(--charcoal-300, #9aada8);
+  }
+
+  /* ── CTA section ───────────────────────────────────────── */
+
+  .section--cta {
+    padding-block: var(--space-24);
+  }
+</style>
+
+<script>
+  // Copy install command
+  const copyBtn = document.querySelector('.install__copy');
+  copyBtn?.addEventListener('click', async () => {
+    const cmd = document.querySelector('.install__cmd')?.textContent?.trim() ?? '';
+    await navigator.clipboard.writeText(cmd);
+    const svg = copyBtn.querySelector('svg');
+    if (svg) {
+      svg.style.color = 'var(--color-sev-ok)';
+      setTimeout(() => { svg.style.color = ''; }, 2000);
+    }
+  });
+</script>
