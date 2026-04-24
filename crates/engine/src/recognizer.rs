@@ -77,12 +77,26 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
         };
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
+        let leading_ws = if matches!(kind, MarkingType::Portion) {
+            bytes
+                .iter()
+                .take_while(|b| b.is_ascii_whitespace())
+                .count()
+        } else {
+            0
+        };
+        let parse_bytes = &bytes[leading_ws..];
         let candidate = MarkingCandidate {
-            span: Span::new(0, bytes.len()),
+            span: Span::new(0, parse_bytes.len()),
             kind,
         };
-        match parser.parse(&candidate, bytes) {
-            Ok(parsed) => Parsed::Unambiguous(CapcoMarking(parsed.attrs)),
+        match parser.parse(&candidate, parse_bytes) {
+            Ok(mut parsed) => {
+                if leading_ws != 0 {
+                    shift_token_spans(&mut parsed.attrs, leading_ws);
+                }
+                Parsed::Unambiguous(CapcoMarking(parsed.attrs))
+            }
             Err(_) => Parsed::Ambiguous {
                 candidates: Vec::new(),
             },
