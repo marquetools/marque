@@ -69,7 +69,7 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 /// Exploits the sort invariant pinned by `tables_are_sorted_by_name`
 /// (`build.rs` sorts at emit time, the runtime test verifies). The
 /// decoder calls this in K=8 scoring loops per candidate, so binary
-/// search is worth the cast over a linear scan.
+/// search is worth the cost over a linear scan.
 pub fn token_log_prior(token: &str) -> Option<f32> {
     TOKEN_BASE_RATES
         .binary_search_by_key(&token, |t| t.token)
