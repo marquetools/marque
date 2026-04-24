@@ -68,4 +68,4 @@ Not WASM-compatible. WASM builds must perform extraction in the host environment
 
 ## License
 
-Apache-2.0
+Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). See [LICENSE.md](./LICENSE.md).

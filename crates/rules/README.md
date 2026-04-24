@@ -96,4 +96,4 @@ WASM-safe. Pure types, no I/O, no threads.
 
 ## License
 
-Apache-2.0.
+Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). See [LICENSE.md](./LICENSE.md).

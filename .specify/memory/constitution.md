@@ -7,6 +7,50 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.1.1 → 1.2.0
+
+Bump type: MINOR
+  - Technology Stack Constraints → Licensing paragraph materially redefined.
+    The prior permissive-core / commercial-integrations split (Apache-2.0
+    or MIT OR Apache-2.0 for the WASM-safe set; Elastic/commercial for
+    integrations) is retired. All marque source code is now under the
+    Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). Rationale: a
+    permissive license on the engine core exposed the project to
+    hyperscaler commoditization — a cloud provider could wrap the engine
+    as a managed API and compete without funding the compliance-authority
+    obligations the project takes on. ML-1.0 is source-available with
+    commercial-use restrictions that preclude that scenario while
+    preserving legitimate integration paths. No Principle is added or
+    removed; this is a Tech Stack constraint change that had been in
+    effect in the repository (see `deny.toml` clarify entries) but was
+    not yet reflected in the Constitution.
+
+Modified sections:
+  - Technology Stack Constraints → Licensing paragraph.
+
+No principles modified. No new principles. No removed principles. No
+templates affected.
+
+Follow-up artifact updates (non-blocking for this amendment):
+  - `docs/security/WHITEPAPER.md` §8.5 "Apache-2.0 posture for WASM-safe
+    set" — retire section (guarantee no longer stands) and update gap
+    register entry 14 ("Apache-2.0 purity gate") to resolved-by-
+    constitutional-change. A replacement dependency-hygiene CI gate (no
+    copyleft, no competing source-available licenses) belongs in a
+    `deny.toml` overlay applied in CI and remains tracked as a gap.
+  - Per-crate README files, root README, and docs-site pages that assert
+    Apache-2.0 posture for the WASM-safe set — audit and update.
+
+Note: Each crate's `LICENSE.md` file carries
+`SPDX-License-Identifier: MIT OR Apache-2.0` as a header — that header
+applies to the prose of the license document itself (the standard
+text of the Apache 2.0 / MIT licenses the file distributes for
+reference), not to the code the file licenses. No change needed there;
+`Cargo.toml`'s `license-file = "LICENSE.md"` is how each crate declares
+its actual code license, and the authoritative SPDX expression for that
+code is the `deny.toml` clarify entry (`LicenseRef-MarqueLicense-1.0`).
+
+==================
 Version change: 1.0.0 → 1.1.0
 
 Bump type: MINOR
@@ -436,11 +480,44 @@ require a constitution amendment with migration rationale.
 | Document fingerprint | blake3 | Speed; already in dep tree |
 | WASM packaging | wasm-pack | Best-in-class Rust→WASM compilation |
 
-**Licensing**: `marque-ism`, `marque-core`, `marque-rules`, `marque-scheme`,
-`marque-capco` are Apache-2.0 (or MIT OR Apache-2.0 where dual-licensed).
-Enterprise integration components (Office add-ins, managed API) use a
-commercial or Elastic License 2.0 tier. This split MUST be preserved;
-Apache-2.0 crates MUST NOT gain dependencies that violate that license.
+**Licensing**: All marque source code is under the **Marque License 1.0**
+(`LicenseRef-MarqueLicense-1.0`). This includes every crate in the
+workspace — the WASM-safe set (`marque-ism`, `marque-core`, `marque-rules`,
+`marque-scheme`, `marque-capco`), the engine and orchestration crates
+(`marque-engine`, `marque-config`, `marque-extract`), the integration
+surfaces (`marque-wasm`, `marque-server`, `marque` CLI), and shared
+infrastructure (`marque-test-utils`). The prior permissive-core /
+commercial-integrations split — WASM-safe crates under Apache-2.0 or
+dual Apache-2.0/MIT, integration components under commercial or Elastic
+License 2.0 — is **retired**. See `LICENSE.md` at the workspace root
+for terms.
+
+**Rationale for retirement**: A permissive license on the engine's
+WASM-safe core created unacceptable hyperscaler commoditization risk.
+Any large cloud provider (AWS, Azure, GCP) could wrap the Apache-2.0
+engine as a managed API, outcompete the project on distribution and
+pricing, and never contribute back — while marque itself continues to
+carry the compliance-authority obligations (citation fidelity to
+CAPCO-2016 / ODNI schemas, rule correctness under Principle VIII,
+audit-record integrity under Principle V) that make the tool trusted
+in the IC/DoD context in the first place. The Marque License 1.0 is
+source-available with commercial-use restrictions that preclude that
+scenario while preserving every legitimate integration path:
+self-hosted deployments, browser extensions, CLI usage, IDE plugins,
+enterprise on-prem installations, WASM embedding in custom
+applications, and contribution back upstream.
+
+**Dependency hygiene under ML-1.0**: Marque crates MAY depend on
+permissively-licensed crates (Apache-2.0, MIT, BSD-2/3-Clause, ISC,
+Unicode-3.0, Unicode-DFS-2016, Zlib, CC0-1.0, CC-BY-4.0, Unlicense,
+MIT-0) — these allow redistribution under the consuming crate's
+license. Marque crates MUST NOT depend on copyleft licenses (GPL,
+LGPL, AGPL, MPL) or competing source-available licenses (Elastic
+License 2.0, Business Source License, SSPL) that would either infect
+ML-1.0 or create conflicting redistribution terms. The authoritative
+allow-list lives in `deny.toml`; CI enforcement of a tighter allow-list
+specifically for the engine subgraph is tracked as a gap-register item
+and is not yet wired.
 
 ## Development Workflow
 
@@ -513,4 +590,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.1.1 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-20
+**Version**: 1.2.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-24
