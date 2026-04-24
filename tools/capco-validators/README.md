@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # capco-validators
 
 Specialized CAPCO/ISM validator agents and orchestration skill for the `marque` rule engine. Provides 13 focused expert agents covering every marking category, plus a skill for coordinating validation workflows.

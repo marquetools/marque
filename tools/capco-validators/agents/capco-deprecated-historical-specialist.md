@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-deprecated-historical-specialist
 description: Specialist validator for legacy and deprecated markings with emphasis on historical context and modern replacement mappings. Covers deprecation rationale, legacy to modern mappings, commingling rules, and historical marking system evolution.
 category: capco-validator

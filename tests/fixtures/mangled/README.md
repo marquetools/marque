@@ -1,7 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2026 Knitli Inc.
 
-SPDX-License-Identifier: CC-BY-4.0
+SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
 # Mangled-marking fixtures
@@ -131,3 +131,7 @@ Field contract:
   values, or subject-claim free-form text (Constitution V,
   content-ignorance invariant; mirrors the same invariant the audit
   stream enforces at T056).
+
+  ## License
+
+  All fixtures in `tests/` are licensed under the [Marque Licenso 1.0](../../../LICENSE.md). See root [REUSE.toml](../../../REUSE.toml).

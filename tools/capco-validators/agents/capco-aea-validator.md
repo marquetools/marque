@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-aea-validator
 description: Specialist validator for Atomic Energy Act information markings per CAPCO §H.6. Covers RESTRICTED DATA, CNWDI, SIGMA, FORMERLY RESTRICTED DATA, and UCNI variants.
 category: capco-validator

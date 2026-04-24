@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-cab-specialist
 description: Specialist validator for Classification Authority Block (CAB) structure, authority chains, and multi-source resolution. Covers original vs derivative classification authority, multiple source hierarchies, authority precedence rules, and CAB syntax validation.
 category: capco-validator

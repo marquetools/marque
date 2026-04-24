@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-fgi-validator
 description: Specialist validator for Foreign Government Information (FGI) markings per CAPCO §H.7. Validates FGI country codes (trigraphs), tetragraph codes for international organizations, and country code ordering.
 category: capco-validator
