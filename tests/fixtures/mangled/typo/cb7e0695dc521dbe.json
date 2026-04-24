@@ -1,6 +1,0 @@
-{
-  "observed": "SECRETH//REL TO GBR, USA",
-  "expected": "SECRET//REL TO GBR, USA",
-  "mangling_class": "Typo",
-  "source_confidence": 0.81
-}

@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Rel To Usa, Aus, Gbr",
+  "expected": "SECRET//REL TO USA, AUS, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

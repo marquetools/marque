@@ -1,6 +1,0 @@
-{
-  "observed": "confidential//orcon//rel to usa, gber",
-  "expected": "CONFIDENTIAL//ORCON//REL TO USA, GBER",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8200000000000001
-}

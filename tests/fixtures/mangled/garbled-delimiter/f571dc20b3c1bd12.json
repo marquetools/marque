@@ -1,6 +1,0 @@
-{
-  "observed": "SECRET\u2215\u2215REL TO GBR, AUS",
-  "expected": "SECRET//REL TO GBR, AUS",
-  "mangling_class": "GarbledDelimiter",
-  "source_confidence": 0.81
-}

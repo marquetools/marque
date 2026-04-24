@@ -1,6 +1,0 @@
-{
-  "observed": "S // NF//ND",
-  "expected": "S//NF//ND",
-  "mangling_class": "GarbledDelimiter",
-  "source_confidence": 0.8200000000000001
-}

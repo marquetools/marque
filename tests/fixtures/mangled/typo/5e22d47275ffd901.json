@@ -1,6 +1,0 @@
-{
-  "observed": "CONFIDENTIAL//ORCON//REL TO USA, GWBER",
-  "expected": "CONFIDENTIAL//ORCON//REL TO USA, GBER",
-  "mangling_class": "Typo",
-  "source_confidence": 0.8200000000000001
-}

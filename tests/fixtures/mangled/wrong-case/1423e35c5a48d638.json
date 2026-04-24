@@ -1,6 +1,0 @@
-{
-  "observed": "Confidential//Rel To Deu, Fra",
-  "expected": "CONFIDENTIAL//REL TO DEU, FRA",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.81
-}

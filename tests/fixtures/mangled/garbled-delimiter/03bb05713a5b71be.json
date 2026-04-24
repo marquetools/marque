@@ -1,6 +1,0 @@
-{
-  "observed": "CONFIDENTIAL// ORCON//REL TO USA, GBER",
-  "expected": "CONFIDENTIAL//ORCON//REL TO USA, GBER",
-  "mangling_class": "GarbledDelimiter",
-  "source_confidence": 0.8200000000000001
-}

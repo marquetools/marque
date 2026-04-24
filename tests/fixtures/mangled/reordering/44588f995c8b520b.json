@@ -1,6 +1,0 @@
-{
-  "observed": "REL TO GBR, AUS//SECRET",
-  "expected": "SECRET//REL TO GBR, AUS",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.81
-}

@@ -1,6 +1,0 @@
-{
-  "observed": "Top Secret//Si//25X1-//Noforn",
-  "expected": "TOP SECRET//SI//25X1-//NOFORN",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8300000000000001
-}

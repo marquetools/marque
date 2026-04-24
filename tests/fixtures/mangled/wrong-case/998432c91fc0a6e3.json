@@ -1,6 +1,0 @@
-{
-  "observed": "secret//rel to gbr, aus",
-  "expected": "SECRET//REL TO GBR, AUS",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.81
-}

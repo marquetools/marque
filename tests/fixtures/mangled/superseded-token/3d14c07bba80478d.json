@@ -1,6 +1,0 @@
-{
-  "observed": "CONFIDENTIAL//NOFORN//COMINT",
-  "expected": "CONFIDENTIAL//NOFORN//SI",
-  "mangling_class": "SupersededToken",
-  "source_confidence": 0.8200000000000001
-}

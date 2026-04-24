@@ -1,6 +1,0 @@
-{
-  "observed": "TS//NF//SPECIAL ACCESS REQUIRED-BP",
-  "expected": "TS//SPECIAL ACCESS REQUIRED-BP//NF",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.8200000000000001
-}

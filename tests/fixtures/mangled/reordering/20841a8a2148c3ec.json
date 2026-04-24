@@ -1,6 +1,0 @@
-{
-  "observed": "NODIS//SECRET//NOFORN//REL TO USA, GBR",
-  "expected": "SECRET//NOFORN//REL TO USA, GBR//NODIS",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.8300000000000001
-}

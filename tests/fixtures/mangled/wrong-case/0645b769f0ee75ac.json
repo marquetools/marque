@@ -1,6 +1,0 @@
-{
-  "observed": "secret//noforn//rel to usa, gbr//nodis",
-  "expected": "SECRET//NOFORN//REL TO USA, GBR//NODIS",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8300000000000001
-}

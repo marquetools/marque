@@ -1,6 +1,0 @@
-{
-  "observed": "TOP SECRET SI/123//NOFORN",
-  "expected": "TOP SECRET//SI/123//NOFORN",
-  "mangling_class": "MissingDelimiter",
-  "source_confidence": 0.8200000000000001
-}

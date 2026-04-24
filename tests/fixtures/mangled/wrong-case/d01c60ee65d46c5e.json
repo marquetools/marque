@@ -1,6 +1,0 @@
-{
-  "observed": "top secret//si//limdis",
-  "expected": "TOP SECRET//SI//LIMDIS",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8200000000000001
-}

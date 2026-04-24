@@ -1,6 +1,0 @@
-{
-  "observed": "Top Secret//Noform//Rel To Usa, Gbr",
-  "expected": "TOP SECRET//NOFORM//REL TO USA, GBR",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8200000000000001
-}

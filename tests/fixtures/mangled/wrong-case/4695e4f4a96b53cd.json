@@ -1,6 +1,0 @@
-{
-  "observed": "secret//noforn//nodis/exdis",
-  "expected": "SECRET//NOFORN//NODIS/EXDIS",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.8200000000000001
-}

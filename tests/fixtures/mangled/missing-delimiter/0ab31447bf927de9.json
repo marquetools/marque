@@ -1,6 +1,0 @@
-{
-  "observed": "TOP SECRET SI-NK-G//ORCON/NOFORN",
-  "expected": "TOP SECRET//SI-NK-G//ORCON/NOFORN",
-  "mangling_class": "MissingDelimiter",
-  "source_confidence": 0.8200000000000001
-}

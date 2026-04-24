@@ -1,6 +1,0 @@
-{
-  "observed": "FROBOZZ//CONFIDENTIAL",
-  "expected": "CONFIDENTIAL//FROBOZZ",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.81
-}

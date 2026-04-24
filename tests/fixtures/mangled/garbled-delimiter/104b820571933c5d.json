@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET// NOFORN//EXDIS",
+  "expected": "SECRET//NOFORN//EXDIS",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.8200000000000001
+}

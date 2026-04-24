@@ -1,6 +1,0 @@
-{
-  "observed": "Confidential//Frobozz",
-  "expected": "CONFIDENTIAL//FROBOZZ",
-  "mangling_class": "WrongCase",
-  "source_confidence": 0.81
-}

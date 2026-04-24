@@ -1,6 +1,0 @@
-{
-  "observed": "TOP SFCRET//SI//25X1-//NOFORN",
-  "expected": "TOP SECRET//SI//25X1-//NOFORN",
-  "mangling_class": "Typo",
-  "source_confidence": 0.8300000000000001
-}

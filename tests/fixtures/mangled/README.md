@@ -31,6 +31,20 @@ repo — see `tests/corpus/CORPUS_PROVENANCE.md`), applies one of the six
 labeled mangling transforms below, and emits one JSON file per case
 under the class directory that names its transform.
 
+**Source-narrowing invariant.** `tests/corpus/` is a mixed-validity
+tree: `valid/` holds canonical markings, `invalid/` holds intentional
+rule-violation fixtures (`SECRET//SERCET//NOFORN`,
+`SECRET//XYZZY//NOFORN`, etc.), and `prose/` holds non-marking text.
+If the generator walked the whole tree, its regex would yank
+canonical-*looking* shapes out of `invalid/` and treat the embedded
+typos as ground truth — silently poisoning the `expected` field in
+the fixture and, by extension, the SC-004 accuracy gate. To prevent
+that, `generate_mangled_fixtures` resolves the corpus path through
+`_resolve_canonical_source`: if `<corpus>/valid/` exists, the walk is
+pinned there and the `invalid/` / `prose/` siblings are skipped.
+Homogeneous corpora (no `valid/` subdir) are used unchanged, so an
+Enron-style maildir still works as-is.
+
 **Corpus choice rationale.** Phase-D priors (`crates/capco/corpus/priors.json`)
 are derived from the Enron corpus because Enron measures how often
 CAPCO tokens appear in *non-IC business prose* — that's the question

@@ -1,6 +1,0 @@
-{
-  "observed": "NOFORN//SECRET",
-  "expected": "SECRET//NOFORN",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.81
-}

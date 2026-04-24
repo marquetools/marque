@@ -121,6 +121,19 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
             (name.clone(), count, log_prior)
         })
         .collect();
+    // Fail the build closed if the generator emitted an empty token
+    // table. An empty TOKEN_BASE_RATES means the decoder has no corpus
+    // evidence for any canonical token — a generator regression, not a
+    // valid state. The #[cfg(test)] `tables_are_non_empty` check
+    // asserts the same invariant, but only fires when tests run; this
+    // guard fails `cargo build` even when tests are skipped.
+    if token_rows.is_empty() {
+        panic!(
+            "[marque-capco build.rs] priors.json token_base_rates is empty. \
+             {} must contain at least one token.",
+            priors_path.display()
+        );
+    }
     // Sort so the emitted table is stable across generator runs with the
     // same input — keeps `cargo build` incremental and the generated
     // file diff-clean under VCS snapshots.
@@ -134,6 +147,16 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
             (name.clone(), count, log_prior)
         })
         .collect();
+    // Same fails-closed guard on templates: empty TEMPLATE_BASE_RATES
+    // means the decoder has no grammar-shape priors to score K=8
+    // candidates against.
+    if template_rows.is_empty() {
+        panic!(
+            "[marque-capco build.rs] priors.json template_base_rates is empty. \
+             {} must contain at least one template.",
+            priors_path.display()
+        );
+    }
     template_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut out = String::new();

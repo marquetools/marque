@@ -829,6 +829,35 @@ _MANGLING_TRANSFORMS = {
 }
 
 
+def _resolve_canonical_source(corpus_path: Path) -> Path:
+    """
+    Pin the mangled-fixture source to the canonical subset of a corpus.
+
+    The ``mangled`` mode's fixture ``expected`` strings MUST be canonical
+    CAPCO markings — they are the ground truth the decoder is graded
+    against in the SC-004 accuracy gate. If the corpus mixes canonical
+    and non-canonical text (as ``tests/corpus/`` does, with ``valid/``,
+    ``invalid/``, and ``prose/`` siblings), walking the whole tree
+    would pull regex-extractable shapes out of the ``invalid/`` fixtures
+    — files like ``SECRET//SERCET//NOFORN`` — and treat the embedded
+    typo as canonical, poisoning the decoder gate.
+
+    Resolution rule: if ``corpus_path/valid/`` exists, pin there.
+    Otherwise fall back to ``corpus_path`` unchanged so a homogeneous
+    corpus (e.g., an Enron maildir) still works.
+    """
+    valid_subdir = corpus_path / "valid"
+    if valid_subdir.is_dir():
+        print(
+            f"mangled mode: restricting corpus source to {valid_subdir} "
+            "(skipping invalid/ and prose/ siblings so fixture `expected` "
+            "strings stay canonical)",
+            file=sys.stderr,
+        )
+        return valid_subdir
+    return corpus_path
+
+
 def generate_mangled_fixtures(
     corpus_path: Path,
     output_dir: Path,
@@ -842,7 +871,13 @@ def generate_mangled_fixtures(
     Returns a summary dict with per-class case counts. Raises ``RuntimeError``
     if the total case count falls below ``min_cases`` after exhausting the
     corpus, since the SC-004 gate depends on ≥200 cases.
+
+    ``corpus_path`` is resolved through ``_resolve_canonical_source`` so
+    a mixed-validity test corpus (``tests/corpus/`` with ``valid/`` +
+    ``invalid/`` + ``prose/``) transparently narrows to ``valid/``. Pass
+    a homogeneous corpus directly if you want a different behavior.
     """
+    corpus_path = _resolve_canonical_source(corpus_path)
     rng = random.Random(seed)
     # One directory per class, created eagerly so downstream checks
     # that inspect directory existence find what they expect. Clear
@@ -877,43 +912,55 @@ def generate_mangled_fixtures(
             f"shapes. Check the corpus contents."
         )
 
-    # Distribute evenly across classes. Each canonical is mangled into
-    # every class where the transform applies. Not every transform
-    # applies to every canonical (e.g., superseded-token only triggers
-    # when a superseded token is in the canonical).
+    # Distribute across classes. Each (canonical, class) pair is
+    # sampled up to ``SAMPLES_PER_CLASS_PER_CANONICAL`` times per seed.
+    # Because the curated canonical source (``tests/corpus/valid/``) is
+    # small (~10 extractable shapes) and we want ≥200 fixtures for the
+    # SC-004 gate, per-pair resampling multiplies coverage without
+    # broadening the source. The RNG state advances on every call, so
+    # repeated invocations of the same transform on the same canonical
+    # typically yield distinct mangled outputs (different typo
+    # position, different permutation, etc.). Duplicates that collapse
+    # into the same (observed, expected) digest are dropped — the cap
+    # is an upper bound, not a target. Deterministic transforms like
+    # ``superseded-token`` and ``wrong-case(lower/title)`` cap out at
+    # one or two distinct outputs per canonical regardless of
+    # resampling, which is honest — we don't fabricate variation.
+    SAMPLES_PER_CLASS_PER_CANONICAL = 16
     counts = Counter()
     case_digest_seen: set[str] = set()
 
     for canonical in sorted(canonicals):
         for cls in MANGLING_CLASSES:
             transform = _MANGLING_TRANSFORMS[cls]
-            observed = transform(canonical, rng)
-            if observed is None or observed == canonical:
-                continue
-            # Confidence heuristic: longer markings + more structure
-            # make the (observed, expected) mapping more defensible.
-            source_confidence = min(0.99, 0.80 + 0.01 * canonical.count("//"))
-            record = {
-                "observed": observed,
-                "expected": canonical,
-                "mangling_class": _class_to_pascal(cls),
-                "source_confidence": source_confidence,
-            }
-            # Stable filename derived from a content digest. For the
-            # same corpus and the same ``--seed``, invocations produce
-            # the same filenames, so committing the fixture set is
-            # reproducible; different seeds will generally produce
-            # different observed strings and therefore different
-            # filenames (the transforms themselves are RNG-driven).
-            digest = hashlib.sha256(
-                f"{cls}\0{observed}\0{canonical}".encode()
-            ).hexdigest()[:16]
-            if digest in case_digest_seen:
-                continue
-            case_digest_seen.add(digest)
-            out_path = output_dir / cls / f"{digest}.json"
-            out_path.write_text(json.dumps(record, indent=2) + "\n")
-            counts[cls] += 1
+            for _ in range(SAMPLES_PER_CLASS_PER_CANONICAL):
+                observed = transform(canonical, rng)
+                if observed is None or observed == canonical:
+                    continue
+                # Confidence heuristic: longer markings + more structure
+                # make the (observed, expected) mapping more defensible.
+                source_confidence = min(0.99, 0.80 + 0.01 * canonical.count("//"))
+                record = {
+                    "observed": observed,
+                    "expected": canonical,
+                    "mangling_class": _class_to_pascal(cls),
+                    "source_confidence": source_confidence,
+                }
+                # Stable filename derived from a content digest. For the
+                # same corpus and the same ``--seed``, invocations
+                # produce the same filenames, so committing the fixture
+                # set is reproducible; different seeds generally produce
+                # different observed strings and therefore different
+                # filenames (the transforms themselves are RNG-driven).
+                digest = hashlib.sha256(
+                    f"{cls}\0{observed}\0{canonical}".encode()
+                ).hexdigest()[:16]
+                if digest in case_digest_seen:
+                    continue
+                case_digest_seen.add(digest)
+                out_path = output_dir / cls / f"{digest}.json"
+                out_path.write_text(json.dumps(record, indent=2) + "\n")
+                counts[cls] += 1
 
     total = sum(counts.values())
     summary = {

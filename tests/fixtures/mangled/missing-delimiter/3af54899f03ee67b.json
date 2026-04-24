@@ -1,6 +1,0 @@
-{
-  "observed": "SECRET NF",
-  "expected": "SECRET//NF",
-  "mangling_class": "MissingDelimiter",
-  "source_confidence": 0.81
-}

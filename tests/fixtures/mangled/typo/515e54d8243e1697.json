@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//NOFORN//PEXDIS",
+  "expected": "SECRET//NOFORN//EXDIS",
+  "mangling_class": "Typo",
+  "source_confidence": 0.8200000000000001
+}

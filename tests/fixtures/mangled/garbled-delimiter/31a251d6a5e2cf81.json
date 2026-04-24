@@ -1,6 +1,0 @@
-{
-  "observed": "TOP SECRET// SI//FOOBAR//NOFORN",
-  "expected": "TOP SECRET//SI//FOOBAR//NOFORN",
-  "mangling_class": "GarbledDelimiter",
-  "source_confidence": 0.8300000000000001
-}

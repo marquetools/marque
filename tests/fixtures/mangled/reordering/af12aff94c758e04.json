@@ -1,6 +1,0 @@
-{
-  "observed": "NOFORM//TOP SECRET//REL TO USA, GBR",
-  "expected": "TOP SECRET//NOFORM//REL TO USA, GBR",
-  "mangling_class": "Reordering",
-  "source_confidence": 0.8200000000000001
-}
