@@ -186,12 +186,12 @@ fn classifier_id_propagated_when_configured() {
 
 // --- H3: insta snapshot tests for audit NDJSON shape (T046) ---
 
-/// Must match `AUDIT_SCHEMA_VERSION` in `marque/src/render.rs`. If a version
-/// bump changes the value there, the insta snapshots here will fail, surfacing
-/// the mismatch at test time.
-const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
-
-/// Serialize an AppliedFix to the audit-record JSON shape for snapshot testing.
+/// Serialize an `AppliedFix` to a v1-or-v2 audit-record JSON value for
+/// snapshot testing. Schema version is sourced from the engine's
+/// build-time constant so snapshots track the active schema; v2-only
+/// fields (`recognition`, `runner_up_ratio`, `features`) are emitted
+/// only when this build is `marque-mvp-2` (default), matching the
+/// CLI emitter's dispatch (`marque/src/render.rs::render_audit_record`).
 fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
     let source_str = match fix.proposal.source {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
@@ -199,8 +199,8 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         marque_rules::FixSource::MigrationTable => "MigrationTable",
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
     };
-    json!({
-        "schema": AUDIT_SCHEMA_VERSION,
+    let mut record = json!({
+        "schema": marque_engine::AUDIT_SCHEMA_VERSION,
         "rule": fix.proposal.rule.as_str(),
         "source": source_str,
         "span": {
@@ -215,7 +215,38 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),
         "dry_run": fix.dry_run,
         "input": fix.input.as_ref().map(|s| s.as_ref()),
-    })
+    });
+
+    if marque_engine::AUDIT_SCHEMA_IS_V2 {
+        let c = &fix.proposal.confidence;
+        let object = record.as_object_mut().expect("record is a JSON object");
+        object.insert("recognition".to_owned(), json!(c.recognition));
+        if let Some(r) = c.runner_up_ratio {
+            object.insert("runner_up_ratio".to_owned(), json!(r));
+        }
+        if !c.features.is_empty() {
+            let features: Vec<serde_json::Value> = c
+                .features
+                .iter()
+                .map(|f| {
+                    let id = match f.id {
+                        marque_rules::FeatureId::EditDistance1 => "EditDistance1",
+                        marque_rules::FeatureId::EditDistance2 => "EditDistance2",
+                        marque_rules::FeatureId::TokenReorder => "TokenReorder",
+                        marque_rules::FeatureId::SupersededToken => "SupersededToken",
+                        marque_rules::FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
+                        marque_rules::FeatureId::StrictContextClassification => {
+                            "StrictContextClassification"
+                        }
+                        marque_rules::FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+                    };
+                    json!({"id": id, "delta": f.delta})
+                })
+                .collect();
+            object.insert("features".to_owned(), json!(features));
+        }
+    }
+    record
 }
 
 #[test]
@@ -226,7 +257,13 @@ fn audit_record_snapshot_e001_apply() {
     assert_eq!(result.applied.len(), 1);
 
     let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
-    insta::assert_json_snapshot!(json);
+    // Snapshot is suffixed with the active audit schema so v1-downgrade
+    // and v2-default builds maintain independent fixtures (FR-014: each
+    // build emits exactly one schema, and the snapshot tracks that
+    // schema's expected shape).
+    insta::with_settings!({snapshot_suffix => marque_engine::AUDIT_SCHEMA_VERSION}, {
+        insta::assert_json_snapshot!(json);
+    });
 }
 
 #[test]
@@ -237,7 +274,9 @@ fn audit_record_snapshot_e001_dry_run() {
     assert_eq!(result.applied.len(), 1);
 
     let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
-    insta::assert_json_snapshot!(json);
+    insta::with_settings!({snapshot_suffix => marque_engine::AUDIT_SCHEMA_VERSION}, {
+        insta::assert_json_snapshot!(json);
+    });
 }
 
 // --- L4: parity test verifies rule IDs, not just count ---

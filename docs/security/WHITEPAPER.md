@@ -494,21 +494,34 @@ rule-failure handling.
 
 ### 6.4 Audit record schema versioning
 
-Audit records are NDJSON on stderr (`specs/001-marque-mvp/contracts/audit-record.json`).
-Current schema ID is `marque-mvp-1`. Phase D (004) adds `marque-mvp-2`
-with `recognition` and `runner_up_ratio` confidence fields plus
-`features: Vec<FeatureContribution>` with `FeatureId` enum values.
+Audit records are NDJSON on stderr. Two schemas coexist:
+`marque-mvp-1` (`specs/001-marque-mvp/contracts/audit-record.json`,
+12-field shape) and `marque-mvp-2`
+(`specs/004-constraints-decoder-vocab/contracts/audit-record-v2.md`,
+strict superset adding `recognition`, `runner_up_ratio`, and
+`features: Vec<FeatureContribution>` with `FeatureId` enum values).
 
-FR-014 requires **single-schema-version-per-build**: `MARQUE_AUDIT_SCHEMA`
-is a build-time flag, not a runtime negotiation. Mixed-schema streams
-are impossible because the codepath is resolved at compile time.
+FR-014 requires **single-schema-version-per-build**:
+`MARQUE_AUDIT_SCHEMA` is a build-time flag, not a runtime negotiation.
+Mixed-schema streams are impossible because the codepath is resolved
+at compile time. The flag is read by `crates/engine/build.rs`,
+validated against `["marque-mvp-1", "marque-mvp-2"]` (panic on
+anything else), and surfaced as `pub const
+marque_engine::AUDIT_SCHEMA_VERSION` plus the const-folded selector
+`AUDIT_SCHEMA_IS_V2`. The CLI emitter (`marque/src/render.rs`) and
+the WASM emitter (`crates/wasm/src/lib.rs`) dispatch on the selector
+to emit either `AuditRecordJsonV1` or `AuditRecordJsonV2`. v2 ⊃ v1
+back-compat is pinned by
+`crates/engine/tests/audit.rs::v1_records_parse_in_v2_consumer`
+(T054); the stream-level single-schema invariant is pinned by
+`marque/tests/cli_fix.rs::audit_stream_uses_only_one_schema_version`
+(T055).
 
-Wiring this flag through `build.rs` in the engine, and making
-`render.rs` read from the generated constant rather than hard-coding
-`"marque-mvp-1"`, is the P0 blocker for decoder audit records.
-
-**Status**: `[PARTIAL]` — contract and flag name defined;
-`MARQUE_AUDIT_SCHEMA` read is open (gap register P0-1).
+**Status**: `[CLOSED]` — both schemas wired through PR-4 (gap
+register P0-1 closed). PR-4b adds decoder-sourced records
+(`FixSource::DecoderPosterior`) with non-empty `features` and a
+`runner_up_ratio` once `Engine::fix_inner` learns to consume the
+decoder dispatcher's `Parsed::Unambiguous` candidates.
 
 ### 6.5 Classifier identity handling
 
@@ -977,7 +990,7 @@ possible), and a **remediation plan**. Severities:
 
 | # | Gap | Severity | Owner | Remediation |
 |---|---|---|---|---|
-| 1 | `MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"` | P0 | FR-014, T005, T054–T055 | Add build-script-generated constant; switch emitter to read it; compile-fail on unknown value |
+| 1 | ~~`MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"`~~ **Resolved (PR-4).** Engine exposes `pub const AUDIT_SCHEMA_VERSION` from `env!("MARQUE_AUDIT_SCHEMA")`; `marque/src/render.rs` and `crates/wasm/src/lib.rs` dispatch v1/v2 emitter struct from the const-folded `AUDIT_SCHEMA_IS_V2` selector. Build-time validation against `["marque-mvp-1", "marque-mvp-2"]` panics on unknown values. T054 (back-compat parse) and T055 (single-schema stream invariant) ride on top of the wiring. | ~~P0~~ closed | FR-014, T005, T054, T055 | Done |
 | 5 | `__engine_promote` seal is convention-only | P1 | Constitution V invariant | Seal behind a private ZST token constructable only inside `marque-engine`; test-only exception becomes a private helper |
 | 6 | Server has no explicit `DefaultBodyLimit` | P1 | §10.2 | Add Tower layer with explicit limit (e.g. 10 MB) so operator sees a decision |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |

@@ -221,13 +221,34 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
     }
 }
 
-/// JSON projection of an `AppliedFix` conforming to `contracts/audit-record.json`.
+// ---------------------------------------------------------------------------
+// Audit record JSON
+//
+// Two struct shapes mirror the CLI emitter (`marque/src/render.rs`):
+//
+// - `AuditRecordJsonV1<'a>` — `marque-mvp-1`, the legacy 12-field shape
+//   that pre-Phase-D consumers parse.
+// - `AuditRecordJsonV2<'a>` — `marque-mvp-2`, strict superset that adds
+//   `recognition` (always present), `runner_up_ratio` (omitted when
+//   `None`), and `features` (omitted when empty).
+//
+// Selection is driven by `marque_engine::AUDIT_SCHEMA_IS_V2`, the
+// compile-time const surfaced by `crates/engine/build.rs`. The two
+// shapes have different field counts, so the `applied` field of
+// `FixResultJson` carries `Box<RawValue>` (already used for
+// `remaining`) and `serialize_applied_fix` dispatches once at
+// serialization time. Both arms compile in every build; the
+// const-folded `if` eliminates the dead arm at the matching schema's
+// expense.
+// ---------------------------------------------------------------------------
+
+/// v1 audit record (`contracts/audit-record.json`, schema `marque-mvp-1`).
 ///
 /// Borrows from the `AppliedFix` to avoid per-field heap allocations.
 /// Only `timestamp` is owned — `humantime::format_rfc3339` returns a
 /// temporary that cannot be borrowed across the struct boundary.
 #[derive(Debug, Serialize)]
-struct AuditRecordJson<'a> {
+struct AuditRecordJsonV1<'a> {
     schema: &'static str,
     rule: &'a str,
     source: &'static str,
@@ -242,11 +263,54 @@ struct AuditRecordJson<'a> {
     input: Option<&'a str>,
 }
 
-const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
+/// v2 audit record (`contracts/audit-record-v2.md`, schema `marque-mvp-2`).
+///
+/// Strict superset of [`AuditRecordJsonV1`]: every v1 field is preserved
+/// in v1 order, then `recognition` / `runner_up_ratio` / `features` are
+/// appended. v2 ⊃ v1 is the back-compat guarantee.
+#[derive(Debug, Serialize)]
+struct AuditRecordJsonV2<'a> {
+    schema: &'static str,
+    rule: &'a str,
+    source: &'static str,
+    span: SpanJson,
+    original: &'a str,
+    replacement: &'a str,
+    confidence: f32,
+    migration_ref: Option<&'a str>,
+    timestamp: String,
+    classifier_id: Option<&'a str>,
+    dry_run: bool,
+    input: Option<&'a str>,
+    recognition: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_up_ratio: Option<f32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    features: Vec<FeatureJson>,
+}
 
-fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson<'_> {
-    AuditRecordJson {
-        schema: AUDIT_SCHEMA_VERSION,
+#[derive(Debug, Serialize)]
+struct FeatureJson {
+    id: &'static str,
+    delta: f32,
+}
+
+fn feature_id_str(id: marque_rules::FeatureId) -> &'static str {
+    use marque_rules::FeatureId;
+    match id {
+        FeatureId::EditDistance1 => "EditDistance1",
+        FeatureId::EditDistance2 => "EditDistance2",
+        FeatureId::TokenReorder => "TokenReorder",
+        FeatureId::SupersededToken => "SupersededToken",
+        FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
+        FeatureId::StrictContextClassification => "StrictContextClassification",
+        FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+    }
+}
+
+fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1<'_> {
+    AuditRecordJsonV1 {
+        schema: marque_engine::AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str(),
         source: fix_source_str(fix.proposal.source),
         span: SpanJson {
@@ -264,11 +328,54 @@ fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson<'_> {
     }
 }
 
+fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2<'_> {
+    let c = &fix.proposal.confidence;
+    AuditRecordJsonV2 {
+        schema: marque_engine::AUDIT_SCHEMA_VERSION,
+        rule: fix.proposal.rule.as_str(),
+        source: fix_source_str(fix.proposal.source),
+        span: SpanJson {
+            start: fix.proposal.span.start,
+            end: fix.proposal.span.end,
+        },
+        original: &fix.proposal.original,
+        replacement: &fix.proposal.replacement,
+        confidence: c.combined(),
+        migration_ref: fix.proposal.migration_ref,
+        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
+        classifier_id: fix.classifier_id.as_deref(),
+        dry_run: fix.dry_run,
+        input: fix.input.as_deref(),
+        recognition: c.recognition,
+        runner_up_ratio: c.runner_up_ratio,
+        features: c
+            .features
+            .iter()
+            .map(|f| FeatureJson {
+                id: feature_id_str(f.id),
+                delta: f.delta,
+            })
+            .collect(),
+    }
+}
+
+/// Serialize one `AppliedFix` to a pre-serialized JSON value, dispatching
+/// to the v1 or v2 emitter based on this build's audit schema.
+fn serialize_applied_fix(fix: &AppliedFix) -> Result<Box<serde_json::value::RawValue>, String> {
+    let bytes = if marque_engine::AUDIT_SCHEMA_IS_V2 {
+        serde_json::to_vec(&applied_fix_to_audit_json_v2(fix)).map_err(|e| e.to_string())?
+    } else {
+        serde_json::to_vec(&applied_fix_to_audit_json_v1(fix)).map_err(|e| e.to_string())?
+    };
+    let json = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
+}
+
 /// Wrapper for `fix()` output.
 #[derive(Debug, Serialize)]
-struct FixResultJson<'a> {
+struct FixResultJson {
     fixed_text: String,
-    applied: Vec<AuditRecordJson<'a>>,
+    applied: Vec<Box<serde_json::value::RawValue>>,
     remaining: Vec<Box<serde_json::value::RawValue>>,
 }
 
@@ -429,11 +536,11 @@ pub fn fix_native(
         let fixed_text = String::from_utf8(result.source)
             .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
-        let applied: Vec<AuditRecordJson> = result
+        let applied: Vec<Box<serde_json::value::RawValue>> = result
             .applied
             .iter()
-            .map(applied_fix_to_audit_json)
-            .collect();
+            .map(serialize_applied_fix)
+            .collect::<Result<_, _>>()?;
 
         // Remaining diagnostics as pre-serialized raw JSON. Each diagnostic
         // is serialized once into a byte buffer and wrapped as RawValue so

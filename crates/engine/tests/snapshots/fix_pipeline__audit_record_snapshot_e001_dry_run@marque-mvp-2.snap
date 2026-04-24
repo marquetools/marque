@@ -1,0 +1,24 @@
+---
+source: crates/engine/tests/fix_pipeline.rs
+expression: json
+---
+[
+  {
+    "classifier_id": null,
+    "confidence": 1.0,
+    "dry_run": true,
+    "input": null,
+    "migration_ref": null,
+    "original": "NF",
+    "recognition": 1.0,
+    "replacement": "NOFORN",
+    "rule": "E001",
+    "schema": "marque-mvp-2",
+    "source": "BuiltinRule",
+    "span": {
+      "end": 10,
+      "start": 8
+    },
+    "timestamp": "2023-11-14T22:13:20Z"
+  }
+]
