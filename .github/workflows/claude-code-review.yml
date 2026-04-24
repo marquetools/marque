@@ -62,5 +62,5 @@ jobs:
             capco-validators@capco-validators-dev
           prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           use_commit_signing: true
-          allowed_bots: "gemini[bot],jules[bot],copilot[bot],depedabot[bot],claude[bot]"
+          allowed_bots: "gemini[bot],jules[bot],copilot[bot],dependabot[bot],claude[bot]"
           assignee_trigger: claude
