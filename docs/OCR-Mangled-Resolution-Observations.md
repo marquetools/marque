@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # Notes on Mangled Classifications in scans and document conversions
 
 These were observed in the course of converting the CAPCO manual to markdown, and serve as a baseline for parsing OCR'd markings.

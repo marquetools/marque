@@ -34,3 +34,7 @@ workspace root for the design discussion and phased migration sequence.
 
 Phase A scaffolding. The trait and primitives are stable; concrete
 adapters land as separate PRs (Phase B onwards).
+
+## License
+
+Marque License 1.0 (`LicenseRef-MarqueLicense-1.0`). See [LICENSE.md](./LICENSE.md).

@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-sci-validator
 description: Specialist validator for Sensitive Compartmented Information (SCI) markings, compartments, sub-compartments, and grammatical rules per CAPCO §H.4 and §A.6.
 category: capco-validator

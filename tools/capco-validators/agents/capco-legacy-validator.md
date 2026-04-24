@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-legacy-validator
 description: Specialist validator for legacy control markings and deprecated markings per CAPCO §F. Identifies obsolete markings, recommends modern replacements.
 category: capco-validator
