@@ -6,26 +6,47 @@
 //!
 //! Enforces Constitution V + the G13 invariant (Phase 004 §spec,
 //! `docs/security/WHITEPAPER.md` §3.1): no document content, metadata
-//! field values, or subject-claim free-form text appears in any
-//! `AppliedFix` field or the serialized audit NDJSON stream.
+//! field values, or subject-claim free-form text appears in the
+//! text-bearing fields of an `AppliedFix` that the audit stream
+//! serializes, nor in `Diagnostic.message`.
 //!
-//! The audit stream is a compliance output — reviewed by a human auditor
-//! and forwarded to a log aggregator. Any document text that reaches
-//! this stream is a leakage bug of the same class as a wrong predicate:
-//! it means the caller's content accreted into marque-produced records.
+//! ## Scope of the check
+//!
+//! The check greps for distinctive prose sentinels in:
+//!
+//! - `AppliedFix.proposal.original` — the bytes replaced at the fix
+//!   span. Should equal the marking span, nothing more.
+//! - `AppliedFix.proposal.replacement` — the canonical marking the
+//!   fix writes back. Should contain only marking tokens.
+//! - `Diagnostic.message` — the human-readable diagnostic. Should
+//!   interpolate token canonicals, never prose.
+//!
+//! These are the only caller-content-bearing string fields that reach
+//! the audit or lint output streams. The remaining fields in the
+//! serialized audit record are enum-typed (`rule`, `source`,
+//! `severity`), numeric (`confidence`, span offsets), process-supplied
+//! opaque identifiers (`classifier_id`, `input`, `timestamp`),
+//! `&'static str` references (`migration_ref`), or enum-typed feature
+//! labels (`FeatureId` — landed via FR-012). None carry document-
+//! derived text by type, so they are not greppable targets for this
+//! invariant. The test intentionally does not re-invoke the CLI's
+//! NDJSON serializer (`marque::render::applied_fix_to_audit_json`),
+//! since serialization is a pure projection of these fields — if the
+//! source fields are clean, the NDJSON line they produce is clean.
 //!
 //! ## Strategy
 //!
 //! 1. **Corpus sweep.** Run `Engine::fix` over every fixture under
 //!    `tests/corpus/{invalid,valid,prose}/`. For every `AppliedFix`,
-//!    assert neither `proposal.original` nor `proposal.replacement`
-//!    contains any distinctive prose sentinel.
+//!    grep `proposal.{original, replacement}` against a sentinel list.
 //!
-//! 2. **Marking-in-prose composites.** Synthesize documents by wrapping
-//!    each invalid fixture with ~2 KB of prose before and after.
-//!    Exercises the realistic case where a marking lives inside a
-//!    larger document. A rule that expands its span past the marking
-//!    boundary is caught here even when stand-alone fixtures miss it.
+//! 2. **Marking-in-prose composites.** Synthesize documents by
+//!    concatenating ~2 KB of prose bytes, an invalid fixture, and
+//!    ~2 KB of prose bytes. Exercises the realistic case where a
+//!    marking lives inside a larger document — a rule whose span
+//!    expands past the marking boundary is caught here even when
+//!    stand-alone fixtures miss it. Concatenation is byte-level so
+//!    non-UTF-8 fixtures are never silently skipped.
 //!
 //! 3. **Companion: diagnostic messages.** Not T056 proper (T056 is
 //!    scoped to the audit stream), but the same invariant applies to
@@ -34,17 +55,18 @@
 //!    identical.
 //!
 //! 4. **Self-test.** A synthetic `AppliedFix` with a known leak is
-//!    passed through the sentinel checker and must panic. This proves
-//!    the check is load-bearing — a future refactor that nulled out
-//!    the sentinel list would fail this test immediately.
+//!    passed through the sentinel checker and must panic. Proves the
+//!    check is load-bearing — a future refactor that nulled out the
+//!    sentinel list would fail this test immediately instead of
+//!    silently weakening the real corpus sweep.
 //!
 //! ## Sentinel selection
 //!
-//! Sentinels are phrases from `tests/corpus/prose/article.txt` (public-
-//! domain Federalist Papers prose). Each sentinel is long and
-//! distinctive enough that it cannot appear in any CAPCO/ISM marking
-//! by construction — no classification level, compartment, dissem
-//! control, or trigraph contains English words with spaces.
+//! Sentinels are phrases from `tests/corpus/prose/article.txt`
+//! (public-domain Federalist Papers prose). Each sentinel is long
+//! and distinctive enough that it cannot appear in any CAPCO/ISM
+//! marking by construction — no classification level, compartment,
+//! dissem control, or trigraph contains English words with spaces.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -87,8 +109,8 @@ fn test_engine() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn run_fix(source: &[u8]) -> FixResult {
-    test_engine().fix(source, FixMode::Apply)
+fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
+    engine.fix(source, FixMode::Apply)
 }
 
 /// Panic if any prose sentinel appears in the given string.
@@ -118,6 +140,7 @@ fn check_fixes_clean(applied: &[AppliedFix], context: &str) {
 
 #[test]
 fn no_document_text_leaks_from_invalid_corpus() {
+    let engine = test_engine();
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
@@ -125,13 +148,14 @@ fn no_document_text_leaks_from_invalid_corpus() {
     );
     for path in &fixtures {
         let source = load_fixture(path);
-        let result = run_fix(&source);
+        let result = run_fix(&engine, &source);
         check_fixes_clean(&result.applied, &path.display().to_string());
     }
 }
 
 #[test]
 fn no_document_text_leaks_from_valid_corpus() {
+    let engine = test_engine();
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
@@ -139,13 +163,14 @@ fn no_document_text_leaks_from_valid_corpus() {
     );
     for path in &fixtures {
         let source = load_fixture(path);
-        let result = run_fix(&source);
+        let result = run_fix(&engine, &source);
         check_fixes_clean(&result.applied, &path.display().to_string());
     }
 }
 
 #[test]
 fn no_document_text_leaks_from_prose_corpus() {
+    let engine = test_engine();
     let fixtures = prose_fixtures();
     assert!(
         !fixtures.is_empty(),
@@ -153,7 +178,7 @@ fn no_document_text_leaks_from_prose_corpus() {
     );
     for path in &fixtures {
         let source = load_fixture(path);
-        let result = run_fix(&source);
+        let result = run_fix(&engine, &source);
         check_fixes_clean(&result.applied, &path.display().to_string());
     }
 }
@@ -169,17 +194,20 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
     // surrounding prose into `original` or extrapolates prose into
     // `replacement`), this test catches it even when the stand-alone
     // fixture does not.
+    let engine = test_engine();
     let prose_paths = prose_fixtures();
     let prose_path = prose_paths
         .first()
         .expect("need at least one prose fixture to synthesize composites");
     let prose_bytes = load_fixture(prose_path);
-    let prose = std::str::from_utf8(&prose_bytes).expect("prose fixture must be UTF-8");
 
-    let head_end = prose.len().min(2048);
-    let head = &prose[..head_end];
-    let tail_start = prose.len().saturating_sub(2048);
-    let tail = &prose[tail_start..];
+    // Byte-level slicing: we don't assume fixtures are valid UTF-8
+    // (fixtures are `.txt` today, but the engine operates on `&[u8]`
+    // and the test must not be weaker than the engine's own contract).
+    let head_end = prose_bytes.len().min(2048);
+    let head: &[u8] = &prose_bytes[..head_end];
+    let tail_start = prose_bytes.len().saturating_sub(2048);
+    let tail: &[u8] = &prose_bytes[tail_start..];
 
     let fixtures = invalid_fixtures();
     assert!(
@@ -187,21 +215,24 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
         "need invalid fixtures to synthesize composites"
     );
 
-    // Vacuity guard: the test is meaningful only if the composite
-    // documents actually produce fixes. A future refactor that made
-    // all invalid fixtures produce zero fixes (e.g., by changing the
-    // default confidence threshold) would otherwise silently turn this
-    // test into a tautology.
+    // Vacuity guard: the test is meaningful only if composite documents
+    // actually produce fixes. A future refactor that made all invalid
+    // fixtures produce zero fixes (e.g., by changing the default
+    // confidence threshold) would otherwise silently turn this into a
+    // tautology.
     let mut fixes_examined = 0usize;
 
     for path in &fixtures {
         let fixture_bytes = load_fixture(path);
-        let Ok(fixture_str) = std::str::from_utf8(&fixture_bytes) else {
-            continue;
-        };
+        let mut composite =
+            Vec::with_capacity(head.len() + 2 + fixture_bytes.len() + 2 + tail.len());
+        composite.extend_from_slice(head);
+        composite.extend_from_slice(b"\n\n");
+        composite.extend_from_slice(&fixture_bytes);
+        composite.extend_from_slice(b"\n\n");
+        composite.extend_from_slice(tail);
 
-        let composite = format!("{head}\n\n{fixture_str}\n\n{tail}");
-        let result = run_fix(composite.as_bytes());
+        let result = run_fix(&engine, &composite);
         let label = format!("wrapped:{}", path.display());
         check_fixes_clean(&result.applied, &label);
         fixes_examined += result.applied.len();
@@ -233,6 +264,16 @@ fn no_document_text_leaks_into_diagnostic_messages() {
     for path in prose_fixtures() {
         sources.push((path.display().to_string(), load_fixture(&path)));
     }
+
+    // Vacuity guard: if the corpus root were mislocated or all three
+    // fixture directories were empty, the loop below would trivially
+    // succeed. Fail loud instead.
+    assert!(
+        !sources.is_empty(),
+        "no fixtures found across invalid/valid/prose — \
+         cannot validate G13 against diagnostic messages \
+         (vacuous-pass guard)"
+    );
 
     for (label, source) in &sources {
         let result = engine.lint(source);
