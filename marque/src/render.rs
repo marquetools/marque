@@ -824,7 +824,11 @@ mod tests {
         // present, and `runner_up_ratio` / `features` omitted (skip when
         // empty / None). v1 builds (downgrade) drop all three new fields.
         if AUDIT_SCHEMA_IS_V2 {
-            assert_eq!(v["recognition"], 1.0_f32);
+            // `serde_json::Value` deserializes JSON numbers as `f64`, so
+            // compare against `1.0` (f64) — matches the
+            // `assert_eq!(v["confidence"], 1.0)` line above and avoids
+            // f32→f64 widening surprises.
+            assert_eq!(v["recognition"], 1.0);
             assert!(
                 v.get("runner_up_ratio").is_none(),
                 "strict-path v2 record must omit runner_up_ratio when None; \
