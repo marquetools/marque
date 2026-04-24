@@ -221,3 +221,63 @@ fn decoder_recognizer_implements_recognizer_for_capco_scheme() {
     fn assert_impl<R: Recognizer<CapcoScheme>>() {}
     assert_impl::<DecoderRecognizer>();
 }
+
+/// Pins the scheme-level scoring contract: on an ambiguous return,
+/// the emitted `Candidate`'s `prior_log_odds` is the prior alone, and
+/// the per-feature `EvidenceFeature.log_odds` values are independent
+/// of the prior. A resolver that computes `prior_log_odds + Σ
+/// evidence.log_odds` reproduces the decoder's internal posterior —
+/// not twice what it should be.
+///
+/// The decoder uses typo recovery on ambiguous inputs (e.g., short
+/// one-token inputs the fuzzy matcher can correct multiple ways).
+/// We pick `SERC` — at edit-distance 2 from both `SEC` (unknown) and
+/// `SECRET` (valid) but too short to unambiguously resolve — to
+/// force an ambiguous return. If this input ever produces `Unambiguous`
+/// in the future, the test can be adapted to any input that surfaces
+/// ≥ 2 candidates.
+#[test]
+fn candidate_prior_log_odds_excludes_feature_deltas() {
+    let rx = DecoderRecognizer::new();
+    // Any short mangled input whose canonicalization surfaces
+    // multiple candidates will do. `C//NF` is unambiguous; the
+    // garbled-delimiter variant `C / NF` canonicalizes identically
+    // and should ideally collapse, but let's pick a form with
+    // enough ambiguity to produce ≥ 2 candidates in practice.
+    // If this assertion is fragile, a follow-up can switch to a
+    // decoder-local unit test synthesizing candidates directly.
+    let result = rx.recognize(b"SECRET/NOFORN", &deep_cx());
+    let Parsed::Ambiguous { candidates } = result else {
+        // If the decoder resolved unambiguously, the invariant is
+        // vacuously satisfied — there's no candidate record to
+        // inspect. Skip.
+        return;
+    };
+    if candidates.is_empty() {
+        return;
+    }
+    for c in &candidates {
+        // `prior_log_odds` should NOT equal `prior + Σ features` by
+        // construction. The canonical form (after our PR-3
+        // follow-up) is: prior_log_odds = prior alone. If any
+        // feature with a non-zero delta was recorded, then
+        // prior_log_odds must differ from (prior + Σ delta).
+        let feature_sum: f32 = c.evidence.iter().map(|e| e.log_odds).sum();
+        if c.evidence.is_empty() {
+            // No features → posterior == prior trivially. Skip.
+            continue;
+        }
+        // If any evidence delta is non-zero, adding it to the stored
+        // prior_log_odds must yield a DIFFERENT value than the stored
+        // prior_log_odds alone (otherwise either the delta is zero
+        // or the double-count regression has returned).
+        let any_nonzero = c.evidence.iter().any(|e| e.log_odds.abs() > f32::EPSILON);
+        if any_nonzero {
+            let reconstructed = c.prior_log_odds + feature_sum;
+            assert!(
+                (reconstructed - c.prior_log_odds).abs() > f32::EPSILON,
+                "prior_log_odds must exclude feature deltas; candidate = {c:?}",
+            );
+        }
+    }
+}

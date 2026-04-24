@@ -41,18 +41,35 @@
 //! ```text
 //! log_posterior(candidate | observed)
 //!   = log_prior(candidate)                      // baked corpus priors (PR-1)
-//!   + Σ log_likelihood(feature | candidate)     // enumerated features
+//!   + Σ log_likelihood(feature | candidate)     // enumerated scored features
 //! ```
 //!
-//! Features are drawn from the closed [`FeatureId`] enum:
-//! `EditDistance1`, `EditDistance2`, `TokenReorder`, `SupersededToken`,
-//! `StrictContextClassification`. Each contributes a fixed log-odds
-//! delta documented at the feature's call site.
+//! The decoder currently scores the candidate-shape features it
+//! records from the closed [`FeatureId`] enum:
+//! `EditDistance1`, `EditDistance2`, `TokenReorder`,
+//! `SupersededToken`, and `BaseRateCommonMarking`. Each contributes
+//! a fixed log-odds delta documented at the feature's call site.
+//!
+//! [`FeatureId::StrictContextClassification`] is part of the audit-
+//! schema enum but is **not** currently a scored-feature term:
+//! classification-level context is enforced through the separate
+//! [`ParseContext::classification_floor`] hard filter (FR-011),
+//! which rejects below-floor candidates before scoring rather than
+//! adding a likelihood term to the posterior. [`FeatureId::CorpusOverrideInEffect`]
+//! is reserved for PR-5 when corpus-override is wired; the decoder
+//! does not emit it today. Turning either into an actual scored
+//! contributor requires a coordinated audit-schema bump
+//! (`MARQUE_AUDIT_SCHEMA`) per `marque-rules/src/confidence.rs` doc.
 //!
 //! The top candidate wins when its posterior exceeds the runner-up by
 //! a configured ratio; below that threshold the decoder returns
 //! `Parsed::Ambiguous { candidates }` so the engine can surface a
-//! diagnostic rather than auto-apply.
+//! diagnostic rather than auto-apply. `Candidate::prior_log_odds`
+//! carries the prior alone (sum of token log-priors); the
+//! per-feature log-odds deltas live only in
+//! `Candidate::evidence[i].log_odds`, so a resolver that reconstructs
+//! `prior_log_odds + Σ evidence.log_odds` recovers the decoder's
+//! internal posterior exactly, without double-counting.
 //!
 //! ## What this module is NOT
 //!
@@ -189,13 +206,23 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 4. Score: sum baked corpus log-priors over canonical
-            //    tokens + per-feature log-odds deltas. All log-odds
-            //    values are documented at their construction site.
-            let score = score_candidate(&attempt, &marking);
+            // 4. Score: compute prior and posterior separately. The
+            //    prior is the sum of baked corpus log-priors over the
+            //    marking's canonical tokens; the posterior is the
+            //    prior plus the per-feature log-odds deltas recorded
+            //    during canonicalization. `Candidate::prior_log_odds`
+            //    is documented as the prior alone (see
+            //    `crates/scheme/src/ambiguity.rs`) and is combined
+            //    additively with `EvidenceFeature.log_odds` by any
+            //    downstream resolver — storing the full posterior
+            //    there would double-count the features once the
+            //    resolver re-adds them. Internal decoder sort /
+            //    threshold decisions use the posterior.
+            let (prior, posterior) = score_candidate(&attempt, &marking);
             scored.push(ScoredCandidate {
                 marking,
-                score,
+                prior,
+                posterior,
                 features: attempt.features,
             });
         }
@@ -206,18 +233,21 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             };
         }
 
-        // 5. Sort by score descending; keep top K=8.
+        // 5. Sort by posterior descending; keep top K=8.
         scored.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
+            b.posterior
+                .partial_cmp(&a.posterior)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         scored.truncate(K_MAX_CANDIDATES);
 
-        // 6. Decision: top-over-runner-up log margin.
+        // 6. Decision: top-over-runner-up log margin on the posterior.
         let top = &scored[0];
-        let top_score = top.score;
-        let runner_up_score = scored.get(1).map(|c| c.score).unwrap_or(f32::NEG_INFINITY);
+        let top_score = top.posterior;
+        let runner_up_score = scored
+            .get(1)
+            .map(|c| c.posterior)
+            .unwrap_or(f32::NEG_INFINITY);
         let log_margin = top_score - runner_up_score;
 
         if scored.len() == 1 || log_margin >= UNAMBIGUOUS_LOG_MARGIN {
@@ -226,6 +256,10 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
         // Ambiguous: return the whole K-truncated set with per-feature
         // evidence so the engine can surface a user-visible diagnostic.
+        // `prior_log_odds` carries the prior alone; `evidence` carries
+        // the feature deltas. A resolver that re-computes the
+        // posterior as `prior + Σ evidence.log_odds` reproduces the
+        // decoder's internal score without double-counting.
         Parsed::Ambiguous {
             candidates: scored
                 .into_iter()
@@ -239,7 +273,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                             log_odds: f.delta,
                         })
                         .collect(),
-                    prior_log_odds: s.score,
+                    prior_log_odds: s.prior,
                 })
                 .collect(),
         }
@@ -247,9 +281,20 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 }
 
 /// One scored candidate kept in the decoder's working set.
+///
+/// `prior` and `posterior` are tracked separately so
+/// `Candidate::prior_log_odds` can carry the prior alone (per the
+/// trait-level contract in `crates/scheme/src/ambiguity.rs`) while
+/// internal sort / threshold decisions use the posterior.
 struct ScoredCandidate {
     marking: CapcoMarking,
-    score: f32,
+    /// Sum of baked corpus log-priors over the marking's canonical
+    /// tokens. No feature deltas included.
+    prior: f32,
+    /// `prior + Σ feature.delta`. Used for sorting and threshold
+    /// comparisons inside the decoder; not stored in the emitted
+    /// `Candidate` record.
+    posterior: f32,
     features: Vec<FeatureEntry>,
 }
 
@@ -769,32 +814,42 @@ fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
 // Scoring
 // ---------------------------------------------------------------------------
 
-/// Sum the baked corpus log-priors over the tokens in `marking`, then
-/// add the per-feature log-odds deltas. This is the foundational-plan
-/// §5.2 bag-of-tokens scorer.
+/// Bag-of-tokens scorer (foundational-plan §5.2).
+///
+/// Returns `(prior, posterior)` where:
+///
+/// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
+///   marking's canonical tokens. This is the prior alone — nothing
+///   else — and is what [`Candidate::prior_log_odds`] is documented
+///   to carry (see `crates/scheme/src/ambiguity.rs`).
+/// - `posterior` = `prior + Σ attempt.features[i].delta`. This is the
+///   quantity the decoder sorts and thresholds on.
+///
+/// Splitting the two prevents the caller from writing the full
+/// posterior into `Candidate::prior_log_odds` — that would double-
+/// count the feature deltas once any resolver re-adds
+/// `EvidenceFeature.log_odds`.
 ///
 /// Precision: computed in `f32` — the baked priors are already `f32`
 /// and the feature deltas are small constants (single-digit magnitude
 /// at most), so the accumulator doesn't need `f64` headroom for the
 /// K=8 candidate set.
-fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> f32 {
-    // Base rate: sum of log-priors for the canonical tokens that
-    // appear in the parsed marking. We read these off the baked
-    // priors table (`marque_capco::priors::token_log_prior`).
-    let mut score: f32 = 0.0;
+fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, f32) {
+    // Prior: sum of baked log-priors for the canonical tokens that
+    // appear in the parsed marking.
+    let mut prior: f32 = 0.0;
     let tokens = canonical_tokens_for(marking);
     for token in tokens {
         if let Some(lp) = marque_capco::priors::token_log_prior(token) {
-            score += lp;
+            prior += lp;
         }
     }
 
-    // Feature deltas.
-    for feature in &attempt.features {
-        score += feature.delta;
-    }
+    // Posterior: prior plus feature deltas.
+    let feature_sum: f32 = attempt.features.iter().map(|f| f.delta).sum();
+    let posterior = prior + feature_sum;
 
-    score
+    (prior, posterior)
 }
 
 /// Enumerate the canonical tokens present in `marking`, as `&'static
@@ -944,6 +999,59 @@ mod tests {
                 candidates.len()
             ),
             Parsed::Unambiguous(m) => panic!("unexpected strict match: {m:?}"),
+        }
+    }
+
+    #[test]
+    fn score_candidate_splits_prior_and_posterior() {
+        // Synthesize a fake attempt with known non-zero feature deltas
+        // and verify the (prior, posterior) return tuple: posterior
+        // must be prior + Σ feature.delta, and prior must NOT include
+        // any of the feature deltas.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 14),
+            kind: MarkingType::Banner,
+        };
+        let parsed = parser
+            .parse(&candidate, b"SECRET//NOFORN")
+            .expect("SECRET//NOFORN must parse");
+        let marking = CapcoMarking(parsed.attrs);
+
+        let features = vec![
+            FeatureEntry {
+                id: FeatureId::EditDistance1,
+                delta: -0.5,
+            },
+            FeatureId::TokenReorder.into(),
+        ];
+        let attempt = CanonicalAttempt {
+            bytes: b"SECRET//NOFORN".to_vec(),
+            features: features.clone(),
+        };
+        let (prior, posterior) = score_candidate(&attempt, &marking);
+
+        let feature_sum: f32 = features.iter().map(|f| f.delta).sum();
+        let reconstructed = prior + feature_sum;
+        assert!(
+            (reconstructed - posterior).abs() < 1e-6,
+            "posterior must equal prior + Σ feature deltas; \
+             prior={prior}, feature_sum={feature_sum}, posterior={posterior}"
+        );
+        // And the prior alone must differ from the posterior when
+        // the features carry non-trivial deltas.
+        assert!(
+            (prior - posterior).abs() > f32::EPSILON,
+            "prior_log_odds must exclude feature deltas; \
+             prior={prior}, posterior={posterior}"
+        );
+    }
+
+    // Convenience conversion for the test above.
+    impl From<FeatureId> for FeatureEntry {
+        fn from(id: FeatureId) -> Self {
+            Self { id, delta: -0.4 }
         }
     }
 
