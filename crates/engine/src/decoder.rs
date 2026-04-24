@@ -443,6 +443,11 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
 
     let mut attempts: Vec<CanonicalAttempt> = Vec::new();
     let mut emit = |bytes: Vec<u8>, features: Vec<FeatureEntry>| {
+        // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
+        // work downstream is bounded even if new transform stages are added.
+        if attempts.len() >= K_MAX_CANDIDATES * 2 {
+            return;
+        }
         // Dedup by the canonical byte string — different transform
         // sequences can converge on the same output.
         if !attempts.iter().any(|a| a.bytes == bytes) {
@@ -1165,37 +1170,38 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         // degenerate for either path — skip.
         let kind = infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
 
-        match strict_result {
-            // Strict parse produced a real, complete marking — take it.
-            Parsed::Unambiguous(m) if strict_parse_is_complete(&m, kind) => Parsed::Unambiguous(m),
-            // Strict parse was trivially-Ok or only partially
-            // recognized — fall through to decoder. This covers:
-            //   (a) Truly empty attrs (`FROBNITZ//WIBBLE`).
-            //   (b) Partial attrs with `TokenKind::Unknown` spans
-            //       or unrecognized classification-slot text (e.g.,
-            //       `(SERCET//NOFORN)` — NOFORN parsed, SERCET left
-            //       in a Classification-kind span but
-            //       `attrs.classification = None`). The decoder's
-            //       fuzzy matcher will try to resolve the missing
-            //       pieces before rules run.
-            Parsed::Unambiguous(_) => {
-                let decoder_cx = ParseContext {
-                    strict_evidence: false,
-                    ..*cx
-                };
-                self.decoder.recognize(bytes, &decoder_cx)
-            }
-            Parsed::Ambiguous { candidates } if !candidates.is_empty() => {
-                Parsed::Ambiguous { candidates }
-            }
-            // Strict zero-candidate: fall through to decoder.
-            Parsed::Ambiguous { .. } => {
-                let decoder_cx = ParseContext {
-                    strict_evidence: false,
-                    ..*cx
-                };
-                self.decoder.recognize(bytes, &decoder_cx)
-            }
+        // Complete strict parse — take it, decoder not needed.
+        if matches!(&strict_result, Parsed::Unambiguous(m) if strict_parse_is_complete(m, kind)) {
+            return strict_result;
+        }
+
+        // Strict already produced non-empty candidates — keep them.
+        if matches!(&strict_result, Parsed::Ambiguous { candidates } if !candidates.is_empty()) {
+            return strict_result;
+        }
+
+        // Remaining cases: either an incomplete-but-Unambiguous strict parse
+        // (partial attrs, `TokenKind::Unknown` spans, missing classification,
+        // etc.) or a zero-candidate strict Ambiguous. Both warrant a decoder
+        // attempt. Cases:
+        //   (a) Truly empty attrs (`FROBNITZ//WIBBLE`) — zero-candidate strict.
+        //   (b) Partial attrs (`(SERCET//NOFORN)` — NOFORN parsed, SERCET
+        //       left in a Classification-kind span with
+        //       `attrs.classification = None`) — incomplete Unambiguous.
+        let decoder_cx = ParseContext {
+            strict_evidence: false,
+            ..*cx
+        };
+        let decoder_result = self.decoder.recognize(bytes, &decoder_cx);
+
+        // Only adopt the decoder result when it produced an Unambiguous
+        // marking. If the decoder is also uncertain, preserve the strict
+        // result so rules can still fire on any partial attrs — avoiding
+        // deep-scan silently reducing observability/diagnostics on
+        // mangled input.
+        match decoder_result {
+            Parsed::Unambiguous(_) => decoder_result,
+            _ => strict_result,
         }
     }
 }

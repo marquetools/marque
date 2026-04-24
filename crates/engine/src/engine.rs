@@ -257,7 +257,7 @@ impl Engine {
         // `classification_floor` stays `None` today — computing a
         // per-page floor and threading it here is PR-4's job alongside
         // audit v2 emission.
-        let strict_cx = ParseContext {
+        let parse_cx = ParseContext {
             strict_evidence: !self.deep_scan,
             zone: None,
             position: None,
@@ -288,7 +288,7 @@ impl Engine {
                 continue;
             }
             let bytes = &source[start..end];
-            let Parsed::Unambiguous(mut marking) = self.recognizer.recognize(bytes, &strict_cx)
+            let Parsed::Unambiguous(mut marking) = self.recognizer.recognize(bytes, &parse_cx)
             else {
                 continue;
             };
