@@ -262,7 +262,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         Ok(e) => e,
         Err(err) => {
             eprintln!("error: failed to construct engine: {err}");
-            return EX_UNAVAILABLE;
+            return err.exit_code();
         }
     };
     let format: render::Format = common
@@ -435,7 +435,7 @@ fn run_fix(
         Ok(e) => e,
         Err(err) => {
             eprintln!("error: failed to construct engine: {err}");
-            return EX_UNAVAILABLE;
+            return err.exit_code();
         }
     };
 

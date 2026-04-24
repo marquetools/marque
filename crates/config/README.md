@@ -56,6 +56,7 @@ version = "ISM-v2022-DEC"
 [rules]
 E001 = "fix"                    # portion-mark-in-banner; off | info | warn | error | fix
 E002 = "warn"                   # missing-usa-trigraph
+"missing-usa-trigraph" = "warn" # equivalent — rule names are accepted as aliases
 
 [corrections]
 "SERCET" = "SECRET"
@@ -71,20 +72,40 @@ default_reason = "1.4(c)"              # optional
 derived_from_default = "Multiple Sources"  # optional
 ```
 
+## Rule keys: IDs *or* names
+
+The `[rules]` section accepts **either** the canonical rule ID (`E001`) **or**
+the rule name (`portion-mark-in-banner`) as the key. Both forms resolve to
+the same rule at engine construction time. Using the name form makes configs
+more self-documenting; the ID form is shorter and stable across renames.
+
+Writing **both** forms with **different** severities for the same rule is
+rejected at engine construction time — one form would have silently won the
+HashMap iteration race and the other would have been dropped. Writing both
+forms with the **same** severity is accepted silently.
+
 ## Hard-fail validators
 
-The loader refuses to produce a `Config` (exit code in parens) when:
+The loader (or engine constructor) refuses to produce a `Config` / `Engine`
+(exit code in parens) when:
 
 - `.marque.toml` contains a `[user]` section — identity must live only in
   `.marque.local.toml` or env vars (FR-010, exit `65`).
 - `[capco] version` does not match the compiled `marque_ism::SCHEMA_VERSION`
   (FR-011, exit `65`).
 - `confidence_threshold` is outside `[0.0, 1.0]` (exit `65`).
-- A rule severity string is not one of `off`, `warn`, `error`, `fix`
+- A rule severity string is not one of `off`, `info`, `warn`, `error`, `fix`
   (exit `65`).
 - The config file cannot be read (exit `74`).
+- A `[rules]` key is not a registered rule ID or name — the engine emits
+  `EngineConstructionError::UnknownRuleOverride` with a best-effort
+  "did you mean…" suggestion (exit `65`).
+- A `[rules]` section specifies the same rule two different ways with
+  conflicting severities — the engine emits
+  `EngineConstructionError::ConflictingRuleOverride` (exit `65`).
 
-`ConfigError::exit_code()` returns the appropriate code for the CLI.
+`ConfigError::exit_code()` and `EngineConstructionError::exit_code()`
+return the appropriate code for the CLI.
 
 ## Public types
 
