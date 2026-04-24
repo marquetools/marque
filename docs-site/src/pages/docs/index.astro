@@ -1,0 +1,60 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Documentation" description="Marque documentation: CLI reference, REST API, rule index, and integration guides.">
+  <div class="docs-layout container" style="padding-block: var(--space-12);">
+    <nav class="docs-nav" aria-label="Documentation navigation">
+      <div class="docs-nav-section">
+        <div class="docs-nav-section__title">Getting Started</div>
+        <a href="/docs" class="docs-nav-link docs-nav-link--active">Introduction</a>
+        <span class="docs-nav-link" aria-disabled="true">Installation (coming soon)</span>
+        <span class="docs-nav-link" aria-disabled="true">Quickstart (coming soon)</span>
+      </div>
+      <div class="docs-nav-section">
+        <div class="docs-nav-section__title">Reference</div>
+        <div class="docs-nav-link" aria-disabled="true">Reference guides coming soon</div>
+      </div>
+      <div class="docs-nav-section">
+        <div class="docs-nav-section__title">Rules</div>
+        <span class="docs-nav-link" aria-disabled="true">
+          Rule Index
+          <span class="docs-nav-link__rule-id">44</span>
+        </span>
+        <span class="docs-nav-link" aria-disabled="true">SCI Controls</span>
+        <span class="docs-nav-link" aria-disabled="true">SAR Programs</span>
+        <span class="docs-nav-link" aria-disabled="true">Foreign Government</span>
+        <span class="docs-nav-link" aria-disabled="true">Dissemination</span>
+        <span class="docs-nav-link" aria-disabled="true">Declassification</span>
+      </div>
+    </nav>
+
+    <article class="prose">
+      <h1>Marque Documentation</h1>
+      <p class="lead" style="font-size: var(--text-lg); color: var(--color-text-secondary); margin-bottom: var(--space-8);">
+        A rule engine for classification marking correction. 44 rules, each traced to CAPCO-2016.
+      </p>
+
+      <div class="callout callout--info">
+        <div class="callout__icon" aria-hidden="true">ℹ</div>
+        <div class="callout__body">
+          <strong>Documentation in progress.</strong> The rule index and API reference are being built out.
+          For now, <code>marque --help</code> and <code>marque check --help</code> are the authoritative CLI reference.
+        </div>
+      </div>
+
+      <h2>Quick start</h2>
+
+      <pre><code>cargo install marque
+
+# Check a file
+marque check classified_memo.txt
+
+# Apply fixes above the confidence threshold
+marque fix classified_memo.txt
+
+# Dry run — show what would change without writing
+marque fix --dry-run classified_memo.txt</code></pre>
+    </article>
+  </div>
+</BaseLayout>
