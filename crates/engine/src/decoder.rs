@@ -188,7 +188,29 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             };
 
-            // 3a. Span-offset contract: `IsmAttributes::token_spans`
+            // 3a. Reject partial canonicalizations. Any
+            //     `TokenKind::Unknown` span surviving strict parse of
+            //     the canonicalized bytes means the decoder passed an
+            //     uncorrectable token through unchanged (see Case 4
+            //     in `fuzzy_correct_tokens`). Accepting such a
+            //     candidate would silently drop the unknown token
+            //     from `token_spans` in step 3b and fabricate a
+            //     partial marking — e.g., `(SECRET//WIBBLE)` would
+            //     land as `classification: Some(Secret)` with
+            //     WIBBLE simply discarded. The correct behavior is
+            //     to discard the candidate so the decoder's output
+            //     set stays honest: either a token fully resolves or
+            //     the whole candidate goes away.
+            let has_unknown_token = parsed
+                .attrs
+                .token_spans
+                .iter()
+                .any(|s| matches!(s.kind, marque_ism::TokenKind::Unknown));
+            if has_unknown_token {
+                continue;
+            }
+
+            // 3b. Span-offset contract: `IsmAttributes::token_spans`
             //     returned by the strict parser carry offsets into
             //     `attempt.bytes` (the canonicalized buffer), NOT the
             //     original `bytes` slice the caller passed to
@@ -203,10 +225,15 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //     markings must not carry token spans; downstream
             //     CAPCO rules that consume `attrs.token_spans` fall
             //     back to marking-level spans for decoder fixes.
+            //
+            //     Clearing happens AFTER the Unknown-token check
+            //     above — we need the spans to filter partial
+            //     canonicalizations, but must drop them before the
+            //     marking leaves the decoder.
             parsed.attrs.token_spans = Box::new([]);
             let marking = CapcoMarking(parsed.attrs);
 
-            // 3b. The strict parser is lenient — it accepts any
+            // 3c. The strict parser is lenient — it accepts any
             //     `BYTES//BYTES` shape and emits an `IsmAttributes`
             //     with empty fields when nothing is recognized. Drop
             //     such trivial parses so the decoder doesn't
@@ -215,7 +242,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 3c. FR-011 — drop candidates below the page's strict
+            // 3d. FR-011 — drop candidates below the page's strict
             //     classification floor.
             if let Some(floor) = cx.classification_floor
                 && !meets_classification_floor(&marking, floor)
@@ -464,10 +491,14 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
 /// - Leading `(` and trailing `)` are preserved so portion detection
 ///   still works.
 ///
-/// Returns the normalized string and the features that were applied
-/// (we record a `BaseRateCommonMarking` feature when normalization
-/// was actually needed, so the scoring stage can reward the fact that
-/// the candidate came from a near-miss rather than a raw input).
+/// Returns the normalized string and the features that were applied.
+/// When normalization was actually needed, a `BaseRateCommonMarking`
+/// feature is recorded with a negative delta — the candidate pays a
+/// small penalty for having required case- or delimiter-cleanup
+/// rather than arriving in canonical form. A candidate that
+/// normalized cleanly and also resolved its tokens via fuzzy
+/// correction will still outrank a candidate that arrived dirty,
+/// but a canonical-from-the-start candidate beats both.
 fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
     let mut features = Vec::new();
 
@@ -492,19 +523,24 @@ fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
     }
 
     // Case normalization. If the input was all-lowercase or mixed-case
-    // (Title Case), uppercasing is a significant canonicalization that
-    // the decoder should reward.
+    // (Title Case), uppercasing is a significant canonicalization the
+    // decoder flags (via the `BaseRateCommonMarking` feature below)
+    // so the posterior reflects that the candidate required cleanup.
     let had_lowercase = normalized.chars().any(|c| c.is_ascii_lowercase());
     if had_lowercase {
         normalized = normalized.to_ascii_uppercase();
     }
 
     if delim_changed || had_lowercase {
-        // Record a `BaseRateCommonMarking` feature — this
-        // normalization alone doesn't fit into one of the sharper
-        // features (EditDistance*, TokenReorder, SupersededToken),
-        // but it reflects that we've aligned the input with a common
-        // canonical shape. Weight is conservative.
+        // Record a `BaseRateCommonMarking` feature with a penalty
+        // delta. The feature doesn't fit into one of the sharper
+        // features (`EditDistance*`, `TokenReorder`,
+        // `SupersededToken`), but it flags that we had to massage
+        // the input — delimiters were non-canonical, or case was
+        // wrong. A small negative delta means a canonical-input
+        // candidate outranks an otherwise-equivalent normalized one,
+        // which is the intent: "arrives clean" should be preferred
+        // over "needed cleanup."
         features.push(FeatureEntry {
             id: FeatureId::BaseRateCommonMarking,
             delta: -0.3,
@@ -521,8 +557,17 @@ fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
 /// unambiguous the replacement lands in the output and the appropriate
 /// `EditDistance1`/`EditDistance2` feature is recorded. If no
 /// correction is available, the token is dropped into the output
-/// unchanged — the strict parser will reject the candidate if the
-/// dropped-through token isn't in the vocabulary.
+/// unchanged.
+///
+/// Note on pass-through safety: `marque_core::Parser` is lenient — it
+/// does NOT reject the whole parse when an unknown token appears, it
+/// emits the token as a `TokenKind::Unknown` span instead. So
+/// dropping an uncorrectable token through this step does not by
+/// itself reject the candidate. The decoder's outer loop
+/// (`DecoderRecognizer::recognize` step 3a) checks for any Unknown
+/// span on the strict-parse result and discards such candidates
+/// before they reach scoring — that is where partial-canonicalization
+/// candidates get filtered out.
 ///
 /// Also consults [`SUPERSEDED_TOKEN_MAP`] for CAPCO-2016 retirement
 /// pairs (currently just `COMINT` → `SI`), recording the
@@ -606,8 +651,12 @@ fn fuzzy_correct_tokens(
             continue;
         }
 
-        // Case 4: unknown and uncorrectable. Pass through — the
-        // strict parser will reject the resulting candidate.
+        // Case 4: unknown and uncorrectable. Pass through verbatim.
+        // The strict parser will register this as a
+        // `TokenKind::Unknown` span rather than failing the parse
+        // outright, so the decoder's outer loop (step 3a of
+        // `DecoderRecognizer::recognize`) is what filters the
+        // resulting partial-canonicalization candidate out.
         out.push_str(token);
     }
 
@@ -893,6 +942,28 @@ fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType) -> bool {
 // Scoring
 // ---------------------------------------------------------------------------
 
+/// Floor log-prior for canonical tokens that don't appear in the
+/// baked `TOKEN_BASE_RATES` table.
+///
+/// Baked priors are `log((hits + 1) / (total + |V|))` with
+/// Laplace smoothing over the non-IC Enron corpus (see
+/// `tools/corpus-analysis/analyze.py::derive_priors`). A token the
+/// corpus never observed still receives a non-zero smoothed prior in
+/// that build; this constant exists for the different, rarer case
+/// where the canonical-tokens iterator produces a string that was
+/// not in the build's vocabulary at all (e.g., a CVE token added
+/// after the last priors regeneration). Without this floor, such
+/// tokens would silently contribute `0.0` to the sum — and since
+/// every real log-prior is negative, a missing token would score
+/// HIGHER than a known one, inverting the ranking.
+///
+/// Magnitude (`-12.0` nats ≈ log(6e-6)) is chosen to be strictly
+/// lower than every log-prior the generator would emit for a
+/// non-empty corpus: the Enron-derived values bottom out around
+/// `-11.7` for the most infrequent observed tokens (see
+/// `crates/capco/corpus/priors.json`).
+const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
+
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
 /// Returns `(prior, posterior)` where:
@@ -900,7 +971,9 @@ fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType) -> bool {
 /// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
 ///   marking's canonical tokens. This is the prior alone — nothing
 ///   else — and is what [`Candidate::prior_log_odds`] is documented
-///   to carry (see `crates/scheme/src/ambiguity.rs`).
+///   to carry (see `crates/scheme/src/ambiguity.rs`). Tokens missing
+///   from the baked table contribute [`MISSING_TOKEN_LOG_PRIOR`]
+///   (a below-observed-floor penalty) rather than `0.0`.
 /// - `posterior` = `prior + Σ attempt.features[i].delta`. This is the
 ///   quantity the decoder sorts and thresholds on.
 ///
@@ -915,13 +988,13 @@ fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType) -> bool {
 /// K=8 candidate set.
 fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, f32) {
     // Prior: sum of baked log-priors for the canonical tokens that
-    // appear in the parsed marking.
+    // appear in the parsed marking. Tokens missing from the baked
+    // table receive the floor penalty rather than a neutral 0.0
+    // contribution — see the MISSING_TOKEN_LOG_PRIOR doc.
     let mut prior: f32 = 0.0;
     let tokens = canonical_tokens_for(marking);
     for token in tokens {
-        if let Some(lp) = marque_capco::priors::token_log_prior(token) {
-            prior += lp;
-        }
+        prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
     }
 
     // Posterior: prior plus feature deltas.
@@ -1037,9 +1110,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 
         match strict_result {
             // Strict parse produced a real, complete marking — take it.
-            Parsed::Unambiguous(m) if strict_parse_is_complete(&m, kind) => {
-                Parsed::Unambiguous(m)
-            }
+            Parsed::Unambiguous(m) if strict_parse_is_complete(&m, kind) => Parsed::Unambiguous(m),
             // Strict parse was trivially-Ok or only partially
             // recognized — fall through to decoder. This covers:
             //   (a) Truly empty attrs (`FROBNITZ//WIBBLE`).

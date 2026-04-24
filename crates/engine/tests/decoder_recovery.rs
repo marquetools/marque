@@ -67,24 +67,61 @@ fn sercet_decodes_to_secret_via_edit_distance_one() {
 }
 
 #[test]
-fn double_typo_sercet_nofrn_decodes_to_canonical() {
-    // Edit-distance-1 on both tokens. SERCET → SECRET, NOFRN → NOFORN.
-    // Both sit within the fuzzy matcher's edit budget.
+fn double_typo_zero_candidate_when_one_token_is_ambiguous() {
+    // `SERCET//NOFRN` — SERCET is edit-distance-1 from SECRET, but
+    // NOFRN is equidistant from NOFORN and potentially other 5-letter
+    // CAPCO tokens so the fuzzy matcher returns None (ambiguous).
+    // After PR #114 round-3 tightening, a canonicalization where the
+    // tail token falls through to strict parse as `TokenKind::Unknown`
+    // is rejected — so this input must return zero-candidate rather
+    // than fabricating a partial `SECRET` marking with NOFRN silently
+    // discarded. This is the correct honesty invariant from the
+    // reviewer's concern: if the decoder can't fully explain all the
+    // observed tokens, it surfaces zero candidates and lets the
+    // engine emit a diagnostic instead.
     let rx = DecoderRecognizer::new();
     match rx.recognize(b"SERCET//NOFRN", &deep_cx()) {
-        Parsed::Unambiguous(marking) => {
-            assert_eq!(
-                effective_level(&marking),
-                Some(Classification::Secret),
-                "double typo should still recover SECRET"
-            );
-        }
+        Parsed::Ambiguous { candidates } => assert!(
+            candidates.is_empty(),
+            "decoder must not fabricate partial candidates when any \
+             token is unresolvable (FR-015 honesty invariant); \
+             got {} candidate(s)",
+            candidates.len(),
+        ),
+        Parsed::Unambiguous(m) => panic!(
+            "expected zero-candidate; fabricated partial marking would \
+             regress the r3 fix. marking = {:?}",
+            m.0,
+        ),
+    }
+}
+
+#[test]
+fn partial_canonicalization_with_unresolvable_token_returns_zero_candidate() {
+    // Regression guard for PR #114 round-3 review: the decoder must
+    // NOT produce a partial candidate when a token is
+    // un-correctable. `SECRET//WIBBLE` was the reviewer's
+    // pathological case — classification fine, tail token
+    // uncorrectable. Without the Unknown-span filter the decoder
+    // would have emitted a `SECRET` candidate silently dropping
+    // WIBBLE. With the filter in place the candidate is dropped.
+    let rx = DecoderRecognizer::new();
+    match rx.recognize(b"SECRET//WIBBLE", &deep_cx()) {
         Parsed::Ambiguous { candidates } => {
             assert!(
-                !candidates.is_empty(),
-                "double typo must at least surface candidates"
+                candidates.is_empty(),
+                "decoder must not silently drop uncorrectable tokens; \
+                 got {} candidate(s): {:?}",
+                candidates.len(),
+                candidates,
             );
         }
+        Parsed::Unambiguous(m) => panic!(
+            "expected zero-candidate (WIBBLE is uncorrectable); got \
+             Unambiguous({:?}) — partial-marking fabrication has \
+             regressed",
+            m.0,
+        ),
     }
 }
 
