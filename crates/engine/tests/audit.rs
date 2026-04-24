@@ -361,7 +361,7 @@ fn sentinel_check_panics_on_synthetic_leak() {
 // The strict path is the engine's default: `Engine::new(...)` without
 // `with_deep_scan()` installs `StrictRecognizer` and only ever produces
 // fixes from rules / corrections / migrations — never from
-// `FixSource::DecoderPosterior`. The v2 audit contract pins three
+// `FixSource::DecoderPosterior`. The v2 audit contract pins four
 // per-record shape invariants on every fix that comes out of that
 // path:
 //
