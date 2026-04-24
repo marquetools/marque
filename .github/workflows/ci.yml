@@ -32,7 +32,7 @@ jobs:
           toolchain: "nightly"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: cargo fmt
         run: cargo fmt --check
@@ -54,7 +54,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - uses: taiki-e/install-action@fb7e96410651361cf247a4f26ea3153ea90f086b
         with:
