@@ -685,11 +685,16 @@ Release artifacts publish to crates.io via OIDC token exchange
 (`rust-lang/crates-io-auth-action`). Every non-dry-run release also
 produces a signed source archive via `actions/attest-build-provenance`:
 
-1. `git archive` produces a reproducible `marque-<version>.tar.gz` from
-   the workspace release tag.
+1. `git archive` produces a workspace-scoped `marque-<version>.tar.gz`
+   from the release tag. This is **not** equivalent to any crates.io
+   per-crate tarball — crates.io packages are produced per-crate by
+   `cargo package` with per-crate `include`/`exclude` rules and will
+   not match byte-for-byte. The GitHub-released archive is a
+   separately verifiable workspace-state provenance artifact, not a
+   mirror.
 2. `attest-build-provenance` signs the archive keylessly via Sigstore
-   using the GitHub OIDC token and records the attestation in GitHub's
-   transparency log.
+   using the GitHub OIDC token and records the attestation in
+   GitHub's transparency log.
 3. The archive is attached to a GitHub release; the release body
    documents how to verify.
 
@@ -705,9 +710,13 @@ attestation. Cosign is not installed — GitHub's Sigstore-backed
 attestation path is narrower and avoids adding a separate CLI
 to the release surface.
 
-**Pin status**: the `attest-build-provenance` and `action-gh-release`
-uses are tag-pinned today (`@v2`) pending a SHA-pin pass; `TODO(sha-pin)`
-comments mark both call sites.
+The archive / attest / release steps gate on `dry-run == false` only
+(not on tag-creation freshness), so a re-triggered release run for an
+existing tag still completes the attestation + GitHub-release work.
+`softprops/action-gh-release` upserts; re-attesting an already-attested
+archive records a fresh signature bound to the same subject digest.
+
+All actions in the release workflow are SHA-pinned per §8.3.
 
 **Status**: `[LANDED]` for §§8.1–8.7. (§8.5 landed via Constitution
 v1.2.0; §8.4 `reuse lint` and §8.7 release-archive attestation landed
@@ -956,14 +965,10 @@ bumps are human-reviewed migrations, never silent refreshes
 
 `.github/workflows/release.yml` publishes to crates.io via OIDC
 (`rust-lang/crates-io-auth-action`) and attaches a Sigstore-signed
-source archive to each GitHub release (§8.7). The
-`attest-build-provenance` and `action-gh-release` uses are tag-pinned
-(`@v2`) today with `TODO(sha-pin)` markers; SHA-pinning is a
-follow-up.
+source archive to each GitHub release (§8.7). All actions in the
+release workflow are SHA-pinned per §8.3.
 
-**Status**: `[LANDED]` for §§13.1–13.6. (Release signing landed via
-this whitepaper update; SHA-pinning of the two newly added actions
-remains a small follow-up — tracked in the workflow itself.)
+**Status**: `[LANDED]` for §§13.1–13.6.
 
 ---
 
@@ -1048,7 +1053,7 @@ possible), and a **remediation plan**. Severities:
 | 10 | `Confidence::validate` panic on bad rule halts the document | P1 | §6.3 | Engine wraps `Rule::check` output; invalid confidence skips the rule with a logged warning |
 | 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
 | 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
-| 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` source tarball per release; attestation recorded in GitHub's transparency log. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations. SHA-pinning the two newly added actions (`attest-build-provenance`, `action-gh-release`) is a follow-up marked `TODO(sha-pin)` in the workflow |
+| 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
 | 14 | No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list | P2 | §8.5, Constitution Tech Stack | `deny.toml` overlay (e.g. `deny.wasm-safe.toml`) scoped to the `marque-capco` transitive closure, allowing only permissive SPDX expressions per Constitution v1.2.0 dependency-hygiene rule. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; reframed after Constitution v1.2.0 to "no copyleft / no competing source-available" per the amended dependency-hygiene rule |
 | 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
 | 16 | `crates/core/src/parser.rs` `to_vec()` is undocumented | P2 | §5.1 | Add a SAFETY-style comment explaining scope-local intent, or refactor |

@@ -127,8 +127,13 @@ jobs:
       # pipx is pre-installed on ubuntu-latest and keeps `reuse` isolated
       # from any system Python packages. Avoids pulling an external
       # action into the supply chain for a single lint pass.
+      #
+      # The version is pinned so a PyPI release cannot cause a
+      # non-deterministic CI failure or silently change the lint
+      # behavior. Bumps are intentional: update the version here, run
+      # `reuse lint` locally against the new release, commit the result.
       - name: Install reuse
-        run: pipx install reuse
+        run: pipx install "reuse==5.0.2"
 
       - name: reuse lint
         run: reuse lint
