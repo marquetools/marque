@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-foundational
 description: Specialist validator for foundational CAPCO concepts: Introduction, Portion Marks syntax, Banner Line rules, marking requirements, and general marking guidance.
 category: capco-validator

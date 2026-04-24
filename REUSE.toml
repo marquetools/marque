@@ -54,7 +54,7 @@ path = [
   "**/README.md",
 ]
 precedence = "override"
-SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "MIT OR Apache-2.0"
 
 [[annotations]]
@@ -81,7 +81,7 @@ path = [
   "specs/**",
 ]
 precedence = "override"
-SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
 [[annotations]]
@@ -91,5 +91,13 @@ path = [
   "tests/corpus/prose/**",
 ]
 precedence = "aggregate"
-SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
+[[annotations]]
+path = [
+"tests/**"
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Knitli Inc."
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"

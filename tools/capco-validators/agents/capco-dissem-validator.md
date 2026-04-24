@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-dissem-validator
 description: Specialist validator for Dissemination Control and Foreign Disclosure/Release markings per CAPCO §H.8-9. Covers REL TO, NOFORN, FOUO, DECON, RELIDO, FISA, and other dissem controls.
 category: capco-validator

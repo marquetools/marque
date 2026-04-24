@@ -14,7 +14,7 @@ SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 SPDX-FileCopyrightText = "2026 Knitli Inc."
 
 [[annotations]]
-path = ["public/**"]
+path = ["public/**", "src/**", ".*"]
 SPDX-License-Identifier = "MIT OR Apache-2.0"
 SPDX-FileCopyrightText = "2026 Knitli Inc."
 

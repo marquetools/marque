@@ -353,3 +353,106 @@ fn sentinel_check_panics_on_synthetic_leak() {
     let leaky = fabricate_leaky_fix();
     check_fixes_clean(&[leaky], "synthetic self-test");
 }
+
+// ---------------------------------------------------------------------------
+// T052 — audit v2 strict-path record invariants.
+// ---------------------------------------------------------------------------
+//
+// The strict path is the engine's default: `Engine::new(...)` without
+// `with_deep_scan()` installs `StrictRecognizer` and only ever produces
+// fixes from rules / corrections / migrations — never from
+// `FixSource::DecoderPosterior`. The v2 audit contract pins four
+// per-record shape invariants on every fix that comes out of that
+// path:
+//
+// 1. `confidence.recognition == 1.0_f32` — the strict grammar matched
+//    unambiguously by definition.
+// 2. `confidence.runner_up_ratio == None` — no candidate set exists,
+//    so there is no runner-up.
+// 3. `confidence.features.is_empty()` — no decoder feature graph was
+//    traversed.
+// 4. `proposal.source ∈ { BuiltinRule, CorrectionsMap, MigrationTable }`
+//    — the four-way `FixSource` enum minus `DecoderPosterior`.
+//
+// The invariants are pinned at the data layer by `Confidence::strict`
+// (`crates/rules/src/confidence.rs`), so the test below is a
+// regression guard: it sweeps the engine's strict-path output over
+// the invalid fixture corpus and asserts the four invariants hold for
+// every produced `AppliedFix`. A future refactor that, e.g., starts
+// emitting `DecoderPosterior` fixes through the strict path, or
+// stuffs feature contributions into a strict-path `Confidence`,
+// trips this test immediately.
+//
+// **Out of scope here:** the v2 NDJSON envelope (the `"schema"` line
+// the audit emitter writes) is still hardcoded to `marque-mvp-1` in
+// `marque/src/render.rs` (whitepaper §980 P0-1). Wiring
+// `env!("MARQUE_AUDIT_SCHEMA")` into the emitter is PR-4 work; once
+// that lands, T053–T055 add the v2-stream-level assertions on top of
+// this data-layer guard.
+
+#[test]
+fn audit_v2_strict_path_invariants() {
+    let engine = test_engine();
+    let fixtures = invalid_fixtures();
+    assert!(
+        !fixtures.is_empty(),
+        "no invalid fixtures found — cannot validate T052 strict-path invariants"
+    );
+
+    // Vacuity guard: the test is meaningful only if the engine's
+    // strict path actually fires fixes. Zero fixes across the entire
+    // invalid corpus would silently pass the assertions below.
+    let mut total_fixes_examined = 0usize;
+
+    for path in &fixtures {
+        let source = load_fixture(path);
+        let result = run_fix(&engine, &source);
+        for fix in &result.applied {
+            let p = &fix.proposal;
+            let c = &p.confidence;
+            let context = format!(
+                "rule {} at {}..{} ({})",
+                p.rule.as_str(),
+                p.span.start,
+                p.span.end,
+                path.display()
+            );
+
+            assert_eq!(
+                c.recognition, 1.0_f32,
+                "strict-path Confidence.recognition must be 1.0; got {} for {context}",
+                c.recognition,
+            );
+            assert!(
+                c.runner_up_ratio.is_none(),
+                "strict-path Confidence.runner_up_ratio must be None; \
+                 got {:?} for {context}",
+                c.runner_up_ratio,
+            );
+            assert!(
+                c.features.is_empty(),
+                "strict-path Confidence.features must be empty; \
+                 got {} feature(s) for {context}: {:?}",
+                c.features.len(),
+                c.features,
+            );
+            assert!(
+                matches!(
+                    p.source,
+                    FixSource::BuiltinRule | FixSource::CorrectionsMap | FixSource::MigrationTable
+                ),
+                "strict-path FixSource must be BuiltinRule | CorrectionsMap | \
+                 MigrationTable; got {:?} for {context}",
+                p.source,
+            );
+        }
+        total_fixes_examined += result.applied.len();
+    }
+
+    assert!(
+        total_fixes_examined > 0,
+        "T052 sweep produced zero applied fixes — \
+         either the invalid corpus is empty or the engine's strict path \
+         is not firing (vacuous-pass guard)"
+    );
+}
