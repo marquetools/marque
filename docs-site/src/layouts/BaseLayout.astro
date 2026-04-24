@@ -1,0 +1,77 @@
+---
+import { Font } from 'astro:assets';
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/components.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  noNav?: boolean;
+  noFooter?: boolean;
+  class?: string;
+}
+
+const {
+  title,
+  description = 'The marking engine your tools never had. Marque corrects CAPCO classification markings in real time — automatically, with a full audit trail.',
+  ogImage,
+  noNav = false,
+  noFooter = false,
+  class: className,
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const ogImageURL = ogImage ? new URL(ogImage, Astro.site) : new URL('/og-default.png', Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — Marque</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={`${title} — Marque`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageURL} />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${title} — Marque`} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageURL} />
+
+    <!-- Theme color -->
+    <meta name="theme-color" content="#2f3732" />
+
+    <!-- Fonts (Astro Font API — @font-face + CSS variables injected here) -->
+    <Font cssVariable="--font-display" preload />
+    <Font cssVariable="--font-mono" />
+    <Font cssVariable="--font-body" />
+  </head>
+  <body class={className}>
+    {!noNav && <Nav />}
+    <main>
+      <slot />
+    </main>
+    {!noFooter && <Footer />}
+
+    <script>
+      // Theme toggle persistence
+      const stored = localStorage.getItem('theme');
+      if (stored === 'dark' || stored === 'light') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    </script>
+  </body>
+</html>
