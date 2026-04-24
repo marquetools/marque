@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.3 · **Last amended**: 2026-04-24
+**Document version**: 0.4 · **Last amended**: 2026-04-24
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -580,10 +580,18 @@ the build.
 - `crates/ism/schemas/ISM-v2022-DEC/` — public-domain ODNI schemas;
   consumed by `build.rs`.
 
-There is no automated integrity hash for the PDFs today. PDFs are not
-consumed by `build.rs`, so a silent replacement cannot alter rule
-behavior — but the absence of hash-pinning is a gap for citation
-auditability (gap register P2).
+SHA256 checksums cover both trees:
+
+- `crates/capco/docs/original-refs/SHA256SUMS` — CAPCO PDFs, PPTs, and
+  historical reference notes.
+- `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` — all 756 ODNI schema
+  files (XSD, RNG, SCH, XSL, CSV, JSON, XML).
+
+The `refs-integrity` CI job runs `sha256sum -c` against both files on
+every PR. A silent replacement of any vendored reference fails CI with
+a named mismatched file. Intentional updates require a matching edit
+to the SHA256SUMS file in the same PR — which is visible in diff review
+and tied to Principle VIII re-verification of affected citations.
 
 ### 7.4 Corpus / prior pipeline
 
@@ -602,8 +610,7 @@ and it is gated per surface.
 No timestamps, no RNG, no external calls in any `build.rs`. Output
 files are written via formatted strings. `Cargo.lock` is committed.
 
-**Status**: `[LANDED]` for §§7.1–7.5 shape; `[PARTIAL]` for §7.3
-integrity hashing.
+**Status**: `[LANDED]` for §§7.1–7.5.
 
 ---
 
@@ -634,8 +641,9 @@ All GitHub Actions are pinned to commit SHAs (not `@vN` tags).
 ### 8.4 REUSE & licensing
 
 `REUSE.toml` annotates every file's SPDX license and copyright. Public-
-domain schemas/docs are tagged as such. `reuse lint` is not yet wired
-in CI (gap register P2).
+domain schemas/docs are tagged as such. The `reuse` CI job runs
+`reuse lint` on every PR; drift in SPDX headers, missing license text,
+or mis-annotated files fails the build with a named diagnostic.
 
 ### 8.5 Workspace licensing posture
 
@@ -674,14 +682,46 @@ entry 14).
 ### 8.7 Release provenance
 
 Release artifacts publish to crates.io via OIDC token exchange
-(`rust-lang/crates-io-auth-action`). No Sigstore/Cosign signing or
-transparency-log attestation today. Candidate improvement; not
-blocking Phase D (gap register P2).
+(`rust-lang/crates-io-auth-action`). Every non-dry-run release also
+produces a signed source archive via `actions/attest-build-provenance`:
 
-**Status**: `[LANDED]` for §§8.1–8.3, 8.5, 8.6; `[PARTIAL]` for §§8.4,
-8.7. (§8.5 workspace licensing posture landed via Constitution v1.2.0;
-the narrower WASM-safe-subgraph CI gate remains a gap — see gap
-register 14.)
+1. `git archive` produces a workspace-scoped `marque-<version>.tar.gz`
+   from the release tag. This is **not** equivalent to any crates.io
+   per-crate tarball — crates.io packages are produced per-crate by
+   `cargo package` with per-crate `include`/`exclude` rules and will
+   not match byte-for-byte. The GitHub-released archive is a
+   separately verifiable workspace-state provenance artifact, not a
+   mirror.
+2. `attest-build-provenance` signs the archive keylessly via Sigstore
+   using the GitHub OIDC token and records the attestation in
+   GitHub's transparency log.
+3. The archive is attached to a GitHub release; the release body
+   documents how to verify.
+
+Consumers verify with:
+
+```
+gh attestation verify marque-<version>.tar.gz --owner marquetools
+```
+
+The release workflow holds `id-token: write` + `attestations: write`
+permissions so it can obtain the OIDC token and record the
+attestation. Cosign is not installed — GitHub's Sigstore-backed
+attestation path is narrower and avoids adding a separate CLI
+to the release surface.
+
+The archive / attest / release steps gate on `dry-run == false` only
+(not on tag-creation freshness), so a re-triggered release run for an
+existing tag still completes the attestation + GitHub-release work.
+`softprops/action-gh-release` upserts; re-attesting an already-attested
+archive records a fresh signature bound to the same subject digest.
+
+All actions in the release workflow are SHA-pinned per §8.3.
+
+**Status**: `[LANDED]` for §§8.1–8.7. (§8.5 landed via Constitution
+v1.2.0; §8.4 `reuse lint` and §8.7 release-archive attestation landed
+alongside this whitepaper update. The narrower WASM-safe-subgraph CI
+gate remains a gap — see gap register 14.)
 
 ---
 
@@ -872,18 +912,22 @@ unmodified (no truncation). The cache stores only `LintResult`, never
 
 ### 12.2 Signing & attestation
 
-**`[PLANNED]`** / candidate. No Sigstore/Cosign signing of release
-artifacts today; crates.io OIDC token exchange is the current trust
-anchor. Transparency-log signing is a candidate for a future release
-(§13.6).
+Release source archives are signed with Sigstore via
+`actions/attest-build-provenance` (§8.7 / §13.6). The crates.io
+publish path itself still relies on OIDC token exchange
+(`rust-lang/crates-io-auth-action`) — crates.io does not accept
+Sigstore attestations on the upload. Consumers that need provenance
+verify against the GitHub-released source archive, not the crates.io
+tarball.
 
 ### 12.3 Audit-record integrity
 
 NDJSON on stderr. Best-effort per-line flush. No signing, no hash
 chain. Tamper-evidence is a deployment concern.
 
-**Status**: `[PLANNED]` for §12.1; `[PLANNED]` for §12.2;
-`[NON-GOAL]` (at engine layer) for §12.3 tamper-evidence.
+**Status**: `[PLANNED]` for §12.1; `[LANDED]` for §12.2 (release
+archive only — crates.io upload is out of scope); `[NON-GOAL]` (at
+engine layer) for §12.3 tamper-evidence.
 
 ---
 
@@ -919,10 +963,12 @@ bumps are human-reviewed migrations, never silent refreshes
 
 ### 13.6 Release posture
 
-`.github/workflows/release.yml` publishes via crates.io OIDC. Artifact
-signing (Sigstore/Cosign) is a candidate improvement.
+`.github/workflows/release.yml` publishes to crates.io via OIDC
+(`rust-lang/crates-io-auth-action`) and attaches a Sigstore-signed
+source archive to each GitHub release (§8.7). All actions in the
+release workflow are SHA-pinned per §8.3.
 
-**Status**: `[LANDED]` for §§13.1–13.5; `[PARTIAL]` for §13.6.
+**Status**: `[LANDED]` for §§13.1–13.6.
 
 ---
 
@@ -1005,9 +1051,9 @@ possible), and a **remediation plan**. Severities:
 | 8 | `BatchEngine` `.expect()` panics on semaphore close | P1 | §9.4, `batch.rs:196, 226` | Replace with `?` or `ShutdownInProgress` error variant |
 | 9 | Strict-context floor (T1) not wired in decoder | P1 | T045, T062, FR-011 | Decoder reads `ParseContext.strict_evidence` before consulting priors for `(C)` and similar |
 | 10 | `Confidence::validate` panic on bad rule halts the document | P1 | §6.3 | Engine wraps `Rule::check` output; invalid confidence skips the rule with a logged warning |
-| 11 | No integrity hash for vendored CAPCO PDF / ODNI schemas | P2 | §7.3 | `SHA256SUMS` file under `crates/*/docs/` and `crates/ism/schemas/`, verified in CI |
-| 12 | `reuse lint` not in CI | P2 | §8.4 | Add a `reuse` job to `ci.yml` |
-| 13 | No Sigstore/Cosign signing of release artifacts | P2 | §8.7, §13.6 | Integrate `sigstore-action` in `release.yml` |
+| 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
+| 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
+| 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
 | 14 | No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list | P2 | §8.5, Constitution Tech Stack | `deny.toml` overlay (e.g. `deny.wasm-safe.toml`) scoped to the `marque-capco` transitive closure, allowing only permissive SPDX expressions per Constitution v1.2.0 dependency-hygiene rule. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; reframed after Constitution v1.2.0 to "no copyleft / no competing source-available" per the amended dependency-hygiene rule |
 | 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
 | 16 | `crates/core/src/parser.rs` `to_vec()` is undocumented | P2 | §5.1 | Add a SAFETY-style comment explaining scope-local intent, or refactor |
