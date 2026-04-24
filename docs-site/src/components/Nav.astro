@@ -1,0 +1,147 @@
+---
+const navLinks = [
+  { href: '/docs', label: 'Docs' },
+  { href: '/blog', label: 'Blog' },
+  { href: 'https://github.com/marquetools/marque', label: 'GitHub', external: true },
+];
+
+const pathname = Astro.url.pathname;
+---
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="container nav__inner">
+    <a href="/" class="nav__logo" aria-label="Marque home">
+      <span class="nav__logo-mark">(M)</span><span class="nav__logo-name">arque</span>
+    </a>
+
+    <ul class="nav__links" role="list">
+      {navLinks.map(({ href, label, external }) => (
+        <li>
+          <a
+            href={href}
+            class:list={['nav__link', { 'nav__link--active': pathname.startsWith(href) && href !== '/' }]}
+            {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+          >
+            {label}
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <div class="nav__actions">
+      <button
+        class="btn btn--ghost btn--sm theme-toggle"
+        aria-label="Toggle theme"
+        title="Toggle light/dark mode"
+      >
+        <svg class="theme-toggle__icon theme-toggle__icon--sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg class="theme-toggle__icon theme-toggle__icon--moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+      <a href="/docs/api" class="btn btn--primary btn--sm">Get the API</a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  .nav__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: 64px;
+  }
+
+  .nav__logo {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+
+  .nav__logo-mark {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    color: var(--color-accent);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .nav__logo-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: 450;
+    color: var(--color-text-primary);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .nav__links {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-1);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    margin-left: auto;
+  }
+
+  .nav__link {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    transition: var(--transition-colors);
+  }
+
+  .nav__link:hover {
+    color: var(--color-text-primary);
+    background-color: var(--color-surface-raised);
+  }
+
+  .nav__link--active {
+    color: var(--color-text-primary);
+  }
+
+  .nav__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .theme-toggle__icon--moon { display: none; }
+
+  [data-theme="dark"] .theme-toggle__icon--sun { display: none; }
+  [data-theme="dark"] .theme-toggle__icon--moon { display: block; }
+
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) .theme-toggle__icon--sun { display: none; }
+    html:not([data-theme="light"]) .theme-toggle__icon--moon { display: block; }
+  }
+
+  @media (max-width: 640px) {
+    .nav__links { display: none; }
+  }
+</style>
+
+<script>
+  const toggle = document.querySelector('.theme-toggle');
+  toggle?.addEventListener('click', () => {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = current === 'dark' || (!current && systemDark);
+    const next = isDark ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  });
+</script>
