@@ -794,6 +794,11 @@ fn classify_segment(seg: &str) -> SegmentClass {
     let first_token = seg.split_whitespace().next().unwrap_or("");
     // Strip trailing commas.
     let first_token = first_token.trim_end_matches(',');
+    // Single-whitespace-token classifications only. `TOP SECRET` is
+    // handled by the separate starts_with branch below — including
+    // it here would be dead: `split_whitespace().next()` always
+    // returns the first word, so the lookup sees `"TOP"`, not the
+    // full two-word phrase.
     const CLASSIFICATIONS: &[&str] = &[
         "U",
         "R",
@@ -804,11 +809,20 @@ fn classify_segment(seg: &str) -> SegmentClass {
         "RESTRICTED",
         "CONFIDENTIAL",
         "SECRET",
-        "TOP SECRET",
     ];
+    // Dissemination-control tokens ONLY. SCI controls (HCS, SI, TK,
+    // and all their sub-compartment forms) are NOT in this list —
+    // they belong to their own category under CAPCO §A.6 and the
+    // canonical order places them between classification and dissem.
+    // Classifying an HCS segment as Dissem would drive
+    // `try_canonical_reorder` to move it past the dissem block,
+    // corrupting the rewrite. SCI segments therefore fall through to
+    // `SegmentClass::Other`, which the reorder helper inserts
+    // between classification and dissem — the right spot per
+    // CAPCO-2016 §A.6.
     const DISSEMS: &[&str] = &[
         "NOFORN", "NF", "ORCON", "OC", "PROPIN", "PR", "IMCON", "IMC", "RELIDO", "RS", "RSEN",
-        "DSEN", "FISA", "HCS", "FOUO",
+        "DSEN", "FISA", "FOUO",
     ];
     if CLASSIFICATIONS.contains(&first_token) {
         SegmentClass::Classification
@@ -1004,13 +1018,41 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     (prior, posterior)
 }
 
-/// Enumerate the canonical tokens present in `marking`, as `&'static
-/// str` refs into the baked CVE token list.
+/// Enumerate the canonical tokens present in `marking` that have a
+/// `&'static str` representation suitable for
+/// [`marque_capco::priors::TOKEN_BASE_RATES`] lookup.
 ///
-/// These are the keys the scorer looks up in
-/// [`marque_capco::priors::TOKEN_BASE_RATES`]. Each CVE enum exposes
-/// an `as_str()` → canonical CVE string (e.g., `DissemControl::Nf
-/// -> "NF"`, `Classification::Secret -> "SECRET"` via `banner_str`).
+/// Scored token families, by `IsmAttributes` field:
+///
+/// - `classification` — effective level's banner string
+///   (`SECRET`, `TOP SECRET`, ...).
+/// - `sci_controls` — each variant's `as_str()` (`SI`, `TK`, `HCS-P`, ...).
+/// - `dissem_controls` — IC dissem variants' `as_str()`
+///   (`NF`, `OC`, `RELIDO`, ...).
+/// - `non_ic_dissem` — non-IC dissem variants' `banner_str()`
+///   (`LIMDIS`, `EXDIS`, `NODIS`, `SBU`, `LES`, ...).
+/// - `aea_markings` — category token `"AEA"` when any AEA marking is
+///   present. Individual AEA sub-variants (RD / FRD / CNWDI /
+///   SIGMA / UCNI variants) are not broken out for scoring because
+///   the baked priors don't carry per-sub-variant base rates and
+///   adding floor-penalty contributions for each variant would hurt
+///   AEA-bearing candidates across the board.
+/// - `fgi_marker` — category token `"FGI"` when an FGI marker is set.
+///
+/// Deliberately NOT included in scoring:
+///
+/// - `sar_markings` — SAR program identifiers are agency-assigned
+///   codewords (open set, not in the baked priors).
+/// - `rel_to` country trigraphs — `Trigraph::as_str()` returns a
+///   `&str` tied to `&self`, not `&'static str`. Plumbing a
+///   static-string helper is left as future work; the priors
+///   corpus-coverage for trigraphs is sparse anyway.
+/// - CAB fields (`classified_by`, `derived_from`, `declassify_on`) —
+///   free-form text, not CVE-enumerable.
+///
+/// Expansion work is tracked in future PRs alongside any priors
+/// regeneration that widens coverage (e.g., counting SAR indicator
+/// base rates from a larger corpus).
 fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
     let attrs = &marking.0;
     let mut tokens: BTreeSet<&'static str> = BTreeSet::new();
@@ -1027,6 +1069,21 @@ fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
     }
     for dis in attrs.dissem_controls.iter() {
         tokens.insert(dis.as_str());
+    }
+    for nic in attrs.non_ic_dissem.iter() {
+        // `NonIcDissem::banner_str` returns `&'static str` with the
+        // banner form (LIMDIS, EXDIS, NODIS, SBU, LES, SSI,
+        // SBU NOFORN, LES NOFORN). The compound forms ("SBU NOFORN",
+        // "LES NOFORN") won't hit a single-token priors entry — they
+        // fall to MISSING_TOKEN_LOG_PRIOR. That's fine: the
+        // comparison against peer candidates remains consistent.
+        tokens.insert(nic.banner_str());
+    }
+    if !attrs.aea_markings.is_empty() {
+        tokens.insert("AEA");
+    }
+    if attrs.fgi_marker.is_some() {
+        tokens.insert("FGI");
     }
 
     tokens.into_iter().collect()
@@ -1474,6 +1531,33 @@ mod tests {
     #[test]
     fn try_canonical_reorder_returns_none_when_already_canonical() {
         assert_eq!(try_canonical_reorder("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn classify_segment_treats_sci_as_other_not_dissem() {
+        // HCS and SI are SCI controls per CAPCO §A.6, not dissem.
+        // Regression guard for PR #114 review — previously HCS was
+        // in `DISSEMS`, which caused `try_canonical_reorder` to
+        // move an HCS segment to the very end of the banner/portion
+        // (past the dissem block) and corrupt canonicalization.
+        // SCI segments must fall through to `SegmentClass::Other`
+        // so the reorder helper places them between classification
+        // and dissem per §A.6.
+        assert_eq!(classify_segment("HCS"), SegmentClass::Other);
+        assert_eq!(classify_segment("HCS-P"), SegmentClass::Other);
+        assert_eq!(classify_segment("SI"), SegmentClass::Other);
+        assert_eq!(classify_segment("SI-G"), SegmentClass::Other);
+        assert_eq!(classify_segment("TK"), SegmentClass::Other);
+    }
+
+    #[test]
+    fn try_canonical_reorder_places_sci_between_classification_and_dissem() {
+        // Dissem-first with an SCI segment in the middle — correct
+        // canonical order is classification → SCI → dissem.
+        assert_eq!(
+            try_canonical_reorder("NOFORN//HCS-P//SECRET"),
+            Some("SECRET//HCS-P//NOFORN".to_owned())
+        );
     }
 
     #[test]
