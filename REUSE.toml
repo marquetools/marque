@@ -44,6 +44,7 @@ path = [
   "mise.toml",
   "README.md",
   "SECURITY.md",
+  "docs/security/**",
   "**/Cargo.toml",
   "**/Cargo.lock",
   "**/mise.toml",
