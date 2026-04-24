@@ -38,8 +38,8 @@
 //! end of the first line of the span; additional lines are not rendered
 //! (CAPCO markings are always single-line so this is a corner-case).
 
-use marque_engine::LintResult;
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_engine::{AUDIT_SCHEMA_IS_V2, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_rules::{AppliedFix, Diagnostic, FeatureContribution};
 use serde::Serialize;
 use std::path::Path;
 
@@ -320,16 +320,43 @@ pub fn render_human_result(
 }
 
 // ---------------------------------------------------------------------------
-// Audit record NDJSON — contracts/audit-record.json (schema "marque-mvp-1")
+// Audit record NDJSON
+//
+// The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
+// which `crates/engine/build.rs` validates against the closed accept-list
+// `["marque-mvp-1", "marque-mvp-2"]`. Default is `"marque-mvp-2"` (Phase D).
+//
+// Two struct shapes coexist:
+//
+// - `AuditRecordJsonV1` — the v1 contract (`contracts/audit-record.json`,
+//   schema `"marque-mvp-1"`); the 12-field shape that pre-Phase-D
+//   downstream consumers parse.
+// - `AuditRecordJsonV2` — the v2 contract (`contracts/audit-record-v2.md`,
+//   schema `"marque-mvp-2"`); strict superset of v1 — adds `recognition`
+//   (always present), `runner_up_ratio` (omitted via `skip_serializing_if`
+//   when `None`), and `features` (omitted when empty).
+//
+// `render_audit_record` dispatches to the right emitter at the
+// `AUDIT_SCHEMA_IS_V2` const-folded branch. Both emitters are always
+// compiled; the dead arm is eliminated by the optimizer at the matching
+// build's expense.
+//
+// FR-014 (single-schema-per-build) is upheld at two layers:
+//   1. `crates/engine/build.rs` panics on unknown values — only one of the
+//      two accepted versions can ever reach the emitter.
+//   2. The emitter chooses the matching struct shape from the const, so a
+//      v1 build never produces a v2-shaped record and vice versa.
 // ---------------------------------------------------------------------------
 
-/// JSON projection of an `AppliedFix` conforming to `contracts/audit-record.json`.
+/// JSON projection of an `AppliedFix` conforming to
+/// `contracts/audit-record.json` (schema `"marque-mvp-1"`).
 ///
-/// Every field from the schema is present. `schema` is always `"marque-mvp-1"`.
-/// Emitted to stderr as NDJSON (one record per line). FR-005a requires atomic
-/// emission: serialize to buffer, then single `write_all`.
+/// Every field from the v1 schema is present; the type definition is the
+/// authoritative shape contract. Emitted to stderr as NDJSON (one record
+/// per line). FR-005a requires atomic emission: serialize to buffer, then
+/// single `write_all`.
 #[derive(Debug, Serialize)]
-pub struct AuditRecordJson {
+pub struct AuditRecordJsonV1 {
     pub schema: &'static str,
     pub rule: String,
     pub source: &'static str,
@@ -344,7 +371,65 @@ pub struct AuditRecordJson {
     pub input: Option<String>,
 }
 
-const AUDIT_SCHEMA_VERSION: &str = "marque-mvp-1";
+/// JSON projection of an `AppliedFix` conforming to
+/// `contracts/audit-record-v2.md` (schema `"marque-mvp-2"`).
+///
+/// Strict superset of [`AuditRecordJsonV1`]: every v1 field is preserved
+/// in v1's serialized order, then the v2 extensions (`recognition`,
+/// `runner_up_ratio`, `features`) follow. v2 ⊃ v1 is the back-compat
+/// guarantee — a v1 consumer reading a v2 record sees all the v1 fields
+/// it knows about and ignores the unknown `recognition` /
+/// `runner_up_ratio` / `features` keys (assuming a tolerant parser, which
+/// is the standard JSON contract).
+///
+/// `recognition` is always emitted (strict-path = `1.0`, decoder = `<1.0`)
+/// because the recognition axis is always meaningful in a v2 record.
+/// `runner_up_ratio` and `features` are omitted via
+/// `skip_serializing_if` when absent, so a strict-path v2 record stays
+/// minimal — a downstream consumer can detect a decoder-sourced fix by
+/// the presence of the latter two fields plus a non-1.0 `recognition`.
+#[derive(Debug, Serialize)]
+pub struct AuditRecordJsonV2 {
+    pub schema: &'static str,
+    pub rule: String,
+    pub source: &'static str,
+    pub span: SpanJson,
+    pub original: String,
+    pub replacement: String,
+    pub confidence: f32,
+    pub migration_ref: Option<String>,
+    pub timestamp: String,
+    pub classifier_id: Option<String>,
+    pub dry_run: bool,
+    pub input: Option<String>,
+    /// Recognition posterior, always present in v2. `1.0` for strict-path
+    /// fixes (the strict grammar matched unambiguously), `<1.0` for
+    /// decoder-sourced fixes.
+    pub recognition: f32,
+    /// Top-vs-runner-up posterior ratio for decoder-sourced fixes;
+    /// `None` (omitted from JSON) for strict-path fixes with no
+    /// candidate set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runner_up_ratio: Option<f32>,
+    /// Per-feature contributions to `recognition` for decoder-sourced
+    /// fixes; empty Vec (omitted from JSON) for strict-path fixes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<FeatureJson>,
+}
+
+/// JSON projection of a [`FeatureContribution`] for the v2 audit record.
+#[derive(Debug, Serialize)]
+pub struct FeatureJson {
+    pub id: &'static str,
+    pub delta: f32,
+}
+
+fn feature_to_json(feature: &FeatureContribution) -> FeatureJson {
+    FeatureJson {
+        id: feature.id.as_str(),
+        delta: feature.delta,
+    }
+}
 
 fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     match source {
@@ -355,9 +440,9 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-/// Convert an `AppliedFix` to the JSON audit record shape.
-pub fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
-    AuditRecordJson {
+/// Convert an `AppliedFix` to the v1 JSON audit record shape.
+pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1 {
+    AuditRecordJsonV1 {
         schema: AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str().to_owned(),
         source: fix_source_str(fix.proposal.source),
@@ -376,18 +461,49 @@ pub fn applied_fix_to_audit_json(fix: &AppliedFix) -> AuditRecordJson {
     }
 }
 
+/// Convert an `AppliedFix` to the v2 JSON audit record shape.
+pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2 {
+    let c = &fix.proposal.confidence;
+    AuditRecordJsonV2 {
+        schema: AUDIT_SCHEMA_VERSION,
+        rule: fix.proposal.rule.as_str().to_owned(),
+        source: fix_source_str(fix.proposal.source),
+        span: SpanJson {
+            start: fix.proposal.span.start,
+            end: fix.proposal.span.end,
+        },
+        original: fix.proposal.original.to_string(),
+        replacement: fix.proposal.replacement.to_string(),
+        confidence: c.combined(),
+        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
+        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
+        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
+        dry_run: fix.dry_run,
+        input: fix.input.as_ref().map(|s| s.to_string()),
+        recognition: c.recognition,
+        runner_up_ratio: c.runner_up_ratio,
+        features: c.features.iter().map(feature_to_json).collect(),
+    }
+}
+
 /// Emit a single audit record as NDJSON to `stderr`.
 ///
-/// FR-005a: each record is serialized to an in-memory buffer and flushed
-/// with a single `write_all` ending in `\n`. A partially-serialized record
-/// is never flushed. On serialization failure, emits an error frame and
-/// returns `Err`.
+/// Dispatches to the v1 or v2 emitter based on `AUDIT_SCHEMA_IS_V2`,
+/// the const-folded selector set by `crates/engine/build.rs`. Each
+/// record is serialized to an in-memory buffer and flushed with a
+/// single `write_all` ending in `\n` (FR-005a). A partially-serialized
+/// record is never flushed; on serialization failure, emits an error
+/// frame and returns `Err`.
 pub fn render_audit_record(
     stderr: &mut dyn std::io::Write,
     fix: &AppliedFix,
 ) -> std::io::Result<()> {
-    let json = applied_fix_to_audit_json(fix);
-    match serde_json::to_vec(&json) {
+    let serialized = if AUDIT_SCHEMA_IS_V2 {
+        serde_json::to_vec(&applied_fix_to_audit_json_v2(fix))
+    } else {
+        serde_json::to_vec(&applied_fix_to_audit_json_v1(fix))
+    };
+    match serialized {
         Ok(mut buf) => {
             buf.push(b'\n');
             stderr.write_all(&buf)
@@ -639,7 +755,7 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.ends_with('\n'), "must end with newline");
         let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
-        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
         assert_eq!(v["error"], "some error");
         assert_eq!(v["rule"], "E001");
     }
@@ -654,7 +770,7 @@ mod tests {
         let v: serde_json::Value =
             serde_json::from_str(s.trim()).expect("error frame must be valid JSON");
         assert_eq!(v["error"], "key \"foo\\bar\"");
-        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
     }
 
     #[test]
@@ -689,7 +805,7 @@ mod tests {
         assert!(s.ends_with('\n'));
 
         let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
-        assert_eq!(v["schema"], "marque-mvp-1");
+        assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
         assert_eq!(v["rule"], "E001");
         assert_eq!(v["source"], "BuiltinRule");
         assert_eq!(v["span"]["start"], 8);
@@ -703,5 +819,33 @@ mod tests {
         assert_eq!(v["input"], "test.txt");
         // timestamp must be a valid RFC3339 string
         assert!(v["timestamp"].as_str().unwrap().contains('T'));
+
+        // v2 contract: a strict-path fix has `recognition: 1.0` always
+        // present, and `runner_up_ratio` / `features` omitted (skip when
+        // empty / None). v1 builds (downgrade) drop all three new fields.
+        if AUDIT_SCHEMA_IS_V2 {
+            // `serde_json::Value` deserializes JSON numbers as `f64`, so
+            // compare against `1.0` (f64) — matches the
+            // `assert_eq!(v["confidence"], 1.0)` line above and avoids
+            // f32→f64 widening surprises.
+            assert_eq!(v["recognition"], 1.0);
+            assert!(
+                v.get("runner_up_ratio").is_none(),
+                "strict-path v2 record must omit runner_up_ratio when None; \
+                 got {:?}",
+                v.get("runner_up_ratio")
+            );
+            assert!(
+                v.get("features").is_none(),
+                "strict-path v2 record must omit features when empty; got {:?}",
+                v.get("features")
+            );
+        } else {
+            assert!(
+                v.get("recognition").is_none(),
+                "v1 build must not emit recognition field; got {:?}",
+                v.get("recognition")
+            );
+        }
     }
 }

@@ -31,6 +31,44 @@ pub use errors::EngineConstructionError;
 pub use output::{FixResult, LintResult};
 pub use recognizer::StrictRecognizer;
 
+/// Audit-record schema version emitted by this build.
+///
+/// Set at build time by `crates/engine/build.rs` (see `MARQUE_AUDIT_SCHEMA`),
+/// validated against the closed accept-list `["marque-mvp-1", "marque-mvp-2"]`.
+/// Defaults to `"marque-mvp-2"` (Phase D); a build can downgrade by exporting
+/// `MARQUE_AUDIT_SCHEMA=marque-mvp-1`. Re-exported through this crate so CLI
+/// and WASM emitters can populate the `schema` field without each owning a
+/// separate copy of the constant (whitepaper §980 / FR-014).
+///
+/// Per FR-014 the value is fixed for the lifetime of a build — a single
+/// binary emits exactly one schema, never a mix.
+pub const AUDIT_SCHEMA_VERSION: &str = env!("MARQUE_AUDIT_SCHEMA");
+
+/// `true` when this build emits Phase-D audit records (`marque-mvp-2`),
+/// `false` when emitting the legacy `marque-mvp-1` shape.
+///
+/// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; the comparison
+/// against a `&'static str` literal folds to a constant, so callers using
+/// `if AUDIT_SCHEMA_IS_V2 { ... } else { ... }` get dead-branch elimination
+/// at the matching schema's expense.
+pub const AUDIT_SCHEMA_IS_V2: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-mvp-2");
+
+const fn const_str_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 /// Returns the default rule set for marque (CAPCO rules).
 ///
 /// Both the CLI and WASM front ends use this to share one registration entry point.
