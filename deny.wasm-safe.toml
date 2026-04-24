@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+#
+# deny.wasm-safe.toml — cargo-deny overlay for the WASM-safe subgraph
+#
+# Constitution v1.2.0 (Technology Stack Constraints → Licensing)
+# requires the WASM-safe set — `marque-ism`, `marque-core`,
+# `marque-rules`, `marque-scheme`, `marque-capco` — to stay free of
+# copyleft (GPL / LGPL / AGPL / MPL) and competing source-available
+# licenses (Elastic License 2.0, BSL, SSPL). This overlay enforces
+# that guarantee as a load-bearing CI gate independent of the
+# workspace-wide `deny.toml`, so a future relaxation of the
+# workspace rules (e.g., to admit a copyleft-friendly library under
+# `marque-extract`) cannot silently compromise WASM distribution.
+#
+# The gate is invoked via the `deny-wasm-safe` CI job
+# (`.github/workflows/ci.yml`) as:
+#
+#   cargo deny \
+#     --exclude-dev \
+#     --exclude marque --exclude marque-config \
+#     --exclude marque-engine --exclude marque-extract \
+#     --exclude marque-server --exclude marque-test-utils \
+#     --exclude marque-wasm \
+#     check --config deny.wasm-safe.toml licenses bans sources
+#
+# cargo-deny treats every workspace member as a crate-graph root
+# unless it is named in `--exclude`, so the exclusion list MUST
+# explicitly name every non-WASM-safe workspace member — `--exclude`
+# does NOT transitively prune crates that happen to be reachable
+# only through an excluded root. `--exclude-dev` drops dev-deps
+# (`marque-capco` has a test-only dev-dep on `marque-engine` which
+# otherwise leaks the entire engine tree back into the check).
+#
+# When a new workspace member lands it MUST be explicitly classified:
+# either add it to the `--exclude` list in
+# `.github/workflows/ci.yml` (non-WASM-safe) or leave it out of the
+# exclusion list (WASM-safe, and treat any failure as a real posture
+# violation — not a CI config bug).
+
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+# Tighter allow-list than `deny.toml`: no placeholder for a future
+# workspace-only exception. Copyleft and competing source-available
+# licenses are explicit deny set by omission — any dep that carries
+# something not in this list trips the gate.
+#
+# `LicenseRef-MarqueLicense-1.0` remains in the allow-list because
+# the WASM-safe crates themselves declare ML-1.0 via `deny.toml`
+# clarify entries; cargo-deny walks the subgraph INCLUDING the
+# crates whose deps are being checked.
+[licenses]
+version = 2
+allow = [
+  "LicenseRef-MarqueLicense-1.0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "MIT-0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "Zlib",
+  "CC0-1.0",
+  "CC-BY-4.0",
+]
+unused-allowed-license = "allow"
+confidence-threshold = 0.93
+
+# Clarify entries only for the five WASM-safe crates. Non-WASM-safe
+# crates (`marque`, `marque-config`, `marque-engine`, `marque-extract`,
+# `marque-server`, `marque-test-utils`, `marque-wasm`) should never
+# appear in this check; if they do, it means the `--exclude` list is
+# wrong and cargo-deny is walking a broader tree than intended.
+[[licenses.clarify]]
+crate = "marque-capco"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+
+[[licenses.clarify]]
+crate = "marque-core"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+
+[[licenses.clarify]]
+crate = "marque-ism"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+
+[[licenses.clarify]]
+crate = "marque-rules"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+
+[[licenses.clarify]]
+crate = "marque-scheme"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+
+[bans]
+multiple-versions = "warn"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
