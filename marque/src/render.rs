@@ -125,8 +125,7 @@ pub fn render_human(
     writeln!(
         out,
         "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {} {}",
-        diag.message,
-        BRAND_SUFFIX,
+        diag.message, BRAND_SUFFIX,
     )?;
 
     // ---- Source snippet ----

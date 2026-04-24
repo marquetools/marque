@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.1 (draft skeleton) · **Last amended**: 2026-04-24
+**Document version**: 0.2 · **Last amended**: 2026-04-24
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -248,9 +248,13 @@ I-J2 (`DecisionRecord` in the Phase J access-decision work) and I-K2
 The corpus-level CI enforcement (T056) is the load-bearing check that
 converts content-ignorance from convention into a gate.
 
-**Status**: `[PARTIAL]` — invariant is design-wide; T056 grep-on-corpus
-test is open. FR-012 (`FeatureId` as enum) has landed in
-`crates/rules/src/confidence.rs`.
+**Status**: `[LANDED]`. T056 shipped as `crates/engine/tests/audit.rs`:
+a sentinel-grep sweep over every fixture in
+`tests/corpus/{invalid,valid,prose}/`, a marking-in-prose composite
+test that wraps each invalid fixture in ~4 KB of article prose, a
+companion diagnostic-stream check, and a `#[should_panic]` self-test
+that proves the sentinel-check is load-bearing. FR-012 (`FeatureId`
+as enum) landed earlier in `crates/rules/src/confidence.rs`.
 
 ### 3.2 Zero-copy & `Span` discipline
 
@@ -882,12 +886,12 @@ signing (Sigstore/Cosign) is a candidate improvement.
   wrong-case, garbled-delimiter). Regenerable from Enron corpus.
 - **WASM parity** (SC-008): byte-identical NDJSON diagnostics across
   CLI and WASM on the same corpus subset.
-- **Content-ignorance CI grep** (T056): greps audit output for
-  non-token content. This is the load-bearing T2/G13 gate; not yet
-  wired.
+- **Content-ignorance CI grep** (T056): sentinel grep over every
+  fixture's audit-stream output, plus a composite marking-in-prose
+  test and a `#[should_panic]` self-test proving the check is
+  load-bearing. Lives at `crates/engine/tests/audit.rs`.
 
-**Status**: `[LANDED]` for fuzz, corpus, mangled, parity;
-`[PARTIAL]` for T056.
+**Status**: `[LANDED]` for fuzz, corpus, mangled, parity, T056.
 
 ---
 
@@ -945,7 +949,6 @@ possible), and a **remediation plan**. Severities:
 | 1 | `MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"` | P0 | FR-014, T005, T054–T055 | Add build-script-generated constant; switch emitter to read it; compile-fail on unknown value |
 | 2 | Server does not reject HTTP requests carrying corpus override | P0 | T3 enforcement, T049–T050, T066 | Handler-layer 400 on any override field/header/param; contract test |
 | 3 | No `compile_error!` test that would fail WASM-with-corpus-override drift | P0 | T3 enforcement, T051, T067 | Add a `trybuild` / `compile_fail` test gating the feature combination |
-| 4 | T056 content-ignorance corpus grep is absent | P0 | T056 | CI integration test that runs full corpus and greps audit NDJSON for non-token content |
 | 5 | `__engine_promote` seal is convention-only | P1 | Constitution V invariant | Seal behind a private ZST token constructable only inside `marque-engine`; test-only exception becomes a private helper |
 | 6 | Server has no explicit `DefaultBodyLimit` | P1 | §10.2 | Add Tower layer with explicit limit (e.g. 10 MB) so operator sees a decision |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
@@ -990,3 +993,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 0.1 | 2026-04-24 | Initial skeleton: §§0–17, Appendices A–C stubs. Sourced from parallel security audits of current implementation + open items in `specs/004-constraints-decoder-vocab/`. | Adam Poulemanos (with Claude Code) |
+| 0.2 | 2026-04-24 | T056 (P0-4) landed as `crates/engine/tests/audit.rs`. §3.1 and §14 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 4 removed. | Adam Poulemanos (with Claude Code) |

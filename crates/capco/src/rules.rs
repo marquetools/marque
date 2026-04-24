@@ -2063,8 +2063,7 @@ impl Rule for JointUsaFirstRule {
             .unwrap_or(classification_text.len());
         let prefix = &classification_text[..prefix_end];
 
-        let joined_actual: Vec<&str> =
-            j.countries.iter().map(|t| t.as_str()).collect();
+        let joined_actual: Vec<&str> = j.countries.iter().map(|t| t.as_str()).collect();
         let joined_actual_str = joined_actual.join(" ");
         let joined_canonical_str = canonical.join(" ");
         let replacement = format!("{prefix}{joined_canonical_str}");
@@ -2736,10 +2735,7 @@ impl Rule for CountryCodeOrderingRule {
 /// and cannot represent tetragraph codes. When a broader `CountryCode`
 /// type lands, this helper should be extended to sort trigraphs before
 /// tetragraphs per §H.3 p56 and §H.8 p151.
-fn canonicalize_trigraph_list(
-    codes: &[marque_ism::Trigraph],
-    usa_first: bool,
-) -> Vec<&str> {
+fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph], usa_first: bool) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&marque_ism::Trigraph::USA);
         let mut sorted: Vec<&str> = codes
@@ -3657,8 +3653,7 @@ impl Rule for SarBannerRollupRule {
         // banner hierarchy depth optional even when portions carry
         // hierarchy. See the `sar_missing_programs` helper doc for
         // the authority trail.
-        let missing_ids: Vec<&str> =
-            sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+        let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
         if missing_ids.is_empty() {
             return vec![];
         }
@@ -3791,11 +3786,7 @@ fn sar_missing_programs<'a>(
     use std::collections::HashSet;
 
     let observed_ids: HashSet<&str> = match observed {
-        Some(obs) => obs
-            .programs
-            .iter()
-            .map(|p| p.identifier.as_ref())
-            .collect(),
+        Some(obs) => obs.programs.iter().map(|p| p.identifier.as_ref()).collect(),
         None => HashSet::new(),
     };
 
@@ -4753,10 +4744,7 @@ impl Rule for NodisExdisClearsBannerRelToRule {
             "REL TO is not authorized in the banner line when any portion \
              contains NODIS or EXDIS; NOFORN conveys the foreign-release \
              decision in this case per CAPCO-2016 §H.9",
-            concat!(
-                "CAPCO-2016 §H.9 p172 (EXDIS) + ",
-                "p174 (NODIS)",
-            ),
+            concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",),
             None,
         )]
     }
@@ -4825,8 +4813,12 @@ impl Rule for NodisExdisBannerRollupRule {
         };
 
         let (expected_non_ic, _) = page.expected_non_ic_dissem();
-        let portions_have_nodis = expected_non_ic.iter().any(|d| matches!(d, NonIcDissem::Nodis));
-        let portions_have_exdis = expected_non_ic.iter().any(|d| matches!(d, NonIcDissem::Exdis));
+        let portions_have_nodis = expected_non_ic
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Nodis));
+        let portions_have_exdis = expected_non_ic
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Exdis));
 
         // Determine what the banner MUST carry per §H.9. NODIS has
         // priority over EXDIS; if any portion has NODIS, the banner
@@ -4850,10 +4842,7 @@ impl Rule for NodisExdisBannerRollupRule {
              (§H.9 roll-up rule: {required_str} in any portion must \
              appear in the banner)"
         );
-        const CITATION: &str = concat!(
-            "CAPCO-2016 §H.9 p172 (EXDIS) + ",
-            "p174 (NODIS)",
-        );
+        const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
 
         // Fix: if banner has at least one Non-IC dissem token, emit a
         // zero-width insertion at the end of that category block
@@ -6543,7 +6532,11 @@ mod tests {
         // `USA, GBR` must fire and fix to `USA GBR`.
         let diags = lint_banner("//JOINT S USA, GBR");
         let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
-        assert_eq!(e013.len(), 1, "E013 must fire on JOINT with comma: {diags:?}");
+        assert_eq!(
+            e013.len(),
+            1,
+            "E013 must fire on JOINT with comma: {diags:?}"
+        );
         let fix = e013[0].fix.as_ref().expect("E013 JOINT must carry a fix");
         assert_eq!(
             fix.replacement.as_ref(),
@@ -6577,7 +6570,11 @@ mod tests {
         // for this rule-level audit.
         let diags = lint_banner("//JOINT S USA,   GBR");
         let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
-        assert_eq!(e013.len(), 1, "E013 must fire on comma-plus-spaces JOINT: {diags:?}");
+        assert_eq!(
+            e013.len(),
+            1,
+            "E013 must fire on comma-plus-spaces JOINT: {diags:?}"
+        );
         let fix = e013[0].fix.as_ref().expect("E013 must carry a fix");
         assert_eq!(
             fix.replacement.as_ref(),
@@ -6599,7 +6596,11 @@ mod tests {
     fn e013_fires_on_rel_to_space_only_delimiter() {
         let diags = lint_banner("SECRET//REL TO USA GBR");
         let e013: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E013").collect();
-        assert_eq!(e013.len(), 1, "E013 must fire on space-only REL TO: {diags:?}");
+        assert_eq!(
+            e013.len(),
+            1,
+            "E013 must fire on space-only REL TO: {diags:?}"
+        );
         let fix = e013[0].fix.as_ref().expect("E013 REL TO must carry a fix");
         assert_eq!(fix.replacement.as_ref(), "REL TO USA, GBR");
         assert!(
@@ -7444,11 +7445,7 @@ mod tests {
         for src in ["(S//NF//ND/XD)", "(S//NF//XD/ND)"] {
             let diags = lint_portion(src);
             let e041: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E041").collect();
-            assert_eq!(
-                e041.len(),
-                1,
-                "E041 must fire on {src:?}: {diags:?}"
-            );
+            assert_eq!(e041.len(), 1, "E041 must fire on {src:?}: {diags:?}");
             let span_text = e041[0].span.as_str(src.as_bytes()).unwrap();
             assert_eq!(
                 span_text, "XD",
@@ -7615,7 +7612,10 @@ mod tests {
             1,
             "E020 must fire exactly once for JOINT: {diags:?}"
         );
-        let fix = e020_joint[0].fix.as_ref().expect("E020 JOINT must have fix");
+        let fix = e020_joint[0]
+            .fix
+            .as_ref()
+            .expect("E020 JOINT must have fix");
 
         // Span must cover exactly the Classification token's bytes:
         // `JOINT S USA GBR AUS` (no leading `//`, no trailing `//`).
@@ -7665,9 +7665,7 @@ mod tests {
         // Message wording differs from REL TO: no "USA first when
         // present" clause.
         assert!(
-            !e020_joint[0]
-                .message
-                .contains("USA first when present"),
+            !e020_joint[0].message.contains("USA first when present"),
             "JOINT message must NOT claim 'USA first' since §H.3 has \
              no such carve-out; got: {:?}",
             e020_joint[0].message
@@ -8177,7 +8175,11 @@ mod tests {
         let e032: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E032").collect();
         assert_eq!(e032.len(), 1);
         let fix = e032[0].fix.as_ref().expect("E032 must have fix");
-        assert_eq!(fix.replacement.as_ref(), "SI/TK", "alpha sort: SI before TK");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "SI/TK",
+            "alpha sort: SI before TK"
+        );
         assert!(
             e032[0].citation.contains("§H.4 p61"),
             "E032 citation must pin §H.4 p61; got: {:?}",
@@ -8335,7 +8337,9 @@ mod tests {
             e035[0].citation
         );
         assert!(
-            e035[0].citation.contains("Precedence Rules for Banner Line"),
+            e035[0]
+                .citation
+                .contains("Precedence Rules for Banner Line"),
             "E035 citation must reference the per-system Precedence Rules \
              template; got: {:?}",
             e035[0].citation
@@ -8593,14 +8597,11 @@ mod tests {
         // Exercises both emission paths: with-fix (contiguous span)
         // and no-fix (whitespace gap).
         for src in [
-            "SECRET//SAR-BP//SAR-CD//NOFORN",       // contiguous, fix present
-            "SECRET//SAR-BP// SAR-CD//NOFORN",      // whitespace gap, no fix
+            "SECRET//SAR-BP//SAR-CD//NOFORN",  // contiguous, fix present
+            "SECRET//SAR-BP// SAR-CD//NOFORN", // whitespace gap, no fix
         ] {
             let diags = lint_banner(src);
-            let e030: Vec<_> = diags
-                .iter()
-                .filter(|d| d.rule.as_str() == "E030")
-                .collect();
+            let e030: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E030").collect();
             assert_eq!(e030.len(), 1, "E030 must fire once on {src:?}: {diags:?}");
             assert!(
                 e030[0].citation.contains("§H.5 p100"),
@@ -8785,7 +8786,11 @@ mod tests {
         let source = "(S//SAR-BP-J12//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP-J12//NOFORN";
         let diags = lint_banner(source);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
-        assert_eq!(e031.len(), 1, "E031 must fire on missing program CD: {diags:?}");
+        assert_eq!(
+            e031.len(),
+            1,
+            "E031 must fire on missing program CD: {diags:?}"
+        );
         let fix = e031[0].fix.as_ref().expect("E031 must have fix");
 
         assert_eq!(fix.replacement.as_ref(), "/CD");
@@ -8867,8 +8872,7 @@ mod tests {
             e031[0].citation
         );
         assert!(
-            e031[0].citation.contains("§H.5 p101")
-                ,
+            e031[0].citation.contains("§H.5 p101"),
             "E031 citation must reference the hierarchy-optional carve-out \
              at §H.5 p101; got: {:?}",
             e031[0].citation

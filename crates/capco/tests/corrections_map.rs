@@ -102,10 +102,7 @@ fn c001_rule_pipeline_citation_equals_constant() {
     corrections.insert("NF".to_owned(), "NOFORN".to_owned());
 
     let diags = run_c001_rule_pipeline_only(b"SECRET//NF\n", corrections);
-    let c001: Vec<_> = diags
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
+    let c001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "C001").collect();
     assert_eq!(
         c001.len(),
         1,
