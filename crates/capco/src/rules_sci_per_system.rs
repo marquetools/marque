@@ -59,7 +59,7 @@ use marque_ism::{
     Classification, DissemControl, IsmAttributes, MarkingClassification, MarkingType,
     SciControlBare, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
 };
-use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
+use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 
@@ -942,15 +942,18 @@ impl Rule for TkCompartmentRequiresNofornRule {
 // Shared: companion-insert emitter
 // ===========================================================================
 
-/// Emit a Warn diagnostic with a zero-width insertion fix appending
-/// `/<token>` at the end of the existing IC dissem block. Falls back to
-/// Error no-fix (per E040's policy) when no dissem block exists on this
-/// portion/banner — inserting a whole category block is unsafe from
-/// rule-level context.
+/// Emit a diagnostic pointing at `anchor_span` (the offending SCI
+/// token) with a zero-width insertion fix appending `/<token>` at the
+/// end of the existing IC dissem block. The diagnostic caret and the
+/// fix span intentionally differ: the user sees the SCI marking that
+/// triggered the companion requirement, while the edit applies at the
+/// dissem block where the insertion belongs. This follows the
+/// diagnostic-vs-fix-span split used by `SarPortionFormRule` (E026).
 ///
-/// `anchor_span` is the diagnostic pointer (typically the first SCI
-/// token span for the offending marking), so the user sees WHICH SCI
-/// triggered the requirement — independent of where the fix inserts.
+/// Falls back to Error no-fix (per E040's policy) when no dissem block
+/// exists on this portion/banner — inserting a whole `//`-separated
+/// category from rule context is unsafe (there is no known anchor for
+/// the `//`).
 fn emit_companion_insert(
     rule: RuleId,
     severity: Severity,
@@ -962,33 +965,27 @@ fn emit_companion_insert(
 ) -> Diagnostic {
     match last_dissem {
         Some(dissem_span) => {
-            // Zero-width insertion at end of the last dissem token.
+            // Zero-width insertion at end of the last dissem token;
+            // diagnostic caret stays on the SCI marking that triggered
+            // the requirement so the user sees the *cause*, not just
+            // the patch site.
             let insert_at = dissem_span.end;
-            make_fix_diagnostic(FixDiagnosticParams {
-                rule,
-                severity,
-                source: FixSource::BuiltinRule,
-                span: Span::new(insert_at, insert_at),
-                message,
-                citation,
-                original: String::new(),
-                replacement: format!("/{token}"),
-                confidence: 0.9,
-                migration_ref: None,
-            })
+            let fix = FixProposal::new(
+                rule.clone(),
+                FixSource::BuiltinRule,
+                Span::new(insert_at, insert_at),
+                String::new(),
+                format!("/{token}"),
+                Confidence::strict(0.9),
+                None,
+            );
+            Diagnostic::new(rule, severity, anchor_span, message, citation, Some(fix))
         }
         None => {
             // No dissem block at all — can't safely insert a whole new
             // category. Escalate to Error with no fix (same policy as
             // E040's no-IC-dissem case).
-            Diagnostic::new(
-                rule,
-                Severity::Error,
-                anchor_span,
-                message,
-                citation,
-                None,
-            )
+            Diagnostic::new(rule, Severity::Error, anchor_span, message, citation, None)
         }
     }
 }
@@ -1006,12 +1003,15 @@ mod tests {
     // --- E042: HCS-O companions ---
 
     #[test]
-    fn e042_fires_and_inserts_orcon_noforn_when_both_missing() {
+    fn e042_no_dissem_block_escalates_to_error_no_fix() {
         // (S//HCS-O) — HCS-O requires ORCON and NOFORN, both missing.
+        // The portion has no IC dissem block, so `emit_companion_insert`
+        // cannot safely synthesize a whole `//`-separated category.
+        // Both companion checks fall back to the `None` arm: Severity
+        // escalates to Error and no fix is attached (same policy as
+        // E040's no-IC-dissem case).
         let diags = lint_portion("(S//HCS-O)");
         let e042: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E042").collect();
-        // Missing ORCON + Missing NOFORN = 2 diagnostics.
-        // Note: no existing dissem block, so both fall to Error no-fix path.
         assert_eq!(
             e042.len(),
             2,
@@ -1021,6 +1021,44 @@ mod tests {
             assert!(d.fix.is_none(), "no dissem block → no-fix Error: {d:?}");
             assert_eq!(d.severity, Severity::Error);
         }
+    }
+
+    #[test]
+    fn e042_companion_insert_diagnostic_points_at_sci_not_dissem() {
+        // (S//HCS-O//NF) — NOFORN present, ORCON missing. The fix is a
+        // zero-width insertion at the end of `NF`; the diagnostic caret
+        // must point at the HCS-O SCI token so the user sees WHICH
+        // marking triggered the requirement. Diagnostic span ≠ fix span.
+        let src = "(S//HCS-O//NF)";
+        let diags = lint_portion(src);
+        let e042: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E042").collect();
+        assert_eq!(e042.len(), 1, "only missing-ORCON diagnostic: {e042:?}");
+        let diag = e042[0];
+        let fix = diag.fix.as_ref().expect("fix attached");
+
+        // Fix span is the zero-width insertion at the end of `NF`.
+        assert_eq!(
+            fix.span.start, fix.span.end,
+            "insertion fix must be zero-width: {fix:?}"
+        );
+        let inserted_at = &src.as_bytes()[..fix.span.start];
+        assert!(
+            inserted_at.ends_with(b"NF"),
+            "fix must apply at end of the NF dissem token: inserted_at_byte_prefix={}",
+            String::from_utf8_lossy(inserted_at)
+        );
+
+        // Diagnostic caret is on the HCS-O SCI token, not on the fix
+        // insertion point. The two spans must differ.
+        assert_ne!(
+            diag.span, fix.span,
+            "diagnostic caret and fix span must differ: {diag:?}"
+        );
+        let caret = &src.as_bytes()[diag.span.start..diag.span.end];
+        assert_eq!(
+            caret, b"HCS-O",
+            "diagnostic caret must point at the HCS-O compound SCI token"
+        );
     }
 
     #[test]
