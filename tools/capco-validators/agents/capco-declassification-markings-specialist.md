@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-declassification-markings-specialist
 description: Specialist validator for declassification marking syntax and historical mappings. Covers banner line declassification rows (obsolete), modern Classification Authority Block declassification guidance, and explicit mappings between historical and modern declassification formats.
 category: capco-validator

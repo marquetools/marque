@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: capco-sar-validator
 description: Specialist validator for Special Access Required (SAR) Program markings per CAPCO §H.5. Validates SAP program identifiers, compartments, sub-compartments, and hierarchical structure.
 category: capco-validator

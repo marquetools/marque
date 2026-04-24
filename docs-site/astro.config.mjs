@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 import { defineConfig, fontProviders } from 'astro/config';
 
 export default defineConfig({
