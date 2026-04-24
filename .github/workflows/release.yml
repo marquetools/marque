@@ -22,7 +22,15 @@ on:
 
 permissions:
   contents: write
+  # `id-token: write` is required for Sigstore keyless signing via the
+  # GitHub OIDC provider; used by both `crates-io-auth-action` (for
+  # crates.io token exchange) and `attest-build-provenance` (for the
+  # SLSA provenance signature).
   id-token: write
+  # `attestations: write` lets `attest-build-provenance` record the
+  # signed attestation to GitHub's attestation store. Without this the
+  # signing step cannot persist its output.
+  attestations: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -42,7 +50,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: Install release tooling
         run: cargo install cargo-smart-release git-cliff --locked
@@ -97,3 +105,65 @@ jobs:
           else
             echo "Dry run — skipping push"
           fi
+
+      # Whitepaper §8.7 / gap register #13 — SLSA build provenance for
+      # every non-dry-run release. `git archive` produces a
+      # workspace-scoped source tarball from the tag. This archive is
+      # NOT equivalent to any crates.io per-crate tarball (crates.io
+      # uses `cargo package` with per-crate include/exclude rules); it
+      # is a separately verifiable workspace-state provenance artifact.
+      # `attest-build-provenance` signs it keylessly via Sigstore and
+      # records the attestation in GitHub's transparency log. Consumers
+      # verify with:
+      #   gh attestation verify marque-<version>.tar.gz --owner marquetools
+      #
+      # The archive/attest/release steps gate on `dry-run == false`
+      # only (not on `steps.tag.outputs.created == 'true'`) so a
+      # re-triggered release run for an existing tag completes the
+      # attestation + GitHub-release work even if the tag itself was
+      # created by a prior (failed) run. `softprops/action-gh-release`
+      # upserts — if the release exists, the signed archive is
+      # attached; if not, the release is created. Re-attesting an
+      # already-attested archive produces a fresh signature bound to
+      # the same subject digest.
+      - name: Build source archive
+        id: archive
+        if: inputs.dry-run == false
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          ARCHIVE="marque-${VERSION}.tar.gz"
+          git archive --format=tar.gz \
+            --prefix="marque-${VERSION}/" \
+            -o "${ARCHIVE}" \
+            "${TAG}"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest source archive
+        if: inputs.dry-run == false
+        uses: actions/attest-build-provenance@10334b5f1e684784025c3fc0a277c88c19089275
+        with:
+          subject-path: ${{ steps.archive.outputs.archive }}
+
+      - name: Create GitHub release
+        if: inputs.dry-run == false
+        uses: softprops/action-gh-release@4dd30955cca228da305ffee6fbc3fc1f95d447c2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          files: ${{ steps.archive.outputs.archive }}
+          generate_release_notes: true
+          body: |
+            Signed source archive: `${{ steps.archive.outputs.archive }}`
+
+            This is the workspace-state provenance artifact from
+            `git archive` at the release tag. It is not byte-identical
+            to any crates.io per-crate tarball — crates.io uses
+            `cargo package` with per-crate `include`/`exclude` rules.
+
+            Verify with the GitHub CLI:
+
+            ```
+            gh attestation verify ${{ steps.archive.outputs.archive }} \
+              --owner marquetools
+            ```

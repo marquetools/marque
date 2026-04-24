@@ -27,6 +27,7 @@ path = [
   ".github/ISSUE_TEMPLATE/**",
   ".github/PULL_REQUEST_TEMPLATE/**",
   ".github/actions/**",
+  ".github/commands/**",
   ".gitignore",
   "cliff.toml",
   "AGENTS.md",
@@ -44,6 +45,7 @@ path = [
   "mise.toml",
   "README.md",
   "SECURITY.md",
+  ".specify/memory/constitution.md",
   "docs/security/**",
   "**/Cargo.toml",
   "**/Cargo.lock",
@@ -52,6 +54,7 @@ path = [
   "Cargo.toml",
   "Cargo.lock",
   "**/README.md",
+  "**/SHA256SUMS",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
@@ -96,7 +99,8 @@ SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
 [[annotations]]
 path = [
-"tests/**"
+"tests/**",
+"**/tests/snapshots/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc."
