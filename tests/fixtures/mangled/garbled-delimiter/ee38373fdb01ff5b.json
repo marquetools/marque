@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET/ /NOFORN//REL TO USA, GBR//NODIS",
+  "expected": "SECRET//NOFORN//REL TO USA, GBR//NODIS",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.8300000000000001
+}

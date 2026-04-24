@@ -1,0 +1,6 @@
+{
+  "observed": "Ts//Si-G Abcd//Oc/Nf",
+  "expected": "TS//SI-G ABCD//OC/NF",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.8200000000000001
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET// REL TO GBR, USA",
+  "expected": "SECRET//REL TO GBR, USA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

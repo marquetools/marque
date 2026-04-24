@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//SEL TO GBR, AUS",
+  "expected": "SECRET//REL TO GBR, AUS",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

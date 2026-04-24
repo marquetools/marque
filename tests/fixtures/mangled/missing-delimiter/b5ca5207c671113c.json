@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//SERCET NOFORN",
+  "expected": "SECRET//SERCET//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.8200000000000001
+}

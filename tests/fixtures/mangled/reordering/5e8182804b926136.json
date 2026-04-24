@@ -1,0 +1,6 @@
+{
+  "observed": "S//ND//NF",
+  "expected": "S//NF//ND",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.8200000000000001
+}

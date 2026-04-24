@@ -1,0 +1,6 @@
+{
+  "observed": "secret//sar-cd/bp//noforn",
+  "expected": "SECRET//SAR-CD/BP//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.8200000000000001
+}

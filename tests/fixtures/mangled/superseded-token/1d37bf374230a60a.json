@@ -1,0 +1,6 @@
+{
+  "observed": "TS//COMINT-G ABCD//OC/NF",
+  "expected": "TS//SI-G ABCD//OC/NF",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.8200000000000001
+}

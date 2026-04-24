@@ -1,0 +1,6 @@
+{
+  "observed": "TS//SI-G ABSCD//OC/NF",
+  "expected": "TS//SI-G ABCD//OC/NF",
+  "mangling_class": "Typo",
+  "source_confidence": 0.8200000000000001
+}

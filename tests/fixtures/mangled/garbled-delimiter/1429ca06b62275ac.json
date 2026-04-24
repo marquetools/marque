@@ -1,0 +1,6 @@
+{
+  "observed": "CONFIDENTIAL / / REL TO DEU, FRA",
+  "expected": "CONFIDENTIAL//REL TO DEU, FRA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

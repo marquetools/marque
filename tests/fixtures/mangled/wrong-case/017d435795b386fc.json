@@ -1,0 +1,6 @@
+{
+  "observed": "ts//special access required-bp//nf",
+  "expected": "TS//SPECIAL ACCESS REQUIRED-BP//NF",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.8200000000000001
+}

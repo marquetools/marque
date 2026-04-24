@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//SAR-BP SAR-CD//NOFORN",
+  "expected": "SECRET//SAR-BP//SAR-CD//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.8300000000000001
+}

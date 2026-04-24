@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET REL TO GBR, AUS",
+  "expected": "SECRET//REL TO GBR, AUS",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.81
+}

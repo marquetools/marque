@@ -14,6 +14,9 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "build.rs",
+  "corpus/priors.json",
+  "corpus/README.md",
   "src/**/*.rs",
 ]
 
@@ -27,6 +30,12 @@ marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 phf = { workspace = true }
 thiserror = { workspace = true }
+
+[build-dependencies]
+# Phase-D decoder priors are baked in at compile time from
+# `corpus/priors.json`. `serde_json` is a build-dep only — no runtime
+# JSON parsing on the decoder hot path (Constitution II, SC-008).
+serde_json = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

@@ -1,0 +1,6 @@
+{
+  "observed": "s//nf//nd",
+  "expected": "S//NF//ND",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.8200000000000001
+}

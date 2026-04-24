@@ -1,0 +1,6 @@
+{
+  "observed": "S NF//ND",
+  "expected": "S//NF//ND",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.8200000000000001
+}

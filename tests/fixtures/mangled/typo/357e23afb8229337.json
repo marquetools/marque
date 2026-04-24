@@ -1,0 +1,6 @@
+{
+  "observed": "SCERET//NOFORN//SI",
+  "expected": "SECRET//NOFORN//SI",
+  "mangling_class": "Typo",
+  "source_confidence": 0.8200000000000001
+}

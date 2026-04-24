@@ -1,0 +1,6 @@
+{
+  "observed": "TS SPECIAL ACCESS REQUIRED-BP//NF",
+  "expected": "TS//SPECIAL ACCESS REQUIRED-BP//NF",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.8200000000000001
+}

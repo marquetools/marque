@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-CD/BP//SECRET//NOFORN",
+  "expected": "SECRET//SAR-CD/BP//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.8200000000000001
+}

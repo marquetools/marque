@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-CD//S//NF",
+  "expected": "S//SAR-CD//NF",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.8200000000000001
+}

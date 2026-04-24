@@ -1,0 +1,6 @@
+{
+  "observed": "CONFIDENTIAL/ /NOFORN//SI",
+  "expected": "CONFIDENTIAL//NOFORN//SI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.8200000000000001
+}

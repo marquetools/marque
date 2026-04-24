@@ -1,0 +1,6 @@
+{
+  "observed": "S//SAR-CD NF",
+  "expected": "S//SAR-CD//NF",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.8200000000000001
+}

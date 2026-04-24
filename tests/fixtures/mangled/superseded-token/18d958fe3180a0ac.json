@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//COMINT//LIMDIS",
+  "expected": "TOP SECRET//SI//LIMDIS",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.8200000000000001
+}
