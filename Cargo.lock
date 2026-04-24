@@ -982,6 +982,7 @@ name = "marque-server"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "form_urlencoded",
  "marque-capco",
  "marque-config",
  "marque-engine",

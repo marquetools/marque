@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.2 · **Last amended**: 2026-04-24
+**Document version**: 0.3 · **Last amended**: 2026-04-24
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -742,12 +742,30 @@ until completion.
   rate limiting, body-size cap, and structured logging are specified
   and un-wired; this is called out explicitly in `CLAUDE.md`.
 - No `DefaultBodyLimit` override; inherits axum's 2 MB default.
-- Must reject any HTTP request payload carrying a corpus override
-  with a clean 400 — contract in
-  `specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md`;
-  handler-side enforcement is open.
+- **T3 corpus-override rejection: landed.** Every HTTP request is
+  inspected at the handler for a corpus-override payload across three
+  channels — JSON body field `corpus_override`, header
+  `X-Marque-Corpus-Override`, and query-string parameter
+  `corpus_override=...` / `corpus-override=...` (all case-insensitive).
+  **Presence on any channel returns `400 Bad Request`.** Each channel
+  observes presence without materializing caller-supplied contents:
+  the body-field guard uses a custom `PresenceMarker` deserializer so
+  any value shape (`null`, `{}`, `[]`, strings, numbers, booleans) is
+  rejected on key presence alone; the header guard uses
+  `HeaderMap::contains_key`; the query guard decodes param names via
+  `form_urlencoded::parse` so percent-encoded variants like
+  `?corpus%5Foverride=1` cannot bypass the match. Rejection emits a
+  `tracing::warn!` entry at target `marque_server::t3` naming the
+  channel only — the payload is never materialized, stored, or
+  logged.
+  Implementation in `crates/server/src/lib.rs::reject_if_corpus_override`;
+  tests in `crates/server/tests/http.rs` (T049, T050, plus the
+  percent-encoded, case-insensitive, multiple-param, and empty-value-
+  shape variants).
 
-**Status**: `[PARTIAL]` — see gap register P0-2, P1-6.
+**Status**: `[LANDED]` for T3 corpus-override enforcement (T049 / T050
+/ T066); `[PARTIAL]` for the broader surface (auth middleware, body
+size limit — see gap register P1-6, P1-7).
 
 ### 10.3 `marque-wasm`
 
@@ -758,10 +776,23 @@ until completion.
   object; no raw pointers cross the bridge.
 - Talc allocator with 100 KB initial heap; linear-memory growth is
   bounded by the browser/runtime, not by marque.
-- A `compile_error!` guard that would fail a future drift re-enabling
-  override in WASM is open (gap register P0-3).
+- **T3 compile-fail guard: landed.** Three independent layers:
+  (1) `corpus-override` is not declared in `crates/wasm/Cargo.toml
+  [features]`, so `--features corpus-override` on this crate fails
+  with cargo's "package does not have feature" error before any
+  Rust compilation runs; (2) a `#[cfg(all(target_arch = "wasm32",
+  feature = "corpus-override"))] compile_error!(...)` in
+  `crates/wasm/src/lib.rs` fires if the feature reaches the crate
+  via a dependency-edge change; (3)
+  `crates/wasm/tests/no_corpus_override.rs` carries a sibling
+  `compile_error!` under `#[cfg(feature = "corpus-override")]` and a
+  trivial `#[test]` so `cargo test -p marque-wasm` fails loudly on
+  any future drift (T051 / T067). The `corpus-override` cfg name is
+  declared at the workspace level in `Cargo.toml
+  workspace.lints.rust` check-cfg so rustc does not warn about the
+  deliberately-undeclared feature probe.
 
-**Status**: `[PARTIAL]`.
+**Status**: `[LANDED]`.
 
 ### 10.4 `marque-extract`
 
@@ -947,8 +978,6 @@ possible), and a **remediation plan**. Severities:
 | # | Gap | Severity | Owner | Remediation |
 |---|---|---|---|---|
 | 1 | `MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"` | P0 | FR-014, T005, T054–T055 | Add build-script-generated constant; switch emitter to read it; compile-fail on unknown value |
-| 2 | Server does not reject HTTP requests carrying corpus override | P0 | T3 enforcement, T049–T050, T066 | Handler-layer 400 on any override field/header/param; contract test |
-| 3 | No `compile_error!` test that would fail WASM-with-corpus-override drift | P0 | T3 enforcement, T051, T067 | Add a `trybuild` / `compile_fail` test gating the feature combination |
 | 5 | `__engine_promote` seal is convention-only | P1 | Constitution V invariant | Seal behind a private ZST token constructable only inside `marque-engine`; test-only exception becomes a private helper |
 | 6 | Server has no explicit `DefaultBodyLimit` | P1 | §10.2 | Add Tower layer with explicit limit (e.g. 10 MB) so operator sees a decision |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
@@ -994,3 +1023,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 |---|---|---|---|
 | 0.1 | 2026-04-24 | Initial skeleton: §§0–17, Appendices A–C stubs. Sourced from parallel security audits of current implementation + open items in `specs/004-constraints-decoder-vocab/`. | Adam Poulemanos (with Claude Code) |
 | 0.2 | 2026-04-24 | T056 (P0-4) landed as `crates/engine/tests/audit.rs`. §3.1 and §14 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 4 removed. | Adam Poulemanos (with Claude Code) |
+| 0.3 | 2026-04-24 | T3 enforcement (P0-2 + P0-3) landed. Server rejects corpus-override across body, header, and query-string channels (T049/T050/T066 — `crates/server/src/lib.rs` + `crates/server/tests/http.rs`). WASM compile-fail guard landed (T051/T067 — `crates/wasm/src/lib.rs` + `crates/wasm/tests/no_corpus_override.rs`). §10.2 (corpus-override portion) and §10.3 flipped from `[PARTIAL]` to `[LANDED]`. Gap register rows 2 and 3 removed. | Adam Poulemanos (with Claude Code) |

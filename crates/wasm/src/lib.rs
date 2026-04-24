@@ -32,6 +32,27 @@
 )]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
+// T067 / T3 enforcement (Constitution III + FR-013 + whitepaper §10.3 +
+// `specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md`
+// Gate 1). The `corpus-override` feature MUST NOT reach the WASM
+// artifact. Primary defense is the absence of a `corpus-override`
+// declaration in `Cargo.toml [features]`; this guard is the secondary
+// defense against a future commit that inadvertently re-introduces it
+// or propagates it transitively from a dependency. Companion
+// compile-fail check lives at `crates/wasm/tests/no_corpus_override.rs`
+// (T051). The `corpus-override` cfg name is declared at the workspace
+// level (`Cargo.toml` workspace.lints.rust check-cfg) so this probe
+// does not trip `unexpected_cfgs` despite the feature being locally
+// undeclared.
+#[cfg(all(target_arch = "wasm32", feature = "corpus-override"))]
+compile_error!(
+    "marque-wasm must not be built with the `corpus-override` feature on wasm32. \
+     T3 enforcement per docs/security/WHITEPAPER.md §10.3 and \
+     specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md Gate 1. \
+     WASM uses build-time-baked priors only; runtime override is by design \
+     unreachable in the WASM artifact."
+);
+
 use marque_config::Config;
 use marque_engine::{Clock, Engine, FixMode};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};

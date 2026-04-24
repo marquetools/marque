@@ -104,8 +104,20 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # also use `cfg(coverage_nightly)`. We declare both here to silence the
 # unexpected_cfgs warning on Rust 1.80+ across stable CI and nightly/local runs
 # without requiring per-crate overrides.
+#
+# `corpus-override` is a real feature in marque-engine / marque-capco /
+# marque-config / marque (CLI) but is DELIBERATELY absent from
+# marque-wasm's own `[features]` (T067 / T3 enforcement — see
+# `docs/security/WHITEPAPER.md` §10.3). The `#[cfg(feature = "corpus-override")]`
+# probe in `crates/wasm/src/lib.rs` and `crates/wasm/tests/no_corpus_override.rs`
+# is the load-bearing part of that enforcement; without this check-cfg entry
+# rustc would warn on every build because the feature is locally undeclared.
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)', 'cfg(coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(coverage)',
+  'cfg(coverage_nightly)',
+  'cfg(feature, values("corpus-override"))',
+] }
 
 [profile.bench]
 inherits = "release"
