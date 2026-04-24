@@ -47,9 +47,9 @@ fn rule_count_reflects_registration_changes() {
     // wrappers. Count stayed at 39.
     //
     // T035b: retired 3 over-restrictive JOINT rules (E017, E018,
-    // E019) that contradicted CAPCO-2016 §H.3 line 4140; added 1
-    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 line
-    // 4146. Net: 39 - 3 + 1 = 37.
+    // E019) that contradicted CAPCO-2016 §H.3 p169; added 1
+    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 p169.
+    // Net: 39 - 3 + 1 = 37.
     //
     // T035c-1b: added S001 (prefer-banner-abbreviation, style). Net: 38.
     //
@@ -66,16 +66,44 @@ fn rule_count_reflects_registration_changes() {
     // (dos-dissem-noforn) per CAPCO-2016 §H.9 NODIS/EXDIS templates
     // (p172 + p174). Net: 40.
     //
+    // S003 (follow-up from #97 / T035c-18): added joint-usa-first
+    // style rule. §H.3 p56 prescribes pure alphabetical for JOINT
+    // with no USA-first carve-out; S003 encodes the convention
+    // observed in REL TO §H.8 p150–151 across US-authored country
+    // lists. Info severity. Net: 41.
+    //
+    // T035c-21 PR-B: added E039 (nodis-exdis-clears-banner-rel-to) +
+    // E040 (nodis-exdis-banner-rollup) + E041 (nodis-supersedes-exdis
+    // -in-portion). Net: 44.
+    //
+    // T035d: added 10 per-SCI-system constraint rules (E042–E051)
+    // covering §H.4 class-ceiling and required-companion constraints
+    // under the fix-and-warn pattern:
+    //   E042 HCS-O companions (ORCON+NOFORN req, ORCON-USGOV forbidden)
+    //   E043 HCS-P requires NOFORN
+    //   E044 HCS-P sub-compartment TS-only
+    //   E045 HCS class ceiling (TS or S; warn only, ambiguous)
+    //   E046 SI compartment TS-only (GAMMA or non-GAMMA)
+    //   E047 SI-G companions (ORCON req, ORCON-USGOV forbidden)
+    //   E048 RSV class ceiling (TS or S; warn only)
+    //   E049 TK class ceiling (TS or S; warn only)
+    //   E050 TK-BLFH TS-only
+    //   E051 TK compartment NOFORN requirement (BLFH/IDIT/KAND)
+    // Net: 44 + 10 = 54.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        40,
+        54,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
-         (retired W001) + T035c-21 PR-A (added E037, E038). Adjust \
-         this assertion only when rule registration actually changes."
+         (retired W001) + T035c-21 PR-A (added E037, E038) + \
+         S003 (added joint-usa-first) + T035c-21 PR-B (added \
+         E039, E040, E041) + T035d (added E042–E051 per-SCI-system \
+         constraints). Adjust this assertion only when rule \
+         registration actually changes."
     );
 }
 

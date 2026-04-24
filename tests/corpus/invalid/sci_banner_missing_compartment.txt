@@ -1,2 +1,2 @@
-(S//SI-G ABCD//NF) portion text
-SECRET//SI-G//NOFORN
+(TS//SI-G ABCD//OC/NF) portion text
+TOP SECRET//SI-G//ORCON/NOFORN

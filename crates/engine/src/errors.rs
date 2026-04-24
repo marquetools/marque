@@ -73,6 +73,59 @@ pub enum EngineConstructionError {
     /// annotate the dataflow explicitly — an un-annotated `custom`
     /// rewrite could not be scheduled relative to other rewrites.
     UnannotatedCustomAxes { rewrite: RewriteId },
+    /// A `[rules]` entry in the merged config references a key that is
+    /// neither a known rule ID (e.g., `E001`) nor a known rule name
+    /// (e.g., `portion-mark-in-banner`) across the registered rule sets.
+    ///
+    /// `key` is the unknown string as the user wrote it. `did_you_mean`
+    /// is a best-effort suggestion based on edit distance against the
+    /// union of known IDs and names — `None` when no candidate is close
+    /// enough to be useful.
+    ///
+    /// Fired by `Engine::new` / `Engine::with_clock` when canonicalizing
+    /// the config's severity overrides against the registered rules.
+    /// This is a user-config error, not an internal invariant violation;
+    /// `exit_code()` maps it to `EX_DATAERR` (65).
+    UnknownRuleOverride {
+        key: String,
+        did_you_mean: Option<String>,
+    },
+    /// The user specified the same rule two different ways in the merged
+    /// config (e.g., `E001 = "warn"` and `portion-mark-in-banner = "error"`)
+    /// and the two entries resolved to different severity strings.
+    ///
+    /// Duplicate forms with the *same* severity are silently accepted —
+    /// only a genuine value conflict hard-fails.
+    ///
+    /// `rule_id` is the canonical ID both keys resolved to. `keys`
+    /// contains the two source keys as the user wrote them; `severities`
+    /// contains the two conflicting severity strings, index-aligned with
+    /// `keys`.
+    ConflictingRuleOverride {
+        rule_id: String,
+        keys: Box<[String]>,
+        severities: Box<[String]>,
+    },
+}
+
+impl EngineConstructionError {
+    /// Exit code for this error per `contracts/cli.md`.
+    ///
+    /// - `UnknownRuleOverride` / `ConflictingRuleOverride` → `EX_DATAERR`
+    ///   (65). These are user-config defects — the `.marque.toml` refers
+    ///   to a rule that doesn't exist, or contradicts itself — and the
+    ///   user fixes them by editing their config.
+    /// - `RewriteCycle` / `UnannotatedCustomAxes` → `EX_UNAVAILABLE`
+    ///   (69). These are defects in the declarative scheme the engine
+    ///   was built against (developer / rule-author errors, not
+    ///   user-config errors), so the tool can't honor the request until
+    ///   the developer ships a corrected build.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::RewriteCycle { .. } | Self::UnannotatedCustomAxes { .. } => 69,
+            Self::UnknownRuleOverride { .. } | Self::ConflictingRuleOverride { .. } => 65,
+        }
+    }
 }
 
 impl std::fmt::Display for EngineConstructionError {
@@ -85,6 +138,38 @@ impl std::fmt::Display for EngineConstructionError {
                 f,
                 "custom page-rewrite {rewrite:?} was declared without explicit reads/writes"
             ),
+            Self::UnknownRuleOverride { key, did_you_mean } => {
+                write!(
+                    f,
+                    "unknown rule {key:?} in [rules] — no registered rule has this ID or name"
+                )?;
+                if let Some(hint) = did_you_mean {
+                    write!(f, " (did you mean {hint:?}?)")?;
+                }
+                Ok(())
+            }
+            Self::ConflictingRuleOverride {
+                rule_id,
+                keys,
+                severities,
+            } => {
+                write!(
+                    f,
+                    "conflicting severity overrides for rule {rule_id}: "
+                )?;
+                let mut first = true;
+                for (k, s) in keys.iter().zip(severities.iter()) {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{k:?} = {s:?}")?;
+                    first = false;
+                }
+                write!(
+                    f,
+                    " — specify only one form (either the rule ID or the rule name), not both with different severities"
+                )
+            }
         }
     }
 }

@@ -102,7 +102,7 @@ convergence point for the scanner chain (`marque-core`) and the rule chain
 | [`marque-engine`](./crates/engine/) | Pipeline orchestration. `Engine` (sync) + `BatchEngine` (async concurrent). Confidence gate + audit log live here. |
 | [`marque-config`](./crates/config/) | Layered config loading (CLI > env > `.marque.local.toml` > `.marque.toml`) with hard-fail validators. |
 | [`marque-ism`](./crates/ism/) | ISM vocabulary types + generated CVE enums from ODNI schemas. Build-time codegen, no runtime I/O. |
-| [`marque-capco`](./crates/capco/) | 38 hand-written CAPCO rules (E001–E016, E020–E036, S001–S002, W002–W003, C001) consuming `marque-ism` predicates. Includes SAR (Special Access Required) validation per §H.5 and structural SCI compartment + sub-compartment support per §A.6. |
+| [`marque-capco`](./crates/capco/) | 54 hand-written CAPCO rules (E001–E016, E020–E051, S001–S003, W002–W003, C001) consuming `marque-ism` predicates. Includes SAR (Special Access Required) validation per §H.5, structural SCI compartment + sub-compartment support per §A.6, per-SCI-system class ceilings + required-companion constraints per §H.4 (E042–E051, fix-and-warn), and NODIS/EXDIS mutual-exclusion + NOFORN-required constraints per §H.9. |
 | [`marque-extract`](./crates/extract/) | Document text + metadata extraction. **Stub** — Kreuzberg integration pending. |
 | [`marque-wasm`](./crates/wasm/) | WASM target via `wasm-pack`. Byte-identical NDJSON output to the CLI. |
 | [`marque-server`](./crates/server/) | axum REST microservice wrapping `marque-engine`. |

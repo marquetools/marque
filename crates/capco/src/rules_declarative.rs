@@ -58,19 +58,19 @@
 //!
 //! The T035b correctness audit (2026-04-21) retired three
 //! over-restrictive JOINT rules that contradicted CAPCO-2016
-//! §H.3 lines 4140-4146:
+//! §H.3 p169:
 //!
 //! - **E017** (`JointFgiRule`) — JOINT + FGI marker forbidden.
-//!   Wrong: §H.3 line 4140 lists FGI among markings JOINT "may be
+//!   Wrong: §H.3 p169 lists FGI among markings JOINT "may be
 //!   used with"; lines 4163-4164 cross-reference §H.7 for the
 //!   syntax. Retired entirely.
 //! - **E018** (`JointIcDissemRule`) — JOINT + any non-REL IC
-//!   dissem control forbidden. Wrong: §H.3 line 4140 permits
-//!   IC dissem "as appropriate"; line 4146 calls out only
+//!   dissem control forbidden. Wrong: §H.3 p169 permits
+//!   IC dissem "as appropriate"; p169 calls out only
 //!   NOFORN and HCS as specific exclusions. Retired entirely
 //!   (see replacement below).
 //! - **E019** (`JointNonIcDissemRule`) — JOINT + any non-IC
-//!   dissem forbidden. Wrong: §H.3 line 4140 permits non-IC
+//!   dissem forbidden. Wrong: §H.3 p169 permits non-IC
 //!   dissem with JOINT "as appropriate". Retired entirely.
 //!
 //! Replacement: **E036** (`DeclarativeJointHcsRule`) — the only
@@ -471,7 +471,7 @@ impl Rule for DeclarativeJointRestrictedRule {
 // ---------------------------------------------------------------------------
 //
 // Replaces the retired E017/E018/E019 (T035b audit). CAPCO-2016 §H.3
-// line 4146: "May not be used with the HCS markings or NOFORN
+// p169: "May not be used with the HCS markings or NOFORN
 // markings." The JOINT-NOFORN exclusion is already enforced
 // indirectly via `capco/noforn-conflicts-rel-to` + E014's REL TO
 // requirement. The HCS exclusion is the only remaining specific
@@ -740,7 +740,7 @@ impl Rule for DeclarativeCominglingWarningRule {
 // E037 — NODIS and EXDIS must not coexist (T035c-21 PR-A)
 // ---------------------------------------------------------------------------
 //
-// CAPCO-2016 §H.9 p172 line 4235 (EXDIS) and §H.9 p174 line 4295
+// CAPCO-2016 §H.9 p172 (EXDIS) and §H.9 p174
 // (NODIS) both state the same mutual-exclusion invariant: NODIS and
 // EXDIS MUST NOT coexist on the same information. This is the
 // canonical conflict rule — two-way textually stated in both
@@ -780,7 +780,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
             span,
             "NODIS and EXDIS must not coexist; each State Department \
              dissem control is mutually exclusive per CAPCO-2016 §H.9",
-            "CAPCO-2016 §H.9 p172 line 4235 + p174 line 4295",
+            "CAPCO-2016 §H.9 p172 + p174",
             None,
         )]
     }
@@ -790,7 +790,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
 // E038 — NODIS / EXDIS require NOFORN (T035c-21 PR-A)
 // ---------------------------------------------------------------------------
 //
-// CAPCO-2016 §H.9 EXDIS entry line 4236 and NODIS entry line 4296
+// CAPCO-2016 §H.9 EXDIS entry p172 and NODIS entry p174
 // both state: "May be used only with NOFORN information." A marking
 // carrying NODIS or EXDIS without NOFORN violates both template
 // entries.
@@ -827,7 +827,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
             span,
             "NODIS and EXDIS may be used only with NOFORN information; \
              add NOFORN to the dissem controls",
-            "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
+            "CAPCO-2016 §H.9 p172 + p174",
             None,
         )]
     }
