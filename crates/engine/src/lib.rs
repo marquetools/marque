@@ -27,7 +27,7 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use engine::{Engine, FixMode, InvalidThreshold};
 pub use errors::EngineConstructionError;
 pub use output::{FixResult, LintResult};
-pub use recognizer::{StrictRecognizer, shift_token_spans};
+pub use recognizer::StrictRecognizer;
 
 /// Returns the default rule set for marque (CAPCO rules).
 ///
