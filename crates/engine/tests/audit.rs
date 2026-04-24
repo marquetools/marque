@@ -45,8 +45,11 @@
 //!    ~2 KB of prose bytes. Exercises the realistic case where a
 //!    marking lives inside a larger document — a rule whose span
 //!    expands past the marking boundary is caught here even when
-//!    stand-alone fixtures miss it. Concatenation is byte-level so
-//!    non-UTF-8 fixtures are never silently skipped.
+//!    stand-alone fixtures miss it. Concatenation is byte-level,
+//!    matching the engine's `&[u8]` API contract; UTF-8 validity of
+//!    individual marking candidates is handled by the engine's own
+//!    parser (non-UTF-8 candidates yield `CoreError::InvalidUtf8`
+//!    and are skipped there, not by the test).
 //!
 //! 3. **Companion: diagnostic messages.** Not T056 proper (T056 is
 //!    scoped to the audit stream), but the same invariant applies to
@@ -114,13 +117,20 @@ fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
 }
 
 /// Panic if any prose sentinel appears in the given string.
-fn assert_clean(field_name: &str, value: &str, context: &str) {
+///
+/// Panic includes the rule ID and span so a failure points directly at
+/// the offending proposal without requiring test re-runs to find it.
+fn assert_clean(proposal: &FixProposal, field_name: &str, value: &str, context: &str) {
     for sentinel in PROSE_SENTINELS {
         if value.contains(sentinel) {
             panic!(
                 "G13 violation: prose sentinel {sentinel:?} leaked into \
-                 AppliedFix.proposal.{field_name} (context: {context})\n\n\
-                 field value: {value:?}"
+                 AppliedFix.proposal.{field_name} \
+                 (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
+                 field value: {value:?}",
+                rule = proposal.rule.as_str(),
+                start = proposal.span.start,
+                end = proposal.span.end,
             );
         }
     }
@@ -129,8 +139,9 @@ fn assert_clean(field_name: &str, value: &str, context: &str) {
 /// Check every AppliedFix in `applied` for sentinel leaks.
 fn check_fixes_clean(applied: &[AppliedFix], context: &str) {
     for fix in applied {
-        assert_clean("original", fix.proposal.original.as_ref(), context);
-        assert_clean("replacement", fix.proposal.replacement.as_ref(), context);
+        let p = &fix.proposal;
+        assert_clean(p, "original", p.original.as_ref(), context);
+        assert_clean(p, "replacement", p.replacement.as_ref(), context);
     }
 }
 
@@ -201,9 +212,14 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
         .expect("need at least one prose fixture to synthesize composites");
     let prose_bytes = load_fixture(prose_path);
 
-    // Byte-level slicing: we don't assume fixtures are valid UTF-8
-    // (fixtures are `.txt` today, but the engine operates on `&[u8]`
-    // and the test must not be weaker than the engine's own contract).
+    // Byte-level slicing: the engine's input API is `&[u8]`, but its
+    // parser requires UTF-8 for individual marking-candidate spans
+    // (non-UTF-8 candidates yield `CoreError::InvalidUtf8` and are
+    // skipped by the engine itself). Concatenating at the byte level
+    // means the test does not layer an extra UTF-8 skip on top of
+    // that contract — every fixture's bytes reach the engine, and
+    // the engine applies its own UTF-8 requirement only to the
+    // candidate spans it attempts to parse.
     let head_end = prose_bytes.len().min(2048);
     let head: &[u8] = &prose_bytes[..head_end];
     let tail_start = prose_bytes.len().saturating_sub(2048);
