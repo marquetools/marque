@@ -202,6 +202,34 @@ pub enum FeatureId {
     CorpusOverrideInEffect,
 }
 
+impl FeatureId {
+    /// Canonical on-the-wire string label for this feature.
+    ///
+    /// This is the **single source of truth** for `FeatureId →
+    /// audit-record-string` projection. Audit emitters (CLI, WASM,
+    /// server) and snapshot tests MUST call this method rather than
+    /// re-implementing the match. A new `FeatureId` variant added
+    /// without a matching `as_str` arm fails the exhaustiveness check
+    /// here at compile time, so the on-the-wire contract cannot drift
+    /// silently across emitters.
+    ///
+    /// Returns a `&'static str` so callers can embed the value in
+    /// zero-copy serialization paths (`Serialize` derives,
+    /// `serde_json::json!` etc.) without an allocation.
+    #[inline]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            FeatureId::EditDistance1 => "EditDistance1",
+            FeatureId::EditDistance2 => "EditDistance2",
+            FeatureId::TokenReorder => "TokenReorder",
+            FeatureId::SupersededToken => "SupersededToken",
+            FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
+            FeatureId::StrictContextClassification => "StrictContextClassification",
+            FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -242,6 +270,31 @@ mod tests {
     #[should_panic(expected = "Confidence::strict rule confidence")]
     fn strict_panics_above_one() {
         let _ = Confidence::strict(1.01);
+    }
+
+    #[test]
+    fn feature_id_as_str_matches_audit_contract() {
+        // Pin the on-the-wire labels for `FeatureId`. These strings are
+        // part of the audit-record contract (see
+        // `contracts/audit-record-v2.md`); a future rename here MUST be
+        // a deliberate audit-schema bump (`MARQUE_AUDIT_SCHEMA`), not an
+        // accidental refactor. Kept as an explicit per-variant table
+        // (rather than a round-trip) so a label drift is loud.
+        let cases: &[(FeatureId, &str)] = &[
+            (FeatureId::EditDistance1, "EditDistance1"),
+            (FeatureId::EditDistance2, "EditDistance2"),
+            (FeatureId::TokenReorder, "TokenReorder"),
+            (FeatureId::SupersededToken, "SupersededToken"),
+            (FeatureId::BaseRateCommonMarking, "BaseRateCommonMarking"),
+            (
+                FeatureId::StrictContextClassification,
+                "StrictContextClassification",
+            ),
+            (FeatureId::CorpusOverrideInEffect, "CorpusOverrideInEffect"),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(id.as_str(), *expected, "label drift for {id:?}");
+        }
     }
 
     #[test]

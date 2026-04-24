@@ -40,7 +40,10 @@ fn fix_applies_high_confidence_and_emits_audit() {
     // stderr should contain audit NDJSON with schema version.
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("\"schema\":\"marque-mvp-1\""),
+        stderr.contains(&format!(
+            "\"schema\":\"{}\"",
+            marque_engine::AUDIT_SCHEMA_VERSION
+        )),
         "audit record should contain schema version, got: {stderr}"
     );
     assert!(
@@ -121,7 +124,10 @@ fn fix_quiet_does_not_suppress_audit() {
     // -q suppresses narration but NOT audit records.
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("\"schema\":\"marque-mvp-1\""),
+        stderr.contains(&format!(
+            "\"schema\":\"{}\"",
+            marque_engine::AUDIT_SCHEMA_VERSION
+        )),
         "-q must not suppress audit NDJSON, got: {stderr}"
     );
     // Narration line should be absent.
@@ -238,7 +244,10 @@ fn fix_dry_run_stdin_produces_no_stdout() {
     // But audit records should still appear on stderr.
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("\"schema\":\"marque-mvp-1\""),
+        stderr.contains(&format!(
+            "\"schema\":\"{}\"",
+            marque_engine::AUDIT_SCHEMA_VERSION
+        )),
         "dry-run should still emit audit records on stderr, got: {stderr}"
     );
     assert!(
@@ -348,4 +357,58 @@ fn fix_explain_config_mutual_exclusion() {
         .write_stdin("SECRET//NF\n")
         .assert()
         .code(64);
+}
+
+// ---------------------------------------------------------------------------
+// T055 — single-schema-per-build invariant on the audit stream.
+// ---------------------------------------------------------------------------
+//
+// FR-014 requires that an engine binary emit exactly one audit-record
+// schema for the lifetime of the build — never a mix of v1 and v2
+// records on the same stream. The build-layer half is enforced in
+// `crates/engine/build.rs`, which validates `MARQUE_AUDIT_SCHEMA` to a
+// closed accept-list `["marque-mvp-1", "marque-mvp-2"]` and panics on
+// anything else. This test pins the runtime-emitter half: every audit
+// record on stderr must declare the matching `schema` string, and a
+// downgrade build's records must not contaminate a non-downgrade
+// build's stream.
+
+#[test]
+fn audit_stream_uses_only_one_schema_version() {
+    // A multi-fix input that exercises several rule emitters in a
+    // single run, so the test isn't trivially passing on a single
+    // record.
+    let input = "SECRET//NF\nSECRET//NF\nSECRET//NF\n";
+    let assert = marque().args(["fix"]).write_stdin(input).assert().success();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let audit_lines: Vec<&str> = stderr.lines().filter(|l| l.starts_with('{')).collect();
+    assert!(
+        !audit_lines.is_empty(),
+        "T055 vacuity guard: input must produce ≥1 audit record, got 0 \
+         (stderr was: {stderr:?})"
+    );
+
+    let active_schema = marque_engine::AUDIT_SCHEMA_VERSION;
+    let other_schema = if active_schema == "marque-mvp-2" {
+        "marque-mvp-1"
+    } else {
+        "marque-mvp-2"
+    };
+
+    for line in &audit_lines {
+        let parsed: serde_json::Value = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("audit record must be valid JSON ({e}): {line:?}"));
+        assert_eq!(
+            parsed["schema"].as_str(),
+            Some(active_schema),
+            "T055: every audit record must declare schema {active_schema:?}; \
+             record was: {line:?}"
+        );
+        assert!(
+            !line.contains(&format!("\"schema\":\"{other_schema}\"")),
+            "T055: stream contains the other schema {other_schema:?}; \
+             record was: {line:?}"
+        );
+    }
 }
