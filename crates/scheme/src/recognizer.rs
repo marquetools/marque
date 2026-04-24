@@ -65,7 +65,7 @@ pub enum DocumentPosition {
     End,
 }
 
-/// Context a [`Recognizer`] reads alongside the bytes it recognises.
+/// Context a [`Recognizer`] reads alongside the bytes it recognizes.
 ///
 /// The fields are all `Option` because the engine cannot always prove
 /// a zone or a document position up front — a naked `&[u8]` the WASM
@@ -125,7 +125,7 @@ impl Default for ParseContext {
 ///   that is the silent-fallthrough anti-pattern the recognition plan
 ///   forbids (foundational-plan line 609-612).
 pub trait Recognizer<S: MarkingScheme + ?Sized>: Send + Sync {
-    /// Recognise a marking from raw bytes.
+    /// Recognize a marking from raw bytes.
     ///
     /// `bytes` is the raw input slice (zero-copy; spans are by offset
     /// into this buffer — see [`crate::template`] for how templates

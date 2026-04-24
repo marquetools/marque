@@ -1301,7 +1301,7 @@ mod tests {
         let e045: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E045").collect();
         assert!(
             e045.is_empty(),
-            "E045 must be pre-empted by E044 when HCS-P carries a sub-compartment: {e045:?}"
+            "E045 must be preempted by E044 when HCS-P carries a sub-compartment: {e045:?}"
         );
     }
 
@@ -1447,7 +1447,7 @@ mod tests {
         let e049: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E049").collect();
         assert!(
             e049.is_empty(),
-            "E049 must be pre-empted by E050 when TK carries BLFH: {e049:?}"
+            "E049 must be preempted by E050 when TK carries BLFH: {e049:?}"
         );
     }
 
