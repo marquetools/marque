@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.4 · **Last amended**: 2026-04-24
+**Document version**: 0.5 · **Last amended**: 2026-04-24
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -674,15 +674,24 @@ while preserving every legitimate integration path (self-hosted,
 browser extension, CLI, IDE plugin, enterprise on-prem, WASM embed).
 
 **Dependency hygiene under ML-1.0**: marque crates may depend on
-permissively-licensed crates (the `deny.toml` allow-list in §8.4
+permissively-licensed crates (the `deny.toml` allow-list in §8.1
 covers the acceptable SPDX set); they must not depend on copyleft
 (GPL/LGPL/AGPL/MPL) or competing source-available licenses (Elastic
-License 2.0, BSL, SSPL). The allow-list in `deny.toml` enforces this
-today at the workspace scope. A narrower CI gate that enforces a
-tighter allow-list specifically for the WASM-safe subgraph (so a
-copyleft transitive dep pulled only by `marque-server` or `marque`
-CLI doesn't block WASM distribution) remains a gap (see gap register
-entry 14).
+License 2.0, BSL, SSPL). Two CI gates enforce this:
+
+1. **Workspace scope** (`deny` job + `deny.toml`) — applies to every
+   crate in the workspace, gating advisories, licenses, and sources.
+2. **WASM-safe subgraph scope** (`deny-wasm-safe` job +
+   `deny.wasm-safe.toml`) — applies a stricter allow-list to the
+   WASM-safe set (`marque-ism`, `marque-core`, `marque-rules`,
+   `marque-scheme`, `marque-capco`) and their transitive closure.
+   The exclusion list in the job explicitly names every non-WASM-safe
+   workspace member; `--exclude-dev` drops test-only deps. A new
+   workspace member landing MUST be classified at the same PR —
+   either added to the exclude list or left in the WASM-safe check.
+   A copyleft dep that sneaks in only through `marque-server` or the
+   CLI will pass the workspace-wide gate (if the workspace gate ever
+   relaxes) but still trips this narrower gate for WASM.
 
 ### 8.6 NPM demo & docs-site
 
@@ -1067,7 +1076,7 @@ possible), and a **remediation plan**. Severities:
 | 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
 | 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
 | 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
-| 14 | No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list | P2 | §8.5, Constitution Tech Stack | `deny.toml` overlay (e.g. `deny.wasm-safe.toml`) scoped to the `marque-capco` transitive closure, allowing only permissive SPDX expressions per Constitution v1.2.0 dependency-hygiene rule. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; reframed after Constitution v1.2.0 to "no copyleft / no competing source-available" per the amended dependency-hygiene rule |
+| 14 | ~~No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list~~ | ~~P2~~ | ~~§8.5, Constitution Tech Stack~~ | **Resolved.** `deny.wasm-safe.toml` + `deny-wasm-safe` CI job invoke `cargo deny` against the WASM-safe subgraph (every non-WASM-safe workspace member excluded, dev-deps pruned) with a stricter allow-list. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; landed form enforces the Constitution v1.2.0 "no copyleft / no competing source-available" dep-hygiene rule |
 | 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
 | 16 | `crates/core/src/parser.rs` `to_vec()` is undocumented | P2 | §5.1 | Add a SAFETY-style comment explaining scope-local intent, or refactor |
 | 17 | `tools/corpus-analysis/` has unpinned Python deps | P2 | §7.4 | Pin `requests` in `requirements.txt`; consider `pip-tools` |
