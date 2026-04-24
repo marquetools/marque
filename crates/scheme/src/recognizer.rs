@@ -88,10 +88,29 @@ pub struct ParseContext {
     pub zone: Option<Zone>,
     /// Coarse document position, when known.
     pub position: Option<DocumentPosition>,
+    /// Minimum classification rank established by strict-path evidence
+    /// elsewhere in the document. Recognizers that need to honor a
+    /// classification-level floor (e.g., FR-011: if any portion on the
+    /// page is CONFIDENTIAL-or-higher, `(C)` must not resolve to a
+    /// below-CONFIDENTIAL candidate) read this field; strict
+    /// recognizers ignore it.
+    ///
+    /// The rank encoding is scheme-specific — the trait can't know
+    /// what a classification axis even looks like. For CAPCO / ISM the
+    /// convention matches `marque_ism::Classification as u8`
+    /// (`Unclassified=0, Restricted=1, Confidential=2, Secret=3,
+    /// TopSecret=4`). A non-ISM scheme using this field must document
+    /// its own encoding and stay consistent within the scheme.
+    ///
+    /// `None` when the engine has not established a strict floor for
+    /// the current region (e.g., isolated single-region recognition,
+    /// or the page has no strict-path portion seen yet).
+    pub classification_floor: Option<u8>,
 }
 
 impl Default for ParseContext {
-    /// Default context: strict path, no zone / position evidence.
+    /// Default context: strict path, no zone / position evidence, no
+    /// strict classification floor.
     ///
     /// The strict path is the safe default — callers that know they
     /// want deep-scan decoding must opt in explicitly.
@@ -100,6 +119,7 @@ impl Default for ParseContext {
             strict_evidence: true,
             zone: None,
             position: None,
+            classification_floor: None,
         }
     }
 }

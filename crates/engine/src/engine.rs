@@ -81,6 +81,12 @@ pub struct Engine {
     /// trait is `Send + Sync` and `BatchEngine` workers hold the same
     /// `Arc` reference (Constitution VI, FR-023).
     recognizer: Arc<dyn Recognizer<CapcoScheme>>,
+    /// When `true`, `lint()` passes `strict_evidence = false` in the
+    /// `ParseContext` so the recognizer is allowed to fall back to the
+    /// decoder on strict-parse zero-candidate. Flipped by
+    /// [`Engine::with_deep_scan`]; false by default so interactive-
+    /// authoring latency (SC-001) is identical to PR-2.
+    deep_scan: bool,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -169,6 +175,7 @@ impl Engine {
             corrections_ac,
             scheduled_rewrites,
             recognizer: Arc::new(StrictRecognizer::new()),
+            deep_scan: false,
         })
     }
 
@@ -180,6 +187,41 @@ impl Engine {
     /// walks.
     pub fn scheduled_rewrites(&self) -> &[RewriteId] {
         &self.scheduled_rewrites
+    }
+
+    /// Swap the engine's strict-only recognizer for the strict-then-
+    /// decoder dispatcher (Phase 4 PR-3). Returns the engine by value
+    /// so callers can chain:
+    ///
+    /// ```ignore
+    /// let engine = Engine::new(config, rules, scheme)?.with_deep_scan();
+    /// ```
+    ///
+    /// With deep-scan on, [`Engine::lint`] first tries the strict path
+    /// for every scanner candidate; if strict returns a zero-candidate
+    /// `Ambiguous`, the engine falls back to [`DecoderRecognizer`].
+    /// The decoder recovers mangled markings that are edit-distance-1/2,
+    /// token-reordered, superseded, or case-mangled from a real
+    /// CAPCO-2016 marking.
+    ///
+    /// Interactive-authoring latency is not affected: without
+    /// deep-scan, the engine's dispatch is identical to Phase 4 PR-2.
+    /// The decoder only fires on explicit opt-in (this method today;
+    /// a `--deep-scan` CLI flag lands in PR-4 alongside audit v2).
+    pub fn with_deep_scan(mut self) -> Self {
+        self.recognizer = Arc::new(crate::decoder::StrictOrDecoderRecognizer::new());
+        self.deep_scan = true;
+        self
+    }
+
+    /// Whether this engine is running in deep-scan mode.
+    ///
+    /// Exposed for test inspection and for `BatchEngine` /
+    /// `marque-server` code paths that need to mirror the engine's
+    /// mode onto their own configuration (e.g., audit records'
+    /// `FixSource::DecoderPosterior` only makes sense in deep-scan).
+    pub fn deep_scan_enabled(&self) -> bool {
+        self.deep_scan
     }
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
@@ -208,13 +250,18 @@ impl Engine {
         // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
 
-        // Strict-path parse context — PR-2 dispatches only via the strict
-        // recognizer; PR-3 / T063 adds deep-scan dispatch keyed off
-        // `strict_evidence` and rule-escalation signals.
+        // Parse context: strict-path when `deep_scan = false`, deep-
+        // scan-allowed otherwise. `StrictOrDecoderRecognizer` reads
+        // `strict_evidence` to decide whether to fall back to the
+        // decoder on strict-parse zero-candidate (see `decoder.rs`).
+        // `classification_floor` stays `None` today — computing a
+        // per-page floor and threading it here is PR-4's job alongside
+        // audit v2 emission.
         let strict_cx = ParseContext {
-            strict_evidence: true,
+            strict_evidence: !self.deep_scan,
             zone: None,
             position: None,
+            classification_floor: None,
         };
 
         for candidate in &candidates {

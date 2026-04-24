@@ -1,0 +1,1125 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Phase-D probabilistic [`Recognizer`] — the "decoder".
+//!
+//! This module implements the deep-scan half of the strict/deep-scan
+//! recognizer split introduced in Phase 4 PR-2. When the engine is
+//! configured for deep-scan (batch reconciliation mode,
+//! rule-escalated region, `--deep-scan` CLI flag), and the strict
+//! recognizer returns zero candidates for a marking region, the
+//! engine falls back to the decoder to recover mangled markings that
+//! are one of a small set of canonical-shape deviations away from a
+//! real CAPCO-2016 marking:
+//!
+//! - Edit-distance-1/2 token typos (`SERCET` → `SECRET`).
+//! - Token reordering within categories (`NOFORN//SECRET` →
+//!   `SECRET//NOFORN`).
+//! - CAPCO-2016-superseded tokens (`COMINT` → `SI`).
+//! - Case mistakes (`secret//noforn` → `SECRET//NOFORN`).
+//! - Garbled delimiters (`S ∕∕ NOFORN` → `S//NOFORN`).
+//!
+//! The decoder never fabricates a marking where none exists. When the
+//! observed tokens fit no CAPCO grammar template, it returns
+//! `Parsed::Ambiguous { candidates: vec![] }` — the zero-candidate
+//! signal per foundational-plan line 609-612.
+//!
+//! ## Why this lives in `marque-engine`, not `marque-capco`
+//!
+//! Same Constitution VII rationale as `StrictRecognizer` (PR-2):
+//! `marque-capco` may not depend on `marque-core`, but the decoder
+//! needs core's fuzzy-vocab matcher and strict parser to materialize
+//! candidates. `marque-engine` is the sole crate where both chains
+//! converge. The original tasks.md T059/T061 placement is amended in
+//! tasks.md itself.
+//!
+//! ## Scoring approach (foundational-plan §5.2)
+//!
+//! For each candidate the decoder computes:
+//!
+//! ```text
+//! log_posterior(candidate | observed)
+//!   = log_prior(candidate)                      // baked corpus priors (PR-1)
+//!   + Σ log_likelihood(feature | candidate)     // enumerated features
+//! ```
+//!
+//! Features are drawn from the closed [`FeatureId`] enum:
+//! `EditDistance1`, `EditDistance2`, `TokenReorder`, `SupersededToken`,
+//! `StrictContextClassification`. Each contributes a fixed log-odds
+//! delta documented at the feature's call site.
+//!
+//! The top candidate wins when its posterior exceeds the runner-up by
+//! a configured ratio; below that threshold the decoder returns
+//! `Parsed::Ambiguous { candidates }` so the engine can surface a
+//! diagnostic rather than auto-apply.
+//!
+//! ## What this module is NOT
+//!
+//! - Not a full template-matching grammar engine. The MVP materializes
+//!   candidates by canonicalizing observed tokens and round-tripping
+//!   through the strict parser — the strict parser is the arbiter of
+//!   "is this a CAPCO-shape marking." If the canonicalized bytes
+//!   strict-parse, we have a candidate; if not, we discard.
+//! - Not a learning system. All priors are compile-time-baked `&'static`
+//!   tables from `marque_capco::priors` (Constitution III: no runtime
+//!   corpus override on WASM).
+//! - Not a fix applier. The decoder proposes `CapcoMarking` candidates;
+//!   the engine applies them through the normal `Diagnostic` /
+//!   `FixProposal` path with `FixSource::DecoderPosterior`.
+
+use std::collections::BTreeSet;
+
+use marque_capco::{CapcoMarking, CapcoScheme};
+use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
+use marque_ism::{
+    CapcoTokenSet, Classification,
+    span::{MarkingCandidate, MarkingType, Span},
+    token_set::TokenSet as _,
+};
+use marque_rules::confidence::FeatureId;
+use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
+use marque_scheme::recognizer::{ParseContext, Recognizer};
+
+use crate::recognizer::StrictRecognizer;
+
+/// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
+///
+/// Higher K burns latency without accuracy gain (diminishing returns
+/// above 6 per the primary-source corpus analysis); lower K drops
+/// recall on multi-token reorderings. Tunable in-place — the bound is
+/// advisory, not a correctness invariant.
+const K_MAX_CANDIDATES: usize = 8;
+
+/// Runner-up posterior-ratio threshold for emitting `Unambiguous`.
+///
+/// When the top candidate's log-posterior exceeds the runner-up's by
+/// at least this much (in natural-log space, so ~1.6 ≈ 5× odds ratio),
+/// the decoder collapses to `Unambiguous(top)`. Below the threshold,
+/// it returns `Ambiguous { candidates }` so the engine can surface a
+/// diagnostic rather than auto-apply a close call.
+const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
+
+/// Phase-D probabilistic marking recognizer.
+///
+/// Stateless — all priors are baked `&'static` tables consumed at
+/// scoring time. Cheaply constructible; the engine holds a single
+/// instance behind `Arc` for the lifetime of one [`crate::Engine`].
+///
+/// When `ParseContext::strict_evidence == true` the decoder defers to
+/// the strict path by returning a zero-candidate result. The engine
+/// is responsible for calling the strict recognizer first and only
+/// invoking the decoder on deep-scan regions (see
+/// `crate::Engine::lint` dispatch).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DecoderRecognizer;
+
+impl DecoderRecognizer {
+    /// Construct a decoder recognizer.
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Recognizer<CapcoScheme> for DecoderRecognizer {
+    fn recognize(&self, bytes: &[u8], cx: &ParseContext) -> Parsed<CapcoMarking> {
+        // Strict-path callers get zero candidates so the engine's
+        // strict recognizer remains the authoritative answer under
+        // interactive-authoring latency (SC-001). The engine only
+        // invokes the decoder when `strict_evidence = false` is
+        // explicitly requested (deep-scan mode or rule-escalated
+        // region).
+        if cx.strict_evidence {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
+
+        let Some(kind) = infer_marking_type(bytes) else {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        };
+
+        // 1. Canonicalize the observed bytes into zero-or-more
+        //    candidate byte-strings + per-candidate feature trace.
+        let canonical_attempts = generate_candidate_bytes(bytes);
+        if canonical_attempts.is_empty() {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
+
+        // 2. Strict-parse each canonicalized attempt. Anything that
+        //    fails strict parsing is discarded — the strict parser is
+        //    the arbiter of "is this a CAPCO-shape marking." This is
+        //    what guarantees the decoder never fabricates a marking
+        //    shape the grammar forbids.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let synthetic_candidate = MarkingCandidate {
+            span: Span::new(0, 0), // re-set per attempt below
+            kind,
+        };
+        let mut scored: Vec<ScoredCandidate> = Vec::new();
+        for attempt in canonical_attempts {
+            let candidate = MarkingCandidate {
+                span: Span::new(0, attempt.bytes.len()),
+                ..synthetic_candidate
+            };
+            let Ok(parsed) = parser.parse(&candidate, &attempt.bytes) else {
+                continue;
+            };
+            let marking = CapcoMarking(parsed.attrs);
+
+            // 3a. The strict parser is lenient — it accepts any
+            //     `BYTES//BYTES` shape and emits an `IsmAttributes`
+            //     with empty fields when nothing is recognized. Drop
+            //     such trivial parses so the decoder doesn't
+            //     fabricate a marking for prose like `FROBNITZ//WIBBLE`.
+            if !is_nontrivial_marking(&marking) {
+                continue;
+            }
+
+            // 3b. FR-011 — drop candidates below the page's strict
+            //     classification floor.
+            if let Some(floor) = cx.classification_floor
+                && !meets_classification_floor(&marking, floor)
+            {
+                continue;
+            }
+
+            // 4. Score: sum baked corpus log-priors over canonical
+            //    tokens + per-feature log-odds deltas. All log-odds
+            //    values are documented at their construction site.
+            let score = score_candidate(&attempt, &marking);
+            scored.push(ScoredCandidate {
+                marking,
+                score,
+                features: attempt.features,
+            });
+        }
+
+        if scored.is_empty() {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
+
+        // 5. Sort by score descending; keep top K=8.
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        scored.truncate(K_MAX_CANDIDATES);
+
+        // 6. Decision: top-over-runner-up log margin.
+        let top = &scored[0];
+        let top_score = top.score;
+        let runner_up_score = scored.get(1).map(|c| c.score).unwrap_or(f32::NEG_INFINITY);
+        let log_margin = top_score - runner_up_score;
+
+        if scored.len() == 1 || log_margin >= UNAMBIGUOUS_LOG_MARGIN {
+            return Parsed::Unambiguous(top.marking.clone());
+        }
+
+        // Ambiguous: return the whole K-truncated set with per-feature
+        // evidence so the engine can surface a user-visible diagnostic.
+        Parsed::Ambiguous {
+            candidates: scored
+                .into_iter()
+                .map(|s| Candidate {
+                    marking: s.marking,
+                    evidence: s
+                        .features
+                        .iter()
+                        .map(|f| EvidenceFeature {
+                            label: feature_label(f.id),
+                            log_odds: f.delta,
+                        })
+                        .collect(),
+                    prior_log_odds: s.score,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One scored candidate kept in the decoder's working set.
+struct ScoredCandidate {
+    marking: CapcoMarking,
+    score: f32,
+    features: Vec<FeatureEntry>,
+}
+
+/// One feature recorded during candidate generation, paired with its
+/// log-odds contribution. The decoder accumulates these to reconstruct
+/// `Confidence::features` at audit-emit time.
+#[derive(Debug, Clone, Copy)]
+struct FeatureEntry {
+    id: FeatureId,
+    delta: f32,
+}
+
+/// A canonicalization attempt: the byte string the decoder will hand
+/// to the strict parser, plus the features that transformation
+/// represents. Zero or more attempts are generated per observed input.
+struct CanonicalAttempt {
+    bytes: Vec<u8>,
+    features: Vec<FeatureEntry>,
+}
+
+/// Feature label for audit output. One-to-one with [`FeatureId`].
+///
+/// The on-the-wire audit schema treats [`FeatureId`] as enum-typed
+/// (FR-012), but [`EvidenceFeature::label`] is `&'static str` — this
+/// helper bridges the two without allowing free-form strings.
+fn feature_label(id: FeatureId) -> &'static str {
+    match id {
+        FeatureId::EditDistance1 => "edit_distance_1",
+        FeatureId::EditDistance2 => "edit_distance_2",
+        FeatureId::TokenReorder => "token_reorder",
+        FeatureId::SupersededToken => "superseded_token",
+        FeatureId::BaseRateCommonMarking => "base_rate_common_marking",
+        FeatureId::StrictContextClassification => "strict_context_classification",
+        FeatureId::CorpusOverrideInEffect => "corpus_override_in_effect",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Marking-type inference (mirrors `recognizer::infer_marking_type`)
+// ---------------------------------------------------------------------------
+
+/// Infer a [`MarkingType`] from the shape of `bytes`.
+///
+/// Same heuristic as the strict recognizer — portion on leading `(`,
+/// CAB on authority-head prefix, banner otherwise. Lives locally so
+/// the decoder doesn't need to poke into `StrictRecognizer` internals.
+fn infer_marking_type(bytes: &[u8]) -> Option<MarkingType> {
+    let first = bytes.iter().copied().find(|&b| !b.is_ascii_whitespace())?;
+    if first == b'(' {
+        return Some(MarkingType::Portion);
+    }
+    if is_cab_head(bytes) {
+        return Some(MarkingType::Cab);
+    }
+    Some(MarkingType::Banner)
+}
+
+fn is_cab_head(bytes: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let trimmed = text.trim_start();
+    trimmed.starts_with("Classified By:")
+        || trimmed.starts_with("Derived From:")
+        || trimmed.starts_with("Declassify On:")
+}
+
+// ---------------------------------------------------------------------------
+// Candidate byte generation
+// ---------------------------------------------------------------------------
+
+/// Generate bounded canonical-byte candidates from a mangled input.
+///
+/// Each returned [`CanonicalAttempt`] is a `Vec<u8>` the decoder will
+/// hand to the strict parser. Attempts cover the transforms named in
+/// the module docs:
+///
+/// - Case normalization (`secret//noforn` → `SECRET//NOFORN`).
+/// - Garbled-delimiter rewrite (`S ∕∕ NOFORN` → `S//NOFORN`).
+/// - Per-token fuzzy correction (edit-distance ≤ 2 via
+///   [`marque_core::fuzzy::FuzzyVocabMatcher`]).
+/// - Superseded-token replacement (`COMINT` → `SI`).
+/// - Token reordering — tried when categorical ordering is the obvious
+///   deviation (e.g., portion `A//B` where B is a classification and
+///   A isn't).
+///
+/// Bounded by [`K_MAX_CANDIDATES`] × 2 to keep the strict-parse pass
+/// bounded; duplicates (different feature traces producing the same
+/// canonical bytes) are deduplicated at emit time.
+fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return Vec::new();
+    };
+
+    // Strip surrounding whitespace; preserve leading `(` for portion
+    // detection so the strict parser's portion path stays keyed off
+    // the same first-non-whitespace byte the recognizer saw.
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut attempts: Vec<CanonicalAttempt> = Vec::new();
+    let mut emit = |bytes: Vec<u8>, features: Vec<FeatureEntry>| {
+        // Dedup by the canonical byte string — different transform
+        // sequences can converge on the same output.
+        if !attempts.iter().any(|a| a.bytes == bytes) {
+            attempts.push(CanonicalAttempt { bytes, features });
+        }
+    };
+
+    // ---- Raw: just trim + normalize delimiters/case. --------------
+    let (normalized, delim_features) = normalize_delimiters_and_case(trimmed);
+
+    // ---- Per-token fuzzy correction on the normalized text. ------
+    let vocab = CapcoTokenSet.correction_vocab();
+    let matcher = FuzzyVocabMatcher::new(vocab);
+    let (fuzzy_corrected, fuzzy_features) = fuzzy_correct_tokens(&normalized, &matcher);
+
+    // Emit the straightforward "normalize + fuzzy-correct" attempt
+    // first — this covers typos (T046) and case/delimiter mangling
+    // by default.
+    let mut features = delim_features.clone();
+    features.extend(fuzzy_features.iter().copied());
+    emit(fuzzy_corrected.clone().into_bytes(), features);
+
+    // ---- Also attempt a token-reorder pass. The reorder is gentle:
+    //      inside each `//`-separated segment, if the segment's tokens
+    //      look like they belong to multiple categories, we try a
+    //      canonical category ordering (classification first).
+    if let Some(reordered) = try_canonical_reorder(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(FeatureEntry {
+            id: FeatureId::TokenReorder,
+            delta: -0.4,
+        });
+        emit(reordered.into_bytes(), features);
+    }
+
+    attempts
+}
+
+/// Normalize delimiters and case on a trimmed input.
+///
+/// - Fullwidth slash variants (`∕∕`, `/ /`, ` / / `, spaced `//`) all
+///   collapse to `//`.
+/// - ASCII alphabetic characters are upper-cased; the CAPCO grammar
+///   is case-sensitive uppercase (§B).
+/// - Leading `(` and trailing `)` are preserved so portion detection
+///   still works.
+///
+/// Returns the normalized string and the features that were applied
+/// (we record a `BaseRateCommonMarking` feature when normalization
+/// was actually needed, so the scoring stage can reward the fact that
+/// the candidate came from a near-miss rather than a raw input).
+fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
+    let mut features = Vec::new();
+
+    // Collapse fullwidth and spaced slash variants.
+    // The order matters: we want multi-char sequences first.
+    let mut normalized: String = text.to_owned();
+    let replacements = [
+        ("∕∕", "//"),
+        (" // ", "//"),
+        ("// ", "//"),
+        (" //", "//"),
+        ("/ / ", "//"),
+        (" / / ", "//"),
+        ("/ /", "//"),
+    ];
+    let mut delim_changed = false;
+    for (from, to) in replacements {
+        if normalized.contains(from) {
+            normalized = normalized.replace(from, to);
+            delim_changed = true;
+        }
+    }
+
+    // Case normalization. If the input was all-lowercase or mixed-case
+    // (Title Case), uppercasing is a significant canonicalization that
+    // the decoder should reward.
+    let had_lowercase = normalized.chars().any(|c| c.is_ascii_lowercase());
+    if had_lowercase {
+        normalized = normalized.to_ascii_uppercase();
+    }
+
+    if delim_changed || had_lowercase {
+        // Record a `BaseRateCommonMarking` feature — this
+        // normalization alone doesn't fit into one of the sharper
+        // features (EditDistance*, TokenReorder, SupersededToken),
+        // but it reflects that we've aligned the input with a common
+        // canonical shape. Weight is conservative.
+        features.push(FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: -0.3,
+        });
+    }
+
+    (normalized, features)
+}
+
+/// Fuzzy-correct each whitespace/delimiter-separated token in `text`.
+///
+/// Tokens that are already canonical are passed through. Unknown
+/// tokens are run through [`FuzzyVocabMatcher`]; if a correction is
+/// unambiguous the replacement lands in the output and the appropriate
+/// `EditDistance1`/`EditDistance2` feature is recorded. If no
+/// correction is available, the token is dropped into the output
+/// unchanged — the strict parser will reject the candidate if the
+/// dropped-through token isn't in the vocabulary.
+///
+/// Also consults [`SUPERSEDED_TOKEN_MAP`] for CAPCO-2016 retirement
+/// pairs (currently just `COMINT` → `SI`), recording the
+/// `SupersededToken` feature when triggered.
+fn fuzzy_correct_tokens(
+    text: &str,
+    matcher: &FuzzyVocabMatcher<'_>,
+) -> (String, Vec<FeatureEntry>) {
+    let mut features = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+
+    // We walk the text segment-by-segment, preserving the `//`,
+    // `-`, `(`, `)`, `,`, and whitespace delimiters verbatim. Tokens
+    // are the maximal runs of ASCII alphanumerics (plus `-` when it
+    // appears between alphanumerics, to keep compounds like `SI-G`
+    // intact).
+    while !rest.is_empty() {
+        // Take the non-token prefix (delimiters/whitespace/punct).
+        let non_token_len = rest
+            .chars()
+            .take_while(|c| !is_token_char(*c))
+            .map(|c| c.len_utf8())
+            .sum::<usize>();
+        if non_token_len > 0 {
+            out.push_str(&rest[..non_token_len]);
+            rest = &rest[non_token_len..];
+            continue;
+        }
+        // Take the token: alnum + internal `-`.
+        let token_len = scan_token(rest);
+        if token_len == 0 {
+            // Should not happen given the non-token prefix branch,
+            // but guard against infinite loops on pathological input.
+            break;
+        }
+        let (token, tail) = rest.split_at(token_len);
+        rest = tail;
+
+        // Case 1: superseded token.
+        if let Some(replacement) = SUPERSEDED_TOKEN_MAP
+            .iter()
+            .find(|&&(from, _)| from == token)
+            .map(|&(_, to)| to)
+        {
+            out.push_str(replacement);
+            features.push(FeatureEntry {
+                id: FeatureId::SupersededToken,
+                delta: -0.2,
+            });
+            continue;
+        }
+
+        // Case 2: already canonical.
+        if matcher.correct(token).is_none()
+            && (CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_trigraph(token))
+        {
+            out.push_str(token);
+            continue;
+        }
+
+        // Case 3: fuzzy-correctable.
+        if let Some(correction) = matcher.correct(token) {
+            out.push_str(correction.token);
+            let feature = match correction.distance {
+                0 => None, // shouldn't happen — `correct` returns None on exact match
+                1 => Some(FeatureId::EditDistance1),
+                _ => Some(FeatureId::EditDistance2),
+            };
+            if let Some(id) = feature {
+                let delta = match id {
+                    FeatureId::EditDistance1 => -0.5,
+                    FeatureId::EditDistance2 => -1.2,
+                    _ => 0.0,
+                };
+                features.push(FeatureEntry { id, delta });
+            }
+            continue;
+        }
+
+        // Case 4: unknown and uncorrectable. Pass through — the
+        // strict parser will reject the resulting candidate.
+        out.push_str(token);
+    }
+
+    (out, features)
+}
+
+/// Token characters: ASCII alphanumerics. `-` is handled by
+/// [`scan_token`] as an internal separator.
+fn is_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric()
+}
+
+/// Scan a token starting at `text[0]`. Returns the token length in
+/// bytes. A token is a run of alphanumerics, with internal `-` allowed
+/// between alphanumerics to support compounds like `SI-G` and
+/// `SAR-BP`.
+fn scan_token(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let is_alnum = b.is_ascii_alphanumeric();
+        let is_internal_hyphen =
+            b == b'-' && i > 0 && i + 1 < bytes.len() && bytes[i + 1].is_ascii_alphanumeric();
+        if is_alnum || is_internal_hyphen {
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    i
+}
+
+/// Map of CAPCO-2016-superseded tokens → their authoritative live
+/// replacements. Each entry MUST cite a specific passage in
+/// `crates/capco/docs/CAPCO-2016.md` (Constitution VIII). Adding an
+/// entry without a verified citation is a correctness defect.
+///
+/// - `COMINT` → `SI`: CAPCO-2016 §A.6 p16 records the COMINT title
+///   for the Special Intelligence (SI) control system as no longer
+///   valid.
+const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
+
+// ---------------------------------------------------------------------------
+// Token reordering
+// ---------------------------------------------------------------------------
+
+/// Try to produce a canonical-order rewrite of `text`.
+///
+/// The CAPCO category order is: classification → SCI → SAR → dissem.
+/// If the observed segments are out of order — e.g., `NOFORN//SECRET`
+/// with dissem first — this helper swaps them into the canonical
+/// order. Returns `None` when the input is already in canonical order
+/// or when reordering doesn't apply (CAB lines, single-segment input).
+fn try_canonical_reorder(text: &str) -> Option<String> {
+    // Only banner/portion-shaped input (contains `//`) is reorderable
+    // with this heuristic. CABs use keyed authority lines, not
+    // category ordering.
+    if !text.contains("//") {
+        return None;
+    }
+
+    // Portion form: `(C//NF)` — strip the surrounding parens for
+    // reasoning, re-wrap at emit.
+    let (prefix, body, suffix) = if text.starts_with('(') && text.ends_with(')') {
+        ("(", &text[1..text.len() - 1], ")")
+    } else {
+        ("", text, "")
+    };
+
+    let segments: Vec<&str> = body.split("//").collect();
+    if segments.len() < 2 {
+        return None;
+    }
+
+    // Classify each segment by its dominant category. We only
+    // reorder when exactly one segment is classification-dominant
+    // and at least one other is dissem-dominant — otherwise the
+    // input is too ambiguous for a clean swap.
+    let mut class_segments: Vec<&str> = Vec::new();
+    let mut dissem_segments: Vec<&str> = Vec::new();
+    let mut other_segments: Vec<&str> = Vec::new();
+    for seg in &segments {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
+        }
+        match classify_segment(seg) {
+            SegmentClass::Classification => class_segments.push(seg),
+            SegmentClass::Dissem => dissem_segments.push(seg),
+            SegmentClass::Other => other_segments.push(seg),
+        }
+    }
+
+    if class_segments.is_empty() {
+        return None;
+    }
+    if class_segments.len() + dissem_segments.len() + other_segments.len() == 0 {
+        return None;
+    }
+
+    // Already-canonical check: if the classification segment is the
+    // first non-empty segment, no reorder is needed.
+    if let Some(first) = segments.iter().find(|s| !s.trim().is_empty()) {
+        if class_segments.contains(&first.trim()) {
+            return None;
+        }
+    }
+
+    // Emit: classification → other (SCI/SAR/FGI blocks) → dissem.
+    let mut ordered: Vec<&str> = Vec::new();
+    ordered.extend(class_segments);
+    ordered.extend(other_segments);
+    ordered.extend(dissem_segments);
+
+    let joined = ordered.join("//");
+    Some(format!("{prefix}{joined}{suffix}"))
+}
+
+/// Which CAPCO category a `//`-separated segment primarily belongs to.
+///
+/// A segment is classification-dominant if its first token is a known
+/// classification level (`U`, `C`, `S`, `TS`, `CONFIDENTIAL`, …).
+/// Dissem-dominant if its first token is a known dissem control
+/// (`NOFORN`, `NF`, `ORCON`, …). Otherwise Other (SCI/SAR/FGI
+/// sub-blocks, REL TO lists, etc.).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SegmentClass {
+    Classification,
+    Dissem,
+    Other,
+}
+
+fn classify_segment(seg: &str) -> SegmentClass {
+    let first_token = seg.split_whitespace().next().unwrap_or("");
+    // Strip trailing commas.
+    let first_token = first_token.trim_end_matches(',');
+    const CLASSIFICATIONS: &[&str] = &[
+        "U",
+        "R",
+        "C",
+        "S",
+        "TS",
+        "UNCLASSIFIED",
+        "RESTRICTED",
+        "CONFIDENTIAL",
+        "SECRET",
+        "TOP SECRET",
+    ];
+    const DISSEMS: &[&str] = &[
+        "NOFORN", "NF", "ORCON", "OC", "PROPIN", "PR", "IMCON", "IMC", "RELIDO", "RS", "RSEN",
+        "DSEN", "FISA", "HCS", "FOUO",
+    ];
+    if CLASSIFICATIONS.contains(&first_token) {
+        SegmentClass::Classification
+    } else if DISSEMS.contains(&first_token) {
+        SegmentClass::Dissem
+    } else if first_token == "TOP" && seg.starts_with("TOP SECRET") {
+        SegmentClass::Classification
+    } else {
+        SegmentClass::Other
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FR-011 strict-context floor
+// ---------------------------------------------------------------------------
+
+/// True when `marking`'s classification level is ≥ `floor`.
+///
+/// FR-011 invariant. `floor` is the `Classification as u8` encoding
+/// (Unclassified=0 … TopSecret=4) — see [`ParseContext::classification_floor`].
+///
+/// A marking with no classification info cannot clear a non-trivial
+/// floor — return `false` so the candidate is dropped when the floor
+/// is CONFIDENTIAL or above.
+fn meets_classification_floor(marking: &CapcoMarking, floor: u8) -> bool {
+    let Some(level) = marking_classification(marking) else {
+        return floor == Classification::Unclassified as u8;
+    };
+    (level as u8) >= floor
+}
+
+/// Extract the effective classification level from a parsed marking.
+///
+/// Delegates to [`marque_ism::MarkingClassification::effective_level`],
+/// which handles all variants (`Us`, `Fgi`, `Nato`, `Joint`,
+/// `Conflict`) by mapping each to the canonical [`Classification`]
+/// ladder. NATO levels map through
+/// [`NatoClassification::us_equivalent`](marque_ism::NatoClassification::us_equivalent).
+fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
+    marking
+        .0
+        .classification
+        .as_ref()
+        .map(|c| c.effective_level())
+}
+
+/// True when the parsed marking carries at least one recognized
+/// attribute (classification, SCI control, SAR program, AEA marking,
+/// FGI marker, dissem control, or non-IC dissem).
+///
+/// The strict parser is intentionally lenient about input bytes — it
+/// returns `Ok(ParsedMarking)` with an empty `IsmAttributes` for any
+/// shape that looks vaguely like a marking (`FROBNITZ//WIBBLE`
+/// trip-fires the banner scanner and produces a zero-attribute parse).
+/// The decoder must filter those out; otherwise every `X//Y` prose
+/// fragment would materialize a fabricated empty marking candidate
+/// and the strict parser's leniency would leak into the audit record
+/// as a `DecoderPosterior` fix.
+fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
+    let a = &marking.0;
+    a.classification.is_some()
+        || !a.sci_controls.is_empty()
+        || a.sar_markings.is_some()
+        || !a.aea_markings.is_empty()
+        || a.fgi_marker.is_some()
+        || !a.dissem_controls.is_empty()
+        || !a.non_ic_dissem.is_empty()
+        || !a.rel_to.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------------------
+
+/// Sum the baked corpus log-priors over the tokens in `marking`, then
+/// add the per-feature log-odds deltas. This is the foundational-plan
+/// §5.2 bag-of-tokens scorer.
+///
+/// Precision: computed in `f32` — the baked priors are already `f32`
+/// and the feature deltas are small constants (single-digit magnitude
+/// at most), so the accumulator doesn't need `f64` headroom for the
+/// K=8 candidate set.
+fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> f32 {
+    // Base rate: sum of log-priors for the canonical tokens that
+    // appear in the parsed marking. We read these off the baked
+    // priors table (`marque_capco::priors::token_log_prior`).
+    let mut score: f32 = 0.0;
+    let tokens = canonical_tokens_for(marking);
+    for token in tokens {
+        if let Some(lp) = marque_capco::priors::token_log_prior(token) {
+            score += lp;
+        }
+    }
+
+    // Feature deltas.
+    for feature in &attempt.features {
+        score += feature.delta;
+    }
+
+    score
+}
+
+/// Enumerate the canonical tokens present in `marking`, as `&'static
+/// str` refs into the baked CVE token list.
+///
+/// These are the keys the scorer looks up in
+/// [`marque_capco::priors::TOKEN_BASE_RATES`]. Each CVE enum exposes
+/// an `as_str()` → canonical CVE string (e.g., `DissemControl::Nf
+/// -> "NF"`, `Classification::Secret -> "SECRET"` via `banner_str`).
+fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
+    let attrs = &marking.0;
+    let mut tokens: BTreeSet<&'static str> = BTreeSet::new();
+
+    if let Some(class) = attrs.classification.as_ref() {
+        // Use the effective level's banner form as the classification
+        // token — this is the form the priors corpus keys on for the
+        // "common classification appears" prior.
+        tokens.insert(class.effective_level().banner_str());
+    }
+
+    for ctrl in attrs.sci_controls.iter() {
+        tokens.insert(ctrl.as_str());
+    }
+    for dis in attrs.dissem_controls.iter() {
+        tokens.insert(dis.as_str());
+    }
+
+    tokens.into_iter().collect()
+}
+
+// ---------------------------------------------------------------------------
+// Strict + decoder dispatcher
+// ---------------------------------------------------------------------------
+
+/// Recognizer that runs the strict path first and falls back to the
+/// decoder on zero-candidate.
+///
+/// This is the recognizer `Engine::with_deep_scan` installs. The
+/// dispatcher's behavior is keyed off `ParseContext::strict_evidence`:
+///
+/// - `strict_evidence = true` (the default, and what a non-deep-scan
+///   engine passes): collapse to strict-only behavior. The decoder is
+///   not called. This is what makes `with_deep_scan` safe to apply
+///   even when the CLI has not opted into deep scanning — it just
+///   passes `strict_evidence = true` and the dispatcher does the
+///   strict-only thing.
+/// - `strict_evidence = false` (deep-scan opt-in): try strict first,
+///   fall back to the decoder on zero-candidate. Strict is always
+///   called with `strict_evidence = true` internally; the decoder is
+///   always called with `strict_evidence = false` internally.
+///
+/// Other [`ParseContext`] fields (`zone`, `position`,
+/// `classification_floor`) pass through unchanged.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StrictOrDecoderRecognizer {
+    strict: StrictRecognizer,
+    decoder: DecoderRecognizer,
+}
+
+impl StrictOrDecoderRecognizer {
+    pub const fn new() -> Self {
+        Self {
+            strict: StrictRecognizer::new(),
+            decoder: DecoderRecognizer::new(),
+        }
+    }
+}
+
+impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
+    fn recognize(&self, bytes: &[u8], cx: &ParseContext) -> Parsed<CapcoMarking> {
+        let strict_inner_cx = ParseContext {
+            strict_evidence: true,
+            ..*cx
+        };
+        let strict_result = self.strict.recognize(bytes, &strict_inner_cx);
+
+        // When the outer caller asked for strict-only (the default
+        // engine mode), collapse to the strict result — never call
+        // the decoder. This keeps interactive-authoring latency
+        // identical to a bare `StrictRecognizer` for engines that
+        // have wrapped themselves in `with_deep_scan` but are
+        // currently being driven without the deep-scan opt-in.
+        if cx.strict_evidence {
+            return strict_result;
+        }
+
+        match strict_result {
+            Parsed::Unambiguous(m) => Parsed::Unambiguous(m),
+            Parsed::Ambiguous { candidates } if !candidates.is_empty() => {
+                Parsed::Ambiguous { candidates }
+            }
+            // Strict zero-candidate: fall through to decoder.
+            Parsed::Ambiguous { .. } => {
+                let decoder_cx = ParseContext {
+                    strict_evidence: false,
+                    ..*cx
+                };
+                self.decoder.recognize(bytes, &decoder_cx)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decoder_is_send_sync_as_trait_object() {
+        fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+        assert_send_sync::<DecoderRecognizer>();
+        assert_send_sync::<StrictOrDecoderRecognizer>();
+        assert_send_sync::<std::sync::Arc<dyn Recognizer<CapcoScheme>>>();
+    }
+
+    fn deep_cx() -> ParseContext {
+        ParseContext {
+            strict_evidence: false,
+            zone: None,
+            position: None,
+            classification_floor: None,
+        }
+    }
+
+    #[test]
+    fn decoder_defers_to_strict_when_strict_evidence_is_set() {
+        let rx = DecoderRecognizer::new();
+        let cx = ParseContext::default(); // strict_evidence = true
+        match rx.recognize(b"(S//NF)", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
+            other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_zero_candidate_on_no_template_fit() {
+        let rx = DecoderRecognizer::new();
+        // Neither token is in the vocabulary and no fuzzy match.
+        match rx.recognize(b"FROBNITZ//WIBBLE", &deep_cx()) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "unrecognized input must be zero-candidate, got {} candidate(s)",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!("unexpected strict match: {m:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_trivial_strict_parse() {
+        // The strict parser is lenient: it accepts `FROBNITZ//WIBBLE`
+        // and emits an IsmAttributes with classification=None,
+        // dissem_controls=[], sci_controls=[]. The decoder must treat
+        // that as "no real parse" and drop the candidate — otherwise
+        // it would fabricate an empty marking for arbitrary prose.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 16),
+            kind: MarkingType::Banner,
+        };
+        let parsed = parser
+            .parse(&candidate, b"FROBNITZ//WIBBLE")
+            .expect("strict parser should accept arbitrary bytes");
+        let marking = CapcoMarking(parsed.attrs);
+        assert!(
+            !is_nontrivial_marking(&marking),
+            "empty marking must be filtered"
+        );
+    }
+
+    #[test]
+    fn decoder_recovers_typo_sercet_to_secret() {
+        let rx = DecoderRecognizer::new();
+        match rx.recognize(b"SERCET//NOFORN", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(
+                    marking_classification(&m),
+                    Some(Classification::Secret),
+                    "expected SECRET classification from SERCET fuzzy-correction"
+                );
+            }
+            other => panic!("expected Unambiguous(SECRET//NOFORN), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_recovers_case_mangled_input() {
+        let rx = DecoderRecognizer::new();
+        match rx.recognize(b"secret//noforn", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(marking_classification(&m), Some(Classification::Secret));
+            }
+            other => panic!("expected Unambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_recovers_superseded_comint_to_si() {
+        let rx = DecoderRecognizer::new();
+        // SECRET//COMINT//NOFORN — COMINT is CAPCO-2016 §A.6 p16-superseded to SI.
+        match rx.recognize(b"SECRET//COMINT//NOFORN", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(marking_classification(&m), Some(Classification::Secret));
+                // Verify SI is in the SCI controls list after correction.
+                let has_si =
+                    m.0.sci_controls
+                        .iter()
+                        .any(|c| matches!(c, marque_ism::SciControl::Si));
+                assert!(
+                    has_si,
+                    "expected SI in sci_controls after COMINT supersession"
+                );
+            }
+            other => panic!("expected Unambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_recovers_reordered_banner() {
+        let rx = DecoderRecognizer::new();
+        // Dissem-first mangled; canonical is classification-first.
+        match rx.recognize(b"NOFORN//SECRET", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(marking_classification(&m), Some(Classification::Secret));
+            }
+            Parsed::Ambiguous { candidates } => {
+                assert!(
+                    !candidates.is_empty(),
+                    "reordering should at least surface candidates"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decoder_honors_classification_floor_fr011() {
+        let rx = DecoderRecognizer::new();
+        // Input is "(U)" which canonicalizes to an UNCLASSIFIED
+        // portion. With a Secret floor, the candidate must be
+        // dropped.
+        let cx = ParseContext {
+            strict_evidence: false,
+            zone: None,
+            position: None,
+            classification_floor: Some(Classification::Secret as u8),
+        };
+        match rx.recognize(b"(U)", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "UNCLASSIFIED below SECRET floor must produce zero candidates, got {}",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "expected zero-candidate, got Unambiguous({:?})",
+                marking_classification(&m)
+            ),
+        }
+    }
+
+    #[test]
+    fn decoder_classification_floor_allows_equal_or_above() {
+        let rx = DecoderRecognizer::new();
+        // (S//NF) with Confidential floor — SECRET exceeds floor.
+        let cx = ParseContext {
+            strict_evidence: false,
+            zone: None,
+            position: None,
+            classification_floor: Some(Classification::Confidential as u8),
+        };
+        match rx.recognize(b"(S//NF)", &cx) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(marking_classification(&m), Some(Classification::Secret));
+            }
+            other => panic!("expected Unambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn normalize_delimiters_collapses_garbled_slash() {
+        let (out, _) = normalize_delimiters_and_case("S ∕∕ NOFORN");
+        assert_eq!(out, "S//NOFORN");
+    }
+
+    #[test]
+    fn scan_token_captures_compound_with_hyphen() {
+        assert_eq!(scan_token("SI-G ABCD"), 4); // "SI-G"
+        assert_eq!(scan_token("HCS-P"), 5);
+        assert_eq!(scan_token("SECRET//"), 6);
+    }
+
+    #[test]
+    fn try_canonical_reorder_swaps_dissem_first_banner() {
+        assert_eq!(
+            try_canonical_reorder("NOFORN//SECRET"),
+            Some("SECRET//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn try_canonical_reorder_returns_none_when_already_canonical() {
+        assert_eq!(try_canonical_reorder("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn meets_classification_floor_rejects_below_floor() {
+        // Synthesize a marking via the decoder and check the floor
+        // predicate directly.
+        let rx = DecoderRecognizer::new();
+        let Parsed::Unambiguous(u_marking) = rx.recognize(b"(U)", &deep_cx()) else {
+            panic!("(U) should decode to unambiguous UNCLASSIFIED");
+        };
+        // U below S floor → rejected.
+        assert!(!meets_classification_floor(
+            &u_marking,
+            Classification::Secret as u8
+        ));
+        // U meets U floor.
+        assert!(meets_classification_floor(
+            &u_marking,
+            Classification::Unclassified as u8
+        ));
+    }
+}
