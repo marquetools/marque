@@ -7,12 +7,16 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    paths:
+      - ".github/workflows/*"
+      - "docs/security/**"
+      - "docs/plans/**"
+      - "crates/**"
+      - "tools/**"
+      - "marque/**"
+      - "docs-site/**"
+      - "Cargo.toml"
+      - "deny.toml"
 
 jobs:
   claude-review:
@@ -34,21 +38,29 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 2
-
-      - name: Try to Fix anthropic Bug
-        id: fix-anthropics
-        run: |
-           contents="$(ls -lad /home/runner/work/_actions/anthropics/claude-code-action/)"
-           echo "claude action dir contents: ${contents}"
-
+      - name: Setup environment
+        uses: jdx/mise-action@5ad13376e30bbca3721f7f33f25bc0baff52c02d
+        with:
+          install: true
+          install_args: bun
+          experimental: true
+          cache: true
+          reshim: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@6ee201f0231fbb762d22664f12aad2e7ae0401ae
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-
+          plugin_marketplaces: |
+            https://github.com/anthropics/claude-code.git
+            https://github.com/knitli/toolshed.git
+            tools/capco-validators
+          plugins: |
+            code-review@claude-code-plugins
+            strip-ansi@toolshed
+            capco-validators@capco-validators-dev
+          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          use_commit_signing: true
+          allowed_bots: "gemini[bot],jules[bot],copilot[bot],dependabot[bot],claude[bot]"
+          assignee_trigger: claude
