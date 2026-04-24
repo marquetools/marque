@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET //SI/TK//NOFORN",
+  "expected": "TOP SECRET//SI/TK//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}
