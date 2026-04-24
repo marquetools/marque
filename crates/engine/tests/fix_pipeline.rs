@@ -228,20 +228,7 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
             let features: Vec<serde_json::Value> = c
                 .features
                 .iter()
-                .map(|f| {
-                    let id = match f.id {
-                        marque_rules::FeatureId::EditDistance1 => "EditDistance1",
-                        marque_rules::FeatureId::EditDistance2 => "EditDistance2",
-                        marque_rules::FeatureId::TokenReorder => "TokenReorder",
-                        marque_rules::FeatureId::SupersededToken => "SupersededToken",
-                        marque_rules::FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
-                        marque_rules::FeatureId::StrictContextClassification => {
-                            "StrictContextClassification"
-                        }
-                        marque_rules::FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
-                    };
-                    json!({"id": id, "delta": f.delta})
-                })
+                .map(|f| json!({"id": f.id.as_str(), "delta": f.delta}))
                 .collect();
             object.insert("features".to_owned(), json!(features));
         }

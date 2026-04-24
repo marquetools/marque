@@ -426,21 +426,8 @@ pub struct FeatureJson {
 
 fn feature_to_json(feature: &FeatureContribution) -> FeatureJson {
     FeatureJson {
-        id: feature_id_str(feature.id),
+        id: feature.id.as_str(),
         delta: feature.delta,
-    }
-}
-
-fn feature_id_str(id: marque_rules::FeatureId) -> &'static str {
-    use marque_rules::FeatureId;
-    match id {
-        FeatureId::EditDistance1 => "EditDistance1",
-        FeatureId::EditDistance2 => "EditDistance2",
-        FeatureId::TokenReorder => "TokenReorder",
-        FeatureId::SupersededToken => "SupersededToken",
-        FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
-        FeatureId::StrictContextClassification => "StrictContextClassification",
-        FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
     }
 }
 

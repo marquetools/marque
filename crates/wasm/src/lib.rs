@@ -295,19 +295,6 @@ struct FeatureJson {
     delta: f32,
 }
 
-fn feature_id_str(id: marque_rules::FeatureId) -> &'static str {
-    use marque_rules::FeatureId;
-    match id {
-        FeatureId::EditDistance1 => "EditDistance1",
-        FeatureId::EditDistance2 => "EditDistance2",
-        FeatureId::TokenReorder => "TokenReorder",
-        FeatureId::SupersededToken => "SupersededToken",
-        FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
-        FeatureId::StrictContextClassification => "StrictContextClassification",
-        FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
-    }
-}
-
 fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1<'_> {
     AuditRecordJsonV1 {
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
@@ -352,7 +339,7 @@ fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2<'_> {
             .features
             .iter()
             .map(|f| FeatureJson {
-                id: feature_id_str(f.id),
+                id: f.id.as_str(),
                 delta: f.delta,
             })
             .collect(),
@@ -362,12 +349,15 @@ fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2<'_> {
 /// Serialize one `AppliedFix` to a pre-serialized JSON value, dispatching
 /// to the v1 or v2 emitter based on this build's audit schema.
 fn serialize_applied_fix(fix: &AppliedFix) -> Result<Box<serde_json::value::RawValue>, String> {
-    let bytes = if marque_engine::AUDIT_SCHEMA_IS_V2 {
-        serde_json::to_vec(&applied_fix_to_audit_json_v2(fix)).map_err(|e| e.to_string())?
+    // `serde_json::to_string` is the right primitive here: it returns
+    // an owned `String` and skips the `Vec<u8>` → `String::from_utf8`
+    // validation pass `to_vec` would force, since `serde_json` already
+    // guarantees its output is valid UTF-8.
+    let json = if marque_engine::AUDIT_SCHEMA_IS_V2 {
+        serde_json::to_string(&applied_fix_to_audit_json_v2(fix)).map_err(|e| e.to_string())?
     } else {
-        serde_json::to_vec(&applied_fix_to_audit_json_v1(fix)).map_err(|e| e.to_string())?
+        serde_json::to_string(&applied_fix_to_audit_json_v1(fix)).map_err(|e| e.to_string())?
     };
-    let json = String::from_utf8(bytes).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
 
