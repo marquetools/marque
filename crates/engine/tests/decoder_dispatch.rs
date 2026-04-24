@@ -65,14 +65,20 @@ fn strict_recognizer_alone_is_send_sync() {
 
 #[test]
 fn lint_without_deep_scan_never_invokes_the_decoder() {
-    // `SERCET//NOFORN` is the classic typo input — strict parse
-    // reports it as an unknown-token diagnostic, but the decoder
-    // (if wired) would resolve it to `SECRET//NOFORN` and
-    // auto-apply a `FixSource::DecoderPosterior` fix. Without
-    // deep-scan, we must NOT see such a fix: the strict path
-    // produces a diagnostic, nothing more.
+    // `(SERCET//NOFORN)` is a scanner-detectable portion candidate
+    // (leading `(` triggers the portion path) carrying the classic
+    // SERCET typo. With deep-scan on the decoder would resolve it
+    // to `SECRET//NOFORN` and auto-apply a `FixSource::DecoderPosterior`
+    // fix; without deep-scan we must NOT see such a fix.
+    //
+    // Note: a bare `SERCET//NOFORN` banner is NOT scanner-detectable
+    // because `marque_core::Scanner::scan_banners` gates on known
+    // classification prefixes (TOP SECRET, SECRET, …) or a leading
+    // `//`. Using an undetected shape would let this assertion pass
+    // vacuously because the engine never reaches the recognizer at
+    // all.
     let engine = build_engine(false);
-    let input = b"SERCET//NOFORN";
+    let input = b"(SERCET//NOFORN)";
     let result = engine.lint(input);
 
     let any_decoder_source = result.diagnostics.iter().any(|d| {
@@ -93,12 +99,14 @@ fn lint_without_deep_scan_never_invokes_the_decoder() {
 
 #[test]
 fn deep_scan_on_unrecognized_bytes_emits_no_decoder_fix() {
-    // `FROBNITZ//WIBBLE` has no vocabulary overlap with any CAPCO
-    // token — the decoder's candidate set must stay empty
+    // `//FROBNITZ WIBBLE` is a scanner-detectable banner candidate
+    // (leading `//` matches the scanner's prefix list) whose tokens
+    // have no vocabulary overlap with any CAPCO CVE. Deep-scan
+    // dispatch runs; the decoder's candidate set stays empty
     // (FR-015: zero-candidate is the "we see signal, can't resolve"
     // signal). No `DecoderPosterior` fix should appear.
     let engine = build_engine(true);
-    let result = engine.lint(b"FROBNITZ//WIBBLE");
+    let result = engine.lint(b"//FROBNITZ WIBBLE");
 
     let any_decoder_fix = result.diagnostics.iter().any(|d| {
         d.fix
@@ -117,6 +125,59 @@ fn deep_scan_on_unrecognized_bytes_emits_no_decoder_fix() {
 // Canonical-input regression: strict-path behavior is unchanged when
 // deep-scan is flipped on but the input is already canonical.
 // ---------------------------------------------------------------------------
+
+#[test]
+fn deep_scan_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
+    // The critical regression-guard for the fix to the strict→decoder
+    // fallback: the `marque_core::Parser` is lenient enough to return
+    // `Ok(empty IsmAttributes)` for shapes like `(SERCET//NOFORN)`
+    // where no CVE tokens are recognized. The dispatcher must treat
+    // such a trivial strict result as equivalent to zero-candidate
+    // and fall through to the decoder — otherwise `with_deep_scan`
+    // would install a dormant decoder that never runs on exactly the
+    // inputs it exists to recover.
+    //
+    // Scanner-detectable shape: leading `(` triggers the portion
+    // scanner unconditionally, so the recognizer is actually reached.
+    let deep_engine = build_engine(true);
+    let strict_engine = build_engine(false);
+
+    let input = b"(SERCET//NOFORN)";
+    let deep_result = deep_engine.lint(input);
+    let strict_result = strict_engine.lint(input);
+
+    // On the strict-only engine the decoder never runs, so the
+    // diagnostic set is whatever the lenient strict parser + rules
+    // produce. On the deep-scan engine the decoder should ADD
+    // information: at minimum, the two diagnostic sets should not
+    // be identical, or the deep-scan engine should surface a
+    // decoder-sourced marking somewhere. If both engines produce
+    // the same output, the dispatcher is dormant and the reviewer's
+    // concern has resurfaced.
+    //
+    // This test is intentionally loose on "what exactly changed"
+    // because the end-to-end audit-v2 emission (FixSource::DecoderPosterior
+    // on fixes) lands in PR-4. For PR-3 it's sufficient to prove
+    // the two modes produce observably different outputs on the
+    // canonical mangled input.
+    let strict_ids: Vec<&str> = strict_result
+        .diagnostics
+        .iter()
+        .map(|d| d.rule.as_str())
+        .collect();
+    let deep_ids: Vec<&str> = deep_result
+        .diagnostics
+        .iter()
+        .map(|d| d.rule.as_str())
+        .collect();
+    assert!(
+        strict_ids != deep_ids || strict_result.diagnostics.len() != deep_result.diagnostics.len(),
+        "deep-scan dispatcher should produce observably different output \
+         from strict-only on `(SERCET//NOFORN)`; if both produce the \
+         same diagnostics the dispatcher is dormant (see PR #114 review). \
+         strict_ids = {strict_ids:?}, deep_ids = {deep_ids:?}"
+    );
+}
 
 #[test]
 fn deep_scan_does_not_change_canonical_input_diagnostics() {

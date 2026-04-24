@@ -184,12 +184,29 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 span: Span::new(0, attempt.bytes.len()),
                 ..synthetic_candidate
             };
-            let Ok(parsed) = parser.parse(&candidate, &attempt.bytes) else {
+            let Ok(mut parsed) = parser.parse(&candidate, &attempt.bytes) else {
                 continue;
             };
+
+            // 3a. Span-offset contract: `IsmAttributes::token_spans`
+            //     returned by the strict parser carry offsets into
+            //     `attempt.bytes` (the canonicalized buffer), NOT the
+            //     original `bytes` slice the caller passed to
+            //     `recognize()`. Propagating those spans would
+            //     violate the [`Recognizer`] contract — "spans are by
+            //     offset into [the input] buffer" — and misplace
+            //     downstream diagnostics/fixes whenever
+            //     canonicalization changed spacing, delimiter form,
+            //     token order, or token length (e.g., `COMINT` → `SI`
+            //     changes a 6-byte token to 2 bytes). Until we have a
+            //     proper source↔canonical span map, decoder-produced
+            //     markings must not carry token spans; downstream
+            //     CAPCO rules that consume `attrs.token_spans` fall
+            //     back to marking-level spans for decoder fixes.
+            parsed.attrs.token_spans = Box::new([]);
             let marking = CapcoMarking(parsed.attrs);
 
-            // 3a. The strict parser is lenient — it accepts any
+            // 3b. The strict parser is lenient — it accepts any
             //     `BYTES//BYTES` shape and emits an `IsmAttributes`
             //     with empty fields when nothing is recognized. Drop
             //     such trivial parses so the decoder doesn't
@@ -198,7 +215,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 3b. FR-011 — drop candidates below the page's strict
+            // 3c. FR-011 — drop candidates below the page's strict
             //     classification floor.
             if let Some(floor) = cx.classification_floor
                 && !meets_classification_floor(&marking, floor)
@@ -559,15 +576,18 @@ fn fuzzy_correct_tokens(
             continue;
         }
 
-        // Case 2: already canonical.
-        if matcher.correct(token).is_none()
-            && (CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_trigraph(token))
-        {
+        // Case 2: already canonical (known CVE token or trigraph).
+        // Check this first so we don't run a vocab scan + edit-
+        // distance pass on tokens we already recognize.
+        if CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_trigraph(token) {
             out.push_str(token);
             continue;
         }
 
-        // Case 3: fuzzy-correctable.
+        // Case 3: fuzzy-correctable. Compute once and reuse; the
+        // previous structure called `matcher.correct(token)` twice
+        // on tokens that weren't already canonical, doubling the
+        // vocab-scan cost on exactly the unknown-token hot path.
         if let Some(correction) = matcher.correct(token) {
             out.push_str(correction.token);
             let feature = match correction.distance {
@@ -787,17 +807,22 @@ fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
 }
 
 /// True when the parsed marking carries at least one recognized
-/// attribute (classification, SCI control, SAR program, AEA marking,
-/// FGI marker, dissem control, or non-IC dissem).
+/// attribute — any classification, SCI / SAR / AEA / FGI / dissem /
+/// REL-TO entry, or CAB field (Classified By, Derived From,
+/// Declassify On, declass exemption).
 ///
-/// The strict parser is intentionally lenient about input bytes — it
-/// returns `Ok(ParsedMarking)` with an empty `IsmAttributes` for any
-/// shape that looks vaguely like a marking (`FROBNITZ//WIBBLE`
-/// trip-fires the banner scanner and produces a zero-attribute parse).
-/// The decoder must filter those out; otherwise every `X//Y` prose
-/// fragment would materialize a fabricated empty marking candidate
-/// and the strict parser's leniency would leak into the audit record
-/// as a `DecoderPosterior` fix.
+/// Distinct from [`strict_parse_is_complete`]: a marking can be
+/// nontrivial (has a dissem control) while still being incomplete
+/// (missing its classification). The dispatcher consults both — a
+/// strict result is only accepted when it is BOTH nontrivial AND
+/// complete; otherwise the decoder is invoked to try to recover the
+/// missing pieces.
+///
+/// Used inside the decoder itself to filter out lenient-parse-
+/// accepts-anything results (`FROBNITZ//WIBBLE` trip-fires the
+/// banner scanner and produces a zero-attribute parse); without
+/// the filter, every `X//Y` prose fragment would materialize a
+/// fabricated empty marking candidate.
 fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
     let a = &marking.0;
     a.classification.is_some()
@@ -808,6 +833,60 @@ fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
         || !a.dissem_controls.is_empty()
         || !a.non_ic_dissem.is_empty()
         || !a.rel_to.is_empty()
+        || a.classified_by.is_some()
+        || a.derived_from.is_some()
+        || a.declassify_on.is_some()
+        || a.declass_exemption.is_some()
+}
+
+/// True when the strict-parse result is complete enough that the
+/// dispatcher should accept it and skip the decoder fallback.
+///
+/// The strict parser (`marque_core::Parser`) is lenient about
+/// content: it categorizes tokens by *position* (the first token
+/// inside `(...)` is marked as `TokenKind::Classification`
+/// regardless of whether its text is a valid classification value),
+/// and falls back to `TokenKind::Unknown` only for truly unplaceable
+/// tokens. So a shape like `(SERCET//NOFORN)` parses to a marking
+/// with `classification: None` (SERCET doesn't resolve to any
+/// `Classification` variant), `dissem_controls: [Nf]` (NOFORN was
+/// recognized), and a Classification-kind `TokenSpan` carrying the
+/// literal text "SERCET". That result is *nontrivial* but also
+/// *incomplete* — exactly the mangled-input case the decoder exists
+/// to recover.
+///
+/// Predicate, kind-aware:
+///
+/// - [`MarkingType::Portion`] / [`MarkingType::Banner`]: complete
+///   iff `classification.is_some()` AND no `TokenKind::Unknown`
+///   spans survived. Both branches matter — SERCET→None catches
+///   the classification-slot typo; the `Unknown` check catches
+///   typos in the tail (e.g., `(S//FRBN)` where the classification
+///   is fine but FRBN is mangled and lands as Unknown).
+/// - [`MarkingType::Cab`]: complete iff any CAB field is present
+///   (`classified_by` / `derived_from` / `declassify_on`).
+///   CAB-kind input doesn't require a classification axis — an
+///   isolated authority block stands on its own.
+/// - Anything else: fall back to the generic nontrivial check.
+fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType) -> bool {
+    use marque_ism::TokenKind;
+    let attrs = &marking.0;
+    match kind {
+        MarkingType::Portion | MarkingType::Banner => {
+            attrs.classification.is_some()
+                && !attrs
+                    .token_spans
+                    .iter()
+                    .any(|s| matches!(s.kind, TokenKind::Unknown))
+        }
+        MarkingType::Cab => {
+            attrs.classified_by.is_some()
+                || attrs.derived_from.is_some()
+                || attrs.declassify_on.is_some()
+                || attrs.declass_exemption.is_some()
+        }
+        _ => is_nontrivial_marking(marking),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -885,21 +964,33 @@ fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
 // ---------------------------------------------------------------------------
 
 /// Recognizer that runs the strict path first and falls back to the
-/// decoder on zero-candidate.
+/// decoder when the strict parse yields no meaningful attributes.
 ///
-/// This is the recognizer `Engine::with_deep_scan` installs. The
-/// dispatcher's behavior is keyed off `ParseContext::strict_evidence`:
+/// Installed by [`crate::Engine::with_deep_scan`]. Deep-scan opt-in
+/// therefore happens by calling `with_deep_scan()`, not by separately
+/// toggling [`ParseContext::strict_evidence`] at the engine boundary
+/// — the engine sets `strict_evidence = false` when the deep-scan
+/// flag is on, and `= true` otherwise.
 ///
-/// - `strict_evidence = true` (the default, and what a non-deep-scan
-///   engine passes): collapse to strict-only behavior. The decoder is
-///   not called. This is what makes `with_deep_scan` safe to apply
-///   even when the CLI has not opted into deep scanning — it just
-///   passes `strict_evidence = true` and the dispatcher does the
-///   strict-only thing.
-/// - `strict_evidence = false` (deep-scan opt-in): try strict first,
-///   fall back to the decoder on zero-candidate. Strict is always
-///   called with `strict_evidence = true` internally; the decoder is
-///   always called with `strict_evidence = false` internally.
+/// Within this recognizer, dispatch is keyed off
+/// [`ParseContext::strict_evidence`]:
+///
+/// - `strict_evidence = true`: collapse to strict-only behavior. The
+///   decoder is not called.
+/// - `strict_evidence = false`: try strict first. Fall back to the
+///   decoder when the strict result is either (a) zero-candidate
+///   `Ambiguous` or (b) `Unambiguous` with an empty / trivial
+///   [`CapcoMarking`] (no classification, no SCI, no dissem, no
+///   FGI, etc.). The trivial-Unambiguous case matters because
+///   `marque_core::Parser` is lenient: it accepts arbitrary
+///   `BYTES//BYTES` shapes and returns `Ok` with an empty
+///   `IsmAttributes` when nothing in the input is a recognized CVE
+///   token. Treating such a result as a successful parse would
+///   leave the decoder dormant on exactly the mangled inputs it
+///   exists to recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …).
+///   Strict is always called with `strict_evidence = true`
+///   internally; the decoder is always called with
+///   `strict_evidence = false` internally.
 ///
 /// Other [`ParseContext`] fields (`zone`, `position`,
 /// `classification_floor`) pass through unchanged.
@@ -928,16 +1019,44 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 
         // When the outer caller asked for strict-only (the default
         // engine mode), collapse to the strict result — never call
-        // the decoder. This keeps interactive-authoring latency
-        // identical to a bare `StrictRecognizer` for engines that
-        // have wrapped themselves in `with_deep_scan` but are
-        // currently being driven without the deep-scan opt-in.
+        // the decoder. Preserves interactive-authoring latency
+        // (SC-001) for engines that have been wrapped in
+        // `with_deep_scan` but are currently being driven without
+        // the deep-scan opt-in (Engine sets `strict_evidence = true`
+        // when `deep_scan = false`).
         if cx.strict_evidence {
             return strict_result;
         }
 
+        // Infer the candidate kind from the byte shape so
+        // `strict_parse_is_complete` can apply the right rule
+        // (classification-requiring for portion/banner, CAB-field-
+        // requiring for CAB). If inference fails the bytes are too
+        // degenerate for either path — skip.
+        let kind = infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
+
         match strict_result {
-            Parsed::Unambiguous(m) => Parsed::Unambiguous(m),
+            // Strict parse produced a real, complete marking — take it.
+            Parsed::Unambiguous(m) if strict_parse_is_complete(&m, kind) => {
+                Parsed::Unambiguous(m)
+            }
+            // Strict parse was trivially-Ok or only partially
+            // recognized — fall through to decoder. This covers:
+            //   (a) Truly empty attrs (`FROBNITZ//WIBBLE`).
+            //   (b) Partial attrs with `TokenKind::Unknown` spans
+            //       or unrecognized classification-slot text (e.g.,
+            //       `(SERCET//NOFORN)` — NOFORN parsed, SERCET left
+            //       in a Classification-kind span but
+            //       `attrs.classification = None`). The decoder's
+            //       fuzzy matcher will try to resolve the missing
+            //       pieces before rules run.
+            Parsed::Unambiguous(_) => {
+                let decoder_cx = ParseContext {
+                    strict_evidence: false,
+                    ..*cx
+                };
+                self.decoder.recognize(bytes, &decoder_cx)
+            }
             Parsed::Ambiguous { candidates } if !candidates.is_empty() => {
                 Parsed::Ambiguous { candidates }
             }
@@ -1053,6 +1172,81 @@ mod tests {
         fn from(id: FeatureId) -> Self {
             Self { id, delta: -0.4 }
         }
+    }
+
+    #[test]
+    fn strict_parse_is_complete_rejects_unknown_classification() {
+        // This is the regression-guard for PR #114 review comment
+        // on decoder.rs:946 — strict parse of `(SERCET//NOFORN)`
+        // recognizes NOFORN but leaves `classification: None` because
+        // SERCET doesn't resolve to any `Classification` variant.
+        // Without the `strict_parse_is_complete` check, the
+        // dispatcher would accept this as a complete strict result
+        // and never fall through to the decoder.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 16),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(SERCET//NOFORN)")
+            .expect("strict parser should accept (SERCET//NOFORN) leniently");
+        let marking = CapcoMarking(parsed.attrs);
+        assert!(
+            is_nontrivial_marking(&marking),
+            "NOFORN survives as a dissem control → marking is nontrivial"
+        );
+        assert!(
+            !strict_parse_is_complete(&marking, MarkingType::Portion),
+            "SERCET left `classification: None` → strict parse is incomplete; \
+             dispatcher must fall back to decoder. attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn strict_parse_is_complete_accepts_clean_marking() {
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 7),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(S//NF)")
+            .expect("canonical portion must strict-parse");
+        let marking = CapcoMarking(parsed.attrs);
+        assert!(
+            strict_parse_is_complete(&marking, MarkingType::Portion),
+            "canonical (S//NF) must be accepted as complete; attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn strict_parse_is_complete_rejects_trailing_unknown_token() {
+        // `(S//FRBN)` — classification parses (`S` → Secret) but the
+        // tail token `FRBN` lands in an `Unknown` span. The
+        // dispatcher must fall back so the decoder can resolve
+        // `FRBN` → `NF` (or reject).
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 9),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(S//FRBN)")
+            .expect("strict parser accepts (S//FRBN) leniently");
+        let marking = CapcoMarking(parsed.attrs);
+        // `S` resolved, so classification is Some — but the
+        // Unknown-tail check still fires.
+        assert!(
+            !strict_parse_is_complete(&marking, MarkingType::Portion),
+            "`FRBN` is Unknown-kind → strict parse is incomplete; attrs = {:?}",
+            marking.0,
+        );
     }
 
     #[test]
