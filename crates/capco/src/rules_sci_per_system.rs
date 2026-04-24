@@ -7,10 +7,18 @@
 //! CAPCO-2016 §H.4 spells out per-system constraints on classification
 //! level, required companion dissem controls, and forbidden companions
 //! for every SCI control system. This module implements those as ten
-//! `Warn`-severity rules that use the **fix-and-warn** pattern: when a
-//! violation has an unambiguous resolution, we attach a fix AND surface
-//! the warning, so the user sees exactly what was corrected and can
-//! override if the intent was actually different.
+//! rules with `Warn`-severity defaults that use the **fix-and-warn**
+//! pattern: when a violation has an unambiguous resolution, we attach a
+//! fix AND surface the warning, so the user sees exactly what was
+//! corrected and can override if the intent was actually different.
+//!
+//! **Severity escalation.** The companion-insertion rules (E042, E043,
+//! E044, E047, E051) escalate to `Severity::Error` with **no fix** when
+//! the portion or banner has no IC dissem block at all. Inserting a
+//! whole new `//`-separated dissem category from rule-level context is
+//! unsafe (there is no known anchor for the `//`); the engine surfaces
+//! the violation so the user can add the missing block by hand. Same
+//! policy as E040.
 //!
 //! # Why fix-and-warn for these rules
 //!
@@ -254,7 +262,15 @@ impl Rule for HcsOCompanionsRule {
             return vec![];
         }
 
-        let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc);
+        // ORCON is considered "present" if either bare `Oc` or
+        // `OcUsgov` appears: when OcUsgov is present we emit the
+        // forbidden-OC-USGOV → OC replacement below, and the post-fix
+        // state satisfies the ORCON-required constraint. Without this
+        // check the rule would emit both an insertion AND the
+        // replacement, producing a duplicate ORCON token when both
+        // fixes apply.
+        let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+            || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
         let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
         let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
 
@@ -364,19 +380,22 @@ impl Rule for HcsPRequiresNofornRule {
 // ===========================================================================
 
 /// Fires on any portion or banner carrying HCS-P with at least one
-/// sub-compartment when the US classification is below TS. Fix:
-/// upgrade classification token to TS. The sub-compartment is treated
-/// as the stronger intent signal (see module doc on the fix-and-warn
-/// rationale).
+/// sub-compartment. Enforces the full §H.4 p68 constraint set:
+///
+/// - classification must be TOP SECRET (fix: upgrade the class token
+///   when the observed level is below TS — the sub-compartment is
+///   treated as the stronger intent signal; see the module doc on the
+///   fix-and-warn rationale);
+/// - ORCON must be present (fix: insert `/OC` or `/ORCON`);
+/// - ORCON-USGOV must be absent (fix: replace with `OC`/`ORCON`).
+///
+/// NOFORN is enforced by E043 (which fires on any HCS-P including
+/// sub-compartments), so it is not duplicated here.
 ///
 /// Authority: **CAPCO-2016 §H.4 p68** — HCS-P sub-compartment
 /// *Relationship(s) to Other Markings*: "May only be used with TOP
 /// SECRET. Requires HCS-P, ORCON, and NOFORN. May not be used with
 /// ORCON-USGOV."
-///
-/// (This rule covers the TS-only constraint. E043 covers NOFORN; the
-/// ORCON + no-ORCON-USGOV half of p68 composes cleanly with E042's
-/// HCS-O coverage when an HCS-P sub-compartment co-occurs with HCS-O.)
 pub(crate) struct HcsPSubcompartmentTsOnlyRule;
 
 impl Rule for HcsPSubcompartmentTsOnlyRule {
@@ -398,33 +417,79 @@ impl Rule for HcsPSubcompartmentTsOnlyRule {
         if !has_hcs_p_sub {
             return vec![];
         }
-        let Some(level) = us_level(attrs) else {
-            return vec![];
-        };
-        if level >= Classification::TopSecret {
-            return vec![];
+
+        let mut out = Vec::new();
+
+        // (1) Classification must be TOP SECRET. Fire only when the
+        // observed US level is below TS — foreign-only classifications
+        // are out of §H.4's scope (us_level returns None).
+        let below_ts = matches!(us_level(attrs), Some(level) if level < Classification::TopSecret);
+        if below_ts {
+            if let Some((span, original, replacement)) =
+                build_class_upgrade_fix(attrs, ctx, Classification::TopSecret)
+            {
+                out.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: RuleId::new("E044"),
+                    severity: Severity::Warn,
+                    source: FixSource::BuiltinRule,
+                    span,
+                    message: format!(
+                        "HCS-P sub-compartment requires TOP SECRET; upgraded {original:?} → \
+                         {replacement:?}. If this should be SECRET, remove the HCS-P \
+                         sub-compartment (§H.4 p68)."
+                    ),
+                    citation: "CAPCO-2016 §H.4 p68 — HCS-P sub-compartment: May only be used with TOP SECRET",
+                    original,
+                    replacement,
+                    confidence: 0.9,
+                    migration_ref: None,
+                }));
+            }
         }
-        let Some((span, original, replacement)) =
-            build_class_upgrade_fix(attrs, ctx, Classification::TopSecret)
-        else {
-            return vec![];
-        };
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: RuleId::new("E044"),
-            severity: Severity::Warn,
-            source: FixSource::BuiltinRule,
-            span,
-            message: format!(
-                "HCS-P sub-compartment requires TOP SECRET; upgraded {original:?} → \
-                 {replacement:?}. If this should be SECRET, remove the HCS-P \
-                 sub-compartment (§H.4 p68)."
-            ),
-            citation: "CAPCO-2016 §H.4 p68 — HCS-P sub-compartment: May only be used with TOP SECRET",
-            original,
-            replacement,
-            confidence: 0.9,
-            migration_ref: None,
-        })]
+
+        // (2) ORCON required. Treat either bare `Oc` or `OcUsgov` as
+        // satisfying the presence check; OcUsgov is rewritten to Oc by
+        // the forbidden-OC-USGOV fix below, so the post-fix state is
+        // compliant. Without this check we'd emit both an insertion
+        // AND the replacement, producing a duplicate ORCON token.
+        let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+            || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+        let form = infer_companion_form(attrs);
+        let last_dissem = last_dissem_span(attrs);
+        let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
+
+        if !has_orcon {
+            out.push(emit_companion_insert(
+                RuleId::new("E044"),
+                Severity::Warn,
+                sci_span,
+                last_dissem,
+                form.orcon(),
+                "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
+                "CAPCO-2016 §H.4 p68 — HCS-P sub-compartment requires ORCON",
+            ));
+        }
+
+        // (3) ORCON-USGOV forbidden → replace with bare ORCON.
+        if let Some((span, text)) = dissem_token_span(attrs, DissemControl::OcUsgov) {
+            out.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: RuleId::new("E044"),
+                severity: Severity::Warn,
+                source: FixSource::BuiltinRule,
+                span,
+                message:
+                    "HCS-P sub-compartment forbids ORCON-USGOV (§H.4 p68) — replace with ORCON"
+                        .to_owned(),
+                citation:
+                    "CAPCO-2016 §H.4 p68 — HCS-P sub-compartment may not be used with ORCON-USGOV",
+                original: text.to_owned(),
+                replacement: form.orcon().to_owned(),
+                confidence: 0.9,
+                migration_ref: None,
+            }));
+        }
+
+        out
     }
 }
 
@@ -432,16 +497,18 @@ impl Rule for HcsPSubcompartmentTsOnlyRule {
 // E045: HCS classification ceiling (TS or S, warn only — ambiguous)
 // ===========================================================================
 
-/// Fires on any portion or banner carrying HCS-O or HCS-P when the US
-/// classification is below SECRET (i.e., CONFIDENTIAL or UNCLASSIFIED).
-/// **No fix** — the resolution is ambiguous (upgrade to S? to TS?
-/// remove the HCS marking?); the user decides.
+/// Fires on any portion or banner carrying HCS-O or bare HCS-P when the
+/// US classification is below SECRET (i.e., CONFIDENTIAL or
+/// UNCLASSIFIED). **No fix** — the resolution is ambiguous (upgrade to
+/// S? to TS? remove the HCS marking?); the user decides.
 ///
 /// Authority: **CAPCO-2016 §H.4 p64** (HCS-O) and **p66** (HCS-P) —
 /// both constrain *"May only be used with TOP SECRET or SECRET."*
-/// HCS-P sub-compartment is TS-only and covered by E044; that case
-/// is pre-emptied here (a TS-only marking that's below TS is also
-/// below the HCS min, so firing both would be noise).
+///
+/// HCS-P with sub-compartments is TS-only and handled by E044's
+/// unambiguous upgrade fix; this rule explicitly skips that case to
+/// avoid firing a redundant no-fix Warn on top of E044's actionable
+/// upgrade.
 pub(crate) struct HcsClassificationCeilingRule;
 
 impl Rule for HcsClassificationCeilingRule {
@@ -456,9 +523,17 @@ impl Rule for HcsClassificationCeilingRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        // Cover HCS-O and HCS-P (with or without sub-compartments). Bare
-        // HCS is legacy — E006 / E008 already surface it; no need to
-        // double-diagnose here.
+        // Pre-empt HCS-P-with-sub-compartment: E044 will emit the
+        // unambiguous TS-only upgrade. Firing E045 here too would be
+        // redundant no-fix noise on top of an actionable fix.
+        let has_hcs_p_sub = attrs.sci_markings.iter().any(|m| {
+            anchors_on(m, SciControlBare::Hcs) && compartment_has_sub(m, "P")
+        });
+        if has_hcs_p_sub {
+            return vec![];
+        }
+        // Cover HCS-O and bare HCS-P. Bare HCS is legacy — E006 / E008
+        // already surface it; no need to double-diagnose here.
         let has_hcs_o_or_p = attrs.sci_markings.iter().any(|m| {
             anchors_on(m, SciControlBare::Hcs)
                 && (has_compartment(m, "O") || has_compartment(m, "P"))
@@ -589,7 +664,12 @@ impl Rule for SiGammaCompanionsRule {
         if !has_si_g {
             return vec![];
         }
-        let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc);
+        // Treat `OcUsgov` as satisfying ORCON presence: the
+        // forbidden-OC-USGOV → OC replacement below makes the post-fix
+        // state compliant. Without this check we'd emit both an
+        // insertion AND the replacement, producing a duplicate ORCON.
+        let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+            || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
         let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
 
         let mut out = Vec::new();
@@ -685,11 +765,14 @@ impl Rule for RsvClassificationCeilingRule {
 // E049: TK classification ceiling (TS or S, warn only)
 // ===========================================================================
 
-/// Fires on any portion or banner carrying TK (bare, compartmented, or
-/// sub-compartmented) when the US classification is below SECRET.
-/// **No fix** — ambiguous resolution. The TS-only compartment case
-/// (TK-BLFH) is covered separately by E050 with a fix, and E050's
-/// narrower TS-only ceiling pre-empts this rule for BLFH portions.
+/// Fires on any portion or banner carrying TK (bare or compartmented,
+/// excluding TK-BLFH which E050 handles) when the US classification is
+/// below SECRET. **No fix** — ambiguous resolution. The TS-only
+/// compartment case (TK-BLFH) is covered by E050 with an actionable
+/// upgrade fix; firing both E049 and E050 on the same below-TS TK-BLFH
+/// portion would be redundant no-fix noise on top of E050's fix, so
+/// this rule explicitly skips any TK marking whose compartment set
+/// includes BLFH.
 ///
 /// Authority: **CAPCO-2016 §H.4 p85** — TK: *"May only be used with
 /// TOP SECRET or SECRET."*
@@ -707,11 +790,15 @@ impl Rule for TkClassificationCeilingRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let has_tk = attrs
+        // Pre-empt TK-BLFH: E050 emits the actionable TS-only upgrade.
+        // A TK marking with BLFH at below-SECRET is by construction also
+        // below TS, so E050 covers the actual violation; E049 would
+        // just add no-fix noise.
+        let has_tk_non_blfh = attrs
             .sci_markings
             .iter()
-            .any(|m| anchors_on(m, SciControlBare::Tk));
-        if !has_tk {
+            .any(|m| anchors_on(m, SciControlBare::Tk) && !has_compartment(m, "BLFH"));
+        if !has_tk_non_blfh {
             return vec![];
         }
         let Some(level) = us_level(attrs) else {
@@ -947,17 +1034,28 @@ mod tests {
     }
 
     #[test]
-    fn e042_fires_on_forbidden_orcon_usgov() {
-        // (S//HCS-O//OC-USGOV/NF) — ORCON present via OC-USGOV; rule fires.
-        // Note: this also misses bare ORCON, so 2 diagnostics: missing
-        // ORCON + forbidden OC-USGOV.
+    fn e042_oc_usgov_emits_only_replacement_not_duplicate_orcon() {
+        // (S//HCS-O//OC-USGOV/NF) — OC-USGOV present, bare OC absent.
+        // `has_orcon` must treat OcUsgov as satisfying the presence
+        // check: the forbidden-OC-USGOV fix rewrites OcUsgov → OC, and
+        // the post-fix state has ORCON. Without the OcUsgov check, the
+        // rule would ALSO emit a missing-ORCON insertion, and both
+        // fixes applied together would produce a duplicate ORCON.
         let diags = lint_portion("(S//HCS-O//OC-USGOV/NF)");
         let e042: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E042").collect();
-        assert!(
-            e042.iter()
-                .any(|d| d.message.contains("forbids ORCON-USGOV")),
-            "expected ORCON-USGOV forbidden diagnostic: {diags:?}"
+        assert_eq!(
+            e042.len(),
+            1,
+            "only the forbidden-OC-USGOV replacement should fire; OcUsgov \
+             satisfies ORCON presence post-fix: {e042:?}"
         );
+        let only = e042[0];
+        assert!(
+            only.message.contains("forbids ORCON-USGOV"),
+            "sole diag must be the forbid diagnostic: {only:?}"
+        );
+        let fix = only.fix.as_ref().expect("fix attached");
+        assert_eq!(fix.replacement.as_ref(), "OC");
     }
 
     #[test]
@@ -1019,6 +1117,77 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E044"));
     }
 
+    #[test]
+    fn e044_inserts_orcon_when_hcs_p_sub_lacks_orcon() {
+        // (TS//HCS-P JJJ//NF) — HCS-P sub-compartment on TS with NF but
+        // no ORCON. §H.4 p68 requires ORCON; E044 must emit the
+        // insertion (OC suffix) even when classification is already TS.
+        let diags = lint_portion("(TS//HCS-P JJJ//NF)");
+        let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
+        assert_eq!(e044.len(), 1, "expected ORCON-missing diag: {e044:?}");
+        assert!(
+            e044[0].message.contains("requires ORCON"),
+            "message must cite the ORCON requirement: {:?}",
+            e044[0].message
+        );
+        let fix = e044[0].fix.as_ref().expect("fix attached");
+        assert_eq!(fix.replacement.as_ref(), "/OC");
+    }
+
+    #[test]
+    fn e044_replaces_oc_usgov_on_hcs_p_sub() {
+        // (TS//HCS-P JJJ//OC-USGOV/NF) — already at TS, so no upgrade;
+        // OC-USGOV is forbidden on HCS-P sub (§H.4 p68), replacement
+        // fix should convert it to bare ORCON.
+        let diags = lint_portion("(TS//HCS-P JJJ//OC-USGOV/NF)");
+        let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
+        assert_eq!(e044.len(), 1);
+        assert!(
+            e044[0].message.contains("forbids ORCON-USGOV"),
+            "message must cite the forbidden constraint: {:?}",
+            e044[0].message
+        );
+        let fix = e044[0].fix.as_ref().expect("fix attached");
+        assert_eq!(fix.replacement.as_ref(), "OC");
+    }
+
+    #[test]
+    fn e044_oc_usgov_without_bare_oc_does_not_duplicate_orcon_insertion() {
+        // (TS//HCS-P JJJ//OC-USGOV) — only OC-USGOV present, no bare OC
+        // and no NF. `has_orcon` must treat OcUsgov as satisfying
+        // ORCON presence; otherwise we'd emit both an insertion AND a
+        // replacement, producing duplicate ORCON. E043 covers the
+        // missing NOFORN separately and is not counted here.
+        let diags = lint_portion("(TS//HCS-P JJJ//OC-USGOV)");
+        let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
+        assert_eq!(
+            e044.len(),
+            1,
+            "only the OC-USGOV replacement should fire: {e044:?}"
+        );
+        assert!(e044[0].message.contains("forbids ORCON-USGOV"));
+    }
+
+    #[test]
+    fn e044_fires_class_upgrade_and_companion_checks_independently() {
+        // (S//HCS-P JJJ//OC-USGOV) — below TS and OC-USGOV present,
+        // NOFORN missing. Expect E044 to emit both the class upgrade
+        // AND the OC-USGOV replacement (two distinct diagnostics).
+        let diags = lint_portion("(S//HCS-P JJJ//OC-USGOV)");
+        let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
+        assert_eq!(e044.len(), 2, "expected upgrade + replacement: {e044:?}");
+        let class_upgrade = e044
+            .iter()
+            .find(|d| d.message.contains("TOP SECRET"))
+            .expect("upgrade diag");
+        assert_eq!(class_upgrade.fix.as_ref().unwrap().replacement.as_ref(), "TS");
+        let forbid = e044
+            .iter()
+            .find(|d| d.message.contains("forbids ORCON-USGOV"))
+            .expect("forbid diag");
+        assert_eq!(forbid.fix.as_ref().unwrap().replacement.as_ref(), "OC");
+    }
+
     // --- E045: HCS classification ceiling (warn only) ---
 
     #[test]
@@ -1046,6 +1215,32 @@ mod tests {
                 .iter()
                 .all(|d| d.rule.as_str() != "E045")
         );
+    }
+
+    #[test]
+    fn e045_suppressed_when_hcs_p_has_subcompartment() {
+        // (C//HCS-P JJJ//OC/NF) — HCS-P with a sub-compartment on
+        // CONFIDENTIAL. E044 emits the unambiguous TS-only upgrade;
+        // E045's no-fix Warn would be redundant noise on top, so it
+        // MUST be suppressed for this case.
+        let diags = lint_portion("(C//HCS-P JJJ//OC/NF)");
+        let e044: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E044").collect();
+        assert!(!e044.is_empty(), "E044 should fire on below-TS HCS-P sub: {diags:?}");
+        let e045: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E045").collect();
+        assert!(
+            e045.is_empty(),
+            "E045 must be pre-empted by E044 when HCS-P carries a sub-compartment: {e045:?}"
+        );
+    }
+
+    #[test]
+    fn e045_still_fires_on_bare_hcs_p_below_secret() {
+        // (C//HCS-P//NF) — bare HCS-P (no sub-comp). E044 does NOT apply
+        // here, so E045's range-ceiling diagnostic should still fire.
+        let diags = lint_portion("(C//HCS-P//NF)");
+        let e045: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E045").collect();
+        assert_eq!(e045.len(), 1);
+        assert!(e045[0].fix.is_none());
     }
 
     // --- E046: SI compartment TS-only ---
@@ -1094,14 +1289,28 @@ mod tests {
     }
 
     #[test]
-    fn e047_fires_on_forbidden_oc_usgov() {
+    fn e047_oc_usgov_emits_only_replacement_not_duplicate_orcon() {
+        // (TS//SI-G//OC-USGOV) — OC-USGOV present without bare OC.
+        // `has_orcon` must treat OcUsgov as satisfying ORCON presence
+        // so the rule emits only the replacement (OcUsgov → OC); the
+        // post-fix state is compliant. Without this check, the rule
+        // would also emit the missing-ORCON insertion and both fixes
+        // applied together would produce a duplicate ORCON token.
         let diags = lint_portion("(TS//SI-G//OC-USGOV)");
         let e047: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E047").collect();
-        assert!(
-            e047.iter()
-                .any(|d| d.message.contains("forbids ORCON-USGOV")),
-            "expected forbid diagnostic: {e047:?}"
+        assert_eq!(
+            e047.len(),
+            1,
+            "only the replacement should fire; OcUsgov satisfies ORCON \
+             presence post-fix: {e047:?}"
         );
+        assert!(
+            e047[0].message.contains("forbids ORCON-USGOV"),
+            "sole diag must be the forbid diagnostic: {:?}",
+            e047[0].message
+        );
+        let fix = e047[0].fix.as_ref().expect("fix attached");
+        assert_eq!(fix.replacement.as_ref(), "OC");
     }
 
     #[test]
@@ -1140,6 +1349,34 @@ mod tests {
     fn e049_does_not_fire_at_secret_or_above() {
         assert!(lint_portion("(S//TK)").iter().all(|d| d.rule.as_str() != "E049"));
         assert!(lint_portion("(TS//TK)").iter().all(|d| d.rule.as_str() != "E049"));
+    }
+
+    #[test]
+    fn e049_suppressed_when_tk_has_blfh() {
+        // (C//TK-BLFH//NF) — TK with BLFH compartment on CONFIDENTIAL.
+        // E050 emits the actionable TS-only upgrade for TK-BLFH; E049
+        // would just add a no-fix range-ceiling warn on top, so it
+        // MUST be suppressed for any TK marking whose compartments
+        // include BLFH.
+        let diags = lint_portion("(C//TK-BLFH//NF)");
+        let e050: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E050").collect();
+        assert!(!e050.is_empty(), "E050 should fire on below-TS TK-BLFH: {diags:?}");
+        let e049: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E049").collect();
+        assert!(
+            e049.is_empty(),
+            "E049 must be pre-empted by E050 when TK carries BLFH: {e049:?}"
+        );
+    }
+
+    #[test]
+    fn e049_still_fires_on_tk_idit_below_secret() {
+        // (C//TK-IDIT//NF) — TK-IDIT is NOT TS-only (§H.4 p91 allows
+        // S/TS), so E050's BLFH-specific rule does NOT apply. E049's
+        // ambiguous range-ceiling diagnostic must still fire.
+        let diags = lint_portion("(C//TK-IDIT//NF)");
+        let e049: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E049").collect();
+        assert_eq!(e049.len(), 1);
+        assert!(e049[0].fix.is_none());
     }
 
     // --- E050: TK-BLFH TS-only ---
