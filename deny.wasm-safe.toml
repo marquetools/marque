@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
-# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+# SPDX-License-Identifier: MIT OR Apache-2.0
 #
 # deny.wasm-safe.toml — cargo-deny overlay for the WASM-safe subgraph
 #
