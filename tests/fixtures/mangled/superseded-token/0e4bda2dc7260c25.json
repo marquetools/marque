@@ -2,5 +2,5 @@
   "observed": "TOP SECRET//COMINT//NOFORN",
   "expected": "TOP SECRET//SI//NOFORN",
   "mangling_class": "SupersededToken",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

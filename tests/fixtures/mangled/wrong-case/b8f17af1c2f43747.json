@@ -2,5 +2,5 @@
   "observed": "Top Secret//Sar-Bp//Noforn",
   "expected": "TOP SECRET//SAR-BP//NOFORN",
   "mangling_class": "WrongCase",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

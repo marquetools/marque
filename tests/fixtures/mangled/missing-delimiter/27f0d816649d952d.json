@@ -2,5 +2,5 @@
   "observed": "TOP SECRET//SAR-BP NOFORN",
   "expected": "TOP SECRET//SAR-BP//NOFORN",
   "mangling_class": "MissingDelimiter",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

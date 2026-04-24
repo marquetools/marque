@@ -2,5 +2,5 @@
   "observed": "NOFORN//SECRET//EXDIS",
   "expected": "SECRET//NOFORN//EXDIS",
   "mangling_class": "Reordering",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

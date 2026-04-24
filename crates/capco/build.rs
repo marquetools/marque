@@ -331,14 +331,27 @@ fn validate_corpus_fingerprint(fingerprint: &str, path: &Path) {
 }
 
 /// Downcast a validated `f64` log-prior to `f32`, panicking if the narrowed
-/// value is not finite. `require_log_prior` already ruled out +inf / NaN /
-/// positive inputs, but a subnormal `f64` outside `f32::MIN_POSITIVE` could
-/// still flush to zero or lose sign information here.
+/// value becomes non-finite.
+///
+/// `require_log_prior` already ruled out `+inf` / `NaN` / positive `f64`
+/// inputs on the way in, so the only remaining failure mode here is an
+/// `f64` whose magnitude exceeds `f32`'s range and overflows to `-inf`
+/// on narrowing. This is the condition the check actually detects —
+/// it does NOT detect small-magnitude precision loss (subnormal
+/// flush-to-zero, ulp-level rounding), which is accepted as the cost
+/// of keeping the baked tables `f32` per foundational-plan
+/// line 739-757 (the `Confidence` boundary is `f32`).
+///
+/// If a generator regression produces log-priors large enough in
+/// magnitude to overflow `f32`, the priors JSON needs to be
+/// regenerated; if the decoder later needs sub-ulp precision on
+/// these tables, the baked type is the thing to widen, not this
+/// narrowing.
 fn downcast_log_prior(value: f64, name: &str, path: &Path) -> f32 {
     let narrowed = value as f32;
     if !narrowed.is_finite() {
         panic!(
-            "marque-capco build failed: {} -> {:?}.log_prior = {} loses precision on \
+            "marque-capco build failed: {} -> {:?}.log_prior = {} became non-finite on \
              f64→f32 downcast (narrowed to {}). Regenerate priors.json or widen the \
              baked-table type.",
             path.display(),

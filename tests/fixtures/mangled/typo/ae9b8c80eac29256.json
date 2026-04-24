@@ -2,5 +2,5 @@
   "observed": "TO PSECRET//SI/TK//NOFORN",
   "expected": "TOP SECRET//SI/TK//NOFORN",
   "mangling_class": "Typo",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

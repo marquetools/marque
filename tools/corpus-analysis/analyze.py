@@ -939,7 +939,15 @@ def generate_mangled_fixtures(
                     continue
                 # Confidence heuristic: longer markings + more structure
                 # make the (observed, expected) mapping more defensible.
-                source_confidence = min(0.99, 0.80 + 0.01 * canonical.count("//"))
+                # Rounded to 2 decimals so IEEE-754 float artifacts
+                # (0.80 + 0.01*2 = 0.8200000000000001) don't end up in
+                # committed fixture JSON and churn diffs across
+                # Python-version or platform changes. The decoder reads
+                # this as an advisory source-weight; 2-decimal precision
+                # is more than the heuristic actually asserts.
+                source_confidence = round(
+                    min(0.99, 0.80 + 0.01 * canonical.count("//")), 2
+                )
                 record = {
                     "observed": observed,
                     "expected": canonical,

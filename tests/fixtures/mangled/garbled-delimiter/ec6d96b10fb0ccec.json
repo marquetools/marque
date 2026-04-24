@@ -2,5 +2,5 @@
   "observed": "SECRET // SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
   "expected": "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
   "mangling_class": "GarbledDelimiter",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }

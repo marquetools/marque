@@ -2,5 +2,5 @@
   "observed": "TOP SERET//HCS-P INTEL OPS//ORCON/NOFORN",
   "expected": "TOP SECRET//HCS-P INTEL OPS//ORCON/NOFORN",
   "mangling_class": "Typo",
-  "source_confidence": 0.8200000000000001
+  "source_confidence": 0.82
 }
