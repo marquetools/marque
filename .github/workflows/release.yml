@@ -22,7 +22,15 @@ on:
 
 permissions:
   contents: write
+  # `id-token: write` is required for Sigstore keyless signing via the
+  # GitHub OIDC provider; used by both `crates-io-auth-action` (for
+  # crates.io token exchange) and `attest-build-provenance` (for the
+  # SLSA provenance signature).
   id-token: write
+  # `attestations: write` lets `attest-build-provenance` record the
+  # signed attestation to GitHub's attestation store. Without this the
+  # signing step cannot persist its output.
+  attestations: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -97,3 +105,52 @@ jobs:
           else
             echo "Dry run — skipping push"
           fi
+
+      # Whitepaper §8.7 / gap register #13 — SLSA build provenance for
+      # every non-dry-run release. `git archive` produces a reproducible
+      # source tarball from the tag; `attest-build-provenance` signs it
+      # keylessly via Sigstore and records the attestation in GitHub's
+      # transparency log. Consumers can verify with
+      # `gh attestation verify marque-<version>.tar.gz --owner marquetools`.
+      - name: Build source archive
+        id: archive
+        if: inputs.dry-run == false && steps.tag.outputs.created == 'true'
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          ARCHIVE="marque-${VERSION}.tar.gz"
+          git archive --format=tar.gz \
+            --prefix="marque-${VERSION}/" \
+            -o "${ARCHIVE}" \
+            "${TAG}"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+
+      # TODO(sha-pin): actions/attest-build-provenance should be pinned
+      # to a commit SHA before this workflow runs for a real release.
+      # Tag pin here is deliberately left for a dependabot/maintainer
+      # pass — unverified SHAs are a supply-chain defect equivalent to
+      # fabricated citations (Constitution VIII).
+      - name: Attest source archive
+        if: inputs.dry-run == false && steps.tag.outputs.created == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.archive.outputs.archive }}
+
+      # TODO(sha-pin): same as above for softprops/action-gh-release.
+      - name: Create GitHub release
+        if: inputs.dry-run == false && steps.tag.outputs.created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          files: ${{ steps.archive.outputs.archive }}
+          generate_release_notes: true
+          body: |
+            Signed source archive: `${{ steps.archive.outputs.archive }}`
+
+            Verify with the GitHub CLI:
+
+            ```
+            gh attestation verify ${{ steps.archive.outputs.archive }} \
+              --owner marquetools
+            ```

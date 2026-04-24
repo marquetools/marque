@@ -118,6 +118,43 @@ jobs:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
       - uses: EmbarkStudios/cargo-deny-action@f28dad79a1c0736fb9bef3766fec993bb67416c5
 
+  reuse:
+    name: REUSE compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      # pipx is pre-installed on ubuntu-latest and keeps `reuse` isolated
+      # from any system Python packages. Avoids pulling an external
+      # action into the supply chain for a single lint pass.
+      - name: Install reuse
+        run: pipx install reuse
+
+      - name: reuse lint
+        run: reuse lint
+
+  refs-integrity:
+    name: Vendored reference integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      # Gap register #11 / whitepaper §7.3 — SHA256 checksums on the
+      # vendored authoritative references (CAPCO PDFs, ODNI ISM schema
+      # tree) so any silent replacement trips CI. Schemas are consumed
+      # by `crates/ism/build.rs`; PDFs are the citation primary source
+      # per Principle VIII. Hash bumps are intentional edits to the
+      # SHA256SUMS file.
+      - name: Verify CAPCO original references
+        run: |
+          cd crates/capco/docs/original-refs
+          sha256sum -c SHA256SUMS
+
+      - name: Verify ISM-v2022-DEC schemas
+        run: |
+          cd crates/ism/schemas/ISM-v2022-DEC
+          sha256sum -c SHA256SUMS
+
   coverage:
     name: Coverage
     needs: check
