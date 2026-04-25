@@ -135,7 +135,8 @@ struct CommonOptions {
     /// Format: humantime, e.g. "30s", "2m", "500ms". Zero or unparseable
     /// values are rejected with EX_USAGE (64). On expiry, `check`
     /// returns whatever lint diagnostics were produced before the
-    /// abort and exits 0/2/1 (matching the warning/error gate); `fix`
+    /// abort and the existing diagnostic gate decides the exit code
+    /// (`0` clean, `1` errors / fix-severity, `2` warnings); `fix`
     /// returns no FixResult and exits EX_TEMPFAIL (75).
     #[arg(long, value_name = "DURATION")]
     deadline: Option<String>,
@@ -371,6 +372,36 @@ fn validate_deadline(common: &CommonOptions) -> Result<Option<Duration>, i32> {
     Ok(Some(duration))
 }
 
+/// Stamp `Instant::now() + duration` for a single input.
+///
+/// `Duration` is user-controlled via `--deadline`, so we must use
+/// `checked_add`: the platform monotonic clock has a finite range
+/// (Linux's `CLOCK_MONOTONIC` measures nanoseconds since boot; a
+/// caller passing `--deadline 100000y` overflows it), and the
+/// non-checked `Instant + Duration` panics on overflow. We map
+/// overflow to `EX_USAGE` (64) — same exit code as a malformed
+/// `--deadline` value, since the input that caused it is also
+/// malformed in spirit (an unbounded budget is the user's intent
+/// failing to round-trip as a finite Instant).
+///
+/// Returns `Ok(None)` when no deadline was requested, `Ok(Some(_))`
+/// for a representable `Instant`, and `Err(EX_USAGE)` on overflow.
+fn stamp_deadline(deadline_duration: Option<Duration>) -> Result<Option<Instant>, i32> {
+    let Some(d) = deadline_duration else {
+        return Ok(None);
+    };
+    match Instant::now().checked_add(d) {
+        Some(instant) => Ok(Some(instant)),
+        None => {
+            eprintln!(
+                "error: --deadline is too large for the platform clock; \
+                 pick a value that fits in Instant + Duration"
+            );
+            Err(EX_USAGE)
+        }
+    }
+}
+
 fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) -> i32 {
     if let Err(code) = validate_threshold(&common) {
         return code;
@@ -381,12 +412,10 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
     };
 
     // `-q` / `--quiet` suppresses non-diagnostic stderr narration per
-    // contracts/cli.md. The `check` subcommand currently emits NO operator
-    // narration at all — only diagnostics on stdout. So `-q` is a no-op
-    // for `check` today and the `common.quiet` field is intentionally
-    // unread. If a future change adds a file-header narration line or a
-    // summary, guard it with `if !common.quiet { eprintln!(...) }`.
-    let _ = common.quiet;
+    // contracts/cli.md. The `check` subcommand consumes `common.quiet`
+    // below to gate the spec-005 truncation warning; if a future change
+    // adds further narration (file-header line, summary), guard it the
+    // same way.
 
     // --explain-config is mutually exclusive with input paths.
     if common.explain_config && !paths.is_empty() {
@@ -487,9 +516,16 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         // `LintOptions` is `#[non_exhaustive]` so we mutate a default
         // rather than struct-construct across the crate boundary.
         let mut lint_opts = LintOptions::default();
-        lint_opts.deadline = deadline_duration.map(|d| Instant::now() + d);
+        lint_opts.deadline = match stamp_deadline(deadline_duration) {
+            Ok(d) => d,
+            Err(code) => return code,
+        };
         let result = engine.lint_with_options(source, &lint_opts);
-        if result.truncated {
+        // The truncation warning is operator narration on stderr, not a
+        // diagnostic, so it falls under the `-q / --quiet` contract
+        // (`contracts/cli.md` §"Suppress non-diagnostic stderr
+        // narration"). Diagnostics on stdout are unchanged either way.
+        if result.truncated && !common.quiet {
             eprintln!(
                 "{label}: ⚠ deadline exceeded: covered {}/{} candidates",
                 result.candidates_processed, result.candidates_total
@@ -685,7 +721,10 @@ fn run_fix(
         // input gets its own budget (spec §R2 per-document semantics).
         let mut fix_opts = FixOptions::default();
         fix_opts.threshold_override = common.confidence_threshold;
-        fix_opts.deadline = deadline_duration.map(|d| Instant::now() + d);
+        fix_opts.deadline = match stamp_deadline(deadline_duration) {
+            Ok(d) => d,
+            Err(code) => return code,
+        };
         let result = match engine.fix_with_options(source, engine_mode, &fix_opts) {
             Ok(r) => r,
             Err(EngineError::InvalidThreshold(it)) => {
@@ -700,6 +739,15 @@ fn run_fix(
                 // had identified before the abort, then exit
                 // EX_TEMPFAIL to signal "transient failure, retry
                 // with a larger budget."
+                //
+                // All writes go through the held `stderr_lock`
+                // (rather than `eprintln!`) so the diagnostic block
+                // and the trailing explanation are emitted as a
+                // single contiguous run — `eprintln!` would re-enter
+                // the global Stderr handle, which works on the
+                // single-threaded CLI but invites interleaving and
+                // muddies the output ordering contract that the JSON
+                // format relies on.
                 let stderr = std::io::stderr();
                 let mut stderr_lock = stderr.lock();
                 let format: render::Format = common
@@ -718,14 +766,24 @@ fn run_fix(
                     ),
                 };
                 if let Err(e) = render_result {
+                    // Drop the lock so the error message is emitted
+                    // through the standard stderr handle without
+                    // contending with the in-progress diagnostic
+                    // stream we just failed to write.
+                    drop(stderr_lock);
                     eprintln!("error writing partial-lint diagnostics: {e}");
                     return EX_IOERR;
                 }
-                eprintln!(
+                if let Err(e) = writeln!(
+                    stderr_lock,
                     "{label}: ⚠ deadline exceeded after processing {}/{} \
                      candidates; no fixes applied",
                     partial_lint.candidates_processed, partial_lint.candidates_total
-                );
+                ) {
+                    drop(stderr_lock);
+                    eprintln!("error writing deadline-exceeded explanation: {e}");
+                    return EX_IOERR;
+                }
                 return EX_TEMPFAIL;
             }
             // `EngineError` is `#[non_exhaustive]` so the compiler

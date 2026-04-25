@@ -128,6 +128,46 @@ fn cli_deadline_fix_exits_ex_tempfail() {
 }
 
 #[test]
+fn cli_deadline_quiet_suppresses_truncation_warning() {
+    // The `-q` / `--quiet` contract suppresses non-diagnostic stderr
+    // narration. The deadline-truncation warning is operator narration,
+    // not a diagnostic, so it must be silenced when `-q` is set.
+    let assert = marque()
+        .args(["check", "-q", "--format", "json", "--deadline", "1ms"])
+        .write_stdin(many_banners(4_000))
+        .assert();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        !stderr.contains("⚠ deadline exceeded"),
+        "with -q, truncation warning must be suppressed; got: {stderr:?}"
+    );
+}
+
+#[test]
+fn cli_deadline_overflow_exits_cleanly() {
+    // `Instant::now() + Duration::from_secs(huge)` panics on overflow
+    // for very large user-controlled durations. The CLI uses
+    // `checked_add` and maps overflow to EX_USAGE so a pathological
+    // `--deadline` value cannot crash the binary. The exact value
+    // that overflows depends on the platform clock; we pass a value
+    // that humantime accepts but is large enough to exceed any
+    // realistic Instant range, and assert the binary does NOT abort
+    // via signal (a panic-induced exit would land at e.g. 134 / 139,
+    // outside the documented exit-code set). A clean exit at 0/1/2
+    // (deadline trivially didn't trip; large budget = full pass) or
+    // 64 (overflow trapped to EX_USAGE) are both acceptable shapes.
+    let assert = marque()
+        .args(["check", "--format", "json", "--deadline", "9999years"])
+        .write_stdin("SECRET//NF\n")
+        .assert();
+    let code = assert.get_output().status.code().unwrap_or(-1);
+    assert!(
+        matches!(code, 0..=2 | 64),
+        "expected exit 0/1/2 (clean) or 64 (overflow trapped), got: {code}"
+    );
+}
+
+#[test]
 fn cli_no_deadline_runs_to_completion() {
     // Sanity check that the `--deadline` plumbing does not regress the
     // happy path. A small fixture with no deadline produces no
