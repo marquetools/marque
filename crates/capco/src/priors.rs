@@ -60,6 +60,34 @@ pub struct StrictContextPriors {
 
 include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 
+/// Compile-time pin: `SCHEMA_VERSION` (emitted by `build.rs` from the
+/// `schema_version` field of `priors.json`) MUST equal the value this
+/// crate's source code expects. A mismatch — caused by a hand-edited
+/// `priors.json` or a generator regression that bumps the version
+/// without updating the consumer — fails the build with a clear
+/// message instead of producing a green binary that emits records
+/// labeled with the wrong schema.
+///
+/// `build.rs` already panics on a mismatch when the JSON parses as a
+/// known-bad version (see `crates/capco/build.rs:73-82`); this const
+/// block is the consumer-side counterpart that catches the case where
+/// `priors.json` reports a version `build.rs` happens to accept but
+/// the consumer has since moved past.
+const _: () = {
+    let actual = SCHEMA_VERSION.as_bytes();
+    let expected = b"marque-priors-1";
+    if actual.len() != expected.len() {
+        panic!("SCHEMA_VERSION length does not match \"marque-priors-1\"");
+    }
+    let mut i = 0;
+    while i < actual.len() {
+        if actual[i] != expected[i] {
+            panic!("SCHEMA_VERSION does not equal \"marque-priors-1\"");
+        }
+        i += 1;
+    }
+};
+
 /// Look up a token's log-prior by exact canonical form.
 ///
 /// Returns `None` for tokens the generator did not observe in the
@@ -92,7 +120,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schema_version_is_pinned() {
+    fn schema_version_matches_expected_at_runtime() {
+        // Runtime counterpart of the `const _: () = ...` block above.
+        // The const block catches a mismatch at compile time; this test
+        // serves as a redundant tripwire that surfaces the problem in
+        // test reports too (a build failure can be missed by a CI lane
+        // that doesn't compile this crate; the test suite always does).
         assert_eq!(SCHEMA_VERSION, "marque-priors-1");
     }
 
