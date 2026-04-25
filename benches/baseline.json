@@ -1,10 +1,10 @@
 {
-  "_comment": "SC-001a baseline — manually captured, never auto-updated. Re-capture requires a reviewed commit.",
+  "_comment": "SC-001a / SC-002 baseline — manually captured, never auto-updated. Re-capture requires a reviewed commit.",
   "reference_machine": {
     "cpu": "x86_64 under WSL2 (AMD/Intel laptop-class, >=3GHz base). See git log for exact hardware at capture time.",
     "profile": "release (cargo bench default)",
     "rust_version": "1.85+",
-    "date_captured": "2026-04-12"
+    "date_captured": "2026-04-25"
   },
   "lint_10kb": {
     "lower_ci_us": 276,
@@ -13,5 +13,13 @@
     "unit": "microseconds",
     "_note": "Values are criterion 95% confidence interval bounds, not percentile distribution samples.",
     "target_upper_ci_us": 16000
+  },
+  "decoder_10kb_one_mangled_region": {
+    "lower_ci_us": 586,
+    "mean_us": 593,
+    "upper_ci_us": 603,
+    "unit": "microseconds",
+    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. Captured on a WSL2 dev machine; reference-machine re-capture is welcome but not required — the SC-002 18ms absolute target is the load-bearing gate, the per-bench `upper_ci_us` exists for the +10% regression-detection step in `scripts/bench-check.sh`.",
+    "target_upper_ci_us": 18000
   }
 }
