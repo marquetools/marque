@@ -53,7 +53,16 @@ use crate::{Engine, FixResult, LintResult};
 /// Batch APIs surface this per-document so a panic, cancellation, or
 /// graceful shutdown of the underlying concurrency controller does not
 /// abort the entire batch run.
+///
+/// `#[non_exhaustive]` because future infrastructure-level errors
+/// (deadline expired, cache write-through failed, queue overflow,
+/// etc.) will land as new variants alongside the existing two. A
+/// downstream `match` should always carry a wildcard arm; without
+/// `non_exhaustive` every new variant would be a semver-breaking
+/// change for consumers, which would either pin them to a stale
+/// version or pressure us to never grow the surface.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BatchError {
     /// The blocking lint/fix task panicked or was cancelled.
     TaskFailed(tokio::task::JoinError),

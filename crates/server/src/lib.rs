@@ -62,10 +62,29 @@ use std::sync::Arc;
 /// from axum's 2 MB default — gap register #6 was the absence of an
 /// intentional decision.
 ///
-/// Override at runtime by setting `MARQUE_MAX_BODY_BYTES`. Values below
-/// 1 KB are rejected at startup (`resolve_body_limit`) — anything that
-/// small would make every realistic request 413.
+/// Override at runtime by setting `MARQUE_MAX_BODY_BYTES` to any value
+/// in `[MIN_BODY_LIMIT_BYTES, MAX_BODY_LIMIT_BYTES]` — values outside
+/// that window are rejected at startup (`resolve_body_limit`).
 pub const DEFAULT_BODY_LIMIT_BYTES: usize = 10 * 1024 * 1024;
+
+/// Floor for `MARQUE_MAX_BODY_BYTES`.
+///
+/// 1 KiB. Below this, every realistic request 413s — including
+/// the smallest legitimate `/v1/lint` body — so the cap stops being
+/// a safety control and starts being a denial-of-service against
+/// the operator's own service. Surface that as a startup error.
+pub const MIN_BODY_LIMIT_BYTES: usize = 1024;
+
+/// Ceiling for `MARQUE_MAX_BODY_BYTES`.
+///
+/// 1 GiB. Above this, the per-request memory footprint stops being
+/// a useful DoS control: handlers extract the full body into `Bytes`
+/// and then convert into `String`, so a single request at the cap
+/// drives an O(cap) allocation. A misconfigured `usize::MAX` value
+/// would effectively disable the limit. Surface that as a startup
+/// error rather than letting "the operator wrote a number" override
+/// the safety property the layer exists to provide.
+pub const MAX_BODY_LIMIT_BYTES: usize = 1024 * 1024 * 1024;
 
 /// Resolve the body-size cap from `MARQUE_MAX_BODY_BYTES` or fall back
 /// to [`DEFAULT_BODY_LIMIT_BYTES`].
@@ -105,10 +124,19 @@ fn classify_body_limit_var(var: Result<String, std::env::VarError>) -> Result<us
             let parsed: usize = s
                 .parse()
                 .map_err(|_| format!("MARQUE_MAX_BODY_BYTES is not a valid byte count: {s:?}"))?;
-            if parsed < 1024 {
+            if parsed < MIN_BODY_LIMIT_BYTES {
                 return Err(format!(
-                    "MARQUE_MAX_BODY_BYTES={parsed} is below the 1024-byte floor; \
-                     anything smaller would make every realistic request 413"
+                    "MARQUE_MAX_BODY_BYTES={parsed} is below the \
+                     {MIN_BODY_LIMIT_BYTES}-byte floor; anything smaller \
+                     would make every realistic request 413"
+                ));
+            }
+            if parsed > MAX_BODY_LIMIT_BYTES {
+                return Err(format!(
+                    "MARQUE_MAX_BODY_BYTES={parsed} is above the \
+                     {MAX_BODY_LIMIT_BYTES}-byte ceiling; the cap exists \
+                     as a per-request memory-footprint control, and a \
+                     value this large effectively disables it"
                 ));
             }
             Ok(parsed)
@@ -518,6 +546,44 @@ mod tests {
         assert!(
             err.contains("512"),
             "error must echo back the offending value: {err}"
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_above_ceiling_is_rejected() {
+        // `MAX_BODY_LIMIT_BYTES + 1` is the smallest above-ceiling value;
+        // catches an off-by-one regression in the boundary check
+        // alongside the larger pathological cases.
+        let just_above = (MAX_BODY_LIMIT_BYTES + 1).to_string();
+        let err = classify_body_limit_var(Ok(just_above.clone()))
+            .expect_err("MAX+1 must be rejected as above the ceiling");
+        assert!(
+            err.contains("ceiling"),
+            "error must name the ceiling: {err}"
+        );
+        assert!(
+            err.contains(&just_above),
+            "error must echo back the offending value: {err}"
+        );
+
+        // A pathological `usize::MAX` value (or any operator typo of
+        // many GiB) must also be rejected — without the ceiling, this
+        // value would effectively disable the body-cap as a DoS control.
+        let pathological = usize::MAX.to_string();
+        assert!(
+            classify_body_limit_var(Ok(pathological)).is_err(),
+            "usize::MAX must trip the ceiling guard"
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_at_ceiling_is_accepted() {
+        // The ceiling itself is the largest legitimate value; pin
+        // that the boundary is inclusive so a future refactor
+        // doesn't quietly tighten it.
+        assert_eq!(
+            classify_body_limit_var(Ok(MAX_BODY_LIMIT_BYTES.to_string())),
+            Ok(MAX_BODY_LIMIT_BYTES)
         );
     }
 
