@@ -17,10 +17,11 @@ mod render;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
-use marque_engine::Engine;
+use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process;
+use std::time::{Duration, Instant};
 
 const EX_OK: i32 = 0;
 const EX_DIAG_ERROR: i32 = 1;
@@ -29,6 +30,7 @@ const EX_USAGE: i32 = 64;
 const EX_DATAERR: i32 = 65;
 const EX_UNAVAILABLE: i32 = 69;
 const EX_IOERR: i32 = 74;
+const EX_TEMPFAIL: i32 = 75;
 
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
@@ -128,6 +130,15 @@ struct CommonOptions {
     /// Minimum confidence for a fix to be auto-applied (0.0..=1.0).
     #[arg(long, value_name = "FLOAT")]
     confidence_threshold: Option<f32>,
+
+    /// Maximum wall-clock budget for processing each input document.
+    /// Format: humantime, e.g. "30s", "2m", "500ms". Zero or unparseable
+    /// values are rejected with EX_USAGE (64). On expiry, `check`
+    /// returns whatever lint diagnostics were produced before the
+    /// abort and exits 0/2/1 (matching the warning/error gate); `fix`
+    /// returns no FixResult and exits EX_TEMPFAIL (75).
+    #[arg(long, value_name = "DURATION")]
+    deadline: Option<String>,
 
     /// Output format. Defaults to `human` for TTY, `json` otherwise.
     #[arg(long, value_enum)]
@@ -335,10 +346,39 @@ fn validate_threshold(common: &CommonOptions) -> Result<(), i32> {
     Ok(())
 }
 
+/// Parse `--deadline` if supplied. Per spec 005 T022: parse failures and
+/// zero durations both exit `EX_USAGE` (64). humantime requires a unit
+/// suffix, so a bare `--deadline 0` fails at parse time; `--deadline 0s`
+/// parses to `Duration::ZERO` which we explicitly reject (a zero budget
+/// would always trip the pre-pass deadline check on entry, producing a
+/// fully-truncated lint or `Err(DeadlineExceeded)` for fix — not the
+/// caller's intent).
+fn validate_deadline(common: &CommonOptions) -> Result<Option<Duration>, i32> {
+    let Some(raw) = common.deadline.as_deref() else {
+        return Ok(None);
+    };
+    let duration = match humantime::parse_duration(raw) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("error: --deadline {raw:?}: {e}");
+            return Err(EX_USAGE);
+        }
+    };
+    if duration.is_zero() {
+        eprintln!("error: --deadline must be greater than zero");
+        return Err(EX_USAGE);
+    }
+    Ok(Some(duration))
+}
+
 fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) -> i32 {
     if let Err(code) = validate_threshold(&common) {
         return code;
     }
+    let deadline_duration = match validate_deadline(&common) {
+        Ok(d) => d,
+        Err(code) => return code,
+    };
 
     // `-q` / `--quiet` suppresses non-diagnostic stderr narration per
     // contracts/cli.md. The `check` subcommand currently emits NO operator
@@ -440,7 +480,21 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
             return code;
         }
 
-        let result = engine.lint(source);
+        // Stamp the deadline ONCE per input so a slow earlier file
+        // does not consume the budget allotted to a later one
+        // (per-document semantics, spec §R2). For stdin / single-doc
+        // invocations this is identical to a single boundary stamp.
+        // `LintOptions` is `#[non_exhaustive]` so we mutate a default
+        // rather than struct-construct across the crate boundary.
+        let mut lint_opts = LintOptions::default();
+        lint_opts.deadline = deadline_duration.map(|d| Instant::now() + d);
+        let result = engine.lint_with_options(source, &lint_opts);
+        if result.truncated {
+            eprintln!(
+                "{label}: ⚠ deadline exceeded: covered {}/{} candidates",
+                result.candidates_processed, result.candidates_total
+            );
+        }
         // Fix-severity diagnostics are still violations — they just have a
         // fix proposal attached. Treat them as errors for the exit-code
         // gate so `marque check` is usable as a CI block.
@@ -517,6 +571,10 @@ fn run_fix(
     if let Err(code) = validate_threshold(&common) {
         return code;
     }
+    let deadline_duration = match validate_deadline(&common) {
+        Ok(d) => d,
+        Err(code) => return code,
+    };
 
     let config = match load_config(cwd, &common) {
         Ok(c) => c,
@@ -623,14 +681,62 @@ fn run_fix(
             return code;
         }
 
-        let result =
-            match engine.fix_with_threshold(source, engine_mode, common.confidence_threshold) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    return EX_DATAERR;
+        // Stamp the per-document deadline BEFORE the fix call so each
+        // input gets its own budget (spec §R2 per-document semantics).
+        let mut fix_opts = FixOptions::default();
+        fix_opts.threshold_override = common.confidence_threshold;
+        fix_opts.deadline = deadline_duration.map(|d| Instant::now() + d);
+        let result = match engine.fix_with_options(source, engine_mode, &fix_opts) {
+            Ok(r) => r,
+            Err(EngineError::InvalidThreshold(it)) => {
+                eprintln!("error: {it}");
+                return EX_DATAERR;
+            }
+            Err(EngineError::DeadlineExceeded { partial_lint }) => {
+                // Spec §R4 / Constitution V Principle V: no partial
+                // FixResult is ever produced, so there is no fixed
+                // text to write. Render the partial-lint diagnostics
+                // to stderr so the operator can see what the engine
+                // had identified before the abort, then exit
+                // EX_TEMPFAIL to signal "transient failure, retry
+                // with a larger budget."
+                let stderr = std::io::stderr();
+                let mut stderr_lock = stderr.lock();
+                let format: render::Format = common
+                    .format
+                    .map(Into::into)
+                    .unwrap_or_else(render::default_format);
+                let color = render::use_color(common.no_color);
+                let render_result = match format {
+                    render::Format::Json => render::render_ndjson(&mut stderr_lock, &partial_lint),
+                    render::Format::Human => render::render_human_result(
+                        &mut stderr_lock,
+                        &label,
+                        source,
+                        &partial_lint,
+                        color,
+                    ),
+                };
+                if let Err(e) = render_result {
+                    eprintln!("error writing partial-lint diagnostics: {e}");
+                    return EX_IOERR;
                 }
-            };
+                eprintln!(
+                    "{label}: ⚠ deadline exceeded after processing {}/{} \
+                     candidates; no fixes applied",
+                    partial_lint.candidates_processed, partial_lint.candidates_total
+                );
+                return EX_TEMPFAIL;
+            }
+            // `EngineError` is `#[non_exhaustive]` so the compiler
+            // requires a wildcard. A future variant lands here as a
+            // generic data error rather than silently mapping to one
+            // of the existing exit codes.
+            Err(e) => {
+                eprintln!("error: {e}");
+                return EX_DATAERR;
+            }
+        };
 
         // Audit emission (T049, FR-005a) — NEVER suppressed by -q.
         // Each record is atomic: serialize to buffer, single write_all.
