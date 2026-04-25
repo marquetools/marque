@@ -9,10 +9,12 @@
 //! `crates/rules/src/lib.rs` (Constitution VI). The engine and
 //! `BatchEngine` hold rules and rule-sets behind `Arc<dyn Rule>` /
 //! `Arc<dyn RuleSet>` for cross-task dispatch; if the trait's
-//! supertrait bounds ever stopped enforcing those bounds we would only
-//! find out at runtime when cross-task dispatch stopped compiling at
-//! the call site. The `assert_impl_all!` macros below turn that into
-//! a compile-time failure here instead.
+//! supertrait bounds ever stopped enforcing those bounds we would
+//! only discover it later as a compile-time error at every call site
+//! that tried to send the trait object across a task boundary. The
+//! `assert_impl_all!` macros below front-load that failure here so
+//! the regression surfaces at this file's compile, not scattered
+//! across every consumer of `Arc<dyn Rule>`.
 //!
 //! Companion file: `crates/scheme/tests/send_sync.rs` already pins the
 //! `Recognizer` trait-object form. This file closes the equivalent
