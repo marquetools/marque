@@ -98,6 +98,14 @@ serde-wasm-bindgen = "0.6.5"
 # WASM
 wasm-bindgen = "0.2.118"
 
+# Cross-target Instant polyfill — std::time::Instant on native targets,
+# Performance.now() / Date.now() polyfill on wasm32-unknown-unknown.
+# Used by marque-engine for the per-document deadline check (spec 005).
+# Without this, `Instant::now()` panics on the WASM target with "time
+# not implemented on this platform" the first time a deadline-bearing
+# WASM caller hits the lint loop.
+web-time = "1.1.0"
+
 # Observability
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

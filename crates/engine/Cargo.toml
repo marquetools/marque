@@ -39,6 +39,11 @@ recoco-utils = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
+# `web_time::Instant` re-exports `std::time::Instant` on native and
+# polyfills via Performance.now() on wasm32-unknown-unknown. The
+# engine's deadline check (spec 005) calls `Instant::now()` per
+# candidate; without this dep, that call panics in the WASM target.
+web-time = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

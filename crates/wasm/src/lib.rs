@@ -17,6 +17,41 @@
 //! `fix()` returns a JSON object with `fixed_text`, `applied` (audit records
 //! per `contracts/audit-record.json`), and `remaining` (diagnostics per
 //! `contracts/diagnostic.json`).
+//!
+//! ## Constitution III analysis: `deadline_ms` (spec 005)
+//!
+//! `WasmConfig` carries a `deadline_ms` field that JS callers may set to bound
+//! per-call wall-clock work. This analysis confirms the field is permissible
+//! under the Constitution III rule that the WASM target "MUST NOT accept
+//! runtime configuration that expands the engine's semantic surface."
+//!
+//! - **No new recognizer codepath.** `deadline_ms` translates into
+//!   `LintOptions { deadline: Some(Instant) }` / `FixOptions { deadline: ... }`,
+//!   the same data the strict-path engine already consults whenever the
+//!   per-document deadline check fires. There is no decoder, no priors, no
+//!   alternate scanner — the recognizer choice (`StrictRecognizer`,
+//!   compile-time-baked CVE token set) is unaffected.
+//! - **No posterior change.** The deadline check is a `bool` early-return at
+//!   candidate boundaries; it gates whether the next candidate is processed,
+//!   not how it is scored. A truncated lint produces a *subset* of the
+//!   diagnostics the same input would produce without a deadline; every
+//!   diagnostic that does fire has identical `Span`, `Severity`, and
+//!   `FixProposal` values to the non-truncated equivalent.
+//! - **No vocabulary surface change.** The CVE token set, severity table,
+//!   and corrections map are unchanged. `deadline_ms` does not introduce a
+//!   new way for a caller to influence which tokens the engine recognizes
+//!   or how it labels them.
+//! - **Permitted under the "data already present in the strict-path codepath"
+//!   carve-out.** Constitution III explicitly allows runtime config that
+//!   shares the strict-path data shape — severity overrides, corrections
+//!   maps. `deadline_ms` is the same kind of object: a runtime budget cap
+//!   that constrains *how much* work the engine does, not *what* work.
+//!
+//! The Phase D `lint_deep_scan` / `fix_deep_scan` entry points remain
+//! deliberately byte-only (Gate 2) — those signatures do **not** accept
+//! `deadline_ms`, because the decoder caller surface is intentionally
+//! minimal. Adding a deadline there would require a separate Constitution III
+//! review of how a deadline interacts with decoder posterior computation.
 
 // TODO: We should probably implement a custom allocator for cloud deployment, since it's single threaded, using TalcCell
 // TalcLock is tuned for multi-threaded workloads (i.e. browser)
@@ -54,12 +89,11 @@ compile_error!(
 );
 
 use marque_config::Config;
-use marque_engine::{Clock, Engine, FixMode};
+use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-#[cfg(target_arch = "wasm32")]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
@@ -400,9 +434,27 @@ struct WasmConfig {
     confidence_threshold: Option<f32>,
     #[serde(default)]
     corrections: Option<HashMap<String, String>>,
+    /// Per-call wall-clock budget in milliseconds (spec 005).
+    /// `None` / absent → no deadline. Values must satisfy
+    /// `is_finite() && >= 0.0`; negative / NaN / Inf are rejected
+    /// at parse time. See `parse_deadline_ms` for the validation
+    /// rules and the Constitution III analysis at the top of this
+    /// file for why a runtime budget cap is permitted in WASM.
+    #[serde(default)]
+    deadline_ms: Option<f64>,
 }
 
-fn parse_config(json: &Option<String>) -> Result<Config, String> {
+/// Parse the JS-side `config_json` into the engine-level `Config` plus
+/// a separate optional deadline `Duration`.
+///
+/// The deadline does not live on `Config` — it's a per-call concern
+/// carried through `LintOptions` / `FixOptions` — but it shares the
+/// same JSON envelope so JS callers can pass everything in one
+/// object. Splitting the parse into `(Config, Option<Duration>)`
+/// keeps the engine's cache key (config_json) doing exactly what it
+/// did before: a different deadline does not invalidate the cached
+/// engine, because the engine is unaware of it.
+fn parse_wasm_config(json: &Option<String>) -> Result<(Config, Option<Duration>), String> {
     let wasm_cfg: WasmConfig = match json {
         Some(s) => serde_json::from_str(s).map_err(|e| e.to_string())?,
         None => WasmConfig::default(),
@@ -418,7 +470,58 @@ fn parse_config(json: &Option<String>) -> Result<Config, String> {
     if let Some(corrections) = wasm_cfg.corrections {
         config.corrections = corrections;
     }
-    Ok(config)
+    let deadline_duration = parse_deadline_ms(wasm_cfg.deadline_ms)?;
+    Ok((config, deadline_duration))
+}
+
+/// Validate a JS-side `deadline_ms` value and convert to `Duration`.
+///
+/// Rules (T041):
+/// - `None` → `Ok(None)`. No deadline.
+/// - Negative, NaN, or Inf → `Err`. JS callers should never construct
+///   these; rejecting them loudly catches a serialization or
+///   transformation bug before it reaches the engine.
+/// - Otherwise → `Ok(Some(Duration::from_millis(value as u64)))`.
+///   `Duration::from_millis` saturates at u64::MAX ms; we don't add
+///   our own ceiling here because the resulting `Instant::now() + d`
+///   uses `checked_add` at the call site (mirroring the CLI's
+///   overflow handling).
+fn parse_deadline_ms(value: Option<f64>) -> Result<Option<Duration>, String> {
+    let Some(ms) = value else {
+        return Ok(None);
+    };
+    if !ms.is_finite() {
+        return Err(format!(
+            "deadline_ms must be a finite number; got {ms} (NaN/Inf are rejected)"
+        ));
+    }
+    if ms < 0.0 {
+        return Err(format!("deadline_ms must be non-negative; got {ms}"));
+    }
+    Ok(Some(Duration::from_millis(ms as u64)))
+}
+
+/// Back-compat thin wrapper: parses just the `Config` half. Kept for
+/// `compute_banner_native` / `generate_cab_native` and any internal
+/// caller that doesn't need the deadline.
+fn parse_config(json: &Option<String>) -> Result<Config, String> {
+    parse_wasm_config(json).map(|(cfg, _)| cfg)
+}
+
+/// Stamp `Instant::now() + duration`, mapping platform-clock overflow
+/// to a structured error (matches the CLI's `stamp_deadline` helper).
+/// The user-controlled `deadline_ms` could in principle be a value
+/// that, when added to the current Instant, overflows the platform
+/// monotonic clock — `Instant::add` panics on overflow, so we use
+/// `checked_add` and surface the failure as a JS error instead.
+fn stamp_deadline(duration: Option<Duration>) -> Result<Option<Instant>, String> {
+    let Some(d) = duration else {
+        return Ok(None);
+    };
+    Instant::now()
+        .checked_add(d)
+        .map(Some)
+        .ok_or_else(|| "deadline_ms is too large for the platform clock".to_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -539,10 +642,28 @@ pub fn configure_native(config_json: Option<String>) -> Result<(), String> {
 
 /// Lint text, returning NDJSON conforming to `contracts/diagnostic.json`.
 /// One diagnostic per line, newline-terminated. Byte-identical to the CLI's
-/// `--format json` output (SC-008).
+/// `--format json` output (SC-008) — the truncation case (deadline tripped
+/// mid-pass) returns whatever partial NDJSON the engine produced before
+/// abort, exactly matching the CLI's stdout shape on the same condition.
+///
+/// Spec 005 §R3 / Constitution III analysis (T043): when `config_json`
+/// carries `deadline_ms`, the engine's per-candidate deadline check
+/// activates and the lint pass cooperatively aborts on expiry. This is
+/// a *runtime budget cap*, not a vocabulary or scoring change — the
+/// same recognizer codepath runs whether `deadline_ms` is set or not,
+/// posteriors are identical, the CVE token set is unchanged. Permitted
+/// under the Constitution III "data already present in the strict-path
+/// codepath" carve-out.
 pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, String> {
+    // Parse upfront to fail fast on a bad `deadline_ms` (NaN / Inf /
+    // negative) before any engine work, regardless of whether the
+    // engine cache is warm.
+    let (_, deadline_duration) = parse_wasm_config(&config_json)?;
+    let deadline = stamp_deadline(deadline_duration)?;
     with_engine(&config_json, |engine| {
-        let result = engine.lint(text.as_bytes());
+        let mut lint_opts = LintOptions::default();
+        lint_opts.deadline = deadline;
+        let result = engine.lint_with_options(text.as_bytes(), &lint_opts);
 
         // Write NDJSON directly into a byte buffer — avoids the intermediate
         // String allocation that serde_json::to_string produces per diagnostic.
@@ -561,15 +682,33 @@ pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, St
 ///
 /// The `threshold` parameter always takes precedence over any `confidence_threshold`
 /// in `config_json`. This matches the CLI's Layer 4 (CLI flag) override behavior.
+///
+/// Spec 005 §R4: when `config_json` carries `deadline_ms` and the
+/// deadline expires during the lint or fix-application pass, this
+/// function returns `Err(...)` carrying a JSON-serialized
+/// `DeadlineExceededBody` (identical shape to the server's 504
+/// response — `truncated_by`, `diagnostics`, `candidates_processed`,
+/// `candidates_total`). JS callers `try`/`catch` and parse the
+/// message body to render the partial-lint diagnostics. No partial
+/// `FixResult` is ever returned (Constitution V Principle V).
 pub fn fix_native(
     text: &str,
     threshold: f32,
     config_json: Option<String>,
 ) -> Result<String, String> {
+    let (_, deadline_duration) = parse_wasm_config(&config_json)?;
+    let deadline = stamp_deadline(deadline_duration)?;
     with_engine(&config_json, |engine| {
-        let result = engine
-            .fix_with_threshold(text.as_bytes(), FixMode::Apply, Some(threshold))
-            .map_err(|e| e.to_string())?;
+        let mut fix_opts = FixOptions::default();
+        fix_opts.threshold_override = Some(threshold);
+        fix_opts.deadline = deadline;
+        let result = match engine.fix_with_options(text.as_bytes(), FixMode::Apply, &fix_opts) {
+            Ok(r) => r,
+            Err(EngineError::DeadlineExceeded { partial_lint }) => {
+                return Err(deadline_exceeded_payload(&partial_lint));
+            }
+            Err(e) => return Err(e.to_string()),
+        };
 
         let fixed_text = String::from_utf8(result.source)
             .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
@@ -608,6 +747,38 @@ pub fn fix_native(
         serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
         String::from_utf8(buf).map_err(|e| e.to_string())
     })
+}
+
+/// Body shape for a deadline-exceeded fix error (mirrors the
+/// `marque-server::DeadlineExceededBody` 504 response). Embedded as a
+/// JSON string in the `Err` arm of `fix_native` so JS callers can
+/// `JSON.parse(error.message)` to recover the partial-lint
+/// diagnostics + candidate counts.
+#[derive(Serialize)]
+struct DeadlineExceededBodyJson<'a> {
+    truncated_by: &'static str,
+    candidates_processed: usize,
+    candidates_total: usize,
+    diagnostics: Vec<DiagnosticJson<'a>>,
+}
+
+fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult) -> String {
+    let body = DeadlineExceededBodyJson {
+        truncated_by: if partial_lint.truncated {
+            "lint"
+        } else {
+            "fix"
+        },
+        candidates_processed: partial_lint.candidates_processed,
+        candidates_total: partial_lint.candidates_total,
+        diagnostics: partial_lint
+            .diagnostics
+            .iter()
+            .map(diagnostic_to_json)
+            .collect(),
+    };
+    serde_json::to_string(&body)
+        .unwrap_or_else(|e| format!(r#"{{"truncated_by":"fix","error":"{e}"}}"#))
 }
 
 /// Lint a byte buffer with the Phase D probabilistic decoder enabled.

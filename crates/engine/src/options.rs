@@ -32,7 +32,12 @@
 //! struct-update syntax — `#[non_exhaustive]` only restricts
 //! construction across crate boundaries.
 
-use std::time::Instant;
+// `web_time::Instant` is `std::time::Instant` on native targets and a
+// Performance.now() polyfill on wasm32-unknown-unknown. Identical type
+// on native (literal `pub use` re-export), so this is source-compatible
+// with any caller that previously constructed an `Instant` from
+// `std::time`.
+use web_time::Instant;
 
 /// Per-call options for [`Engine::lint_with_options`].
 ///

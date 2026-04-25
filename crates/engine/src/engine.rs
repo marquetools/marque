@@ -25,7 +25,9 @@ use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::Instant;
+// See note in `options.rs` — `web_time::Instant` is `std::time::Instant`
+// on native and a Performance.now() polyfill on wasm32-unknown-unknown.
+use web_time::Instant;
 
 /// Cooperative-cancellation predicate (spec 005 §R3). Centralizing this
 /// in one helper keeps the wall-clock comparison consistent across every
