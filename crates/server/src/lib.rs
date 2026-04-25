@@ -80,8 +80,23 @@ pub const DEFAULT_BODY_LIMIT_BYTES: usize = 10 * 1024 * 1024;
 /// as a misconfiguration and surfaces as `Err`. A blanket `Err(_) ⇒
 /// default` would hide the real bug behind a default that has nothing
 /// to do with what the operator wrote.
+///
+/// The decision logic is factored into [`classify_body_limit_var`] so
+/// the parse-fail / below-floor / not-unicode branches are reachable
+/// from a unit test without env-var manipulation. The thin wrapper
+/// here is the only path that touches `std::env`, and it's a straight
+/// pass-through — anything that would break it would also break the
+/// classifier, which the tests cover.
 pub fn resolve_body_limit() -> Result<usize, String> {
-    match std::env::var("MARQUE_MAX_BODY_BYTES") {
+    classify_body_limit_var(std::env::var("MARQUE_MAX_BODY_BYTES"))
+}
+
+/// Pure decision logic for [`resolve_body_limit`].
+///
+/// Takes the raw `Result` shape of `std::env::var(...)` so tests can
+/// exercise every branch by constructing the input directly.
+fn classify_body_limit_var(var: Result<String, std::env::VarError>) -> Result<usize, String> {
+    match var {
         Err(std::env::VarError::NotPresent) => Ok(DEFAULT_BODY_LIMIT_BYTES),
         Err(std::env::VarError::NotUnicode(raw)) => Err(format!(
             "MARQUE_MAX_BODY_BYTES is set but is not valid UTF-8: {raw:?}"
@@ -461,5 +476,117 @@ mod tests {
         // A percent-encoded form of the name appearing only as a VALUE
         // must also not trigger — only decoded names are checked.
         assert!(!query_carries_corpus_override("text=corpus%5Foverride"));
+    }
+
+    // -----------------------------------------------------------------
+    // `classify_body_limit_var` — pure decision logic for the
+    // body-size cap (whitepaper §10.2 / gap register #6). Tested via
+    // synthesized `Result<String, VarError>` inputs so every error
+    // branch is reachable without env-var manipulation.
+    // -----------------------------------------------------------------
+
+    use std::env::VarError;
+    use std::ffi::OsString;
+
+    #[test]
+    fn classify_body_limit_var_unset_returns_default() {
+        assert_eq!(
+            classify_body_limit_var(Err(VarError::NotPresent)),
+            Ok(DEFAULT_BODY_LIMIT_BYTES)
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_valid_value_passes_through() {
+        // Just above the floor.
+        assert_eq!(classify_body_limit_var(Ok("1024".to_owned())), Ok(1024));
+        // Production-realistic.
+        assert_eq!(
+            classify_body_limit_var(Ok("10485760".to_owned())),
+            Ok(10 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_below_floor_is_rejected() {
+        let err = classify_body_limit_var(Ok("512".to_owned()))
+            .expect_err("512 must be rejected as below the 1024-byte floor");
+        assert!(
+            err.contains("1024-byte floor"),
+            "error must name the floor: {err}"
+        );
+        assert!(
+            err.contains("512"),
+            "error must echo back the offending value: {err}"
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_zero_is_rejected() {
+        // Zero is the most pathological case — accepting it would 413
+        // every request including health checks. Below-floor branch
+        // catches it.
+        let err = classify_body_limit_var(Ok("0".to_owned()))
+            .expect_err("0 must be rejected as below the 1024-byte floor");
+        assert!(err.contains("0"), "error must echo back the value: {err}");
+    }
+
+    #[test]
+    fn classify_body_limit_var_unparseable_is_rejected() {
+        let err = classify_body_limit_var(Ok("not-a-number".to_owned()))
+            .expect_err("garbage value must be rejected");
+        assert!(
+            err.contains("not a valid byte count"),
+            "error must name the parse failure: {err}"
+        );
+        assert!(
+            err.contains("not-a-number"),
+            "error must echo back the offending value: {err}"
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_negative_is_rejected() {
+        // `usize::from_str` rejects negatives — this lands on the
+        // "not a valid byte count" branch, not the below-floor
+        // branch. Either is acceptable; the test just pins the
+        // current dispatch.
+        let err = classify_body_limit_var(Ok("-1".to_owned()))
+            .expect_err("negative value must be rejected");
+        assert!(
+            err.contains("not a valid byte count"),
+            "negative parse failure must use the parse-error branch: {err}"
+        );
+    }
+
+    #[test]
+    fn classify_body_limit_var_not_unicode_is_rejected() {
+        // Construct a deliberately non-UTF-8 OsString. On Unix this is
+        // straightforward via `OsStringExt::from_vec`; on Windows we'd
+        // use `OsStringExt::from_wide` with an unpaired surrogate.
+        // Both targets produce the same VarError shape, so the
+        // branch logic is testable on either. Gate the construction
+        // helper on `cfg(unix)` to avoid a Windows-only fallback.
+        #[cfg(unix)]
+        let raw: OsString = {
+            use std::os::unix::ffi::OsStringExt;
+            // 0xFF is not valid as a leading UTF-8 byte.
+            OsString::from_vec(vec![0xFF, 0xFE])
+        };
+        #[cfg(not(unix))]
+        let raw: OsString = {
+            // Unpaired high surrogate — not valid UTF-16 either,
+            // but `OsString` accepts it on Windows. The
+            // `VarError::NotUnicode` shape is identical.
+            use std::os::windows::ffi::OsStringExt;
+            OsString::from_wide(&[0xD800])
+        };
+
+        let err = classify_body_limit_var(Err(VarError::NotUnicode(raw)))
+            .expect_err("non-UTF-8 env value must be rejected");
+        assert!(
+            err.contains("not valid UTF-8"),
+            "error must name the encoding failure: {err}"
+        );
     }
 }
