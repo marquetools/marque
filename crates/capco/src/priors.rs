@@ -60,6 +60,40 @@ pub struct StrictContextPriors {
 
 include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 
+/// Compile-time pin: `SCHEMA_VERSION` (emitted by `build.rs` from the
+/// `schema_version` field of `priors.json`) MUST equal the value this
+/// crate's source code is compiled to consume. A mismatch — caused
+/// by a hand-edited `priors.json` or a generator regression that bumps
+/// the version — fails the build with a clear message instead of
+/// producing a green binary that emits records labeled with the wrong
+/// schema.
+///
+/// `build.rs` already rejects any `schema_version` mismatch on the
+/// producer side (see `crates/capco/build.rs:73-82` — it accepts only
+/// the single `marque-priors-1` value today). This const block is the
+/// consumer-side counterpart kept as an explicit source pin and
+/// defense-in-depth check that the generated `SCHEMA_VERSION` still
+/// matches the version this crate is wired to consume — the value
+/// fences the runtime tests below at the build-time tier so a CI lane
+/// that happens to skip this crate's tests still catches a regression.
+/// It also forces the consumer-side expectation to be a visible source
+/// declaration, so a future PR that bumps `build.rs` to accept a new
+/// schema version has to update this pin in the same edit.
+const _: () = {
+    let actual = SCHEMA_VERSION.as_bytes();
+    let expected = b"marque-priors-1";
+    if actual.len() != expected.len() {
+        panic!("SCHEMA_VERSION length does not match \"marque-priors-1\"");
+    }
+    let mut i = 0;
+    while i < actual.len() {
+        if actual[i] != expected[i] {
+            panic!("SCHEMA_VERSION does not equal \"marque-priors-1\"");
+        }
+        i += 1;
+    }
+};
+
 /// Look up a token's log-prior by exact canonical form.
 ///
 /// Returns `None` for tokens the generator did not observe in the
@@ -92,7 +126,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schema_version_is_pinned() {
+    fn schema_version_matches_expected_at_runtime() {
+        // Runtime counterpart of the `const _: () = ...` block above.
+        // The const block catches a mismatch at compile time; this test
+        // serves as a redundant tripwire that surfaces the problem in
+        // test reports too (a build failure can be missed by a CI lane
+        // that doesn't compile this crate; the test suite always does).
         assert_eq!(SCHEMA_VERSION, "marque-priors-1");
     }
 

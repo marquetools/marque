@@ -29,7 +29,7 @@ license-file = "./LICENSE.md"
 
 [workspace.dependencies]
 marque-capco = { path = "crates/capco", version = "0.2.0" }
-marque-config = { path = "crates/config", version = "0.2.0" }
+marque-config = { path = "crates/config", version = "0.2.0", default-features = false }
 marque-core = { path = "crates/core", version = "0.2.0" }
 marque-engine = { path = "crates/engine", version = "0.2.0", default-features = false }
 marque-extract = { path = "crates/extract", version = "0.2.0" }

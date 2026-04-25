@@ -111,11 +111,16 @@ const K_MAX_CANDIDATES: usize = 8;
 
 /// Runner-up posterior-ratio threshold for emitting `Unambiguous`.
 ///
-/// When the top candidate's log-posterior exceeds the runner-up's by
-/// at least this much (in natural-log space, so ~1.6 ≈ 5× odds ratio),
-/// the decoder collapses to `Unambiguous(top)`. Below the threshold,
-/// it returns `Ambiguous { candidates }` so the engine can surface a
+/// The decoder computes `log_margin = top_posterior - runner_up_posterior`
+/// in natural-log space. When `log_margin >= UNAMBIGUOUS_LOG_MARGIN`,
+/// the decoder collapses to `Unambiguous(top)`; below the threshold it
+/// returns `Ambiguous { candidates }` so the engine can surface a
 /// diagnostic rather than auto-apply a close call.
+///
+/// `1.6` corresponds to a posterior odds ratio of `e^1.6 ≈ 4.95` —
+/// i.e., the top candidate is roughly five times as likely as the
+/// runner-up given the observed bytes. This is the **odds** ratio
+/// (`P(top)/P(runner_up)`), not a probability ratio.
 const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
 /// Phase-D probabilistic marking recognizer.
@@ -279,12 +284,36 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             };
         }
 
-        // 5. Sort by posterior descending; keep top K=8.
-        scored.sort_by(|a, b| {
-            b.posterior
-                .partial_cmp(&a.posterior)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        // 5. Drop any candidate with a non-finite posterior, sort
+        //    descending, keep top K=8.
+        //
+        // NaN posteriors should be impossible —
+        // `MISSING_TOKEN_LOG_PRIOR = -12.0` and every feature delta
+        // is a finite constant — but a future scoring change could
+        // introduce a NaN-producing codepath. Under `f32::total_cmp`
+        // with the descending comparator (`b.total_cmp(&a)`), `+NaN`
+        // would sort *ahead* of every finite posterior and become the
+        // "top" candidate — its NaN posterior would then propagate
+        // into `log_margin` and `DecoderProvenance::posterior`, where
+        // `Confidence::validate` would later panic at audit-record
+        // promotion. Filter non-finite candidates out before the sort
+        // so the dispatch can never see one.
+        //
+        // `debug_assert` keeps the original assumption (decoder code
+        // does not produce NaN today) loud in dev builds; the filter
+        // is the production safeguard for if that assumption ever
+        // breaks silently.
+        debug_assert!(
+            scored.iter().all(|c| c.posterior.is_finite()),
+            "decoder produced non-finite posterior — invariant violated"
+        );
+        scored.retain(|c| c.posterior.is_finite());
+        if scored.is_empty() {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
+        scored.sort_by(|a, b| b.posterior.total_cmp(&a.posterior));
         scored.truncate(K_MAX_CANDIDATES);
 
         // 6. Decision: top-over-runner-up log margin on the posterior.
@@ -815,9 +844,6 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
     if class_segments.is_empty() {
         return None;
     }
-    if class_segments.len() + dissem_segments.len() + other_segments.len() == 0 {
-        return None;
-    }
 
     // Already-canonical check: if the classification segment is the
     // first non-empty segment, no reorder is needed.
@@ -1223,8 +1249,11 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         // `strict_parse_is_complete` can apply the right rule
         // (classification-requiring for portion/banner, CAB-field-
         // requiring for CAB). If inference fails the bytes are too
-        // degenerate for either path — skip.
-        let kind = infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
+        // degenerate for either path — skip and return whatever the
+        // strict path produced (most likely zero-candidate Ambiguous).
+        let Some(kind) = infer_marking_type(bytes) else {
+            return strict_result;
+        };
 
         // Complete strict parse — take it, decoder not needed.
         if matches!(&strict_result, Parsed::Unambiguous(m) if strict_parse_is_complete(m, kind)) {
