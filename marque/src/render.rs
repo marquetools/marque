@@ -462,12 +462,19 @@ pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1 {
 }
 
 /// Convert an `AppliedFix` to the v2 JSON audit record shape.
+///
+/// Reads `confidence` and `source` from the **top-level** snapshot fields
+/// on `AppliedFix`, not from `proposal.*`. The two are identical copies
+/// today (the engine's `__engine_promote` snapshots them unchanged), but
+/// the v2 schema's contract — documented on `AppliedFix` itself — is that
+/// v2 reads the snapshot so a future region-context adjustment landing in
+/// the engine doesn't silently bypass v2 emission.
 pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2 {
-    let c = &fix.proposal.confidence;
+    let c = &fix.confidence;
     AuditRecordJsonV2 {
         schema: AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str().to_owned(),
-        source: fix_source_str(fix.proposal.source),
+        source: fix_source_str(fix.source),
         span: SpanJson {
             start: fix.proposal.span.start,
             end: fix.proposal.span.end,
