@@ -22,3 +22,18 @@ pub mod validators {
 pub mod migrations {
     include!(concat!(env!("OUT_DIR"), "/migrations.rs"));
 }
+
+/// Per-token metadata derived from the ODNI ISM JSON sidecars
+/// (`schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json`). Provides the
+/// publishing authority (URN, source, point of contact, schema
+/// version) and long-form description for every token in the active
+/// CVE vocabulary.
+///
+/// The composition of these raw records into the
+/// `marque-scheme::Vocabulary<S>` trait surface lives in
+/// `marque-capco` (Phase 5 PR-2 task T084). `marque-ism` cannot
+/// reference the scheme types directly per Constitution VII —
+/// it sits below `marque-scheme` in the dependency graph.
+pub mod vocabulary {
+    include!(concat!(env!("OUT_DIR"), "/vocabulary.rs"));
+}

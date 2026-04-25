@@ -959,6 +959,7 @@ dependencies = [
  "memchr",
  "quick-xml",
  "serde",
+ "serde_json",
  "toml",
  "xmloxide",
 ]
