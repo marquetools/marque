@@ -314,10 +314,13 @@ fn no_document_text_leaks_into_diagnostic_messages() {
 
 /// Fabricate an `AppliedFix` whose `original` contains a known sentinel.
 ///
-/// This uses `AppliedFix::__engine_promote`, which is the documented
-/// test-only exception to the engine-only promotion contract (see
-/// `marque/src/render.rs` for the production counterpart and the
-/// whitepaper §3.4 / §6.2 for the invariant).
+/// Test-fixture carve-out per Constitution V Principle V: this
+/// fabricated `AppliedFix` is the input to `check_fixes_clean`'s
+/// G13 sentinel sweep, exists only inside the `tests/` tree, and is
+/// never spliced into a real audit stream. Engine production paths
+/// remain the only route to a real `AppliedFix` in `cfg(not(test))`
+/// code; see the doc comment on `AppliedFix::__engine_promote` for
+/// the three-constraint definition of the carve-out.
 fn fabricate_leaky_fix() -> AppliedFix {
     // A deliberately leaky `original`: a literal prose sentinel. In
     // production this could never happen because every proposal's

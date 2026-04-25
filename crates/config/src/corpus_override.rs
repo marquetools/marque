@@ -262,6 +262,30 @@ pub fn parse_corpus_override(
     })
 }
 
+/// Validate an override-supplied log-prior.
+///
+/// Policy: reject `NaN`, `+Inf`, and `-Inf`. `-Inf` is mathematically
+/// the log of `0.0`, which an operator might intend as a hard
+/// "infinite penalty / dead token" claim — a legitimate concept —
+/// but allowing it as wire-format input is a footgun:
+///
+/// - A regenerator emitting `-Inf` accidentally (e.g., `log(0)` from
+///   an empty corpus bucket) silently kills a candidate forever
+///   with no diagnostic at validation time.
+/// - The decoder's hot-path scoring uses `f32` log-posterior
+///   addition; an `-Inf` summand contaminates downstream
+///   arithmetic (`-Inf + finite = -Inf`, `-Inf - -Inf = NaN`),
+///   which the L3 NaN-filter hardens against but does not need to
+///   absorb additionally for operator-introduced inputs.
+/// - Operators who want "very rare in this context" can write a
+///   finite very-negative number (e.g., `-50.0`) which has the
+///   same practical effect on candidate ranking without the
+///   silent-deletion footgun.
+///
+/// Phase 4 review M6 confirmed this policy. If a future scoring
+/// change makes infinite penalties first-class, this function can
+/// be relaxed; until then, the contract is "log_priors must be
+/// finite."
 fn validate_log_prior(
     path: &Path,
     section: &'static str,
@@ -273,7 +297,8 @@ fn validate_log_prior(
             path: path.to_path_buf(),
             section,
             key: key.to_owned(),
-            reason: "log_prior must be finite (not NaN, +Inf, or -Inf)",
+            reason: "log_prior must be finite — `-Inf` (`log(0)`) is rejected as a regenerator footgun; \
+                     express 'very rare' with a finite very-negative number (e.g., -50.0) instead",
         });
     }
     // Log-priors are non-positive in well-formed corpora (probabilities
@@ -291,13 +316,26 @@ fn validate_log_prior(
     Ok(())
 }
 
+/// Validate a runtime override-supplied strict-context floor.
+///
+/// Mirrors the build-time policy in
+/// `crates/capco/build.rs::require_probability`. Accepts `(0.0,
+/// 1.0]`; rejects `0.0` because a `0.0` floor silently makes the
+/// strict-context rule a no-op (the feature contribution becomes
+/// algebraically identity), defeating FR-011 with no diagnostic at
+/// load time. Operators who want "very permissive" should write a
+/// finite small positive (e.g., `0.01`).
+///
+/// Phase 4 review M8 confirmed this policy.
 fn validate_floor(path: &Path, key: &'static str, value: f32) -> Result<(), ConfigError> {
-    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+    if !value.is_finite() || !(value > 0.0 && value <= 1.0) {
         return Err(ConfigError::CorpusOverrideInvalidValue {
             path: path.to_path_buf(),
             section: "strict_context_overrides",
             key: key.to_owned(),
-            reason: "floor must be in [0.0, 1.0] and finite",
+            reason: "floor must be in (0.0, 1.0] and finite — `0.0` is rejected because it silently \
+                     makes the strict-context rule a no-op; write a finite small positive (e.g., 0.01) \
+                     for a permissive floor",
         });
     }
     Ok(())

@@ -260,6 +260,19 @@ fn require_f64(record: &serde_json::Value, key: &str, parent: &str, path: &Path)
     })
 }
 
+/// Validate a `strict_context_priors` floor probability.
+///
+/// Accepts `(0.0, 1.0]`. Rejects `0.0` specifically: a `0.0` floor
+/// is the algebraic identity for the strict-context-classification
+/// feature contribution (the feature multiplies a posterior weight
+/// against the floor; a `0.0` floor never rejects any candidate,
+/// silently making the rule a no-op). Per Phase 4 review M8: a
+/// regenerator emitting `0.0` accidentally — e.g., a corpus bucket
+/// with no observed markings at the relevant classification level —
+/// would defeat FR-011 semantics with no diagnostic at build time.
+/// Operators or tools that want "very permissive" should write a
+/// finite small positive (e.g., `0.01`), which has the same
+/// practical effect without the no-op footgun.
 fn require_probability(
     record: &serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -274,10 +287,13 @@ fn require_probability(
             key,
         )
     });
-    if !v.is_finite() || !(0.0..=1.0).contains(&v) {
+    if !v.is_finite() || !(v > 0.0 && v <= 1.0) {
         panic!(
-            "marque-capco build failed: {} -> {}.{} = {} is not a valid probability \
-             in [0.0, 1.0]. Regenerate priors.json with a fixed generator.",
+            "marque-capco build failed: {} -> {}.{} = {} is not a valid \
+             strict_context_priors floor in (0.0, 1.0]. `0.0` is rejected \
+             because it makes the strict-context rule a silent no-op; \
+             write a finite small positive (e.g., 0.01) for a permissive floor. \
+             Regenerate priors.json with a fixed generator.",
             path.display(),
             parent,
             key,

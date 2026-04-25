@@ -1078,15 +1078,12 @@ fn nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> Option<Stri
 /// an empty `poc_email` carry the same provenance defect as audit
 /// records that cite a missing one.
 fn required_string(obj: &serde_json::Value, field: &str, path: &Path) -> String {
-    let raw = obj
-        .get(field)
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| {
-            panic!(
-                "{}: required field `{field}` missing or not a string",
-                path.display()
-            )
-        });
+    let raw = obj.get(field).and_then(|v| v.as_str()).unwrap_or_else(|| {
+        panic!(
+            "{}: required field `{field}` missing or not a string",
+            path.display()
+        )
+    });
     if raw.trim().is_empty() {
         panic!(
             "{}: required field `{field}` is present but empty (or \
