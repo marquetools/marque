@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.9 · **Last amended**: 2026-04-25
+**Document version**: 0.10 · **Last amended**: 2026-04-25
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -556,13 +556,32 @@ seal.
 - Construction-time validation: `Confidence::validate` enforces each
   axis is finite and in `[0, 1]` where constrained.
 
-A malformed rule that constructs an out-of-range `Confidence` panics
-at `FixProposal::new`, which halts the document. The engine-side
-wrapper that catches and skips the rule gracefully is open (gap
-register P1-10).
+A malformed rule that constructs an out-of-range `Confidence` would
+otherwise panic at `FixProposal::new`. `Engine::lint` wraps every
+`Rule::check` call in `std::panic::catch_unwind` (gap register #10,
+closed in v0.10) — a buggy rule's panic is now logged via
+`tracing::warn!` at target `marque_engine::rule_panic` (naming the
+rule's `RuleId` and the panic's payload string) and the rule is
+skipped for that candidate; sibling rules and remaining candidates
+keep running. The fix path uses the same loop, so it gets the same
+guarantee transitively. `crates/engine/tests/rule_panic_isolation.rs`
+pins the contract end-to-end against three failure modes: a bare
+`panic!()`, the canonical out-of-range `Confidence` failure (calls
+real `FixProposal::new`), and a sibling-rules-continue assertion;
+plus a smoke test that the production CAPCO rule set still emits
+diagnostics after the wrapper landed.
 
-**Status**: `[LANDED]` filtering + sort + guard; `[PARTIAL]` graceful
-rule-failure handling.
+The wrapper requires `panic = "unwind"` in the release profile —
+`Cargo.toml` `[profile.release]` had `panic = "abort"`, which would
+have aborted the process before the catch could fire. Switched to
+unwind; the binary-size and runtime cost (~5-10% / ~1-3%) is
+acceptable for a compliance tool where one rule's defect must not
+trip a complete service outage. The change also makes
+`BatchError::is_panic()` (`crates/engine/src/batch.rs`) actually
+fire in release builds — `tokio::task::spawn_blocking` reports a
+`JoinError::Panic` only on unwound worker threads, not aborted ones.
+
+**Status**: `[LANDED]`.
 
 ### 6.4 Audit record schema versioning
 
@@ -1186,7 +1205,7 @@ possible), and a **remediation plan**. Severities:
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
 | 8 | ~~`BatchEngine` `.expect()` panics on semaphore close~~ | ~~P1~~ | ~~§9.4, `batch.rs:196, 226`~~ | **Resolved.** New `BatchError::ShutdownInProgress` variant with matching `is_shutdown()` predicate; `From<tokio::sync::AcquireError>` impl maps the (only possible) error. Both `lint_many` and `fix_many` propagate the variant per-document instead of panicking. Unit tests cover `is_*` discrimination, `Display`, `Error::source`, and the `From` conversion driven through a closed `Semaphore` |
 | 9 | Strict-context floor (T1) not wired in decoder | P1 | T045, T062, FR-011 | Decoder reads `ParseContext.strict_evidence` before consulting priors for `(C)` and similar |
-| 10 | `Confidence::validate` panic on bad rule halts the document | P1 | §6.3 | Engine wraps `Rule::check` output; invalid confidence skips the rule with a logged warning |
+| 10 | ~~`Confidence::validate` panic on bad rule halts the document~~ | ~~P1~~ | ~~§6.3~~ | **Resolved.** `Engine::lint` wraps every `Rule::check` call in `std::panic::catch_unwind(AssertUnwindSafe(...))`. Caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for that candidate; sibling rules + remaining candidates keep running. `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test |
 | 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
 | 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
 | 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
@@ -1232,3 +1251,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.7 | 2026-04-25 | Four more P2 hygiene gaps closed. Gap #16: §5.1 corrected — only `.to_vec()` call in `crates/core/src/parser.rs` is in a `#[test]` block, not on the hot path. Gap #17: `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` so a non-uv install is reproducible; §7.4 documents the route. Gap #19: `marque/tests/corpus_provenance.rs::mangled_fixtures_observed_expected_token_only` walks `tests/fixtures/mangled/**/*.json` and asserts `observed` / `expected` fields are free of prose sentinels, classifier-id-shaped digit runs, and exceed-length leaks; §5.5 documents the route. Gap #20: `crates/engine/tests/core_error_isolation.rs` embeds a high-entropy canary in adversarial input designed to trip every `CoreError` construction site and asserts the canary appears in no text-bearing field of `LintResult` / `FixResult`; §5.3 rewritten. Gap register rows 16, 17, 19, 20 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.8 | 2026-04-25 | Last P2 hygiene gap closed. Gap #15: `crates/core/tests/alloc_budget.rs` (behind `count-allocs` feature) installs a counting global allocator and gates `Scanner::scan(...)` allocation count across four cases (empty / single-banner / multi-marking / buffer-size-independence). `.github/workflows/ci.yml` `count-allocs` job runs the gate under `--test-threads=1` on every PR. §3.2 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 15 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.9 | 2026-04-25 | Two narrow P1 gaps closed. Gap #6: server body-size cap landed — `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 MiB`, applied via `axum::DefaultBodyLimit::max(N)` Tower layer in `build_app` / `build_app_with_limit`; runtime override via `MARQUE_MAX_BODY_BYTES` resolved by `resolve_body_limit` (rejects values below 1 KiB with `EX_USAGE`); tests cover `413` rejection on both `/v1/lint` and `/v1/fix` plus a 256 KiB realistic-traffic regression guard. §10.2 rewritten. Gap #8: `BatchEngine` `.expect()` replaced with new `BatchError::ShutdownInProgress` variant + `From<AcquireError>` impl + `is_shutdown()` predicate; both `lint_many` and `fix_many` now propagate the error per-document. §9.4 rewritten. Gap register rows 6 and 8 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.10 | 2026-04-25 | One more P1 gap closed. Gap #10: `Engine::lint` wraps every `Rule::check` in `std::panic::catch_unwind(AssertUnwindSafe(...))`; caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for the candidate without aborting the document. `Cargo.toml` `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, the real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test. §6.3 rewritten. Gap register row 10 struck through. | Adam Poulemanos (with Claude Code) |
