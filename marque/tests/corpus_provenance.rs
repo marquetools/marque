@@ -366,3 +366,211 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
         violations.join("\n")
     );
 }
+
+// -----------------------------------------------------------------------
+// Mangled-fixture token-only invariant (whitepaper §5.5 / gap register #19)
+// -----------------------------------------------------------------------
+//
+// The mangled fixtures under `tests/fixtures/mangled/` are a generated
+// artifact of `tools/corpus-analysis/analyze.py --mode mangled` and a
+// load-bearing input to the SC-004 decoder accuracy gate. Each JSON file
+// has the shape:
+//
+//     { "observed": "...", "expected": "...",
+//       "mangling_class": "Typo", "source_confidence": 0.82 }
+//
+// `observed` is the mangled marking the decoder must resolve; `expected`
+// is the canonical CAPCO marking it should resolve to. By construction,
+// both fields should contain only marking-shaped content — uppercase
+// letters, digits, spaces, marking delimiters, and the small set of
+// mangling glyphs the generator can produce. They MUST NOT contain
+// surrounding prose or classifier-id-shaped digit runs; the
+// source-narrowing invariant in `tests/fixtures/mangled/README.md`
+// keeps the generator pinned to `tests/corpus/valid/`, but a
+// regression in the generator (or a manual edit that didn't get
+// regenerated) would silently leak prose into the harness fixtures
+// and from there into Phase-D telemetry.
+//
+// This test is the post-condition. It walks every mangled JSON file
+// and asserts:
+//
+//   1. `observed` / `expected` decode as JSON strings.
+//   2. Neither contains a prose sentinel from the audit-stream
+//      content-ignorance corpus (mirrors `crates/engine/tests/audit.rs`).
+//   3. Neither contains a classifier-id-shaped digit run (5+ ASCII
+//      digits inside quotes / on a line by itself).
+//   4. Neither exceeds the per-marking length cap (256 bytes — well
+//      above the longest realistic CAPCO banner). Prose creeping in
+//      would blow this cap long before any other check.
+//
+// This is intentionally narrow — it does NOT enforce vocabulary
+// membership the way `sc002a_fixture_tokens_within_known_vocabulary`
+// does for `tests/corpus/valid/`, because mangled fixtures
+// deliberately contain typos / superseded tokens / wrong-case forms
+// that are out-of-vocabulary by design. The check is "no prose got
+// in", not "every token is canonical".
+
+const MANGLED_PROSE_SENTINELS: &[&str] = &[
+    // Drawn from `tests/corpus/prose/article.txt` — multi-word English
+    // fragments that cannot appear in any valid CAPCO/ISM marking and
+    // therefore cannot legitimately appear in `observed` / `expected`.
+    // Kept in sync with `crates/engine/tests/audit.rs::PROSE_SENTINELS`
+    // so a sentinel that rules out a leak in the audit stream also
+    // rules it out here.
+    "republic has over a democracy",
+    "numerous advantages promised",
+    "Liberty is to faction what air",
+    "insuperable obstacle to a uniformity",
+    "early prevalence of these sentiments",
+    "distinct interests in society",
+    "various and interfering interests",
+    "adjust these clashing interests",
+    "protection of these faculties",
+    "principal task of modern legislation",
+    "judge in his own cause",
+    "enlightened statesmen",
+];
+
+const MANGLED_FIELD_BYTE_CAP: usize = 256;
+
+#[test]
+fn mangled_fixtures_observed_expected_token_only() {
+    let mangled_dir = workspace_root()
+        .join("tests")
+        .join("fixtures")
+        .join("mangled");
+    if !mangled_dir.exists() {
+        // Mangled corpus is regenerable from `tools/corpus-analysis/`.
+        // A bare checkout that hasn't run the generator is a permitted
+        // state — skip rather than fail, matching the existing
+        // sc002a tests that bail when their corpus is absent.
+        return;
+    }
+
+    let files = walkdir(&mangled_dir);
+    let mut violations: Vec<String> = Vec::new();
+
+    for file in &files {
+        if file.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(file) else {
+            continue;
+        };
+
+        // Pull `"observed": "..."` and `"expected": "..."` out of the
+        // raw JSON via a string scan rather than full deserialization
+        // — keeps the test free of a serde_json dependency footprint
+        // and makes the failure message point at the literal bytes
+        // that tripped the check.
+        for field in ["observed", "expected"] {
+            let Some(value) = extract_string_field(&content, field) else {
+                violations.push(format!(
+                    "{}: missing or non-string field {field:?}",
+                    file.display()
+                ));
+                continue;
+            };
+
+            if value.len() > MANGLED_FIELD_BYTE_CAP {
+                violations.push(format!(
+                    "{}: field {field:?} exceeds {MANGLED_FIELD_BYTE_CAP}-byte cap \
+                     ({} bytes) — likely prose leakage",
+                    file.display(),
+                    value.len()
+                ));
+                continue;
+            }
+
+            for sentinel in MANGLED_PROSE_SENTINELS {
+                if value.contains(sentinel) {
+                    violations.push(format!(
+                        "{}: field {field:?} contains prose sentinel {sentinel:?}",
+                        file.display()
+                    ));
+                }
+            }
+
+            // 5+ consecutive ASCII digits = classifier-id-shaped run.
+            // CAPCO markings don't carry runs that long: the longest
+            // legitimate digit run is the 8-digit `declassify_on` date
+            // (YYYYMMDD), and that always sits inside a `Declassify On:`
+            // CAB line — never bare in the marking text. Mangled
+            // fixtures don't carry CAB content at all.
+            let mut run = 0usize;
+            for b in value.bytes() {
+                if b.is_ascii_digit() {
+                    run += 1;
+                    if run >= 5 {
+                        violations.push(format!(
+                            "{}: field {field:?} contains 5+-digit run \
+                             — possible classifier-id leakage",
+                            file.display()
+                        ));
+                        break;
+                    }
+                } else {
+                    run = 0;
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Mangled-fixture token-only invariant: {} violation(s):\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
+}
+
+/// Pull the string value of a top-level JSON field via a literal scan.
+///
+/// Looks for the pattern `"<field>"` followed by `:` and then a quoted
+/// JSON string. Decodes the small set of escapes the generator can
+/// emit (`\\`, `\"`, `\n`, `\t`, `\u{...}` left as-is). Returns `None`
+/// if the field is absent or not a string. This is deliberately narrow
+/// — it's a test, not a JSON parser — but it covers every shape the
+/// mangled-fixture generator produces today (`tools/corpus-analysis/
+/// analyze.py::_emit_mangled_fixture` writes via `json.dumps` with
+/// default settings, which matches this scan).
+fn extract_string_field(json: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{field}\"");
+    let idx = json.find(&needle)?;
+    let after_key = &json[idx + needle.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = &after_key[colon + 1..];
+    let trimmed = after_colon.trim_start();
+    let bytes = trimmed.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut i = 1;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'"' {
+            return Some(out);
+        }
+        if b == b'\\' && i + 1 < bytes.len() {
+            let esc = bytes[i + 1];
+            match esc {
+                b'"' => out.push('"'),
+                b'\\' => out.push('\\'),
+                b'/' => out.push('/'),
+                b'n' => out.push('\n'),
+                b't' => out.push('\t'),
+                b'r' => out.push('\r'),
+                _ => {
+                    out.push('\\');
+                    out.push(esc as char);
+                }
+            }
+            i += 2;
+            continue;
+        }
+        out.push(b as char);
+        i += 1;
+    }
+    None
+}

@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.6 · **Last amended**: 2026-04-24
+**Document version**: 0.7 · **Last amended**: 2026-04-25
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -414,6 +414,13 @@ Scanner output is `MarkingCandidate { span, kind, .. }`. Parser output
 is `IsmAttributes` with `Box<[TokenSpan]>` fields. No step in the hot
 path materializes a string copy of the marking.
 
+A `to_vec()` call previously appeared on the recognizer dispatch
+path and was flagged as gap register #16. Subsequent refactoring
+removed it; the only `.to_vec()` in `crates/core/src/parser.rs` today
+is at line 2072 inside a `#[test]` block, where it builds a Vec from
+a `Box<[DissemControl]>` so a `.contains(&...)` assertion can run.
+Tests are not on the hot path, so the zero-copy invariant holds.
+
 ### 5.2 Diagnostic message policy
 
 Diagnostic messages interpolate **token canonicals** — the value of the
@@ -430,11 +437,34 @@ P1 follow-up).
 
 `CoreError` variants in `crates/core/src/error.rs` currently embed
 token strings in `Display` via `{token:?}`. `CoreError` is an internal
-type and must not cross into audit records or server responses; the
-written guarantee today is convention.
+type and must not cross into audit records or server responses. The
+type system permits `marque_core::CoreError` to be `.to_string()`'d
+by a downstream consumer (the type is `pub use`'d from `crates/core/src/lib.rs`),
+so the no-leak property is asserted at runtime rather than at the
+visibility level.
 
-*Gap:* a test that greps `CoreError::Display` output for document text
-is open (gap register P2).
+`crates/engine/tests/core_error_isolation.rs` (gap register #20,
+closed in v0.7) embeds a high-entropy ASCII canary in adversarial
+input bytes designed to trip every `CoreError` construction site
+(`MalformedMarking` over a free-form portion / banner that survives
+the scanner but fails the recognizer; `InvalidUtf8` carries a `Span`
+only and has no leak vector). It then walks every text-bearing field
+of `LintResult` and `FixResult` — `Diagnostic.message`,
+`FixProposal.original`, `FixProposal.replacement`,
+`AppliedFix.proposal.{original,replacement}`,
+`RemainingDiagnostic.message` — and asserts the canary appears in
+none of them. A self-test sanity-asserts that
+`CoreError::MalformedMarking(canary).to_string()` does carry the
+canary; if a future refactor redacts the Display output, that test
+fires and the file is retired alongside this section.
+
+The companion property — `CoreError` being literally unreachable
+from any non-`marque-core` `.rs` file — is true today by code-review
+discipline (workspace grep finds only doc-comment references in
+`crates/engine/tests/audit.rs` and `crates/capco/src/scheme.rs`,
+plus the declaring module). Tightening this to a `pub(crate)`
+visibility is a P3 follow-up tracked alongside the engine API
+review.
 
 ### 5.4 Logging & telemetry
 
@@ -463,8 +493,14 @@ classified content is committed. The regeneration pipeline requires
 
 A corpus-provenance CI test (`marque/tests/corpus_provenance.rs`)
 enforces that fixtures contain only CVE-vocabulary tokens and no
-classifier identities; an additional regex-check on `observed` /
-`expected` fields is open.
+classifier identities. The `mangled_fixtures_observed_expected_token_only`
+test (gap register #19, closed in v0.7) extends the same discipline
+to `tests/fixtures/mangled/**/*.json`: each `observed` / `expected`
+field is checked against the prose-sentinel list shared with
+`crates/engine/tests/audit.rs::PROSE_SENTINELS`, against a
+classifier-id-shaped digit-run heuristic, and against a 256-byte
+length cap that forecloses prose leakage independently of the
+sentinel list.
 
 ---
 
@@ -635,6 +671,16 @@ bytes into the repo.
 Phase D's `build.rs` will consume `priors.json` if present; corpus
 override at runtime (§10) is the only caller-controlled prior channel,
 and it is gated per surface.
+
+`tools/corpus-analysis/requirements.txt` pins `requests==2.33.1`
+exactly (gap register #17, closed in v0.7) so a `pip install -r
+requirements.txt` in CI or a contributor sandbox is reproducible —
+an upstream PyPI release cannot silently change the bytes that get
+installed and re-shape `priors.json` or the mangled fixtures. The
+shebang on `analyze.py` is `#!/usr/bin/env -S uv run --script`; uv
+inline-metadata pinning (PEP 723) and `pip-tools`-style hash pinning
+across the transitive set (`requests` pulls in `charset-normalizer`,
+`idna`, `urllib3`, `certifi`) are tracked as follow-ups.
 
 ### 7.5 Generated-code determinism
 
@@ -1104,11 +1150,11 @@ possible), and a **remediation plan**. Severities:
 | 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
 | 14 | ~~No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list~~ | ~~P2~~ | ~~§8.5, Constitution Tech Stack~~ | **Resolved.** `deny.wasm-safe.toml` + `deny-wasm-safe` CI job invoke `cargo deny` against the WASM-safe subgraph (every non-WASM-safe workspace member excluded, dev-deps pruned) with a stricter allow-list. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; landed form enforces the Constitution v1.2.0 "no copyleft / no competing source-available" dep-hygiene rule |
 | 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
-| 16 | `crates/core/src/parser.rs` `to_vec()` is undocumented | P2 | §5.1 | Add a SAFETY-style comment explaining scope-local intent, or refactor |
-| 17 | `tools/corpus-analysis/` has unpinned Python deps | P2 | §7.4 | Pin `requests` in `requirements.txt`; consider `pip-tools` |
+| 16 | ~~`crates/core/src/parser.rs` `to_vec()` is undocumented~~ | ~~P2~~ | ~~§5.1~~ | **Resolved (refactor).** Workspace grep confirms the only `.to_vec()` call in `crates/core/src/parser.rs` today is at line 2072 inside a `#[test]` block (`Box<[DissemControl]> → Vec` for a `.contains()` assertion). Tests are not on the hot path; the zero-copy invariant holds. Whitepaper §5.1 pointed at code that has since been refactored away |
+| 17 | ~~`tools/corpus-analysis/` has unpinned Python deps~~ | ~~P2~~ | ~~§7.4~~ | **Resolved.** `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` exactly. Transitive-set hash pinning via `pip-tools` and PEP 723 inline-metadata in `analyze.py` are tracked as follow-ups |
 | 18 | ~~`docs-site` fetches `fontsource` fonts at build~~ | ~~P2~~ | ~~§8.6~~ | **Resolved.** Fira Code (5 weights, Latin) and IBM Plex Sans (5 weights × normal/italic, Latin) are vendored under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/font/` (SIL OFL 1.1) alongside per-font `LICENSE` and `README.md`. `astro.config.mjs` uses `fontProviders.local()` for all three site fonts — no `api.fontsource.org` / `cdn.jsdelivr.net` fetch at build time |
-| 19 | Mangled fixture `observed`/`expected` fields lack a token-only invariant test | P2 | §5.5 | Regex-check in `corpus_provenance.rs` |
-| 20 | `CoreError::Display` leaks token text if surfaced | P2 | §5.3 | Add a test asserting `CoreError` never crosses audit / server-response paths |
+| 19 | ~~Mangled fixture `observed`/`expected` fields lack a token-only invariant test~~ | ~~P2~~ | ~~§5.5~~ | **Resolved.** `marque/tests/corpus_provenance.rs::mangled_fixtures_observed_expected_token_only` walks `tests/fixtures/mangled/**/*.json`, asserts each `observed` / `expected` field is free of prose sentinels (shared list with `crates/engine/tests/audit.rs`), free of classifier-id-shaped 5+-digit runs, and within a 256-byte length cap |
+| 20 | ~~`CoreError::Display` leaks token text if surfaced~~ | ~~P2~~ | ~~§5.3~~ | **Resolved (runtime).** `crates/engine/tests/core_error_isolation.rs` embeds a high-entropy canary in adversarial input designed to trip every `CoreError` construction site, then asserts the canary never appears in any text-bearing field of `LintResult` / `FixResult`. Self-test sanity-asserts that `CoreError::MalformedMarking(canary).to_string()` does carry the canary, so a future Display redaction surfaces explicitly. Visibility-level tightening (`pub(crate)` on `CoreError`) is a P3 follow-up |
 | 21 | ~~Shipped unsafe blocks lack SAFETY doc comments~~ | ~~P2~~ | ~~§4.2~~ | **Resolved.** Audit confirmed both shipped unsafe blocks already carry `// SAFETY:` doc comments — `crates/wasm/src/lib.rs:101` (Talc heap-claim alias-freedom + one-time-init invariants) and `crates/ism/src/attrs.rs:1085` (Trigraph constructor → ASCII⊂UTF-8 chain discharging the `from_utf8_unchecked` precondition). Whitepaper §4.2 was stale; updated in v0.6 to describe the present state |
 | 22 | ~~`MARQUE_LOG` trace level is not flagged as production-unsafe~~ | ~~P2~~ | ~~§5.4, §11.4~~ | **Resolved.** `marque --help` carries an `ENVIRONMENT VARIABLES:` block (clap `after_help`) naming `MARQUE_LOG` and warning that `marque=trace` is not production-safe for classified content. Whitepaper §5.4 documents the route. The matching runtime stderr-notice guard is deferred until a `tracing::trace!` site that touches input bytes actually lands |
 | 23 | Memory zeroization on drop | P3 | Constitution II future SGX/TrustZone | Explicit non-goal; wait for the right platform |
@@ -1141,3 +1187,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.3 | 2026-04-24 | T3 enforcement (P0-2 + P0-3) landed. Server rejects corpus-override across body, header, and query-string channels (T049/T050/T066 — `crates/server/src/lib.rs` + `crates/server/tests/http.rs`). WASM compile-fail guard landed (T051/T067 — `crates/wasm/src/lib.rs` + `crates/wasm/tests/no_corpus_override.rs`). §10.2 (corpus-override portion) and §10.3 flipped from `[PARTIAL]` to `[LANDED]`. Gap register rows 2 and 3 removed. | Adam Poulemanos (with Claude Code) |
 | 0.5 | 2026-04-24 | P0-1 closed retroactively (gap register row 1 already struck through by the time §6.4 was last touched). PR #122 wired `MARQUE_AUDIT_SCHEMA` through `crates/engine/build.rs` and switched the CLI + WASM emitters to `marque_engine::AUDIT_SCHEMA_VERSION`; default schema bumped to `marque-mvp-2`; v1 downgrade kept green via suffixed snapshots and the T054 / T055 invariants. The header version had been pre-bumped to 0.5 ahead of this row. | Adam Poulemanos (with Claude Code) |
 | 0.6 | 2026-04-24 | Three P2 hygiene gaps closed. Gap #18: docs-site fonts vendored locally — Fira Code + IBM Plex Sans (SIL OFL 1.1) added under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/`; `astro.config.mjs` flipped to `fontProviders.local()`; build no longer fetches from `api.fontsource.org` / `cdn.jsdelivr.net`. Gap #21: §4.2 corrected — both shipped unsafe blocks already carry `// SAFETY:` doc comments; the whitepaper's previous claim was stale. Gap #22: `marque --help` carries an `ENVIRONMENT VARIABLES:` block via clap `after_help` warning that `MARQUE_LOG=trace` is not production-safe for classified content; §5.4 documents the route. Other admin: gap register rows 18, 21, 22 struck through; §4.2 / §5.4 / §8.6 updated. | Adam Poulemanos (with Claude Code) |
+| 0.7 | 2026-04-25 | Four more P2 hygiene gaps closed. Gap #16: §5.1 corrected — only `.to_vec()` call in `crates/core/src/parser.rs` is in a `#[test]` block, not on the hot path. Gap #17: `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` so a non-uv install is reproducible; §7.4 documents the route. Gap #19: `marque/tests/corpus_provenance.rs::mangled_fixtures_observed_expected_token_only` walks `tests/fixtures/mangled/**/*.json` and asserts `observed` / `expected` fields are free of prose sentinels, classifier-id-shaped digit runs, and exceed-length leaks; §5.5 documents the route. Gap #20: `crates/engine/tests/core_error_isolation.rs` embeds a high-entropy canary in adversarial input designed to trip every `CoreError` construction site and asserts the canary appears in no text-bearing field of `LintResult` / `FixResult`; §5.3 rewritten. Gap register rows 16, 17, 19, 20 struck through. | Adam Poulemanos (with Claude Code) |
