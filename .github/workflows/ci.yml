@@ -98,7 +98,20 @@ jobs:
 
       - name: wasm-pack build
         run: wasm-pack build crates/wasm --target web --release
-      
+
+      # T088 — WASM-target SC-008 parity gate.
+      #
+      # `tests/native_parity.rs` proves `Engine::lint == lint_native` on
+      # the host target; this step proves `lint_native (host) ==
+      # lint_native (wasm32-unknown-unknown)` by re-running the parity
+      # corpus inside Node's WASM runtime. Sync of the baked artifact
+      # is enforced by `tests/parity_sync_check.rs`, which the regular
+      # `cargo nextest` job already runs — so a corpus or engine drift
+      # fails there with a clear regen message before this step
+      # executes. Node is preinstalled on `ubuntu-latest`.
+      - name: wasm-pack test --node (parity)
+        run: wasm-pack test --node crates/wasm --test parity
+
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
         with:
           file: crates/wasm/pkg/*.wasm
