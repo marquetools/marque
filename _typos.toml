@@ -10,6 +10,7 @@ extend-exclude = [
   "crates/ism/schemas/",
   # Design docs and specs contain intentional misspellings as examples
   "docs/plans/",
+  "docs/reviews/",
   "specs/",
   "tests/fixtures/mangled/",
   "docs-site/src/assets/*/LICENSE*",

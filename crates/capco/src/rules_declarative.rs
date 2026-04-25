@@ -58,19 +58,22 @@
 //!
 //! The T035b correctness audit (2026-04-21) retired three
 //! over-restrictive JOINT rules that contradicted CAPCO-2016
-//! §H.3 p169:
+//! §H.3 p57 (Relationship(s) to Other Markings, "May be used
+//! with SCI (excluding HCS markings), SAP, AEA, FGI, IC and
+//! Non-IC dissemination control markings (excluding NOFORN),
+//! as appropriate"):
 //!
 //! - **E017** (`JointFgiRule`) — JOINT + FGI marker forbidden.
-//!   Wrong: §H.3 p169 lists FGI among markings JOINT "may be
-//!   used with"; lines 4163-4164 cross-reference §H.7 for the
-//!   syntax. Retired entirely.
+//!   Wrong: §H.3 p57 lists FGI among markings JOINT "may be
+//!   used with"; the FGI commingling syntax is cross-referenced
+//!   to §H.7. Retired entirely.
 //! - **E018** (`JointIcDissemRule`) — JOINT + any non-REL IC
-//!   dissem control forbidden. Wrong: §H.3 p169 permits
-//!   IC dissem "as appropriate"; p169 calls out only
-//!   NOFORN and HCS as specific exclusions. Retired entirely
+//!   dissem control forbidden. Wrong: §H.3 p57 permits
+//!   IC dissem "as appropriate"; the only specific exclusions
+//!   called out are NOFORN and HCS. Retired entirely
 //!   (see replacement below).
 //! - **E019** (`JointNonIcDissemRule`) — JOINT + any non-IC
-//!   dissem forbidden. Wrong: §H.3 p169 permits non-IC
+//!   dissem forbidden. Wrong: §H.3 p57 permits non-IC
 //!   dissem with JOINT "as appropriate". Retired entirely.
 //!
 //! Replacement: **E036** (`DeclarativeJointHcsRule`) — the only
@@ -471,11 +474,11 @@ impl Rule for DeclarativeJointRestrictedRule {
 // ---------------------------------------------------------------------------
 //
 // Replaces the retired E017/E018/E019 (T035b audit). CAPCO-2016 §H.3
-// p169: "May not be used with the HCS markings or NOFORN
-// markings." The JOINT-NOFORN exclusion is already enforced
-// indirectly via `capco/noforn-conflicts-rel-to` + E014's REL TO
-// requirement. The HCS exclusion is the only remaining specific
-// constraint this rule fires on.
+// p57 (Relationship(s) to Other Markings): "May not be used with the
+// HCS markings or NOFORN markings." The JOINT-NOFORN exclusion is
+// already enforced indirectly via `capco/noforn-conflicts-rel-to` +
+// E014's REL TO requirement. The HCS exclusion is the only remaining
+// specific constraint this rule fires on.
 //
 // "HCS markings" is plural — covers `HCS`, `HCS-O`, `HCS-P`, and any
 // compound anchored on `SciControlBare::Hcs` in `sci_markings`.
