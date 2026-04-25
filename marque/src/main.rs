@@ -33,10 +33,39 @@ const EX_IOERR: i32 = 74;
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
 #[command(version, propagate_version = true)]
+#[command(after_help = ENV_HELP)]
+#[command(after_long_help = ENV_HELP)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
 }
+
+// Surfaced at the bottom of `marque --help` and `marque <subcommand> --help`
+// so operators discover the env-var surface (and its production-safety caveats)
+// without having to read the whitepaper. The MARQUE_LOG=trace warning is the
+// load-bearing line: trace-level logging is not safe for runs over classified
+// content because future changes to engine logging may begin interpolating
+// fragments of input on the trace path.
+const ENV_HELP: &str = "ENVIRONMENT VARIABLES:
+    MARQUE_LOG                       tracing-subscriber filter (e.g. \"marque=debug\").
+                                     WARNING: trace-level (\"marque=trace\") is NOT
+                                     production-safe for classified content. The
+                                     engine treats info/warn/debug as content-free
+                                     today, but trace is reserved for future
+                                     diagnostic output that may interpolate input
+                                     fragments. Use trace only against synthetic
+                                     fixtures or unclassified test corpora.
+    MARQUE_CLASSIFIER_ID             Identity stamped into audit records.
+    MARQUE_CLASSIFICATION_AUTHORITY  Authority string stamped into audit records.
+    MARQUE_AUDIT_SCHEMA              Build-time audit schema selector
+                                     (\"marque-mvp-1\" | \"marque-mvp-2\"; default
+                                     \"marque-mvp-2\"). Read at build time only.
+    MARQUE_ALLOW_FIXED_CLOCK         Set to \"1\" to permit `--fixed-timestamp`
+                                     (off by default; the fixed-clock seam exists
+                                     for deterministic snapshot tests, NOT for
+                                     production audit-log generation).
+    MARQUE_CONFIDENCE_THRESHOLD      Override the auto-apply confidence floor.
+    NO_COLOR / TERM=dumb             Suppress ANSI color in human-format output.";
 
 #[derive(Subcommand)]
 enum Command {
@@ -146,6 +175,15 @@ async fn main() {
     // Precedence chain (matches FR-007): CLI flag > env var > default.
     // If the user passes `-v`, `marque=debug` wins regardless of
     // MARQUE_LOG. Otherwise MARQUE_LOG wins if set, else `marque=info`.
+    //
+    // Production-safety note (whitepaper §11.4): info/warn/debug emit only
+    // structured, content-free fields today. Trace level is reserved for
+    // future diagnostic output that may interpolate input fragments and is
+    // therefore NOT production-safe for runs over classified content. The
+    // CLI help (`--help`) surfaces this warning in the ENV section; if a
+    // future change introduces a trace-level statement that touches input
+    // bytes, the warning above must be promoted to a runtime stderr notice
+    // emitted when the resolved filter contains `trace`.
     let cli = Cli::parse();
 
     let verbose = match &cli.command {

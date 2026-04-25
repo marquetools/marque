@@ -22,3 +22,20 @@ SPDX-FileCopyrightText = "2026 Knitli Inc."
 path = ["src/assets/OCR-B/**"]
 SPDX-License-Identifier = "OFL-1.1-RFN"
 SPDX-FileCopyrightText = "2019 Raisty <https://github.com/raisty>"
+
+# Fira Code — vendored locally from the @fontsource/fira-code npm package
+# (SIL OFL 1.1) so the docs-site build does not depend on api.fontsource.org
+# / cdn.jsdelivr.net at build time. See whitepaper §8.6 (gap register #18,
+# closed in v0.6) and src/assets/Fira-Code/README.md.
+[[annotations]]
+path = ["src/assets/Fira-Code/**"]
+SPDX-License-Identifier = "OFL-1.1"
+SPDX-FileCopyrightText = "2014-2020 The Fira Code Project Authors <https://github.com/tonsky/FiraCode>"
+
+# IBM Plex Sans — vendored locally from the @fontsource/ibm-plex-sans npm
+# package (SIL OFL 1.1) for the same reason as Fira Code above. See
+# whitepaper §8.6 and src/assets/IBM-Plex-Sans/README.md.
+[[annotations]]
+path = ["src/assets/IBM-Plex-Sans/**"]
+SPDX-License-Identifier = "OFL-1.1"
+SPDX-FileCopyrightText = "2019 IBM Corp."
