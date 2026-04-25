@@ -640,11 +640,18 @@ fn resolution_rate_per_class_does_not_regress_inner(report: &AccuracyReport) {
 
     assert!(
         violations.is_empty() && !structural_problems,
-        "per-class decoder accuracy REGRESSED. Either restore the \
-         lost accuracy or — if the regression is intentional and \
-         reviewed — lower the affected entry in PER_CLASS_FLOORS \
-         explicitly with a rationale in the commit message.\n\n\
-         Violations:\n{}\n\n\
+        "T057 per-class gate failed (accuracy regression and/or \
+         fixture/floor class-list mismatch).\n\n\
+         To resolve:\n\
+           - If a class regressed below its floor: restore the \
+             accuracy, or — if the change is intentional and \
+             reviewed — lower the entry in PER_CLASS_FLOORS \
+             explicitly with a rationale in the commit message.\n\
+           - If a class is missing from fixtures or from \
+             PER_CLASS_FLOORS: reconcile the two lists. Adding a \
+             new mangling class requires both a generator update \
+             and a floor entry in this file.\n\n\
+         Accuracy violations:\n{}\n\n\
          Pinned classes missing from fixtures: {:?}\n\
          Observed classes missing from PER_CLASS_FLOORS: {:?}\n\n\
          Per-class breakdown:\n{}",
