@@ -258,6 +258,53 @@ async fn rejects_corpus_override_query_percent_encoded() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// `%2D` decodes to `-` → name becomes `corpus-override`. The hyphen
+/// variant is already exercised in plain form by
+/// `rejects_corpus_override_query_with_hyphen`; this test pins the
+/// percent-decoded path for that variant so a regression that
+/// stopped percent-decoding (or stopped covering the hyphen-form name
+/// after decoding) trips here as well as the unit-level guard.
+#[tokio::test]
+async fn rejects_corpus_override_query_percent_encoded_hyphen() {
+    let resp = app()
+        .oneshot(post_json(
+            "/v1/fix?corpus%2Doverride=1",
+            r#"{"text": "SECRET//NF\n"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Query param name comparison is case-insensitive on the underscore
+/// form: `?CORPUS_OVERRIDE=` must reject. Header-side casing is
+/// already exercised by `rejects_corpus_override_header_case_insensitively`;
+/// this is the query-string counterpart.
+#[tokio::test]
+async fn rejects_corpus_override_query_uppercase() {
+    let resp = app()
+        .oneshot(post_json(
+            "/v1/fix?CORPUS_OVERRIDE=1",
+            r#"{"text": "SECRET//NF\n"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Same for the hyphen form: `?CORPUS-OVERRIDE=` must reject.
+#[tokio::test]
+async fn rejects_corpus_override_query_uppercase_hyphen() {
+    let resp = app()
+        .oneshot(post_json(
+            "/v1/fix?CORPUS-OVERRIDE=1",
+            r#"{"text": "SECRET//NF\n"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn rejects_corpus_override_query_with_other_params() {
     let resp = app()
