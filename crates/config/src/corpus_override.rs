@@ -485,7 +485,15 @@ mod tests {
 
     #[test]
     fn load_corpus_override_returns_read_error_for_missing_file() {
-        let bad = PathBuf::from("/nonexistent/corpus_override.json");
+        // Construct a guaranteed-missing path inside a freshly-created
+        // tempdir rather than hardcoding `/nonexistent/...` — the latter
+        // is non-portable (Windows path semantics differ) and on Unix
+        // can collide with a real path under unusual sandboxes. The
+        // tempdir itself exists (we just made it); the file inside it
+        // does not, which is exactly the ReadError-triggering condition
+        // we want to exercise.
+        let tmp = tempfile::tempdir().unwrap();
+        let bad = tmp.path().join("missing-override.json");
         match load_corpus_override(&bad).unwrap_err() {
             ConfigError::ReadError { path, .. } => assert_eq!(path, bad),
             other => panic!("expected ReadError, got {other:?}"),

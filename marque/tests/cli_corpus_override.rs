@@ -94,20 +94,27 @@ fn corpus_override_with_valid_json_and_deep_scan_runs_successfully() {
 #[cfg(feature = "corpus-override")]
 #[test]
 fn corpus_override_with_missing_file_errors_ex_ioerr() {
+    // Build a guaranteed-missing path inside a freshly-created tempdir
+    // rather than hardcoding `/nonexistent/override.json` — the latter
+    // is non-portable (Windows path semantics differ from Unix) and on
+    // Unix can collide with a real path under unusual sandbox setups.
+    // The tempdir itself exists (we just made it); the file inside it
+    // does not — which is exactly the EX_IOERR-triggering condition we
+    // want to exercise.
+    let tmp = tempfile::tempdir().unwrap();
+    let missing_path = tmp.path().join("missing-override.json");
+    let missing_path_display = missing_path.display().to_string();
+
     let assert = marque()
-        .args([
-            "check",
-            "--deep-scan",
-            "--corpus-override",
-            "/nonexistent/override.json",
-        ])
+        .args(["check", "--deep-scan", "--corpus-override"])
+        .arg(&missing_path)
         .write_stdin("UNCLASSIFIED")
         .assert()
         .code(74); // EX_IOERR
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("/nonexistent/override.json") || stderr.contains("failed to read"),
+        stderr.contains(&missing_path_display) || stderr.contains("failed to read"),
         "expected IO error mentioning the missing path, got: {stderr}"
     );
 }
