@@ -36,9 +36,10 @@ fn fouo_is_not_in_migration_table() {
     );
 
     for entry in MIGRATIONS {
-        assert_ne!(
-            entry.replacement.to_ascii_uppercase(),
-            "CUI",
+        // `eq_ignore_ascii_case` avoids the per-iteration `String`
+        // allocation that `to_ascii_uppercase()` would cost.
+        assert!(
+            !entry.replacement.eq_ignore_ascii_case("CUI"),
             "MIGRATIONS contains a CUI replacement (deprecated={:?}). \
              CUI is not a CAPCO marking — it belongs to a future CUI \
              adapter, not the CAPCO migration table.",

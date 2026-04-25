@@ -156,9 +156,13 @@ fn entry_for(token: TokenId) -> &'static TokenMetadataEntry {
 struct CveFileDerived {
     /// `cve_file.const_name` (stable identifier across builds).
     cve_const_name: &'static str,
+    /// `Authority` carries `point_of_contact` as an embedded field;
+    /// the per-token POC accessor returns `&authority.point_of_contact`
+    /// rather than a duplicate copy. Single source of truth — drift
+    /// between `scheme.authority(t).point_of_contact` and
+    /// `scheme.point_of_contact(t)` is unrepresentable.
     authority: Authority,
     owner_producer: OwnerProducer,
-    point_of_contact: PointOfContact,
 }
 
 /// Lazy table of derived per-CveFile records. Initialized on the
@@ -173,7 +177,6 @@ static CVE_FILE_DERIVED: LazyLock<Vec<CveFileDerived>> = LazyLock::new(|| {
             cve_const_name: f.const_name,
             authority: build_authority(f),
             owner_producer: build_owner_producer(f),
-            point_of_contact: build_point_of_contact(f),
         })
         .collect()
 });
@@ -282,46 +285,33 @@ fn token_derived(token: TokenId) -> &'static TokenDerived {
 }
 
 fn build_metadata(token: TokenId) -> TokenMetadataFull<TokenId> {
+    // `derived_for_token` is safe to call here even though we are
+    // mid-init of `TOKEN_DERIVED`: it consults `CVE_FILE_DERIVED`,
+    // which has no dependency on `TOKEN_DERIVED`. The init order is
+    // `TOKEN_DERIVED::new` → `build_metadata` → `derived_for_token`
+    // → `CVE_FILE_DERIVED::new` (independent) → return. Reusing the
+    // shared derived record makes `scheme.metadata(t).authority` and
+    // `scheme.authority(t)` literally the same bytes — no risk of
+    // drift between the per-field and aggregate accessors.
     let entry = entry_for(token);
-    let derived = {
-        let cve_const_name = entry.cve_file.const_name;
-        // Avoid re-running `find` against `CVE_FILE_DERIVED` here;
-        // we'd bootstrap a circular `LazyLock` initialization order
-        // because `TOKEN_DERIVED::new` ⇒ `build_metadata` ⇒
-        // `CVE_FILE_DERIVED` (which is independent). Instead build
-        // the per-file records inline so initialization order is
-        // single-pass.
-        CveFileDerivedInline {
-            authority: build_authority(entry.cve_file),
-            owner_producer: build_owner_producer(entry.cve_file),
-            point_of_contact: build_point_of_contact(entry.cve_file),
-            cve_const_name,
-        }
-    };
+    let derived = derived_for_token(token);
     let canonical = entry.value;
-    let portion_form = derive_portion_form(canonical);
-    let banner_form = derive_banner_form(canonical);
-    let banner_abbreviation = derive_banner_abbreviation(canonical);
     TokenMetadataFull {
         canonical,
         urn: entry.cve_file.urn,
         schema_version: entry.cve_file.schema_version,
+        // `Authority`, `OwnerProducer`, `PointOfContact` are `Copy`
+        // (small structs of `&'static str`), so the field copy here
+        // is cheap and doesn't fork ownership of the underlying
+        // strings.
         authority: derived.authority,
         owner_producer: derived.owner_producer,
-        point_of_contact: derived.point_of_contact,
+        point_of_contact: derived.authority.point_of_contact,
         deprecation: build_deprecation(canonical),
-        portion_form,
-        banner_form,
-        banner_abbreviation,
+        portion_form: derive_portion_form(canonical),
+        banner_form: derive_banner_form(canonical),
+        banner_abbreviation: derive_banner_abbreviation(canonical),
     }
-}
-
-struct CveFileDerivedInline {
-    authority: Authority,
-    owner_producer: OwnerProducer,
-    point_of_contact: PointOfContact,
-    #[allow(dead_code)]
-    cve_const_name: &'static str,
 }
 
 /// Map a canonical CVE value to its portion form. CVE values are
@@ -389,7 +379,10 @@ fn owner_producer_static(token: TokenId) -> &'static OwnerProducer {
 }
 
 fn point_of_contact_static(token: TokenId) -> &'static PointOfContact {
-    &derived_for_token(token).point_of_contact
+    // Single source of truth: route POC through the embedded
+    // `Authority.point_of_contact` so `scheme.authority(t).point_of_contact`
+    // and `scheme.point_of_contact(t)` always return identical data.
+    &derived_for_token(token).authority.point_of_contact
 }
 
 // ---------------------------------------------------------------------------

@@ -129,7 +129,7 @@ fn authority_points_to_odni_for_ism_tokens() {
 }
 
 // ---------------------------------------------------------------------------
-// T073 — deprecated tokens carry deprecation metadata.
+// T073 — active tokens have no deprecation metadata.
 // ---------------------------------------------------------------------------
 
 /// No active sentinel today is a deprecated marking — every entry in
@@ -140,10 +140,10 @@ fn authority_points_to_odni_for_ism_tokens() {
 ///
 /// When Phase C extends the sentinel set to include deprecated tokens
 /// (e.g., adding a sentinel for `25X1-` from the `MIGRATIONS` table),
-/// this test should split into "active → None" and "deprecated → Some"
-/// assertions over each subset.
+/// this test should keep its current scope (active subset → `None`)
+/// and a new sibling test should land for the deprecated subset.
 #[test]
-fn deprecated_tokens_carry_deprecation() {
+fn active_tokens_have_no_deprecation_metadata() {
     let scheme = CapcoScheme::new();
     for token in active_sentinels() {
         assert!(
@@ -239,88 +239,10 @@ fn fouo_remains_active_dissem_control() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// T077 — repeated `metadata()` calls are zero-allocation.
-// ---------------------------------------------------------------------------
-//
-// The trait contract is "every accessor returns `&'static` data — no
-// runtime allocation" (vocabulary.rs invariants). The metadata table
-// is heap-initialized once via `LazyLock` (a single allocation outside
-// the measurement window); subsequent lookups dereference the boxed
-// data directly and must not allocate.
-//
-// This test mirrors the count-allocs harness shape from
-// `crates/core/tests/alloc_budget.rs` (gap register #15). It is gated
-// behind the `count-allocs` feature so installing the global allocator
-// does not pollute the default `cargo test` run.
-
-#[cfg(feature = "count-allocs")]
-mod zero_alloc {
-    use super::*;
-    use std::alloc::{GlobalAlloc, Layout, System};
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
-
-    struct CountingAllocator;
-
-    unsafe impl GlobalAlloc for CountingAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-            // SAFETY: forwarded `layout` matches the caller's; we hand
-            // back the System allocator's pointer verbatim. Same
-            // contract as `crates/core/tests/alloc_budget.rs`.
-            unsafe { System.alloc(layout) }
-        }
-
-        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-            // SAFETY: forwarded; `ptr` came from our `alloc`.
-            unsafe { System.dealloc(ptr, layout) }
-        }
-
-        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-            ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-            // SAFETY: forwarded.
-            unsafe { System.realloc(ptr, layout, new_size) }
-        }
-    }
-
-    #[global_allocator]
-    static GLOBAL: CountingAllocator = CountingAllocator;
-
-    static MEASURE_LOCK: Mutex<()> = Mutex::new(());
-
-    fn count_allocs<F: FnOnce()>(body: F) -> usize {
-        let _guard = MEASURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let before = ALLOCATIONS.load(Ordering::Relaxed);
-        body();
-        ALLOCATIONS.load(Ordering::Relaxed) - before
-    }
-
-    #[test]
-    fn metadata_query_is_zero_alloc() {
-        let scheme = CapcoScheme::new();
-        // Force one-time initialization of the LazyLock-backed metadata
-        // table outside the measurement window. The first access
-        // allocates the boxed records; subsequent accesses must not.
-        let _warmup = scheme.metadata(&TOK_NOFORN);
-        let _warmup = scheme.metadata(&TOK_HCS);
-
-        let allocs = count_allocs(|| {
-            for token in active_sentinels() {
-                let m = scheme.metadata(token);
-                std::hint::black_box(m);
-                let a = scheme.authority(token);
-                std::hint::black_box(a);
-                let p = scheme.portion_form(token);
-                std::hint::black_box(p);
-            }
-        });
-        assert_eq!(
-            allocs, 0,
-            "Vocabulary accessors allocated {allocs} time(s) after warmup; \
-             expected 0 (every method must return `&'static` data)",
-        );
-    }
-}
+// T077 (zero-allocation regression gate) lives in its own integration
+// file `tests/vocabulary_zero_alloc.rs`, gated at the FILE level on
+// `#![cfg(feature = "count-allocs")]`. Isolating it to its own binary
+// keeps the global counting allocator's measurements free of noise
+// from the other integration tests in this file (which would
+// otherwise allocate freely inside the same process and inflate the
+// shared counter even with a `MEASURE_LOCK`).
