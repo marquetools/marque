@@ -33,8 +33,8 @@ Phase 4 introduced a second form of Layer 2 alongside hand-written `Rule` struct
 
 The two declarative shapes:
 
-- **`Constraint`** (`marque-scheme::constraint`) — `Conflicts`, `Requires`, `Implies`, `Supersedes` for dyadic relationships, plus `Custom` as the escape hatch for n-ary or scheme-specific predicates (SIGMA numeric ordering, CNWDI classification floor, etc.). Every variant carries a stable `name` (the rule identifier in diagnostics) and a `label` (the authoritative-source citation). Declared in `CapcoScheme::constraints()` (`crates/capco/src/scheme.rs`).
-- **`PageRewrite`** (`marque-scheme::page_rewrite`) — post-aggregation cross-category transforms with explicit `reads` / `writes` axis annotations. Variants pair a `CategoryPredicate` trigger with a `CategoryAction` (`Clear`, `Replace`, `Promote`). Declared in `CapcoScheme::page_rewrites()`.
+- **`Constraint`** (`marque-scheme::constraint`) — `Conflicts`, `Requires`, `Implies`, `Supersedes` for dyadic relationships, plus `Custom` as the escape hatch for n-ary or scheme-specific predicates (SIGMA numeric ordering, CNWDI classification floor, etc.). Every variant carries a stable `name` (the rule identifier in diagnostics) and a `label` (the authoritative-source citation). Declared in `CapcoScheme::constraints()` (`src/scheme.rs`).
+- **`PageRewrite`** (`marque-scheme::page_rewrite`) — post-aggregation cross-category transforms with explicit `reads` / `writes` axis annotations. Variants pair a `CategoryPredicate` trigger with a `CategoryAction` (`Clear`, `Replace`, `Promote`). Declared in `CapcoScheme::page_rewrites()` (`src/scheme.rs`).
 
 ### Worked example: `capco/noforn-clears-rel-to`
 
@@ -49,21 +49,23 @@ PageRewrite::declarative(
         token: TOK_NOFORN,
     },
     CategoryAction::Clear { category: CAT_REL_TO },
-    NF_READS,   // &[CAT_DISSEM]
+    NF_READS,   // &[CAT_DISSEM, CAT_REL_TO]
     NF_WRITES,  // &[CAT_REL_TO]
 )
 ```
 
-The data lives in `crates/capco/src/scheme.rs` — there is no procedural rule body. At engine startup, `marque-engine::scheduler::schedule_rewrites` runs Kahn's algorithm over every rewrite's `reads` / `writes` axes to produce a deterministic order (writers before readers); cycles or unannotated `Custom` axes abort `Engine::new` with `EngineConstructionError`. At `lint()` / `fix()` time, `CapcoScheme::project(Scope::Page, ...)` runs each rewrite in scheduled order against the page-aggregated marking. The trigger's `Contains { CAT_DISSEM, TOK_NOFORN }` fires whenever NOFORN is present in the rolled-up dissem set; the action's `Clear { CAT_REL_TO }` empties REL TO. The `id` and `citation` travel into the audit record so a reviewer can see exactly which rewrites shaped the final banner.
+The data lives in `src/scheme.rs` — there is no procedural rule body. The trigger's `Contains { CAT_DISSEM, TOK_NOFORN }` fires whenever NOFORN is present in the rolled-up dissem set; the action's `Clear { CAT_REL_TO }` empties REL TO. The dataflow annotation reads BOTH axes the rewrite touches: `CAT_DISSEM` (where it looks for the trigger token) AND `CAT_REL_TO` (so the scheduler orders this rewrite AFTER any rewrite that *writes* REL TO — e.g., `capco/joint-promotion` promotes JOINT country lists into REL TO; the NOFORN clear must observe those promoted countries before deciding to drop them).
 
-A dyadic example shipped on the same surface is `E036/joint-conflicts-hcs` — `Constraint::Conflicts` between `TOK_JOINT` and `TOK_HCS`, citing `"CAPCO-2016 §H.3 p57 line 4146"` (the JOINT marking template's "May not be used with the HCS markings or NOFORN markings"). The shared evaluator emits the diagnostic; the rule is one struct literal.
+At engine startup, `marque-engine::scheduler::schedule_rewrites` runs Kahn's algorithm over every rewrite's `reads` / `writes` axes to produce a deterministic order (writers before readers); cycles or unannotated `Custom` axes abort `Engine::new` with `EngineConstructionError`. At `lint()` / `fix()` time, `CapcoScheme::project(Scope::Page, ...)` runs each rewrite in scheduled order against the page-aggregated marking. The `id` and `citation` travel into the audit record so a reviewer can see exactly which rewrites shaped the final banner.
+
+A dyadic example shipped on the same surface is `E036/joint-conflicts-hcs` — `Constraint::Conflicts` between `TOK_JOINT` and `TOK_HCS`, citing `"CAPCO-2016 §H.3 p57"` (the JOINT marking template's "May not be used with the HCS markings or NOFORN markings"). The shared evaluator emits the diagnostic; the rule is one struct literal.
 
 ### Why this pattern matters
 
 - **FR-022 / Constitution Principle IV.** Future scheme crates (CUI, NATO, JOINT, partner-national) declare their constraints and rewrites as data and reuse the shared evaluator and scheduler. A scheme-adoption PR does not edit `marque-engine` or `marque-scheme`.
 - **Corpus byte-identical guarantee.** Every migrated rule produces the same diagnostic stream as its hand-written predecessor, validated by the per-rule corpus accuracy harness (SC-003). Migrations that drift are caught at CI.
 - **Tooling visibility.** A scheme-exploration UI, a docs generator, or a constraint-catalog renderer can walk `MarkingScheme::constraints()` and `MarkingScheme::page_rewrites()` without executing scheme code — the data form makes the full aggregation semantics introspectable.
-- **Citation discipline (Constitution Principle VIII).** Every declarative entry's `label` / `citation` field is a verbatim authoritative-source passage; the shared evaluator copies it into `ConstraintViolation::citation` so the triggering passage travels with the diagnostic.
+- **Citation discipline (Constitution Principle VIII).** Every declarative entry's `label` / `citation` field carries an authoritative-source reference identifying the controlling CAPCO passage (e.g., `"CAPCO-2016 §H.6 p104"`); the shared evaluator copies it into `ConstraintViolation::citation` so source provenance travels with the diagnostic. The reference, not the verbatim passage text, is what travels — readers chase the cite to verify.
 
 ## Usage
 
