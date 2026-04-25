@@ -344,14 +344,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 .into_iter()
                 .map(|s| Candidate {
                     marking: s.marking,
-                    evidence: s
-                        .features
-                        .iter()
-                        .map(|f| EvidenceFeature {
-                            label: f.id.as_str(),
-                            log_odds: f.delta,
-                        })
-                        .collect(),
+                    evidence: s.features.iter().map(feature_entry_to_evidence).collect(),
                     prior_log_odds: s.prior,
                 })
                 .collect(),
@@ -391,6 +384,24 @@ struct ScoredCandidate {
 struct FeatureEntry {
     id: FeatureId,
     delta: f32,
+}
+
+/// Project a `FeatureEntry` onto the wire-shape [`EvidenceFeature`].
+///
+/// Routes the label through [`FeatureId::as_str`] — the single source
+/// of truth for the FeatureId → audit-record-string registry declared
+/// in `crates/rules/src/confidence.rs`. Lifted out of the inline
+/// closure in [`DecoderRecognizer::recognize`] so the projection is
+/// directly testable: a divergent local label registry (the PR #142 H2
+/// pre-fix shape) would now fail
+/// [`tests::feature_entry_to_evidence_uses_canonical_label_registry`]
+/// rather than going unnoticed because the dispatcher discards
+/// `Parsed::Ambiguous` results today.
+fn feature_entry_to_evidence(f: &FeatureEntry) -> EvidenceFeature {
+    EvidenceFeature {
+        label: f.id.as_str(),
+        log_odds: f.delta,
+    }
 }
 
 /// A canonicalization attempt: the byte string the decoder will hand
@@ -1350,6 +1361,47 @@ mod tests {
     impl From<FeatureId> for FeatureEntry {
         fn from(id: FeatureId) -> Self {
             Self { id, delta: -0.4 }
+        }
+    }
+
+    #[test]
+    fn feature_entry_to_evidence_uses_canonical_label_registry() {
+        // Regression guard for PR #142 H2: the projection from
+        // `FeatureEntry` onto `EvidenceFeature::label` MUST route
+        // through `FeatureId::as_str()` — the single source of truth
+        // declared in `crates/rules/src/confidence.rs:208`. A divergent
+        // local registry (the pre-fix shape, snake_case labels in a
+        // duplicate match arm) produces wire-format drift the audit
+        // emitter cannot detect, because today's dispatcher discards
+        // `Parsed::Ambiguous` results and the bug stays latent.
+        //
+        // This test exhaustively covers every `FeatureId` variant. A
+        // new variant added without an `as_str()` arm fails compilation
+        // there (the match is exhaustive); a new variant whose label
+        // diverges from `as_str()` here would have to be deliberately
+        // wrong, since this test reads `id.as_str()` directly. The
+        // load-bearing assertion is that `feature_entry_to_evidence`
+        // does the same thing.
+        for id in [
+            FeatureId::EditDistance1,
+            FeatureId::EditDistance2,
+            FeatureId::TokenReorder,
+            FeatureId::SupersededToken,
+            FeatureId::BaseRateCommonMarking,
+            FeatureId::StrictContextClassification,
+            FeatureId::CorpusOverrideInEffect,
+        ] {
+            let entry = FeatureEntry { id, delta: -0.5 };
+            let evidence = feature_entry_to_evidence(&entry);
+            assert_eq!(
+                evidence.label,
+                id.as_str(),
+                "decoder evidence label diverged from FeatureId::as_str() \
+                 for {id:?}: got {label:?}, expected {expected:?}",
+                label = evidence.label,
+                expected = id.as_str(),
+            );
+            assert_eq!(evidence.log_odds, -0.5);
         }
     }
 
