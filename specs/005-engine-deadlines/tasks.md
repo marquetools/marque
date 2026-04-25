@@ -66,17 +66,17 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 3b: Server surface wiring
 
-- [ ] T029 (resolved by Q6) — server does **not** add `humantime` as a dep. The header is parsed as unsigned-integer milliseconds via `str::parse::<u64>()`, which is in `core` and needs no extra dependency. This task is retained as a checkpoint for reviewers to confirm no spurious dep was added.
-- [ ] T030 Implement `X-Marque-Deadline` header parsing in `crates/server/src/lib.rs`: parse as `u64` (milliseconds). Reject negative, non-numeric, overflow (`u64::MAX` would be ~584 million years; cap at `MARQUE_MAX_DEADLINE` ms first), or below the 1 ms floor with `400 Bad Request`. Empty / absent uses the per-endpoint default. Document the format in the API contract / OpenAPI spec when one lands.
-- [ ] T031 Implement `MARQUE_MAX_DEADLINE` env var resolution in `marque-server`'s `resolve_deadline_cap` (mirror the `resolve_body_limit` pattern from gap #6 closure). Default cap: 60 s. Reject below 1 ms / above max.
-- [ ] T032 Per-endpoint default deadline: 30 s for `/v1/lint` and `/v1/fix`. Document in §10.2.
-- [ ] T033 Convert parsed deadline to `Instant::now() + duration` per request; pass to `Engine::lint_with_options` / `fix_with_options`.
-- [ ] T034 Truncated lint response: HTTP 200 with payload + `Marque-Truncated: true` response header.
-- [ ] T035 `EngineError::DeadlineExceeded` from fix: HTTP 504 with body containing the partial-lint diagnostics (existing `LintResult` JSON shape, plus a top-level `truncated_by` indicator).
-- [ ] T036 [P] Test `header_driven_deadline_truncates_lint_response` in `crates/server/tests/http.rs`: POST `/v1/lint` with `X-Marque-Deadline: 1` (1 ms) and a multi-candidate body; assert 200 + `Marque-Truncated: true` header.
-- [ ] T037 [P] Test `out_of_range_deadline_header_returns_400` in `crates/server/tests/http.rs`: deadline > cap (e.g., `120000` with default 60 s cap), deadline < 1 ms (`0`), non-integer (`"30s"`, `"abc"`), negative (`-1`), and overflow (a value > `u64::MAX`).
-- [ ] T038 [P] Test `lint_without_header_uses_endpoint_default` in `crates/server/tests/http.rs`: omit header, assert lint runs to completion (default 30 s is generous on the test fixture).
-- [ ] T039 [P] Test `fix_deadline_exceeded_returns_504_with_partial_lint_body` in `crates/server/tests/http.rs`.
+- [x] T029 (resolved by Q6) — server does **not** add `humantime` as a dep. The header is parsed as unsigned-integer milliseconds via `str::parse::<u64>()`. Confirmed in `crates/server/Cargo.toml`.
+- [x] T030 `resolve_request_deadline()` in `crates/server/src/lib.rs` parses `X-Marque-Deadline` as `u64` ms, rejecting negative / non-numeric / overflow / below 1 ms / above `state.deadline_cap` with `400 Bad Request`. Empty / absent uses the per-endpoint default.
+- [x] T031 `resolve_deadline_cap()` mirrors `resolve_body_limit()`. Default cap 60 s; rejects below 1 ms (`MIN_DEADLINE_MS`) / above 10 min (`MAX_DEADLINE_CAP_MS`). Pure decision logic factored into `classify_deadline_cap_var` for unit-test reachability.
+- [x] T032 Per-endpoint default 30 s (`DEFAULT_ENDPOINT_DEADLINE_MS`) shared by `/v1/lint` and `/v1/fix`. Recorded on every server startup line as `deadline_cap_ms`.
+- [x] T033 Each handler stamps `Instant::now() + duration` per request and threads it through `Engine::lint_with_options` / `fix_with_options` via `LintOptions` / `FixOptions`.
+- [x] T034 Truncated lint: HTTP 200 + `Marque-Truncated: true` response header + body fields `truncated`, `candidates_processed`, `candidates_total`.
+- [x] T035 `EngineError::DeadlineExceeded` from fix: HTTP 504 with `DeadlineExceededBody { truncated_by, diagnostics, error_count, warn_count, fix_count, candidates_processed, candidates_total }` JSON.
+- [x] T036 [P] `header_driven_deadline_truncates_lint_response` in `crates/server/tests/http_deadline.rs`.
+- [x] T037 [P] `deadline_header_zero/non_numeric/negative/above_cap/just_above_configured_cap/overflow_returns_400` covering each rejection path.
+- [x] T038 [P] `lint_without_header_uses_endpoint_default` (and asserts no `Marque-Truncated` header on the happy path).
+- [x] T039 [P] `fix_deadline_exceeded_returns_504_with_partial_lint_body`.
 
 ---
 
