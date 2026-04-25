@@ -188,9 +188,9 @@ fn build_corpus() -> ParityCorpus {
         for path in txt_files_in(&dir) {
             let input =
                 std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-            let input_str = String::from_utf8(input.clone())
-                .unwrap_or_else(|_| panic!("non-UTF-8 fixture: {}", path.display()));
             let expected_lint = engine_lint_to_ndjson(&input);
+            let input_str = String::from_utf8(input)
+                .unwrap_or_else(|_| panic!("non-UTF-8 fixture: {}", path.display()));
             entries.push(ParityEntry {
                 name: path.file_name().unwrap().to_string_lossy().into_owned(),
                 category: category.to_owned(),
