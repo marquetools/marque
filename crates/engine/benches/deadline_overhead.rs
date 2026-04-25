@@ -10,12 +10,17 @@
 //! never trips. The delta isolates the per-candidate `Instant::now()`
 //! cost the cooperative-cancellation wiring adds.
 //!
-//! **Spec 005 SC**: median overhead MUST be ≤ 2% on the standard 10 KB
-//! corpus document. The bench emits both paths under names
-//! `deadline_overhead_baseline` and `deadline_overhead_with_deadline`;
-//! the regression gate (`scripts/bench-check.sh` + `benches/baseline.json`
-//! entries) compares the two and fails the build if the with-deadline
-//! mean exceeds 102% of the baseline mean.
+//! **Spec 005 SC**: mean overhead MUST be ≤ 2% on the standard 10 KB
+//! corpus document. ("Mean" not "median" — Criterion's `time:
+//! [lower mean upper]` triple is a confidence interval around the
+//! mean point estimate, not a sample percentile, and the gate parses
+//! the middle value of that triple.) The bench emits both paths under
+//! names `deadline_overhead_baseline` and
+//! `deadline_overhead_with_deadline`; the regression gate
+//! (`scripts/bench-check.sh::check_deadline_overhead` +
+//! `benches/baseline.json`) compares the two and fails the build if
+//! the with-deadline mean exceeds the threshold ratio over the
+//! baseline mean.
 //!
 //! Reference baseline: x86_64 ≥ 3.0 GHz single-thread, warm cache,
 //! `--release` build, no tracing subscriber. Same shape as
@@ -112,7 +117,7 @@ fn deadline_overhead_with_deadline_benchmark(c: &mut Criterion) {
 // into a flaky gate. Bumping sample size to 500 narrows the
 // confidence interval ~2.2× and brings false-positive risk under
 // 1% empirically. The tradeoff is bench wall-clock — each function
-// now takes ~10–15s instead of ~5s, totalling ~25–30s for the pair
+// now takes ~10–15s instead of ~5s, totaling ~25–30s for the pair
 // (still under the per-job timeout in CI).
 criterion_group! {
     name = benches;

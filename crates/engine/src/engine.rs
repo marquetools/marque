@@ -372,10 +372,14 @@ impl Engine {
         // produced the candidate stream. It is independent of how
         // many candidates the rule loop ultimately processes — the
         // delta against `candidates_processed` is what makes
-        // truncation observable to the caller (R3).
+        // truncation observable to the caller (R3). On a complete
+        // pass these are equal; on a deadline-bounded pass the
+        // function returns early from inside the loop with the
+        // partial `candidates_processed`, so the post-loop
+        // `LintResult` construction below is reached ONLY on
+        // non-truncated completion.
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
-        let mut truncated = false;
 
         // corrections_arc was built once at Engine construction; each clone here
         // is an O(1) refcount bump.
@@ -414,15 +418,33 @@ impl Engine {
             // of the loop (before any per-candidate work — including
             // a page-break reset) guarantees the abort happens
             // between candidates, never partway through the rule
-            // pipeline. The accumulated `diagnostics` so far are
-            // returned as the partial result; `candidates_processed`
-            // reflects only candidates that ran the rule loop to
-            // completion (page-break resets do not advance the
-            // counter, see below).
+            // pipeline. On expiry we return immediately so the
+            // post-loop corrections-map AhoCorasick pass — which is
+            // O(source bytes) — does NOT overrun the deadline.
+            // Returning here also gives the spec-correct
+            // `truncated/processed/total` triple to the caller
+            // without falling through the rest of the function.
             if deadline_expired(opts.deadline) {
-                truncated = true;
-                break;
+                return LintResult {
+                    diagnostics,
+                    truncated: true,
+                    candidates_processed,
+                    candidates_total,
+                    ..Default::default()
+                };
             }
+
+            // T009: count every candidate the engine started
+            // processing past the deadline boundary. The increment
+            // sits ABOVE the early-`continue` paths below
+            // (page-break reset, empty span, ambiguous recognition)
+            // so a complete pass always reports
+            // `candidates_processed == candidates_total` — the
+            // documented contract for a non-truncated `LintResult`.
+            // A pass that aborts mid-loop reports `processed <
+            // total` with the count of candidates we got past the
+            // per-candidate check.
+            candidates_processed += 1;
 
             // Page-break candidates are scanner-emitted boundaries with no
             // parsable content. Reset the context BEFORE attempting to parse
@@ -618,14 +640,6 @@ impl Engine {
                     diagnostics.extend(diags);
                 }
             }
-            // T009: count this candidate as processed only after the
-            // rule loop has finished for it. Candidates that hit an
-            // early `continue` above (page-break reset, empty span,
-            // ambiguous recognition) are not "processed" in the
-            // count-truncation sense — they did no rule work and so
-            // are excluded from the partial-progress signal that
-            // `candidates_processed` carries to the caller.
-            candidates_processed += 1;
         }
 
         // Pre-scanner text corrections: scan the raw source for
@@ -687,7 +701,7 @@ impl Engine {
 
         LintResult {
             diagnostics,
-            truncated,
+            truncated: false,
             candidates_processed,
             candidates_total,
             ..Default::default()

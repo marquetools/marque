@@ -406,11 +406,14 @@ PY
 # `deadline_overhead_baseline` (no deadline) and
 # `deadline_overhead_with_deadline` (1-hour deadline that never trips).
 #
-# We use the median (Criterion's middle CI value) rather than the upper
-# CI bound: the upper bound is the right metric for an absolute-target
-# regression check, but for ratio comparison the point estimate is the
-# load-bearing reading — CI width inflates with variance and would
-# convert clock-jitter into a false-positive ratio failure.
+# We use Criterion's middle CI value (the mean point estimate) rather
+# than the upper CI bound: the upper bound is the right metric for an
+# absolute-target regression check, but for ratio comparison the point
+# estimate is the load-bearing reading — CI width inflates with
+# variance and would convert clock-jitter into a false-positive ratio
+# failure. ("Mean" not "median" — Criterion's `time: [lower mean
+# upper]` triple is a confidence interval around the mean, not a
+# sample percentile.)
 #
 # Both benches run in a single `cargo bench` invocation so the harness
 # warms up once; running them separately could let the runner profile
