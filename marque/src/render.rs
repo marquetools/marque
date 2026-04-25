@@ -801,9 +801,10 @@ mod tests {
             marque_rules::Confidence::strict(1.0),
             Some("CAPCO-2016 §A.6"),
         );
-        // Intentional test-only exception to the engine-only __engine_promote
-        // contract: the renderer test needs a concrete AppliedFix to verify
-        // NDJSON serialization without spinning up a full Engine.
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic AppliedFix for renderer unit testing only;
+        // never commingled with engine output, never reachable from
+        // cfg(not(test)).
         let applied = AppliedFix::__engine_promote(
             fix,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
