@@ -348,7 +348,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                         .features
                         .iter()
                         .map(|f| EvidenceFeature {
-                            label: feature_label(f.id),
+                            label: f.id.as_str(),
                             log_odds: f.delta,
                         })
                         .collect(),
@@ -399,23 +399,6 @@ struct FeatureEntry {
 struct CanonicalAttempt {
     bytes: Vec<u8>,
     features: Vec<FeatureEntry>,
-}
-
-/// Feature label for audit output. One-to-one with [`FeatureId`].
-///
-/// The on-the-wire audit schema treats [`FeatureId`] as enum-typed
-/// (FR-012), but [`EvidenceFeature::label`] is `&'static str` — this
-/// helper bridges the two without allowing free-form strings.
-fn feature_label(id: FeatureId) -> &'static str {
-    match id {
-        FeatureId::EditDistance1 => "edit_distance_1",
-        FeatureId::EditDistance2 => "edit_distance_2",
-        FeatureId::TokenReorder => "token_reorder",
-        FeatureId::SupersededToken => "superseded_token",
-        FeatureId::BaseRateCommonMarking => "base_rate_common_marking",
-        FeatureId::StrictContextClassification => "strict_context_classification",
-        FeatureId::CorpusOverrideInEffect => "corpus_override_in_effect",
-    }
 }
 
 // ---------------------------------------------------------------------------
