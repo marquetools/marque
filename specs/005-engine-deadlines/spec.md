@@ -13,7 +13,10 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Related**:
   - PR #158 closed gap-register rows #5 and #9; row #7 is the last remaining open P1.
   - Whitepaper §10.2 server section calls out body-size cap (closed #6) and timeout (open #7) as the two halves of the deployment-DoS posture.
-  - `BatchOptions` does not currently exist as a struct; `BatchEngine` is configured via constructor args. This spec introduces `BatchOptions` opportunistically.
+  - `BatchOptions` already exists in `crates/engine/src/batch.rs` and is passed to `BatchEngine::new(engine, options)`. Phase 3d *extends* the existing options surface (adds `per_doc_deadline`) rather than introducing it from scratch.
+  - `LintResult` and `FixResult` live in `crates/engine/src/output.rs` (re-exported from `marque-engine`), not in `marque-rules`. This spec adds new fields to `LintResult` and marks it `#[non_exhaustive]` (it currently is not).
+  - `crates/engine/src/errors.rs` currently defines `EngineConstructionError` only — a build-time / `Engine::new` error type. This spec introduces a *new*, distinct `EngineError` enum for runtime errors (deadline expiry, threshold validation), keeping the runtime / build-time split clean.
+  - `Engine::fix_with_threshold` is currently fallible, returning `Result<FixResult, InvalidThreshold>` (`crates/engine/src/engine.rs:630-647`). The deadline-options layer lands beside this without changing the existing return shape.
 
 ## Problem
 
@@ -43,8 +46,8 @@ This spec covers a per-document deadline parameter threaded through `Engine::lin
 
 **In scope:**
 
-1. New `LintOptions` struct carrying `deadline: Option<Instant>` and a stable shape for future engine-level options.
-2. New `Engine::lint_with_options(&[u8], &LintOptions) -> LintResult` and `Engine::fix_with_options(&[u8], FixMode, &LintOptions) -> Result<FixResult, EngineError>`. Existing `Engine::lint(&[u8])` becomes a thin shim over `lint_with_options(&[u8], &LintOptions::default())`; same for `Engine::fix`.
+1. New `LintOptions` struct carrying `deadline: Option<Instant>` and a stable shape for future engine-level options. Companion `FixOptions { deadline: Option<Instant>, threshold_override: Option<f32> }` for the fix path, since `fix_with_threshold` already takes a per-call threshold override that needs a home in the options struct.
+2. New `Engine::lint_with_options(&[u8], &LintOptions) -> LintResult` and `Engine::fix_with_options(&[u8], FixMode, &FixOptions) -> Result<FixResult, EngineError>`. Existing `Engine::lint(&[u8])` becomes a thin shim over `lint_with_options(&[u8], &LintOptions::default())`. Existing `Engine::fix(&[u8], FixMode)` and `Engine::fix_with_threshold(&[u8], FixMode, Option<f32>) -> Result<FixResult, InvalidThreshold>` keep their current signatures; both delegate to `fix_with_options` and explicitly map error variants — `EngineError::InvalidThreshold(it)` to the existing standalone `InvalidThreshold` struct, `EngineError::DeadlineExceeded { .. }` is unreachable in either shim because `LintOptions::default().deadline = None`.
 3. Cooperative cancellation at scanner-candidate granularity (in the per-candidate loop in `Engine::lint`) and per-fix granularity (in `Engine::fix_inner`'s apply loop).
 4. Asymmetric timeout response (see [D3](#d3-timeout-response-shape) below): `lint` returns a truncated `LintResult` with a flag; `fix` returns `Err(EngineError::DeadlineExceeded)` so a deadline-hit during compliance-output construction cannot be silently shipped.
 5. Per-surface wiring:
@@ -96,10 +99,13 @@ The issue (#139) calls out four design questions. This section presents each wit
 - **(b) Separate method**: `Engine::lint_with_deadline(source, Instant)`. Doubles the method surface; future options need yet more methods.
 - **(c) Options struct**: `Engine::lint_with_options(source, &LintOptions)`. Existing `lint(source)` calls into `lint_with_options(source, &LintOptions::default())`.
 
-**Recommendation: (c) options struct.** Future engine-level options (audit-identity injection point, content-ignorance level, opt-in per-rule classification floor override, etc.) all want this shape. The existing `Engine::lint(&[u8]) -> LintResult` signature is preserved as a backward-compat shim.
+**Recommendation: (c) options struct.** Future engine-level options (audit-identity injection point, content-ignorance level, opt-in per-rule classification floor override, etc.) all want this shape. The existing `Engine::lint(&[u8]) -> LintResult` and `Engine::fix(&[u8], FixMode) -> FixResult` signatures are preserved as backward-compat shims; `Engine::fix_with_threshold(&[u8], FixMode, Option<f32>) -> Result<FixResult, InvalidThreshold>` keeps its current fallible signature and maps the new `EngineError::InvalidThreshold` variant back to the existing standalone struct. Two structs are introduced — `LintOptions` for the lint path and `FixOptions` for the fix path — because `fix` already takes a per-call threshold override that does not apply to `lint`.
 
 ```rust
-// crates/rules/src/lib.rs OR crates/engine/src/options.rs (placement decision in plan.md)
+// crates/engine/src/options.rs (new module — placement under marque-engine
+// because LintResult / FixResult also live in this crate; moving the
+// output types into marque-rules would be a separate refactor with
+// semver implications and is not in scope here.)
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct LintOptions {
@@ -109,6 +115,17 @@ pub struct LintOptions {
     pub deadline: Option<std::time::Instant>,
     // Future fields land here — `#[non_exhaustive]` prevents adding
     // them from being a semver break.
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Default)]
+pub struct FixOptions {
+    /// Wall-clock deadline; same semantics as `LintOptions::deadline`.
+    pub deadline: Option<std::time::Instant>,
+    /// Per-call confidence threshold override; `None` falls back to
+    /// `Config::confidence_threshold`. Same semantics as the existing
+    /// `Engine::fix_with_threshold(threshold_override)` argument.
+    pub threshold_override: Option<f32>,
 }
 ```
 
@@ -133,10 +150,13 @@ pub struct LintOptions {
 Asymmetric design forces compliance code paths to handle deadline expiry explicitly; advisory paths can keep the simpler shape.
 
 ```rust
-// crates/engine/src/errors.rs
+// crates/engine/src/errors.rs — new enum, alongside the
+// existing `EngineConstructionError` (build-time errors).
+// `EngineError` is the runtime error type introduced by this
+// spec; the two enums are deliberately separate.
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum EngineError {
-    // ... existing variants ...
     /// `Engine::fix_with_options` aborted because the deadline expired
     /// before the fix-application loop completed.
     DeadlineExceeded {
@@ -146,9 +166,16 @@ pub enum EngineError {
         /// `FixResult`.
         partial_lint: LintResult,
     },
+    /// Per-call threshold override outside `[0.0, 1.0]` or NaN.
+    /// Wraps the existing standalone `InvalidThreshold` struct so
+    /// `Engine::fix_with_threshold`'s `Result<FixResult, InvalidThreshold>`
+    /// signature stays intact.
+    InvalidThreshold(InvalidThreshold),
 }
 
-// crates/rules/src/output.rs (or wherever LintResult lives)
+// crates/engine/src/output.rs — current definition site;
+// re-exported from `marque-engine`. `#[non_exhaustive]` is
+// added as part of this spec (the struct currently is not).
 #[non_exhaustive]
 pub struct LintResult {
     // ... existing fields ...
@@ -171,7 +198,7 @@ If you prefer (a) symmetric truncated-flag everywhere — cleaner API, weaker co
 The issue's surface-by-surface plan is uncontroversial; one nuance worth flagging.
 
 **`marque-cli`:**
-- New `--deadline <duration>` flag, parsed via `humantime::parse_duration` (e.g., `--deadline 30s`, `--deadline 2m`). Already a transitive dep via `tracing-subscriber`; verify with `cargo tree`.
+- New `--deadline <duration>` flag, parsed via `humantime::parse_duration` (e.g., `--deadline 30s`, `--deadline 2m`). `humantime` is already a direct workspace dep used by `marque/Cargo.toml` (`humantime = { workspace = true }`), so no Cargo.toml change is required for the CLI flag.
 - No default deadline (interactive use should not surprise the user).
 - A nuance: `--deadline 0` is rejected at the CLI boundary as `EX_USAGE` (64). Otherwise the engine immediately aborts before any candidate is processed, producing an empty `truncated` `LintResult` — surprising and useless.
 - Truncated `LintResult` from `lint`: render as usual + a final stderr line `"⚠ deadline exceeded: covered N/M candidates"`.
@@ -190,17 +217,23 @@ The issue's surface-by-surface plan is uncontroversial; one nuance worth flaggin
 - Per Constitution III's WASM runtime-config restriction (no surface that introduces a new recognizer codepath or alters posteriors): a deadline does not change recognizer behavior, only the run's wallclock budget. Confirming this is permitted under the constitution's letter.
 
 **`BatchEngine`:**
-- New `BatchOptions { per_doc_deadline: Option<Duration>, ... }` struct. Existing `BatchEngine::lint_many` / `fix_many` gain `_with_options` variants; the bare versions become shims.
+- Existing `BatchOptions` struct (`crates/engine/src/batch.rs:167`) gains a new `per_doc_deadline: Option<Duration>` field. The struct's `Default` impl is updated to `None`. The struct is already passed to `BatchEngine::new(engine, options)`, so adding the field is mechanically straightforward — every existing call site that constructs `BatchOptions` keeps the bare-defaults form via struct-update syntax (`BatchOptions { per_doc_deadline: None, ..Default::default() }` or simply `BatchOptions::default()`).
+- New `BatchEngine::lint_many_with_options` / `fix_many_with_options` variants accept the `BatchOptions` carrying the deadline; the existing `lint_many` / `fix_many` methods are not extended (the deadline lives at construction time on the engine struct, mirroring the existing pattern).
 - `Duration` (not `Instant`): each per-doc invocation computes its own `Instant::now() + per_doc_deadline` so a slow document doesn't eat into a fast one's budget.
 - Per-doc `EngineError::DeadlineExceeded` lands as a per-document `BatchError::DocumentDeadlineExceeded { partial_lint }` variant — distinct from `is_panic()` and `is_shutdown()`, with a matching `is_deadline_exceeded()` predicate, so dashboards can track timeout rate as a separate signal.
 
 ## Requirements
 
-### R1 — `LintOptions` struct (foundational)
+### R1 — `LintOptions` and `FixOptions` structs (foundational)
 
-The engine MUST accept a `LintOptions` struct as a per-call configuration carrier. The Phase 1 shape contains exactly one field: `deadline: Option<Instant>`. The struct MUST be `#[non_exhaustive]` so future fields can land without semver-breaking downstream callers. The struct MUST derive `Default` and `Clone`.
+The engine MUST accept a pair of options structs as per-call configuration carriers:
 
-Placement: `crates/rules/src/lib.rs` re-exporting from a sibling `options` module. (Not `crates/engine/`, because Constitution VII keeps the `LintResult` / `FixResult` / `LintOptions` types in `marque-rules` so other potential engine implementations can share the contract.)
+- `LintOptions { deadline: Option<Instant> }` — for `Engine::lint_with_options`.
+- `FixOptions { deadline: Option<Instant>, threshold_override: Option<f32> }` — for `Engine::fix_with_options`.
+
+Both MUST be `#[non_exhaustive]` so future fields can land without semver-breaking downstream callers. Both MUST derive `Default + Clone + Debug`.
+
+Placement: `crates/engine/src/options.rs` (new module), re-exported from `crates/engine/src/lib.rs`. Rationale: the existing `LintResult` and `FixResult` types live in `crates/engine/src/output.rs` (re-exported from `marque-engine`), and the options structs ride alongside them in the same crate. Constitution VII would in principle prefer trait-surface types in `marque-rules` so a hypothetical second engine could share the contract, but the prior placement of `LintResult` / `FixResult` already pins the contract to `marque-engine`; relocating that surface is an out-of-scope, semver-breaking refactor (the pivot type would be `marque-rules::LintResult` re-exported by `marque-engine`, which would need every existing import touched). This spec stays inside the existing crate boundary.
 
 ### R2 — `Engine::lint_with_options` / `Engine::fix_with_options`
 
@@ -209,33 +242,59 @@ The engine MUST expose:
 ```rust
 impl Engine {
     pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult;
+
     pub fn fix_with_options(
         &self,
         source: &[u8],
         mode: FixMode,
-        opts: &LintOptions,
+        opts: &FixOptions,
     ) -> Result<FixResult, EngineError>;
 
     // Existing signatures preserved as backward-compat shims:
+
     pub fn lint(&self, source: &[u8]) -> LintResult {
         self.lint_with_options(source, &LintOptions::default())
     }
+
     pub fn fix(&self, source: &[u8], mode: FixMode) -> FixResult {
-        self.fix_with_options(source, mode, &LintOptions::default())
-            .expect("fix without deadline cannot return DeadlineExceeded")
+        // `FixOptions::default()` has `deadline: None`, so the only
+        // possible `Err` is `EngineError::InvalidThreshold` — and the
+        // engine's pre-validated `Config::confidence_threshold` makes
+        // that path unreachable too. Both invariants documented in the
+        // expect message.
+        self.fix_with_options(source, mode, &FixOptions::default())
+            .expect("fix() default options cannot fail: no deadline + pre-validated config threshold")
     }
+
     pub fn fix_with_threshold(
         &self,
         source: &[u8],
         mode: FixMode,
-        threshold: f32,
-    ) -> FixResult {
-        // existing body, with internal call updated to use options
+        threshold_override: Option<f32>,
+    ) -> Result<FixResult, InvalidThreshold> {
+        // Preserve the existing `Result<FixResult, InvalidThreshold>`
+        // signature. Construct `FixOptions` with the per-call threshold
+        // override and no deadline; map `EngineError::InvalidThreshold`
+        // back to the existing standalone struct so downstream callers
+        // see the same shape they always have. `DeadlineExceeded` is
+        // unreachable because no caller of `fix_with_threshold` can set
+        // a deadline through this signature.
+        let opts = FixOptions {
+            threshold_override,
+            ..Default::default()
+        };
+        match self.fix_with_options(source, mode, &opts) {
+            Ok(r) => Ok(r),
+            Err(EngineError::InvalidThreshold(it)) => Err(it),
+            Err(EngineError::DeadlineExceeded { .. }) => unreachable!(
+                "fix_with_threshold cannot set a deadline; DeadlineExceeded is unreachable"
+            ),
+        }
     }
 }
 ```
 
-`Engine::fix` calling `expect(...)` is safe because `LintOptions::default().deadline = None` makes deadline-expiry impossible. The expect-message documents that invariant for any future reader.
+The two shim invariants — `fix()` cannot fail, `fix_with_threshold()` cannot return `DeadlineExceeded` — are documented inline at each call site. `fix_with_threshold`'s public signature (`Result<FixResult, InvalidThreshold>`) is preserved so downstream callers do not need to change.
 
 ### R3 — Cooperative cancellation granularity
 
@@ -254,9 +313,38 @@ The deadline check MUST NOT appear inside the hot path of the scanner or parser 
 
 `Engine::fix_with_options` MUST return `Err(EngineError::DeadlineExceeded { partial_lint: LintResult })` when the deadline expires. The `partial_lint` carries the diagnostics produced before abort so callers can render the partial state without re-running the lint pass; no `FixResult` is constructed when the deadline expires.
 
-### R5 — `EngineError::DeadlineExceeded` variant
+### R5 — Introduce `EngineError` enum (runtime errors)
 
-`marque-engine::EngineError` (existing enum at `crates/engine/src/errors.rs`) MUST gain a `DeadlineExceeded { partial_lint: LintResult }` variant. The enum MUST remain `#[non_exhaustive]` (already is, per gap-register row #8 closure pattern). Display impl: `"engine deadline exceeded after processing N/M candidates"`. Error::source returns `None`.
+This spec MUST introduce a *new* runtime error enum `marque-engine::EngineError` in `crates/engine/src/errors.rs`, alongside the existing `EngineConstructionError`. The two enums are deliberately separate: `EngineConstructionError` covers `Engine::new` build-time / config failures (rule cycles, unknown overrides), while `EngineError` covers runtime per-call failures (deadline expiry, threshold validation). Conflating them would force every existing `Engine::new` consumer to widen their match arms.
+
+`EngineError` MUST be `#[non_exhaustive]` and MUST include at minimum:
+
+```rust
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum EngineError {
+    /// Deadline expired before the lint or fix loop completed.
+    /// Carries the partial `LintResult` so a renderer can show the
+    /// diagnostics that landed before abort. No `FixResult` is ever
+    /// constructed when the deadline expires (Constitution V Principle V).
+    DeadlineExceeded {
+        partial_lint: LintResult,
+    },
+    /// Per-call threshold override outside `[0.0, 1.0]` or NaN.
+    /// Wraps the existing `InvalidThreshold` struct so the standalone
+    /// type stays available for `fix_with_threshold`'s signature.
+    InvalidThreshold(InvalidThreshold),
+}
+```
+
+`Display` impls:
+
+- `DeadlineExceeded { .. }` → `"engine deadline exceeded after processing N/M candidates"` (counts pulled from `partial_lint`).
+- `InvalidThreshold(it)` → delegate to `it`'s existing `Display`.
+
+`Error::source` returns `None` for `DeadlineExceeded` and `Some(&InvalidThreshold)` for `InvalidThreshold(_)`.
+
+The existing `InvalidThreshold` standalone struct is preserved unchanged so `Engine::fix_with_threshold`'s public signature (`Result<FixResult, InvalidThreshold>`) does not break. `From<InvalidThreshold> for EngineError` is provided so the engine's internal threshold validation can use `?` without ceremony.
 
 ### R6 — Per-surface wiring (CLI / server / WASM / batch)
 
@@ -265,7 +353,7 @@ Each surface MUST plumb the deadline through to `lint_with_options` / `fix_with_
 - **CLI**: `--deadline <humantime>` flag. `0` rejected as `EX_USAGE` (64). Truncated lint renders normally + final stderr warning. `DeadlineExceeded` from fix exits `EX_TEMPFAIL` (75) with partial diagnostics on stderr.
 - **Server**: `X-Marque-Deadline` header (humantime), capped by `MARQUE_MAX_DEADLINE` env var (default 60 s). Per-endpoint default 30 s when absent. Out-of-range header returns `400 Bad Request`. Truncated lint returns 200 with `Marque-Truncated: true` response header. `DeadlineExceeded` from fix returns 504 with partial-lint body.
 - **WASM**: `deadline_ms: f64` on the JS-side options. Internal conversion to `Instant::now() + Duration::from_millis(...)`. Constitution III WASM-restriction analysis added to the WASM crate's `lib.rs` doc comment.
-- **BatchEngine**: new `BatchOptions { per_doc_deadline: Option<Duration> }` parameter on `lint_many_with_options` / `fix_many_with_options`. Per-doc `EngineError::DeadlineExceeded` lands as `BatchError::DocumentDeadlineExceeded { partial_lint }` with matching `is_deadline_exceeded()` predicate.
+- **BatchEngine**: extend the existing `BatchOptions` struct (`crates/engine/src/batch.rs:167`) with a new `per_doc_deadline: Option<Duration>` field; update `Default`. Add `BatchEngine::lint_many_with_options` / `fix_many_with_options` variants that consume the deadline. Per-doc `EngineError::DeadlineExceeded` lands as `BatchError::DocumentDeadlineExceeded { partial_lint }` with matching `is_deadline_exceeded()` predicate.
 
 ### R7 — Test coverage
 
@@ -334,8 +422,9 @@ The implementation closes #139 when:
 ## Open questions for the author (please confirm before plan.md / tasks.md land)
 
 - **Q1**: Confirm D1 — cooperative cancellation, per-candidate + per-fix granularity. (Recommended: yes)
-- **Q2**: Confirm D2 — `LintOptions` struct, `lint_with_options` shim. (Recommended: yes)
+- **Q2**: Confirm D2 — `LintOptions` + `FixOptions` structs, shims preserved. (Recommended: yes)
 - **Q3**: Confirm D3 — asymmetric response (truncated `LintResult` for lint, `Err(DeadlineExceeded)` for fix). Or do you want symmetric (truncated everywhere)? (Recommended: asymmetric for compliance-integrity reasons)
 - **Q4**: Confirm D4 surface defaults: server endpoint default 30 s, server cap 60 s, CLI no default. Adjust as needed.
 - **Q5**: Should `LintOptions` carry a `started_at: Option<Instant>` for downstream timing-budget composition (e.g., a server handler passing its remaining budget to the engine)? Or is that overengineering — let the caller compute `started_at + budget` themselves and pass the resulting `Instant`? (My prior: the latter; keep `LintOptions` minimal.)
 - **Q6**: Should the server `X-Marque-Deadline` header use a humantime string (`"30s"`) or an integer milliseconds (`"30000"`)? Humantime is more readable; integer is more universal. (My prior: humantime, matching the CLI for consistency.)
+- **Q7**: Confirm the two-struct split (`LintOptions` and `FixOptions`) instead of one shared `LintOptions` carrying `threshold_override`. Two structs is cleaner because `threshold_override` is a `fix`-only concern; one struct with an unused-on-lint field would be semantically muddled. (My prior: two structs.)

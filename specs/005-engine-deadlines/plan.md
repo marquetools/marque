@@ -18,12 +18,12 @@ The work breaks into four phases. Each is independently mergeable and reviewable
 
 Land the type surface without wiring it through. The workspace stays green; no caller-visible behavior changes.
 
-- `LintOptions` struct in `crates/rules/src/lib.rs` (re-exported from `crates/rules/src/options.rs`).
-- `EngineError::DeadlineExceeded { partial_lint }` variant in `crates/engine/src/errors.rs`.
-- New `LintResult` fields: `truncated: bool`, `candidates_processed: usize`, `candidates_total: usize`. Default values preserve back-compat (every existing `LintResult` carries `truncated: false` + reasonable counts).
-- `Engine::lint_with_options` / `Engine::fix_with_options` signatures with thin bodies that delegate to the existing `lint` / `fix` paths, ignoring `opts` entirely.
-- Existing `Engine::lint` / `Engine::fix` rewired as back-compat shims over the `_with_options` variants.
-- Unit test: `LintOptions::default()` yields `None` deadline; `Engine::lint(...)` produces identical `LintResult` to `Engine::lint_with_options(..., &LintOptions::default())`.
+- New `LintOptions { deadline: Option<Instant> }` and `FixOptions { deadline: Option<Instant>, threshold_override: Option<f32> }` structs in `crates/engine/src/options.rs` (new module), re-exported from `crates/engine/src/lib.rs`. Both `#[non_exhaustive]`, `Default + Clone + Debug`.
+- New `EngineError` enum in `crates/engine/src/errors.rs` (alongside the existing `EngineConstructionError`, which stays unchanged). Variants: `DeadlineExceeded { partial_lint: LintResult }`, `InvalidThreshold(InvalidThreshold)`. `#[non_exhaustive]`. The existing standalone `InvalidThreshold` struct is preserved for `Engine::fix_with_threshold`'s public signature; `From<InvalidThreshold> for EngineError` is provided.
+- New fields on `LintResult` (currently in `crates/engine/src/output.rs`, **not** `marque-rules`): `truncated: bool`, `candidates_processed: usize`, `candidates_total: usize`. Default values preserve back-compat (every existing `LintResult` carries `truncated: false` + zeroed counts). Add `#[non_exhaustive]` to the struct (currently absent) so future additions are not semver-breaking.
+- `Engine::lint_with_options(&[u8], &LintOptions) -> LintResult` and `Engine::fix_with_options(&[u8], FixMode, &FixOptions) -> Result<FixResult, EngineError>` signatures with thin bodies that delegate to the existing `lint` / `fix_with_threshold` paths, ignoring `opts.deadline`. `fix_with_options` honors `opts.threshold_override` from day one (it's a non-deadline concern that fits naturally into the new structure).
+- Existing `Engine::lint` / `Engine::fix` rewired as back-compat shims over the `_with_options` variants. `Engine::fix_with_threshold` keeps its existing `Result<FixResult, InvalidThreshold>` signature; internally it now calls `fix_with_options` and maps `EngineError::InvalidThreshold(it) → it`, with `unreachable!(...)` on `EngineError::DeadlineExceeded` (no caller of `fix_with_threshold` can set a deadline).
+- Unit tests: `LintOptions::default()` yields `None` deadline; `Engine::lint(...)` produces identical `LintResult` to `Engine::lint_with_options(..., &LintOptions::default())`; `Engine::fix_with_threshold` produces identical results to its pre-spec behavior across the InvalidThreshold + Ok paths.
 
 **Why this is its own phase**: every downstream call site (engine internals, CLI, server, WASM, batch, tests, benches) gets touched in Phase 2; reviewing the type surface in isolation first keeps Phase 2's diff focused on the deadline plumbing.
 
@@ -81,9 +81,9 @@ Phases 3a / 3b / 3c / 3d are parallelizable once Phase 2 lands. They can land as
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Per-candidate `Instant::now()` regresses SC-001 | Low | High (Constitution I violation) | R7 #6 deadline-overhead bench gates the merge; abort if median overhead > 2% |
-| Truncated `LintResult` confuses downstream consumers that don't read the new fields | Medium | Medium (correctness for them, not us) | New fields are additive; default values preserve back-compat. `#[non_exhaustive]` already on `LintResult`. Document in CHANGELOG. |
+| Truncated `LintResult` confuses downstream consumers that don't read the new fields | Medium | Medium (correctness for them, not us) | New fields are additive; default values preserve back-compat. `#[non_exhaustive]` is added to `LintResult` as part of Phase 1 (it is currently absent). Document the additions in CHANGELOG and call out the `#[non_exhaustive]` change for consumers using struct-update syntax. |
 | Server `MARQUE_MAX_DEADLINE` cap interacts with body-size cap unexpectedly | Low | Low | Document the precedence order in §10.2; deadline-cap is enforced first (parsing the header) before body is read |
-| `humantime` is a transitive dep, not direct | Low | Low | Add as direct dep in CLI + server crates; pin version |
+| `humantime` may still be transitive in crates that don't already depend on it directly (e.g., `marque-server`) | Low | Low | `marque/Cargo.toml` already has `humantime = { workspace = true }`; only add it as a direct dep in crates that don't already have it (server) — pinned to the workspace version |
 | `deadline_ms: f64` overflow on huge values from JS | Low | Low (NaN / negative produces immediate-truncate behavior, which is safe) | Validate at the wasm shim: `deadline_ms.is_finite() && deadline_ms >= 0.0` before converting |
 | `BatchEngine`-level deadline composes incorrectly with row/byte semaphore wait | Low | Medium | Per-doc deadline starts at `Instant::now()` *after* the document acquires its permit, not before. Document this in `BatchOptions::per_doc_deadline`'s doc comment. |
 
