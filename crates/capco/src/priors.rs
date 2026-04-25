@@ -62,17 +62,23 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 
 /// Compile-time pin: `SCHEMA_VERSION` (emitted by `build.rs` from the
 /// `schema_version` field of `priors.json`) MUST equal the value this
-/// crate's source code expects. A mismatch — caused by a hand-edited
-/// `priors.json` or a generator regression that bumps the version
-/// without updating the consumer — fails the build with a clear
-/// message instead of producing a green binary that emits records
-/// labeled with the wrong schema.
+/// crate's source code is compiled to consume. A mismatch — caused
+/// by a hand-edited `priors.json` or a generator regression that bumps
+/// the version — fails the build with a clear message instead of
+/// producing a green binary that emits records labeled with the wrong
+/// schema.
 ///
-/// `build.rs` already panics on a mismatch when the JSON parses as a
-/// known-bad version (see `crates/capco/build.rs:73-82`); this const
-/// block is the consumer-side counterpart that catches the case where
-/// `priors.json` reports a version `build.rs` happens to accept but
-/// the consumer has since moved past.
+/// `build.rs` already rejects any `schema_version` mismatch on the
+/// producer side (see `crates/capco/build.rs:73-82` — it accepts only
+/// the single `marque-priors-1` value today). This const block is the
+/// consumer-side counterpart kept as an explicit source pin and
+/// defense-in-depth check that the generated `SCHEMA_VERSION` still
+/// matches the version this crate is wired to consume — the value
+/// fences the runtime tests below at the build-time tier so a CI lane
+/// that happens to skip this crate's tests still catches a regression.
+/// It also forces the consumer-side expectation to be a visible source
+/// declaration, so a future PR that bumps `build.rs` to accept a new
+/// schema version has to update this pin in the same edit.
 const _: () = {
     let actual = SCHEMA_VERSION.as_bytes();
     let expected = b"marque-priors-1";
