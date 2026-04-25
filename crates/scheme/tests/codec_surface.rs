@@ -131,11 +131,17 @@ fn accepts_codec_generically<C: Codec<MockScheme>>(_codec: &C) {}
 
 #[test]
 fn codec_compiles_without_impls() {
-    // No concrete `impl Codec<MockScheme>` exists in this file or
-    // anywhere in `marque-scheme`. The two `accepts_codec_*` helpers
-    // above are the load-bearing compile-time assertion: if they
-    // build, `Codec<S>` is a usable trait surface even though no
-    // implementor exists yet.
+    // Scope of the "no impls" claim: no concrete `impl Codec<S>` exists
+    // in the `marque_scheme` LIBRARY (`src/`) — only in test crates.
+    // T089b's `tests/adoption_readiness.rs` declares a `StubCodec`
+    // impl as part of the trait-surface readiness exercise, but that
+    // is intentional fixture-side scaffolding outside the library
+    // boundary. Phase G lands the production XML/JSON impls without
+    // further trait evolution (FR-019, SC-010).
+    //
+    // The two `accepts_codec_*` helpers above are the load-bearing
+    // compile-time assertion: if they build, `Codec<S>` is a usable
+    // trait surface even though no library-side implementor exists.
     //
     // The runtime assertion below is a sanity check on `CodecError`'s
     // `Display` impl — every variant must round-trip through
