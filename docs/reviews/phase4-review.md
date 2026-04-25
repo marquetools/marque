@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Status
 
-This is the historical review record. The four HIGH findings (H1–H4) below were addressed in **PR #142** (`phase4-review-fixes`); see the per-finding resolution notes inline. The 11 MEDIUM and 7 LOW items remain open as recommended follow-ups.
+This is the historical review record. The four HIGH findings (H1–H4) were addressed in **PR #142** (`phase4-review-fixes`); the mechanical-hygiene MEDIUM/LOW items in **PR #144**; the test-coverage MEDIUM items in **PR #145**; and the per-class accuracy-gate refinement (M1) in this branch. The remaining MEDIUM and LOW items are tracked below and queued for follow-up PRs.
 
 | Finding | Resolution |
 |---------|------------|
@@ -21,6 +21,7 @@ This is the historical review record. The four HIGH findings (H1–H4) below wer
 | H2 | Fixed by commit `b8443e9` — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
 | H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
 | H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
+| M1 | Fixed by `phase4-review-followups-accuracy-floors` — per-class regression floors added to T057 harness |
 
 ## Decision (at time of review): REQUEST CHANGES
 
@@ -123,6 +124,8 @@ Citation reads `// CAPCO-2016 §A.6 p16 (COMINT title for the SI control system 
 The 50% aggregate floor cannot detect a per-class regression masked by another class's improvement (e.g., Reordering 100%→60% offset by Typo 20%→40%). Tasks.md describes the per-class breakdown but the harness only asserts aggregate. Agent C labels this CRITICAL; the overseer downgrades to MEDIUM because the decoder is at ~53% aggregate today, so any meaningful regression would push it under 50% before per-class compensation could absorb it. The fix is still worth landing.
 
 **Fix**: Pin currently-passing classes (Reordering 100%, WrongCase 100%, GarbledDelimiter 100%) at their current rates as per-class floors; ratchet Typo and MissingDelimiter as #133's checklist clears.
+
+**Resolution** — Landed on branch `phase4-review-followups-accuracy-floors`. New `PER_CLASS_FLOORS` table (`decoder_accuracy.rs`) pins all six mangling classes: `GarbledDelimiter`/`Reordering`/`WrongCase` at 1.00 (currently perfect), `SupersededToken` at 0.50 (n=3 threshold), `Typo` at 0.15 (~3pp under measured 20%), `MissingDelimiter` at 0.00 (placeholder for ratchet). New `resolution_rate_per_class_does_not_regress` test enforces the table and structurally requires every observed class to be pinned (so a new mangling class cannot land silently uncovered) and every pinned class to exist in the fixture set (so a class going missing fails loudly).
 
 ### M2 — Missing `static_assertions::assert_impl_all!` for `Box<dyn Recognizer<CapcoScheme>>: Send + Sync`
 
