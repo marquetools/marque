@@ -74,9 +74,18 @@ pub const DEFAULT_BODY_LIMIT_BYTES: usize = 10 * 1024 * 1024;
 /// but unparseable / unreasonable. Caller decides whether to abort
 /// (the binary entry point does) or log-and-default (an embedder
 /// might).
+///
+/// `VarError::NotPresent` (unset) silently falls back to the default;
+/// `VarError::NotUnicode` (set but contains invalid UTF-8) is treated
+/// as a misconfiguration and surfaces as `Err`. A blanket `Err(_) ⇒
+/// default` would hide the real bug behind a default that has nothing
+/// to do with what the operator wrote.
 pub fn resolve_body_limit() -> Result<usize, String> {
     match std::env::var("MARQUE_MAX_BODY_BYTES") {
-        Err(_) => Ok(DEFAULT_BODY_LIMIT_BYTES),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_BODY_LIMIT_BYTES),
+        Err(std::env::VarError::NotUnicode(raw)) => Err(format!(
+            "MARQUE_MAX_BODY_BYTES is set but is not valid UTF-8: {raw:?}"
+        )),
         Ok(s) => {
             let parsed: usize = s
                 .parse()
@@ -399,8 +408,9 @@ pub fn build_app(state: AppState) -> Router {
 /// Same as [`build_app`] but with an explicit body-size cap in bytes.
 ///
 /// `body_limit_bytes` is applied as an axum `DefaultBodyLimit` Tower
-/// layer; oversize requests reach the handler as a `413 Payload Too
-/// Large`. The limit applies to every route on the returned router,
+/// layer; oversize requests are rejected by the layer with a
+/// `413 Payload Too Large` response before the handler is invoked.
+/// The limit applies to every route on the returned router,
 /// including the GET endpoints (which carry no body in practice; the
 /// cap is harmless there).
 pub fn build_app_with_limit(state: AppState, body_limit_bytes: usize) -> Router {
