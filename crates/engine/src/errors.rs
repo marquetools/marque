@@ -2,25 +2,38 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Engine construction errors.
+//! Engine error surfaces — both build-time and runtime.
 //!
-//! Defines the error surface the Phase 3 `Engine::new` constructor
-//! (tasks T031–T032) will return when the scheme's declarative
-//! artifacts (constraints, page rewrites) fail pre-flight checks.
-//! The constructor will run a topological sort over
-//! `PageRewrite::reads` / `writes` and fail closed with
-//! [`EngineConstructionError::RewriteCycle`] when a cycle exists.
+//! This module defines two intentionally separate enums so callers
+//! can match on the surface they actually expect to see:
 //!
-//! The current `Engine::new` signature returns `Self` directly; the
-//! transition to `Result<Self, EngineConstructionError>` lands
-//! alongside T031–T032 when the scheduler that actually emits these
-//! variants ships. Declaring the error surface in Phase 2 lets
-//! downstream tooling (IDE plugins, the scheme-exploration CLI that
-//! will land in Phase G) target a stable shape while the runtime
-//! path catches up.
+//! - [`EngineConstructionError`] — build-time configuration defects
+//!   surfaced by `Engine::new` (rewrite cycles, unannotated custom
+//!   axes, unknown / conflicting rule overrides). The integrator
+//!   resolves these before shipping; runtime lint / fix never emits
+//!   them.
 //!
-//! Kept in its own module so callers can match on the error without
-//! pulling in the runtime pipeline.
+//! - [`EngineError`] — runtime conditions raised by
+//!   `Engine::lint_with_options` / `Engine::fix_with_options` (spec
+//!   005). Variants: `DeadlineExceeded { partial_lint }` and
+//!   `InvalidThreshold(_)`. `#[non_exhaustive]` so future runtime
+//!   conditions (memory budgets, per-rule deadlines, cancellation
+//!   tokens) can land non-breaking. **Phase 1 status:** the type
+//!   surface ships, but `DeadlineExceeded` cannot currently fire —
+//!   `fix_with_options` ignores `opts.deadline` until Phase 2
+//!   wiring lands (tasks T010–T012). Only `InvalidThreshold` is
+//!   observable today.
+//!
+//! Keeping the two enums separate means matching on one does not
+//! force callers to pattern against variants they could never
+//! encounter at the corresponding lifecycle stage.
+//!
+//! `EngineConstructionError`'s `RewriteCycle` and
+//! `UnannotatedCustomAxes` variants are emitted by the Phase 3
+//! scheduler (`Engine::new` runs Kahn's algorithm over
+//! `PageRewrite::reads` / `writes`); `UnknownRuleOverride` and
+//! `ConflictingRuleOverride` come from the rule-override
+//! canonicalization pass that runs immediately afterward.
 
 use crate::engine::InvalidThreshold;
 use crate::output::LintResult;
