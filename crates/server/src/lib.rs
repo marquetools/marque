@@ -297,10 +297,20 @@ fn query_carries_corpus_override(query: &str) -> bool {
 /// intentional: callers always pair both functions, and each one
 /// owns exactly one stage of the request lifecycle.
 ///
+/// Visibility is `pub(crate)`: the documented pairing is enforceable
+/// only inside this crate (the body-side helper takes a private
+/// `PresenceMarker` that we do not want on the public API surface),
+/// and the only call sites are the lint and fix handlers in this
+/// module. External integrators that need T3 rejection should call
+/// the lint/fix handlers themselves rather than reusing this guard
+/// directly — the guard's contract is "rejects header + query
+/// before body deserialization", not a general-purpose request
+/// inspector.
+///
 /// Returns `Err(StatusCode::BAD_REQUEST)` on any positive signal.
 /// Logs the channel but never the payload contents (Constitution V
 /// G13: audit-stream content-ignorance).
-pub fn reject_if_corpus_override(
+pub(crate) fn reject_if_corpus_override(
     endpoint: &str,
     uri: &Uri,
     headers: &HeaderMap,
