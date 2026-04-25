@@ -243,3 +243,39 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Whitepaper §3.2 / Constitution II / gap register #15 — hot-path
+  # heap-allocation regression gate. Installs a counting global
+  # allocator (`crates/core/tests/alloc_budget.rs`) and asserts
+  # `Scanner::scan(...)` does not exceed a small allocation budget on
+  # a representative corpus sweep.
+  #
+  # `--test-threads=1` is load-bearing — the counter is process-wide,
+  # so parallel tests inflate each other's deltas. The header comment
+  # in `alloc_budget.rs` covers why.
+  #
+  # Decoupled from the `test` job so a routine test failure doesn't
+  # mask an alloc-budget regression and vice versa. `needs: check`
+  # remains — there's no point running the alloc gate against a tree
+  # whose formatting / clippy / typos pass already failed, and the
+  # `test` job sits behind the same gate, so this matches the cost
+  # structure of every other test-adjacent job in this workflow.
+  count-allocs:
+    name: Hot-path alloc budget
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      - name: cargo test (alloc-budget gate)
+        run: |
+          cargo test -p marque-core \
+            --features count-allocs \
+            --test alloc_budget \
+            -- --test-threads=1
