@@ -106,6 +106,21 @@ pub struct Engine {
     /// [`Engine::with_deep_scan`]; false by default so interactive-
     /// authoring latency (SC-001) is identical to PR-2.
     deep_scan: bool,
+
+    /// CLI-supplied corpus override (Phase 4 PR-5 / FR-013 / T069).
+    /// Held only behind the `corpus-override` Cargo feature so the
+    /// WASM artifact and the `marque-server` build cannot
+    /// accidentally accept one through any code path.
+    ///
+    /// The decoder does not yet substitute these priors into scoring
+    /// — PR-5 minimal scope wires the surface end-to-end and stamps
+    /// every decoder fix with [`FeatureId::CorpusOverrideInEffect`]
+    /// in the audit record so an auditor can identify fixes produced
+    /// under organizational overrides vs. stock priors. The
+    /// prior-substitution wiring is the next-PR step; this field is
+    /// the seam.
+    #[cfg(feature = "corpus-override")]
+    corpus_override: Option<std::sync::Arc<marque_config::corpus_override::CorpusOverride>>,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -195,6 +210,8 @@ impl Engine {
             scheduled_rewrites,
             recognizer: Arc::new(StrictRecognizer::new()),
             deep_scan: false,
+            #[cfg(feature = "corpus-override")]
+            corpus_override: None,
         })
     }
 
@@ -241,6 +258,50 @@ impl Engine {
     /// `FixSource::DecoderPosterior` only makes sense in deep-scan).
     pub fn deep_scan_enabled(&self) -> bool {
         self.deep_scan
+    }
+
+    /// Install a CLI-supplied corpus override. Only available when
+    /// the engine is built with the `corpus-override` Cargo feature
+    /// (CLI-only — `marque-server` rejects override input on every
+    /// channel per T066, and the WASM crate cannot enable the feature
+    /// at all per T067).
+    ///
+    /// Phase 4 PR-5 minimal scope: the engine retains the override
+    /// for audit-annotation purposes only. Every subsequent decoder-
+    /// path fix produced by [`Engine::lint`] gets a
+    /// [`FeatureId::CorpusOverrideInEffect`] feature contribution
+    /// appended to its `Confidence.features` so an auditor can
+    /// identify fixes produced under organizational overrides vs.
+    /// stock priors. Substituting the override priors into the
+    /// decoder's prior-table lookup is the next-PR step.
+    #[cfg(feature = "corpus-override")]
+    pub fn with_corpus_override(
+        mut self,
+        override_data: std::sync::Arc<marque_config::corpus_override::CorpusOverride>,
+    ) -> Self {
+        self.corpus_override = Some(override_data);
+        self
+    }
+
+    /// Whether a corpus override is in effect for this engine.
+    ///
+    /// Returns `false` unconditionally when the `corpus-override`
+    /// Cargo feature is not compiled in — the WASM and server
+    /// builds therefore cannot observe a `true` here regardless of
+    /// what any caller passes through other surfaces. Callers that
+    /// need to thread the flag into audit-record construction (see
+    /// [`build_decoder_diagnostic`]) should go through this helper
+    /// rather than poking at the field directly.
+    #[inline]
+    pub fn corpus_override_active(&self) -> bool {
+        #[cfg(feature = "corpus-override")]
+        {
+            self.corpus_override.is_some()
+        }
+        #[cfg(not(feature = "corpus-override"))]
+        {
+            false
+        }
     }
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
@@ -363,9 +424,13 @@ impl Engine {
             // gate inside `Engine::fix_inner`.
             if let Some(prov) = provenance {
                 let span = Span::new(start, end);
-                if let Some(diagnostic) =
-                    build_decoder_diagnostic(span, bytes, &prov, candidate.kind)
-                {
+                if let Some(diagnostic) = build_decoder_diagnostic(
+                    span,
+                    bytes,
+                    &prov,
+                    candidate.kind,
+                    self.corpus_override_active(),
+                ) {
                     diagnostics.push(diagnostic);
                 }
             }
@@ -773,12 +838,25 @@ impl Engine {
 ///   already captured in `recognition`.
 /// - `runner_up_ratio` and `features` thread through verbatim from the
 ///   provenance.
+/// - When `corpus_override_active` is `true`, an extra
+///   [`FeatureId::CorpusOverrideInEffect`] contribution with
+///   `delta = 0.0` is appended to `features`. The zero delta is
+///   load-bearing: PR-5 minimal scope wires the surface end-to-end
+///   without yet substituting override priors into decoder scoring,
+///   so the contribution is purely an audit-trail marker
+///   ("this fix was produced under organizational overrides")
+///   rather than an actual posterior shift. A future PR that wires
+///   override-prior substitution will replace `0.0` with the real
+///   delta and re-version the audit schema.
 fn build_decoder_diagnostic(
     span: Span,
     original_bytes: &[u8],
     provenance: &DecoderProvenance,
     _kind: marque_ism::MarkingType,
+    corpus_override_active: bool,
 ) -> Option<Diagnostic> {
+    use marque_rules::confidence::{FeatureContribution, FeatureId};
+
     let original = std::str::from_utf8(original_bytes).ok()?;
     let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
 
@@ -788,12 +866,20 @@ fn build_decoder_diagnostic(
         return None;
     }
 
+    let mut features: Vec<FeatureContribution> = provenance.features.to_vec();
+    if corpus_override_active {
+        features.push(FeatureContribution {
+            id: FeatureId::CorpusOverrideInEffect,
+            delta: 0.0,
+        });
+    }
+
     let confidence = Confidence {
         recognition: provenance.recognition_score(),
         rule: 1.0,
         region: None,
         runner_up_ratio: provenance.runner_up_ratio,
-        features: provenance.features.to_vec(),
+        features,
     };
     let rule = RuleId::new(DECODER_RULE_ID);
     let proposal = FixProposal::new(

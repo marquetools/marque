@@ -897,6 +897,7 @@ dependencies = [
  "marque-ism",
  "marque-rules",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",
