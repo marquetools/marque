@@ -882,6 +882,37 @@ grammar template (`specs/004-constraints-decoder-vocab/research.md`
 any CONFIDENTIAL+ marking already exists, ambiguous local markings
 resolve deterministically and the decoder is not consulted.
 
+**Wiring (T1, FR-011, T045/T062, landed in PR #114).** Two
+mechanisms enforce the floor:
+
+- *Strict-evidence gate.* `DecoderRecognizer::recognize`
+  (`crates/engine/src/decoder.rs:148-159`) checks
+  `cx.strict_evidence` before any prior consultation and returns
+  `Parsed::Ambiguous { candidates: vec![] }` when set. The engine
+  drives this from the deep-scan opt-in
+  (`crates/engine/src/engine.rs:369-374`,
+  `strict_evidence: !self.deep_scan`), so by default — i.e.,
+  without `--deep-scan` — the decoder is never invoked.
+- *Per-page classification floor.* When deep-scan is active, the
+  engine accumulates the highest strict-path classification rank
+  on the current page in `classification_floor`
+  (`crates/engine/src/engine.rs:338-419`), threads it through
+  `ParseContext`, and the decoder drops any candidate below the
+  floor at `decoder.rs:251-257`. Decoder-path recognitions never
+  raise the floor — only strict-path recognitions do — so a
+  misrecognition cannot self-justify by lifting the threshold it
+  then clears. The floor resets on `MarkingType::PageBreak` per
+  Constitution VI's reset-before-parse invariant.
+
+Tests: `decoder_defers_to_strict_when_strict_evidence_is_set`
+(`crates/engine/src/decoder.rs:1320`) pins the gate;
+`unclassified_candidate_rejected_below_secret_floor`,
+`floor_at_equal_level_accepts_candidate`,
+`floor_below_candidate_accepts_higher_level`, and
+`no_floor_accepts_any_classification`
+(`crates/engine/tests/decoder_recovery.rs:167-249`) pin the
+classification-floor behavior.
+
 ### 9.4 `BatchEngine` concurrency
 
 `recoco-utils::ConcurrencyController` provides row + byte semaphores
@@ -1204,7 +1235,7 @@ possible), and a **remediation plan**. Severities:
 | 6 | ~~Server has no explicit `DefaultBodyLimit`~~ | ~~P1~~ | ~~§10.2~~ | **Resolved.** `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024`; applied via `axum::extract::DefaultBodyLimit::max(N)` in `build_app` / `build_app_with_limit`. Override at runtime via `MARQUE_MAX_BODY_BYTES` (resolved by `marque_server::resolve_body_limit`; values below 1 KiB rejected at startup with `EX_USAGE`). Tests in `crates/server/tests/http.rs` exercise both the `413` path and a `default_limit_admits_realistic_traffic` regression guard against a future drop-the-constant change |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
 | 8 | ~~`BatchEngine` `.expect()` panics on semaphore close~~ | ~~P1~~ | ~~§9.4, `batch.rs:196, 226`~~ | **Resolved.** New `BatchError::ShutdownInProgress` variant with matching `is_shutdown()` predicate; `From<tokio::sync::AcquireError>` impl maps the (only possible) error. Both `lint_many` and `fix_many` propagate the variant per-document instead of panicking. Unit tests cover `is_*` discrimination, `Display`, `Error::source`, and the `From` conversion driven through a closed `Semaphore` |
-| 9 | Strict-context floor (T1) not wired in decoder | P1 | T045, T062, FR-011 | Decoder reads `ParseContext.strict_evidence` before consulting priors for `(C)` and similar |
+| 9 | ~~Strict-context floor (T1) not wired in decoder~~ | ~~P1~~ | ~~T045, T062, FR-011~~ | **Resolved (PR #114, commit `bc57bfc`).** `DecoderRecognizer::recognize` (`crates/engine/src/decoder.rs:148-159`) reads `ParseContext.strict_evidence` before any prior consultation and returns zero-candidate `Parsed::Ambiguous` when set; the engine drives this from the deep-scan opt-in at `crates/engine/src/engine.rs:369-374`. The related FR-011 per-page classification floor accumulates strict-path classifications at `engine.rs:338-419`, threads via `ParseContext.classification_floor`, and the decoder drops sub-floor candidates at `decoder.rs:251-257`. Floor resets on `MarkingType::PageBreak` per Constitution VI. Tests pin the gate (`decoder_defers_to_strict_when_strict_evidence_is_set`) and the floor (`unclassified_candidate_rejected_below_secret_floor` and three siblings in `decoder_recovery.rs`). §9.3 updated with the wiring citations |
 | 10 | ~~`Confidence::validate` panic on bad rule halts the document~~ | ~~P1~~ | ~~§6.3~~ | **Resolved.** `Engine::lint` wraps every `Rule::check` call in `std::panic::catch_unwind(AssertUnwindSafe(...))`. Caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for that candidate; sibling rules + remaining candidates keep running. `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test |
 | 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
 | 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
@@ -1252,3 +1283,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.8 | 2026-04-25 | Last P2 hygiene gap closed. Gap #15: `crates/core/tests/alloc_budget.rs` (behind `count-allocs` feature) installs a counting global allocator and gates `Scanner::scan(...)` allocation count across four cases (empty / single-banner / multi-marking / buffer-size-independence). `.github/workflows/ci.yml` `count-allocs` job runs the gate under `--test-threads=1` on every PR. §3.2 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 15 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.9 | 2026-04-25 | Two narrow P1 gaps closed. Gap #6: server body-size cap landed — `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 MiB`, applied via `axum::DefaultBodyLimit::max(N)` Tower layer in `build_app` / `build_app_with_limit`; runtime override via `MARQUE_MAX_BODY_BYTES` resolved by `resolve_body_limit` (rejects values below 1 KiB with `EX_USAGE`); tests cover `413` rejection on both `/v1/lint` and `/v1/fix` plus a 256 KiB realistic-traffic regression guard. §10.2 rewritten. Gap #8: `BatchEngine` `.expect()` replaced with new `BatchError::ShutdownInProgress` variant + `From<AcquireError>` impl + `is_shutdown()` predicate; both `lint_many` and `fix_many` now propagate the error per-document. §9.4 rewritten. Gap register rows 6 and 8 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.10 | 2026-04-25 | One more P1 gap closed. Gap #10: `Engine::lint` wraps every `Rule::check` in `std::panic::catch_unwind(AssertUnwindSafe(...))`; caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for the candidate without aborting the document. `Cargo.toml` `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, the real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test. §6.3 rewritten. Gap register row 10 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.11 | 2026-04-25 | Documentation drift fix — Gap #9 (P1) closed retroactively. The strict-context floor was wired by Phase 4 PR #114 (commit `bc57bfc`, T045/T062/FR-011): `DecoderRecognizer::recognize` returns zero-candidate `Parsed::Ambiguous` when `cx.strict_evidence` is set, the engine drives `strict_evidence: !self.deep_scan` per-candidate, the FR-011 per-page classification floor accumulates from strict-path recognitions only, and four tests in `crates/engine/tests/decoder_recovery.rs` plus the inline `decoder_defers_to_strict_when_strict_evidence_is_set` test pin the behavior. §9.3 expanded with the wiring citations. Gap register row 9 struck through. | Adam Poulemanos (with Claude Code) |
