@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Per-Document Deadlines on `Engine::lint` and `Engine::fix`
 
-**Status**: Draft — design decisions pending
+**Status**: Approved — Phase 1 ready to start (all design decisions resolved 2026-04-25 in PR #159 review)
 **Branch**: `feat/engine-deadlines` (proposed)
 **Closes**: #139 (P1 gap-register row 7)
 **Authority**: Whitepaper §9.7 (`docs/security/WHITEPAPER.md`), Constitution Principle I (uncompromising performance), Principle V (audit-first compliance), Principle VI (dataflow pipeline model)
@@ -52,7 +52,7 @@ This spec covers a per-document deadline parameter threaded through `Engine::lin
 4. Asymmetric timeout response (see [D3](#d3-timeout-response-shape) below): `lint` returns a truncated `LintResult` with a flag; `fix` returns `Err(EngineError::DeadlineExceeded)` so a deadline-hit during compliance-output construction cannot be silently shipped.
 5. Per-surface wiring:
    - `marque-cli`: `--deadline <duration>` flag (humantime; e.g., `--deadline 30s`); not set by default.
-   - `marque-server`: `X-Marque-Deadline` HTTP header (humantime), capped by config; per-endpoint default for cases where the header is absent.
+   - `marque-server`: `X-Marque-Deadline` HTTP header (integer milliseconds, e.g. `30000`), capped by config; per-endpoint default for cases where the header is absent.
    - `marque-wasm`: `deadline_ms` field on the JS-side options object.
    - `BatchEngine`: new `BatchOptions { per_doc_deadline: Option<Duration>, ... }` parameter on `lint_many` / `fix_many`.
 6. Test coverage: deadline-already-passed, deadline-hit-mid-document, deadline-clear (no truncation under generous deadline), per-surface wiring tests, deadline-overhead bench.
@@ -66,9 +66,9 @@ This spec covers a per-document deadline parameter threaded through `Engine::lin
 - Whole-batch deadlines that span multiple documents. Batch-level SLA is a deployment concern; per-document deadlines compose adequately.
 - Decoder-internal deadline (the deep-scan codepath). Phase D's decoder has its own K=8 bound and per-template guarantees; if a single decoder invocation exceeds the per-document deadline, the per-candidate check at the next iteration will catch it.
 
-## Design decisions (PENDING — author confirmation requested)
+## Design decisions (RESOLVED 2026-04-25)
 
-The issue (#139) calls out four design questions. This section presents each with the analysis and the spec author's recommendation. **None of these are committed until you confirm.** Implementation cannot start until each is resolved.
+The issue (#139) called out four design questions; the spec elaborated three more (Q5, Q6, Q7) during the review cycle. All seven were resolved in the PR #159 review thread (see § Open questions resolution). This section preserves the original analysis for future readers; the locked outcomes are recorded in the resolution section.
 
 ### D1 — Cooperative vs preemptive cancellation
 
@@ -205,9 +205,9 @@ The issue's surface-by-surface plan is uncontroversial; one nuance worth flaggin
 - `EngineError::DeadlineExceeded` from `fix`: exit `EX_TEMPFAIL` (75) — "transient failure, try again" — and print the partial-lint diagnostics to stderr.
 
 **`marque-server`:**
-- `X-Marque-Deadline` HTTP header on `/v1/lint` and `/v1/fix`, parsed via `humantime`. Capped by a `MARQUE_MAX_DEADLINE` env var (default 60 s) to prevent a hostile client from DoS'ing themselves over a long deadline that holds a worker thread.
+- `X-Marque-Deadline` HTTP header on `/v1/lint` and `/v1/fix`, **parsed as an unsigned-integer count of milliseconds** (e.g., `X-Marque-Deadline: 30000` for 30 s). Standard `str::parse::<u64>()` is sufficient — no `humantime` dep needed for the server. Capped by a `MARQUE_MAX_DEADLINE` env var (default 60 s = `60000`) to prevent a hostile client from DoS'ing themselves over a long deadline that holds a worker thread.
 - Per-endpoint default deadline (proposal: 30 s) when the header is absent.
-- Header value below 1 ms or above the cap returns `400 Bad Request` (consistent with the body-limit pattern in §10.2).
+- Header value below 1 ms or above the cap returns `400 Bad Request` (consistent with the body-limit pattern in §10.2). Non-integer / negative / overflow values also return `400`.
 - Truncated lint response: HTTP 200 with the truncated payload + a `Marque-Truncated: true` response header for clients that don't deserialize the full body.
 - `EngineError::DeadlineExceeded` from fix: HTTP 504 Gateway Timeout, body carries the partial-lint diagnostics.
 
@@ -351,7 +351,7 @@ The existing `InvalidThreshold` standalone struct is preserved unchanged so `Eng
 Each surface MUST plumb the deadline through to `lint_with_options` / `fix_with_options`:
 
 - **CLI**: `--deadline <humantime>` flag. `0` rejected as `EX_USAGE` (64). Truncated lint renders normally + final stderr warning. `DeadlineExceeded` from fix exits `EX_TEMPFAIL` (75) with partial diagnostics on stderr.
-- **Server**: `X-Marque-Deadline` header (humantime), capped by `MARQUE_MAX_DEADLINE` env var (default 60 s). Per-endpoint default 30 s when absent. Out-of-range header returns `400 Bad Request`. Truncated lint returns 200 with `Marque-Truncated: true` response header. `DeadlineExceeded` from fix returns 504 with partial-lint body.
+- **Server**: `X-Marque-Deadline` header (unsigned-integer milliseconds, e.g., `30000`), capped by `MARQUE_MAX_DEADLINE` env var (default 60 s). Per-endpoint default 30 s when absent. Non-integer / negative / overflow / out-of-range header returns `400 Bad Request`. Truncated lint returns 200 with `Marque-Truncated: true` response header. `DeadlineExceeded` from fix returns 504 with partial-lint body.
 - **WASM**: `deadline_ms: f64` on the JS-side options. Internal conversion to `Instant::now() + Duration::from_millis(...)`. Constitution III WASM-restriction analysis added to the WASM crate's `lib.rs` doc comment.
 - **BatchEngine**: extend the existing `BatchOptions` struct (`crates/engine/src/batch.rs:167`) with a new `per_doc_deadline: Option<Duration>` field; update `Default`. Add `BatchEngine::lint_many_with_options` / `fix_many_with_options` variants that consume the deadline. Per-doc `EngineError::DeadlineExceeded` lands as `BatchError::DocumentDeadlineExceeded { partial_lint }` with matching `is_deadline_exceeded()` predicate.
 
@@ -419,12 +419,31 @@ The implementation closes #139 when:
 7. Whitepaper §9.7, §10.2, §10.3 updated; gap row #7 struck through; Appendix C entry added.
 8. `cargo test --workspace --no-fail-fast` and `cargo clippy --workspace --all-targets -- -D warnings` clean.
 
-## Open questions for the author (please confirm before plan.md / tasks.md land)
+## Open questions resolution
 
-- **Q1**: Confirm D1 — cooperative cancellation, per-candidate + per-fix granularity. (Recommended: yes)
-- **Q2**: Confirm D2 — `LintOptions` + `FixOptions` structs, shims preserved. (Recommended: yes)
-- **Q3**: Confirm D3 — asymmetric response (truncated `LintResult` for lint, `Err(DeadlineExceeded)` for fix). Or do you want symmetric (truncated everywhere)? (Recommended: asymmetric for compliance-integrity reasons)
-- **Q4**: Confirm D4 surface defaults: server endpoint default 30 s, server cap 60 s, CLI no default. Adjust as needed.
-- **Q5**: Should `LintOptions` carry a `started_at: Option<Instant>` for downstream timing-budget composition (e.g., a server handler passing its remaining budget to the engine)? Or is that overengineering — let the caller compute `started_at + budget` themselves and pass the resulting `Instant`? (My prior: the latter; keep `LintOptions` minimal.)
-- **Q6**: Should the server `X-Marque-Deadline` header use a humantime string (`"30s"`) or an integer milliseconds (`"30000"`)? Humantime is more readable; integer is more universal. (My prior: humantime, matching the CLI for consistency.)
-- **Q7** ✅ **RESOLVED — two structs**: Confirmed by @bashandbone in PR #159 review thread (2026-04-25): "agree two structs is the right call; threshold_override has no meaningful interpretation on the lint path." `LintOptions { deadline }` and `FixOptions { deadline, threshold_override }` are the locked design.
+All seven design questions resolved in the PR #159 review thread (2026-04-25, reviewer: @bashandbone). The locked outcomes:
+
+| # | Resolution | Source |
+|---|---|---|
+| **Q1** ✅ | **Cooperative cancellation, per-candidate + per-fix granularity.** "Cooperative. Agree with sub-recommendation." | PR #159 review |
+| **Q2** ✅ | **Options struct (`LintOptions` + `FixOptions`), shims preserved.** "Options struct. Agreed." | PR #159 review |
+| **Q3** ✅ | **Asymmetric response.** Lint returns truncated `LintResult` with flag; fix returns `Err(EngineError::DeadlineExceeded { partial_lint })`. "Agreed — asymmetric." | PR #159 review |
+| **Q4** ✅ | **Surface defaults as proposed**: server endpoint default 30 s, server cap 60 s, CLI no default. "Agreed on timeouts." | PR #159 review |
+| **Q5** ✅ | **No `started_at` field — caller computes `Instant`.** Decision delegated to spec author with the question "are there security implications for a malign caller?" Threat analysis (see § Q5 threat analysis below) shows none: every call has its own `LintOptions`, `Instant` cannot be forged, self-imposed bad deadlines only DoS the caller's own request, and the server's `MARQUE_MAX_DEADLINE` cap from Q4 bounds the upper end at the server layer. The `deadline: Option<Instant>` form is strictly simpler with no security cost. | Spec author decision (PR #159 review) |
+| **Q6** ⚠️ | **Server header uses unsigned-integer milliseconds** (e.g., `X-Marque-Deadline: 30000`), not humantime. Diverges from spec author's prior. CLI keeps humantime per Q4 (different surface; humans hand-edit CLI flags, programs construct HTTP headers). "Integer milliseconds is the right fit here." | PR #159 review |
+| **Q7** ✅ | **Two-struct split** — `LintOptions { deadline }` and `FixOptions { deadline, threshold_override }`. "Agree two structs is the right call; `threshold_override` has no meaningful interpretation on the lint path." | PR #159 review |
+
+### Q5 threat analysis (recorded for future readers)
+
+Per Constitution V Principle V's audit-integrity discipline and the IC/DoD compliance context, every API surface gets a threat-model pass. For Q5's `deadline: Option<Instant>` vs `started_at: Option<Instant> + budget: Option<Duration>`:
+
+- **Per-request scope**: every `Engine::lint_with_options(.., &opts)` call constructs its own `LintOptions`. There is no cross-call shared state, so a malicious caller's options affect only their own request.
+- **`Instant` cannot be forged**: stable Rust does not expose `Instant` construction from arbitrary nanos. A caller can only pass an `Instant` they obtained from `Instant::now()` or computed via `Instant::now() + Duration`. They cannot construct an `Instant` corresponding to a wall-clock time they didn't observe.
+- **Worst-case caller behavior with `deadline: Option<Instant>`**:
+  - `Some(Instant::now() - Duration::from_secs(1))` → engine immediately returns truncated. Self-DoS, cheap to absorb.
+  - `Some(Instant::now() + Duration::from_secs(99999))` → effectively no deadline. Bounded at the server layer by `MARQUE_MAX_DEADLINE` (Q4 default 60 s).
+  - `None` → no deadline. Same as omitting the option.
+- **Worst-case caller behavior with `started_at + budget`**: same outcomes via different fields. No new attack surface; just more validation logic in the engine.
+- **Composability**: a server handler with a request deadline already has it as an `Instant` (or computes one from `Instant::now() + cap`). Passing the deadline directly is the natural form. Splitting into `started_at + budget` does not help; it just doubles validation surface.
+
+**Conclusion**: `deadline: Option<Instant>` is strictly simpler with no security cost. The `started_at` field is rejected.
