@@ -20,7 +20,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::DecoderRecognizer;
-use marque_ism::Classification;
+use marque_ism::{Classification, NonIcDissem};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -358,16 +358,14 @@ fn missing_delimiter_secret_noforn_exdis_currently_unrecovered() {
             // (the trailing run after `NOFORN ` doesn't strict-parse
             // as a separate dissem control without the `//`).
             // EXDIS is a non-IC dissem control — confirm it did NOT
-            // land in the resolved marking. If a future fix carries
-            // EXDIS through, this assertion fails and the test should
-            // be rewritten to celebrate the recovery.
-            let exdis_present = marking
-                .0
-                .non_ic_dissem
-                .iter()
-                .any(|d| format!("{d:?}").contains("Exdis"));
+            // land in the resolved marking via a direct variant check
+            // (avoids the Debug-format brittleness and per-iter
+            // allocation that the closure-with-format! shape would
+            // introduce). If a future fix carries EXDIS through, this
+            // assertion fails and the test should be rewritten to
+            // celebrate the recovery.
             assert!(
-                !exdis_present,
+                !marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis),
                 "MissingDelimiter recovery (issue #133) appears to have improved — \
                  EXDIS is now surviving in `SECRET//NOFORN EXDIS`. Update the test \
                  to assert successful recovery rather than current-state limitation. \
@@ -376,13 +374,22 @@ fn missing_delimiter_secret_noforn_exdis_currently_unrecovered() {
             );
         }
         Parsed::Ambiguous { candidates } => {
-            // Zero-candidate Ambiguous is also acceptable current-state
-            // behavior — the decoder didn't find a confident
-            // canonicalization. Pin that there's no in-flight
-            // resolution attempt that would partially survive.
+            // Zero-candidate Ambiguous is the current-state shape —
+            // the decoder doesn't find a confident canonicalization
+            // for `SECRET//NOFORN EXDIS` today (issue #133). Asserting
+            // an empty candidate set is the strict regression guard:
+            // if a future improvement starts producing non-empty
+            // ambiguous candidates here, the assertion fails and the
+            // test should be rewritten to assert the new recovery
+            // shape rather than relying on `<= K_MAX_CANDIDATES`
+            // (which is always true and would mask any partial
+            // improvement).
             assert!(
-                candidates.is_empty() || candidates.len() <= 8,
-                "MissingDelimiter is bounded by K=8 even when ambiguous"
+                candidates.is_empty(),
+                "MissingDelimiter recovery (issue #133) appears to have improved — \
+                 ambiguous candidates are now being produced for `SECRET//NOFORN EXDIS`. \
+                 Update the test to assert the new recovery behavior rather than the \
+                 current zero-candidate limitation. candidates = {candidates:?}",
             );
         }
     }
