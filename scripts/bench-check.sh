@@ -435,7 +435,10 @@ print(data['deadline_overhead']['max_ratio_pct'])
     fi
 
     if ! [[ "$max_ratio_pct" =~ ^[0-9]+$ ]]; then
-        echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a positive integer: ${max_ratio_pct}"
+        # Regex `^[0-9]+$` accepts `0` (the tightest gate — "no
+        # overhead allowed at all") plus any positive integer; reject
+        # only non-numeric / negative / signed / decimal values.
+        echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a non-negative integer: ${max_ratio_pct}"
         return 1
     fi
 

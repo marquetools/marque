@@ -937,6 +937,18 @@ impl Engine {
         // the partial buffer is intentionally discarded so no
         // partially-fixed bytes can leak to a caller.
         //
+        // Pre-apply check: catch a deadline that expired during
+        // fix collection / sort / dedup BEFORE we clone
+        // `effective_source` into `buf` (which is O(source bytes)
+        // and pointless if we're about to drop the buffer on the
+        // floor). On large inputs the clone alone can be the
+        // dominant cost; the post-lint check above doesn't cover
+        // it because the sort + dedup phase between the two adds
+        // its own latency on documents with many fixes.
+        if deadline_expired(deadline) {
+            return Err(EngineError::DeadlineExceeded { partial_lint: lint });
+        }
+
         // Only allocate the output buffer when we actually need to
         // mutate it. Dry-run returns the original source verbatim.
         let mut deadline_aborted = false;
