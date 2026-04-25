@@ -9,7 +9,7 @@
 #
 # Runs the lint_latency benchmark and compares Criterion's confidence-interval
 # upper bound against the per-bench baseline. Fails with non-zero exit if the
-# CI upper bound regresses by >10% versus baseline, or exceeds the per-bench
+# CI upper bound regresses past its threshold, or exceeds the per-bench
 # absolute target (`target_upper_ci_us` in `benches/baseline.json`).
 #
 # Then runs the linear_scaling benchmark and computes the coefficient of
@@ -18,9 +18,19 @@
 # threshold in `benches/baseline.json`.
 #
 # Three gates are checked:
-#   - `lint_10kb`                         (SC-001, target 16ms upper CI)
+#   - `lint_10kb`                         (SC-001, target 16ms upper CI; drift alert 1ms)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#
+# Per-bench regression policy:
+#   - If `drift_alert_upper_ci_us` is set in `benches/baseline.json` for a
+#     bench, that absolute value is the threshold. Always enforced (Phase 4
+#     review L6) — these are deliberately picked to be machine-portable, so
+#     the `MARQUE_BENCH_SKIP_REGRESSION=1` CI override does not apply.
+#   - Otherwise, the threshold is `upper_ci_us * 1.10` (+10% vs the reference
+#     baseline). CI sets `MARQUE_BENCH_SKIP_REGRESSION=1` to skip this gate
+#     because the WSL2 baseline doesn't reproduce on GitHub Actions runners
+#     (T086); the absolute `target_upper_ci_us` gate (16ms / 18ms) still runs.
 #
 # SC-005 unit-of-analysis note: the constitution and SC-005 spec both call
 # for "linear scaling" of the lint hot path. The existing `linear_scaling.rs`
@@ -73,7 +83,18 @@ fi
 # Reads the named bench's baseline upper_ci_us and target_upper_ci_us from
 # baseline.json, runs Criterion with a `^<name>$`-anchored filter so the
 # captured output contains exactly one `time:` line, parses it, and applies
-# both the +10% regression check and the absolute target check.
+# both a regression check and the absolute target check.
+#
+# Regression-check policy (Phase 4 review L6):
+#   - If the baseline entry carries a `drift_alert_upper_ci_us` field, that
+#     absolute value is used as the regression threshold. Use this for
+#     benches whose `upper_ci_us` is reference-machine-only and doesn't
+#     reproduce on common dev hardware (WSL2, etc.) — picking an absolute
+#     drift alert decouples regression detection from reference-machine
+#     reproducibility.
+#   - Otherwise, the legacy +10% percentage gate against `upper_ci_us`
+#     applies. Suitable for benches whose baseline is reproducible across
+#     the development hardware actually running this script.
 #
 # Each bench is run separately rather than parsing a multi-bench captured
 # output blob — Criterion's report layout is "<name>           time:   [...]"
@@ -84,7 +105,7 @@ check_one_bench() {
     local bench_name="$1"
 
     # Extract baseline upper CI bound (microseconds) and absolute target.
-    local baseline_upper_ci target_upper_ci
+    local baseline_upper_ci target_upper_ci drift_alert
     baseline_upper_ci=$(python3 -c "
 import json, sys
 with open('$BASELINE') as f:
@@ -97,6 +118,16 @@ import json, sys
 with open('$BASELINE') as f:
     data = json.load(f)
 print(data['$bench_name']['target_upper_ci_us'])
+" 2>/dev/null || echo "")
+
+    # Optional: absolute drift-alert threshold (overrides the +10% gate when
+    # present). Returns the empty string when the field is absent so the
+    # downstream branch can pick the right policy.
+    drift_alert=$(python3 -c "
+import json, sys
+with open('$BASELINE') as f:
+    data = json.load(f)
+print(data['$bench_name'].get('drift_alert_upper_ci_us', ''))
 " 2>/dev/null || echo "")
 
     if [[ -z "$baseline_upper_ci" || -z "$target_upper_ci" ]]; then
@@ -113,8 +144,16 @@ print(data['$bench_name']['target_upper_ci_us'])
         echo "bench-check: ERROR — '$bench_name' target_upper_ci_us is not a positive integer: ${target_upper_ci}"
         return 1
     fi
+    if [[ -n "$drift_alert" ]] && ! [[ "$drift_alert" =~ ^[0-9]+$ ]]; then
+        echo "bench-check: ERROR — '$bench_name' drift_alert_upper_ci_us is not a positive integer: ${drift_alert}"
+        return 1
+    fi
 
-    echo "bench-check[$bench_name]: baseline upper CI = ${baseline_upper_ci} µs, absolute target = ${target_upper_ci} µs"
+    if [[ -n "$drift_alert" ]]; then
+        echo "bench-check[$bench_name]: baseline upper CI = ${baseline_upper_ci} µs (advisory), drift alert = ${drift_alert} µs (absolute), absolute target = ${target_upper_ci} µs"
+    else
+        echo "bench-check[$bench_name]: baseline upper CI = ${baseline_upper_ci} µs, absolute target = ${target_upper_ci} µs"
+    fi
     echo "bench-check[$bench_name]: running benchmark..."
 
     # Anchored filter so the bench harness runs exactly this one bench. With a
@@ -174,17 +213,37 @@ else:
     fi
     echo "bench-check[$bench_name]: measured upper CI = ${current_us} µs"
 
-    # +10% regression threshold vs baseline. Round up (math.ceil) so a fractional
-    # µs in the baseline can never silently pass a regression.
-    local threshold
-    threshold=$(python3 -c "import math; print(math.ceil($baseline_upper_ci * 1.10))")
-
-    if [[ "$SKIP_REGRESSION" == "1" ]]; then
-        echo "bench-check[$bench_name]: skipping +10% baseline check (MARQUE_BENCH_SKIP_REGRESSION=1); absolute target still enforced"
+    # Regression threshold has three modes:
+    #   1. `drift_alert_upper_ci_us` present → that absolute value is the
+    #      threshold. Always enforced — the field is deliberately picked
+    #      to be machine-portable (Phase 4 review L6), so the
+    #      MARQUE_BENCH_SKIP_REGRESSION=1 CI override does not apply here.
+    #   2. No drift alert + `MARQUE_BENCH_SKIP_REGRESSION=1` → skip the
+    #      regression check (T086); only the absolute `target_upper_ci_us`
+    #      gate runs.
+    #   3. Otherwise → +10% gate against `upper_ci_us`. Round up (math.ceil)
+    #      so a fractional µs in the baseline can never silently pass.
+    local threshold threshold_label regression_mode
+    if [[ -n "$drift_alert" ]]; then
+        threshold="$drift_alert"
+        threshold_label="drift alert (absolute)"
+        regression_mode="enforce"
+    elif [[ "$SKIP_REGRESSION" == "1" ]]; then
+        threshold=""
+        threshold_label="baseline + 10% (skipped via MARQUE_BENCH_SKIP_REGRESSION=1)"
+        regression_mode="skip"
     else
-        echo "bench-check[$bench_name]: regression threshold (baseline + 10%) = ${threshold} µs"
+        threshold=$(python3 -c "import math; print(math.ceil($baseline_upper_ci * 1.10))")
+        threshold_label="baseline + 10%"
+        regression_mode="enforce"
+    fi
+
+    if [[ "$regression_mode" == "skip" ]]; then
+        echo "bench-check[$bench_name]: skipping ${threshold_label}; absolute target still enforced"
+    else
+        echo "bench-check[$bench_name]: regression threshold (${threshold_label}) = ${threshold} µs"
         if [[ "$current_us" -gt "$threshold" ]]; then
-            echo "bench-check[$bench_name]: FAIL — regressed: ${current_us} µs > ${threshold} µs (baseline: ${baseline_upper_ci} µs)"
+            echo "bench-check[$bench_name]: FAIL — regressed: ${current_us} µs > ${threshold} µs (${threshold_label}; baseline: ${baseline_upper_ci} µs)"
             return 1
         fi
     fi
@@ -194,10 +253,10 @@ else:
         return 1
     fi
 
-    if [[ "$SKIP_REGRESSION" == "1" ]]; then
+    if [[ "$regression_mode" == "skip" ]]; then
         echo "bench-check[$bench_name]: PASS — ${current_us} µs under ${target_upper_ci} µs absolute target (regression check skipped)"
     else
-        echo "bench-check[$bench_name]: PASS — ${current_us} µs <= ${threshold} µs (baseline + 10%), well under ${target_upper_ci} µs target"
+        echo "bench-check[$bench_name]: PASS — ${current_us} µs <= ${threshold} µs (${threshold_label}), well under ${target_upper_ci} µs target"
     fi
     return 0
 }
