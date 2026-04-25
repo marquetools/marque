@@ -211,7 +211,8 @@ fn noforn_banner_form_round_trip_resolves() {
         )
     });
     assert_eq!(
-        entry.cve_file.const_name, CVE_DISSEM.const_name,
+        entry.cve_file.const_name,
+        CVE_DISSEM.const_name,
         "NF must trace to CVE_DISSEM, got {actual:?}",
         actual = entry.cve_file.const_name
     );
