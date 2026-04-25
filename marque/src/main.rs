@@ -160,6 +160,21 @@ struct CommonOptions {
     /// non-trivial `Confidence` record (FR-011 / T064).
     #[arg(long)]
     deep_scan: bool,
+
+    /// Install a corpus override (JSON) for the decoder. Available only
+    /// when this build of marque was compiled with the `corpus-override`
+    /// Cargo feature — the WASM target does not declare the feature
+    /// (Constitution III + T067) and `marque-server` rejects override
+    /// input on every channel (T066), so the flag is CLI-only by
+    /// construction. Phase 4 PR-5 minimal scope: every decoder fix
+    /// produced under override is stamped with
+    /// `CorpusOverrideInEffect` in its audit record. Override priors
+    /// do not yet substitute into decoder scoring; that is the next-PR
+    /// step. Requires `--deep-scan` (the override has no effect when
+    /// the decoder is not firing).
+    #[cfg(feature = "corpus-override")]
+    #[arg(long, value_name = "PATH")]
+    corpus_override: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -263,6 +278,51 @@ fn load_config(
     }
 }
 
+/// Load and install a `--corpus-override` payload onto `engine`.
+///
+/// PR-5 minimal scope (T065/T069): when the feature is compiled in
+/// AND `common.corpus_override` is `Some(_)`, parse the JSON via
+/// `marque_config::corpus_override::load_corpus_override` and call
+/// `engine.with_corpus_override(...)`. Returns `EX_USAGE` if the
+/// override flag was set without `--deep-scan` (the override would
+/// have no observable effect — decoder never fires — and silently
+/// no-op would be a footgun). Returns `EX_DATAERR` / `EX_IOERR` on
+/// parse / IO errors.
+///
+/// Without the `corpus-override` feature this function is a no-op
+/// passthrough.
+#[cfg_attr(not(feature = "corpus-override"), allow(unused_variables))]
+fn install_corpus_override(
+    engine: marque_engine::Engine,
+    common: &CommonOptions,
+) -> Result<marque_engine::Engine, i32> {
+    #[cfg(feature = "corpus-override")]
+    {
+        let Some(path) = common.corpus_override.as_ref() else {
+            return Ok(engine);
+        };
+        if !common.deep_scan {
+            eprintln!(
+                "error: --corpus-override requires --deep-scan (override has \
+                 no effect when the decoder is not firing)"
+            );
+            return Err(EX_USAGE);
+        }
+        let parsed = match marque_config::corpus_override::load_corpus_override(path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return Err(e.exit_code());
+            }
+        };
+        Ok(engine.with_corpus_override(std::sync::Arc::new(parsed)))
+    }
+    #[cfg(not(feature = "corpus-override"))]
+    {
+        Ok(engine)
+    }
+}
+
 /// Validate `--confidence-threshold` early per `contracts/cli.md` §"Hard-fail
 /// at config load" item 3: outside `[0.0, 1.0]` → `65 EX_DATAERR`.
 fn validate_threshold(common: &CommonOptions) -> Result<(), i32> {
@@ -320,6 +380,12 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         engine.with_deep_scan()
     } else {
         engine
+    };
+    // Phase 4 PR-5 — install CLI-supplied corpus override. Hard-fails
+    // if `--corpus-override` was set without `--deep-scan`.
+    let engine = match install_corpus_override(engine, &common) {
+        Ok(e) => e,
+        Err(code) => return code,
     };
     let format: render::Format = common
         .format
@@ -499,6 +565,12 @@ fn run_fix(
         engine.with_deep_scan()
     } else {
         engine
+    };
+    // Phase 4 PR-5 — install CLI-supplied corpus override. Hard-fails
+    // if `--corpus-override` was set without `--deep-scan`.
+    let engine = match install_corpus_override(engine, &common) {
+        Ok(e) => e,
+        Err(code) => return code,
     };
 
     let engine_mode = if dry_run {

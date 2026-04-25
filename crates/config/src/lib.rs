@@ -22,6 +22,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use thiserror::Error;
 
+#[cfg(feature = "corpus-override")]
+pub mod corpus_override;
+
 /// Exit code 65 (`EX_DATAERR`) per `contracts/cli.md`.
 pub const EX_DATAERR: i32 = 65;
 
@@ -71,6 +74,35 @@ pub enum ConfigError {
          \"off\", \"info\", \"warn\", \"error\", \"fix\""
     )]
     UnknownSeverity { rule: String, value: String },
+
+    /// Corpus-override file did not parse as JSON, or violated the
+    /// `deny_unknown_fields` contract on any wire-format struct.
+    #[error("failed to parse corpus override {path}: {reason}")]
+    CorpusOverrideParse { path: PathBuf, reason: String },
+
+    /// Corpus-override file's `schema_version` is not the value
+    /// supported by this build of marque.
+    #[error(
+        "corpus override {path} has schema_version {file_version:?} but this build of marque \
+         supports {expected:?}"
+    )]
+    CorpusOverrideSchemaMismatch {
+        path: PathBuf,
+        file_version: String,
+        expected: &'static str,
+    },
+
+    /// Corpus-override file contained a value that failed range /
+    /// finiteness validation. `section` and `key` localize the
+    /// violation so an operator can find and correct the offending
+    /// entry without grepping the whole file.
+    #[error("corpus override {path}: invalid {section}.{key}: {reason}")]
+    CorpusOverrideInvalidValue {
+        path: PathBuf,
+        section: &'static str,
+        key: String,
+        reason: &'static str,
+    },
 }
 
 impl ConfigError {
@@ -84,6 +116,9 @@ impl ConfigError {
             Self::ThresholdOutOfRange { .. } => EX_DATAERR,
             Self::InvalidEnvVar { .. } => EX_DATAERR,
             Self::UnknownSeverity { .. } => EX_DATAERR,
+            Self::CorpusOverrideParse { .. } => EX_DATAERR,
+            Self::CorpusOverrideSchemaMismatch { .. } => EX_DATAERR,
+            Self::CorpusOverrideInvalidValue { .. } => EX_DATAERR,
         }
     }
 }

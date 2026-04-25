@@ -24,6 +24,12 @@ workspace = true
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 serde = { workspace = true }
+# Parsing the corpus-override JSON file (T065). Unconditional — toml is
+# already pulled in for the project config, and serde_json is small
+# enough that the conditional dependency machinery (`optional + feature
+# enables = ["dep:..."]`) buys nothing here. The corpus_override module
+# is still cfg-gated; this dep just makes it cheap to add.
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 
