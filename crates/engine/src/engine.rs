@@ -22,6 +22,7 @@ use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 /// Synthetic rule identifier the engine attaches to decoder-path
@@ -485,7 +486,45 @@ impl Engine {
                         continue;
                     }
 
-                    let mut diags = rule.check(&attrs, &ctx);
+                    // Whitepaper §6.3 / gap register #10: a buggy rule
+                    // that constructs an out-of-range `Confidence`
+                    // panics inside `FixProposal::new`. Without this
+                    // wrapper, that panic propagates out of `lint()`
+                    // and aborts the entire document — turning one
+                    // rule's defect into a service outage. Catch the
+                    // unwind, log a warning naming the rule, and
+                    // skip it. Other rules and other candidates keep
+                    // running.
+                    //
+                    // `AssertUnwindSafe` is sound here because every
+                    // captured value is either an immutable borrow
+                    // (`&attrs`, `&ctx`) or a `Send + Sync` reference
+                    // (`rule`, which is `Box<dyn Rule>` and
+                    // `Rule: Send + Sync`). The diagnostics we'd
+                    // otherwise have appended on success aren't
+                    // captured — they're built fresh inside the
+                    // closure.
+                    //
+                    // Requires `panic = "unwind"` in the release
+                    // profile (`Cargo.toml`). With `panic = "abort"`
+                    // the panic terminates the process before this
+                    // catch can fire.
+                    let rule_id = rule.id();
+                    let catch_result =
+                        std::panic::catch_unwind(AssertUnwindSafe(|| rule.check(&attrs, &ctx)));
+                    let mut diags = match catch_result {
+                        Ok(d) => d,
+                        Err(payload) => {
+                            let msg = panic_payload_to_string(&payload);
+                            tracing::warn!(
+                                target: "marque_engine::rule_panic",
+                                rule = rule_id.as_str(),
+                                error = %msg,
+                                "rule check panicked; skipping this rule for the current candidate"
+                            );
+                            Vec::new()
+                        }
+                    };
                     // Apply configured severity override.
                     for d in &mut diags {
                         d.severity = configured_severity;
@@ -997,6 +1036,27 @@ fn canonicalize_rule_overrides(
 /// Returns `None` when no candidate is close enough to be useful —
 /// "did you mean 'REL-TO-noforn-supersession'?" for a user who typed
 /// "E999" would be worse than no suggestion at all.
+/// Best-effort string extraction from a `catch_unwind` payload.
+///
+/// Rust panic payloads are `Box<dyn Any + Send>`. The standard
+/// shapes a `panic!()` produces are `&'static str` (literal message)
+/// and `String` (formatted message); arbitrary types are also
+/// permissible. We try the two common cases and fall back to a
+/// generic placeholder so the warning we emit always carries
+/// *something* identifying the rule even if a future crate panics
+/// with a custom payload type.
+fn panic_payload_to_string(
+    payload: &Box<dyn std::any::Any + Send + 'static>,
+) -> std::borrow::Cow<'static, str> {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        std::borrow::Cow::Borrowed(*s)
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        std::borrow::Cow::Owned(s.clone())
+    } else {
+        std::borrow::Cow::Borrowed("<unstringifiable panic payload>")
+    }
+}
+
 fn suggest_closest<'a, I>(needle: &str, candidates: I) -> Option<String>
 where
     I: Iterator<Item = &'a str>,
