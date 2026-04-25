@@ -815,9 +815,6 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
     if class_segments.is_empty() {
         return None;
     }
-    if class_segments.len() + dissem_segments.len() + other_segments.len() == 0 {
-        return None;
-    }
 
     // Already-canonical check: if the classification segment is the
     // first non-empty segment, no reorder is needed.
