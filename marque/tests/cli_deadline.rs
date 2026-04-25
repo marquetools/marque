@@ -61,7 +61,7 @@ fn cli_deadline_zero_seconds_exits_with_ex_usage() {
 }
 
 #[test]
-fn cli_deadline_unparseable_exits_with_ex_usage() {
+fn cli_deadline_unparsable_exits_with_ex_usage() {
     // Garbage input → humantime returns Err → EX_USAGE.
     marque()
         .args(["check", "--deadline", "not-a-duration"])
