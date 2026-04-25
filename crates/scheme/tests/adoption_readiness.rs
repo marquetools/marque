@@ -331,9 +331,22 @@ impl Codec<StubScheme> for StubCodec {
             // Schema-mismatch is one of the three published variants;
             // exercising it here keeps the readiness compile test
             // honest about the full surface.
+            //
+            // **G13 (per `CodecError` type-level docs):** `observed`
+            // MUST NOT contain any substring of the input. A real
+            // codec reads the schema-version identifier from a
+            // known-safe location in the decoded structure (a
+            // `version=` attribute, a `<schema>` element, etc.) and
+            // populates `observed` from THAT — not from raw input
+            // bytes via `String::from_utf8_lossy(bytes)`. The stub
+            // has no such structure to read from, so the placeholder
+            // `"<unknown>"` stands in for "couldn't determine which
+            // schema the input claimed". Phase F adopters who copy
+            // this stub MUST replace this branch with a real
+            // schema-version extractor before shipping.
             Err(CodecError::SchemaMismatch {
                 expected: "stub-1",
-                observed: String::from_utf8_lossy(bytes).into_owned(),
+                observed: String::from("<unknown>"),
             })
         }
     }
