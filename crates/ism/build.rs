@@ -797,29 +797,31 @@ pub struct MigrationEntry {
 pub static MIGRATIONS: &[MigrationEntry] = &[
     // X-shorthand date marking patterns (FR-004a, research R-3).
     //
-    // CAPCO-2016 §E.6 "Retired or Invalid Declassify On Values" (line
-    // 689 heading). Lines 711-714 enumerate retired exemption forms
-    // including "25X1 - human" (retired by ISOO Notice 2012-02, line
-    // 664) and "25X1" through "25X9" without a required date or
-    // event. The migrations below catch specific corrupt/truncated
-    // forms (trailing hyphen, no suffix) that can appear in real
-    // documents and rewrite them to canonical forms. E007
-    // `XShorthandDateRule` handles the broader pattern-based cases.
+    // CAPCO-2016 §E.6 "Retired or Invalid Declassify On Values"
+    // (pp. 33-34) enumerates retired exemption forms including
+    // "25X1 - human" (retired by ISOO Notice 2012-02; the "50X1 - HUM"
+    // replacement is called out in §E.6 p33) and "25X1" through "25X9"
+    // without a required date or event (also §E.6 p33). The migrations
+    // below catch specific corrupt/truncated forms (trailing hyphen,
+    // no suffix) that can appear in real documents and rewrite them
+    // to canonical forms. E007 `XShorthandDateRule` handles the
+    // broader pattern-based cases.
     MigrationEntry {
         deprecated: "25X1-",
         replacement: "25X1",
         confidence: 0.97,
-        reference: "CAPCO-2016 §E.6 line 689",
+        reference: "CAPCO-2016 §E.6 p33",
     },
     MigrationEntry {
         deprecated: "50X1-",
         replacement: "50X1-HUM",
         confidence: 0.95,
-        // §E.6 line 664: "Per ISOO Notice 2012-02, '25X1 - human' is
-        // no longer authorized; '50X1 - HUM' replaces it." The
-        // trailing-hyphen form `50X1-` is canonicalized to the
-        // full replacement form.
-        reference: "CAPCO-2016 §E.6 line 664",
+        // §E.6 p33: "The derivative classifier must not carry forward
+        // the 25X1-human declassification instruction from the source
+        // document; but instead, derivative classifiers should use the
+        // '50X1 - HUM' marking." The trailing-hyphen form `50X1-` is
+        // canonicalized to the full replacement form.
+        reference: "CAPCO-2016 §E.6 p33",
     },
 ];
 

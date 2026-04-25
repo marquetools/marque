@@ -477,8 +477,10 @@ impl CapcoScheme {
         vec![
             // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
             // Line Roll-Up) Rule #2 specifies that NOFORN supersedes
-            // REL TO at banner scope; the H.8 NOFORN entry line 9488
-            // back-references this table.
+            // REL TO at banner scope; the §H.8 NOFORN entry (p145)
+            // back-references this table via "Refer to Section D.2.,
+            // Table 3 FD&R Markings Precedence Rules for Banner Line
+            // Roll-Up for guidance" in its Precedence Rules section.
             PageRewrite::declarative(
                 "capco/noforn-clears-rel-to",
                 "CAPCO-2016 §D.2 Table 3 + §H.8 p145",
@@ -493,10 +495,12 @@ impl CapcoScheme {
                 NF_WRITES,
             ),
             // JOINT-promotion: JOINT countries promote into REL TO.
-            // §H.3 line 4025-4026 establishes the JOINT [LIST]
-            // membership rule; lines 4192-4200 describe the
-            // banner-line construction (REL TO including all common
-            // non-US trigraphs from JOINT portions).
+            // §H.3 p55 establishes the JOINT [LIST] membership rule
+            // ("USA is always included in the JOINT marking [LIST]");
+            // §H.3 p57 (Notes / Derivative Use) describes the
+            // banner-line construction: "REL TO, including all common
+            // non-US country trigraph/tetragraph codes identified in
+            // the JOINT portions, unless a portion is marked NOFORN".
             //
             // The trigger is a `Custom` `never_fires` predicate for
             // Phase 3 — runtime dispatch stays with [`PageContext`],
@@ -508,7 +512,7 @@ impl CapcoScheme {
             // a real presence predicate and supplies a real transform.
             PageRewrite::custom(
                 "capco/joint-promotion",
-                "CAPCO-2016 §H.3 p57 lines 4192-4200",
+                "CAPCO-2016 §H.3 p57",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Promote {
                     from: CAT_JOINT_CLASSIFICATION,
@@ -519,15 +523,18 @@ impl CapcoScheme {
                 JP_WRITES,
             ),
             // FGI-absorption: FGI tokens roll up from portions into
-            // the banner-level FGI category. §H.7 lines 8240-8252
-            // describe FGI banner-line composition: "Used as a content
-            // indicator... Use FGI + ... trigraph country code(s) ...
-            // in the banner line." Self-read / self-write — the
-            // scheduler sees the intra-category dataflow. Trigger is
-            // `never_fires` for the same reason as joint-promotion.
+            // the banner-level FGI category. §H.7 p124 (Precedence
+            // Rules for Banner Line Guidance) describes FGI banner-
+            // line composition: "Used as a content indicator to denote
+            // the presence of foreign government material in a US
+            // product.... Use FGI + Register, Annex B trigraph
+            // country code(s) ... in the banner line". Self-read /
+            // self-write — the scheduler sees the intra-category
+            // dataflow. Trigger is `never_fires` for the same reason
+            // as joint-promotion.
             PageRewrite::custom(
                 "capco/fgi-absorption",
-                "CAPCO-2016 §H.7 p123 lines 8240-8252",
+                "CAPCO-2016 §H.7 p124",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Promote {
                     from: CAT_FGI_MARKER,
@@ -791,15 +798,16 @@ impl CapcoScheme {
                 name: "E012/dual-classification",
                 label: "CAPCO-2016 §H.3 p55",
             },
-            // ---- E014: JOINT requires REL TO coverage (§H.3 p56) -
+            // ---- E014: JOINT requires REL TO coverage (§H.3 p57) -
             //
-            // §H.3 line 4139: "Requires REL TO USA, LIST". Every
-            // JOINT participant MUST also appear in the marking's
-            // REL TO list. Custom (not Requires) because the check
-            // is iterative across all JOINT countries.
+            // §H.3 p57 (Relationship(s) to Other Markings): "Requires
+            // REL TO USA, LIST". Every JOINT participant MUST also
+            // appear in the marking's REL TO list. Custom (not
+            // Requires) because the check is iterative across all
+            // JOINT countries.
             Constraint::Custom {
                 name: "E014/joint-requires-rel-to-coverage",
-                label: "CAPCO-2016 §H.3 p56",
+                label: "CAPCO-2016 §H.3 p57",
             },
             // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
             //
@@ -817,25 +825,25 @@ impl CapcoScheme {
                 right: TokenRef::AnyInCategory(CAT_DISSEM),
                 label: "CAPCO-2016 §H.7 + §B.3.d",
             },
-            // ---- E016: JOINT conflicts RESTRICTED (§H.3 p55) -----
+            // ---- E016: JOINT conflicts RESTRICTED (§H.3 p56) -----
             //
-            // §H.3 line 4125-4127: "May not be used with
-            // RESTRICTED. (Note: the US is always a JOINT marking
-            // owner/producer; and RESTRICTED is not an authorized
-            // US classification marking.)"
+            // §H.3 p56 (Relationship(s) to Other Markings): "May not
+            // be used with RESTRICTED. (Note: the US is always a
+            // JOINT marking owner/producer; and RESTRICTED is not an
+            // authorized US classification marking.)"
             Constraint::Conflicts {
                 name: "E016/joint-conflicts-restricted",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_RESTRICTED),
-                label: "CAPCO-2016 §H.3 p55",
+                label: "CAPCO-2016 §H.3 p56",
             },
             // ---- E036: JOINT conflicts HCS markings (§H.3 p57) ---
             //
-            // §H.3 line 4146: "May not be used with the HCS markings
-            // or NOFORN markings." Line 4140 reinforces: JOINT may
-            // use "SCI (excluding HCS markings), SAP, AEA, FGI, IC
-            // and Non-IC dissemination control markings (excluding
-            // NOFORN)".
+            // §H.3 p57 (Relationship(s) to Other Markings): "May not
+            // be used with the HCS markings or NOFORN markings."
+            // Same page reinforces: JOINT may use "SCI (excluding HCS
+            // markings), SAP, AEA, FGI, IC and Non-IC dissemination
+            // control markings (excluding NOFORN)".
             //
             // The JOINT-NOFORN exclusion is already caught indirectly
             // by `capco/noforn-conflicts-rel-to` + E014's REL TO
@@ -847,14 +855,14 @@ impl CapcoScheme {
             // Supersedes the retired E017/E018/E019 which over-
             // restricted JOINT against FGI content markers, arbitrary
             // IC dissem, and non-IC dissem respectively. Those rules
-            // forbade combinations §H.3 line 4140 explicitly permits.
+            // forbade combinations §H.3 p57 explicitly permits.
             // See T035b retirement commit and project memory
             // `feedback_audit_predicates_against_source.md`.
             Constraint::Conflicts {
                 name: "E036/joint-conflicts-hcs",
                 left: TokenRef::Token(TOK_JOINT),
                 right: TokenRef::Token(TOK_HCS),
-                label: "CAPCO-2016 §H.3 p57 line 4146",
+                label: "CAPCO-2016 §H.3 p57",
             },
             // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
             //
@@ -949,10 +957,12 @@ impl CapcoScheme {
             },
             // ---- E037: NODIS ⊥ EXDIS (§H.9 p172 + p174) ----------
             //
-            // §H.9 EXDIS entry line 4235 and NODIS entry line 4295
-            // both state the same mutual-exclusion invariant: NODIS
-            // and EXDIS MUST NOT coexist on the same information.
-            // A portion (or banner) carrying both is malformed.
+            // §H.9 EXDIS entry (p172) and NODIS entry (p174) both
+            // state the same mutual-exclusion invariant: NODIS and
+            // EXDIS MUST NOT coexist on the same information ("EXDIS
+            // and NODIS markings cannot be used together" / "NODIS
+            // and EXDIS markings cannot be used together"). A portion
+            // (or banner) carrying both is malformed.
             //
             // Modeled as a dyadic `Conflicts` constraint — the
             // symmetric shape fits built-in Conflicts exactly, no
@@ -961,14 +971,14 @@ impl CapcoScheme {
                 name: "E037/nodis-conflicts-exdis",
                 left: TokenRef::Token(TOK_NODIS),
                 right: TokenRef::Token(TOK_EXDIS),
-                label: "CAPCO-2016 §H.9 p172 line 4235 + p174 line 4295",
+                label: "CAPCO-2016 §H.9 p172 + p174",
             },
             // ---- E038: NODIS / EXDIS require NOFORN (§H.9) -------
             //
-            // §H.9 EXDIS entry line 4236: "May be used only with
-            // NOFORN information." NODIS entry line 4296: same.
-            // A marking carrying NODIS or EXDIS without NOFORN is a
-            // violation of both template entries.
+            // §H.9 EXDIS entry (p172) and NODIS entry (p174) both
+            // state "Requires NOFORN" in their Relationship(s) to
+            // Other Markings. A marking carrying NODIS or EXDIS
+            // without NOFORN is a violation of both template entries.
             //
             // Custom (not two separate `Requires` constraints)
             // because the rule emits a SINGLE diagnostic ID — E038 —
@@ -980,7 +990,7 @@ impl CapcoScheme {
             // single Custom predicate keeps the wrapper trivial.
             Constraint::Custom {
                 name: "E038/nodis-or-exdis-requires-noforn",
-                label: "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
+                label: "CAPCO-2016 §H.9 p172 + p174",
             },
         ]
     }
@@ -1072,10 +1082,10 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
-            // "HCS markings" is plural in CAPCO §H.3 line 4146 — it
-            // covers the bare `HCS` token AND the compound forms
-            // `HCS-O` / `HCS-P` / `HCS-O-P`. CVE-projection variants
-            // `Hcs`, `HcsO`, `HcsP` are all matched explicitly; the
+            // "HCS markings" is plural in CAPCO §H.3 p57 — it covers
+            // the bare `HCS` token AND the compound forms `HCS-O` /
+            // `HCS-P` / `HCS-O-P`. CVE-projection variants `Hcs`,
+            // `HcsO`, `HcsP` are all matched explicitly; the
             // structural path via `sci_markings` covers any compound
             // anchored on `SciControlBare::Hcs` regardless of the
             // specific compartments attached.
@@ -1108,8 +1118,8 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
             // `TokenId` constant.
             TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
             // T035c-21 PR-A: NODIS / EXDIS live in `non_ic_dissem`.
-            // Both are DoS non-IC dissem controls per §H.9 (NODIS p174
-            // line 4271; EXDIS p172 line 4211).
+            // Both are DoS non-IC dissem controls per §H.9 (NODIS p174;
+            // EXDIS p172).
             TOK_NODIS => attrs
                 .non_ic_dissem
                 .iter()
@@ -1485,7 +1495,7 @@ fn e012_dual_classification(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
 }
 
 /// E014 — every JOINT participant must appear in the marking's REL TO list.
-/// CAPCO §H.3 line 4139.
+/// CAPCO §H.3 p57 ("Requires REL TO USA, LIST" relationship statement).
 fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
@@ -1506,7 +1516,7 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
             "JOINT participants [{}] must appear in REL TO list",
             missing.join(", ")
         ),
-        citation: "CAPCO-2016 §H.3 p56",
+        citation: "CAPCO-2016 §H.3 p57",
     }]
 }
 
@@ -1542,10 +1552,10 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
     }]
 }
 
-/// E038 — NODIS / EXDIS require NOFORN. CAPCO-2016 §H.9 p172 line 4236
-/// (EXDIS: "May be used only with NOFORN information") and p174 line
-/// 4296 (NODIS: same). Emits a single ConstraintViolation when the
-/// marking carries NODIS or EXDIS without NOFORN present.
+/// E038 — NODIS / EXDIS require NOFORN. CAPCO-2016 §H.9 p172
+/// (EXDIS: "Requires NOFORN") and p174 (NODIS: "Requires NOFORN").
+/// Emits a single ConstraintViolation when the marking carries NODIS
+/// or EXDIS without NOFORN present.
 fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
         matches!(
@@ -1566,7 +1576,7 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Con
     vec![ConstraintViolation {
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
         message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
-        citation: "CAPCO-2016 §H.9 p172 line 4236 + p174 line 4296",
+        citation: "CAPCO-2016 §H.9 p172 + p174",
     }]
 }
 

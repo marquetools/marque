@@ -47,9 +47,12 @@ fn rule_count_reflects_registration_changes() {
     // wrappers. Count stayed at 39.
     //
     // T035b: retired 3 over-restrictive JOINT rules (E017, E018,
-    // E019) that contradicted CAPCO-2016 §H.3 p169; added 1
-    // narrowed rule (E036 joint-conflicts-hcs) matching §H.3 p169.
-    // Net: 39 - 3 + 1 = 37.
+    // E019) that contradicted CAPCO-2016 §H.3 p57 (Relationship(s)
+    // to Other Markings, which permits SCI/SAP/AEA/FGI/IC/Non-IC
+    // dissem with JOINT "as appropriate"); added 1 narrowed rule
+    // (E036 joint-conflicts-hcs) matching §H.3 p57's only specific
+    // exclusion ("May not be used with the HCS markings or NOFORN
+    // markings"). Net: 39 - 3 + 1 = 37.
     //
     // T035c-1b: added S001 (prefer-banner-abbreviation, style). Net: 38.
     //

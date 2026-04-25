@@ -840,10 +840,12 @@ fn scheme_declares_phase3_rewrites() {
 
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
-    // sections). All three updated to §A-H normative cites.
+    // sections; T089 retired the line-number form per project memory
+    // `feedback_citations_use_page_numbers.md`). All three updated to
+    // §A-H normative cites with page-only references.
     assert_eq!(rewrites[0].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
-    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.3 p57 lines 4192-4200");
-    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p123 lines 8240-8252");
+    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p124");
 }
 
 #[test]
