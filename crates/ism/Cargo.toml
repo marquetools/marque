@@ -25,6 +25,11 @@ include = [
   "README.md",
   "build.rs",
   "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
+  # NTK files included alongside ISM so build.rs sees the same JSON set
+  # at crates.io as in the repo (build.rs reads every `*.json` under
+  # CVE_ISM/ — a narrower include glob would silently drop NTK metadata
+  # from the generated vocabulary tables in published builds).
+  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json",
   "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
   "src/**/*.rs",
 ]
@@ -48,6 +53,7 @@ xmloxide = { workspace = true }
 anyhow = { workspace = true }
 memchr = { workspace = true }
 quick-xml = { workspace = true }
+serde_json = { workspace = true }
 toml = { workspace = true }
 
 [features]
