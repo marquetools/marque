@@ -299,11 +299,14 @@ jobs:
 
   # Constitution Principle I + SC-001 / SC-002 / SC-005 — performance
   # regression gates. Runs `scripts/bench-check.sh`, which executes:
-  #   - `lint_10kb` (SC-001 strict-path p95 ≤ 16ms upper CI)
-  #   - `decoder_10kb_one_mangled_region` (SC-002 decoder-path p95 ≤ 18ms upper CI)
+  #   - `lint_10kb` (SC-001 strict-path: Criterion mean-runtime upper CI ≤ 16ms)
+  #   - `decoder_10kb_one_mangled_region` (SC-002 decoder-path: Criterion mean-runtime upper CI ≤ 18ms)
   #   - `lint_scaling` (SC-005 linear-scaling R² ≥ 0.9 across input-size sweep)
-  # All thresholds live in `benches/baseline.json` and are checked against
-  # Criterion's reported `time:` lines.
+  # The constitution wording uses "p95"; the bench harness implements that
+  # commitment as a confidence-interval upper bound around the mean, which
+  # is what Criterion's `time: [lower mean upper]` triple measures (a CI of
+  # the mean, not a sample percentile). All thresholds live in
+  # `benches/baseline.json`.
   #
   # Decoupled from `count-allocs` for the same reason that job is decoupled
   # from `test`: a routine bench-noise blip should not be conflated with a

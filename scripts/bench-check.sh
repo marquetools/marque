@@ -107,8 +107,20 @@ print(data['$bench_name']['target_upper_ci_us'])
     # single bench in the captured output there is exactly one `time:` line and
     # `grep | head -1` is unambiguous. Criterion accepts the filter as a regex
     # after `--`.
+    #
+    # Capture exit status explicitly: under `set -e`, a bare command-substitution
+    # failure exits the script before the error-reporting branch runs, so a
+    # missing/broken bench would surface as a generic shell exit instead of the
+    # named bench failure. `if !` keeps the captured stderr+stdout for the
+    # diagnostic.
     local bench_output time_line
-    bench_output=$(cargo bench -p marque-engine --bench lint_latency -- "^${bench_name}\$" 2>&1)
+    if ! bench_output=$(cargo bench -p marque-engine --bench lint_latency -- "^${bench_name}\$" 2>&1); then
+        echo "bench-check[$bench_name]: ERROR — 'cargo bench' invocation failed"
+        if [[ -n "$bench_output" ]]; then
+            printf '%s\n' "$bench_output"
+        fi
+        return 1
+    fi
     time_line=$(echo "$bench_output" | grep "time:" | head -1)
 
     if [[ -z "$time_line" ]]; then
@@ -207,8 +219,16 @@ assert 0.0 < v <= 1.0, 'out of range'
     echo "bench-check[lint_scaling]: minimum R² = ${r_squared_min}"
     echo "bench-check[lint_scaling]: running benchmark..."
 
+    # Same `set -e` capture pattern as `check_one_bench` — a `cargo bench`
+    # failure under bare command substitution would exit the script silently.
     local bench_output
-    bench_output=$(cargo bench -p marque-engine --bench linear_scaling 2>&1)
+    if ! bench_output=$(cargo bench -p marque-engine --bench linear_scaling 2>&1); then
+        echo "bench-check[lint_scaling]: ERROR — 'cargo bench' invocation failed"
+        if [[ -n "$bench_output" ]]; then
+            printf '%s\n' "$bench_output"
+        fi
+        return 1
+    fi
 
     # Extract every `lint_scaling/<size>      time:   [lower mean upper]` line
     # and compute R² on (size, mean_time_µs). Sizes are byte counts emitted by
