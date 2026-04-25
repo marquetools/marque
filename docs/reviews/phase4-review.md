@@ -22,7 +22,11 @@ This is the historical review record. The four HIGH findings (H1–H4) were addr
 | H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
 | H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
 | M1 | Fixed by PR #147 — per-class regression floors added to T057 harness |
-| M7 | Fixed by `phase4-review-followups-server-refactor` — `body_has_override` parameter dropped, body-channel check extracted to `reject_if_body_carries_corpus_override` |
+| M6 | Fixed by `phase4-review-followups-policy` — `validate_log_prior` already rejected `-Inf`; rationale documented at the API and in the diagnostic |
+| M7 | Fixed by PR #151 — `body_has_override` parameter dropped, body-channel check extracted to `reject_if_body_carries_corpus_override`, both narrowed to `pub(crate)` |
+| M8 | Fixed by `phase4-review-followups-policy` — `require_probability` and `validate_floor` tightened from `[0.0, 1.0]` to `(0.0, 1.0]`; runtime priors test mirrored |
+| L5 | Fixed by `phase4-review-followups-policy` — Constitution V Principle V test-fixture carve-out added (1.2.0 → 1.3.0 amend); `__engine_promote` doc, READMEs, CLAUDE.md, and the two test call sites updated in lockstep |
+| L6 | Fixed by `phase4-review-followups-policy` — `lint_10kb` baseline gains `drift_alert_upper_ci_us: 1000`; `bench-check.sh` honors the absolute drift alert when present and falls back to the +10% gate otherwise |
 
 ## Decision (at time of review): REQUEST CHANGES
 
@@ -173,6 +177,8 @@ Error message says "not NaN, +Inf, or -Inf" but `-Inf` is a legitimate "infinite
 
 **Fix**: Decide policy. If `-Inf` should be allowed, drop the `!is_finite()` rejection and update the error string. Otherwise, document explicitly why infinite penalties are forbidden.
 
+**Resolution** — Policy: reject. `validate_log_prior` already rejects `-Inf` via `!is_finite()`; the gap was that the rationale wasn't documented anywhere, so the rejection looked accidental. Landed on branch `phase4-review-followups-policy` with a doc-block on the function explaining the three reasons `-Inf` is a footgun (regenerator emitting `log(0)` from an empty corpus bucket silently kills a candidate; `f32` log-posterior arithmetic propagates `-Inf` through downstream sums; operators wanting "very rare" can write a finite very-negative number with the same effect) and a tightened error message that points operators at the finite-very-negative alternative.
+
 ### M7 — Two-pass body-field check in server is a maintenance hazard
 
 **File**: `crates/server/src/lib.rs:352-365`
@@ -192,6 +198,8 @@ Error message says "not NaN, +Inf, or -Inf" but `-Inf` is a legitimate "infinite
 `require_probability` accepts `0.0`. For `strict_context_priors` (probabilities, not log-priors), a regenerator emitting `0.0` would silently produce a permissive floor that never rejects any candidate, defeating FR-011 semantics.
 
 **Fix**: Add `v > 0.0` check specifically for `strict_context_priors` rows, or document why `0.0` is intentionally allowed.
+
+**Resolution** — Policy: reject `0.0`. Operators wanting "very permissive" can write `0.01` (or any finite small positive) with the same practical effect on candidate ranking. Landed on branch `phase4-review-followups-policy`. Three changes in lockstep: (1) `crates/capco/build.rs::require_probability` tightened from `[0.0, 1.0]` to `(0.0, 1.0]` with a doc block explaining the silent-no-op footgun; (2) `crates/config/src/corpus_override.rs::validate_floor` mirrors the same change for the runtime override path; (3) `crates/capco/src/priors.rs::strict_context_floors_are_valid_probabilities` test asserts the same range so a regenerator emitting `0.0` would fail at runtime even if the build-time gate were somehow bypassed. Current `priors.json` floors are 0.97 / 0.99 / 0.995, so no in-tree regeneration was needed.
 
 ### M9 — `schema_version_is_pinned` is runtime-only despite the name
 
@@ -242,9 +250,13 @@ Mathematically correct (`e^1.6 ≈ 4.95`). Could be misread as "5× probability"
 
 `marque/src/render.rs:794` and `crates/engine/tests/audit.rs:337` both call `__engine_promote` outside `Engine::fix_inner`, inside `#[cfg(test)]` blocks. The Constitution text has no test-code exemption; the code is unreachable in production builds. Either move the render-test into `marque-engine` (where internal access is legitimate), or add `#[cfg(test)]` carve-out language to Constitution §V.
 
+**Resolution** — Took the second option. Constitution V Principle V amended (1.2.0 → 1.3.0, MINOR — new sub-clause on existing principle) with an explicit test-fixture carve-out under three constraints: (1) call sites in `#[cfg(test)]` / `tests/` / `dev-dependencies`-gated crates only; (2) fabricated `AppliedFix` never commingled with engine output; (3) covers test-fixture *construction* only, not "convenience" CLI / batch / benchmark constructors. Updated in lockstep so the four sources can't drift: the `__engine_promote` doc comment in `crates/rules/src/lib.rs`, `crates/rules/README.md`, `crates/engine/README.md`, and `CLAUDE.md`. Both existing test call sites had their inline comments rewritten to cite Constitution V Principle V instead of the prior "documented test-only exception" with no actual cite target.
+
 ### L6 — Stale `lint_10kb` baseline at 285µs upper-CI
 
 `benches/baseline.json`. Reference-machine value not reproduced on WSL2; `bench-check.sh` enforces both relative (+10%) and absolute (16ms) thresholds, so a stale baseline can fail a green build on CI runners that don't match the reference machine. Either re-capture on the same class as `decoder_10kb_one_mangled_region` or relax the relative gate to absolute-only until re-capture lands.
+
+**Resolution** — Added `drift_alert_upper_ci_us: 1000` to the `lint_10kb` entry in `benches/baseline.json` and taught `scripts/bench-check.sh::check_one_bench` to honor the optional field — when present, that absolute value becomes the regression threshold; when absent, the legacy `+10%` percentage gate against `upper_ci_us` applies (so `decoder_10kb_one_mangled_region`, whose baseline is already a WSL2 capture per its `_note`, keeps the existing behavior unchanged). 1ms is the right shape: 16x safety margin to the SC-001 16ms target, well below any plausible accidental regression from a hot-path scoring change. Bench-check is opt-in (`scripts/check.sh --bench`), not currently in CI, so no workflow updates were needed.
 
 ### L7 — `render_audit_error_frame` doc-comment hardcodes `marque-mvp-1`
 

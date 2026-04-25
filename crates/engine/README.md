@@ -69,10 +69,16 @@ for applied in &result.applied {
   `MarkingType::PageBreak` candidates (form-feed `\f` and `\n\n\n+`),
   *before* attempting to parse the page-break candidate, so a malformed
   candidate cannot block the reset.
-- **Audit log.** `AppliedFix` is constructed exclusively by the engine via
-  the `__engine_promote` constructor. Rule crates must not bypass this —
-  see the architectural-invariants section of the workspace
-  [`CLAUDE.md`](../../CLAUDE.md).
+- **Audit log.** In production code paths, `AppliedFix` is constructed
+  exclusively by the engine via the `__engine_promote` constructor.
+  Rule crates must not bypass this. Test code MAY call
+  `__engine_promote` directly to construct synthetic fixtures for
+  audit-emission unit tests, scoped per Constitution V Principle V
+  (`#[cfg(test)]` only, never commingled with engine output, and
+  test-fixture construction only — not a general-purpose
+  convenience). See the architectural-invariants section of the
+  workspace [`CLAUDE.md`](../../CLAUDE.md) and the
+  [`__engine_promote` doc comment](../rules/src/lib.rs).
 - **Clock injection.** `Engine::with_clock` accepts a `Clock` impl; a
   `FixedClock` is provided for deterministic test snapshots and for the CLI
   `--fixed-timestamp` debug flag.

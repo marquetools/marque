@@ -359,12 +359,13 @@ pub struct AppliedFix {
 impl AppliedFix {
     /// Promote a `FixProposal` to an `AppliedFix` with runtime context.
     ///
-    /// # Engine-only contract
+    /// # Engine-only contract (production code)
     ///
     /// This constructor exists in `marque-rules` for type co-location, but
-    /// **must only be called from `marque-engine::Engine::fix`**. Rule crates
-    /// and CLI code must never construct `AppliedFix` directly — they produce
-    /// `FixProposal` values and let the engine promote them.
+    /// in **production code** **must only be called from
+    /// `marque-engine::Engine::fix`**. Rule crates and CLI code must never
+    /// construct `AppliedFix` directly — they produce `FixProposal`
+    /// values and let the engine promote them.
     ///
     /// The engine snapshots `proposal.confidence` and `proposal.source`
     /// into the top-level `confidence` / `source` fields at promotion
@@ -374,6 +375,29 @@ impl AppliedFix {
     /// This is enforced by convention and code review, not by the type system,
     /// because `AppliedFix` must be defined in `marque-rules` (which the engine
     /// depends on, not the reverse).
+    ///
+    /// # Test-fixture carve-out
+    ///
+    /// Test code MAY call `__engine_promote` directly to construct
+    /// synthetic `AppliedFix` fixtures for unit-testing audit-emission
+    /// machinery (renderers, sentinel checks, NDJSON serialization)
+    /// without spinning up a full `Engine`. The carve-out is scoped per
+    /// Constitution V Principle V:
+    ///
+    /// - Call sites MUST live inside `#[cfg(test)]` modules, `tests/`
+    ///   integration files, or test-utility crates gated as
+    ///   `dev-dependencies`. Production code calling this constructor
+    ///   from `cfg(not(test))` violates the contract.
+    /// - Fabricated `AppliedFix` values MUST NOT be commingled with
+    ///   engine-promoted fixes (spliced into a real audit stream,
+    ///   etc.).
+    /// - The carve-out covers test-fixture *construction* only. CLI
+    ///   helpers, batch tooling, and benchmark drivers that want an
+    ///   `AppliedFix` for non-test purposes are not in scope.
+    ///
+    /// Each test call site SHOULD carry an inline comment naming the
+    /// carve-out so future reviewers don't have to re-derive the
+    /// policy.
     #[doc(hidden)]
     pub fn __engine_promote(
         proposal: FixProposal,
