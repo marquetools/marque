@@ -40,7 +40,7 @@
 use axum::{
     Router,
     body::Bytes,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode, Uri},
     response::Json,
     routing::{get, post},
@@ -48,6 +48,49 @@ use axum::{
 use marque_engine::Engine;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
+
+// ---------------------------------------------------------------------------
+// Body-size cap (whitepaper §10.2 / gap register #6)
+// ---------------------------------------------------------------------------
+
+/// Default request-body cap, in bytes.
+///
+/// 10 MiB. Five orders of magnitude above the largest classified marking
+/// any reasonable document would carry; an order of magnitude above the
+/// p99 of typical document sizes the corpus has seen. Set explicitly so
+/// the operator's choice is recorded in the source rather than inherited
+/// from axum's 2 MB default — gap register #6 was the absence of an
+/// intentional decision.
+///
+/// Override at runtime by setting `MARQUE_MAX_BODY_BYTES`. Values below
+/// 1 KB are rejected at startup (`resolve_body_limit`) — anything that
+/// small would make every realistic request 413.
+pub const DEFAULT_BODY_LIMIT_BYTES: usize = 10 * 1024 * 1024;
+
+/// Resolve the body-size cap from `MARQUE_MAX_BODY_BYTES` or fall back
+/// to [`DEFAULT_BODY_LIMIT_BYTES`].
+///
+/// Returns an error string suitable for stderr if the env var is set
+/// but unparseable / unreasonable. Caller decides whether to abort
+/// (the binary entry point does) or log-and-default (an embedder
+/// might).
+pub fn resolve_body_limit() -> Result<usize, String> {
+    match std::env::var("MARQUE_MAX_BODY_BYTES") {
+        Err(_) => Ok(DEFAULT_BODY_LIMIT_BYTES),
+        Ok(s) => {
+            let parsed: usize = s
+                .parse()
+                .map_err(|_| format!("MARQUE_MAX_BODY_BYTES is not a valid byte count: {s:?}"))?;
+            if parsed < 1024 {
+                return Err(format!(
+                    "MARQUE_MAX_BODY_BYTES={parsed} is below the 1024-byte floor; \
+                     anything smaller would make every realistic request 413"
+                ));
+            }
+            Ok(parsed)
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Presence marker — key-present-regardless-of-value detector
@@ -341,17 +384,32 @@ pub async fn fix_handler(
 // Router assembly
 // ---------------------------------------------------------------------------
 
-/// Build the axum `Router` wiring every endpoint to its handler.
+/// Build the axum `Router` wiring every endpoint to its handler with
+/// the default body-size cap.
 ///
 /// Factored out of `main()` so integration tests can exercise handlers
 /// in-process via `tower::ServiceExt::oneshot` without binding a
-/// listener.
+/// listener. The cap defaults to [`DEFAULT_BODY_LIMIT_BYTES`]; tests
+/// that need to exercise a different limit should call
+/// [`build_app_with_limit`] directly.
 pub fn build_app(state: AppState) -> Router {
+    build_app_with_limit(state, DEFAULT_BODY_LIMIT_BYTES)
+}
+
+/// Same as [`build_app`] but with an explicit body-size cap in bytes.
+///
+/// `body_limit_bytes` is applied as an axum `DefaultBodyLimit` Tower
+/// layer; oversize requests reach the handler as a `413 Payload Too
+/// Large`. The limit applies to every route on the returned router,
+/// including the GET endpoints (which carry no body in practice; the
+/// cap is harmless there).
+pub fn build_app_with_limit(state: AppState, body_limit_bytes: usize) -> Router {
     Router::new()
         .route("/v1/health", get(health))
         .route("/v1/schema/version", get(schema_version))
         .route("/v1/lint", post(lint_handler))
         .route("/v1/fix", post(fix_handler))
+        .layer(DefaultBodyLimit::max(body_limit_bytes))
         .with_state(state)
 }
 

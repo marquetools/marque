@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.8 · **Last amended**: 2026-04-25
+**Document version**: 0.9 · **Last amended**: 2026-04-25
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -871,6 +871,15 @@ byte cap unless set. CPU-bound work runs on
 `tokio::task::spawn_blocking`. Results stream in completion order;
 callers correlate via echoed `id`.
 
+A closed `ConcurrencyController` (runtime shutdown, explicit semaphore
+close) surfaces as `BatchError::ShutdownInProgress` per document
+(gap register #8, closed in v0.9). The previous `.expect("…")`
+panicked, propagating through `JoinError::is_panic()` and triggering
+spurious supervisor alerts on a routine end-of-life signal. The new
+variant is distinct from `is_panic()` and `is_cancelled()`, has a
+matching `is_shutdown()` predicate, and `Display` names the state
+explicitly so log greps on operator dashboards pick it up.
+
 ### 9.5 Page-context reset-before-parse
 
 The engine resets `PageContext` **before** attempting to parse a
@@ -912,9 +921,24 @@ until completion.
 - Endpoints today: `POST /v1/lint`, `POST /v1/fix`, `GET /v1/health`,
   `GET /v1/schema/version`.
 - **No authentication middleware wired.** Tower layers for auth,
-  rate limiting, body-size cap, and structured logging are specified
-  and un-wired; this is called out explicitly in `CLAUDE.md`.
-- No `DefaultBodyLimit` override; inherits axum's 2 MB default.
+  rate limiting, and structured logging are specified and un-wired;
+  this is called out explicitly in `CLAUDE.md`.
+- **Body-size cap: landed (gap register #6, closed in v0.9).** axum's
+  `DefaultBodyLimit::max(N)` Tower layer is applied via
+  `marque_server::build_app_with_limit` (the default
+  `marque_server::build_app` calls it with
+  `DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024`, i.e., 10 MiB). The
+  `marque-server` binary entry point reads `MARQUE_MAX_BODY_BYTES`
+  via `marque_server::resolve_body_limit` and aborts with
+  `EX_USAGE` (64) on a value that fails to parse or is below the
+  1 KiB floor. The resolved cap is logged on the `listening` line.
+  Oversize requests surface as `413 Payload Too Large` before
+  reaching the handler;
+  `crates/server/tests/http.rs::body_above_explicit_limit_is_rejected_with_413`
+  + `fix_endpoint_honors_body_limit` exercise the gate at a
+  4 KiB test cap, and `default_limit_admits_realistic_traffic`
+  asserts a 256 KiB body fits under the production default
+  (catches a regression that lowered the constant).
 - **T3 corpus-override rejection: landed.** Every HTTP request is
   inspected at the handler for a corpus-override payload across three
   channels — JSON body field `corpus_override`, header
@@ -937,8 +961,8 @@ until completion.
   shape variants).
 
 **Status**: `[LANDED]` for T3 corpus-override enforcement (T049 / T050
-/ T066); `[PARTIAL]` for the broader surface (auth middleware, body
-size limit — see gap register P1-6, P1-7).
+/ T066) and the body-size cap; `[PARTIAL]` for the broader surface
+(auth middleware, per-document timeout — see gap register P1-7).
 
 ### 10.3 `marque-wasm`
 
@@ -1158,9 +1182,9 @@ possible), and a **remediation plan**. Severities:
 |---|---|---|---|---|
 | 1 | ~~`MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"`~~ **Resolved (PR-4).** Engine exposes `pub const AUDIT_SCHEMA_VERSION` from `env!("MARQUE_AUDIT_SCHEMA")`; `marque/src/render.rs` and `crates/wasm/src/lib.rs` dispatch v1/v2 emitter struct from the const-folded `AUDIT_SCHEMA_IS_V2` selector. Build-time validation against `["marque-mvp-1", "marque-mvp-2"]` panics on unknown values. T054 (back-compat parse) and T055 (single-schema stream invariant) ride on top of the wiring. | ~~P0~~ closed | FR-014, T005, T054, T055 | Done |
 | 5 | `__engine_promote` seal is convention-only | P1 | Constitution V invariant | Seal behind a private ZST token constructable only inside `marque-engine`; test-only exception becomes a private helper |
-| 6 | Server has no explicit `DefaultBodyLimit` | P1 | §10.2 | Add Tower layer with explicit limit (e.g. 10 MB) so operator sees a decision |
+| 6 | ~~Server has no explicit `DefaultBodyLimit`~~ | ~~P1~~ | ~~§10.2~~ | **Resolved.** `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024`; applied via `axum::extract::DefaultBodyLimit::max(N)` in `build_app` / `build_app_with_limit`. Override at runtime via `MARQUE_MAX_BODY_BYTES` (resolved by `marque_server::resolve_body_limit`; values below 1 KiB rejected at startup with `EX_USAGE`). Tests in `crates/server/tests/http.rs` exercise both the `413` path and a `default_limit_admits_realistic_traffic` regression guard against a future drop-the-constant change |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
-| 8 | `BatchEngine` `.expect()` panics on semaphore close | P1 | §9.4, `batch.rs:196, 226` | Replace with `?` or `ShutdownInProgress` error variant |
+| 8 | ~~`BatchEngine` `.expect()` panics on semaphore close~~ | ~~P1~~ | ~~§9.4, `batch.rs:196, 226`~~ | **Resolved.** New `BatchError::ShutdownInProgress` variant with matching `is_shutdown()` predicate; `From<tokio::sync::AcquireError>` impl maps the (only possible) error. Both `lint_many` and `fix_many` propagate the variant per-document instead of panicking. Unit tests cover `is_*` discrimination, `Display`, `Error::source`, and the `From` conversion driven through a closed `Semaphore` |
 | 9 | Strict-context floor (T1) not wired in decoder | P1 | T045, T062, FR-011 | Decoder reads `ParseContext.strict_evidence` before consulting priors for `(C)` and similar |
 | 10 | `Confidence::validate` panic on bad rule halts the document | P1 | §6.3 | Engine wraps `Rule::check` output; invalid confidence skips the rule with a logged warning |
 | 11 | ~~No integrity hash for vendored CAPCO PDF / ODNI schemas~~ | ~~P2~~ | ~~§7.3~~ | **Resolved.** `crates/capco/docs/original-refs/SHA256SUMS` + `crates/ism/schemas/ISM-v2022-DEC/SHA256SUMS` verified by the `refs-integrity` CI job on every PR |
@@ -1207,3 +1231,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.6 | 2026-04-24 | Three P2 hygiene gaps closed. Gap #18: docs-site fonts vendored locally — Fira Code + IBM Plex Sans (SIL OFL 1.1) added under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/`; `astro.config.mjs` flipped to `fontProviders.local()`; build no longer fetches from `api.fontsource.org` / `cdn.jsdelivr.net`. Gap #21: §4.2 corrected — both shipped unsafe blocks already carry `// SAFETY:` doc comments; the whitepaper's previous claim was stale. Gap #22: `marque --help` carries an `ENVIRONMENT VARIABLES:` block via clap `after_help` warning that `MARQUE_LOG=trace` is not production-safe for classified content; §5.4 documents the route. Other admin: gap register rows 18, 21, 22 struck through; §4.2 / §5.4 / §8.6 updated. | Adam Poulemanos (with Claude Code) |
 | 0.7 | 2026-04-25 | Four more P2 hygiene gaps closed. Gap #16: §5.1 corrected — only `.to_vec()` call in `crates/core/src/parser.rs` is in a `#[test]` block, not on the hot path. Gap #17: `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` so a non-uv install is reproducible; §7.4 documents the route. Gap #19: `marque/tests/corpus_provenance.rs::mangled_fixtures_observed_expected_token_only` walks `tests/fixtures/mangled/**/*.json` and asserts `observed` / `expected` fields are free of prose sentinels, classifier-id-shaped digit runs, and exceed-length leaks; §5.5 documents the route. Gap #20: `crates/engine/tests/core_error_isolation.rs` embeds a high-entropy canary in adversarial input designed to trip every `CoreError` construction site and asserts the canary appears in no text-bearing field of `LintResult` / `FixResult`; §5.3 rewritten. Gap register rows 16, 17, 19, 20 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.8 | 2026-04-25 | Last P2 hygiene gap closed. Gap #15: `crates/core/tests/alloc_budget.rs` (behind `count-allocs` feature) installs a counting global allocator and gates `Scanner::scan(...)` allocation count across four cases (empty / single-banner / multi-marking / buffer-size-independence). `.github/workflows/ci.yml` `count-allocs` job runs the gate under `--test-threads=1` on every PR. §3.2 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 15 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.9 | 2026-04-25 | Two narrow P1 gaps closed. Gap #6: server body-size cap landed — `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 MiB`, applied via `axum::DefaultBodyLimit::max(N)` Tower layer in `build_app` / `build_app_with_limit`; runtime override via `MARQUE_MAX_BODY_BYTES` resolved by `resolve_body_limit` (rejects values below 1 KiB with `EX_USAGE`); tests cover `413` rejection on both `/v1/lint` and `/v1/fix` plus a 256 KiB realistic-traffic regression guard. §10.2 rewritten. Gap #8: `BatchEngine` `.expect()` replaced with new `BatchError::ShutdownInProgress` variant + `From<AcquireError>` impl + `is_shutdown()` predicate; both `lint_many` and `fix_many` now propagate the error per-document. §9.4 rewritten. Gap register rows 6 and 8 struck through. | Adam Poulemanos (with Claude Code) |

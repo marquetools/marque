@@ -21,7 +21,7 @@
 
 use marque_capco::capco_rules;
 use marque_engine::Engine;
-use marque_server::{AppState, build_app};
+use marque_server::{AppState, build_app_with_limit, resolve_body_limit};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -61,13 +61,30 @@ async fn main() {
         engine: Arc::new(engine),
     };
 
-    let app = build_app(state);
+    // Whitepaper §10.2 / gap register #6 — explicit body-size cap
+    // (default 10 MiB, override via `MARQUE_MAX_BODY_BYTES`). Earlier
+    // builds inherited axum's 2 MB default by accident; the operator
+    // decision now lives in `lib.rs::DEFAULT_BODY_LIMIT_BYTES` and is
+    // recorded on every startup line below.
+    let body_limit_bytes = match resolve_body_limit() {
+        Ok(n) => n,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            std::process::exit(64); // EX_USAGE per contracts/cli.md
+        }
+    };
+
+    let app = build_app_with_limit(state, body_limit_bytes);
 
     // Security Convention: Default to binding to the local loopback interface
     // (127.0.0.1) instead of all interfaces (0.0.0.0) to prevent unintentional external exposure.
     let addr = std::env::var("MARQUE_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
 
-    tracing::info!("marque-server listening on {addr}");
+    tracing::info!(
+        addr = %addr,
+        body_limit_bytes,
+        "marque-server listening"
+    );
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
