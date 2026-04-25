@@ -4,16 +4,32 @@
 #
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# Performance regression gate for SC-001 (strict-path) and SC-002 (decoder-path).
+# Performance regression gate for SC-001 (strict-path), SC-002 (decoder-path),
+# and SC-005 (linear scaling).
 #
 # Runs the lint_latency benchmark and compares Criterion's confidence-interval
 # upper bound against the per-bench baseline. Fails with non-zero exit if the
 # CI upper bound regresses by >10% versus baseline, or exceeds the per-bench
 # absolute target (`target_upper_ci_us` in `benches/baseline.json`).
 #
-# Two benches are checked:
-#   - `lint_10kb`                         (SC-001, target 16ms)
-#   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms)
+# Then runs the linear_scaling benchmark and computes the coefficient of
+# determination (R²) for the linear regression of (input_size, mean_time)
+# across the SC-005 sweep. Fails if R² falls below the `r_squared_min`
+# threshold in `benches/baseline.json`.
+#
+# Three gates are checked:
+#   - `lint_10kb`                         (SC-001, target 16ms upper CI)
+#   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
+#   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#
+# SC-005 unit-of-analysis note: the constitution and SC-005 spec both call
+# for "linear scaling" of the lint hot path. The existing `linear_scaling.rs`
+# bench sweeps INPUT SIZE (1KB → 100KB) and measures per-size time, which is
+# the per-document hot-path measurement. Worker-count scaling (BatchEngine /
+# Tokio) is a separate, layered concern and would require new infrastructure;
+# T087 picks input-size scaling because (a) it matches what the existing
+# bench measures, (b) it is what SC-001's interactive p95 generalizes to at
+# larger inputs, and (c) the task is polish, not new instrumentation.
 #
 # Usage:
 #   bash scripts/bench-check.sh           # run benchmarks and check both gates
@@ -152,9 +168,138 @@ else:
     return 0
 }
 
+# check_linear_scaling
+#
+# Runs the `linear_scaling` Criterion bench (`crates/engine/benches/linear_scaling.rs`)
+# and computes R² for a linear regression of (input_size_bytes, mean_time_µs)
+# across the SC-005 size sweep. Fails if R² < `lint_scaling.r_squared_min`
+# from `benches/baseline.json`.
+#
+# Uses Criterion's `mean` value (the middle of the three numbers in the
+# `time:` output) rather than the upper CI bound — the upper CI is the right
+# metric for regression-vs-baseline (it's the conservative reading), but for
+# linear regression we want the point estimate, since CI width inflates with
+# variance and would mask a genuine non-linearity. Reads each `lint_scaling/<size>`
+# line independently.
+check_linear_scaling() {
+    local r_squared_min
+    r_squared_min=$(python3 -c "
+import json
+with open('$BASELINE') as f:
+    data = json.load(f)
+print(data['lint_scaling']['r_squared_min'])
+" 2>/dev/null || echo "")
+
+    if [[ -z "$r_squared_min" ]]; then
+        echo "bench-check[lint_scaling]: ERROR — could not parse 'lint_scaling.r_squared_min' from $BASELINE"
+        return 1
+    fi
+
+    # Validate it parses as a float in (0, 1].
+    if ! python3 -c "
+v = float('$r_squared_min')
+assert 0.0 < v <= 1.0, 'out of range'
+" 2>/dev/null; then
+        echo "bench-check[lint_scaling]: ERROR — r_squared_min not a float in (0, 1]: ${r_squared_min}"
+        return 1
+    fi
+
+    echo "bench-check[lint_scaling]: minimum R² = ${r_squared_min}"
+    echo "bench-check[lint_scaling]: running benchmark..."
+
+    local bench_output
+    bench_output=$(cargo bench -p marque-engine --bench linear_scaling 2>&1)
+
+    # Extract every `lint_scaling/<size>      time:   [lower mean upper]` line
+    # and compute R² on (size, mean_time_µs). Sizes are byte counts emitted by
+    # `BenchmarkId::from_parameter(input.len())`; means are converted to
+    # microseconds for unit consistency with the SC-001 / SC-002 gates.
+    local r_squared
+    r_squared=$(python3 - "$bench_output" <<'PY' 2>/dev/null || true
+import math, re, sys
+
+text = sys.argv[1]
+# Match `lint_scaling/<size>` followed by `time:   [lower unit mean unit upper unit]`.
+# The Criterion print spans two lines for short benchmark IDs sometimes; the
+# `time:` token always appears on the same line as either the ID or its
+# continuation, so search the whole blob with a multi-line tolerant regex.
+size_pat = re.compile(
+    r"lint_scaling/(\d+)\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)"
+)
+
+def to_us(value, unit):
+    v = float(value)
+    if unit == "ns":
+        return v / 1000.0
+    if unit == "µs":
+        return v
+    if unit == "ms":
+        return v * 1000.0
+    raise ValueError(f"unknown unit: {unit}")
+
+points = []
+for m in size_pat.finditer(text):
+    size = int(m.group(1))
+    # Group 4 / unit 5 is the mean (middle of the three CI numbers).
+    mean_us = to_us(m.group(4), m.group(5))
+    points.append((size, mean_us))
+
+if len(points) < 3:
+    sys.stderr.write(f"insufficient samples: {len(points)}\n")
+    sys.exit(1)
+
+# Standard ordinary-least-squares R².
+n = len(points)
+sx = sum(x for x, _ in points)
+sy = sum(y for _, y in points)
+sxx = sum(x * x for x, _ in points)
+syy = sum(y * y for _, y in points)
+sxy = sum(x * y for x, y in points)
+
+mx = sx / n
+my = sy / n
+ss_xy = sxy - n * mx * my
+ss_xx = sxx - n * mx * mx
+ss_yy = syy - n * my * my
+
+if ss_xx <= 0 or ss_yy <= 0:
+    sys.stderr.write("zero variance in samples\n")
+    sys.exit(1)
+
+r2 = (ss_xy * ss_xy) / (ss_xx * ss_yy)
+print(f"{r2:.6f}")
+PY
+)
+
+    if [[ -z "$r_squared" ]]; then
+        echo "bench-check[lint_scaling]: ERROR — could not extract sample points from criterion output"
+        echo "$bench_output"
+        return 1
+    fi
+
+    echo "bench-check[lint_scaling]: measured R² = ${r_squared}"
+
+    # Compare R² against the minimum threshold using python (bash's `[[ -lt ]]`
+    # only handles integers).
+    local pass
+    pass=$(python3 -c "print('1' if float('$r_squared') >= float('$r_squared_min') else '0')")
+
+    if [[ "$pass" != "1" ]]; then
+        echo "bench-check[lint_scaling]: FAIL — R² ${r_squared} < ${r_squared_min} (sub-linear or noisy scaling)"
+        return 1
+    fi
+
+    echo "bench-check[lint_scaling]: PASS — R² ${r_squared} >= ${r_squared_min}"
+    return 0
+}
+
 OVERALL_STATUS=0
 check_one_bench "lint_10kb" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
+check_linear_scaling || OVERALL_STATUS=1
 
 if [[ "$OVERALL_STATUS" -ne 0 ]]; then
     echo "bench-check: FAIL — one or more benches failed their regression / absolute gates"
