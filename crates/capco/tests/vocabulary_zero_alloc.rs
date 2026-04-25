@@ -129,8 +129,8 @@ fn metadata_query_is_zero_alloc() {
         std::hint::black_box(pf);
         let bf = scheme.banner_form(token);
         std::hint::black_box(bf);
-        let ba = scheme.banner_abbreviation(token);
-        std::hint::black_box(ba);
+        let abbr = scheme.banner_abbreviation(token);
+        std::hint::black_box(abbr);
         let d = scheme.deprecation(token);
         std::hint::black_box(d);
     }
