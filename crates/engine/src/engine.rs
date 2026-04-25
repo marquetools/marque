@@ -114,11 +114,12 @@ pub struct Engine {
     ///
     /// The decoder does not yet substitute these priors into scoring
     /// — PR-5 minimal scope wires the surface end-to-end and stamps
-    /// every decoder fix with [`FeatureId::CorpusOverrideInEffect`]
-    /// in the audit record so an auditor can identify fixes produced
-    /// under organizational overrides vs. stock priors. The
-    /// prior-substitution wiring is the next-PR step; this field is
-    /// the seam.
+    /// every decoder fix with
+    /// [`marque_rules::FeatureId::CorpusOverrideInEffect`] in the
+    /// audit record so an auditor can identify fixes produced under
+    /// organizational overrides vs. stock priors. The prior-
+    /// substitution wiring is the next-PR step; this field is the
+    /// seam.
     #[cfg(feature = "corpus-override")]
     corpus_override: Option<std::sync::Arc<marque_config::corpus_override::CorpusOverride>>,
 }
@@ -289,9 +290,10 @@ impl Engine {
     /// Cargo feature is not compiled in — the WASM and server
     /// builds therefore cannot observe a `true` here regardless of
     /// what any caller passes through other surfaces. Callers that
-    /// need to thread the flag into audit-record construction (see
-    /// [`build_decoder_diagnostic`]) should go through this helper
-    /// rather than poking at the field directly.
+    /// need to thread the flag into audit-record construction (the
+    /// private `build_decoder_diagnostic` helper inside this module)
+    /// should go through this method rather than poking at the
+    /// field directly.
     #[inline]
     pub fn corpus_override_active(&self) -> bool {
         #[cfg(feature = "corpus-override")]

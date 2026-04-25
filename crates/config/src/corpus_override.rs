@@ -6,7 +6,7 @@
 //!
 //! Operators with their own non-public corpora can supply a JSON file
 //! that **annotates** decoder fixes with the
-//! [`FeatureId::CorpusOverrideInEffect`] audit marker. The override
+//! [`marque_rules::FeatureId::CorpusOverrideInEffect`] audit marker. The override
 //! surface is opt-in (Cargo feature `corpus-override`), CLI-only
 //! (server rejects it on every channel — T066; WASM cannot enable the
 //! feature — T067), and gated behind a security envelope summarized in
