@@ -728,28 +728,50 @@ fn decoder_path_record_shape() {
 // the rule id. The URN provenance does NOT live as a separate field
 // on the audit record — that would either bump the audit schema to v3
 // or require adding non-back-compat optional fields that bypass the
-// `MARQUE_AUDIT_SCHEMA` accept-list. Instead, the `Vocabulary<S>`
-// trait surface (Phase 5 PR-2 / T084) provides the URN lookup, and
-// the audit consumer composes the two: read `original` /
-// `replacement` from the audit record, resolve through the public
-// vocabulary, recover both URNs.
+// `MARQUE_AUDIT_SCHEMA` accept-list. Instead, the URNs are
+// *recoverable* from the audit record's strings + `marque-ism`'s
+// public lookup tables.
 //
-// T079 pins that composition. The test:
+// ## Recovery path (string-keyed, what audit consumers use)
+//
+// Audit consumers receive serialized records — strings, not typed
+// `TokenId`s. Their recovery path runs through `marque-ism`'s public
+// surface:
+//
+// - `marque_ism::generated::vocabulary::lookup_token_metadata(value)`:
+//   string-keyed lookup over `TOKEN_METADATA`. Returns the entry
+//   whose `cve_file.urn` is the source URN.
+// - `marque_ism::marking_forms::banner_to_portion(banner)`: maps a
+//   banner-form string back to its canonical CVE value, since
+//   banner forms are not themselves CVE values (they're publishing
+//   conventions per CAPCO-2016 §G.1 Table 4).
+//
+// Together these compose the recovery: given the audit's `original`
+// (canonical) and `replacement` (banner) strings, the consumer
+// recovers both URNs without engine internals or `TokenId`-keyed
+// access.
+//
+// ## Cross-check: `Vocabulary<S>` agrees
+//
+// The `Vocabulary<CapcoScheme>` trait surface (Phase 5 PR-2 / T084)
+// is the TYPED accessor: `TokenId`-keyed, used by rule code that
+// already has a typed token. The cross-check below verifies the typed
+// and untyped paths agree — a divergence would indicate either the
+// `SENTINEL_TO_CANONICAL` mapping or `marque-ism`'s string-keyed
+// table got out of sync.
+//
+// ## Test shape
 //
 // 1. Runs an E001 portion-mark-in-banner fix — the canonical
 //    `NF` → `NOFORN` shape the spec calls out.
 // 2. Captures the resulting `AppliedFix`.
-// 3. Resolves `NF` (canonical) and `NOFORN` (banner form) through
-//    `Vocabulary<CapcoScheme>`.
-// 4. Asserts both URNs trace to ODNI's `urn:us:gov:ic:cvenum:` prefix
-//    and that the canonical and banner forms agree on which CVE file
-//    publishes them — they're two forms of the same entry, so the
-//    URN is the same string for this fix.
-//
-// The "both URNs present" property the spec asks for is the
-// reconstructibility property: given the audit record, an auditor
-// using the public Vocabulary surface can recover both URNs without
-// needing private engine state.
+// 3. Recovers `source_urn` from `original` ("NF") via the canonical
+//    string-keyed path.
+// 4. Recovers `replacement_urn` from `replacement` ("NOFORN") via
+//    the banner-form round-trip path.
+// 5. Asserts both URNs trace to ODNI and are equal (same CVE entry).
+// 6. Cross-checks the typed `Vocabulary` accessor agrees with the
+//    string-keyed path.
 //
 // Vacuity guard: ≥ 1 E001 fix examined. A pass with zero fixes would
 // indicate the rule never ran — silently weakening the assertion.
@@ -903,7 +925,8 @@ fn migration_audit_has_both_urns() {
         "metadata.authority.urn must match metadata.urn — single source of truth",
     );
     assert_eq!(
-        metadata.authority.schema_version, "ISM-v2022-DEC",
+        metadata.authority.schema_version,
+        marque_ism::SCHEMA_VERSION,
         "URN provenance must be pinned to the active schema package",
     );
 }

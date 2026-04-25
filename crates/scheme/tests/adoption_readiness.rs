@@ -125,8 +125,15 @@ impl StubScheme {
             constraints: [Constraint::Conflicts {
                 left: TokenRef::Token(STUB_TOKEN),
                 right: TokenRef::Token(OTHER_TOKEN),
-                label: "stub/conflicts",
+                // `name` is the stable identifier (rule-style id);
+                // `label` is the authoritative-source citation
+                // (e.g. "CAPCO-2016 §H.4"). Keeping them
+                // semantically distinct in the readiness fixture
+                // mirrors what every real scheme does — Phase F
+                // adapters that copy this stub get the right shape
+                // by default rather than collapsing the two fields.
                 name: "stub/conflicts",
+                label: "StubScheme readiness fixture (no real citation)",
             }],
             // `PageRewrite::declarative` is the const-friendly
             // constructor. The trigger / action arms here are the
