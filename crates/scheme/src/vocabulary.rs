@@ -168,9 +168,12 @@ pub struct TokenMetadataFull<Token> {
 /// accessor returns `&'static` data, so the bound is essentially free
 /// for the in-tree CAPCO impl; it forecloses a future scheme adopter
 /// from accidentally building a `!Send` Vocabulary (e.g., one backed
-/// by an interior-mutable cache) that would silently break
-/// `BatchEngine`. Mirrors the bound on
-/// [`crate::recognizer::Recognizer`] and [`crate::codec::Codec`].
+/// by an interior-mutable cache) that the engine could not compile
+/// against — pinning the bound on the trait makes the constraint
+/// visible at the definition site instead of surfacing as a
+/// downstream `Send`/`Sync` compile error in `BatchEngine`. Mirrors
+/// the bound on [`crate::recognizer::Recognizer`] and
+/// [`crate::codec::Codec`].
 pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Authority record for `token`.
     fn authority(&self, token: &S::Token) -> &'static Authority;

@@ -30,9 +30,13 @@ use crate::scheme::MarkingScheme;
 /// Implementations MUST be `Send + Sync` so the engine can hold them
 /// in an `Arc<dyn Codec<S>>` and dispatch across threads. `BatchEngine`
 /// drives `Engine` work onto `tokio::task::spawn_blocking` worker
-/// threads — a `!Send` codec would force the engine to serialize batch
-/// processing through a single worker, breaking Constitution I (linear
-/// throughput scaling, SC-005). Mirrors the bound on
+/// threads — a `!Send` codec could not be held in that
+/// `Arc<dyn Codec<S>>` or moved/shared into blocking workers, so the
+/// engine would fail to compile rather than degrading to serialized
+/// single-worker batch processing. Pinning the bound on the trait
+/// surface here means Phase G implementers see the constraint at the
+/// definition site instead of discovering it through a downstream
+/// `Send`/`Sync` compile error. Mirrors the bound on
 /// [`crate::recognizer::Recognizer`].
 pub trait Codec<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Serialize `marking` to bytes. Returns the encoded form or a

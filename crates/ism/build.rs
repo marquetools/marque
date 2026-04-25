@@ -1063,30 +1063,67 @@ fn nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> Option<Stri
     }
 }
 
+/// Build-time `unwrap_or_else` panic for a required JSON string
+/// field. Rejects three failure modes:
+/// 1. Field absent (`obj.get(field) == None`).
+/// 2. Field present but not a JSON string (number / object / null).
+/// 3. Field present, type-correct, but empty or whitespace-only.
+///
+/// The third case is the one a Copilot review on PR #152 caught:
+/// without it, an empty-but-present sidecar field (e.g.,
+/// `"poc_email": ""`) would compile cleanly and emit `&'static ""` into
+/// the generated `TokenMetadataFull` table — which is exactly the
+/// silent-fallback failure mode `required_string` was added to
+/// prevent (Constitution VIII fail-closed). Audit records that cite
+/// an empty `poc_email` carry the same provenance defect as audit
+/// records that cite a missing one.
 fn required_string(obj: &serde_json::Value, field: &str, path: &Path) -> String {
-    obj.get(field)
+    let raw = obj
+        .get(field)
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
             panic!(
                 "{}: required field `{field}` missing or not a string",
                 path.display()
             )
-        })
-        .to_owned()
+        });
+    if raw.trim().is_empty() {
+        panic!(
+            "{}: required field `{field}` is present but empty (or \
+             whitespace-only); ODNI provenance fields must carry a real \
+             value. Update the JSON sidecar.",
+            path.display()
+        );
+    }
+    raw.to_owned()
 }
 
 /// Like [`nested_text`] but panics on absence — the build-time
 /// fail-closed companion. Use when a field is required by ODNI's CVE
 /// schema and silent absence would corrupt audit-record provenance
 /// (Constitution VIII).
+///
+/// Symmetric with [`required_string`]: rejects absent / wrong-type /
+/// empty-or-whitespace. `nested_text` itself yields `Some("")` when
+/// the source object's `text` member is an empty string, which would
+/// otherwise slip past the absence check unchanged.
 fn required_nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> String {
-    nested_text(obj, field, path).unwrap_or_else(|| {
+    let raw = nested_text(obj, field, path).unwrap_or_else(|| {
         panic!(
             "{}: required nested-text field `{field}` missing — expected \
              either `{{\"{field}\": \"...\"}}` or `{{\"{field}\": {{\"text\": \"...\"}}}}`",
             path.display()
         )
-    })
+    });
+    if raw.trim().is_empty() {
+        panic!(
+            "{}: required nested-text field `{field}` is present but \
+             empty (or whitespace-only). ODNI provenance fields must \
+             carry a real value.",
+            path.display()
+        );
+    }
+    raw
 }
 
 /// `CVEnumISMDissem.json` → `CVE_DISSEM`, `CVEnumISMSCIControls.json` →
