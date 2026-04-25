@@ -87,92 +87,47 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     println!("  observed: {observed:?}");
     println!("  expected: {expected:?}");
 
-    // 1. Walk the input through the same fuzzy_correct_tokens path the
-    //    decoder uses, by reading what tokens the matcher would change.
-    //    We can't call decoder-internal helpers, but we can emulate them
-    //    using the public FuzzyVocabMatcher and CapcoTokenSet.
-    let token_set = CapcoTokenSet;
-    let vocab = token_set.correction_vocab();
-    let matcher = marque_core::fuzzy::FuzzyVocabMatcher::new(vocab);
-
-    let mut corrected = String::with_capacity(observed.len());
-    let mut rest: &str = observed;
-    let mut fuzzy_changes: Vec<(String, String, u8, f32)> = Vec::new();
-    while !rest.is_empty() {
-        let non_token_len = rest
-            .chars()
-            .take_while(|c| !c.is_ascii_alphanumeric())
-            .map(|c| c.len_utf8())
-            .sum::<usize>();
-        if non_token_len > 0 {
-            corrected.push_str(&rest[..non_token_len]);
-            rest = &rest[non_token_len..];
-            continue;
-        }
-        // crude token scan — alnum + internal `-`
-        let bytes = rest.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            let b = bytes[i];
-            let is_alnum = b.is_ascii_alphanumeric();
-            let is_internal_hyphen =
-                b == b'-' && i > 0 && i + 1 < bytes.len() && bytes[i + 1].is_ascii_alphanumeric();
-            if is_alnum || is_internal_hyphen {
-                i += 1;
-            } else {
-                break;
-            }
-        }
-        if i == 0 {
-            break;
-        }
-        let (token, tail) = rest.split_at(i);
-        rest = tail;
-        if token_set.canonicalize(token).is_some() || token_set.is_trigraph(token) {
-            corrected.push_str(token);
-            continue;
-        }
-        if let Some(c) = matcher.correct(token) {
-            corrected.push_str(c.token);
-            fuzzy_changes.push((
-                token.to_string(),
-                c.token.to_string(),
-                c.distance,
-                c.confidence,
-            ));
-        } else {
-            corrected.push_str(token);
-        }
-    }
-
-    let normalized_upper = corrected.to_ascii_uppercase();
-    println!("  fuzzy result: {normalized_upper:?}");
-    if fuzzy_changes.is_empty() {
-        println!("  fuzzy changes: (none)");
+    // 1. Ask the decoder for the canonicalized byte attempts it would
+    //    hand to the strict parser. Calling the real generator (rather
+    //    than re-implementing token-walking + fuzzy correction here)
+    //    means the trace can never drift from the decoder's actual
+    //    behavior — every transform `generate_candidate_bytes` applies
+    //    (delimiter normalization, fuzzy correction, superseded-token
+    //    replacement, reorder) shows up below.
+    let attempts = marque_engine::decoder::diagnostic_canonical_attempts(observed.as_bytes());
+    if attempts.is_empty() {
+        println!("  decoder canonical attempts: (none)");
     } else {
-        for (from, to, d, c) in &fuzzy_changes {
-            println!("    {from:?} → {to:?}  (distance={d}, confidence={c:.2})");
+        println!("  decoder canonical attempts ({}):", attempts.len());
+        for (i, attempt) in attempts.iter().enumerate() {
+            let attempt_str = std::str::from_utf8(attempt).unwrap_or("<non-utf8>");
+            println!("    [{i}] {attempt_str:?}");
         }
     }
 
-    // 2. Strict-parse the canonicalized form.
-    let canonical_marking = parse_strict_attrs(&normalized_upper);
-    match &canonical_marking {
-        Some(m) => {
-            let unknown_tokens = unknown_token_text(&normalized_upper, &m.0);
-            println!(
-                "  strict-parse(canonical): OK — token_kinds={{{}}}",
-                token_summary(&m.0)
-            );
-            if !unknown_tokens.is_empty() {
-                println!("    Unknown spans: {unknown_tokens:?}");
+    // 2. Strict-parse each attempt — this is the same path
+    //    `DecoderRecognizer::recognize` step 2 takes, including the
+    //    step-3a Unknown-token-span check that discards partial
+    //    canonicalizations.
+    for (i, attempt) in attempts.iter().enumerate() {
+        let attempt_str = std::str::from_utf8(attempt).unwrap_or("<non-utf8>");
+        match parse_strict_attrs(attempt_str) {
+            Some(m) => {
+                let unknown_tokens = unknown_token_text(attempt_str, &m.0);
                 println!(
-                    "    → would be REJECTED by decoder step 3a \
-                     (`has_unknown_token`)"
+                    "    [{i}] strict-parse: OK — token_kinds={{{}}}",
+                    token_summary(&m.0)
                 );
+                if !unknown_tokens.is_empty() {
+                    println!("        Unknown spans: {unknown_tokens:?}");
+                    println!(
+                        "        → REJECTED by decoder step 3a \
+                         (`has_unknown_token`)"
+                    );
+                }
             }
+            None => println!("    [{i}] strict-parse: FAILED"),
         }
-        None => println!("  strict-parse(canonical): FAILED"),
     }
 
     // 3. Strict-parse the expected form for ground-truth attrs.
@@ -190,7 +145,10 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     let result = decoder.recognize(observed.as_bytes(), &deep_cx());
     match result {
         Parsed::Unambiguous(m) => {
-            let r = m.1.as_ref().map(|p| p.recognition_score()).unwrap_or(0.0);
+            let r =
+                m.1.as_ref()
+                    .expect("decoder returned Parsed::Unambiguous without provenance")
+                    .recognition_score();
             println!("  decoder verdict: Unambiguous (recognition={r:.3})");
             if let Some(exp) = expected_attrs {
                 let attrs_match = same_meaning(&m.0, exp);
@@ -330,8 +288,10 @@ fn probe_fuzzy_for_specific_tokens() {
                 c.token, c.distance, c.confidence
             ),
             None => {
-                // Print closest k=3 matches with their distances so we
-                // can see whether None is "no match" or "ambiguous".
+                // Print the closest 5 vocab entries with their
+                // Levenshtein distances so the reader can see whether
+                // None means "no candidate within MAX_EDIT_DISTANCE" or
+                // "two candidates tied at the same distance, ambiguous."
                 let mut dists: Vec<(u8, &str)> = vocab
                     .iter()
                     .map(|&v| {
