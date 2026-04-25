@@ -21,7 +21,7 @@
 
 use marque_capco::capco_rules;
 use marque_engine::Engine;
-use marque_server::{AppState, build_app_with_limit, resolve_body_limit};
+use marque_server::{AppState, build_app_with_limit, resolve_body_limit, resolve_deadline_cap};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -57,8 +57,21 @@ async fn main() {
             std::process::exit(69);
         }
     };
+    // Spec 005 §10.2 — per-request deadline cap (default 60 s,
+    // override via `MARQUE_MAX_DEADLINE`). Resolved here so an
+    // unparseable / out-of-range value fails startup loudly instead
+    // of silently degrading a per-request safety control.
+    let deadline_cap = match resolve_deadline_cap() {
+        Ok(d) => d,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            std::process::exit(64); // EX_USAGE per contracts/cli.md
+        }
+    };
+
     let state = AppState {
         engine: Arc::new(engine),
+        deadline_cap,
     };
 
     // Whitepaper §10.2 / gap register #6 — explicit body-size cap
@@ -83,6 +96,7 @@ async fn main() {
     tracing::info!(
         addr = %addr,
         body_limit_bytes,
+        deadline_cap_ms = deadline_cap.as_millis() as u64,
         "marque-server listening"
     );
 

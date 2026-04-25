@@ -44,9 +44,7 @@ fn app() -> axum::Router {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles");
-    build_app(AppState {
-        engine: Arc::new(engine),
-    })
+    build_app(AppState::new(Arc::new(engine)))
 }
 
 fn post_json(uri: &str, body: &str) -> Request<Body> {
@@ -359,12 +357,7 @@ fn app_with_limit(limit_bytes: usize) -> axum::Router {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles");
-    build_app_with_limit(
-        AppState {
-            engine: Arc::new(engine),
-        },
-        limit_bytes,
-    )
+    build_app_with_limit(AppState::new(Arc::new(engine)), limit_bytes)
 }
 
 #[tokio::test]
