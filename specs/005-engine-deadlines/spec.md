@@ -399,11 +399,11 @@ The implementation MUST land with at least the following tests:
 
 - **Principle I (uncompromising performance)**: The `Instant::now()` check is ~10 ns; per-candidate granularity puts that against ~0.16 ms median per-candidate work, so the overhead is in noise. R7 includes a Criterion bench (`deadline_overhead.rs`) that asserts no SC-001 regression. ✓
 - **Principle II (zero-copy streaming core)**: `LintOptions` is a `&'_ LintOptions` reference; no heap allocation introduced on the hot path. `Instant` is `Copy`. ✓
-- **Principle III (format-agnostic core / WASM safety)**: `LintOptions` is a pure-data struct; no I/O. Lives in `marque-rules`, which is WASM-safe. WASM accepts `deadline_ms: f64` and converts internally; this is a runtime config that does not introduce a new recognizer codepath or alter posteriors, so it satisfies the constitution's WASM runtime-config restriction. ✓
+- **Principle III (format-agnostic core / WASM safety)**: `LintOptions` is a pure-data struct; no I/O. Lives in `crates/engine/src/options.rs` (under `marque-engine`, which is compiled into the `marque-wasm` target). `Instant::now()` is available in the wasm32 target (used by the wasm shim to convert `deadline_ms: f64` before calling into the engine); the struct itself carries no platform I/O. This is a runtime-config change that does not introduce a new recognizer codepath or alter posteriors, so it satisfies the constitution's WASM runtime-config restriction. ✓
 - **Principle IV (two-layer rule architecture)**: No rule-layer changes; deadline enforcement lives in the engine's loop, not in `Rule::check`. Rules remain stateless. ✓
 - **Principle V (audit-first compliance)**: Asymmetric design. `fix` returns `Err(DeadlineExceeded)` rather than a partial `FixResult`, so a deadline-hit during compliance-output construction cannot ship a silently-incomplete audit stream. Partial `LintResult` is exposed inside the error variant for renderer use. ✓
 - **Principle VI (dataflow pipeline model)**: Per-candidate granularity sits exactly at the scanner→parser→rule boundary, which is already the engine's natural phase boundary. No phase-collapsing. ✓
-- **Principle VII (crate discipline)**: `LintOptions` lands in `marque-rules` (the dependency root); `EngineError::DeadlineExceeded` and the wiring land in `marque-engine`. No cycles. ✓
+- **Principle VII (crate discipline)**: `LintOptions` and `FixOptions` land in `crates/engine/src/options.rs` (new module, under `marque-engine`), co-located with the existing `LintResult` / `FixResult` output types in that crate. Placing them in `marque-rules` would be preferred in principle so a second engine could share the contract, but the prior anchoring of `LintResult` / `FixResult` in `marque-engine` makes that a separate, semver-breaking refactor that is out of scope here. `EngineError::DeadlineExceeded` and all wiring also land in `marque-engine`. No cycles. ✓
 - **Principle VIII (authoritative source fidelity)**: N/A — this is an engine-infrastructure feature, not a grammar feature. No CAPCO citations apply.
 
 ## Acceptance criteria
@@ -411,7 +411,7 @@ The implementation MUST land with at least the following tests:
 The implementation closes #139 when:
 
 1. `Engine::lint_with_options` and `Engine::fix_with_options` are public API surfaces in `marque-engine`.
-2. `LintOptions` is `#[non_exhaustive]`, derives `Default + Clone`, and lives in `marque-rules`.
+2. `LintOptions` and `FixOptions` are `#[non_exhaustive]`, derive `Default + Clone + Debug`, and live in `crates/engine/src/options.rs` (re-exported from `marque-engine`).
 3. `EngineError::DeadlineExceeded { partial_lint }` exists.
 4. Per-candidate and per-fix deadline checks are wired in `Engine::lint_with_options` and `Engine::fix_inner`.
 5. CLI, server, WASM, and BatchEngine surfaces all expose the deadline.
