@@ -282,25 +282,29 @@ fn query_carries_corpus_override(query: &str) -> bool {
     })
 }
 
-/// Inspect a request for any T3 corpus-override claim.
+/// Reject a request if its **header** or **query** carries a T3
+/// corpus-override claim.
 ///
-/// Returns `Err(StatusCode::BAD_REQUEST)` on any positive signal. Logs
-/// the channel but never the payload contents.
+/// This function deliberately does NOT inspect the body — at this
+/// stage the body has not yet been deserialized, and the wire-level
+/// check must run before deserialization so a malformed body still
+/// fails with `400 Bad Request` (rather than axum's default `422
+/// Unprocessable Entity` from the JSON extractor) when either of
+/// these channels carries an override claim.
+///
+/// The body channel is handled by [`reject_if_body_carries_corpus_override`]
+/// after `serde_json::from_slice` succeeds. The two-pass split is
+/// intentional: callers always pair both functions, and each one
+/// owns exactly one stage of the request lifecycle.
+///
+/// Returns `Err(StatusCode::BAD_REQUEST)` on any positive signal.
+/// Logs the channel but never the payload contents (Constitution V
+/// G13: audit-stream content-ignorance).
 pub fn reject_if_corpus_override(
     endpoint: &str,
     uri: &Uri,
     headers: &HeaderMap,
-    body_has_override: bool,
 ) -> Result<(), StatusCode> {
-    if body_has_override {
-        tracing::warn!(
-            target: "marque_server::t3",
-            endpoint,
-            channel = "body",
-            "rejected corpus_override in request body"
-        );
-        return Err(StatusCode::BAD_REQUEST);
-    }
     if headers.contains_key(CORPUS_OVERRIDE_HEADER) {
         tracing::warn!(
             target: "marque_server::t3",
@@ -318,6 +322,31 @@ pub fn reject_if_corpus_override(
             endpoint,
             channel = "query",
             "rejected corpus_override in query string"
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(())
+}
+
+/// Reject a deserialized request if its body carries a T3
+/// corpus-override claim. Pairs with [`reject_if_corpus_override`]
+/// (which handles header + query before deserialization).
+///
+/// Runs after `serde_json::from_slice` so `PresenceMarker` records
+/// whether the `corpus_override` JSON key was present without
+/// deserializing or examining the payload — see the
+/// `PresenceMarker` doc comment for the absent-vs-`null`
+/// distinction.
+fn reject_if_body_carries_corpus_override(
+    endpoint: &str,
+    presence: &PresenceMarker,
+) -> Result<(), StatusCode> {
+    if presence.is_present() {
+        tracing::warn!(
+            target: "marque_server::t3",
+            endpoint,
+            channel = "body",
+            "rejected corpus_override in request body"
         );
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -349,21 +378,13 @@ pub async fn lint_handler(
     // a request with a malformed body is still rejected with 400 when either
     // of those channels carries an override claim (axum's Json extractor
     // would otherwise short-circuit with 422 before this handler ran).
-    reject_if_corpus_override("/v1/lint", &uri, &headers, false)?;
+    reject_if_corpus_override("/v1/lint", &uri, &headers)?;
 
     let req: LintRequest =
         serde_json::from_slice(&body).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     // Body-field check after successful deserialization.
-    if req._corpus_override.is_present() {
-        tracing::warn!(
-            target: "marque_server::t3",
-            endpoint = "/v1/lint",
-            channel = "body",
-            "rejected corpus_override in request body"
-        );
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    reject_if_body_carries_corpus_override("/v1/lint", &req._corpus_override)?;
 
     let result = state.engine.lint(req.text.as_bytes());
 
@@ -399,21 +420,13 @@ pub async fn fix_handler(
     body: Bytes,
 ) -> Result<Json<FixResponse>, StatusCode> {
     // Wire-level checks (header + query) run BEFORE body deserialization.
-    reject_if_corpus_override("/v1/fix", &uri, &headers, false)?;
+    reject_if_corpus_override("/v1/fix", &uri, &headers)?;
 
     let req: FixRequest =
         serde_json::from_slice(&body).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     // Body-field check after successful deserialization.
-    if req._corpus_override.is_present() {
-        tracing::warn!(
-            target: "marque_server::t3",
-            endpoint = "/v1/fix",
-            channel = "body",
-            "rejected corpus_override in request body"
-        );
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    reject_if_body_carries_corpus_override("/v1/fix", &req._corpus_override)?;
 
     let result = state
         .engine
