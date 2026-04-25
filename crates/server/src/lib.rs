@@ -497,17 +497,23 @@ const TRUNCATED_HEADER: &str = "marque-truncated";
 
 /// Resolve the per-request deadline.
 ///
-/// Returns `Ok(Some(Duration))` for a valid header value or the
-/// per-endpoint default; `Ok(None)` is reserved for an explicit "no
-/// budget" path that no caller can express today (the header is
-/// always rejected if zero).
+/// Returns `Ok(Duration)` with the effective deadline budget. If the
+/// header is absent — or present but empty — this is the per-endpoint
+/// default; otherwise it's the caller-supplied value (validated and
+/// in range). The function does NOT return an `Option`: every code
+/// path produces a budget the caller can stamp into an `Instant`,
+/// because spec 005 §10.2 requires every request to have a deadline.
 ///
 /// Validation rules per spec 005 §10.2:
 ///
-/// - Header absent → use the per-endpoint default (typically
-///   [`DEFAULT_ENDPOINT_DEADLINE_MS`]).
+/// - Header absent → `Ok(default)` using the per-endpoint default
+///   (typically [`DEFAULT_ENDPOINT_DEADLINE_MS`]).
+/// - Header present but empty (or whitespace-only) → same as absent.
+///   This matches the "empty == default" convention HTTP libraries
+///   use elsewhere and avoids a confusing 400 for a caller that sets
+///   the header from a possibly-unset variable.
 /// - Header present and parseable as `u64` milliseconds, in the
-///   range `[MIN_DEADLINE_MS, deadline_cap]` → use that value.
+///   range `[MIN_DEADLINE_MS, deadline_cap]` → `Ok(parsed_duration)`.
 /// - Anything else (non-UTF-8, non-numeric, negative, overflow,
 ///   below floor, above cap) → `Err(BAD_REQUEST)`.
 ///
@@ -524,6 +530,14 @@ fn resolve_request_deadline(
         None => return Ok(Duration::from_millis(default_ms)),
     };
     let s = raw.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
+    // Empty / whitespace-only header → fall back to the per-endpoint
+    // default, matching the contract for an absent header. A caller
+    // building the header from a possibly-unset env var or template
+    // variable should not get a 400 just because the substitution
+    // emitted nothing.
+    if s.trim().is_empty() {
+        return Ok(Duration::from_millis(default_ms));
+    }
     let ms: u64 = s.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
     if ms < MIN_DEADLINE_MS {
         return Err(StatusCode::BAD_REQUEST);
@@ -598,17 +612,21 @@ pub async fn lint_handler(
     // would otherwise short-circuit with 422 before this handler ran).
     reject_if_corpus_override("/v1/lint", &uri, &headers)?;
 
+    // Spec 005 §R3 — validate `X-Marque-Deadline` BEFORE body
+    // deserialization so an out-of-range header surfaces as 400, not
+    // as 422 (which axum's Json extractor would emit on a malformed
+    // body). The `Instant::now()` stamp is deferred until just
+    // before the engine call so JSON parse time isn't billed against
+    // the caller's budget.
+    let deadline_duration =
+        resolve_request_deadline(&headers, state.deadline_cap, DEFAULT_ENDPOINT_DEADLINE_MS)?;
+
     let req: LintRequest =
         serde_json::from_slice(&body).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     // Body-field check after successful deserialization.
     reject_if_body_carries_corpus_override("/v1/lint", &req._corpus_override)?;
 
-    // Spec 005 §R3 — per-request deadline. Stamped here so the
-    // budget covers the full handler body (rule pass + JSON
-    // serialization). Header out-of-range / unparseable → 400.
-    let deadline_duration =
-        resolve_request_deadline(&headers, state.deadline_cap, DEFAULT_ENDPOINT_DEADLINE_MS)?;
     let mut lint_opts = LintOptions::default();
     lint_opts.deadline = Some(Instant::now() + deadline_duration);
 
@@ -651,14 +669,18 @@ pub async fn fix_handler(
     // Wire-level checks (header + query) run BEFORE body deserialization.
     reject_if_corpus_override("/v1/fix", &uri, &headers)?;
 
+    // Spec 005 §R3 — validate the deadline header BEFORE body
+    // deserialization so 400 (bad header) takes precedence over 422
+    // (malformed JSON). Same `Instant::now()` deferral as `lint_handler`.
+    let deadline_duration =
+        resolve_request_deadline(&headers, state.deadline_cap, DEFAULT_ENDPOINT_DEADLINE_MS)?;
+
     let req: FixRequest =
         serde_json::from_slice(&body).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     // Body-field check after successful deserialization.
     reject_if_body_carries_corpus_override("/v1/fix", &req._corpus_override)?;
 
-    let deadline_duration =
-        resolve_request_deadline(&headers, state.deadline_cap, DEFAULT_ENDPOINT_DEADLINE_MS)?;
     let mut fix_opts = FixOptions::default();
     fix_opts.threshold_override = req.confidence_threshold;
     fix_opts.deadline = Some(Instant::now() + deadline_duration);

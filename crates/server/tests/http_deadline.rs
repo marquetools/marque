@@ -15,7 +15,7 @@ use axum::{
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_server::{AppState, MAX_DEADLINE_CAP_MS, build_app};
+use marque_server::{AppState, DEFAULT_DEADLINE_CAP_MS, build_app};
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceExt;
@@ -161,8 +161,13 @@ async fn deadline_header_negative_returns_400() {
 
 #[tokio::test]
 async fn deadline_header_above_cap_returns_400() {
-    // Default cap is 60 000 ms; anything above must 400.
-    let too_big = (MAX_DEADLINE_CAP_MS + 1).to_string();
+    // The default `AppState` cap is `DEFAULT_DEADLINE_CAP_MS` (60 000
+    // ms). Pin the boundary at `cap + 1` so this test fails the moment
+    // the default cap regresses, and so it doesn't accidentally pin
+    // the *ceiling* (`MAX_DEADLINE_CAP_MS`, 600 000 ms) instead — those
+    // are different invariants. (`deadline_header_just_above_configured_cap_returns_400`
+    // covers the explicit-cap-via-AppState path on the same boundary.)
+    let too_big = (DEFAULT_DEADLINE_CAP_MS + 1).to_string();
     let resp = app()
         .oneshot(post_with_deadline(
             "/v1/lint",
@@ -206,6 +211,63 @@ async fn deadline_header_overflow_returns_400() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn deadline_header_empty_uses_endpoint_default() {
+    // An empty header value (header present, value `""`) must behave
+    // like the header is absent — same convention HTTP libraries use
+    // elsewhere, and matches a caller building the header from a
+    // possibly-unset env var or template variable. The contract is
+    // documented on `resolve_request_deadline`.
+    let resp = app()
+        .oneshot(post_with_deadline(
+            "/v1/lint",
+            r#"{"text":"SECRET//NF\n"}"#,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("Marque-Truncated").is_none(),
+        "small fixture should not be truncated when empty deadline falls back to default"
+    );
+}
+
+#[tokio::test]
+async fn deadline_header_whitespace_uses_endpoint_default() {
+    // Whitespace-only is the same as empty per
+    // `resolve_request_deadline`'s `s.trim().is_empty()` branch — a
+    // template substitution that emits `" "` instead of nothing must
+    // not 400 the request.
+    let resp = app()
+        .oneshot(post_with_deadline(
+            "/v1/lint",
+            r#"{"text":"SECRET//NF\n"}"#,
+            "   ",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn deadline_header_validated_before_body_deserialization() {
+    // Ordering invariant: an out-of-range deadline header must surface
+    // as 400 even when the body is also malformed (axum's Json
+    // extractor would otherwise short-circuit with 422). This pins the
+    // handler ordering that puts deadline validation before
+    // `serde_json::from_slice`.
+    let resp = app()
+        .oneshot(post_with_deadline("/v1/lint", "this is not json", "0"))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "bad-header takes precedence over malformed-body"
+    );
 }
 
 // ---------------------------------------------------------------------------
