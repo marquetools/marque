@@ -2,12 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! SC-001 benchmark: Engine::lint latency on representative inputs.
+//! Engine::lint latency benchmarks. Two functions live here:
 //!
-//! Target: <= 16ms on inputs <= 10KB of raw text on commodity dev hardware,
-//! using Criterion's confidence-interval upper bound as the enforced metric.
-//! The threshold is enforced by `scripts/bench-check.sh`, not by this benchmark
-//! file. Run `./scripts/bench-check.sh` to gate on the SC-001 target.
+//! - **SC-001 strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
+//!   representative input with the default (strict-only) recognizer.
+//!   Target p95 <= 16ms.
+//! - **SC-002 decoder-path**: `decoder_10kb_one_mangled_region` —
+//!   `Engine::lint` on a 10KB representative input where exactly one
+//!   region contains a mangled marking that forces the decoder to fire.
+//!   Target p95 <= 18ms. The gap (18 - 16 = 2ms) is the per-document
+//!   budget the decoder gets for fuzzy correction + canonical generation
+//!   on a single mangled region; corpus-wide accuracy is gated separately
+//!   by SC-004 in `tests/decoder_accuracy.rs`.
+//!
+//! Both targets are enforced by `scripts/bench-check.sh`, not by this
+//! benchmark file. Run `./scripts/bench-check.sh` to gate.
 //!
 //! Reference baseline: x86_64 >= 3.0 GHz single-thread (e.g. modern laptop-class CPU),
 //! warm cache, `--release` build, no tracing subscriber.
@@ -69,5 +78,82 @@ fn lint_latency_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, lint_latency_benchmark);
+/// Build a ~10KB representative input where exactly ONE region contains
+/// a mangled marking that forces the decoder to fire. The rest is the
+/// same valid-marking + prose mix as `build_representative_input` so the
+/// strict-path cost is identical and the measured delta isolates the
+/// decoder's fuzzy-correction + canonical-generation cost.
+///
+/// SC-002 measures the *worst-case* decoder cost on a single document:
+/// one region triggers the slow path while the rest stays on the fast
+/// strict path. A document with many mangled regions amortizes the
+/// per-token fuzzy work over more matches; a single mangled region in
+/// otherwise clean text is the load-bearing case for interactive use
+/// (an editor cursor sitting on a single typo'd marking).
+fn build_decoder_input(target_bytes: usize) -> Vec<u8> {
+    // Same block as `build_representative_input` so the strict-path
+    // cost stays identical. Differences in measurement isolate to the
+    // injected mangled region below.
+    let block = concat!(
+        "TOP SECRET//SCI//NOFORN\n",
+        "\n",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+        "\n",
+        "(S//NF) This portion contains abbreviated dissemination controls.\n",
+        "\n",
+        "SECRET//NOFORN//REL TO USA, GBR\n",
+        "\n",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n",
+        "\n",
+        "(TS//SI) Another portion with SCI controls and valid formatting.\n",
+        "\n",
+    );
+    // The mangled portion: `SERCET` is edit-distance-1 from `SECRET`
+    // and `NF` is the canonical portion-form NOFORN abbreviation. The
+    // strict parser leaves classification = None on this input
+    // (lenient parse), so the deep-scan dispatcher falls through to the
+    // decoder. Mirrors the fixture used in
+    // `tests/audit.rs::decoder_path_record_shape` so the bench
+    // exercises the same decoder code path as the audit-shape regression.
+    let mangled =
+        "(SERCET//NF) Decoder fixture — single mangled portion in otherwise clean text.\n\n";
+
+    let block_bytes = block.as_bytes();
+    let mangled_bytes = mangled.as_bytes();
+
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len() + mangled_bytes.len());
+    // Inject the mangled region exactly once, near the front of the
+    // document so the scanner reaches it before the byte budget is
+    // exhausted. Then fill the rest with the strict-path block.
+    input.extend_from_slice(mangled_bytes);
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = (target_bytes.saturating_sub(mangled_bytes.len())) / block_bytes.len();
+    let truncated_len = mangled_bytes.len() + complete_blocks.max(1) * block_bytes.len();
+    input.truncate(truncated_len);
+    // Pad with spaces to reach exactly `target_bytes` so the bench
+    // name (`decoder_10kb_one_mangled_region`) and the SC-002 gate are
+    // measured against a true 10KB input.
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn decoder_latency_benchmark(c: &mut Criterion) {
+    let input = build_decoder_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    .with_deep_scan();
+
+    c.bench_function("decoder_10kb_one_mangled_region", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+criterion_group!(benches, lint_latency_benchmark, decoder_latency_benchmark);
 criterion_main!(benches);
