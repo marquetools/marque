@@ -835,16 +835,17 @@ fn migration_audit_has_both_urns() {
     // directly in the per-token metadata table. This is what an audit
     // consumer with only the audit record + public vocabulary tables
     // does to recover the source URN.
-    let source_metadata =
-        marque_ism::generated::vocabulary::lookup_token_metadata(e001_fix.proposal.original.as_ref())
-            .unwrap_or_else(|| {
-                panic!(
-                    "audit's `original` ({:?}) must resolve to a TOKEN_METADATA \
+    let source_metadata = marque_ism::generated::vocabulary::lookup_token_metadata(
+        e001_fix.proposal.original.as_ref(),
+    )
+    .unwrap_or_else(|| {
+        panic!(
+            "audit's `original` ({:?}) must resolve to a TOKEN_METADATA \
                      entry — every E001 source token is canonical-form by \
                      construction",
-                    e001_fix.proposal.original.as_ref(),
-                )
-            });
+            e001_fix.proposal.original.as_ref(),
+        )
+    });
     let source_urn = source_metadata.cve_file.urn;
 
     // Path 2: `replacement` is "NOFORN", a banner form (not a CVE
@@ -852,16 +853,15 @@ fn migration_audit_has_both_urns() {
     // canonical via `marking_forms::banner_to_portion`, then look up
     // the canonical in TOKEN_METADATA. This is the round-trip the
     // recovery contract relies on.
-    let canonical_for_replacement = marque_ism::marking_forms::banner_to_portion(
-        e001_fix.proposal.replacement.as_ref(),
-    )
-    .unwrap_or_else(|| {
-        panic!(
-            "banner form {:?} must map back to a portion-form canonical via \
+    let canonical_for_replacement =
+        marque_ism::marking_forms::banner_to_portion(e001_fix.proposal.replacement.as_ref())
+            .unwrap_or_else(|| {
+                panic!(
+                    "banner form {:?} must map back to a portion-form canonical via \
              marking_forms::banner_to_portion — recovery contract violated",
-            e001_fix.proposal.replacement.as_ref(),
-        )
-    });
+                    e001_fix.proposal.replacement.as_ref(),
+                )
+            });
     let replacement_metadata =
         marque_ism::generated::vocabulary::lookup_token_metadata(canonical_for_replacement)
             .unwrap_or_else(|| {

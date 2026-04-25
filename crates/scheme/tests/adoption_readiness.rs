@@ -303,7 +303,11 @@ struct StubCodec;
 
 impl Codec<StubScheme> for StubCodec {
     fn encode(&self, marking: &StubMarking) -> Result<Vec<u8>, CodecError> {
-        Ok(if marking.has_token { b"STUB".to_vec() } else { Vec::new() })
+        Ok(if marking.has_token {
+            b"STUB".to_vec()
+        } else {
+            Vec::new()
+        })
     }
     fn decode(&self, bytes: &[u8]) -> Result<Parsed<StubMarking>, CodecError> {
         if bytes == b"STUB" {
@@ -351,7 +355,10 @@ fn second_scheme_builds_without_engine_edits() {
     assert_eq!(scheme.constraints().len(), 1);
     assert!(scheme.templates().is_empty());
     assert_eq!(scheme.page_rewrites().len(), 1);
-    assert!(matches!(scheme.parse("anything"), Ok(Parsed::Ambiguous { .. })));
+    assert!(matches!(
+        scheme.parse("anything"),
+        Ok(Parsed::Ambiguous { .. })
+    ));
 
     let marking = StubMarking::top();
     assert!(scheme.satisfies(&marking, &TokenRef::Token(STUB_TOKEN)));
@@ -376,7 +383,10 @@ fn second_scheme_builds_without_engine_edits() {
     // Vocabulary surface.
     assert_eq!(scheme.authority(&STUB_TOKEN).source_name, "Stub Authority");
     assert_eq!(scheme.owner_producer(&STUB_TOKEN).code, "STUB");
-    assert_eq!(scheme.point_of_contact(&STUB_TOKEN).email, "stub@example.invalid");
+    assert_eq!(
+        scheme.point_of_contact(&STUB_TOKEN).email,
+        "stub@example.invalid"
+    );
     assert!(scheme.deprecation(&STUB_TOKEN).is_none());
     assert_eq!(scheme.portion_form(&STUB_TOKEN), "STUB");
     assert_eq!(scheme.banner_form(&STUB_TOKEN), "STUB");
@@ -396,6 +406,14 @@ fn second_scheme_builds_without_engine_edits() {
     assert!(matches!(decoded, Parsed::Unambiguous(m) if m.has_token));
 
     // Mismatch path.
-    let mismatch = codec.decode(b"NOT-STUB").expect_err("non-stub bytes should mismatch");
-    assert!(matches!(mismatch, CodecError::SchemaMismatch { expected: "stub-1", .. }));
+    let mismatch = codec
+        .decode(b"NOT-STUB")
+        .expect_err("non-stub bytes should mismatch");
+    assert!(matches!(
+        mismatch,
+        CodecError::SchemaMismatch {
+            expected: "stub-1",
+            ..
+        }
+    ));
 }
