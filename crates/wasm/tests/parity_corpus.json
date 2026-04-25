@@ -245,19 +245,19 @@
       "name": "x_shorthand_date.txt",
       "category": "invalid",
       "input": "SECRET//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p33\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//50X1-\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":\"X-shorthand declassification code \\\"50X1-\\\" is deprecated; use \\\"50X1-HUM\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p33\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":\"X-shorthand declassification code \\\"50X1-\\\" is deprecated; use \\\"50X1-HUM\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p33\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_pattern.txt",
