@@ -366,3 +366,182 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
         violations.join("\n")
     );
 }
+
+// -----------------------------------------------------------------------
+// Mangled-fixture token-only invariant (whitepaper §5.5 / gap register #19)
+// -----------------------------------------------------------------------
+//
+// The mangled fixtures under `tests/fixtures/mangled/` are a generated
+// artifact of `tools/corpus-analysis/analyze.py --mode mangled` and a
+// load-bearing input to the SC-004 decoder accuracy gate. Each JSON file
+// has the shape:
+//
+//     { "observed": "...", "expected": "...",
+//       "mangling_class": "Typo", "source_confidence": 0.82 }
+//
+// `observed` is the mangled marking the decoder must resolve; `expected`
+// is the canonical CAPCO marking it should resolve to. By construction,
+// both fields should contain only marking-shaped content — uppercase
+// letters, digits, spaces, marking delimiters, and the small set of
+// mangling glyphs the generator can produce. They MUST NOT contain
+// surrounding prose or classifier-id-shaped digit runs; the
+// source-narrowing invariant in `tests/fixtures/mangled/README.md`
+// keeps the generator pinned to `tests/corpus/valid/`, but a
+// regression in the generator (or a manual edit that didn't get
+// regenerated) would silently leak prose into the harness fixtures
+// and from there into Phase-D telemetry.
+//
+// This test is the post-condition. It walks every mangled JSON file
+// and asserts:
+//
+//   1. `observed` / `expected` decode as JSON strings.
+//   2. Neither contains a prose sentinel from the audit-stream
+//      content-ignorance corpus (mirrors `crates/engine/tests/audit.rs`).
+//   3. Neither contains a classifier-id-shaped digit run (5+ ASCII
+//      digits inside quotes / on a line by itself).
+//   4. Neither exceeds the per-marking length cap (256 bytes — well
+//      above the longest realistic CAPCO banner). Prose creeping in
+//      would blow this cap long before any other check.
+//
+// This is intentionally narrow — it does NOT enforce vocabulary
+// membership the way `sc002a_fixture_tokens_within_known_vocabulary`
+// does for `tests/corpus/valid/`, because mangled fixtures
+// deliberately contain typos / superseded tokens / wrong-case forms
+// that are out-of-vocabulary by design. The check is "no prose got
+// in", not "every token is canonical".
+
+const MANGLED_PROSE_SENTINELS: &[&str] = &[
+    // Drawn from `tests/corpus/prose/article.txt` — multi-word English
+    // fragments that cannot appear in any valid CAPCO/ISM marking and
+    // therefore cannot legitimately appear in `observed` / `expected`.
+    // Kept in sync with `crates/engine/tests/audit.rs::PROSE_SENTINELS`
+    // so a sentinel that rules out a leak in the audit stream also
+    // rules it out here.
+    "republic has over a democracy",
+    "numerous advantages promised",
+    "Liberty is to faction what air",
+    "insuperable obstacle to a uniformity",
+    "early prevalence of these sentiments",
+    "distinct interests in society",
+    "various and interfering interests",
+    "adjust these clashing interests",
+    "protection of these faculties",
+    "principal task of modern legislation",
+    "judge in his own cause",
+    "enlightened statesmen",
+];
+
+const MANGLED_FIELD_BYTE_CAP: usize = 256;
+
+#[test]
+fn mangled_fixtures_observed_expected_token_only() {
+    let mangled_dir = workspace_root()
+        .join("tests")
+        .join("fixtures")
+        .join("mangled");
+    if !mangled_dir.exists() {
+        // Mangled corpus is regenerable from `tools/corpus-analysis/`.
+        // A bare checkout that hasn't run the generator is a permitted
+        // state — skip rather than fail, matching the existing
+        // sc002a tests that bail when their corpus is absent.
+        return;
+    }
+
+    let files = walkdir(&mangled_dir);
+    let mut violations: Vec<String> = Vec::new();
+
+    for file in &files {
+        if file.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        // Record an unreadable fixture as a violation rather than a
+        // silent skip — a partial checkout, a corrupted file, or a
+        // permission glitch otherwise lets this invariant test pass
+        // without actually validating the fixture set.
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(err) => {
+                violations.push(format!("{}: unreadable fixture: {err}", file.display()));
+                continue;
+            }
+        };
+
+        // Parse the fixture as JSON and pull the `observed` / `expected`
+        // strings out via `serde_json`. The generator
+        // (`tools/corpus-analysis/analyze.py`) writes the fixture with
+        // `json.dumps`, so any input that doesn't round-trip through
+        // `serde_json::from_str` is itself a corruption violation.
+        for field in ["observed", "expected"] {
+            let Some(value) = extract_string_field(&content, field) else {
+                violations.push(format!(
+                    "{}: missing or non-string field {field:?}",
+                    file.display()
+                ));
+                continue;
+            };
+
+            if value.len() > MANGLED_FIELD_BYTE_CAP {
+                violations.push(format!(
+                    "{}: field {field:?} exceeds {MANGLED_FIELD_BYTE_CAP}-byte cap \
+                     ({} bytes) — likely prose leakage",
+                    file.display(),
+                    value.len()
+                ));
+                continue;
+            }
+
+            for sentinel in MANGLED_PROSE_SENTINELS {
+                if value.contains(sentinel) {
+                    violations.push(format!(
+                        "{}: field {field:?} contains prose sentinel {sentinel:?}",
+                        file.display()
+                    ));
+                }
+            }
+
+            // 5+ consecutive ASCII digits = classifier-id-shaped run.
+            // CAPCO markings don't carry runs that long: the longest
+            // legitimate digit run is the 8-digit `declassify_on` date
+            // (YYYYMMDD), and that always sits inside a `Declassify On:`
+            // CAB line — never bare in the marking text. Mangled
+            // fixtures don't carry CAB content at all.
+            let mut run = 0usize;
+            for b in value.bytes() {
+                if b.is_ascii_digit() {
+                    run += 1;
+                    if run >= 5 {
+                        violations.push(format!(
+                            "{}: field {field:?} contains 5+-digit run \
+                             — possible classifier-id leakage",
+                            file.display()
+                        ));
+                        break;
+                    }
+                } else {
+                    run = 0;
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Mangled-fixture token-only invariant: {} violation(s):\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
+}
+
+/// Pull the string value of a top-level JSON field.
+///
+/// Parses the fixture via `serde_json` and returns the named top-level
+/// field only when it is present and is a JSON string. Returns `None`
+/// for non-JSON input, missing fields, and non-string values; the
+/// caller treats `None` as a fixture-shape violation. `marque` already
+/// depends on `serde_json` (workspace dep), so this carries no
+/// additional dependency cost over the previous hand-rolled scan.
+fn extract_string_field(json: &str, field: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let object = value.as_object()?;
+    object.get(field)?.as_str().map(ToOwned::to_owned)
+}
