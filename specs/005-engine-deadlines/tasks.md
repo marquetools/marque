@@ -66,15 +66,15 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 3b: Server surface wiring
 
-- [ ] T029 Add `humantime` as a direct dep in `crates/server/Cargo.toml`.
-- [ ] T030 Implement `X-Marque-Deadline` header parsing in `crates/server/src/lib.rs`: humantime-format. Out-of-range / unparseable returns `400 Bad Request`. Empty / absent uses per-endpoint default.
+- [ ] T029 (resolved by Q6) — server does **not** add `humantime` as a dep. The header is parsed as unsigned-integer milliseconds via `str::parse::<u64>()`, which is in `core` and needs no extra dependency. This task is retained as a checkpoint for reviewers to confirm no spurious dep was added.
+- [ ] T030 Implement `X-Marque-Deadline` header parsing in `crates/server/src/lib.rs`: parse as `u64` (milliseconds). Reject negative, non-numeric, overflow (`u64::MAX` would be ~584 million years; cap at `MARQUE_MAX_DEADLINE` ms first), or below the 1 ms floor with `400 Bad Request`. Empty / absent uses the per-endpoint default. Document the format in the API contract / OpenAPI spec when one lands.
 - [ ] T031 Implement `MARQUE_MAX_DEADLINE` env var resolution in `marque-server`'s `resolve_deadline_cap` (mirror the `resolve_body_limit` pattern from gap #6 closure). Default cap: 60 s. Reject below 1 ms / above max.
 - [ ] T032 Per-endpoint default deadline: 30 s for `/v1/lint` and `/v1/fix`. Document in §10.2.
 - [ ] T033 Convert parsed deadline to `Instant::now() + duration` per request; pass to `Engine::lint_with_options` / `fix_with_options`.
 - [ ] T034 Truncated lint response: HTTP 200 with payload + `Marque-Truncated: true` response header.
 - [ ] T035 `EngineError::DeadlineExceeded` from fix: HTTP 504 with body containing the partial-lint diagnostics (existing `LintResult` JSON shape, plus a top-level `truncated_by` indicator).
-- [ ] T036 [P] Test `header_driven_deadline_truncates_lint_response` in `crates/server/tests/http.rs`: POST `/v1/lint` with `X-Marque-Deadline: 1ms` and a multi-candidate body; assert 200 + `Marque-Truncated: true` header.
-- [ ] T037 [P] Test `out_of_range_deadline_header_returns_400` in `crates/server/tests/http.rs`: deadline > cap, deadline < 1 ms, unparseable string.
+- [ ] T036 [P] Test `header_driven_deadline_truncates_lint_response` in `crates/server/tests/http.rs`: POST `/v1/lint` with `X-Marque-Deadline: 1` (1 ms) and a multi-candidate body; assert 200 + `Marque-Truncated: true` header.
+- [ ] T037 [P] Test `out_of_range_deadline_header_returns_400` in `crates/server/tests/http.rs`: deadline > cap (e.g., `120000` with default 60 s cap), deadline < 1 ms (`0`), non-integer (`"30s"`, `"abc"`), negative (`-1`), and overflow (a value > `u64::MAX`).
 - [ ] T038 [P] Test `lint_without_header_uses_endpoint_default` in `crates/server/tests/http.rs`: omit header, assert lint runs to completion (default 30 s is generous on the test fixture).
 - [ ] T039 [P] Test `fix_deadline_exceeded_returns_504_with_partial_lint_body` in `crates/server/tests/http.rs`.
 
@@ -104,7 +104,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 ## Phase 4: Whitepaper updates + gap closure
 
 - [ ] T051 Rewrite `docs/security/WHITEPAPER.md` §9.7 from `[NON-GOAL]` to `[LANDED]`. New body: cooperative-cancellation model, per-candidate + per-fix granularity, asymmetric response shape (truncated `LintResult` for lint, `Err(DeadlineExceeded)` for fix per Constitution V Principle V), per-surface wiring summary.
-- [ ] T052 Update §10.2 server section: `X-Marque-Deadline` header, `MARQUE_MAX_DEADLINE` env var, per-endpoint default 30 s, cap default 60 s, 400/504 response codes.
+- [ ] T052 Update §10.2 server section: `X-Marque-Deadline` header (unsigned-integer milliseconds, e.g. `30000`), `MARQUE_MAX_DEADLINE` env var (also milliseconds), per-endpoint default 30 s (= `30000`), cap default 60 s (= `60000`), 400/504 response codes.
 - [ ] T053 Update §10.3 WASM section: `deadline_ms` parameter, Constitution III runtime-config-restriction analysis, parity invariant preserved.
 - [ ] T054 Update §9 Status footer: §9.7 flipped from `[NON-GOAL]` to `[LANDED]`.
 - [ ] T055 Strike gap register row #7 in §17 with PR / commit reference; mirror the format of rows 6, 8, 10 (the prior P1 closures).
@@ -118,7 +118,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 - [ ] T057 Final `cargo test --workspace --no-fail-fast` — all green.
 - [ ] T058 Final `cargo clippy --workspace --all-targets -- -D warnings` — clean.
-- [ ] T059 Final `cargo deny check` — clean (verify `humantime` is on the WASM-safe allow-list if it transitively reaches WASM-safe crates; otherwise constrain to `marque-cli` and `marque-server`).
+- [ ] T059 Final `cargo deny check` — clean. `humantime` is used only by `marque-cli` (already a direct dep). Server uses `str::parse::<u64>()` per Q6, so no transitive humantime leak into the server graph. Verify `humantime` does not reach the WASM-safe allow-list via any path; if it does, that's a regression to investigate.
 - [ ] T060 Verify SC-001 unchanged: re-run `crates/engine/benches/lint_latency.rs`, compare against pre-merge baseline.
 - [ ] T061 Verify SC-008 parity unchanged: re-run `crates/wasm/tests/parity.rs` against the full corpus.
 - [ ] T062 Verify SC-005 linear scaling unchanged: re-run `crates/engine/benches/linear_scaling.rs`.

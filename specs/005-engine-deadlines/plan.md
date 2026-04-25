@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Plan: Per-Document Deadlines
 
-**Status**: Pending design confirmation (see `spec.md` Open questions Q1–Q6)
+**Status**: Approved — Phase 1 ready to start (all Q1–Q7 resolved 2026-04-25 in PR #159 review; see `spec.md` § Open questions resolution)
 **Spec**: [spec.md](spec.md)
 **Branch**: `feat/engine-deadlines` (proposed)
 
@@ -53,7 +53,7 @@ Plus the deadline-overhead Criterion bench (`crates/engine/benches/deadline_over
 Each surface lands as its own commit-set so reviewers can cleanly trace "what changed in marque-cli" vs "what changed in marque-server."
 
 - **3a (CLI)**: `--deadline <humantime>` flag, `EX_USAGE` for `0`, truncated-output rendering, `EX_TEMPFAIL` for fix DeadlineExceeded. CLI tests in `marque/tests/cli.rs`.
-- **3b (Server)**: `X-Marque-Deadline` header parser, `MARQUE_MAX_DEADLINE` env var resolution, per-endpoint default, `400` for out-of-range, `Marque-Truncated` response header, `504` for fix DeadlineExceeded. Tests in `crates/server/tests/http.rs`.
+- **3b (Server)**: `X-Marque-Deadline` header parser (unsigned-integer milliseconds via `str::parse::<u64>()` — no humantime dep needed for the server), `MARQUE_MAX_DEADLINE` env var resolution, per-endpoint default, `400` for out-of-range / non-integer / overflow, `Marque-Truncated` response header, `504` for fix DeadlineExceeded. Tests in `crates/server/tests/http.rs`.
 - **3c (WASM)**: `deadline_ms: f64` field on JS-side options. wasm-bindgen wiring. Constitution III analysis added to crate doc comment. Tests in `crates/wasm/tests/parity.rs`.
 - **3d (BatchEngine)**: `BatchOptions` struct, `_with_options` variants, `BatchError::DocumentDeadlineExceeded { partial_lint }` variant, `is_deadline_exceeded()` predicate. Tests in `crates/engine/tests/batch_deadline.rs` (new file).
 
@@ -83,7 +83,7 @@ Phases 3a / 3b / 3c / 3d are parallelizable once Phase 2 lands. They can land as
 | Per-candidate `Instant::now()` regresses SC-001 | Low | High (Constitution I violation) | R7 #6 deadline-overhead bench gates the merge; abort if median overhead > 2% |
 | Truncated `LintResult` confuses downstream consumers that don't read the new fields | Medium | Medium (correctness for them, not us) | New fields are additive; default values preserve back-compat. `#[non_exhaustive]` is added to `LintResult` as part of Phase 1 (it is currently absent). Document the additions in CHANGELOG and call out the `#[non_exhaustive]` change for consumers using struct-update syntax. |
 | Server `MARQUE_MAX_DEADLINE` cap interacts with body-size cap unexpectedly | Low | Low | Document the precedence order in §10.2; deadline-cap is enforced first (parsing the header) before body is read |
-| `humantime` may still be transitive in crates that don't already depend on it directly (e.g., `marque-server`) | Low | Low | `marque/Cargo.toml` already has `humantime = { workspace = true }`; only add it as a direct dep in crates that don't already have it (server) — pinned to the workspace version |
+| `humantime` parsing breadth (CLI side) | Low | Low | `humantime::parse_duration` accepts a wide range of forms (`30s`, `2m`, `1h30m`); restrict to a documented subset in `marque-cli`'s `--deadline` value-parser if a future test surface drift. Server uses plain `str::parse::<u64>()` for milliseconds, so this risk is CLI-only. |
 | `deadline_ms: f64` overflow on huge values from JS | Low | Low (NaN / negative produces immediate-truncate behavior, which is safe) | Validate at the wasm shim: `deadline_ms.is_finite() && deadline_ms >= 0.0` before converting |
 | `BatchEngine`-level deadline composes incorrectly with row/byte semaphore wait | Low | Medium | Per-doc deadline starts at `Instant::now()` *after* the document acquires its permit, not before. Document this in `BatchOptions::per_doc_deadline`'s doc comment. |
 
