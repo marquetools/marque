@@ -774,12 +774,22 @@ fn run_fix(
                     eprintln!("error writing partial-lint diagnostics: {e}");
                     return EX_IOERR;
                 }
-                if let Err(e) = writeln!(
-                    stderr_lock,
-                    "{label}: ⚠ deadline exceeded after processing {}/{} \
+                // The trailing explanation is only emitted in human
+                // format. In JSON mode the stderr stream is NDJSON
+                // (one diagnostic per line); appending a plain-text
+                // narration line would corrupt the format and break
+                // pipe consumers (`marque fix --format json | jq …`).
+                // JSON consumers learn about the deadline from the
+                // exit code (75) and can re-lint with a larger
+                // budget if needed.
+                if let render::Format::Human = format
+                    && let Err(e) = writeln!(
+                        stderr_lock,
+                        "{label}: ⚠ deadline exceeded after processing {}/{} \
                      candidates; no fixes applied",
-                    partial_lint.candidates_processed, partial_lint.candidates_total
-                ) {
+                        partial_lint.candidates_processed, partial_lint.candidates_total
+                    )
+                {
                     drop(stderr_lock);
                     eprintln!("error writing deadline-exceeded explanation: {e}");
                     return EX_IOERR;
@@ -897,21 +907,30 @@ fn run_fix(
         // text for Apply mode. For DryRun, we need the would-be fixed text.
         //
         // Strategy: run a second Apply-mode fix call for DryRun to get the
-        // actual post-fix text for re-lint. This is the simplest correct
-        // approach — the extra cost is negligible for MVP document sizes.
+        // actual post-fix text for re-lint. We reuse the same `fix_opts`
+        // (same `Instant` deadline + same threshold) so the per-document
+        // budget covers BOTH the primary call and this replay — without
+        // this, `--deadline` could be exceeded by the dry-run replay
+        // running unbounded after the primary call succeeded. If the
+        // replay itself trips the deadline, we fall back to the original
+        // source for the re-lint baseline (worst case: exit code reflects
+        // pre-fix diagnostics).
         let relint_source = if dry_run {
-            match engine.fix_with_threshold(
-                source,
-                marque_engine::FixMode::Apply,
-                common.confidence_threshold,
-            ) {
+            match engine.fix_with_options(source, marque_engine::FixMode::Apply, &fix_opts) {
                 Ok(r) => r.source,
-                Err(_) => source.to_vec(), // threshold already validated; unreachable
+                Err(_) => source.to_vec(),
             }
         } else {
             result.source.clone()
         };
-        let relint = engine.lint(&relint_source);
+        // The re-lint pass for exit-code accounting also runs under the
+        // same per-document deadline. If it trips, we fall back to a
+        // deadline-free shape so the exit code still reflects whatever
+        // diagnostics the truncated re-lint did surface — accuracy degrades
+        // gracefully rather than blocking termination.
+        let mut relint_opts = LintOptions::default();
+        relint_opts.deadline = fix_opts.deadline;
+        let relint = engine.lint_with_options(&relint_source, &relint_opts);
         let has_errors = relint.error_count() > 0 || relint.fix_count() > 0;
         let has_warns = relint.warn_count() > 0;
 
