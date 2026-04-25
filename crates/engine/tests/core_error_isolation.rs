@@ -5,42 +5,61 @@
 //! `CoreError` content-isolation regression test (whitepaper §5.3 / gap
 //! register #20).
 //!
-//! `marque-core::CoreError` has variants that embed input bytes verbatim:
+//! `marque-core::CoreError` has two variants that *could* carry input
+//! bytes verbatim through their `Display` impl:
 //!
-//! - `MalformedMarking(String)` — Display output carries the malformed
-//!   marking text via `{0:?}`.
+//! - `MalformedMarking(String)` — Display interpolates the embedded
+//!   string via `{0:?}`.
 //! - `UnrecognizedToken { token: String, offset: usize }` — Display
-//!   output carries the unrecognized token via `{token:?}`.
+//!   interpolates the embedded token via `{token:?}`.
 //!
-//! By design these are internal — the engine catches `CoreError` inside
-//! `Parser::parse` (and the recognizer wrapper) and never propagates the
-//! error value to a public return type. `LintResult` carries no error
-//! channel at all; `FixResult` carries `RemainingDiagnostic` and
-//! `AppliedFix` whose text fields are token-canonical, not error-Display
-//! output.
+//! Today the parser source actually constructs only the first of these,
+//! and only on inputs the scanner does not produce (portion candidates
+//! without balanced parens, or empty inner content). `UnrecognizedToken`
+//! is unreferenced. The third variant — `InvalidUtf8(Span)` — carries
+//! no embedded content. Even so, the leak surface is a *contract*, not
+//! a state of the source: a future change that adds a content-bearing
+//! `MalformedMarking` site, or that revives `UnrecognizedToken`, would
+//! re-open the channel.
+//!
+//! `StrictRecognizer` (`crates/engine/src/recognizer.rs:97`) catches
+//! `CoreError` from `Parser::parse` and discards it — `Err(_) =>
+//! Parsed::Ambiguous { candidates: Vec::new() }`. The engine never sees
+//! the error value. `LintResult` carries no error channel; `FixResult`
+//! carries `RemainingDiagnostic` and `AppliedFix` whose text fields are
+//! built from token canonicals, not error-Display output.
 //!
 //! Whitepaper §5.3 calls the no-leak property out as a *convention* —
-//! the type system permits a future caller to surface `CoreError` via
-//! `.to_string()` and route it into an audit record or server response.
-//! This file converts the convention into a runtime-asserted invariant:
-//! a canary embedded inside adversarial input bytes does not appear in
-//! any serialized output the engine produces.
+//! the type system permits a future caller to call `.to_string()` on a
+//! `CoreError` and route it into an audit record or server response.
+//! This file is the runtime backstop: a canary embedded inside
+//! adversarial input bytes does not appear in any serialized output the
+//! engine produces.
 //!
 //! ## What this test does NOT prove
 //!
-//! It does not prove that no future code path will surface `CoreError`.
-//! Nothing short of making `CoreError` `pub(crate)` (which is a
-//! breaking change to the existing `marque_core::CoreError` re-export)
-//! prevents that at the type level. What this test does prove:
+//! - It does not prove that no future code path will surface
+//!   `CoreError`. Nothing short of making `CoreError` `pub(crate)`
+//!   (a breaking change to the existing `marque_core::CoreError`
+//!   re-export) prevents that at the type level.
+//! - It does not enumerate every `CoreError` variant. `UnrecognizedToken`
+//!   has no construction site to exercise; `InvalidUtf8` carries no
+//!   content. The cases below cover the one variant that has a
+//!   reachable construction site (`InvalidUtf8`, via a portion span
+//!   with invalid UTF-8) plus three adversarial inputs that ride the
+//!   recognizer/engine path past the strict grammar.
 //!
-//! 1. The current engine swallows `CoreError`-causing input rather than
-//!    surfacing it. A regression that started routing `CoreError::Display`
-//!    into a `Diagnostic.message` or `AppliedFix.proposal.original` field
-//!    would be caught here.
-//! 2. The canary infrastructure works — the self-test asserts that
-//!    `CoreError::MalformedMarking(canary).to_string()` actually contains
-//!    the canary, so a future change that nulled out the leak vector
-//!    accidentally would be visible.
+//! What this test does prove:
+//!
+//! 1. The current `StrictRecognizer::recognize` discards `Err(CoreError::*)`
+//!    from `Parser::parse` rather than surfacing the error value. A
+//!    regression that started routing `CoreError::Display` into a
+//!    `Diagnostic.message` or an `AppliedFix.proposal.{original,replacement}`
+//!    field would be caught here.
+//! 2. The canary infrastructure is real — the self-test asserts that
+//!    `CoreError::MalformedMarking(canary).to_string()` does carry the
+//!    canary, so a future Display redaction surfaces explicitly rather
+//!    than silently obsoleting the rest of this file.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -92,36 +111,65 @@ fn core_error_display_carries_input_string() {
 // surface in any LintResult or FixResult field.
 // ---------------------------------------------------------------------------
 
-/// Input bytes designed to trip every `CoreError` construction site
-/// in `crates/core/src/parser.rs`:
+/// Adversarial input bytes for engine-isolation coverage.
 ///
-/// - A bare-portion candidate that survives the scanner but fails the
-///   `parse_marking_string` token-extract → `MalformedMarking`.
-/// - A banner-shaped candidate that is well-formed at the scanner
-///   level but contains the canary as a free-form token →
-///   recognizer rejects, scanner skips.
+/// Of the four `CoreError` construction sites in
+/// `crates/core/src/parser.rs`, only `InvalidUtf8(span)` is reliably
+/// reachable from scanner-fed input today (`MalformedMarking` with a
+/// content-bearing payload requires either a portion candidate
+/// without balanced parens — which the scanner does not produce — or
+/// an empty inner string after stripping parens, which carries no
+/// content; `UnrecognizedToken` is unreferenced by the parser source).
+/// `InvalidUtf8` carries only a `Span`, no content, so a Display leak
+/// of that variant would not expose input bytes.
 ///
-/// Each variant interleaves the canary with real marking delimiters
-/// so that the scanner finds candidates and routes them to the
-/// recognizer. The recognizer returns `Parsed::Ambiguous` on every
-/// candidate, the engine drops them, and the canary stays bottled
-/// inside `marque-core` where it belongs.
+/// The cases below therefore split into two roles:
+///
+/// 1. **Guaranteed `Parser::parse` -> `Err(CoreError::*)` site.** The
+///    UTF-8-corrupted portion `(0xff)` survives the scanner, reaches
+///    the recognizer's `parser.parse(...)` call, and returns
+///    `Err(CoreError::InvalidUtf8(span))`. `StrictRecognizer`
+///    (`crates/engine/src/recognizer.rs:97`) discards the error via
+///    `Err(_) => Parsed::Ambiguous { candidates: Vec::new() }`. This
+///    case proves the discard path holds — a future refactor that
+///    Display'd the error into the recognizer output would surface
+///    the (variant-specific) error string in the lint stream and
+///    fail the assertions below.
+/// 2. **Adversarial recognizer/engine inputs.** The remaining cases
+///    interleave the canary with real marking delimiters so the
+///    scanner produces candidates, the recognizer returns
+///    `Parsed::Ambiguous`, and the engine drops them. They prove that
+///    no engine code path interpolates input bytes into a public
+///    output field independently of `CoreError`.
+///
+/// The test does NOT claim every `CoreError` variant is constructed.
+/// It claims that the engine, fed input designed to exercise the
+/// `Parser::parse -> Err(CoreError)` path that does exist today,
+/// surfaces no canary in any text-bearing public output.
 fn adversarial_inputs() -> Vec<Vec<u8>> {
     vec![
-        // Portion-shaped candidate carrying the canary as the
-        // marking content. The portion parser will try to slice off
-        // the parens, then `parse_marking_string` will fail to
-        // recognize the canary as any token and return
-        // `MalformedMarking(text)`.
+        // (1) Guaranteed `Parser::parse` -> `Err(CoreError::InvalidUtf8(span))`.
+        //
+        // `0xff` is not valid as a leading byte of any UTF-8 sequence, so
+        // `candidate.span.as_str(source)` returns `Err`. The scanner
+        // emits a portion candidate spanning the balanced parens
+        // regardless. No canary content is carried by `InvalidUtf8`,
+        // but the case proves the recognizer's `Err(_) -> Ambiguous`
+        // discard fires on a real CoreError construction.
+        vec![b'(', 0xff, b')'],
+        // (2) Portion-shaped candidate carrying the canary as marking
+        // content. The portion parser strips parens successfully; the
+        // canary survives as `TokenKind::Unknown` token spans. No
+        // CoreError is constructed today — the case is adversarial
+        // recognizer coverage, not a CoreError-site exercise.
         format!("({CANARY})").into_bytes(),
-        // Banner-shaped candidate carrying the canary between
-        // delimiters. The banner parser sees the canary as
-        // unrecognized tokens; if any path Display'd the
-        // `UnrecognizedToken` variant the canary would leak.
+        // (3) Banner-shaped candidate with the canary between marking
+        // delimiters. Same shape as (2): the canary becomes `Unknown`
+        // tokens, the recognizer rejects, no CoreError is constructed.
         format!("TOP SECRET//{CANARY}//NOFORN").into_bytes(),
-        // Mixed: real marking followed by a malformed canary
-        // portion. Tests that a partial parse over real content
-        // does not pull the canary into a downstream field.
+        // (4) Mixed: real marking, then a canary portion, then another
+        // real marking. Tests that partial success over real content
+        // does not pull the canary forward into any downstream field.
         format!("(S//SI//NF)\n({CANARY})\n(C)").into_bytes(),
     ]
 }

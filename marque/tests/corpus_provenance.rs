@@ -454,15 +454,23 @@ fn mangled_fixtures_observed_expected_token_only() {
         if file.extension().is_none_or(|e| e != "json") {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(file) else {
-            continue;
+        // Record an unreadable fixture as a violation rather than a
+        // silent skip — a partial checkout, a corrupted file, or a
+        // permission glitch otherwise lets this invariant test pass
+        // without actually validating the fixture set.
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(err) => {
+                violations.push(format!("{}: unreadable fixture: {err}", file.display()));
+                continue;
+            }
         };
 
-        // Pull `"observed": "..."` and `"expected": "..."` out of the
-        // raw JSON via a string scan rather than full deserialization
-        // — keeps the test free of a serde_json dependency footprint
-        // and makes the failure message point at the literal bytes
-        // that tripped the check.
+        // Parse the fixture as JSON and pull the `observed` / `expected`
+        // strings out via `serde_json`. The generator
+        // (`tools/corpus-analysis/analyze.py`) writes the fixture with
+        // `json.dumps`, so any input that doesn't round-trip through
+        // `serde_json::from_str` is itself a corruption violation.
         for field in ["observed", "expected"] {
             let Some(value) = extract_string_field(&content, field) else {
                 violations.push(format!(
@@ -524,53 +532,16 @@ fn mangled_fixtures_observed_expected_token_only() {
     );
 }
 
-/// Pull the string value of a top-level JSON field via a literal scan.
+/// Pull the string value of a top-level JSON field.
 ///
-/// Looks for the pattern `"<field>"` followed by `:` and then a quoted
-/// JSON string. Decodes the small set of escapes the generator can
-/// emit (`\\`, `\"`, `\n`, `\t`, `\u{...}` left as-is). Returns `None`
-/// if the field is absent or not a string. This is deliberately narrow
-/// — it's a test, not a JSON parser — but it covers every shape the
-/// mangled-fixture generator produces today (`tools/corpus-analysis/
-/// analyze.py::_emit_mangled_fixture` writes via `json.dumps` with
-/// default settings, which matches this scan).
+/// Parses the fixture via `serde_json` and returns the named top-level
+/// field only when it is present and is a JSON string. Returns `None`
+/// for non-JSON input, missing fields, and non-string values; the
+/// caller treats `None` as a fixture-shape violation. `marque` already
+/// depends on `serde_json` (workspace dep), so this carries no
+/// additional dependency cost over the previous hand-rolled scan.
 fn extract_string_field(json: &str, field: &str) -> Option<String> {
-    let needle = format!("\"{field}\"");
-    let idx = json.find(&needle)?;
-    let after_key = &json[idx + needle.len()..];
-    let colon = after_key.find(':')?;
-    let after_colon = &after_key[colon + 1..];
-    let trimmed = after_colon.trim_start();
-    let bytes = trimmed.as_bytes();
-    if bytes.first() != Some(&b'"') {
-        return None;
-    }
-    let mut out = String::new();
-    let mut i = 1;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if b == b'"' {
-            return Some(out);
-        }
-        if b == b'\\' && i + 1 < bytes.len() {
-            let esc = bytes[i + 1];
-            match esc {
-                b'"' => out.push('"'),
-                b'\\' => out.push('\\'),
-                b'/' => out.push('/'),
-                b'n' => out.push('\n'),
-                b't' => out.push('\t'),
-                b'r' => out.push('\r'),
-                _ => {
-                    out.push('\\');
-                    out.push(esc as char);
-                }
-            }
-            i += 2;
-            continue;
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    None
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let object = value.as_object()?;
+    object.get(field)?.as_str().map(ToOwned::to_owned)
 }
