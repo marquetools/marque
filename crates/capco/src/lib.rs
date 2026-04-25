@@ -25,6 +25,12 @@ pub(crate) mod rules_declarative;
 pub(crate) mod rules_sci_per_system;
 pub mod scheme;
 pub mod vocab;
+// `vocabulary` is implementation detail — it carries the
+// `impl Vocabulary<CapcoScheme> for CapcoScheme` adapter and the
+// internal `LazyLock`-backed metadata tables. Callers reach the
+// trait surface through `marque_scheme::Vocabulary` + standard
+// trait-method resolution, never via the module path.
+mod vocabulary;
 
 pub use lattice::{FgiSet, SarSet, SciSet};
 pub use marque_ism::CapcoTokenSet;
