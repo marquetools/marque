@@ -466,8 +466,8 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     // Tracking issue for the broader "second banner line / caveat
     // markings" data model: github.com/marquetools/marque#128.
     const NON_IC_DISSEM_DENY_LIST: &[&str] = &[
-        // DOD-SAP-source — explicitly named in the XML's `Source:`
-        // line as out of CAPCO scope.
+        // DOD-SAP-source — called out in the XML description and
+        // ordering as out of CAPCO scope.
         "WAIVED",
         // ISOO CUI Registry / handling caveats — out of CAPCO scope
         // per §A line 283. These are "second banner line" markings
