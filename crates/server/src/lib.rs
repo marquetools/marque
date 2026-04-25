@@ -561,17 +561,20 @@ fn resolve_request_deadline(
 }
 
 /// Stamp `Instant::now() + duration`, mapping platform-clock overflow
-/// to `400 Bad Request`. The `MAX_DEADLINE_CAP_MS` ceiling (10 min)
-/// keeps this comfortably inside any monotonic clock on real hardware,
-/// but an embedder constructing `AppState { deadline_cap: ... }`
-/// directly with a value larger than the ceiling could in principle
-/// hand us a duration that overflows. `Instant::add` panics on
-/// overflow, so we use `checked_add` and surface the failure as 400
-/// instead of crashing the worker.
+/// to `500 Internal Server Error`. The `MAX_DEADLINE_CAP_MS` ceiling
+/// (10 min) keeps this comfortably inside any monotonic clock on
+/// real hardware, but an embedder constructing
+/// `AppState { deadline_cap: ... }` directly with a value larger
+/// than the ceiling could in principle hand us a duration that
+/// overflows. `Instant::add` panics on overflow, so we use
+/// `checked_add` and surface the failure as 500 — the request was
+/// well-formed (client sent a value the server's own cap accepted),
+/// the misconfiguration is server-side. Mapping this to `400` would
+/// blame the client for the operator's typo.
 fn stamp_request_deadline(duration: Duration) -> Result<Instant, StatusCode> {
     Instant::now()
         .checked_add(duration)
-        .ok_or(StatusCode::BAD_REQUEST)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 /// JSON body for a 504 deadline-exceeded fix response.
@@ -752,8 +755,14 @@ pub async fn fix_handler(
         }
         Err(EngineError::InvalidThreshold(_)) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         // `EngineError` is `#[non_exhaustive]`. A future variant
-        // lands here as 422 rather than silently mapping to 200.
-        Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        // is a server-side condition by default — it represents an
+        // engine-internal failure mode that the current handler can't
+        // classify as a client input error. Map to 500 so a future
+        // engine change doesn't silently start telling clients
+        // "your request was malformed" for a server-side issue. If
+        // a new variant is genuinely client-driven, the fix is to
+        // add an explicit arm that returns 4xx.
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 
