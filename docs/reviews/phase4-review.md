@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # Phase 4 (US2) Code Review — Multi-Agent Synthesis
 
 **Branch**: `phase4review` (worktree at `/home/knitli/marque/.worktrees/phase4review`)
