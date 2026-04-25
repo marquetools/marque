@@ -9,7 +9,7 @@
 //! T057 spec — recognizer-level, not Engine-level), and pins the
 //! decoder's empirical accuracy against the fixture set.
 //!
-//! ## Two gates, two purposes
+//! ## Three gates, three purposes
 //!
 //! - `resolution_rate_at_0_85` — the literal SC-004 target.
 //!   Asserts ≥85% resolution rate at recognition ≥0.85. Marked
@@ -19,21 +19,35 @@
 //!   --features decoder-harness -- --ignored` to verify; once
 //!   passing, remove the `#[ignore]` attribute and the test becomes
 //!   the load-bearing SC-004 gate.
-//! - `resolution_rate_does_not_regress` — always-on accuracy
-//!   floor pinned just below the current measured rate. Catches
-//!   decoder regressions before they reach the corpus. Ratchet the
-//!   floor up in lockstep with measured accuracy improvements;
-//!   never lower it without a planned reason recorded in the
-//!   commit message.
+//! - `resolution_rate_does_not_regress` — always-on aggregate
+//!   accuracy floor pinned just below the current measured rate.
+//!   Catches decoder regressions before they reach the corpus.
+//!   Ratchet the floor up in lockstep with measured accuracy
+//!   improvements; never lower it without a planned reason recorded
+//!   in the commit message.
+//! - `resolution_rate_per_class_does_not_regress` — always-on
+//!   *per-class* accuracy floors. Catches a regression in one
+//!   mangling class that another class's improvement would
+//!   otherwise mask in the aggregate (e.g., Reordering 100%→60%
+//!   offset by Typo 20%→40% leaves the aggregate flat). The floors
+//!   are pinned per-class against the current measured rates; see
+//!   `PER_CLASS_FLOORS` below.
 //!
-//! ## Why both gates and not just one
+//! ## Why three gates and not one
 //!
 //! Landing T057 with a single ≥85%-gated test would either (a) fail
 //! today and put CI in a known-bad state, or (b) be silently lowered
-//! to a passing threshold and lose its meaning. The two-gate split
-//! preserves the SC-004 contract intact (the aspirational target is
-//! still the spec-mandated 0.85) while giving CI a useful regression
-//! gate today against the empirical floor.
+//! to a passing threshold and lose its meaning. The aggregate-floor
+//! split fixed (b) but had a residual hole: an aggregate gate cannot
+//! distinguish "every class held its rate" from "class A regressed
+//! and class B compensated", and at the current ~53% aggregate the
+//! offset window is wide enough for a real regression in a
+//! perfect-today class (Reordering, WrongCase, GarbledDelimiter) to
+//! sit underneath it. The per-class gate closes that hole. Together
+//! the three gates preserve the SC-004 contract intact, give CI a
+//! meaningful aggregate floor today, and surface per-class
+//! regressions as soon as they happen instead of after the next
+//! ratchet.
 //!
 //! ## Why recognizer-level, not Engine-level
 //!
@@ -108,6 +122,11 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// decoder accuracy does. Ratchet up alongside measured
 /// improvements.
 ///
+/// Complementary to [`PER_CLASS_FLOORS`]: this floor catches an
+/// across-the-board collapse in decoder accuracy; the per-class
+/// floors catch a single-class collapse that another class's
+/// improvement would mask here. Both are needed.
+///
 /// Current measured rate (2026-04-25, branch
 /// `004-phase4-pr6-bench-accuracy-gates` first capture):
 ///
@@ -130,6 +149,53 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// doesn't reconstruct yet) that follow-up PRs to the decoder
 /// itself will close.
 const AGGREGATE_FLOOR_REGRESSION: f64 = 0.50;
+
+/// Per-class regression floors. Pinned against the current measured
+/// rates so a regression in any one mangling class fails CI even
+/// when the aggregate floor is satisfied — closes the
+/// "Reordering 100%→60% offset by Typo 20%→40%" hole that the
+/// aggregate gate cannot detect.
+///
+/// Floor policy by class:
+///
+/// - **Currently-perfect classes** (`Reordering`, `WrongCase`,
+///   `GarbledDelimiter`) pinned at `1.00`. Any single fixture
+///   regressing in those classes fails the gate. The fixture
+///   samples (41, 18, 51) are large enough that a `1.00` floor is
+///   honest, not noise-tripping.
+/// - **`SupersededToken`** pinned at `0.50`. The class has only
+///   3 fixtures (one per `SUPERSEDED_TOKEN_MAP` entry), so the
+///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
+///   floor catches a regression to 1/3 or 0/3 while tolerating the
+///   current 2/3 measurement.
+/// - **`Typo`** pinned at `0.15` (~3 percentage points below the
+///   current 26/130 = 20.0% rate). Wide-enough margin to absorb
+///   one or two fixtures dropping; a sustained drop trips the
+///   gate. Ratchet up as #133's typo-class fixes land.
+/// - **`MissingDelimiter`** pinned at `0.00`. Currently 0/17 — no
+///   regression is possible below zero. The slot is included so
+///   the entry-count invariant in the test catches a class going
+///   missing entirely (e.g., fixture-tree corruption that empties
+///   the directory), and so the ratchet step when the
+///   missing-delimiter decoder gap closes is "edit this floor",
+///   not "remember to add this class".
+///
+/// Pinned to the rates measured on `branch
+/// phase4-review-followups-accuracy-floors` (2026-04-26), confirmed
+/// against the same fixture set captured during PR #135 — no
+/// decoder scoring code has changed in the intervening Phase 4
+/// review and Phase 5 PRs, only docs/sort-tiebreaker hygiene
+/// (commit ab33d3e: H1–H4; commit 681b654: M3/M4/M5/L3, where the
+/// L3 NaN-filter cannot have shifted measured rates because the
+/// decoder produces no NaN posteriors at any documented codepath).
+const PER_CLASS_FLOORS: &[(&str, f64)] = &[
+    ("GarbledDelimiter", 1.00),
+    ("MissingDelimiter", 0.00),
+    ("Reordering", 1.00),
+    ("SupersededToken", 0.50),
+    ("Typo", 0.15),
+    ("WrongCase", 1.00),
+];
 
 /// SC-004 also pins the minimum fixture count at ≥200 (so the gate is
 /// not vacuously satisfied by deleting fixtures down to a handful that
@@ -516,6 +582,94 @@ fn resolution_rate_does_not_regress() {
         report.unresolved_samples.len(),
         report.unresolved_summary(),
     );
+}
+
+/// Always-on per-class accuracy regression gate. Catches a
+/// regression in one mangling class that another class's improvement
+/// would mask in the aggregate. Each pinned class has its own floor
+/// — see [`PER_CLASS_FLOORS`] for the rationale per class.
+///
+/// The gate also enforces two structural invariants:
+///   1. Every class in `PER_CLASS_FLOORS` MUST appear in the
+///      observed fixture set. A class going missing (typo dir
+///      emptied, fixture generator broken) would otherwise be
+///      silently absorbed into the aggregate while leaving the
+///      per-class floor vacuously satisfied.
+///   2. Every class observed in the fixture set MUST appear in
+///      `PER_CLASS_FLOORS`. A new mangling class added to the
+///      generator without a corresponding floor entry would be
+///      silently uncovered. Forcing the table to be exhaustive
+///      makes the addition of a class an explicit code change in
+///      this file.
+fn resolution_rate_per_class_does_not_regress_inner(report: &AccuracyReport) {
+    let pinned: std::collections::BTreeSet<&str> =
+        PER_CLASS_FLOORS.iter().map(|(c, _)| *c).collect();
+    let observed: std::collections::BTreeSet<&str> =
+        report.per_class.keys().map(String::as_str).collect();
+
+    let missing_in_fixtures: Vec<&&str> = pinned.difference(&observed).collect();
+    let missing_in_floors: Vec<&&str> = observed.difference(&pinned).collect();
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for (class, floor) in PER_CLASS_FLOORS {
+        let Some(stats) = report.per_class.get(*class) else {
+            continue; // reported via missing_in_fixtures below
+        };
+        if stats.total == 0 {
+            violations.push(format!(
+                "  {class}: 0 fixtures observed (floor {:.0}%); \
+                 fixture-tree generator may be broken",
+                floor * 100.0,
+            ));
+            continue;
+        }
+        let rate = stats.resolved as f64 / stats.total as f64;
+        if rate < *floor {
+            violations.push(format!(
+                "  {class}: {}/{} ({:.1}%) — below floor {:.1}%",
+                stats.resolved,
+                stats.total,
+                rate * 100.0,
+                floor * 100.0,
+            ));
+        }
+    }
+
+    let structural_problems = !missing_in_fixtures.is_empty() || !missing_in_floors.is_empty();
+
+    assert!(
+        violations.is_empty() && !structural_problems,
+        "T057 per-class gate failed (accuracy regression and/or \
+         fixture/floor class-list mismatch).\n\n\
+         To resolve:\n\
+           - If a class regressed below its floor: restore the \
+             accuracy, or — if the change is intentional and \
+             reviewed — lower the entry in PER_CLASS_FLOORS \
+             explicitly with a rationale in the commit message.\n\
+           - If a class is missing from fixtures or from \
+             PER_CLASS_FLOORS: reconcile the two lists. Adding a \
+             new mangling class requires both a generator update \
+             and a floor entry in this file.\n\n\
+         Accuracy violations:\n{}\n\n\
+         Pinned classes missing from fixtures: {:?}\n\
+         Observed classes missing from PER_CLASS_FLOORS: {:?}\n\n\
+         Per-class breakdown:\n{}",
+        if violations.is_empty() {
+            String::from("  (none)")
+        } else {
+            violations.join("\n")
+        },
+        missing_in_fixtures,
+        missing_in_floors,
+        report.per_class_summary(),
+    );
+}
+
+#[test]
+fn resolution_rate_per_class_does_not_regress() {
+    let report = run_sweep();
+    resolution_rate_per_class_does_not_regress_inner(&report);
 }
 
 /// Cross-class invariant: every fixture's `mangling_class` field must
