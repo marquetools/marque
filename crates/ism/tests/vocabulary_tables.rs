@@ -14,8 +14,10 @@
 //! `crates/capco/tests/vocabulary.rs` once the impl is in place.
 
 use marque_ism::generated::vocabulary::{
-    CVE_DISSEM, CVE_FILES, CVE_SCI_CONTROLS, TOKEN_METADATA, lookup_token_metadata,
+    CVE_ATOMIC_ENERGY_MARKINGS, CVE_CLASSIFICATION_ALL, CVE_DISSEM, CVE_FILES, CVE_SCI_CONTROLS,
+    TOKEN_METADATA, lookup_token_metadata,
 };
+use marque_ism::marking_forms::banner_to_portion;
 
 #[test]
 fn cve_files_table_is_nonempty() {
@@ -137,6 +139,16 @@ fn every_token_references_a_known_cve_file() {
 /// `CVEnumISMDissem.json` in a future ODNI release, the FOUO-handling
 /// rule logic everywhere else will silently rot; we want a loud test
 /// failure instead.
+///
+/// Anchors picked to cover the rule clusters whose silent decay would
+/// be most damaging: dissem (`FOUO`/`NF`/`RELIDO`), SCI control systems
+/// (`SI`/`TK`/`HCS`), classification (`S`, the canonical CVE value
+/// underlying every SECRET-floor rule — E001/E002/E022 CNWDI), and
+/// AEA (`RD`, the only AEA token touched by E021/E024). The
+/// banner-form round-trip for `NOFORN` lives in
+/// [`noforn_banner_form_round_trip_resolves`] below — `NOFORN` is a
+/// banner form, not a CVE value, so it isn't a valid
+/// `lookup_token_metadata` key.
 #[test]
 fn well_known_tokens_resolve() {
     for (token, expected_file) in [
@@ -146,6 +158,8 @@ fn well_known_tokens_resolve() {
         ("SI", &CVE_SCI_CONTROLS),
         ("TK", &CVE_SCI_CONTROLS),
         ("HCS", &CVE_SCI_CONTROLS),
+        ("S", &CVE_CLASSIFICATION_ALL),
+        ("RD", &CVE_ATOMIC_ENERGY_MARKINGS),
     ] {
         let entry = lookup_token_metadata(token).unwrap_or_else(|| {
             panic!(
@@ -163,6 +177,44 @@ fn well_known_tokens_resolve() {
             expected = expected_file.const_name,
         );
     }
+}
+
+/// `NOFORN` is a banner form, not a CVE Value, so it cannot appear
+/// directly in `TOKEN_METADATA`. The recovery path used by audit
+/// consumers (and pinned in `crates/engine/tests/audit.rs::
+/// migration_audit_has_both_urns`) is `banner_to_portion("NOFORN")
+/// → "NF" → lookup_token_metadata("NF")`. If either leg of that
+/// round-trip rots — `marking_forms` loses the NF↔NOFORN entry, or
+/// `CVEnumISMDissem.json` ships without `NF` — every E001
+/// portion-mark-in-banner fix loses URN provenance silently. This
+/// test makes that rot loud.
+#[test]
+fn noforn_banner_form_round_trip_resolves() {
+    let canonical = banner_to_portion("NOFORN").unwrap_or_else(|| {
+        panic!(
+            "banner_to_portion(\"NOFORN\") returned None — the NF↔NOFORN \
+             marking-forms entry is missing. E001 audit-record URN \
+             recovery (see crates/engine/tests/audit.rs) depends on this \
+             round-trip."
+        )
+    });
+    assert_eq!(
+        canonical, "NF",
+        "banner_to_portion(\"NOFORN\") must resolve to the canonical \
+         portion form \"NF\""
+    );
+    let entry = lookup_token_metadata(canonical).unwrap_or_else(|| {
+        panic!(
+            "lookup_token_metadata({canonical:?}) returned None after \
+             banner_to_portion round-trip — CVEnumISMDissem.json may \
+             have shipped without an NF entry"
+        )
+    });
+    assert_eq!(
+        entry.cve_file.const_name, CVE_DISSEM.const_name,
+        "NF must trace to CVE_DISSEM, got {actual:?}",
+        actual = entry.cve_file.const_name
+    );
 }
 
 #[test]

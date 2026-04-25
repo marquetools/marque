@@ -108,12 +108,32 @@ fn metadata_query_is_zero_alloc() {
     // table (CVE_FILE_DERIVED + TOKEN_DERIVED) outside the
     // measurement window. The first access allocates the boxed
     // records; subsequent accesses must not.
+    let warmup_start = allocs_now();
     for token in active_sentinels() {
         let _warmup_meta = scheme.metadata(token);
         let _warmup_auth = scheme.authority(token);
         let _warmup_owner = scheme.owner_producer(token);
         let _warmup_poc = scheme.point_of_contact(token);
     }
+    let warmup_allocs = allocs_now() - warmup_start;
+
+    // Vacuity guard. The whole test is meaningless if the warmup
+    // didn't actually trigger `LazyLock` init — a future regression
+    // that makes the accessors return cached placeholder data
+    // (e.g., a const fallback path that bypasses the `LazyLock`
+    // entirely) would produce 0 allocs in BOTH the warmup and the
+    // measurement, falsely passing the gate. Pinning a positive
+    // floor here makes that failure mode loud. The actual count
+    // depends on `LazyLock` internals + the `Vec::collect` for
+    // CVE_FILE_DERIVED and TOKEN_DERIVED — each is at least one
+    // allocation, so the floor is conservatively 2.
+    assert!(
+        warmup_allocs >= 2,
+        "warmup performed only {warmup_allocs} allocation(s); expected ≥2 \
+         (one per LazyLock-backed Vec). The Vocabulary accessors may be \
+         bypassing the LazyLock-backed tables — the zero-alloc gate would \
+         pass vacuously without exercising the real path.",
+    );
 
     let before = allocs_now();
     for token in active_sentinels() {

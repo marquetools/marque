@@ -22,7 +22,9 @@
 //! `CapcoScheme::Token = TokenId` — opaque numeric ids assigned
 //! per-sentinel in `crate::scheme`. The active sentinel set today
 //! is the small hand-curated list of TokenIds the catalog actually
-//! references (~14 ids). Each is mapped to its canonical CVE value
+//! references (10 ids today; see [`SENTINEL_TO_CANONICAL`] below for
+//! the authoritative count — the doc reflects the table). Each is
+//! mapped to its canonical CVE value
 //! by [`SENTINEL_TO_CANONICAL`]. Aggregate sentinels (`TOK_*` that
 //! span multiple tokens — `TOK_US_CLASSIFIED`,
 //! `TOK_NON_US_CLASSIFICATION`), trigraph sentinels (`TOK_USA` —
@@ -111,6 +113,20 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
 
 /// Resolve a sentinel TokenId to its canonical CVE value, or panic
 /// with a clear message if the id is outside the supported set.
+///
+/// **Phase C scaling note (L1 in `docs/reviews/phase5-review.md`).**
+/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` (10
+/// entries today) on every accessor call. At this size the linear
+/// scan is dominated by accessor-call overhead and is not a real
+/// concern — Constitution I (perceptual instantaneity) is not
+/// observably violated. Phase C extends the sentinel set to the full
+/// CVE vocabulary (~200+ entries); at that point this lookup, plus
+/// the parallel scans in [`derived_for_token`] and [`token_derived`],
+/// must move to either a sorted `&[(TokenId, &str)]` with
+/// `binary_search_by_key` or a build-time `phf::Map`. The migration
+/// is Pre-Phase-C work tracked as a follow-up — landing it in this
+/// review-fix PR would mix a behavioral change into what is
+/// otherwise a docs + invariant-tightening PR.
 fn canonical_for(token: TokenId) -> &'static str {
     SENTINEL_TO_CANONICAL
         .iter()
@@ -210,17 +226,56 @@ fn build_authority(cve_file: &'static CveFileMetadata) -> Authority {
         source_name: cve_file.source,
         urn: cve_file.urn,
         schema_version: cve_file.schema_version,
-        point_of_contact: build_point_of_contact(cve_file),
+        point_of_contact: build_capco_point_of_contact(cve_file),
+    }
+}
+
+/// Map an ODNI owner-producer short code (`"USA"`, `"NATO"`, ...) to
+/// the corresponding human-readable name.
+///
+/// ODNI's CVE sidecars publish only the short code (`ism:ownerProducer`
+/// is a single bareword), but `OwnerProducer::name`'s field doc on
+/// `marque-scheme::vocabulary` declares the field as a human-readable
+/// name (e.g., `"United States of America"`). Returning the short code
+/// would falsify that contract for every consumer that reads `name`.
+///
+/// This adapter is CAPCO-scoped (`crates/capco/src/vocabulary.rs`).
+/// Future schemes (CUI, NATO, JOINT) live in their own crates and
+/// will provide their own owner-producer translation.
+///
+/// The match is exhaustive against the codes that appear in
+/// `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/`. Adding a new code
+/// to `CVEnumISMCATOwnerProducer.xml` triggers the `unknown` panic
+/// arm here and forces the contributor to either extend the match or
+/// document an intentional fallback. Constitution VIII fail-loud.
+fn owner_producer_name(code: &'static str) -> &'static str {
+    match code {
+        "USA" => "United States of America",
+        // Codes registered in CVEnumISMCATOwnerProducer.xml that
+        // CAPCO does not (yet) emit. Listed here so a future schema
+        // bump that adds them lands cleanly without a regression.
+        "NATO" => "North Atlantic Treaty Organization",
+        "FGI" => "Foreign Government Information",
+        // Anything else is a CAPCO-vocabulary regression — either
+        // ODNI added a new code (extend the match) or the build.rs
+        // sidecar parsing emitted a corrupted value. Either way,
+        // failing loud is the right call (Constitution VIII).
+        unknown => panic!(
+            "Vocabulary<CapcoScheme>: unknown owner-producer code {unknown:?}. \
+             Extend `owner_producer_name` in crates/capco/src/vocabulary.rs \
+             with the human-readable name from \
+             crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEnumISMCATOwnerProducer.xml."
+        ),
     }
 }
 
 fn build_owner_producer(cve_file: &'static CveFileMetadata) -> OwnerProducer {
     OwnerProducer {
         code: cve_file.owner_producer,
-        // ODNI sidecars do not carry a free-form owner-name field;
-        // `owner_producer` is the canonical short code. For CAPCO/
-        // ISM tokens the code is always `"USA"`.
-        name: cve_file.owner_producer,
+        // Translated via the CAPCO-scoped lookup above. Field doc
+        // on `marque-scheme::vocabulary::OwnerProducer::name`
+        // requires a human-readable form, not the short code.
+        name: owner_producer_name(cve_file.owner_producer),
         // Every Phase 5 PR-1 CVE file is published by ODNI on
         // behalf of the U.S. (verified by
         // `every_cve_file_carries_odni_provenance` in
@@ -233,16 +288,19 @@ fn build_owner_producer(cve_file: &'static CveFileMetadata) -> OwnerProducer {
     }
 }
 
-fn build_point_of_contact(cve_file: &'static CveFileMetadata) -> PointOfContact {
+/// CAPCO-specific point-of-contact builder. Hardcodes
+/// `organization: "ODNI"` because every CAPCO/ISM sidecar's
+/// `PointOfContact` JSON block lacks a free-form organization field
+/// (the publishing organization is implicit in the
+/// `urn:us:gov:ic:cvenum:...` URN). The function name carries the
+/// `_capco_` infix specifically so a future FGI / NATO / JOINT
+/// adapter cannot reuse this helper and silently misattribute its
+/// own POCs to ODNI — Constitution VII isolates the per-domain
+/// adapter, this name pins that isolation in code.
+fn build_capco_point_of_contact(cve_file: &'static CveFileMetadata) -> PointOfContact {
     PointOfContact {
         name: cve_file.poc_name,
         email: cve_file.poc_email,
-        // ODNI's `PointOfContact` JSON object does not include a
-        // free-form organization field. The publishing
-        // organization is implicit in the URN
-        // (`urn:us:gov:ic:cvenum:...` ⇒ ODNI). Hardcode `"ODNI"`
-        // for every active CAPCO sentinel; future non-CAPCO
-        // adapters can extend the JSON shape and lift this.
         organization: "ODNI",
     }
 }
