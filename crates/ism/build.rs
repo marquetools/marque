@@ -882,7 +882,8 @@ struct CveFileMetadata {
 struct TokenMetadataEntry {
     value: String,
     description: String,
-    /// Index into the emitted `CVE_FILES` slice. Resolved at codegen time.
+    /// Const identifier of the emitted CVE file metadata item (for example,
+    /// `CVE_DISSEM`); resolved during codegen when generating references.
     cve_file_const_ident: String,
 }
 
@@ -1083,16 +1084,18 @@ fn cve_file_const_ident(path: &Path) -> String {
 
     // Convert CamelCase / PascalCase → SCREAMING_SNAKE_CASE.
     // Boundary rules:
-    //   - lower / digit → upper (`AtomicE` → `ATOMIC_E`)
+    //   - lower → upper (`AtomicE` → `ATOMIC_E`)
     //   - upper-run end → next word (`SCICont` → `SCI_CONT`: the `C`
     //     before lowercase `o` starts a new word)
+    //   - digit + uppercase stays in the same word (`25X` → `25X`,
+    //     not `25_X`) so generated const names match the documented
+    //     examples — `CVEnumISM25X.json` → `CVE_25X`.
     let chars: Vec<char> = core.chars().collect();
     let mut body = String::with_capacity(core.len() * 2);
     for (i, &ch) in chars.iter().enumerate() {
         if i > 0 {
             let prev = chars[i - 1];
-            let starts_word_by_case =
-                ch.is_ascii_uppercase() && (prev.is_ascii_lowercase() || prev.is_ascii_digit());
+            let starts_word_by_case = ch.is_ascii_uppercase() && prev.is_ascii_lowercase();
             let ends_uppercase_run = ch.is_ascii_uppercase()
                 && prev.is_ascii_uppercase()
                 && i + 1 < chars.len()
@@ -1227,8 +1230,7 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
         .unwrap();
     }
 
-    // Slice of every CVE file metadata record, in deterministic
-    // (sorted by const name) order.
+    // Slice of every CVE file metadata record, in deterministic order.
     writeln!(
         content,
         "/// Every CVE-file metadata record published by this build.\n\
