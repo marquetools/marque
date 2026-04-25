@@ -20,7 +20,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::DecoderRecognizer;
-use marque_ism::{Classification, NonIcDissem, SciControl};
+use marque_ism::{Classification, DissemControl, NonIcDissem, SciControl};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -278,6 +278,16 @@ fn wrong_case_lowercase_marking_decodes_to_canonical() {
         Some(Classification::Secret),
         "case normalization must yield SECRET classification"
     );
+    // Pin NOFORN preservation: a regression that case-normalized SECRET
+    // correctly but dropped the trailing `noforn` token would still
+    // pass an Unambiguous-with-Secret check. Assert NOFORN survives in
+    // the resolved marking. (NOFORN is `DissemControl::Nf`, not a
+    // `NonIcDissem` variant.)
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "case normalization must preserve NOFORN; attrs = {:?}",
+        marking.0,
+    );
 }
 
 /// **GarbledDelimiter** class — extra spaces around `//`.
@@ -297,6 +307,14 @@ fn garbled_delimiter_extra_space_decodes_to_canonical() {
         effective_level(&marking),
         Some(Classification::TopSecret),
         "garbled-delimiter normalization must preserve TOP SECRET classification"
+    );
+    // Pin NOFORN preservation: a delimiter-normalization regression
+    // that handled the leading classification but dropped the trailing
+    // dissem control would still pass classification-only checks.
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "delimiter normalization must preserve NOFORN; attrs = {:?}",
+        marking.0,
     );
 }
 
@@ -333,6 +351,15 @@ fn superseded_comint_decodes_to_si() {
         has_si,
         "expected SI in sci_controls after COMINT supersession; \
          attrs = {:?}",
+        marking.0,
+    );
+    // The trailing `//NOFORN` must also survive the supersession pass.
+    // A regression that handled COMINT → SI but dropped the dissem
+    // control tail would pass the SI check above and the
+    // classification check.
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "COMINT supersession must preserve NOFORN; attrs = {:?}",
         marking.0,
     );
 }
