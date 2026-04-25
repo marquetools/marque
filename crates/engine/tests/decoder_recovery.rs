@@ -20,7 +20,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::DecoderRecognizer;
-use marque_ism::{Classification, NonIcDissem};
+use marque_ism::{Classification, NonIcDissem, SciControl};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -318,14 +318,20 @@ fn superseded_comint_decodes_to_si() {
         Some(Classification::TopSecret),
         "superseded-token substitution must preserve TOP SECRET classification"
     );
-    // The substituted SI control system should appear in the SCI
-    // markings of the resolved attrs. This is a soft check — the
-    // structural location is documented at `CapcoMarking.0.sci_markings`
-    // and the strict parser's SCI handling — rather than asserting on
-    // a specific representation, just verify some SCI presence.
+    // Pin the actual supersession: `COMINT` must rewrite to
+    // `SciControl::Si` in the resolved attrs. A "some SCI presence"
+    // soft check would pass for any SCI-bearing marking and miss the
+    // case where the substitution dropped to the wrong control system.
+    // Mirrors the inline `decoder_recovers_superseded_comint_to_si`
+    // unit test in `crates/engine/src/decoder.rs`.
+    let has_si = marking
+        .0
+        .sci_controls
+        .iter()
+        .any(|c| matches!(c, SciControl::Si));
     assert!(
-        !marking.0.sci_markings.is_empty() || !marking.0.sci_controls.is_empty(),
-        "COMINT → SI substitution should land in the SCI category; \
+        has_si,
+        "expected SI in sci_controls after COMINT supersession; \
          attrs = {:?}",
         marking.0,
     );
