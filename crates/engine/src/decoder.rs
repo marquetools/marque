@@ -111,11 +111,16 @@ const K_MAX_CANDIDATES: usize = 8;
 
 /// Runner-up posterior-ratio threshold for emitting `Unambiguous`.
 ///
-/// When the top candidate's log-posterior exceeds the runner-up's by
-/// at least this much (in natural-log space, so ~1.6 ≈ 5× odds ratio),
-/// the decoder collapses to `Unambiguous(top)`. Below the threshold,
-/// it returns `Ambiguous { candidates }` so the engine can surface a
+/// The decoder computes `log_margin = top_posterior - runner_up_posterior`
+/// in natural-log space. When `log_margin >= UNAMBIGUOUS_LOG_MARGIN`,
+/// the decoder collapses to `Unambiguous(top)`; below the threshold it
+/// returns `Ambiguous { candidates }` so the engine can surface a
 /// diagnostic rather than auto-apply a close call.
+///
+/// `1.6` corresponds to a posterior odds ratio of `e^1.6 ≈ 4.95` —
+/// i.e., the top candidate is roughly five times as likely as the
+/// runner-up given the observed bytes. This is the **odds** ratio
+/// (`P(top)/P(runner_up)`), not a probability ratio.
 const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
 /// Phase-D probabilistic marking recognizer.
