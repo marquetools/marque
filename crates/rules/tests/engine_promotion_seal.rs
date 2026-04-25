@@ -23,9 +23,7 @@
 //! visibility a downstream consumer would see.
 
 use marque_ism::Span;
-use marque_rules::{
-    AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId,
-};
+use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
