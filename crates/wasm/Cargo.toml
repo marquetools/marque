@@ -114,6 +114,12 @@ marque-engine = { workspace = true }
 marque-rules = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# T088 — `wasm-pack test --node` parity harness uses wasm-bindgen-test
+# to drive `lint_native` from inside the wasm32 target. Native parity
+# (`tests/native_parity.rs`) covers algorithmic equivalence; this
+# dev-dep enables byte-equal NDJSON parity across the actual WASM
+# compilation target. Version pinned to track wasm-bindgen 0.2.118.
+wasm-bindgen-test = "0.3.50"
 
 # marque-extract intentionally excluded — format extraction is caller's
 # responsibility in WASM context; core operates on pre-extracted text.
