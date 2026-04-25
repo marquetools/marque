@@ -529,6 +529,26 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     attempts
 }
 
+/// Diagnostic-only accessor exposing the canonicalized byte attempts
+/// the decoder generates from `bytes`. Returns one byte string per
+/// attempt, in emit order; feature traces and the internal
+/// [`CanonicalAttempt`] type are deliberately not surfaced — the
+/// diagnostic only needs the bytes the strict parser will see.
+///
+/// Gated by the `decoder-harness` feature so it does not appear in
+/// production builds. The single consumer is
+/// `crates/engine/tests/decoder_diagnostic.rs` (issue #133 root-cause
+/// tracing). Calling the real [`generate_candidate_bytes`] eliminates
+/// the drift class of bug a hand-rolled re-implementation in the
+/// diagnostic would carry.
+#[cfg(feature = "decoder-harness")]
+pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
+    generate_candidate_bytes(bytes)
+        .into_iter()
+        .map(|a| a.bytes)
+        .collect()
+}
+
 /// Normalize delimiters and case on a trimmed input.
 ///
 /// - Fullwidth slash variants (`∕∕`, `/ /`, ` / / `, spaced `//`) all
