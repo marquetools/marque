@@ -47,6 +47,8 @@ CONFIDETIAL = "CONFIDETIAL"
 SECRRET = "SECRRET"
 UNCLASSIFEID = "UNCLASSIFEID"
 canonicalizations = "canonicalizations"
+# Python package names that look like typos but aren't
+certifi = "certifi"
 
 [default.extend-identifiers]
 # Hyphenated "mis-splice" is intentional in rule comments

@@ -50,12 +50,32 @@ use crate::{Engine, FixResult, LintResult};
 
 /// Error returned when a single document in a batch fails to process.
 ///
-/// Batch APIs surface this per-document so a panic or cancellation in one
-/// document does not abort the entire batch run.
+/// Batch APIs surface this per-document so a panic, cancellation, or
+/// graceful shutdown of the underlying concurrency controller does not
+/// abort the entire batch run.
+///
+/// `#[non_exhaustive]` because future infrastructure-level errors
+/// (deadline expired, cache write-through failed, queue overflow,
+/// etc.) will land as new variants alongside the existing two. A
+/// downstream `match` should always carry a wildcard arm; without
+/// `non_exhaustive` every new variant would be a semver-breaking
+/// change for consumers, which would either pin them to a stale
+/// version or pressure us to never grow the surface.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BatchError {
     /// The blocking lint/fix task panicked or was cancelled.
     TaskFailed(tokio::task::JoinError),
+    /// The `ConcurrencyController` semaphore was closed while this
+    /// document was waiting for a permit. Indicates the runtime is in
+    /// shutdown — the caller has no work to do beyond observing the
+    /// error and ending its loop.
+    ///
+    /// Whitepaper §9.4 / gap register #8 carved this out as a separate
+    /// variant so deployment supervisors can distinguish it from a
+    /// real worker-task panic. `is_panic()` returns `false` for this
+    /// variant; `is_shutdown()` returns `true`.
+    ShutdownInProgress,
 }
 
 impl BatchError {
@@ -66,6 +86,7 @@ impl BatchError {
     pub fn is_panic(&self) -> bool {
         match self {
             Self::TaskFailed(e) => e.is_panic(),
+            Self::ShutdownInProgress => false,
         }
     }
 
@@ -78,7 +99,19 @@ impl BatchError {
     pub fn is_cancelled(&self) -> bool {
         match self {
             Self::TaskFailed(e) => e.is_cancelled(),
+            Self::ShutdownInProgress => false,
         }
+    }
+
+    /// Returns `true` if the error was caused by the `ConcurrencyController`
+    /// semaphore being closed while this document was awaiting a permit.
+    ///
+    /// Distinct from `is_cancelled()` (which fires when a worker task is
+    /// aborted mid-execution) and from `is_panic()` (which fires on a real
+    /// bug). Shutdown is the routine end-of-life signal — supervisors
+    /// should drain any remaining items in the result stream and exit.
+    pub fn is_shutdown(&self) -> bool {
+        matches!(self, Self::ShutdownInProgress)
     }
 }
 
@@ -95,6 +128,9 @@ impl std::fmt::Display for BatchError {
                 };
                 write!(f, "batch task {kind}: {e}")
             }
+            Self::ShutdownInProgress => {
+                f.write_str("ConcurrencyController semaphore closed (shutdown in progress)")
+            }
         }
     }
 }
@@ -103,6 +139,7 @@ impl std::error::Error for BatchError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::TaskFailed(e) => Some(e),
+            Self::ShutdownInProgress => None,
         }
     }
 }
@@ -110,6 +147,16 @@ impl std::error::Error for BatchError {
 impl From<tokio::task::JoinError> for BatchError {
     fn from(e: tokio::task::JoinError) -> Self {
         Self::TaskFailed(e)
+    }
+}
+
+impl From<tokio::sync::AcquireError> for BatchError {
+    fn from(_: tokio::sync::AcquireError) -> Self {
+        // `AcquireError` carries no information beyond "semaphore was
+        // closed" — and the semaphore here is owned by `BatchEngine`,
+        // so closure means the engine is shutting down. Surface that
+        // intent explicitly rather than re-exporting tokio's type.
+        Self::ShutdownInProgress
     }
 }
 
@@ -190,10 +237,14 @@ impl BatchEngine {
                 let controller = Arc::clone(&controller);
                 async move {
                     let byte_len = data.len();
-                    let _permit = controller
-                        .acquire(Some(|| byte_len))
-                        .await
-                        .expect("ConcurrencyController semaphore unexpectedly closed");
+                    // Whitepaper §9.4 / gap register #8: surface a closed
+                    // controller as `BatchError::ShutdownInProgress` rather
+                    // than `.expect()`-panicking. The `From<AcquireError>`
+                    // impl above maps the only possible error.
+                    let _permit = match controller.acquire(Some(|| byte_len)).await {
+                        Ok(p) => p,
+                        Err(e) => return (id, Err(BatchError::from(e))),
+                    };
                     let result = tokio::task::spawn_blocking(move || engine.lint(&data))
                         .await
                         .map_err(BatchError::from);
@@ -220,10 +271,14 @@ impl BatchEngine {
                 let controller = Arc::clone(&controller);
                 async move {
                     let byte_len = data.len();
-                    let _permit = controller
-                        .acquire(Some(|| byte_len))
-                        .await
-                        .expect("ConcurrencyController semaphore unexpectedly closed");
+                    // Whitepaper §9.4 / gap register #8: surface a closed
+                    // controller as `BatchError::ShutdownInProgress` rather
+                    // than `.expect()`-panicking. The `From<AcquireError>`
+                    // impl above maps the only possible error.
+                    let _permit = match controller.acquire(Some(|| byte_len)).await {
+                        Ok(p) => p,
+                        Err(e) => return (id, Err(BatchError::from(e))),
+                    };
                     let result = tokio::task::spawn_blocking(move || {
                         engine.fix(&data, crate::FixMode::Apply)
                     })
@@ -233,5 +288,68 @@ impl BatchEngine {
                 }
             })
             .buffer_unordered(concurrent)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_error_is_not_panic_or_cancellation() {
+        let e = BatchError::ShutdownInProgress;
+        assert!(!e.is_panic());
+        assert!(!e.is_cancelled());
+        assert!(e.is_shutdown());
+    }
+
+    #[test]
+    fn shutdown_error_display_names_the_state() {
+        let e = BatchError::ShutdownInProgress;
+        let s = e.to_string();
+        // The Display string must convey "shutdown" cleanly so a log
+        // grep on operator dashboards picks it up. We don't assert
+        // exact wording — only the discriminating substrings.
+        assert!(
+            s.contains("shutdown"),
+            "ShutdownInProgress Display should name the state explicitly: got {s:?}"
+        );
+        assert!(
+            s.contains("closed"),
+            "Display should name the underlying signal (semaphore closed): got {s:?}"
+        );
+    }
+
+    #[test]
+    fn shutdown_error_has_no_source() {
+        // Whitepaper §9.4: `ShutdownInProgress` is a terminal signal,
+        // not a wrapped error. Anything pretending to be a `source()`
+        // here would be misleading — the underlying `AcquireError`
+        // carries no information beyond "closed".
+        let e = BatchError::ShutdownInProgress;
+        assert!(
+            std::error::Error::source(&e).is_none(),
+            "ShutdownInProgress must not chain to a source"
+        );
+    }
+
+    #[test]
+    fn from_acquire_error_yields_shutdown_variant() {
+        // Drive the conversion path the runtime uses. Closing a
+        // semaphore and acquiring against it produces `AcquireError`,
+        // which `BatchError::from` must convert to `ShutdownInProgress`.
+        let sem = tokio::sync::Semaphore::new(1);
+        sem.close();
+        // `try_acquire` on a closed semaphore returns
+        // `TryAcquireError::Closed`, not `AcquireError`. The async
+        // `acquire().await` returns `AcquireError`. Run a tiny
+        // single-thread runtime to drive the right path.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("current_thread runtime builds");
+        let acquire_err = rt.block_on(async { sem.acquire().await }).unwrap_err();
+        let batch_err: BatchError = acquire_err.into();
+        assert!(batch_err.is_shutdown());
+        assert!(!batch_err.is_panic());
     }
 }
