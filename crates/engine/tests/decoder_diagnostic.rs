@@ -46,9 +46,15 @@ fn same_meaning(a: &marque_ism::IsmAttributes, b: &marque_ism::IsmAttributes) ->
     a == b
 }
 
-fn parse_strict_attrs(input: &str) -> Option<CapcoMarking> {
+/// Strict-parse `input` bytes via the strict recognizer. Returns
+/// `None` when the recognizer collapses to `Parsed::Ambiguous` (the
+/// strict path's parse-failure signal). Operates on `&[u8]` so the
+/// diagnostic can pass decoder canonical-attempt bytes through
+/// without an intermediate UTF-8 round-trip — matches what the
+/// decoder itself does internally.
+fn parse_strict_attrs(input: &[u8]) -> Option<CapcoMarking> {
     let strict = StrictRecognizer::new();
-    match strict.recognize(input.as_bytes(), &deep_cx()) {
+    match strict.recognize(input, &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         _ => None,
     }
@@ -66,15 +72,14 @@ fn token_summary(attrs: &marque_ism::IsmAttributes) -> String {
         .join(", ")
 }
 
-fn unknown_token_text(input: &str, attrs: &marque_ism::IsmAttributes) -> Vec<String> {
-    let bytes = input.as_bytes();
+fn unknown_token_text(input: &[u8], attrs: &marque_ism::IsmAttributes) -> Vec<String> {
     attrs
         .token_spans
         .iter()
         .filter(|s| matches!(s.kind, TokenKind::Unknown))
         .filter_map(|s| {
             s.span
-                .try_as_slice(bytes)
+                .try_as_slice(input)
                 .and_then(|b| std::str::from_utf8(b).ok())
                 .map(|t| t.to_string())
         })
@@ -100,7 +105,14 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     } else {
         println!("  decoder canonical attempts ({}):", attempts.len());
         for (i, attempt) in attempts.iter().enumerate() {
-            let attempt_str = std::str::from_utf8(attempt).unwrap_or("<non-utf8>");
+            // Attempts come from `generate_candidate_bytes` →
+            // `String::into_bytes()`, so they are valid UTF-8 by
+            // construction. Asserting the invariant via `expect`
+            // surfaces a Phase D contract break loudly instead of
+            // silently substituting a placeholder string and feeding
+            // it to the strict parser later.
+            let attempt_str = std::str::from_utf8(attempt)
+                .expect("decoder canonical attempt must be valid UTF-8 (built from String)");
             println!("    [{i}] {attempt_str:?}");
         }
     }
@@ -110,10 +122,9 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     //    step-3a Unknown-token-span check that discards partial
     //    canonicalizations.
     for (i, attempt) in attempts.iter().enumerate() {
-        let attempt_str = std::str::from_utf8(attempt).unwrap_or("<non-utf8>");
-        match parse_strict_attrs(attempt_str) {
+        match parse_strict_attrs(attempt) {
             Some(m) => {
-                let unknown_tokens = unknown_token_text(attempt_str, &m.0);
+                let unknown_tokens = unknown_token_text(attempt, &m.0);
                 println!(
                     "    [{i}] strict-parse: OK — token_kinds={{{}}}",
                     token_summary(&m.0)
@@ -131,7 +142,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     }
 
     // 3. Strict-parse the expected form for ground-truth attrs.
-    let expected_marking = parse_strict_attrs(expected);
+    let expected_marking = parse_strict_attrs(expected.as_bytes());
     let expected_attrs = match &expected_marking {
         Some(m) => Some(&m.0),
         None => {
@@ -288,10 +299,29 @@ fn probe_fuzzy_for_specific_tokens() {
                 c.token, c.distance, c.confidence
             ),
             None => {
-                // Print the closest 5 vocab entries with their
-                // Levenshtein distances so the reader can see whether
-                // None means "no candidate within MAX_EDIT_DISTANCE" or
-                // "two candidates tied at the same distance, ambiguous."
+                // `FuzzyVocabMatcher::correct` returns None for four
+                // documented reasons. Branch on the structural ones
+                // (already-canonical, below MIN_FUZZY_LEN) so the
+                // probe can't mislead by treating a known-vocab
+                // entry as "no candidate." For the remaining cases
+                // dump the closest 5 vocab entries with their
+                // Levenshtein distances and label whether None means
+                // "no candidate within MAX_EDIT_DISTANCE" vs "two or
+                // more vocab entries tied at the closest distance
+                // (ambiguous)."
+                if vocab.binary_search(&tok).is_ok() {
+                    println!("  {tok:?} → None — already canonical (no correction needed)");
+                    continue;
+                }
+                if tok.len() < marque_core::fuzzy::MIN_FUZZY_LEN {
+                    println!(
+                        "  {tok:?} → None — below MIN_FUZZY_LEN={} \
+                         (single-/double-char tokens are too noisy for \
+                         edit-distance correction)",
+                        marque_core::fuzzy::MIN_FUZZY_LEN
+                    );
+                    continue;
+                }
                 let mut dists: Vec<(u8, &str)> = vocab
                     .iter()
                     .map(|&v| {
@@ -300,8 +330,21 @@ fn probe_fuzzy_for_specific_tokens() {
                     })
                     .collect();
                 dists.sort_by_key(|(d, _)| *d);
+                let best = dists.first().map(|(d, _)| *d).unwrap_or(u8::MAX);
+                let tied_at_best = dists.iter().filter(|(d, _)| *d == best).count();
+                let max_dist = marque_core::fuzzy::MAX_EDIT_DISTANCE;
+                let reason = if best > max_dist {
+                    format!("no candidate within MAX_EDIT_DISTANCE={max_dist}")
+                } else if tied_at_best > 1 {
+                    format!("ambiguous — {tied_at_best} candidates tied at distance {best}")
+                } else {
+                    format!(
+                        "candidate at distance {best} but matcher rejected \
+                         (likely below MIN_USEFUL_CONFIDENCE)"
+                    )
+                };
                 println!(
-                    "  {tok:?} → None — closest 5: {:?}",
+                    "  {tok:?} → None — {reason}; closest 5: {:?}",
                     &dists.iter().take(5).collect::<Vec<_>>()
                 );
             }
