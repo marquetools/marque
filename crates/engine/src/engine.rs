@@ -5,7 +5,8 @@
 //! `Engine` — the configured, ready-to-run pipeline.
 
 use crate::clock::{Clock, SystemClock};
-use crate::errors::EngineConstructionError;
+use crate::errors::{EngineConstructionError, EngineError};
+use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::recognizer::{StrictRecognizer, shift_token_spans};
 use crate::scheduler::schedule_rewrites;
@@ -310,7 +311,31 @@ impl Engine {
     }
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
+    ///
+    /// Back-compat shim over [`Engine::lint_with_options`] — calling
+    /// `lint(src)` is equivalent to
+    /// `lint_with_options(src, &LintOptions::default())`. New code that
+    /// needs a deadline (spec 005 §R3) should call the `_with_options`
+    /// variant directly.
     pub fn lint(&self, source: &[u8]) -> LintResult {
+        self.lint_with_options(source, &LintOptions::default())
+    }
+
+    /// Lint with per-call options (spec 005 §R2).
+    ///
+    /// Phase 1 implementation: the body is identical to the legacy
+    /// [`Engine::lint`] codepath — `opts.deadline` is **ignored** so
+    /// no observable behavior change ships in Phase 1. Phase 2
+    /// (tasks T007–T009) wires the cooperative-cancellation checks
+    /// against `opts.deadline`. The signature lands now so the
+    /// surface wiring (CLI / server / WASM / batch in Phase 3) can
+    /// land in parallel against a stable type surface.
+    pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult {
+        // Phase 1: deadline is plumbed but not honored. The bind here
+        // documents the field exists and silences unused-variable
+        // warnings without `#[allow(unused)]`.
+        let _ = opts.deadline;
+
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
@@ -603,7 +628,10 @@ impl Engine {
             }
         }
 
-        LintResult { diagnostics }
+        LintResult {
+            diagnostics,
+            ..Default::default()
+        }
     }
 
     /// Lint and apply fixes. Returns fixed source and audit log.
@@ -614,12 +642,21 @@ impl Engine {
     ///
     /// Uses the confidence threshold configured in the engine's `Config`.
     /// To supply a per-call override (e.g., from a `--confidence` CLI flag
-    /// or an HTTP request field), use [`Engine::fix_with_threshold`].
+    /// or an HTTP request field), use [`Engine::fix_with_threshold`] or
+    /// [`Engine::fix_with_options`].
+    ///
+    /// Back-compat shim over [`Engine::fix_with_options`] — `fix(src, mode)`
+    /// is equivalent to `fix_with_options(src, mode, &FixOptions::default())`
+    /// (no deadline, no threshold override). Both invariants make the
+    /// `expect` here unreachable: the default options carry no deadline so
+    /// `EngineError::DeadlineExceeded` cannot fire, and the config
+    /// threshold is pre-validated at load time so
+    /// `EngineError::InvalidThreshold` cannot fire.
     pub fn fix(&self, source: &[u8], mode: FixMode) -> FixResult {
-        // The config threshold is pre-validated at load time, so the
-        // `Result` branch is unreachable.
-        self.fix_with_threshold(source, mode, None)
-            .expect("config-supplied confidence threshold is pre-validated")
+        self.fix_with_options(source, mode, &FixOptions::default())
+            .expect(
+                "fix() default options cannot fail: no deadline + pre-validated config threshold",
+            )
     }
 
     /// Lint and apply fixes using an optional per-call confidence threshold.
@@ -627,16 +664,60 @@ impl Engine {
     /// When `threshold_override` is `Some`, it replaces the config-level
     /// threshold for this call only and is validated against `[0.0, 1.0]`.
     /// When `None`, the engine falls back to `Config::confidence_threshold`.
+    ///
+    /// This signature is preserved for back-compat. New callers should
+    /// prefer [`Engine::fix_with_options`], which carries the deadline
+    /// surface alongside the threshold override.
     pub fn fix_with_threshold(
         &self,
         source: &[u8],
         mode: FixMode,
         threshold_override: Option<f32>,
     ) -> Result<FixResult, InvalidThreshold> {
-        let threshold = match threshold_override {
+        let opts = FixOptions {
+            threshold_override,
+            ..Default::default()
+        };
+        match self.fix_with_options(source, mode, &opts) {
+            Ok(result) => Ok(result),
+            Err(EngineError::InvalidThreshold(it)) => Err(it),
+            // No caller can reach this arm: `fix_with_threshold`'s
+            // public signature does not accept a deadline, so the
+            // `FixOptions` we built above has `deadline: None`. A
+            // future signature change that introduces one would have
+            // to remove this `unreachable!` deliberately.
+            Err(EngineError::DeadlineExceeded { .. }) => {
+                unreachable!("fix_with_threshold cannot set a deadline through its signature")
+            }
+        }
+    }
+
+    /// Lint and apply fixes with per-call options (spec 005 §R2).
+    ///
+    /// Phase 1 implementation: `opts.deadline` is **ignored**; the
+    /// body delegates to the existing fix path with
+    /// `opts.threshold_override`. Phase 2 (tasks T010–T012) wires
+    /// cooperative cancellation against `opts.deadline`, returning
+    /// `Err(EngineError::DeadlineExceeded { partial_lint })` per spec
+    /// §R4 (asymmetric response).
+    ///
+    /// The threshold override is honored from day one because it is
+    /// not a deadline concern — it fits naturally into the new
+    /// options struct and lifting it now lets callers stop reaching
+    /// for `fix_with_threshold` immediately.
+    pub fn fix_with_options(
+        &self,
+        source: &[u8],
+        mode: FixMode,
+        opts: &FixOptions,
+    ) -> Result<FixResult, EngineError> {
+        // Phase 1: deadline is plumbed but not honored.
+        let _ = opts.deadline;
+
+        let threshold = match opts.threshold_override {
             Some(value) => {
                 if !(0.0..=1.0).contains(&value) || value.is_nan() {
-                    return Err(InvalidThreshold(value));
+                    return Err(EngineError::InvalidThreshold(InvalidThreshold(value)));
                 }
                 value
             }

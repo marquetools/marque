@@ -7,9 +7,59 @@
 use marque_rules::{AppliedFix, Diagnostic};
 
 /// Result of a lint pass — diagnostics without source modification.
+///
+/// `#[non_exhaustive]` ensures future lint-time observations (per-rule
+/// timing histograms, decoder posterior quartiles, etc.) can be added
+/// without further breaking downstream callers. Adding the attribute
+/// itself in spec 005 IS a one-time breaking change for external
+/// callers that previously brace-constructed or exhaustively
+/// pattern-matched `LintResult`; from this version on, external
+/// callers MUST construct via `Default::default()` plus public field
+/// assignment (struct-update syntax is only allowed in-crate):
+///
+/// ```
+/// use marque_engine::LintResult;
+/// let mut result = LintResult::default();
+/// result.diagnostics.clear();
+/// ```
+///
+/// Spec 005 added `truncated`, `candidates_processed`, and
+/// `candidates_total` to surface deadline-driven cooperative
+/// cancellation.
+///
+/// **Phase 1 status (current build):** deadline enforcement is not
+/// wired yet. Lint passes run to completion regardless of
+/// `LintOptions::deadline`, so `truncated` is always `false` and
+/// both candidate-count fields are always `0`. The semantics below
+/// describe the Phase 2 behavior that lands in tasks T007–T009.
+///
+/// Once Phase 2 wiring lands: a fully completed pass reports
+/// `truncated: false` with `candidates_processed ==
+/// candidates_total`. An already-expired deadline returns
+/// immediately with `truncated: true` and both counts at `0`.
+/// Mid-document expiry produces `truncated: true` with
+/// `0 < candidates_processed < candidates_total`.
+#[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct LintResult {
     pub diagnostics: Vec<Diagnostic>,
+    /// `true` when the lint pass aborted before processing every
+    /// scanner-emitted candidate due to deadline expiry. The
+    /// `diagnostics` vector contains every diagnostic produced from
+    /// candidates that *were* processed before the abort. Spec §R3.
+    /// **Phase 1:** always `false` — deadline enforcement lands in
+    /// Phase 2.
+    pub truncated: bool,
+    /// Number of scanner-emitted candidates the engine processed
+    /// before returning. On a non-truncated pass equals
+    /// `candidates_total`. **Phase 1:** always `0` — Phase 2 wires
+    /// the actual count.
+    pub candidates_processed: usize,
+    /// Total number of scanner-emitted candidates (the
+    /// post-scanner, pre-rule-loop count). Populated from the
+    /// scanner output regardless of whether the pass completed.
+    /// **Phase 1:** always `0` — Phase 2 wires the actual count.
+    pub candidates_total: usize,
 }
 
 impl LintResult {
@@ -83,6 +133,7 @@ mod tests {
     fn is_clean_returns_true_when_no_diagnostics() {
         let clean_result = LintResult {
             diagnostics: vec![],
+            ..Default::default()
         };
         assert!(clean_result.is_clean());
     }
@@ -98,6 +149,7 @@ mod tests {
                 "test",
                 None,
             )],
+            ..Default::default()
         };
         assert!(!dirty_result.is_clean());
     }
@@ -148,6 +200,7 @@ mod tests {
                     None,
                 ),
             ],
+            ..Default::default()
         };
         assert_eq!(result.info_count(), 2);
         assert_eq!(result.warn_count(), 1);

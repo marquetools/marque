@@ -17,6 +17,7 @@ pub mod clock;
 pub mod decoder;
 pub mod engine;
 pub mod errors;
+pub mod options;
 pub mod output;
 pub mod pipeline;
 pub mod recognizer;
@@ -27,7 +28,8 @@ pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use decoder::{DecoderRecognizer, StrictOrDecoderRecognizer};
 pub use engine::{Engine, FixMode, InvalidThreshold};
-pub use errors::EngineConstructionError;
+pub use errors::{EngineConstructionError, EngineError};
+pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use recognizer::StrictRecognizer;
 
