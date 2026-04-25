@@ -372,17 +372,35 @@ impl AppliedFix {
     /// time. A future phase may adjust these per region-context before
     /// snapshotting; Phase 2 copies them unchanged.
     ///
-    /// This is enforced by convention and code review, not by the type system,
-    /// because `AppliedFix` must be defined in `marque-rules` (which the engine
-    /// depends on, not the reverse).
+    /// # Type-level seal
+    ///
+    /// The `_token: EnginePromotionToken` parameter is the seal: an
+    /// instance can only be obtained via
+    /// [`EnginePromotionToken::__engine_construct`], whose
+    /// engine-only contract mirrors this one. Because
+    /// `EnginePromotionToken`'s sole field is private to
+    /// `marque-rules`, no external crate can brace-construct one — the
+    /// bypass surface collapses to a single named type. A grep for
+    /// `EnginePromotionToken` outside `marque-engine` (or test code
+    /// covered by the carve-out below) flags every Constitution V
+    /// violation in one pass.
+    ///
+    /// The seal is still convention-based at the cross-crate level
+    /// (Rust does not provide a way to scope `pub` to a specific
+    /// downstream crate without `cfg` features that any caller can
+    /// flip), but the convention is now load-bearing at the type
+    /// level: the named token threads the bypass through one
+    /// auditable choke point instead of leaving it as a single
+    /// generically-named function.
     ///
     /// # Test-fixture carve-out
     ///
-    /// Test code MAY call `__engine_promote` directly to construct
-    /// synthetic `AppliedFix` fixtures for unit-testing audit-emission
-    /// machinery (renderers, sentinel checks, NDJSON serialization)
-    /// without spinning up a full `Engine`. The carve-out is scoped per
-    /// Constitution V Principle V:
+    /// Test code MAY call `__engine_promote` directly (and mint a
+    /// token via [`EnginePromotionToken::__engine_construct`]) to
+    /// construct synthetic `AppliedFix` fixtures for unit-testing
+    /// audit-emission machinery (renderers, sentinel checks, NDJSON
+    /// serialization) without spinning up a full `Engine`. The
+    /// carve-out is scoped per Constitution V Principle V:
     ///
     /// - Call sites MUST live inside `#[cfg(test)]` modules, `tests/`
     ///   integration files, or test-utility crates gated as
@@ -405,6 +423,7 @@ impl AppliedFix {
         classifier_id: Option<Arc<str>>,
         dry_run: bool,
         input: Option<Arc<str>>,
+        _token: EnginePromotionToken,
     ) -> Self {
         let confidence = proposal.confidence.clone();
         let source = proposal.source;
@@ -417,6 +436,58 @@ impl AppliedFix {
             dry_run,
             input,
         }
+    }
+}
+
+/// Engine-only proof-of-construction token for [`AppliedFix::__engine_promote`].
+///
+/// `AppliedFix::__engine_promote` accepts an `EnginePromotionToken`; the
+/// only way to obtain one is [`EnginePromotionToken::__engine_construct`].
+/// Because the token's sole field is private to `marque-rules`, no
+/// external crate can brace-construct one, and the constructor is
+/// `#[doc(hidden)]` and named to make the bypass intent obvious at the
+/// call site.
+///
+/// This is the type-level seal for Constitution V Principle V's
+/// engine-only contract on audit-record promotion. See
+/// [`AppliedFix::__engine_promote`] for the binding contract and the
+/// test-fixture carve-out.
+///
+/// # Compile-fail proof of the seal
+///
+/// External crates cannot brace-construct an `EnginePromotionToken`
+/// because the `_seal` field is private to `marque-rules`. Doctests
+/// compile as separate crates against the library's public API, so
+/// the following snippet is rejected by the compiler — which is what
+/// `compile_fail` asserts:
+///
+/// ```compile_fail
+/// // External crates see `EnginePromotionToken` but not `_seal`,
+/// // so brace-construction is rejected. Bypass requires calling
+/// // `EnginePromotionToken::__engine_construct()`, which is the
+/// // single auditable bypass surface.
+/// let _token = marque_rules::EnginePromotionToken { _seal: () };
+/// ```
+#[derive(Debug)]
+pub struct EnginePromotionToken {
+    _seal: (),
+}
+
+impl EnginePromotionToken {
+    /// Mint an [`EnginePromotionToken`].
+    ///
+    /// # Engine-only contract (production code)
+    ///
+    /// Only `marque-engine` may call this in production code. The
+    /// same three-constraint test-fixture carve-out from
+    /// [`AppliedFix::__engine_promote`] applies here verbatim — see
+    /// that constructor's doc comment for the binding definition.
+    /// Outside the engine, calling this from `cfg(not(test))` code
+    /// violates Constitution V Principle V.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn __engine_construct() -> Self {
+        Self { _seal: () }
     }
 }
 
