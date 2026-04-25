@@ -280,11 +280,17 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         }
 
         // 5. Sort by posterior descending; keep top K=8.
-        scored.sort_by(|a, b| {
-            b.posterior
-                .partial_cmp(&a.posterior)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        //
+        // `f32::total_cmp` provides a deterministic total order even
+        // for NaN inputs (NaNs sort to one end depending on sign rather
+        // than producing an undefined `partial_cmp` result that would
+        // collapse to `Ordering::Equal`). NaN posteriors should be
+        // impossible — `MISSING_TOKEN_LOG_PRIOR = -12.0` and every
+        // feature delta is a finite constant — but `total_cmp` makes
+        // the ordering robust if a future scoring change introduces a
+        // codepath that produces NaN, rather than silently returning
+        // an undefined sort order.
+        scored.sort_by(|a, b| b.posterior.total_cmp(&a.posterior));
         scored.truncate(K_MAX_CANDIDATES);
 
         // 6. Decision: top-over-runner-up log margin on the posterior.
