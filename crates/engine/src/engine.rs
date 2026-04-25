@@ -246,6 +246,7 @@ impl Engine {
     /// deep-scan, the engine's dispatch is identical to Phase 4 PR-2.
     /// The decoder only fires on explicit opt-in (this method today;
     /// a `--deep-scan` CLI flag lands in PR-4 alongside audit v2).
+    #[must_use = "with_deep_scan returns a new Engine; the result must be bound to take effect — `engine.with_deep_scan()` alone leaves the engine in strict-only mode"]
     pub fn with_deep_scan(mut self) -> Self {
         self.recognizer = Arc::new(crate::decoder::StrictOrDecoderRecognizer::new());
         self.deep_scan = true;
@@ -277,6 +278,7 @@ impl Engine {
     /// stock priors. Substituting the override priors into the
     /// decoder's prior-table lookup is the next-PR step.
     #[cfg(feature = "corpus-override")]
+    #[must_use = "with_corpus_override returns a new Engine; the result must be bound to take effect — `engine.with_corpus_override(o)` alone leaves the engine without an override installed"]
     pub fn with_corpus_override(
         mut self,
         override_data: std::sync::Arc<marque_config::corpus_override::CorpusOverride>,
