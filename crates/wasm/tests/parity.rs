@@ -49,7 +49,8 @@ const PARITY_CORPUS_JSON: &str = include_str!("parity_corpus.json");
 #[derive(Debug, Deserialize)]
 struct ParityEntry {
     name: String,
-    #[allow(dead_code)] // category is informational; assertions use `name`
+    /// Corpus subdir (`invalid` / `valid`). Surfaced in failure messages
+    /// so a parity break points at the offending fixture's category.
     category: String,
     input: String,
     expected_lint: String,
