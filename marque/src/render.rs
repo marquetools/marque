@@ -533,7 +533,13 @@ pub fn render_audit_record(
 /// to guarantee well-formed output even if the error message contains quotes
 /// or backslashes.
 ///
-/// Shape: `{"schema":"marque-mvp-1","error":"<code>","rule":"<id>"}`
+/// Shape: `{"schema":"<AUDIT_SCHEMA_VERSION>","error":"<code>","rule":"<id>"}`
+///
+/// where `<AUDIT_SCHEMA_VERSION>` is the build-time value of the
+/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-mvp-2`; see
+/// `crates/engine/build.rs`). The schema string is emitted dynamically
+/// so an audit consumer can dispatch on the schema version without
+/// the renderer's docs going stale on a schema bump.
 pub fn render_audit_error_frame(
     stderr: &mut dyn std::io::Write,
     rule_id: &str,
