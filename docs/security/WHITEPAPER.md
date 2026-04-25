@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.5 · **Last amended**: 2026-04-24
+**Document version**: 0.6 · **Last amended**: 2026-04-24
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -356,21 +356,31 @@ Every rust crate in the workspace declares either
 
 ### 4.2 Unsafe-block audit
 
-Two justified unsafe blocks ship today:
+Two justified unsafe blocks ship today, each carrying a `// SAFETY:`
+doc comment that documents the precondition and how the surrounding
+code satisfies it:
 
-- **`Trigraph::as_str`** (`crates/ism/src/attrs.rs`, allow-local): wraps
-  `std::str::from_utf8_unchecked` over a `Trigraph` whose only
+- **`Trigraph::as_str`** (`crates/ism/src/attrs.rs:1085`, allow-local):
+  wraps `std::str::from_utf8_unchecked` over a `Trigraph` whose only
   constructors are `try_new` (ASCII uppercase predicate) and the `USA`
-  constant. ASCII is valid UTF-8.
-- **WASM talc allocator bootstrap** (`crates/wasm/src/lib.rs`): one-time
-  initialization of the linear-memory heap using `&raw mut INITIAL_HEAP`,
-  a Rust 2024 syntax that avoids creating a reference that could alias.
+  constant. ASCII is valid UTF-8. The SAFETY comment names both
+  constructor paths and the ASCII⊂UTF-8 chain that discharges the
+  `from_utf8_unchecked` precondition.
+- **WASM talc allocator bootstrap** (`crates/wasm/src/lib.rs:101`):
+  one-time initialization of the linear-memory heap using
+  `&raw mut INITIAL_HEAP`, a Rust 2024 syntax that avoids creating a
+  reference that could alias. The SAFETY comment names the
+  alias-freedom invariant (no Rust reference is created), the
+  one-time-init guarantee, and the module-locality of `INITIAL_HEAP`
+  (no other access path exists after the claim).
 
 Test-only unsafe (environment-variable setters in
 `crates/config/tests/precedence.rs`) does not ship.
 
-*Gap:* neither shipped unsafe block carries a SAFETY doc comment in the
-source. See gap register (P2).
+**Status**: `[LANDED]` for the SAFETY-comment discipline; the
+audit-on-introduction obligation rolls forward to any future
+`unsafe { ... }` block — landing one without a SAFETY comment is a
+review-blocking defect.
 
 ### 4.3 Panic-free hot-path policy
 
@@ -432,8 +442,16 @@ is open (gap register P2).
 current engine emits only one `tracing::warn!` and one server-startup
 `tracing::info!`; neither interpolates document content.
 
-A written policy attaching "trace logging is not production-safe for
-classified content" to `MARQUE_LOG` documentation is open.
+The CLI's `--help` `ENVIRONMENT VARIABLES:` block now carries the
+production-safety caveat for `MARQUE_LOG=trace`: trace level is
+reserved for future diagnostic output that may interpolate input
+fragments and must not be enabled when processing classified content.
+The warning is surfaced through clap's `after_help` so an operator
+who has never read this whitepaper still sees it. The matching
+runtime guard — converting the resolved filter to a stderr notice
+when `trace` appears — is deferred until a `tracing::trace!` site
+that touches input bytes actually lands; until then, the documentation
+is the contract.
 
 ### 5.5 Test-fixture provenance
 
@@ -697,9 +715,17 @@ License 2.0, BSL, SSPL). Two CI gates enforce this:
 
 - `demo/package.json` has zero lifecycle hooks
   (`postinstall`, `preinstall`, `prepare`, `prepublish` all absent).
-- `docs-site/` (Astro 6) fetches `fontsource` fonts at build. Fonts
-  are data, not executables; marque delegates font integrity to the
-  CDN. Mirroring locally is low-severity future work.
+- `docs-site/` (Astro 6) vendors the three site fonts locally — OCR-B
+  (display, brand mark), Fira Code (monospace, code blocks), and IBM
+  Plex Sans (body text) — under `docs-site/src/assets/{OCR-B,Fira-Code,IBM-Plex-Sans}/`,
+  each with a `LICENSE` (SIL OFL 1.1 for Fira Code and IBM Plex Sans;
+  per-package terms for OCR-B) and a `README.md` documenting the
+  exact upstream package and version that produced the bytes. The
+  `astro.config.mjs` font block uses `fontProviders.local()`
+  exclusively; `fontProviders.fontsource()` (which fetches from
+  `api.fontsource.org` + `cdn.jsdelivr.net` at build time) is not
+  used. The build is reproducible offline and the bytes that ship
+  to the browser are the bytes committed to this repo.
 
 ### 8.7 Release provenance
 
@@ -1080,11 +1106,11 @@ possible), and a **remediation plan**. Severities:
 | 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
 | 16 | `crates/core/src/parser.rs` `to_vec()` is undocumented | P2 | §5.1 | Add a SAFETY-style comment explaining scope-local intent, or refactor |
 | 17 | `tools/corpus-analysis/` has unpinned Python deps | P2 | §7.4 | Pin `requests` in `requirements.txt`; consider `pip-tools` |
-| 18 | `docs-site` fetches `fontsource` fonts at build | P2 | §8.6 | Mirror fonts locally, or pin integrity hashes |
+| 18 | ~~`docs-site` fetches `fontsource` fonts at build~~ | ~~P2~~ | ~~§8.6~~ | **Resolved.** Fira Code (5 weights, Latin) and IBM Plex Sans (5 weights × normal/italic, Latin) are vendored under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/font/` (SIL OFL 1.1) alongside per-font `LICENSE` and `README.md`. `astro.config.mjs` uses `fontProviders.local()` for all three site fonts — no `api.fontsource.org` / `cdn.jsdelivr.net` fetch at build time |
 | 19 | Mangled fixture `observed`/`expected` fields lack a token-only invariant test | P2 | §5.5 | Regex-check in `corpus_provenance.rs` |
 | 20 | `CoreError::Display` leaks token text if surfaced | P2 | §5.3 | Add a test asserting `CoreError` never crosses audit / server-response paths |
-| 21 | Shipped unsafe blocks lack SAFETY doc comments | P2 | §4.2 | Add `// SAFETY:` paragraphs at both call sites |
-| 22 | `MARQUE_LOG` trace level is not flagged as production-unsafe | P2 | §5.4, §11.4 | Documentation note + warning in CLI help |
+| 21 | ~~Shipped unsafe blocks lack SAFETY doc comments~~ | ~~P2~~ | ~~§4.2~~ | **Resolved.** Audit confirmed both shipped unsafe blocks already carry `// SAFETY:` doc comments — `crates/wasm/src/lib.rs:101` (Talc heap-claim alias-freedom + one-time-init invariants) and `crates/ism/src/attrs.rs:1085` (Trigraph constructor → ASCII⊂UTF-8 chain discharging the `from_utf8_unchecked` precondition). Whitepaper §4.2 was stale; updated in v0.4 to describe the present state |
+| 22 | ~~`MARQUE_LOG` trace level is not flagged as production-unsafe~~ | ~~P2~~ | ~~§5.4, §11.4~~ | **Resolved.** `marque --help` carries an `ENVIRONMENT VARIABLES:` block (clap `after_help`) naming `MARQUE_LOG` and warning that `marque=trace` is not production-safe for classified content. Whitepaper §5.4 documents the route. The matching runtime stderr-notice guard is deferred until a `tracing::trace!` site that touches input bytes actually lands |
 | 23 | Memory zeroization on drop | P3 | Constitution II future SGX/TrustZone | Explicit non-goal; wait for the right platform |
 | 24 | Tamper-evident audit log at engine layer | P3 | §12.3 | Explicit non-goal; deployment concern |
 | 25 | Cache-poisoning analysis | P3 | §12.1 v0.2 | Defer to v0.2 cache design |
@@ -1113,3 +1139,5 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.1 | 2026-04-24 | Initial skeleton: §§0–17, Appendices A–C stubs. Sourced from parallel security audits of current implementation + open items in `specs/004-constraints-decoder-vocab/`. | Adam Poulemanos (with Claude Code) |
 | 0.2 | 2026-04-24 | T056 (P0-4) landed as `crates/engine/tests/audit.rs`. §3.1 and §14 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 4 removed. | Adam Poulemanos (with Claude Code) |
 | 0.3 | 2026-04-24 | T3 enforcement (P0-2 + P0-3) landed. Server rejects corpus-override across body, header, and query-string channels (T049/T050/T066 — `crates/server/src/lib.rs` + `crates/server/tests/http.rs`). WASM compile-fail guard landed (T051/T067 — `crates/wasm/src/lib.rs` + `crates/wasm/tests/no_corpus_override.rs`). §10.2 (corpus-override portion) and §10.3 flipped from `[PARTIAL]` to `[LANDED]`. Gap register rows 2 and 3 removed. | Adam Poulemanos (with Claude Code) |
+| 0.5 | 2026-04-24 | P0-1 closed retroactively (gap register row 1 already struck through by the time §6.4 was last touched). PR #122 wired `MARQUE_AUDIT_SCHEMA` through `crates/engine/build.rs` and switched the CLI + WASM emitters to `marque_engine::AUDIT_SCHEMA_VERSION`; default schema bumped to `marque-mvp-2`; v1 downgrade kept green via suffixed snapshots and the T054 / T055 invariants. The header version had been pre-bumped to 0.5 ahead of this row. | Adam Poulemanos (with Claude Code) |
+| 0.6 | 2026-04-24 | Three P2 hygiene gaps closed. Gap #18: docs-site fonts vendored locally — Fira Code + IBM Plex Sans (SIL OFL 1.1) added under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/`; `astro.config.mjs` flipped to `fontProviders.local()`; build no longer fetches from `api.fontsource.org` / `cdn.jsdelivr.net`. Gap #21: §4.2 corrected — both shipped unsafe blocks already carry `// SAFETY:` doc comments; the whitepaper's previous claim was stale. Gap #22: `marque --help` carries an `ENVIRONMENT VARIABLES:` block via clap `after_help` warning that `MARQUE_LOG=trace` is not production-safe for classified content; §5.4 documents the route. Other admin: gap register rows 18, 21, 22 struck through; §4.2 / §5.4 / §8.6 updated. | Adam Poulemanos (with Claude Code) |
