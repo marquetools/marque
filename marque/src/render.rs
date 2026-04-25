@@ -788,7 +788,7 @@ mod tests {
 
     #[test]
     fn render_audit_record_produces_valid_ndjson() {
-        use marque_rules::AppliedFix;
+        use marque_rules::{AppliedFix, EnginePromotionToken};
         use std::sync::Arc;
         use std::time::{Duration, UNIX_EPOCH};
 
@@ -804,13 +804,16 @@ mod tests {
         // Test-fixture carve-out per Constitution V Principle V:
         // synthetic AppliedFix for renderer unit testing only;
         // never commingled with engine output, never reachable from
-        // cfg(not(test)).
+        // cfg(not(test)). The token is minted via the engine-only
+        // door for the same reason — the test exercises the audit
+        // emitter, not the engine's promotion gate.
         let applied = AppliedFix::__engine_promote(
             fix,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             Some(Arc::from("classifier-42")),
             false,
             Some(Arc::from("test.txt")),
+            EnginePromotionToken::__engine_construct(),
         );
 
         let mut buf = Vec::new();

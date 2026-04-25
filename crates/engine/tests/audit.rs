@@ -75,7 +75,7 @@ use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
 use marque_ism::Span;
-use marque_rules::{AppliedFix, Confidence, FixProposal, FixSource, RuleId};
+use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -337,12 +337,19 @@ fn fabricate_leaky_fix() -> AppliedFix {
         Confidence::strict(1.0),
         None,
     );
+    // Test-fixture carve-out per Constitution V Principle V: the
+    // token is minted via the engine-only door so the synthetic
+    // `AppliedFix` can flow through the G13 sentinel sweep. The
+    // fabricated value is consumed inside `tests/` and never
+    // commingled with engine output (see `fabricate_leaky_fix`'s
+    // doc comment above).
     AppliedFix::__engine_promote(
         proposal,
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),
         /* dry_run */ false,
         Some(Arc::<str>::from("-")),
+        EnginePromotionToken::__engine_construct(),
     )
 }
 

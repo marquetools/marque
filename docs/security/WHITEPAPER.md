@@ -535,14 +535,43 @@ crates construct these; snapshots happen only on promotion.
 
 ### 6.2 `__engine_promote` visibility invariant
 
-Constructor is `pub #[doc(hidden)]`; only `Engine::fix_inner` and
-`apply_text_corrections` call it in production (`crates/engine/src/engine.rs:504, 517, 612`).
-A single test-only exception exists in `marque/src/render.rs` and is
-documented as such. The current seal is by convention; see gap
-register P1-5 for the proposed type-level seal.
+`AppliedFix::__engine_promote` accepts an `EnginePromotionToken` whose
+sole field is private to `marque-rules`, so external crates cannot
+brace-construct one. The single bypass surface is
+`EnginePromotionToken::__engine_construct()`, which is
+`#[doc(hidden)]`, named to make bypass intent unmistakable, and called
+from exactly one place in production: the private
+`engine_promotion_token()` helper in `crates/engine/src/engine.rs`.
+That helper feeds the three production promotion sites
+(`Engine::fix_inner`'s Apply and DryRun arms, and
+`apply_text_corrections`).
 
-**Status**: `[LANDED]` call-site discipline; `[PARTIAL]` mechanical
-seal.
+Two test-only exceptions exist under the Constitution V Principle V
+test-fixture carve-out: `crates/engine/tests/audit.rs` (G13 sentinel
+sweep input) and `marque/src/render.rs` (audit-emitter unit test).
+Each call site carries an inline carve-out comment.
+
+The seal is enforced at the type level for brace construction
+(rejected by Rust's privacy rules) and by convention for the
+`__engine_construct()` and `__engine_promote()` doors (the
+`#[doc(hidden)]` engine-only contract documented on each). A grep
+for `EnginePromotionToken` outside `marque-engine` (and outside
+test code covered by the carve-out) flags every Constitution V
+violation in one pass — the bypass surface used to be a single
+generic-named function (`__engine_promote`); now it is a single
+named type.
+
+Tests pin both halves:
+
+- `crates/rules/src/lib.rs` carries a `compile_fail` doctest on
+  `EnginePromotionToken` proving brace construction is rejected by
+  the privacy gate at the doctest's separate-crate compile.
+- `crates/rules/tests/engine_promotion_seal.rs::documented_door_can_mint_token_from_outside_marque_rules`
+  exercises the documented door from outside `marque-rules`,
+  proving the bypass surface is callable when needed.
+
+**Status**: `[LANDED]` call-site discipline; `[LANDED]` type-level
+seal (gap register #5 closed).
 
 ### 6.3 Confidence gate, FR-016 sort, C-1 overlap guard
 
@@ -1231,7 +1260,7 @@ possible), and a **remediation plan**. Severities:
 | # | Gap | Severity | Owner | Remediation |
 |---|---|---|---|---|
 | 1 | ~~`MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"`~~ **Resolved (PR-4).** Engine exposes `pub const AUDIT_SCHEMA_VERSION` from `env!("MARQUE_AUDIT_SCHEMA")`; `marque/src/render.rs` and `crates/wasm/src/lib.rs` dispatch v1/v2 emitter struct from the const-folded `AUDIT_SCHEMA_IS_V2` selector. Build-time validation against `["marque-mvp-1", "marque-mvp-2"]` panics on unknown values. T054 (back-compat parse) and T055 (single-schema stream invariant) ride on top of the wiring. | ~~P0~~ closed | FR-014, T005, T054, T055 | Done |
-| 5 | `__engine_promote` seal is convention-only | P1 | Constitution V invariant | Seal behind a private ZST token constructable only inside `marque-engine`; test-only exception becomes a private helper |
+| 5 | ~~`__engine_promote` seal is convention-only~~ | ~~P1~~ | ~~Constitution V invariant~~ | **Resolved.** `EnginePromotionToken` (private `_seal: ()` field, `crates/rules/src/lib.rs`) seals `AppliedFix::__engine_promote` at the type level — external crates cannot brace-construct the token. The single bypass surface is `EnginePromotionToken::__engine_construct()` (`#[doc(hidden)]`, engine-only by convention), called from one place in production: the `engine_promotion_token()` helper in `crates/engine/src/engine.rs`. Two test-only exceptions (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) carry inline carve-out comments per Constitution V Principle V. Tests: `compile_fail` doctest on `EnginePromotionToken` proves brace construction is rejected; `crates/rules/tests/engine_promotion_seal.rs` proves the documented door works across the crate boundary. §6.2 rewritten |
 | 6 | ~~Server has no explicit `DefaultBodyLimit`~~ | ~~P1~~ | ~~§10.2~~ | **Resolved.** `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024`; applied via `axum::extract::DefaultBodyLimit::max(N)` in `build_app` / `build_app_with_limit`. Override at runtime via `MARQUE_MAX_BODY_BYTES` (resolved by `marque_server::resolve_body_limit`; values below 1 KiB rejected at startup with `EX_USAGE`). Tests in `crates/server/tests/http.rs` exercise both the `413` path and a `default_limit_admits_realistic_traffic` regression guard against a future drop-the-constant change |
 | 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
 | 8 | ~~`BatchEngine` `.expect()` panics on semaphore close~~ | ~~P1~~ | ~~§9.4, `batch.rs:196, 226`~~ | **Resolved.** New `BatchError::ShutdownInProgress` variant with matching `is_shutdown()` predicate; `From<tokio::sync::AcquireError>` impl maps the (only possible) error. Both `lint_many` and `fix_many` propagate the variant per-document instead of panicking. Unit tests cover `is_*` discrimination, `Display`, `Error::source`, and the `From` conversion driven through a closed `Semaphore` |
@@ -1284,3 +1313,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.9 | 2026-04-25 | Two narrow P1 gaps closed. Gap #6: server body-size cap landed — `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 MiB`, applied via `axum::DefaultBodyLimit::max(N)` Tower layer in `build_app` / `build_app_with_limit`; runtime override via `MARQUE_MAX_BODY_BYTES` resolved by `resolve_body_limit` (rejects values below 1 KiB with `EX_USAGE`); tests cover `413` rejection on both `/v1/lint` and `/v1/fix` plus a 256 KiB realistic-traffic regression guard. §10.2 rewritten. Gap #8: `BatchEngine` `.expect()` replaced with new `BatchError::ShutdownInProgress` variant + `From<AcquireError>` impl + `is_shutdown()` predicate; both `lint_many` and `fix_many` now propagate the error per-document. §9.4 rewritten. Gap register rows 6 and 8 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.10 | 2026-04-25 | One more P1 gap closed. Gap #10: `Engine::lint` wraps every `Rule::check` in `std::panic::catch_unwind(AssertUnwindSafe(...))`; caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for the candidate without aborting the document. `Cargo.toml` `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, the real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test. §6.3 rewritten. Gap register row 10 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.11 | 2026-04-25 | Documentation drift fix — Gap #9 (P1) closed retroactively. The strict-context floor was wired by Phase 4 PR #114 (commit `bc57bfc`, T045/T062/FR-011): `DecoderRecognizer::recognize` returns zero-candidate `Parsed::Ambiguous` when `cx.strict_evidence` is set, the engine drives `strict_evidence: !self.deep_scan` per-candidate, the FR-011 per-page classification floor accumulates from strict-path recognitions only, and four tests in `crates/engine/tests/decoder_recovery.rs` plus the inline `decoder_defers_to_strict_when_strict_evidence_is_set` test pin the behavior. §9.3 expanded with the wiring citations. Gap register row 9 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.12 | 2026-04-25 | Gap #5 (P1) closed — type-level seal for `AppliedFix::__engine_promote`. New `EnginePromotionToken` ZST in `marque-rules` carries a private `_seal: ()` field; brace construction from outside `marque-rules` is rejected by Rust's privacy rules. The token threads as the sixth argument of `__engine_promote`. Single bypass surface (`EnginePromotionToken::__engine_construct()`) is `#[doc(hidden)]` and engine-only by convention; production code mints it from exactly one place — the private `engine_promotion_token()` helper in `crates/engine/src/engine.rs` — feeding the three production promotion sites. Two test-fixture carve-outs (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) updated with inline carve-out comments. Acceptance: `compile_fail` doctest on `EnginePromotionToken` pins brace-construction rejection at the doctest's separate-crate compile; `crates/rules/tests/engine_promotion_seal.rs::documented_door_can_mint_token_from_outside_marque_rules` proves the documented door works. §6.2 rewritten. Gap register row 5 struck through. | Adam Poulemanos (with Claude Code) |

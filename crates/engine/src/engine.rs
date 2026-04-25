@@ -15,8 +15,8 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{
-    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, FixProposal, FixSource, RuleId,
-    RuleSet, Severity,
+    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken,
+    FixProposal, FixSource, RuleId, RuleSet, Severity,
 };
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
@@ -747,6 +747,7 @@ impl Engine {
                         classifier_id.clone(),
                         dry_run,
                         None, // input identifier set by CLI at the boundary
+                        engine_promotion_token(),
                     ));
                 }
                 buf
@@ -760,6 +761,7 @@ impl Engine {
                         classifier_id.clone(),
                         dry_run,
                         None,
+                        engine_promotion_token(),
                     ));
                 }
                 source.to_vec()
@@ -855,11 +857,38 @@ impl Engine {
                 classifier_id.clone(),
                 dry_run,
                 None,
+                engine_promotion_token(),
             ));
         }
 
         (buf, applied)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Engine-only AppliedFix promotion gate (Constitution V Principle V)
+// ---------------------------------------------------------------------------
+
+/// Mint an [`EnginePromotionToken`] for [`AppliedFix::__engine_promote`].
+///
+/// This is the **single** place inside `marque-engine` where the engine
+/// grants itself the privilege to promote a `FixProposal` to an
+/// `AppliedFix`. Constitution V Principle V scopes audit-record
+/// promotion to `Engine::fix_inner` and `Engine::apply_text_corrections`
+/// (the three production call sites in this file). Centralizing the
+/// token construction here makes "where does the engine decide to
+/// promote?" a one-grep question, and means a future refactor that
+/// adds a fourth promotion site has to thread through this function
+/// — a deliberate decision, not an accident.
+///
+/// `EnginePromotionToken`'s sole field is private to `marque-rules`,
+/// so external crates cannot brace-construct one. The
+/// `__engine_construct` constructor on the token is `#[doc(hidden)]`
+/// and named to make its intent unmistakable to anyone reading a call
+/// site outside the engine.
+#[inline]
+fn engine_promotion_token() -> EnginePromotionToken {
+    EnginePromotionToken::__engine_construct()
 }
 
 // ---------------------------------------------------------------------------
