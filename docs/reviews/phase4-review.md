@@ -21,7 +21,8 @@ This is the historical review record. The four HIGH findings (H1–H4) were addr
 | H2 | Fixed by commit `b8443e9` — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
 | H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
 | H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
-| M1 | Fixed by `phase4-review-followups-accuracy-floors` — per-class regression floors added to T057 harness |
+| M1 | Fixed by PR #147 — per-class regression floors added to T057 harness |
+| M7 | Fixed by `phase4-review-followups-server-refactor` — `body_has_override` parameter dropped, body-channel check extracted to `reject_if_body_carries_corpus_override` |
 
 ## Decision (at time of review): REQUEST CHANGES
 
@@ -180,6 +181,8 @@ Error message says "not NaN, +Inf, or -Inf" but `-Inf` is a legitimate "infinite
 `reject_if_corpus_override` is called with `body_has_override = false` (hardcoded), then a separate post-deserialization `if req._corpus_override.is_present()` runs. The `body_has_override` parameter is dead at every call site. Future refactor risk: a developer might consolidate the path and inadvertently drop the second check.
 
 **Fix**: Either remove the `body_has_override` parameter and handle body rejection entirely inside the handler post-deserialization, or add a doc comment at `reject_if_corpus_override` explaining the two-pass rationale.
+
+**Resolution** — Landed on branch `phase4-review-followups-server-refactor`. Took the first option: dropped the `body_has_override` parameter (the function now only inspects header + query, matching its name), extracted the duplicated post-deserialization body-channel check into a new `reject_if_body_carries_corpus_override(endpoint, &PresenceMarker)` helper, and rewrote both function doc comments to spell out the two-pass design (`reject_if_corpus_override` runs before deserialization so a malformed body still fails with `400` rather than axum's default `422`; `reject_if_body_carries_corpus_override` runs after `serde_json::from_slice` succeeds). Both handlers shrank by ~9 lines each and the duplicated `tracing::warn!(channel = "body", ...)` block is gone. All 22 server integration tests still pass.
 
 ### M8 — `require_probability` allows `p == 0.0`
 
