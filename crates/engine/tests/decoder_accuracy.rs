@@ -319,18 +319,39 @@ fn same_meaning(a: &IsmAttributes, b: &IsmAttributes) -> bool {
     left == right
 }
 
-/// Project the `Parsed::Unambiguous` outcome into a recognition
-/// score. The recognizer has already cleared its internal
-/// `UNAMBIGUOUS_LOG_MARGIN` threshold (a >=5x odds ratio between
-/// top and runner-up) before emitting `Unambiguous`, so the
-/// recognition score for the unambiguous arm is 1.0 by construction
-/// — an external 0.85 floor is trivially cleared. The Ambiguous
-/// arm is treated as unresolved regardless of how dense its
-/// candidate set is, because SC-004's claim is about *unambiguous*
-/// recovery (a candidate-list disambiguation step is not "resolved"
-/// to an operator).
-fn unambiguous_recognition_score() -> f32 {
-    1.0
+/// Project a decoded unambiguous marking into its recognition
+/// score. `Parsed::Unambiguous` means the recognizer has already
+/// cleared its internal `UNAMBIGUOUS_LOG_MARGIN` threshold
+/// (1.6 nats ≈ 5x odds ratio between top and runner-up), but the
+/// decoder still exposes the actual softmax-derived recognition
+/// score via the marking's provenance. SC-004 must use that real
+/// score for its external 0.85 floor — at the unambiguous
+/// threshold the softmax is ~0.832 (see
+/// `provenance.rs::recognition_softmax_at_unambiguous_threshold`),
+/// which is below 0.85, so a hard-coded 1.0 here would silently
+/// overstate accuracy by counting near-threshold decodes that the
+/// 0.85 floor was specifically designed to reject.
+///
+/// The decoder always populates provenance on its
+/// `Parsed::Unambiguous` outputs (see
+/// [`marque_engine::DecoderRecognizer`]'s recognize implementation
+/// — every candidate is constructed by canonicalization, which
+/// records provenance unconditionally). The `expect` therefore
+/// names a real invariant; if it ever fires the decoder broke its
+/// contract and the harness is right to surface that loudly rather
+/// than silently fall back to a sentinel.
+///
+/// The Ambiguous arm is treated as unresolved regardless of how
+/// dense its candidate set is, because SC-004's claim is about
+/// *unambiguous* recovery — a candidate-list disambiguation step
+/// is not "resolved" to an operator.
+fn unambiguous_recognition_score(m: &CapcoMarking) -> f32 {
+    m.1.as_ref()
+        .expect(
+            "DecoderRecognizer must populate DecoderProvenance on \
+             every Parsed::Unambiguous output (Phase D contract)",
+        )
+        .recognition_score()
 }
 
 /// Run the full fixture sweep through the decoder and produce an
@@ -382,7 +403,7 @@ fn run_sweep() -> AccuracyReport {
             .recognize(case.fixture.observed.as_bytes(), &deep_cx())
         {
             Parsed::Unambiguous(m) => {
-                let r = unambiguous_recognition_score();
+                let r = unambiguous_recognition_score(&m);
                 let attrs_match = same_meaning(&m.0, &expected_marking.0);
                 let resolved = r >= RECOGNITION_FLOOR && attrs_match;
                 let verdict = if attrs_match {
