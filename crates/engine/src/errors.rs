@@ -406,7 +406,7 @@ mod tests {
     fn deadline_exceeded_with_zero_counts_renders_zero_over_zero() {
         // Pre-pass abort path (deadline already expired before scanner)
         // produces 0/0 counts. The Display message should still be
-        // legible — no division-by-zero artefacts, no empty fields.
+        // legible — no division-by-zero artifacts, no empty fields.
         let err = EngineError::DeadlineExceeded {
             partial_lint: lint_result_with_counts(0, 0),
         };
