@@ -425,4 +425,3 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
         &token_derived(*token).metadata
     }
 }
-
