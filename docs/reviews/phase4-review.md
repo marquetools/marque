@@ -11,7 +11,18 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 **Reviewers**: 5 specialized agents dispatched in parallel + direct verification of cross-cutting CI lanes
 **Date**: 2026-04-25
 
-## Decision: REQUEST CHANGES
+## Status
+
+This is the historical review record. The four HIGH findings (H1–H4) below were addressed in **PR #142** (`phase4-review-fixes`); see the per-finding resolution notes inline. The 11 MEDIUM and 7 LOW items remain open as recommended follow-ups.
+
+| Finding | Resolution |
+|---------|------------|
+| H1 | Fixed by commit `1d6f20d` — v2 emitter now reads top-level `confidence` / `source` snapshot |
+| H2 | Fixed by commit `b8443e9` — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
+| H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
+| H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
+
+## Decision (at time of review): REQUEST CHANGES
 
 Phase 4 is feature-complete and the implementation is largely sound — `cargo check`, `cargo clippy --all-targets -- -D warnings`, and the full default-feature test suite (1152 tests) are green. WASM correctly rejects `--features corpus-override` at the Cargo layer. The corpus-override threat boundary holds across all three channels (body / header / query, including percent-encoded variants).
 
@@ -47,6 +58,8 @@ let c = &fix.confidence;
 source: fix_source_str(fix.source),
 ```
 
+**Resolution** — Landed in commit `1d6f20d` on PR #142.
+
 ### H2 — Divergent `FeatureId` label registries on the audit wire
 
 **Files**: `crates/engine/src/decoder.rs:409-418` (`feature_label`) vs `crates/rules/src/confidence.rs:220-230` (`FeatureId::as_str`)
@@ -56,6 +69,8 @@ source: fix_source_str(fix.source),
 `feature_label()` in `decoder.rs` is a second match arm on `FeatureId` with snake_case wire labels (`"edit_distance_1"`, `"token_reorder"`), while `FeatureId::as_str()` — declared the canonical registry — emits PascalCase (`"EditDistance1"`, `"TokenReorder"`). `feature_label()` is called at decoder.rs:351 to populate `EvidenceFeature::label`. The current `StrictOrDecoderRecognizer` dispatcher discards `Ambiguous` results from the decoder (decoder.rs:1259-1267), so this code path is unreachable at runtime today — but a dispatcher policy change (e.g., surfacing decoder ambiguity as a separate diagnostic class) would make the wire-format divergence immediate.
 
 **Fix**: Delete `feature_label()` entirely. Replace the call at decoder.rs:351 with `f.id.as_str()`. The trait surface already requires `EvidenceFeature::label: &'static str`, which `as_str` returns.
+
+**Resolution** — Landed in commit `b8443e9` on PR #142.
 
 ### H3 — Decoder-accuracy and corpus-override regression suites are dormant in CI
 
@@ -81,6 +96,8 @@ I verified each suite passes when explicitly invoked with the correct feature fl
     cargo nextest run -p marque-capco --features corpus-harness --test corpus_parity
 ```
 
+**Resolution** — Landed in commit `edf0e64` on PR #142. Note: the as-shipped CI step combines the engine + CLI invocations into one `cargo nextest` run (with both `decoder-harness` and `corpus-override` features enabled together) since `corpus_parity.rs` turned out not to be `cfg`-gated and runs in default features already; the gating documented in this finding's table was a partial misread.
+
 ### H4 — `SUPERSEDED_TOKEN_MAP` citation points to wrong section/page
 
 **File**: `crates/engine/src/decoder.rs:765-766`
@@ -93,6 +110,8 @@ Citation reads `// CAPCO-2016 §A.6 p16 (COMINT title for the SI control system 
 ```rust
 // CAPCO-2016 §H.4 p74 (COMINT title for the SI control system is no longer valid)
 ```
+
+**Resolution** — Landed in commit `33f0c48` on PR #142.
 
 ## MEDIUM Findings
 
