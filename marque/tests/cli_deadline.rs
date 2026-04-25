@@ -13,6 +13,7 @@
 
 use assert_cmd::Command;
 use std::path::PathBuf;
+use std::time::Instant;
 
 fn workspace_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -27,13 +28,31 @@ fn marque() -> Command {
     Command::cargo_bin("marque").expect("marque binary")
 }
 
-/// Produce a stdin input large enough that a 1 ms deadline will trip
-/// inside the candidate loop (or, on a slow runner, before the first
-/// candidate). 4 000 banners is the same shape the engine deadline-
-/// overhead bench uses; it is small enough to keep the test fast and
-/// large enough to reliably exceed a 1 ms budget.
+/// Produce a stdin input large enough that a small fraction of an
+/// observed baseline still maps to a deadline that reliably trips the
+/// engine's candidate loop. 4 000 banners is the same shape the engine
+/// deadline-overhead bench uses; small enough to keep the test fast,
+/// large enough that a fraction-of-baseline deadline cannot complete
+/// before the engine starts checking.
 fn many_banners(count: usize) -> String {
     "SECRET//NF\n\n\n".repeat(count)
+}
+
+/// Run `marque <args>` once with `stdin` and return the elapsed wall
+/// time (`Duration`). Used to derive a per-test deadline that scales
+/// with the host's actual `marque` runtime — mirrors the
+/// `crates/engine/tests/deadline.rs` baseline pattern, lifted to the
+/// CLI level. The returned baseline includes process spawn + arg
+/// parsing + config load + engine work; for the deadline tests we
+/// take a *small fraction* (≈1/100) so the per-document budget is
+/// strictly less than engine work even after subtracting fixed
+/// startup cost. A 1 ms floor avoids degenerate values on very fast
+/// hosts where `baseline / 100` rounds to zero.
+fn measure_baseline_ms(args: &[&str], stdin: &str) -> u64 {
+    let start = Instant::now();
+    let _ = marque().args(args).write_stdin(stdin.to_owned()).assert();
+    let elapsed = start.elapsed();
+    ((elapsed.as_millis() / 100) as u64).max(1)
 }
 
 #[test]
@@ -72,23 +91,28 @@ fn cli_deadline_unparsable_exits_with_ex_usage() {
 
 #[test]
 fn cli_deadline_truncates_check_output_with_warning() {
-    // A 1 ms budget against 4 000 banner candidates will trip the
-    // per-candidate deadline check and emit the truncation warning to
-    // stderr. The exit code depends on whether any diagnostics fired
-    // before the abort: 0 if the loop exited before the first
-    // candidate was scored, otherwise 1/2 based on the partial set.
-    // We assert only the stderr warning and the absence of a hard
-    // failure (exit 64/65/74/75) — the lint output itself is whatever
-    // the engine got through.
+    // Deadline derived from a per-host baseline (≈1/100 of the
+    // observed `marque check` wall time on this fixture, floor 1 ms)
+    // — a hard-coded `1ms` would be timing-flaky across machine
+    // classes (debug vs. release, fast laptop vs. slow CI runner,
+    // future hardware). Mirrors the engine-level deadline tests in
+    // `crates/engine/tests/deadline.rs`, lifted to the CLI level.
+    //
+    // We assert: (1) the truncation warning appears on stderr;
+    // (2) exit is 0/1/2 (partial diagnostic set, not a hard
+    // failure 64/65/74/75).
+    let payload = many_banners(4_000);
+    let deadline_ms = measure_baseline_ms(&["check", "--format", "json"], &payload);
+    let deadline_arg = format!("{deadline_ms}ms");
     let assert = marque()
-        .args(["check", "--format", "json", "--deadline", "1ms"])
-        .write_stdin(many_banners(4_000))
+        .args(["check", "--format", "json", "--deadline", &deadline_arg])
+        .write_stdin(payload)
         .assert();
     let output = assert.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("⚠ deadline exceeded: covered"),
-        "expected truncation warning on stderr, got: {stderr:?}"
+        "expected truncation warning on stderr (deadline={deadline_arg}), got: {stderr:?}"
     );
     let code = output.status.code().unwrap_or(-1);
     assert!(
@@ -99,11 +123,15 @@ fn cli_deadline_truncates_check_output_with_warning() {
 
 #[test]
 fn cli_deadline_fix_exits_ex_tempfail() {
-    // A 1 ms budget against many fixable banners cannot complete the
-    // full lint+fix pass on any reasonable runner. The deadline trip
-    // can land at the pre-pass / per-candidate (lint) check or at the
-    // post-lint / per-fix check; both routes converge on
+    // Same baseline-derived strategy as the check truncation test —
+    // a 1/100-fraction budget reliably trips the deadline before the
+    // full lint+fix pass completes. The deadline trip can land at
+    // the pre-pass / per-candidate (lint) check or at the post-lint
+    // / per-fix check; both routes converge on
     // `Err(DeadlineExceeded)` → EX_TEMPFAIL (75).
+    let payload = many_banners(4_000);
+    let deadline_ms = measure_baseline_ms(&["fix", "--dry-run", "--format", "json"], &payload);
+    let deadline_arg = format!("{deadline_ms}ms");
     let assert = marque()
         .args([
             "fix",
@@ -111,15 +139,15 @@ fn cli_deadline_fix_exits_ex_tempfail() {
             "--format",
             "json",
             "--deadline",
-            "1ms",
+            &deadline_arg,
         ])
-        .write_stdin(many_banners(4_000))
+        .write_stdin(payload)
         .assert()
         .code(75);
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
         stderr.contains("deadline exceeded"),
-        "expected deadline-exceeded explanation on stderr, got: {stderr:?}"
+        "expected deadline-exceeded explanation on stderr (deadline={deadline_arg}), got: {stderr:?}"
     );
     assert!(
         stderr.contains("no fixes applied"),
@@ -132,9 +160,20 @@ fn cli_deadline_quiet_suppresses_truncation_warning() {
     // The `-q` / `--quiet` contract suppresses non-diagnostic stderr
     // narration. The deadline-truncation warning is operator narration,
     // not a diagnostic, so it must be silenced when `-q` is set.
+    // Same baseline-derived deadline shape as the truncation test.
+    let payload = many_banners(4_000);
+    let deadline_ms = measure_baseline_ms(&["check", "--format", "json"], &payload);
+    let deadline_arg = format!("{deadline_ms}ms");
     let assert = marque()
-        .args(["check", "-q", "--format", "json", "--deadline", "1ms"])
-        .write_stdin(many_banners(4_000))
+        .args([
+            "check",
+            "-q",
+            "--format",
+            "json",
+            "--deadline",
+            &deadline_arg,
+        ])
+        .write_stdin(payload)
         .assert();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
@@ -163,7 +202,8 @@ fn cli_deadline_overflow_exits_cleanly() {
     let code = assert.get_output().status.code().unwrap_or(-1);
     assert!(
         matches!(code, 0..=2 | 64),
-        "expected exit 0/1/2 (clean) or 64 (overflow trapped), got: {code}"
+        "expected a normal diagnostic exit (0 clean / 1 errors / 2 warnings) \
+         or 64 (overflow trapped to EX_USAGE), got: {code}"
     );
 }
 
