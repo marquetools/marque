@@ -254,8 +254,12 @@ jobs:
   # so parallel tests inflate each other's deltas. The header comment
   # in `alloc_budget.rs` covers why.
   #
-  # Decoupled from `test` (no `needs:`) so a routine test failure
-  # doesn't mask an alloc-budget regression and vice versa.
+  # Decoupled from the `test` job so a routine test failure doesn't
+  # mask an alloc-budget regression and vice versa. `needs: check`
+  # remains — there's no point running the alloc gate against a tree
+  # whose formatting / clippy / typos pass already failed, and the
+  # `test` job sits behind the same gate, so this matches the cost
+  # structure of every other test-adjacent job in this workflow.
   count-allocs:
     name: Hot-path alloc budget
     needs: check

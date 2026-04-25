@@ -40,5 +40,8 @@ serde = ["dep:serde"]
 # don't want it active for the standard test pass.
 #
 # CI invokes the gate as
-# `cargo test -p marque-core --features count-allocs --test alloc_budget`.
+# `cargo test -p marque-core --features count-allocs --test alloc_budget -- --test-threads=1`.
+# `--test-threads=1` is mandatory: the allocation counter is process-
+# wide, so parallel tests inflate each other's deltas. See the header
+# docstring in `tests/alloc_budget.rs` for the full reasoning.
 count-allocs = []
