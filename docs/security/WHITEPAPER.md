@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.7 · **Last amended**: 2026-04-25
+**Document version**: 0.8 · **Last amended**: 2026-04-25
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -262,10 +262,28 @@ The scanner produces `Span` values (byte offsets into the caller's
 buffer) with no heap allocation on the hot path. `IsmAttributes` fields
 use `Box<[T]>` to preclude over-allocation after parse.
 
-Cited: Constitution II. Hot-path allocation regression gate
-(`--features count-allocs`) is specified but not yet CI-wired.
+Cited: Constitution II. The hot-path allocation regression gate
+(`crates/core/tests/alloc_budget.rs`, behind the `count-allocs`
+feature) installs a counting global allocator and asserts
+`Scanner::scan(...)` does not exceed a small allocation budget. The
+canonical claim — "alloc count for a buffer with one banner is the
+same whether the buffer is 23 bytes or 4 KB" — is encoded as
+`scanner_alloc_count_is_buffer_size_independent`. The gate runs as
+a dedicated `count-allocs` CI job:
 
-**Status**: `[LANDED]` for the shape; `[PARTIAL]` for CI enforcement.
+```
+cargo test -p marque-core --features count-allocs \
+    --test alloc_budget -- --test-threads=1
+```
+
+`--test-threads=1` is mandatory because `ALLOCATIONS` is a
+process-wide atomic counter; parallel tests inflate each other's
+deltas. The on-test `MEASURE_LOCK` mutex narrows the contention
+surface but cannot eliminate test-runner-side allocations between
+acquire/release cycles. The header comment in `alloc_budget.rs`
+covers the full reasoning.
+
+**Status**: `[LANDED]`.
 
 ### 3.3 Format-agnostic core & WASM-safe set
 
@@ -1149,7 +1167,7 @@ possible), and a **remediation plan**. Severities:
 | 12 | ~~`reuse lint` not in CI~~ | ~~P2~~ | ~~§8.4~~ | **Resolved.** `reuse` job in `ci.yml` installs `reuse` via `pipx` and runs `reuse lint` on every PR |
 | 13 | ~~No Sigstore/Cosign signing of release artifacts~~ | ~~P2~~ | ~~§8.7, §13.6~~ | **Resolved (release archive).** `actions/attest-build-provenance` signs a `git archive` workspace-state source tarball per release; attestation recorded in GitHub's transparency log. The archive is a separately verifiable provenance artifact, not a mirror of the crates.io per-crate tarballs. crates.io upload itself is out of scope — crates.io does not accept Sigstore attestations |
 | 14 | ~~No CI gate enforcing the WASM-safe-subgraph dependency-license allow-list~~ | ~~P2~~ | ~~§8.5, Constitution Tech Stack~~ | **Resolved.** `deny.wasm-safe.toml` + `deny-wasm-safe` CI job invoke `cargo deny` against the WASM-safe subgraph (every non-WASM-safe workspace member excluded, dev-deps pruned) with a stricter allow-list. Original gap framing was "Apache-2.0 purity" under the retired Apache-core posture; landed form enforces the Constitution v1.2.0 "no copyleft / no competing source-available" dep-hygiene rule |
-| 15 | `--features count-allocs` hot-path alloc gate not in CI | P2 | Constitution II | Add a `count-allocs` job that runs the existing harness on a curated corpus |
+| 15 | ~~`--features count-allocs` hot-path alloc gate not in CI~~ | ~~P2~~ | ~~Constitution II~~ | **Resolved.** `crates/core/tests/alloc_budget.rs` (behind `count-allocs` feature) installs a counting global allocator and asserts `Scanner::scan(...)` does not exceed a small allocation budget across four cases (empty / single-banner / multi-marking / 4-KB-buffer-vs-small parity). `.github/workflows/ci.yml` `count-allocs` job runs `cargo test -p marque-core --features count-allocs --test alloc_budget -- --test-threads=1` on every PR |
 | 16 | ~~`crates/core/src/parser.rs` `to_vec()` is undocumented~~ | ~~P2~~ | ~~§5.1~~ | **Resolved (refactor).** Workspace grep confirms the only `.to_vec()` call in `crates/core/src/parser.rs` today is at line 2072 inside a `#[test]` block (`Box<[DissemControl]> → Vec` for a `.contains()` assertion). Tests are not on the hot path; the zero-copy invariant holds. Whitepaper §5.1 pointed at code that has since been refactored away |
 | 17 | ~~`tools/corpus-analysis/` has unpinned Python deps~~ | ~~P2~~ | ~~§7.4~~ | **Resolved.** `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` exactly. Transitive-set hash pinning via `pip-tools` and PEP 723 inline-metadata in `analyze.py` are tracked as follow-ups |
 | 18 | ~~`docs-site` fetches `fontsource` fonts at build~~ | ~~P2~~ | ~~§8.6~~ | **Resolved.** Fira Code (5 weights, Latin) and IBM Plex Sans (5 weights × normal/italic, Latin) are vendored under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/font/` (SIL OFL 1.1) alongside per-font `LICENSE` and `README.md`. `astro.config.mjs` uses `fontProviders.local()` for all three site fonts — no `api.fontsource.org` / `cdn.jsdelivr.net` fetch at build time |
@@ -1188,3 +1206,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.5 | 2026-04-24 | P0-1 closed retroactively (gap register row 1 already struck through by the time §6.4 was last touched). PR #122 wired `MARQUE_AUDIT_SCHEMA` through `crates/engine/build.rs` and switched the CLI + WASM emitters to `marque_engine::AUDIT_SCHEMA_VERSION`; default schema bumped to `marque-mvp-2`; v1 downgrade kept green via suffixed snapshots and the T054 / T055 invariants. The header version had been pre-bumped to 0.5 ahead of this row. | Adam Poulemanos (with Claude Code) |
 | 0.6 | 2026-04-24 | Three P2 hygiene gaps closed. Gap #18: docs-site fonts vendored locally — Fira Code + IBM Plex Sans (SIL OFL 1.1) added under `docs-site/src/assets/{Fira-Code,IBM-Plex-Sans}/`; `astro.config.mjs` flipped to `fontProviders.local()`; build no longer fetches from `api.fontsource.org` / `cdn.jsdelivr.net`. Gap #21: §4.2 corrected — both shipped unsafe blocks already carry `// SAFETY:` doc comments; the whitepaper's previous claim was stale. Gap #22: `marque --help` carries an `ENVIRONMENT VARIABLES:` block via clap `after_help` warning that `MARQUE_LOG=trace` is not production-safe for classified content; §5.4 documents the route. Other admin: gap register rows 18, 21, 22 struck through; §4.2 / §5.4 / §8.6 updated. | Adam Poulemanos (with Claude Code) |
 | 0.7 | 2026-04-25 | Four more P2 hygiene gaps closed. Gap #16: §5.1 corrected — only `.to_vec()` call in `crates/core/src/parser.rs` is in a `#[test]` block, not on the hot path. Gap #17: `tools/corpus-analysis/requirements.txt` pins `requests==2.33.1` so a non-uv install is reproducible; §7.4 documents the route. Gap #19: `marque/tests/corpus_provenance.rs::mangled_fixtures_observed_expected_token_only` walks `tests/fixtures/mangled/**/*.json` and asserts `observed` / `expected` fields are free of prose sentinels, classifier-id-shaped digit runs, and exceed-length leaks; §5.5 documents the route. Gap #20: `crates/engine/tests/core_error_isolation.rs` embeds a high-entropy canary in adversarial input designed to trip every `CoreError` construction site and asserts the canary appears in no text-bearing field of `LintResult` / `FixResult`; §5.3 rewritten. Gap register rows 16, 17, 19, 20 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.8 | 2026-04-25 | Last P2 hygiene gap closed. Gap #15: `crates/core/tests/alloc_budget.rs` (behind `count-allocs` feature) installs a counting global allocator and gates `Scanner::scan(...)` allocation count across four cases (empty / single-banner / multi-marking / buffer-size-independence). `.github/workflows/ci.yml` `count-allocs` job runs the gate under `--test-threads=1` on every PR. §3.2 flipped from `[PARTIAL]` to `[LANDED]`. Gap register row 15 struck through. | Adam Poulemanos (with Claude Code) |

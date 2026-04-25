@@ -30,3 +30,15 @@ thiserror = { workspace = true }
 [features]
 default = []
 serde = ["dep:serde"]
+
+# Hot-path heap-allocation regression gate (whitepaper §3.2 / Constitution II).
+#
+# When enabled, `tests/alloc_budget.rs` installs a counting global
+# allocator and asserts `Scanner::scan(...)` does not exceed a small
+# allocation budget on a representative corpus sweep. The feature is
+# OFF by default — flipping the global allocator is intrusive and we
+# don't want it active for the standard test pass.
+#
+# CI invokes the gate as
+# `cargo test -p marque-core --features count-allocs --test alloc_budget`.
+count-allocs = []
