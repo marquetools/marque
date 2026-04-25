@@ -745,9 +745,9 @@ fn scan_token(text: &str) -> usize {
 /// `crates/capco/docs/CAPCO-2016.md` (Constitution VIII). Adding an
 /// entry without a verified citation is a correctness defect.
 ///
-/// - `COMINT` → `SI`: CAPCO-2016 §A.6 p16 records the COMINT title
-///   for the Special Intelligence (SI) control system as no longer
-///   valid.
+/// - `COMINT` → `SI`: CAPCO-2016 §H.4 p74 ("The COMINT title for the
+///   Special Intelligence (SI) control system is no longer valid.")
+///   inside §H.4 SCI Control System Markings.
 const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
 
 // ---------------------------------------------------------------------------
