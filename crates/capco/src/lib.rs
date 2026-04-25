@@ -19,6 +19,7 @@
 
 pub mod lattice;
 pub mod priors;
+pub mod provenance;
 pub mod rules;
 pub(crate) mod rules_declarative;
 pub(crate) mod rules_sci_per_system;
@@ -27,6 +28,7 @@ pub mod vocab;
 
 pub use lattice::{FgiSet, SarSet, SciSet};
 pub use marque_ism::CapcoTokenSet;
+pub use provenance::DecoderProvenance;
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoScheme};
 

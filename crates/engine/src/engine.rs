@@ -11,17 +11,36 @@ use crate::recognizer::{StrictRecognizer, shift_token_spans};
 use crate::scheduler::schedule_rewrites;
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
+use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{
-    AppliedFix, CORRECTIONS_MAP_CITATION, Diagnostic, FixProposal, FixSource, RuleId, RuleSet,
-    Severity,
+    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, FixProposal, FixSource, RuleId,
+    RuleSet, Severity,
 };
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Synthetic rule identifier the engine attaches to decoder-path
+/// `FixSource::DecoderPosterior` diagnostics emitted from
+/// `Engine::lint`. Phase 4 PR-4b mints this identifier so the
+/// recognition-layer rewrite carries a real `RuleId` (rules and
+/// fixes share that requirement) without colliding with any CAPCO
+/// `E### / W### / C### / S###` namespace. A diagnostic stamped
+/// `R001` originates from the decoder, not from a CAPCO rule.
+const DECODER_RULE_ID: &str = "R001";
+
+/// Citation attached to `R001 decoder-recognition` diagnostics. Points
+/// at CAPCO-2016 §A.6 — the canonical-marking-form section the decoder
+/// is enforcing. Per Constitution VIII the citation is verifiable: §A.6
+/// is "(U) Formatting" beginning on page 15 (table of contents,
+/// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
+/// canonical syntax for portion / banner / CAB markings the decoder
+/// canonicalizes input toward.
+const DECODER_CITATION: &str = "CAPCO-2016 §A.6 p15";
 
 /// Whether to apply fixes or just simulate (dry-run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,19 +269,19 @@ impl Engine {
         // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
 
-        // Parse context: strict-path when `deep_scan = false`, deep-
-        // scan-allowed otherwise. `StrictOrDecoderRecognizer` reads
-        // `strict_evidence` to decide whether to fall back to the
-        // decoder on strict-parse zero-candidate (see `decoder.rs`).
-        // `classification_floor` stays `None` today — computing a
-        // per-page floor and threading it here is PR-4's job alongside
-        // audit v2 emission.
-        let parse_cx = ParseContext {
-            strict_evidence: !self.deep_scan,
-            zone: None,
-            position: None,
-            classification_floor: None,
-        };
+        // FR-011: per-page strict classification floor. Tracks the
+        // highest classification rank produced by the strict path on
+        // the current page (`marque_ism::Classification as u8`,
+        // Unclassified=0 … TopSecret=4). Threaded into
+        // `ParseContext::classification_floor` so the decoder rejects
+        // any candidate at a strictly-lower level on the same page.
+        // Reset on `MarkingType::PageBreak` per Constitution VI's
+        // "PageContext resets at scanner-emitted page-break candidates"
+        // invariant. Updated *only* by classifications drawn from
+        // strict-path recognitions — decoder-recovered markings do not
+        // raise the floor for themselves (otherwise a misrecognition
+        // would self-justify by raising the floor it then clears).
+        let mut classification_floor: Option<u8> = None;
 
         for candidate in &candidates {
             // Page-break candidates are scanner-emitted boundaries with no
@@ -272,8 +291,21 @@ impl Engine {
             if candidate.kind == MarkingType::PageBreak {
                 page_context = PageContext::new();
                 page_context_arc = None;
+                classification_floor = None;
                 continue;
             }
+
+            // Parse context built per-candidate so the floor accumulated
+            // earlier on the page reaches the recognizer. `strict_evidence`
+            // is the engine-level deep-scan opt-in mirror; the dispatcher
+            // (StrictOrDecoderRecognizer) reads it to decide whether to
+            // fall back to the decoder on strict-parse zero-candidate.
+            let parse_cx = ParseContext {
+                strict_evidence: !self.deep_scan,
+                zone: None,
+                position: None,
+                classification_floor,
+            };
 
             // Route each candidate's bytes through the recognizer. Zero-
             // candidate `Ambiguous` means "no plausible interpretation" —
@@ -293,7 +325,50 @@ impl Engine {
                 continue;
             };
             shift_token_spans(&mut marking.0, start);
+            // Capture the decoder-provenance side channel before
+            // collapsing the marking onto its `IsmAttributes` payload.
+            // Strict-path recognizers leave this `None`; the decoder
+            // populates it with the canonical bytes / posterior /
+            // features the engine needs to mint a
+            // `FixSource::DecoderPosterior` diagnostic below.
+            let provenance = marking.1.take();
             let attrs = marking.0;
+
+            // FR-011 strict-floor accumulator: only strict-path
+            // recognitions raise the floor. A decoder-path
+            // recognition (provenance.is_some()) does not — we cannot
+            // let a probabilistic recovery self-justify by raising
+            // the threshold it then clears.
+            if provenance.is_none() {
+                if let Some(level) = attrs
+                    .classification
+                    .as_ref()
+                    .map(|c| c.effective_level() as u8)
+                {
+                    classification_floor = Some(match classification_floor {
+                        Some(prev) => prev.max(level),
+                        None => level,
+                    });
+                }
+            }
+
+            // Decoder-path emission (T068): when the recognizer carries
+            // provenance, the recognition went through the decoder
+            // fallback. Synthesize an R001 `decoder-recognition`
+            // diagnostic whose fix rewrites the original mangled bytes
+            // to the decoder's canonical form, with `FixSource::DecoderPosterior`
+            // and a populated `Confidence` (`recognition < 1.0`,
+            // `runner_up_ratio = Some(r)`, non-empty `features`). The
+            // fix participates in the regular confidence-threshold
+            // gate inside `Engine::fix_inner`.
+            if let Some(prov) = provenance {
+                let span = Span::new(start, end);
+                if let Some(diagnostic) =
+                    build_decoder_diagnostic(span, bytes, &prov, candidate.kind)
+                {
+                    diagnostics.push(diagnostic);
+                }
+            }
 
             // Accumulate portions before running banner/CAB rules so that
             // when we reach a banner candidate the context already reflects
@@ -667,6 +742,79 @@ impl Engine {
 
         (buf, applied)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Decoder-path diagnostic synthesis (Phase 4 PR-4b — T068)
+// ---------------------------------------------------------------------------
+
+/// Build the synthetic `R001 decoder-recognition` diagnostic the engine
+/// emits when a recognizer returned a marking carrying
+/// [`DecoderProvenance`]. Returns `None` when the original or canonical
+/// bytes are not valid UTF-8 — `FixProposal` carries `Box<str>` for both
+/// `original` and `replacement`, so we cannot construct the proposal
+/// without UTF-8 validity. CAPCO markings are ASCII by spec (CAPCO-2016
+/// §A.6); a non-UTF-8 result here would mean the canonicalization pass
+/// produced something the strict parser shouldn't have accepted, which
+/// is a separate bug to surface — silently dropping the synthetic
+/// diagnostic is the conservative move.
+///
+/// The fix's `Confidence` is populated entirely from the decoder's
+/// provenance trace:
+///
+/// - `recognition` derives from `runner_up_ratio` via softmax (see
+///   [`DecoderProvenance::recognition_score`]); strictly less than
+///   `1.0` so audit consumers can distinguish strict from decoder
+///   provenance via a single field comparison.
+/// - `rule` is `1.0` — once the decoder has decided unambiguously the
+///   recognition-layer rewrite is itself unambiguous (rewrite the
+///   observed bytes to canonical bytes), so the rule axis carries no
+///   additional uncertainty. The decoder's recognition uncertainty is
+///   already captured in `recognition`.
+/// - `runner_up_ratio` and `features` thread through verbatim from the
+///   provenance.
+fn build_decoder_diagnostic(
+    span: Span,
+    original_bytes: &[u8],
+    provenance: &DecoderProvenance,
+    _kind: marque_ism::MarkingType,
+) -> Option<Diagnostic> {
+    let original = std::str::from_utf8(original_bytes).ok()?;
+    let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
+
+    // No-op rewrite (canonicalization preserved bytes byte-for-byte) is
+    // not informative and would produce a degenerate audit record; skip.
+    if original == replacement {
+        return None;
+    }
+
+    let confidence = Confidence {
+        recognition: provenance.recognition_score(),
+        rule: 1.0,
+        region: None,
+        runner_up_ratio: provenance.runner_up_ratio,
+        features: provenance.features.to_vec(),
+    };
+    let rule = RuleId::new(DECODER_RULE_ID);
+    let proposal = FixProposal::new(
+        rule.clone(),
+        FixSource::DecoderPosterior,
+        span,
+        original,
+        replacement,
+        confidence,
+        None,
+    );
+    Some(Diagnostic::new(
+        rule,
+        // `Severity::Fix` so the engine's normal fix gate applies the
+        // proposal in `--fix` mode and surfaces it in `--check` mode.
+        Severity::Fix,
+        span,
+        format!("decoder-recognized canonical form: {original:?} → {replacement:?}"),
+        DECODER_CITATION,
+        Some(proposal),
+    ))
 }
 
 // ---------------------------------------------------------------------------

@@ -166,4 +166,72 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn correction_vocab_excludes_non_ic_dissem_caveats() {
+        // Regression guard for the non-IC dissem deny-list invariant.
+        // ODNI's `CVEnumISMDissem.xml` is a UNION enum bundling IC
+        // dissem controls (CAPCO source 1) with the ISOO CUI Registry
+        // caveat tail (AC, AWP, DL_ONLY, FED_ONLY, FEDCON, NOCON) and
+        // the DOD-SAP `WAIVED` entry. CAPCO-2016 line 283 explicitly
+        // disclaims caveats from its scope. The `build.rs` of
+        // `marque-ism` deny-lists those seven tokens so they never
+        // enter the IC `DissemControl` enum or `ALL_CVE_TOKENS`. This
+        // test pins that invariant — a future schema-update bump that
+        // re-introduces them, or a deny-list typo, fails here loudly
+        // rather than silently broadening the CAPCO grammar to accept
+        // caveats as IC dissem controls.
+        //
+        // Tracking issue for the broader caveat / second-banner-line
+        // data model: github.com/marquetools/marque#128.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for forbidden in &[
+            "WAIVED", "AC", "AWP", "DL_ONLY", "FED_ONLY", "FEDCON", "NOCON",
+        ] {
+            assert!(
+                vocab.binary_search(forbidden).is_err(),
+                "correction_vocab MUST NOT contain {forbidden:?} — \
+                 it is a non-IC caveat (CAPCO-2016 line 283 \
+                 disclaimer) that should be filtered by build.rs's \
+                 NON_IC_DISSEM_DENY_LIST"
+            );
+        }
+    }
+
+    #[test]
+    fn correction_vocab_keeps_ic_dissem_controls() {
+        // Companion to `correction_vocab_excludes_non_ic_dissem_caveats`:
+        // make sure the deny-list didn't take a real IC dissem control
+        // with it. Every entry below appears in CAPCO-2016 §A.5 page 38
+        // as an IC dissem (or §H.8 for the per-marking detail page);
+        // RAWFISA + EXEMPT_FROM_ICD501_DISCOVERY are post-CAPCO-2016
+        // additions in the live ICRM XML, kept by the deny-list-rather-
+        // than-allowlist approach so future IC additions flow through
+        // automatically.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &[
+            "RS",
+            "FOUO",
+            "OC",
+            "OC-USGOV",
+            "IMC",
+            "NF",
+            "PR",
+            "REL",
+            "RELIDO",
+            "EYES",
+            "DSEN",
+            "RAWFISA",
+            "FISA",
+            "DISPLAYONLY",
+            "EXEMPT_FROM_ICD501_DISCOVERY",
+        ] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab MUST contain {expected:?} — \
+                 IC dissem control per CAPCO-2016 §A.5 / §H.8 or \
+                 a post-2016 ICRM addition"
+            );
+        }
+    }
 }
