@@ -918,11 +918,24 @@ fn migration_audit_has_both_urns() {
         "NOFORN is the banner form per CAPCO-2016 §G.1 Table 4",
     );
 
-    // The URN provenance also lives on the embedded `Authority`
-    // record; verify it agrees with the top-level URN.
+    // CAPCO-adapter-specific: `Authority::urn` is documented in
+    // `marque-scheme` as the URN of the publishing authority — a
+    // scheme could legitimately populate it at a coarser granularity
+    // than the token's URN (e.g., a single system-root URN like
+    // `urn:us:gov:ic:ism` shared across every CVE file). CAPCO's
+    // adapter chose per-CVE-file granularity (see
+    // `crates/capco/src/vocabulary.rs::build_authority`), so for
+    // CAPCO the authority URN equals the token's URN by
+    // construction. This invariant is therefore CAPCO-scoped, not a
+    // universal `Vocabulary<S>` contract — a future non-CAPCO scheme
+    // (CUI, NATO, JOINT) is free to choose a different authority-
+    // URN granularity.
     assert_eq!(
         metadata.authority.urn, source_urn,
-        "metadata.authority.urn must match metadata.urn — single source of truth",
+        "CAPCO adapter populates authority.urn from cve_file.urn — \
+         the two URNs must agree for any token in the CAPCO \
+         vocabulary. (For non-CAPCO schemes this equality may not \
+         hold.)",
     );
     assert_eq!(
         metadata.authority.schema_version,

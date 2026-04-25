@@ -34,7 +34,17 @@ pub struct Authority {
     /// Human-readable source name, e.g., `"ODNI"` or
     /// `"NATO Military Committee"`.
     pub source_name: &'static str,
-    /// URN for the authority, e.g., `"urn:us:gov:ic:ism"`.
+    /// URN for the authority. Granularity is scheme-defined — a
+    /// scheme MAY populate this with a coarse system-root URN
+    /// (e.g., `"urn:us:gov:ic:ism"`) shared across every token, or a
+    /// finer per-publishing-file URN (e.g.,
+    /// `"urn:us:gov:ic:cvenum:ism:dissem"`). CAPCO's adapter uses
+    /// the per-CVE-file form so each token's `metadata.urn` and its
+    /// `metadata.authority.urn` agree by construction; future
+    /// schemes (CUI, NATO, JOINT) are free to choose differently.
+    /// Audit consumers should not assume a relationship between
+    /// `Authority::urn` and a token's own URN beyond what the
+    /// scheme's documentation states.
     pub urn: &'static str,
     /// Schema version identifier, e.g., `"ISM-v2022-DEC"`.
     pub schema_version: &'static str,
