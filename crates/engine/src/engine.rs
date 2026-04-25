@@ -25,6 +25,18 @@ use marque_scheme::{MarkingScheme, RewriteId};
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::Instant;
+
+/// Cooperative-cancellation predicate (spec 005 §R3). Centralizing this
+/// in one helper keeps the wall-clock comparison consistent across every
+/// deadline check site (`lint_with_options` pre-pass, per-candidate,
+/// `fix_inner` post-lint, per-fix-application). The predicate is `now >=
+/// deadline`, so a deadline equal to the current `Instant` triggers
+/// cancellation — the spec's "expired" semantics.
+#[inline]
+fn deadline_expired(deadline: Option<Instant>) -> bool {
+    deadline.is_some_and(|d| Instant::now() >= d)
+}
 
 /// Synthetic rule identifier the engine attaches to decoder-path
 /// `FixSource::DecoderPosterior` diagnostics emitted from
@@ -323,24 +335,47 @@ impl Engine {
 
     /// Lint with per-call options (spec 005 §R2).
     ///
-    /// Phase 1 implementation: the body is identical to the legacy
-    /// [`Engine::lint`] codepath — `opts.deadline` is **ignored** so
-    /// no observable behavior change ships in Phase 1. Phase 2
-    /// (tasks T007–T009) wires the cooperative-cancellation checks
-    /// against `opts.deadline`. The signature lands now so the
-    /// surface wiring (CLI / server / WASM / batch in Phase 3) can
-    /// land in parallel against a stable type surface.
+    /// Phase 2 honors `opts.deadline` via cooperative cancellation
+    /// (spec §R3): a pre-pass check returns immediately on an
+    /// already-expired deadline, and a per-candidate check inside
+    /// the rule loop breaks out as soon as the deadline passes. The
+    /// returned `LintResult` carries `truncated: bool` together with
+    /// `candidates_processed` / `candidates_total` so the caller can
+    /// distinguish a complete pass from a deadline-bounded partial
+    /// pass.
+    ///
+    /// Granularity: the engine checks the deadline at candidate
+    /// boundaries (between scanner-emitted candidates), not inside
+    /// any individual rule's `check`. A pathologically slow rule
+    /// running on one large candidate can therefore overrun the
+    /// deadline by the time that one rule takes; this is the spec
+    /// §R3 trade-off — a finer-grained check inside `Rule::check`
+    /// would require a deadline-aware rule trait.
     pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult {
-        // Phase 1: deadline is plumbed but not honored. The bind here
-        // documents the field exists and silences unused-variable
-        // warnings without `#[allow(unused)]`.
-        let _ = opts.deadline;
-
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
 
+        // T007: pre-pass deadline check. An already-expired deadline
+        // returns a fully-truncated empty result before the scanner
+        // runs at all, preserving the spec invariant that the
+        // expired path is observable in zero work.
+        if deadline_expired(opts.deadline) {
+            return LintResult {
+                truncated: true,
+                ..Default::default()
+            };
+        }
+
         let candidates = Scanner::scan(source);
+        // T009: candidates_total is fixed once the scanner has
+        // produced the candidate stream. It is independent of how
+        // many candidates the rule loop ultimately processes — the
+        // delta against `candidates_processed` is what makes
+        // truncation observable to the caller (R3).
+        let candidates_total = candidates.len();
+        let mut candidates_processed: usize = 0;
+        let mut truncated = false;
 
         // corrections_arc was built once at Engine construction; each clone here
         // is an O(1) refcount bump.
@@ -375,6 +410,20 @@ impl Engine {
         let mut classification_floor: Option<u8> = None;
 
         for candidate in &candidates {
+            // T008: per-candidate deadline check. Checking at the top
+            // of the loop (before any per-candidate work — including
+            // a page-break reset) guarantees the abort happens
+            // between candidates, never partway through the rule
+            // pipeline. The accumulated `diagnostics` so far are
+            // returned as the partial result; `candidates_processed`
+            // reflects only candidates that ran the rule loop to
+            // completion (page-break resets do not advance the
+            // counter, see below).
+            if deadline_expired(opts.deadline) {
+                truncated = true;
+                break;
+            }
+
             // Page-break candidates are scanner-emitted boundaries with no
             // parsable content. Reset the context BEFORE attempting to parse
             // — otherwise the parser's MalformedMarking error would skip the
@@ -569,6 +618,14 @@ impl Engine {
                     diagnostics.extend(diags);
                 }
             }
+            // T009: count this candidate as processed only after the
+            // rule loop has finished for it. Candidates that hit an
+            // early `continue` above (page-break reset, empty span,
+            // ambiguous recognition) are not "processed" in the
+            // count-truncation sense — they did no rule work and so
+            // are excluded from the partial-progress signal that
+            // `candidates_processed` carries to the caller.
+            candidates_processed += 1;
         }
 
         // Pre-scanner text corrections: scan the raw source for
@@ -630,6 +687,9 @@ impl Engine {
 
         LintResult {
             diagnostics,
+            truncated,
+            candidates_processed,
+            candidates_total,
             ..Default::default()
         }
     }
@@ -694,26 +754,26 @@ impl Engine {
 
     /// Lint and apply fixes with per-call options (spec 005 §R2).
     ///
-    /// Phase 1 implementation: `opts.deadline` is **ignored**; the
-    /// body delegates to the existing fix path with
-    /// `opts.threshold_override`. Phase 2 (tasks T010–T012) wires
-    /// cooperative cancellation against `opts.deadline`, returning
-    /// `Err(EngineError::DeadlineExceeded { partial_lint })` per spec
-    /// §R4 (asymmetric response).
+    /// Phase 2 honors `opts.deadline` via cooperative cancellation
+    /// (spec §R3). Asymmetric response per §R4 / Constitution V
+    /// Principle V (audit-record integrity): a deadline expiring at
+    /// any point during the fix path returns
+    /// `Err(EngineError::DeadlineExceeded { partial_lint })` rather
+    /// than a partial `FixResult`. The `partial_lint` carries
+    /// whatever the lint phase had produced before the deadline
+    /// fired (or a fully-truncated lint when the deadline was
+    /// already expired on entry); no half-applied fix is ever
+    /// emitted into the audit stream.
     ///
-    /// The threshold override is honored from day one because it is
-    /// not a deadline concern — it fits naturally into the new
-    /// options struct and lifting it now lets callers stop reaching
-    /// for `fix_with_threshold` immediately.
+    /// `opts.threshold_override` is honored from Phase 1 onward; an
+    /// out-of-range / NaN value is rejected as
+    /// `EngineError::InvalidThreshold` before any work runs.
     pub fn fix_with_options(
         &self,
         source: &[u8],
         mode: FixMode,
         opts: &FixOptions,
     ) -> Result<FixResult, EngineError> {
-        // Phase 1: deadline is plumbed but not honored.
-        let _ = opts.deadline;
-
         let threshold = match opts.threshold_override {
             Some(value) => {
                 if !(0.0..=1.0).contains(&value) || value.is_nan() {
@@ -724,10 +784,16 @@ impl Engine {
             None => self.config.confidence_threshold(),
         };
 
-        Ok(self.fix_inner(source, mode, threshold))
+        self.fix_inner(source, mode, threshold, opts.deadline)
     }
 
-    fn fix_inner(&self, source: &[u8], mode: FixMode, threshold: f32) -> FixResult {
+    fn fix_inner(
+        &self,
+        source: &[u8],
+        mode: FixMode,
+        threshold: f32,
+        deadline: Option<Instant>,
+    ) -> Result<FixResult, EngineError> {
         use std::collections::HashSet;
 
         // Two-pass fix strategy for pre-scanner text corrections.
@@ -743,16 +809,41 @@ impl Engine {
         //
         // Without this, the spec scenario "SERCET//NF → SECRET//NOFORN"
         // would stop at "SECRET//NF".
-        let lint1 = self.lint(source);
+        //
+        // T010: deadline propagates to every internal lint pass. An
+        // expired deadline at lint time produces a truncated lint, and
+        // the post-lint check below converts that into the asymmetric
+        // `Err(DeadlineExceeded { partial_lint })` shape per spec §R4
+        // (Constitution V Principle V — no partial `FixResult` leaks
+        // into the audit stream).
+        let lint_opts = LintOptions {
+            deadline,
+            ..Default::default()
+        };
+        let lint1 = self.lint_with_options(source, &lint_opts);
+        if deadline_expired(deadline) {
+            return Err(EngineError::DeadlineExceeded {
+                partial_lint: lint1,
+            });
+        }
         let (effective_source, pass1_applied) =
             self.apply_text_corrections(source, &lint1, threshold, mode);
 
         let lint = if !pass1_applied.is_empty() {
             // Re-lint the corrected source so the scanner picks up newly-valid markings.
-            self.lint(&effective_source)
+            self.lint_with_options(&effective_source, &lint_opts)
         } else {
             lint1
         };
+
+        // Post-lint deadline check: if the deadline expired during
+        // either pass-1 or pass-2 lint (or during text-correction
+        // application between them), bail out before building any
+        // fix entries. `partial_lint` carries whatever the lint phase
+        // produced — including `truncated: true` when applicable.
+        if deadline_expired(deadline) {
+            return Err(EngineError::DeadlineExceeded { partial_lint: lint });
+        }
 
         let mut fixes: Vec<_> = lint
             .diagnostics
@@ -783,7 +874,14 @@ impl Engine {
         // The walk is over fixes in reverse-end order, so a fix is kept
         // only if its `span.end` is at or below the previous kept fix's
         // `span.start` — i.e., strictly to the left, no overlap.
-        let mut kept_fixes: Vec<&marque_rules::FixProposal> = Vec::with_capacity(fixes.len());
+        // Clone the kept fixes into owned `FixProposal`s so the
+        // borrow on `lint.diagnostics` ends with `fixes`. That
+        // matters for T011: the per-fix deadline-bail path needs to
+        // move `lint` into `EngineError::DeadlineExceeded`, which is
+        // only legal once nothing inside the body still references
+        // it. The clone count is bounded by the number of kept
+        // fixes (after the C-1 dedup), which is small in practice.
+        let mut kept_fixes: Vec<FixProposal> = Vec::with_capacity(fixes.len());
         let mut next_window_end: Option<usize> = None;
         for fix in &fixes {
             let fits = match next_window_end {
@@ -792,9 +890,10 @@ impl Engine {
             };
             if fits {
                 next_window_end = Some(fix.span.start);
-                kept_fixes.push(*fix);
+                kept_fixes.push((*fix).clone());
             }
         }
+        drop(fixes); // release the iter borrow on `lint.diagnostics`
 
         // M-4: hold the classifier id in an `Arc<str>` so cloning into each
         // applied-fix audit record is an O(1) refcount bump rather than a
@@ -814,16 +913,31 @@ impl Engine {
         let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(kept_fixes.len());
         let mut applied: Vec<AppliedFix> = Vec::with_capacity(kept_fixes.len());
 
-        // Only allocate the output buffer when we actually need to mutate it.
-        // Dry-run returns the original source verbatim.
+        // T011: per-fix-application deadline check. The check sits
+        // at the top of each iteration so the abort happens between
+        // fixes — the audit-record integrity invariant
+        // (Constitution V Principle V) is preserved because we
+        // never construct a half-applied `FixResult`. If a fix has
+        // already been applied to `buf` and `applied`, we drop both
+        // and surface the asymmetric `Err(DeadlineExceeded)` shape;
+        // the partial buffer is intentionally discarded so no
+        // partially-fixed bytes can leak to a caller.
+        //
+        // Only allocate the output buffer when we actually need to
+        // mutate it. Dry-run returns the original source verbatim.
+        let mut deadline_aborted = false;
         let output = match mode {
             FixMode::Apply => {
                 let mut buf = effective_source.clone();
                 for fix in kept_fixes {
+                    if deadline_expired(deadline) {
+                        deadline_aborted = true;
+                        break;
+                    }
                     buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
                     applied_keys.insert((fix.rule.clone(), fix.span));
                     applied.push(AppliedFix::__engine_promote(
-                        fix.clone(),
+                        fix,
                         now,
                         classifier_id.clone(),
                         dry_run,
@@ -835,9 +949,13 @@ impl Engine {
             }
             FixMode::DryRun => {
                 for fix in kept_fixes {
+                    if deadline_expired(deadline) {
+                        deadline_aborted = true;
+                        break;
+                    }
                     applied_keys.insert((fix.rule.clone(), fix.span));
                     applied.push(AppliedFix::__engine_promote(
-                        fix.clone(),
+                        fix,
                         now,
                         classifier_id.clone(),
                         dry_run,
@@ -848,6 +966,17 @@ impl Engine {
                 source.to_vec()
             }
         };
+
+        if deadline_aborted {
+            // `partial_lint` carries the full diagnostics produced by
+            // the lint phase that completed before the apply loop ran.
+            // The apply loop ran partially; per Constitution V
+            // Principle V, that partial state is dropped on the floor
+            // and the caller sees only the lint result. Pass-1 text
+            // corrections that were applied are also discarded — the
+            // audit stream gets nothing from this call.
+            return Err(EngineError::DeadlineExceeded { partial_lint: lint });
+        }
 
         // Prepend pass-1 text corrections to the applied list so they
         // appear in the audit trail.
@@ -868,11 +997,11 @@ impl Engine {
             })
             .collect();
 
-        FixResult {
+        Ok(FixResult {
             source: output,
             applied: all_applied,
             remaining_diagnostics,
-        }
+        })
     }
 
     /// Apply pre-scanner text corrections (C001) from lint diagnostics and

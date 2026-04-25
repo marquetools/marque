@@ -19,6 +19,10 @@ name = "lint_latency"
 harness = false
 name = "linear_scaling"
 
+[[bench]]
+harness = false
+name = "deadline_overhead"
+
 [lints]
 workspace = true
 
