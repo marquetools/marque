@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Phase 4 (US2) Code Review — Multi-Agent Synthesis
 
-**Branch**: `phase4review` (worktree at `/home/knitli/marque/.worktrees/phase4review`)
+**Branch**: `phase4review`
 **Reviewed against**: `specs/004-constraints-decoder-vocab/{tasks.md,spec.md,contracts/}` and `.specify/memory/constitution.md`
 **Reviewers**: 5 specialized agents dispatched in parallel + direct verification of cross-cutting CI lanes
 **Date**: 2026-04-25
