@@ -270,6 +270,42 @@ async fn deadline_header_validated_before_body_deserialization() {
     );
 }
 
+#[tokio::test]
+async fn duplicate_deadline_headers_return_400() {
+    // HTTP allows duplicate headers; a proxy/CDN/service-mesh
+    // reordering or merging them changes which value `headers.get()`
+    // returns. For a safety control we reject the ambiguity outright
+    // rather than silently honoring whichever value the
+    // intermediary's last hop preferred.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/lint")
+        .header("content-type", "application/json")
+        .header("X-Marque-Deadline", "100")
+        .header("X-Marque-Deadline", "200")
+        .body(Body::from(r#"{"text":"SECRET//NF\n"}"#))
+        .unwrap();
+    let resp = app().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn duplicate_deadline_headers_one_valid_still_400() {
+    // Even when one of the duplicates is itself a valid value, the
+    // *presence* of two headers is the signal we reject — refusing
+    // to choose silently is the whole point.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/lint")
+        .header("content-type", "application/json")
+        .header("X-Marque-Deadline", "100")
+        .header("X-Marque-Deadline", "garbage")
+        .body(Body::from(r#"{"text":"SECRET//NF\n"}"#))
+        .unwrap();
+    let resp = app().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 // ---------------------------------------------------------------------------
 // T038 — header omitted runs to completion.
 // ---------------------------------------------------------------------------

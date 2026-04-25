@@ -525,10 +525,21 @@ fn resolve_request_deadline(
     deadline_cap: Duration,
     default_ms: u64,
 ) -> Result<Duration, StatusCode> {
-    let raw = match headers.get(DEADLINE_HEADER) {
+    // HTTP allows duplicate headers; intermediaries (proxies, CDNs,
+    // service meshes) may merge or reorder them in ways that would
+    // change which value `headers.get()` returns. For a safety
+    // control like `X-Marque-Deadline`, the only safe answer is to
+    // refuse the ambiguity: a single value is honored, two or more
+    // is `400 Bad Request`. Same defensive shape that
+    // `MARQUE_MAX_DEADLINE` env-var resolution applies at startup.
+    let mut iter = headers.get_all(DEADLINE_HEADER).iter();
+    let raw = match iter.next() {
         Some(value) => value,
         None => return Ok(Duration::from_millis(default_ms)),
     };
+    if iter.next().is_some() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let s = raw.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
     // Empty / whitespace-only header → fall back to the per-endpoint
     // default, matching the contract for an absent header. A caller
@@ -547,6 +558,20 @@ fn resolve_request_deadline(
         return Err(StatusCode::BAD_REQUEST);
     }
     Ok(Duration::from_millis(ms))
+}
+
+/// Stamp `Instant::now() + duration`, mapping platform-clock overflow
+/// to `400 Bad Request`. The `MAX_DEADLINE_CAP_MS` ceiling (10 min)
+/// keeps this comfortably inside any monotonic clock on real hardware,
+/// but an embedder constructing `AppState { deadline_cap: ... }`
+/// directly with a value larger than the ceiling could in principle
+/// hand us a duration that overflows. `Instant::add` panics on
+/// overflow, so we use `checked_add` and surface the failure as 400
+/// instead of crashing the worker.
+fn stamp_request_deadline(duration: Duration) -> Result<Instant, StatusCode> {
+    Instant::now()
+        .checked_add(duration)
+        .ok_or(StatusCode::BAD_REQUEST)
 }
 
 /// JSON body for a 504 deadline-exceeded fix response.
@@ -628,7 +653,7 @@ pub async fn lint_handler(
     reject_if_body_carries_corpus_override("/v1/lint", &req._corpus_override)?;
 
     let mut lint_opts = LintOptions::default();
-    lint_opts.deadline = Some(Instant::now() + deadline_duration);
+    lint_opts.deadline = Some(stamp_request_deadline(deadline_duration)?);
 
     let result = state
         .engine
@@ -683,7 +708,7 @@ pub async fn fix_handler(
 
     let mut fix_opts = FixOptions::default();
     fix_opts.threshold_override = req.confidence_threshold;
-    fix_opts.deadline = Some(Instant::now() + deadline_duration);
+    fix_opts.deadline = Some(stamp_request_deadline(deadline_duration)?);
 
     match state.engine.fix_with_options(
         req.text.as_bytes(),
