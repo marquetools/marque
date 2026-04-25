@@ -949,38 +949,36 @@ fn collect_cve_metadata(cve_dir: &Path) -> (Vec<CveFileMetadata>, Vec<TokenMetad
             .get("IRM")
             .unwrap_or_else(|| panic!("{}: CVE.IRM missing", path.display()));
 
+        // Provenance fields that audit consumers and rule authority
+        // citations depend on (`owner_producer`, POC name + email,
+        // spec/DES versions). Per Constitution VIII these MUST fail
+        // closed at `cargo build` if a sidecar file ships without
+        // them — silently emitting an empty `&'static str` would let
+        // a missing-data regression slip past `cargo build` and only
+        // fire at `cargo test`, which is too late for downstream
+        // CI / release pipelines that build but don't always test.
+        //
+        // `title` and `source` stay optional: ODNI does not guarantee
+        // them on every CVE file (some retired files ship with no
+        // free-form Title block) and they're informational only —
+        // they don't appear in audit records or rule citations.
+        let poc_obj = irm.get("PointOfContact").unwrap_or_else(|| {
+            panic!(
+                "{}: IRM.PointOfContact missing — every ODNI CVE file \
+                 carries a PointOfContact block per Constitution VIII",
+                path.display()
+            )
+        });
         let file_meta = CveFileMetadata {
             const_ident: const_ident.clone(),
             urn: required_string(irm, "URN", path),
             title: nested_text(irm, "Title", path).unwrap_or_default(),
             source: nested_text(irm, "Source", path).unwrap_or_default(),
-            poc_name: irm
-                .get("PointOfContact")
-                .and_then(|p| p.get("Name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            poc_email: irm
-                .get("PointOfContact")
-                .and_then(|p| p.get("Email"))
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            owner_producer: cve
-                .get("ism:ownerProducer")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            spec_version: cve
-                .get("specVersion")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            des_version: cve
-                .get("ism:DESVersion")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
+            poc_name: required_nested_text(poc_obj, "Name", path),
+            poc_email: required_nested_text(poc_obj, "Email", path),
+            owner_producer: required_string(cve, "ism:ownerProducer", path),
+            spec_version: required_string(cve, "specVersion", path),
+            des_version: required_string(cve, "ism:DESVersion", path),
         };
 
         // Walk the term list. The JSON shape *should* be an array; we
@@ -1006,6 +1004,11 @@ fn collect_cve_metadata(cve_dir: &Path) -> (Vec<CveFileMetadata>, Vec<TokenMetad
                     path.display()
                 )
             });
+            // Description is intentionally optional. SAR and a handful
+            // of NTK CVE entries omit `Description`; defaulting to an
+            // empty string here matches the field's documented
+            // contract on `TokenMetadataEntry::description` ("Empty
+            // when the source CVE file did not provide a description").
             let desc_text = nested_text(term, "Description", path).unwrap_or_default();
             tokens.push(TokenMetadataEntry {
                 value: value_text,
@@ -1070,6 +1073,20 @@ fn required_string(obj: &serde_json::Value, field: &str, path: &Path) -> String 
             )
         })
         .to_owned()
+}
+
+/// Like [`nested_text`] but panics on absence — the build-time
+/// fail-closed companion. Use when a field is required by ODNI's CVE
+/// schema and silent absence would corrupt audit-record provenance
+/// (Constitution VIII).
+fn required_nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> String {
+    nested_text(obj, field, path).unwrap_or_else(|| {
+        panic!(
+            "{}: required nested-text field `{field}` missing — expected \
+             either `{{\"{field}\": \"...\"}}` or `{{\"{field}\": {{\"text\": \"...\"}}}}`",
+            path.display()
+        )
+    })
 }
 
 /// `CVEnumISMDissem.json` → `CVE_DISSEM`, `CVEnumISMSCIControls.json` →
@@ -1206,6 +1223,14 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
     .unwrap();
 
     // Emit one `pub static` per CVE file.
+    //
+    // `f.const_ident` is reused for both the static identifier and
+    // the `const_name` field — they're the SAME string by construction
+    // here, which keeps the field-vs-binding round-trip
+    // (`metadata.cve_file.const_name == "CVE_DISSEM"` for `&CVE_DISSEM`)
+    // a structural invariant rather than a coincidence. The
+    // `every_token_references_a_known_cve_file` test in
+    // `crates/ism/tests/vocabulary_tables.rs` enforces it.
     for f in &files {
         writeln!(content, "/// CVE-file metadata for `{}`.", f.const_ident).unwrap();
         writeln!(

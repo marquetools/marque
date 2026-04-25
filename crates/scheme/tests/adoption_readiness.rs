@@ -212,6 +212,19 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, m: &Self::Marking) -> String {
         if m.has_token { "STUB" } else { "" }.to_string()
     }
+
+    // `evaluate_custom` is intentionally NOT overridden. The trait
+    // default (returning `Vec::new()`) is sufficient for any scheme
+    // whose `Constraint` variants are exhausted by the standard
+    // declarative set (`Forbids`, `Requires`, `Conflicts`, `Implies`,
+    // `Supersedes`, `OneOf`). `StubScheme` declares one
+    // `Constraint::Conflicts` (above) and nothing custom, so the
+    // default holds. Phase F adopters whose schemes need bespoke
+    // constraint shapes (e.g., a NATO scheme that needs to express
+    // "this marking forbids a non-token property of the document
+    // body") override `evaluate_custom` — see
+    // `crates/scheme/tests/codec_surface.rs::MockScheme` for the
+    // override pattern.
 }
 
 // ---------------------------------------------------------------------------

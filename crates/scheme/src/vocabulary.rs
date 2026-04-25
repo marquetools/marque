@@ -162,7 +162,16 @@ pub struct TokenMetadataFull<Token> {
 /// still implement this trait without change. The metadata structs
 /// ([`TokenMetadataFull`] and [`Deprecation`]) likewise carry no
 /// `Copy` bound on their `Token` parameter.
-pub trait Vocabulary<S: MarkingScheme + ?Sized> {
+///
+/// Implementations MUST be `Send + Sync` so the engine can hold them
+/// in an `Arc<dyn Vocabulary<S>>` and dispatch across threads. Every
+/// accessor returns `&'static` data, so the bound is essentially free
+/// for the in-tree CAPCO impl; it forecloses a future scheme adopter
+/// from accidentally building a `!Send` Vocabulary (e.g., one backed
+/// by an interior-mutable cache) that would silently break
+/// `BatchEngine`. Mirrors the bound on
+/// [`crate::recognizer::Recognizer`] and [`crate::codec::Codec`].
+pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Authority record for `token`.
     fn authority(&self, token: &S::Token) -> &'static Authority;
 

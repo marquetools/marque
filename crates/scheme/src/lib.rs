@@ -29,13 +29,29 @@
 //! - [`projection`] — `Projection` trait and render-order helpers.
 //! - [`ambiguity`] — `Parsed<M>`, `Candidate`, `EvidenceFeature`.
 //! - [`scheme`] — the `MarkingScheme` trait.
+//! - [`page_rewrite`] — declarative `PageRewrite`, `CategoryAction`,
+//!   `CategoryPredicate` (Phase B).
+//! - [`scope`] — `Scope` enum for projection contexts (Phase B).
+//! - [`builtins`] — built-in lattice constructors `OrdMax`, `OrdMin`,
+//!   `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`,
+//!   `MaxDate`, `OptionalSingleton`, `Product` (Phase B).
+//! - [`recognizer`] — `Recognizer<S>` trait + `ParseContext`
+//!   (Phase D / decoder dispatch).
+//! - [`vocabulary`] — `Vocabulary<S>` trait + `TokenMetadataFull`,
+//!   `Authority`, `OwnerProducer`, `PointOfContact`, `Deprecation`
+//!   (Phase E).
+//! - [`codec`] — `Codec<S>` trait + `CodecError` surface — pinned
+//!   for Phase G to implement against (Phase E).
 //!
 //! ## Status
 //!
-//! Phase A scaffolding. The trait and primitives are stable; concrete
-//! adapters land as separate PRs (Phase B onwards). `marque-capco`
-//! implements `MarkingScheme` as a proof of fit — see
-//! `crates/capco/src/scheme.rs`.
+//! Phase E trait surface is complete. The lattice, projection,
+//! recognizer, vocabulary, and codec surfaces are pinned and
+//! consumed by `marque-capco` (the in-tree adapter). A second
+//! scheme can land in its own crate without touching this one —
+//! see `crates/scheme/tests/adoption_readiness.rs` for the
+//! SC-010 pre-verification (`StubScheme` builds against
+//! `marque_scheme::*` and `std::*` only).
 
 pub mod ambiguity;
 pub mod builtins;
