@@ -169,17 +169,18 @@ mod tests {
 
     #[test]
     fn correction_vocab_excludes_non_ic_dissem_caveats() {
-        // PR-4c regression guard. ODNI's `CVEnumISMDissem.xml` is a UNION
-        // enum bundling IC dissem controls (CAPCO source 1) with the
-        // ISOO CUI Registry caveat tail (AC, AWP, DL_ONLY, FED_ONLY,
-        // FEDCON, NOCON) and the DOD-SAP `WAIVED` entry. CAPCO-2016
-        // line 283 explicitly disclaims caveats from its scope. The
-        // `build.rs` of `marque-ism` deny-lists those seven tokens so
-        // they never enter the IC `DissemControl` enum or
-        // `ALL_CVE_TOKENS`. This test pins that invariant — a future
-        // schema-update bump that re-introduces them, or a deny-list
-        // typo, fails here loudly rather than silently broadening the
-        // CAPCO grammar to accept caveats as IC dissem controls.
+        // Regression guard for the non-IC dissem deny-list invariant.
+        // ODNI's `CVEnumISMDissem.xml` is a UNION enum bundling IC
+        // dissem controls (CAPCO source 1) with the ISOO CUI Registry
+        // caveat tail (AC, AWP, DL_ONLY, FED_ONLY, FEDCON, NOCON) and
+        // the DOD-SAP `WAIVED` entry. CAPCO-2016 line 283 explicitly
+        // disclaims caveats from its scope. The `build.rs` of
+        // `marque-ism` deny-lists those seven tokens so they never
+        // enter the IC `DissemControl` enum or `ALL_CVE_TOKENS`. This
+        // test pins that invariant — a future schema-update bump that
+        // re-introduces them, or a deny-list typo, fails here loudly
+        // rather than silently broadening the CAPCO grammar to accept
+        // caveats as IC dissem controls.
         //
         // Tracking issue for the broader caveat / second-banner-line
         // data model: github.com/marquetools/marque#128.
