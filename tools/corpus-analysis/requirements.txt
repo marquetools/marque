@@ -3,7 +3,23 @@
 #
 # Runtime dependencies for analyze.py.
 #
-# The script uses `uv run --script` (see shebang) for inline dependency
-# resolution, so installing via pip is only necessary when not using uv.
+# Pinned to an exact version so a `pip install -r requirements.txt`
+# in CI or a contributor sandbox is reproducible: an upstream PyPI
+# release cannot silently change the bytes that get installed. Bumps
+# are intentional — update the version here, run `analyze.py` against
+# `tests/corpus/` to regenerate `crates/capco/corpus/priors.json` and
+# `tests/fixtures/mangled/`, commit the result.
+#
+# The shebang in `analyze.py` is `#!/usr/bin/env -S uv run --script`
+# (PEP 723). Today there's no `# /// script` inline-metadata block in
+# the file, so uv resolves deps from the surrounding environment; this
+# requirements.txt is the source of truth for non-uv installs and the
+# canonical version reference.
+#
+# Whitepaper §7.4 / gap register #17 calls for `pip-tools`-style hash
+# pinning across the transitive set (`requests` pulls in
+# `charset-normalizer`, `idna`, `urllib3`, `certifi`). Adopting that
+# is a follow-up — the current pin is a minimum-viable fix that
+# already eliminates the silent-version-drift risk.
 
-requests>=2.31
+requests==2.33.1
