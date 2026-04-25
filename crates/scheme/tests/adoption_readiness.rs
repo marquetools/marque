@@ -348,7 +348,7 @@ fn second_scheme_builds_without_engine_edits() {
     let recognizer = StubRecognizer;
     let codec = StubCodec;
 
-    // MarkingScheme surface — every method invokable.
+    // MarkingScheme surface — every method invocable.
     assert_eq!(scheme.name(), "stub");
     assert_eq!(scheme.schema_version(), "stub-1");
     assert!(scheme.categories().is_empty());
