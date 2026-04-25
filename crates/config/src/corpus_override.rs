@@ -316,13 +316,26 @@ fn validate_log_prior(
     Ok(())
 }
 
+/// Validate a runtime override-supplied strict-context floor.
+///
+/// Mirrors the build-time policy in
+/// `crates/capco/build.rs::require_probability`. Accepts `(0.0,
+/// 1.0]`; rejects `0.0` because a `0.0` floor silently makes the
+/// strict-context rule a no-op (the feature contribution becomes
+/// algebraically identity), defeating FR-011 with no diagnostic at
+/// load time. Operators who want "very permissive" should write a
+/// finite small positive (e.g., `0.01`).
+///
+/// Phase 4 review M8 confirmed this policy.
 fn validate_floor(path: &Path, key: &'static str, value: f32) -> Result<(), ConfigError> {
-    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+    if !value.is_finite() || !(value > 0.0 && value <= 1.0) {
         return Err(ConfigError::CorpusOverrideInvalidValue {
             path: path.to_path_buf(),
             section: "strict_context_overrides",
             key: key.to_owned(),
-            reason: "floor must be in [0.0, 1.0] and finite",
+            reason: "floor must be in (0.0, 1.0] and finite — `0.0` is rejected because it silently \
+                     makes the strict-context rule a no-op; write a finite small positive (e.g., 0.01) \
+                     for a permissive floor",
         });
     }
     Ok(())
