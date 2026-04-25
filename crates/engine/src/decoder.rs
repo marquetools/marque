@@ -1223,8 +1223,11 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         // `strict_parse_is_complete` can apply the right rule
         // (classification-requiring for portion/banner, CAB-field-
         // requiring for CAB). If inference fails the bytes are too
-        // degenerate for either path — skip.
-        let kind = infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
+        // degenerate for either path — skip and return whatever the
+        // strict path produced (most likely zero-candidate Ambiguous).
+        let Some(kind) = infer_marking_type(bytes) else {
+            return strict_result;
+        };
 
         // Complete strict parse — take it, decoder not needed.
         if matches!(&strict_result, Parsed::Unambiguous(m) if strict_parse_is_complete(m, kind)) {
