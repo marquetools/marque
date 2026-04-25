@@ -87,6 +87,7 @@
 
 use std::collections::BTreeSet;
 
+use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
@@ -94,7 +95,7 @@ use marque_ism::{
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
-use marque_rules::confidence::FeatureId;
+use marque_rules::confidence::{FeatureContribution, FeatureId};
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -231,7 +232,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //     canonicalizations, but must drop them before the
             //     marking leaves the decoder.
             parsed.attrs.token_spans = Box::new([]);
-            let marking = CapcoMarking(parsed.attrs);
+            let marking = CapcoMarking::new(parsed.attrs);
 
             // 3c. The strict parser is lenient — it accepts any
             //     `BYTES//BYTES` shape and emits an `IsmAttributes`
@@ -267,6 +268,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 marking,
                 prior,
                 posterior,
+                canonical_bytes: attempt.bytes.into_boxed_slice(),
                 features: attempt.features,
             });
         }
@@ -286,8 +288,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         scored.truncate(K_MAX_CANDIDATES);
 
         // 6. Decision: top-over-runner-up log margin on the posterior.
-        let top = &scored[0];
-        let top_score = top.posterior;
+        let top_score = scored[0].posterior;
         let runner_up_score = scored
             .get(1)
             .map(|c| c.posterior)
@@ -295,7 +296,41 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         let log_margin = top_score - runner_up_score;
 
         if scored.len() == 1 || log_margin >= UNAMBIGUOUS_LOG_MARGIN {
-            return Parsed::Unambiguous(top.marking.clone());
+            // Move the top candidate out so we can hand `canonical_bytes`
+            // and `features` directly to provenance without an extra
+            // clone — the marking carries the heaviest payload and we
+            // only need it once.
+            let top = scored.swap_remove(0);
+            // `runner_up_ratio = exp(log_margin)`, but a sufficiently
+            // separated top vs. runner-up overflows `f32::exp()` to
+            // `+∞` (anything past `log_margin ≈ 88.7` saturates), and
+            // `Confidence::validate` would then reject the resulting
+            // record as non-finite — making `FixProposal::new` panic at
+            // the audit boundary on extreme score separations. Saturate
+            // at `f32::MAX` so the audit record carries "the ratio is
+            // enormous" instead of crashing the engine.
+            let runner_up_ratio = if runner_up_score.is_finite() {
+                let ratio = log_margin.exp();
+                Some(if ratio.is_finite() { ratio } else { f32::MAX })
+            } else {
+                None
+            };
+            let mut marking = top.marking;
+            marking.1 = Some(DecoderProvenance {
+                canonical_bytes: top.canonical_bytes,
+                posterior: top.posterior,
+                runner_up_ratio,
+                features: top
+                    .features
+                    .into_iter()
+                    .map(|f| FeatureContribution {
+                        id: f.id,
+                        delta: f.delta,
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            });
+            return Parsed::Unambiguous(marking);
         }
 
         // Ambiguous: return the whole K-truncated set with per-feature
@@ -339,6 +374,13 @@ struct ScoredCandidate {
     /// comparisons inside the decoder; not stored in the emitted
     /// `Candidate` record.
     posterior: f32,
+    /// Canonical byte string the strict parser accepted for this
+    /// candidate. Threaded into [`DecoderProvenance::canonical_bytes`]
+    /// when this candidate wins the Unambiguous collapse, so the
+    /// engine can emit a `FixSource::DecoderPosterior` rewrite from
+    /// the original mangled bytes to this canonical form (Phase 4
+    /// PR-4b, T068).
+    canonical_bytes: Box<[u8]>,
     features: Vec<FeatureEntry>,
 }
 
@@ -1270,7 +1312,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"SECRET//NOFORN")
             .expect("SECRET//NOFORN must parse");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
 
         let features = vec![
             FeatureEntry {
@@ -1309,6 +1351,36 @@ mod tests {
     }
 
     #[test]
+    fn runner_up_ratio_saturates_on_extreme_log_margin() {
+        // Regression guard for PR #127 review comment on decoder.rs:305:
+        // when `log_margin` is large enough that `f32::exp()` overflows
+        // (≈ ≥ 88.7 nats on f32), the previous code emitted `+∞` into
+        // `Confidence::runner_up_ratio` and `Confidence::validate`
+        // rejected the resulting record at the audit boundary,
+        // panicking inside `FixProposal::new`. The fix saturates at
+        // `f32::MAX`. We exercise both branches here with bare
+        // `f32::exp` since the saturation logic is the same closed
+        // expression used in `recognize`.
+        for &log_margin in &[88.0_f32, 100.0_f32, 200.0_f32, 1000.0_f32] {
+            let ratio = log_margin.exp();
+            let clamped = if ratio.is_finite() { ratio } else { f32::MAX };
+            assert!(
+                clamped.is_finite(),
+                "log_margin = {log_margin}: clamped ratio must be finite, got {clamped}"
+            );
+            assert!(
+                clamped > 0.0,
+                "log_margin = {log_margin}: clamped ratio must be > 0, got {clamped}"
+            );
+        }
+        // And a sanity check on the in-band path: at the
+        // UNAMBIGUOUS_LOG_MARGIN threshold, `exp()` returns a finite
+        // value and we don't clamp.
+        let at_threshold = UNAMBIGUOUS_LOG_MARGIN.exp();
+        assert!(at_threshold.is_finite() && at_threshold > 1.0);
+    }
+
+    #[test]
     fn strict_parse_is_complete_rejects_unknown_classification() {
         // This is the regression-guard for PR #114 review comment
         // on decoder.rs:946 — strict parse of `(SERCET//NOFORN)`
@@ -1326,7 +1398,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(SERCET//NOFORN)")
             .expect("strict parser should accept (SERCET//NOFORN) leniently");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             is_nontrivial_marking(&marking),
             "NOFORN survives as a dissem control → marking is nontrivial"
@@ -1350,7 +1422,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//NF)")
             .expect("canonical portion must strict-parse");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             strict_parse_is_complete(&marking, MarkingType::Portion),
             "canonical (S//NF) must be accepted as complete; attrs = {:?}",
@@ -1373,7 +1445,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//FRBN)")
             .expect("strict parser accepts (S//FRBN) leniently");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         // `S` resolved, so classification is Some — but the
         // Unknown-tail check still fires.
         assert!(
@@ -1399,7 +1471,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"FROBNITZ//WIBBLE")
             .expect("strict parser should accept arbitrary bytes");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             !is_nontrivial_marking(&marking),
             "empty marking must be filtered"

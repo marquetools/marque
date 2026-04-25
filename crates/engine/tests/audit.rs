@@ -574,3 +574,143 @@ fn v1_records_parse_in_v2_consumer() {
         "v1 record must default features to empty"
     );
 }
+
+// ---------------------------------------------------------------------------
+// T053 — decoder-path audit-record shape.
+// ---------------------------------------------------------------------------
+//
+// Strict-path invariants are pinned by `audit_v2_strict_path_invariants`
+// (T052): every applied fix must have `recognition == 1.0`,
+// `runner_up_ratio == None`, `features == []`, and a
+// non-`DecoderPosterior` source. The decoder-path counterpart asserts
+// the dual: when the engine is in deep-scan mode AND the recognizer
+// goes through the decoder fallback for a mangled candidate, the
+// resulting `AppliedFix` carries:
+//
+// - `confidence.recognition < 1.0_f32` — strictly below the strict-path
+//   sentinel so audit consumers can distinguish strict from decoder
+//   provenance via a single field comparison.
+// - `confidence.features` non-empty with every entry's `id` typed as
+//   `FeatureId` (free-form strings rejected by the type system per
+//   FR-012).
+// - `source == FixSource::DecoderPosterior`.
+// - `confidence.runner_up_ratio` is either `None` (decoder's K-truncated
+//   set collapsed to a single candidate, per `decoder.rs`'s K=1 branch)
+//   or `Some(r)` with finite `r`. Both shapes are legal; the audit-shape
+//   invariant T053 pins is "if `Some`, the value is finite" — never
+//   `NaN` / `±∞`.
+//
+// Vacuity guard: ≥ 1 decoder fix examined. A pass with zero fixes
+// would indicate the deep-scan dispatcher never invoked the decoder
+// at all — silently weakening the assertion.
+
+fn deep_scan_engine() -> Engine {
+    let engine = Engine::with_clock(
+        Config::default(),
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+        Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+    engine.with_deep_scan()
+}
+
+#[test]
+fn decoder_path_record_shape() {
+    use marque_rules::FeatureId;
+
+    let engine = deep_scan_engine();
+
+    // Mangled portion candidate: leading `(` makes the scanner emit
+    // a portion candidate; SERCET inside is edit-distance-1 from
+    // SECRET; NF is the canonical portion-form NOFORN abbreviation
+    // and survives fuzzy correction unchanged so the decoder
+    // produces a clean canonical rewrite `(SECRET//NF)`. The strict
+    // parser leaves `classification = None` for the original
+    // SERCET-bearing input (lenient parse), so the dispatcher falls
+    // through to the decoder per `strict_parse_is_complete`.
+    let source: &[u8] = b"(SERCET//NF)";
+
+    let result = run_fix(&engine, source);
+
+    let mut decoder_fixes_examined = 0usize;
+    for fix in &result.applied {
+        // Identify the decoder-path fix and assert its shape. Other
+        // fixes (e.g., a strict-path E001 against the canonical attrs)
+        // may also appear in the same audit set; they remain
+        // strict-shape and are skipped here.
+        if fix.source != FixSource::DecoderPosterior {
+            continue;
+        }
+        decoder_fixes_examined += 1;
+
+        let c = &fix.confidence;
+        assert!(
+            c.recognition < 1.0_f32,
+            "decoder-path Confidence.recognition must be strictly < 1.0; \
+             got {} (rule {}, span {}..{})",
+            c.recognition,
+            fix.proposal.rule.as_str(),
+            fix.proposal.span.start,
+            fix.proposal.span.end,
+        );
+        assert!(
+            !c.features.is_empty(),
+            "decoder-path Confidence.features must be non-empty (FR-009); \
+             got 0 features for rule {} at {}..{}",
+            fix.proposal.rule.as_str(),
+            fix.proposal.span.start,
+            fix.proposal.span.end,
+        );
+        // Every feature carries a `FeatureId` enum — by type, not by
+        // string. Iterating exercises the field; pattern-matching is
+        // exhaustiveness-checked at compile time, so a future variant
+        // addition without a coordinated audit-schema bump fails CI
+        // here at the same gate as the `FeatureId::as_str` table.
+        for feature in &c.features {
+            match feature.id {
+                FeatureId::EditDistance1
+                | FeatureId::EditDistance2
+                | FeatureId::TokenReorder
+                | FeatureId::SupersededToken
+                | FeatureId::BaseRateCommonMarking
+                | FeatureId::StrictContextClassification
+                | FeatureId::CorpusOverrideInEffect => {}
+            }
+            assert!(
+                feature.delta.is_finite(),
+                "feature delta must be finite, got {}",
+                feature.delta
+            );
+        }
+
+        // `runner_up_ratio` is `Some(r)` when the decoder's K-truncated
+        // candidate set had ≥ 2 survivors so a runner-up exists, and
+        // `None` when only one candidate cleared strict-parse + the
+        // FR-011 floor + the non-trivial filter (decoder.rs's K=1 branch
+        // where `runner_up_score.is_finite()` is `false`). Both shapes
+        // are legal for a decoder-path fix per the `Confidence` contract
+        // in `crates/rules/src/confidence.rs`. The audit-shape invariant
+        // T053 pins is "if Some, the value is finite" — `runner_up_ratio`
+        // never carries `NaN` / `±∞` at the audit boundary, since
+        // `Confidence::validate` rejects non-finite ratios. Whether a
+        // particular input produces K=1 or K≥2 is decoder-implementation
+        // territory (PR-3) and not what this audit-shape test gates.
+        if let Some(r) = c.runner_up_ratio {
+            assert!(
+                r.is_finite(),
+                "decoder-path runner_up_ratio must be finite when Some, got {r}"
+            );
+        }
+    }
+
+    assert!(
+        decoder_fixes_examined > 0,
+        "T053 vacuity guard: zero decoder-path fixes were produced for \
+         the mangled fixture {:?}. Either the deep-scan dispatcher never \
+         reached the decoder, or the decoder declined to canonicalize. \
+         Without ≥1 fix examined the per-fix shape assertions above pass \
+         vacuously.",
+        std::str::from_utf8(source).unwrap_or("<non-utf8>"),
+    );
+}
