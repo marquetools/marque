@@ -284,17 +284,35 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             };
         }
 
-        // 5. Sort by posterior descending; keep top K=8.
+        // 5. Drop any candidate with a non-finite posterior, sort
+        //    descending, keep top K=8.
         //
-        // `f32::total_cmp` provides a deterministic total order even
-        // for NaN inputs (NaNs sort to one end depending on sign rather
-        // than producing an undefined `partial_cmp` result that would
-        // collapse to `Ordering::Equal`). NaN posteriors should be
-        // impossible — `MISSING_TOKEN_LOG_PRIOR = -12.0` and every
-        // feature delta is a finite constant — but `total_cmp` makes
-        // the ordering robust if a future scoring change introduces a
-        // codepath that produces NaN, rather than silently returning
-        // an undefined sort order.
+        // NaN posteriors should be impossible —
+        // `MISSING_TOKEN_LOG_PRIOR = -12.0` and every feature delta
+        // is a finite constant — but a future scoring change could
+        // introduce a NaN-producing codepath. Under `f32::total_cmp`
+        // with the descending comparator (`b.total_cmp(&a)`), `+NaN`
+        // would sort *ahead* of every finite posterior and become the
+        // "top" candidate — its NaN posterior would then propagate
+        // into `log_margin` and `DecoderProvenance::posterior`, where
+        // `Confidence::validate` would later panic at audit-record
+        // promotion. Filter non-finite candidates out before the sort
+        // so the dispatch can never see one.
+        //
+        // `debug_assert` keeps the original assumption (decoder code
+        // does not produce NaN today) loud in dev builds; the filter
+        // is the production safeguard for if that assumption ever
+        // breaks silently.
+        debug_assert!(
+            scored.iter().all(|c| c.posterior.is_finite()),
+            "decoder produced non-finite posterior — invariant violated"
+        );
+        scored.retain(|c| c.posterior.is_finite());
+        if scored.is_empty() {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
         scored.sort_by(|a, b| b.posterior.total_cmp(&a.posterior));
         scored.truncate(K_MAX_CANDIDATES);
 
