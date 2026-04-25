@@ -43,6 +43,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASELINE="$REPO_ROOT/benches/baseline.json"
 
+# Skip the +10%-vs-baseline regression check when the runner profile does
+# not match the captured baseline. The baseline lives in `benches/baseline.json`
+# under `reference_machine.cpu` and is captured on a WSL2 dev machine; a
+# GitHub Actions `ubuntu-latest` runner is a different profile entirely
+# (different CPU, different scheduler noise, different cache topology) and
+# +10% vs that baseline is meaningless. The absolute `target_upper_ci_us`
+# gate (16ms / 18ms) and the SC-005 R² floor still run — those are the
+# load-bearing constitution-level checks.
+#
+# CI sets `MARQUE_BENCH_SKIP_REGRESSION=1` until a CI-machine baseline is
+# captured in a follow-up PR. Local dev runs without the env var and
+# enforces +10%.
+SKIP_REGRESSION="${MARQUE_BENCH_SKIP_REGRESSION:-0}"
+
 if [[ "${1:-}" == "--skip" ]]; then
     echo "bench-check: skipped (--skip flag)"
     exit 0
@@ -164,11 +178,15 @@ else:
     # µs in the baseline can never silently pass a regression.
     local threshold
     threshold=$(python3 -c "import math; print(math.ceil($baseline_upper_ci * 1.10))")
-    echo "bench-check[$bench_name]: regression threshold (baseline + 10%) = ${threshold} µs"
 
-    if [[ "$current_us" -gt "$threshold" ]]; then
-        echo "bench-check[$bench_name]: FAIL — regressed: ${current_us} µs > ${threshold} µs (baseline: ${baseline_upper_ci} µs)"
-        return 1
+    if [[ "$SKIP_REGRESSION" == "1" ]]; then
+        echo "bench-check[$bench_name]: skipping +10% baseline check (MARQUE_BENCH_SKIP_REGRESSION=1); absolute target still enforced"
+    else
+        echo "bench-check[$bench_name]: regression threshold (baseline + 10%) = ${threshold} µs"
+        if [[ "$current_us" -gt "$threshold" ]]; then
+            echo "bench-check[$bench_name]: FAIL — regressed: ${current_us} µs > ${threshold} µs (baseline: ${baseline_upper_ci} µs)"
+            return 1
+        fi
     fi
 
     if [[ "$current_us" -gt "$target_upper_ci" ]]; then
@@ -176,7 +194,11 @@ else:
         return 1
     fi
 
-    echo "bench-check[$bench_name]: PASS — ${current_us} µs <= ${threshold} µs (baseline + 10%), well under ${target_upper_ci} µs target"
+    if [[ "$SKIP_REGRESSION" == "1" ]]; then
+        echo "bench-check[$bench_name]: PASS — ${current_us} µs under ${target_upper_ci} µs absolute target (regression check skipped)"
+    else
+        echo "bench-check[$bench_name]: PASS — ${current_us} µs <= ${threshold} µs (baseline + 10%), well under ${target_upper_ci} µs target"
+    fi
     return 0
 }
 

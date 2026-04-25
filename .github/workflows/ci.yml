@@ -333,4 +333,13 @@ jobs:
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: scripts/bench-check.sh
+        # `MARQUE_BENCH_SKIP_REGRESSION=1` skips the +10%-vs-baseline check.
+        # The baseline in `benches/baseline.json` was captured on a WSL2 dev
+        # machine; comparing GH Actions `ubuntu-latest` runs against it
+        # would produce noise rather than signal. The absolute SC-001/002/005
+        # targets (16ms / 18ms / R²≥0.9) are the load-bearing constitution
+        # gates and still run. A follow-up PR captures a CI-runner baseline
+        # and re-enables the regression check on CI.
+        env:
+          MARQUE_BENCH_SKIP_REGRESSION: "1"
         run: bash scripts/bench-check.sh
