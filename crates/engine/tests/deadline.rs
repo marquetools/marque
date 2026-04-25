@@ -20,7 +20,8 @@
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixOptions, InvalidThreshold, LintOptions};
+use marque_engine::{Engine, EngineError, FixMode, FixOptions, InvalidThreshold, LintOptions};
+use std::time::{Duration, Instant};
 
 fn engine() -> Engine {
     Engine::new(
@@ -161,14 +162,26 @@ fn lint_shim_matches_lint_with_options_default() {
         }
     }
 
-    // Phase 1 keeps the new fields at their default zero values for
-    // both code paths — Phase 2 wires real values in.
+    // Phase 2 wires the truncation / candidate-count fields. With
+    // default options (no deadline) both code paths must produce a
+    // non-truncated result and identical, non-zero candidate counts
+    // — anything else means the back-compat shim drifted from
+    // `_with_options(default)`.
     assert!(!via_shim.truncated);
     assert!(!via_options.truncated);
-    assert_eq!(via_shim.candidates_processed, 0);
-    assert_eq!(via_options.candidates_processed, 0);
-    assert_eq!(via_shim.candidates_total, 0);
-    assert_eq!(via_options.candidates_total, 0);
+    assert_eq!(
+        via_shim.candidates_processed,
+        via_options.candidates_processed
+    );
+    assert_eq!(via_shim.candidates_total, via_options.candidates_total);
+    // A non-trivial fixture must produce at least one processed
+    // candidate; a regression that silently zero-counted would
+    // otherwise pass the equality check above.
+    assert!(via_shim.candidates_processed > 0);
+    // No pass should report `processed > total` — that's an
+    // accounting bug the shim parity test is well-positioned to
+    // catch.
+    assert!(via_shim.candidates_processed <= via_shim.candidates_total);
 }
 
 #[test]
@@ -243,4 +256,290 @@ fn fix_shim_matches_fix_with_options_default() {
         &via_options,
         "fix shim vs fix_with_options(default)",
     );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — cooperative cancellation (T013–T017)
+// ---------------------------------------------------------------------------
+
+/// Build a synthetic document with `count` portion candidates so that
+/// the candidate loop has enough work to make a per-candidate deadline
+/// check observably trip mid-document. Each portion is a real, valid
+/// CAPCO marking, so the rule loop runs the same code path as production
+/// — the test exercises the deadline plumbing, not a degenerate fast
+/// path that would skip rules.
+fn many_portions(count: usize) -> Vec<u8> {
+    let mut buf = String::with_capacity(count * 32);
+    for _ in 0..count {
+        buf.push_str("(S//NF) Portion text content here.\n");
+    }
+    buf.into_bytes()
+}
+
+/// Build a document where every banner triggers an E001 fix (`NF`
+/// abbreviated dissem in banner — banner form requires `NOFORN`).
+/// Each page-break-separated banner is a banner candidate that
+/// reliably yields a real `FixProposal`, so the apply loop has
+/// concrete work to do — load-bearing for the T017 mid-apply
+/// deadline test, where the apply phase must take observable
+/// wall-clock time for a per-fix deadline check to fire.
+fn many_banners_with_fixes(count: usize) -> Vec<u8> {
+    // Three newlines between banners trip the scanner's
+    // `\n\n\n+` page-break heuristic, so each banner sits on
+    // its own page and the engine treats each as a separate
+    // banner candidate.
+    let mut buf = String::with_capacity(count * 16);
+    for _ in 0..count {
+        buf.push_str("SECRET//NF\n\n\n");
+    }
+    buf.into_bytes()
+}
+
+#[test]
+fn lint_with_already_expired_deadline_returns_immediately_truncated() {
+    // T013: an already-expired deadline trips the pre-pass check
+    // (T007). Spec §R3: the engine MUST return immediately with
+    // `truncated: true` and both candidate counters at 0 — the
+    // scanner does not run, so `candidates_total` stays at its
+    // initial 0 even though the source has plenty of candidates.
+    let eng = engine();
+    let mut opts = LintOptions::default();
+    opts.deadline = Some(Instant::now() - Duration::from_secs(1));
+
+    let src = many_portions(50);
+    let result = eng.lint_with_options(&src, &opts);
+
+    assert!(result.truncated, "already-expired deadline must truncate");
+    assert_eq!(
+        result.candidates_processed, 0,
+        "pre-pass abort processes zero candidates"
+    );
+    assert_eq!(
+        result.candidates_total, 0,
+        "pre-pass abort runs before the scanner — total stays at 0"
+    );
+    assert!(
+        result.diagnostics.is_empty(),
+        "no rule loop ran, no diagnostics"
+    );
+}
+
+#[test]
+fn lint_truncates_mid_document_at_deadline_boundary() {
+    // T014: a deadline that is valid on entry but expires partway
+    // through the candidate loop must cause the engine to break
+    // out of the loop with `truncated: true` and a partial count
+    // (`processed < total`). The loop check (T008) is the
+    // load-bearing assertion — without it the engine would
+    // overrun the budget by the full document's worth of rule
+    // work.
+    //
+    // Reliability strategy: `Instant::now()` is the only clock
+    // the engine has, so we cannot mock time. A tight budget
+    // proportional to the unmetered baseline reliably trips
+    // the loop on every machine class without flaking. The
+    // critical assertions (`truncated` and `processed <
+    // total`) are robust to scheduler noise — a too-tight
+    // budget will fire on iteration 1 (still truncated, still
+    // processed < total), and a too-generous budget would
+    // run to completion and FAIL the truncated assertion
+    // (never silently pass).
+    let eng = engine();
+
+    // Warm up so the actual measurement is on hot caches.
+    let src = many_portions(3_000);
+    let _ = eng.lint(&src);
+
+    let baseline_start = Instant::now();
+    let _ = eng.lint(&src);
+    let baseline = baseline_start.elapsed();
+
+    // 5% of baseline forces an early trip and leaves the loop
+    // truncated with a definite `processed < total`. Whether
+    // `processed` is 0 or some small positive value depends on
+    // how much of the budget the scanner itself consumes
+    // before the per-candidate check fires; either is a valid
+    // observation of the truncation contract.
+    let budget = baseline / 20;
+    let mut opts = LintOptions::default();
+    opts.deadline = Some(Instant::now() + budget);
+
+    let result = eng.lint_with_options(&src, &opts);
+
+    assert!(
+        result.truncated,
+        "mid-document deadline must produce truncated: true; \
+         got truncated=false processed={} total={}",
+        result.candidates_processed, result.candidates_total
+    );
+    assert!(
+        result.candidates_total > 0,
+        "scanner must have produced candidates"
+    );
+    assert!(
+        result.candidates_processed < result.candidates_total,
+        "loop must break before all candidates are processed; \
+         processed={} total={}",
+        result.candidates_processed,
+        result.candidates_total
+    );
+}
+
+#[test]
+fn lint_with_generous_deadline_runs_to_completion_no_truncation() {
+    // T015: a deadline far in the future must NOT truncate. The
+    // engine completes the candidate loop normally; `truncated:
+    // false` and `processed == total`. This is the load-bearing
+    // negative test — it pins the invariant that a deadline
+    // wide enough to finish does not introduce spurious
+    // truncation.
+    let eng = engine();
+    let mut opts = LintOptions::default();
+    opts.deadline = Some(Instant::now() + Duration::from_secs(3600));
+
+    let src = many_portions(100);
+    let result = eng.lint_with_options(&src, &opts);
+
+    assert!(
+        !result.truncated,
+        "generous deadline must not truncate; got truncated=true"
+    );
+    assert!(
+        result.candidates_total > 0,
+        "scanner produced no candidates from a 100-portion fixture; \
+         the test fixture is broken"
+    );
+    assert_eq!(
+        result.candidates_processed, result.candidates_total,
+        "no truncation means processed == total; got {}/{}",
+        result.candidates_processed, result.candidates_total
+    );
+}
+
+#[test]
+fn fix_with_already_expired_deadline_returns_deadline_exceeded() {
+    // T016: an already-expired deadline on `fix_with_options`
+    // must surface as `Err(EngineError::DeadlineExceeded {
+    // partial_lint })` per spec §R4. The asymmetric shape
+    // protects audit-record integrity (Constitution V Principle
+    // V): no partial `FixResult` is ever constructed, no
+    // half-applied bytes leak. `partial_lint` carries the
+    // pre-pass-truncated lint, which has zero diagnostics
+    // because the lint scanner never ran.
+    let eng = engine();
+    let mut opts = FixOptions::default();
+    opts.deadline = Some(Instant::now() - Duration::from_secs(1));
+
+    let src = many_portions(20);
+    let result = eng.fix_with_options(&src, FixMode::DryRun, &opts);
+
+    match result {
+        Err(EngineError::DeadlineExceeded { partial_lint }) => {
+            assert!(
+                partial_lint.truncated,
+                "partial_lint must reflect that lint pass was deadline-truncated"
+            );
+            assert!(
+                partial_lint.diagnostics.is_empty(),
+                "lint pass returned before scanning, so diagnostics must be empty; \
+                 got {}",
+                partial_lint.diagnostics.len()
+            );
+            assert_eq!(partial_lint.candidates_processed, 0);
+            assert_eq!(partial_lint.candidates_total, 0);
+        }
+        Ok(_) => panic!("expected Err(DeadlineExceeded), got Ok(_)"),
+        Err(other) => panic!("expected Err(DeadlineExceeded), got Err({other:?})"),
+    }
+}
+
+#[test]
+fn fix_with_deadline_during_fix_call_returns_deadline_exceeded() {
+    // T017: a deadline that expires sometime during a `fix_with_options`
+    // call MUST surface as `Err(EngineError::DeadlineExceeded { partial_lint })`,
+    // never as a partial `FixResult` (Constitution V Principle V — the
+    // half-applied buffer is dropped on the floor and the caller sees only
+    // the lint result).
+    //
+    // The spec describes two distinct trip points: the post-lint check
+    // (T010) and the per-fix-application check (T011). Both produce the
+    // same `Err(DeadlineExceeded)` shape, and both are exercised here by
+    // setting a deadline that will trip somewhere inside the call. Which
+    // exact path fires is hardware-dependent:
+    //
+    //   - On hardware where the lint phase dominates `fix` runtime
+    //     (typical for slow CI runners, where `lint` can take 100×
+    //     `apply` for the same fixture), the deadline trips inside the
+    //     candidate loop and we get `truncated: true` with partial
+    //     diagnostics. The fix-side path that converts that to
+    //     `EngineError::DeadlineExceeded` is the post-lint check (T010).
+    //   - On hardware where the apply phase is slow enough to be
+    //     observable (fast machines with the FixMode::Apply variant on
+    //     a large buffer), the deadline can trip inside the apply
+    //     loop, yielding `truncated: false` with full diagnostics.
+    //     That exercises the per-fix check (T011).
+    //
+    // The test accepts either observation because both prove the
+    // deadline plumbing works through `fix_with_options`. The previous
+    // version asserted specifically the second case but that's not
+    // reliably reachable on slow CI hardware where apply takes
+    // microseconds — there is simply no margin window where
+    // `deadline > lint_time && deadline < lint_time + apply_time`.
+    let eng = engine();
+    // Bounded fixture size — large enough that `fix` takes long
+    // enough on every machine class for a half-baseline deadline
+    // to land mid-call, small enough that the test does not bloat
+    // the suite runtime in debug/CI. 4_000 banners produces ~50KB
+    // of source and ~4_000 fix proposals; on slow CI runners this
+    // typically runs in 50–200ms total (warmup + baseline +
+    // bounded run), versus the prior 20K-banner version which
+    // could spend several seconds in the apply loop alone.
+    let src = many_banners_with_fixes(4_000);
+
+    // Warm caches WITHOUT paying the full apply cost up front:
+    // the lint pass on the real fixture is what dominates the
+    // baseline below, so warming lint is sufficient. A separate
+    // tiny `fix(Apply)` warm-up exercises the apply codepath
+    // (so the splice and audit-record paths are also warm)
+    // without scaling that warm-up cost with the test fixture.
+    let _ = eng.lint(&src);
+    let warmup_src = many_banners_with_fixes(128);
+    let _ = eng.fix(&warmup_src, FixMode::Apply);
+
+    let baseline_start = Instant::now();
+    let _ = eng.fix(&src, FixMode::Apply);
+    let t_fix = baseline_start.elapsed();
+
+    // Half the warm baseline is reliably mid-`fix` on every machine
+    // class: by the time the deadline trips, either lint is in the
+    // candidate loop (slow machines where lint dominates) or apply is
+    // in its iteration loop (fast machines where lint completes in
+    // <50% of the budget). Both paths terminate as
+    // `Err(DeadlineExceeded)`, which is the load-bearing behavior the
+    // test pins. A budget of 0 would test the pre-pass abort, which
+    // T016 already covers.
+    let mut opts = FixOptions::default();
+    opts.deadline = Some(Instant::now() + t_fix / 2);
+
+    match eng.fix_with_options(&src, FixMode::Apply, &opts) {
+        Err(EngineError::DeadlineExceeded { partial_lint }) => {
+            // Either path is acceptable. We only sanity-check that the
+            // result is internally consistent — `processed` cannot
+            // exceed `total`, ever — to catch any future regression
+            // that scrambles the count fields when constructing the
+            // partial_lint.
+            assert!(
+                partial_lint.candidates_processed <= partial_lint.candidates_total,
+                "partial_lint counts inconsistent: processed={} total={}",
+                partial_lint.candidates_processed,
+                partial_lint.candidates_total
+            );
+        }
+        Ok(_) => panic!(
+            "expected Err(DeadlineExceeded) from a deadline at half the warm fix baseline \
+             ({:?}); the deadline plumbing is not converting expiry into Err",
+            t_fix / 2
+        ),
+        Err(other) => panic!("expected Err(DeadlineExceeded), got Err({other:?})"),
+    }
 }

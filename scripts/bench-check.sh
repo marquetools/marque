@@ -397,10 +397,137 @@ PY
     return 0
 }
 
+# check_deadline_overhead
+#
+# Spec 005 T018 / T019: enforces that the deadline-aware lint path adds
+# ≤ `deadline_overhead.max_ratio_pct` overhead vs the unbounded path on
+# the 10 KB representative input. (The threshold key is integer-percent;
+# both this script and `benches/baseline.json` use `max_ratio_pct`.) The
+# two benches live in
+# `crates/engine/benches/deadline_overhead.rs` and are named
+# `deadline_overhead_baseline` (no deadline) and
+# `deadline_overhead_with_deadline` (1-hour deadline that never trips).
+#
+# We use Criterion's middle CI value (the mean point estimate) rather
+# than the upper CI bound: the upper bound is the right metric for an
+# absolute-target regression check, but for ratio comparison the point
+# estimate is the load-bearing reading — CI width inflates with
+# variance and would convert clock-jitter into a false-positive ratio
+# failure. ("Mean" not "median" — Criterion's `time: [lower mean
+# upper]` triple is a confidence interval around the mean, not a
+# sample percentile.)
+#
+# Both benches run in a single `cargo bench` invocation so the harness
+# warms up once; running them separately could let the runner profile
+# differ enough between calls to bias the ratio.
+check_deadline_overhead() {
+    local max_ratio_pct
+    max_ratio_pct=$(python3 -c "
+import json
+with open('$BASELINE') as f:
+    data = json.load(f)
+print(data['deadline_overhead']['max_ratio_pct'])
+" 2>/dev/null || echo "")
+
+    if [[ -z "$max_ratio_pct" ]]; then
+        echo "bench-check[deadline_overhead]: ERROR — could not parse 'deadline_overhead.max_ratio_pct' from $BASELINE"
+        return 1
+    fi
+
+    if ! [[ "$max_ratio_pct" =~ ^[0-9]+$ ]]; then
+        # Regex `^[0-9]+$` accepts `0` (the tightest gate — "no
+        # overhead allowed at all") plus any positive integer; reject
+        # only non-numeric / negative / signed / decimal values.
+        echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a non-negative integer: ${max_ratio_pct}"
+        return 1
+    fi
+
+    echo "bench-check[deadline_overhead]: max overhead = ${max_ratio_pct}% (with-deadline mean over baseline mean)"
+    echo "bench-check[deadline_overhead]: running benchmark..."
+
+    local bench_output
+    if ! bench_output=$(cargo bench -p marque-engine --bench deadline_overhead 2>&1); then
+        echo "bench-check[deadline_overhead]: ERROR — 'cargo bench' invocation failed"
+        if [[ -n "$bench_output" ]]; then
+            printf '%s\n' "$bench_output"
+        fi
+        return 1
+    fi
+
+    # Parse out the means from both bench reports. Format mirrors the
+    # `lint_scaling` parser's regex: `<name>` followed by `time:   [lower mean upper]`,
+    # tolerating an optional newline-and-indent break that Criterion sometimes
+    # inserts between the bench name and the time row.
+    local ratio_pct
+    ratio_pct=$(python3 - "$bench_output" <<'PY' 2>/dev/null || true
+import math, re, sys
+
+text = sys.argv[1]
+
+bench_pat = re.compile(
+    r"(deadline_overhead_(?:baseline|with_deadline))\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)"
+)
+
+def to_us(value, unit):
+    v = float(value)
+    if unit == "ns":
+        return v / 1000.0
+    if unit == "µs":
+        return v
+    if unit == "ms":
+        return v * 1000.0
+    raise ValueError(f"unknown unit: {unit}")
+
+results = {}
+for m in bench_pat.finditer(text):
+    name = m.group(1)
+    # Group 4/5 is the mean (middle of the three CI numbers).
+    results[name] = to_us(m.group(4), m.group(5))
+
+baseline = results.get("deadline_overhead_baseline")
+with_deadline = results.get("deadline_overhead_with_deadline")
+if baseline is None or with_deadline is None or baseline <= 0:
+    sys.stderr.write(f"missing samples; saw {sorted(results)}\n")
+    sys.exit(1)
+
+ratio = with_deadline / baseline
+# Convert to integer percent overhead, rounded UP so a fractional
+# overhead just over the gate cannot silently pass.
+overhead_pct = math.ceil((ratio - 1.0) * 100.0)
+# Print baseline/with-deadline for the diagnostic plus the overhead.
+print(f"{baseline:.2f} {with_deadline:.2f} {overhead_pct}")
+PY
+)
+
+    if [[ -z "$ratio_pct" ]]; then
+        echo "bench-check[deadline_overhead]: ERROR — could not extract sample points from criterion output"
+        echo "$bench_output"
+        return 1
+    fi
+
+    # ratio_pct is "<baseline_us> <with_deadline_us> <overhead_pct>"
+    local baseline_mean with_deadline_mean overhead_pct
+    read -r baseline_mean with_deadline_mean overhead_pct <<<"$ratio_pct"
+
+    echo "bench-check[deadline_overhead]: baseline mean = ${baseline_mean} µs, with-deadline mean = ${with_deadline_mean} µs, overhead = ${overhead_pct}%"
+
+    if [[ "$overhead_pct" -gt "$max_ratio_pct" ]]; then
+        echo "bench-check[deadline_overhead]: FAIL — overhead ${overhead_pct}% > ${max_ratio_pct}% threshold"
+        return 1
+    fi
+
+    echo "bench-check[deadline_overhead]: PASS — overhead ${overhead_pct}% <= ${max_ratio_pct}% threshold"
+    return 0
+}
+
 OVERALL_STATUS=0
 check_one_bench "lint_10kb" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
+check_deadline_overhead || OVERALL_STATUS=1
 
 if [[ "$OVERALL_STATUS" -ne 0 ]]; then
     echo "bench-check: FAIL — one or more benches failed their regression / absolute gates"

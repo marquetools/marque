@@ -26,5 +26,9 @@
   "lint_scaling": {
     "r_squared_min": 0.9,
     "_note": "SC-005 linear-scaling gate. R² is the coefficient of determination from an ordinary-least-squares fit of (input_size_bytes, mean_time_µs) across the input-size sweep in `crates/engine/benches/linear_scaling.rs` (currently 1KB → 100KB across seven points). 0.9 is the floor — substantially-better R² is normal for the strict path because per-document work is dominated by linear scanner + parser passes; a value below 0.9 usually indicates either super-linear behavior (a new quadratic somewhere) or pathological noise from the runner. Enforced by `scripts/bench-check.sh::check_linear_scaling`. Choice of input-size scaling vs. worker-count scaling is documented in the script header."
+  },
+  "deadline_overhead": {
+    "max_ratio_pct": 10,
+    "_note": "Spec 005 T018/T019. Compares `deadline_overhead_baseline` (Engine::lint, no deadline) against `deadline_overhead_with_deadline` (Engine::lint_with_options with a 1-hour deadline that never trips). The ratio is computed from Criterion's mean (middle CI value), not the upper-CI bound — clock jitter inflates CI width and would convert noise into false positives on a tight ratio gate. The gate is set at 10% (permissive starting point) rather than the 2% design target from `specs/005-engine-deadlines/spec.md` because the per-candidate Instant::now() cost varies dramatically by host: native Linux x86 vDSO clock_gettime is ~10–30ns and the spec's ≤2% target is reachable, but WSL2's virtualized HV clock is ~500–700ns and observed end-to-end overhead is 7–12% on the same fixture. Tightening this gate to 2% is a follow-up once a CI-runner baseline is captured (mirrors the `MARQUE_BENCH_SKIP_REGRESSION` pattern for the +10% absolute regression gate). Enforced by `scripts/bench-check.sh::check_deadline_overhead`."
   }
 }

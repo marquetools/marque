@@ -47,18 +47,26 @@ pub struct LintResult {
     /// scanner-emitted candidate due to deadline expiry. The
     /// `diagnostics` vector contains every diagnostic produced from
     /// candidates that *were* processed before the abort. Spec §R3.
-    /// **Phase 1:** always `false` — deadline enforcement lands in
-    /// Phase 2.
     pub truncated: bool,
-    /// Number of scanner-emitted candidates the engine processed
-    /// before returning. On a non-truncated pass equals
-    /// `candidates_total`. **Phase 1:** always `0` — Phase 2 wires
-    /// the actual count.
+    /// Number of scanner-emitted candidates the engine started
+    /// processing past the per-candidate deadline check before
+    /// returning. Counted at the top of each candidate iteration
+    /// (after the deadline check, before any per-candidate work),
+    /// so it includes every iteration that survived the cancellation
+    /// boundary — fully-rule-evaluated candidates AND structural
+    /// "early-continue" candidates such as page-break resets,
+    /// empty-span skips, and ambiguous-recognition skips. This
+    /// definition is what makes `candidates_processed ==
+    /// candidates_total` hold on a non-truncated pass; if the
+    /// counter only fired on the rule-loop completion path,
+    /// page-break candidates would silently break that invariant
+    /// on multi-page documents. On a truncated pass,
+    /// `candidates_processed < candidates_total` and the delta is
+    /// the count of candidates the deadline preempted.
     pub candidates_processed: usize,
     /// Total number of scanner-emitted candidates (the
     /// post-scanner, pre-rule-loop count). Populated from the
     /// scanner output regardless of whether the pass completed.
-    /// **Phase 1:** always `0` — Phase 2 wires the actual count.
     pub candidates_total: usize,
 }
 

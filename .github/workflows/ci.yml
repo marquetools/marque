@@ -310,11 +310,14 @@ jobs:
             --test alloc_budget \
             -- --test-threads=1
 
-  # Constitution Principle I + SC-001 / SC-002 / SC-005 — performance
+  # Constitution Principle I + SC-001 / SC-002 / SC-005 + Spec 005 — performance
   # regression gates. Runs `scripts/bench-check.sh`, which executes:
   #   - `lint_10kb` (SC-001 strict-path: Criterion mean-runtime upper CI ≤ 16ms)
   #   - `decoder_10kb_one_mangled_region` (SC-002 decoder-path: Criterion mean-runtime upper CI ≤ 18ms)
   #   - `lint_scaling` (SC-005 linear-scaling R² ≥ 0.9 across input-size sweep)
+  #   - `deadline_overhead` (Spec 005 T018/T019: with-deadline-vs-no-deadline
+  #     overhead ratio under `deadline_overhead.max_ratio_pct` from
+  #     `benches/baseline.json`)
   # The constitution wording uses "p95"; the bench harness implements that
   # commitment as a confidence-interval upper bound around the mean, which
   # is what Criterion's `time: [lower mean upper]` triple measures (a CI of
@@ -327,7 +330,7 @@ jobs:
   # reason every other test-adjacent job has it.
   #
   # Benches use the cargo `bench` profile (release + debuginfo). On the
-  # ubuntu-latest runner a full sweep of three benches takes ~5–8 minutes
+  # ubuntu-latest runner a full sweep of four benches takes ~7–11 minutes
   # warm — well under the routine job timeout. The runner is shared and
   # noisy compared to a dedicated reference machine, which is exactly why
   # `bench-check.sh` enforces both a +10% regression bound AND an absolute
