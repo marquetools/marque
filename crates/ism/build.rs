@@ -434,13 +434,67 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     writeln!(content).unwrap();
 
     // --- Dissemination Controls ---
-    let dissem_entries = parse_cve_xml(&cve_dir.join("CVEnumISMDissem.xml"));
-    assert_required("DissemControl", &dissem_entries, "CVEnumISMDissem.xml");
+    //
+    // ODNI's `CVEnumISMDissem.xml` is a UNION enum that serves both the
+    // ICRM (IC Register and Manual) tooling and the ISOO CUI Registry
+    // tooling. Its own `Source:` field at the top of the XML names two
+    // sources:
+    //
+    //   "1) IC Systems Register and Manual; 2) ISOO CUI Register"
+    //
+    // CAPCO is source 1 only. Source 2 is the ISOO CUI Registry — a
+    // separate marking system that CAPCO-2016 §A explicitly disclaims:
+    //
+    //   "This document does not address internal IC element control
+    //   markings (i.e., **caveats**) or warnings and notices …"
+    //   (CAPCO-2016, line 283 of the vendored manual)
+    //
+    // The XML interleaves: IC Register entries first, then `WAIVED`
+    // (DOD-5205-07-SAP, also out-of-CAPCO-scope), then the ISOO CUI
+    // tail (AC / AWP / DL_ONLY / FED_ONLY / FEDCON / NOCON). The
+    // CAPCO-2016 §A.5 page 38 table lists the IC dissem set with
+    // each entry's banner / portion form; that table is the
+    // authoritative cross-check (see also §H.8 page 161 for the FISA
+    // template, representative of the per-marking detail pages).
+    //
+    // We deny-list the seven non-IC entries by exact CVE value so a
+    // future ICRM revision adding a new IC dissem control flows
+    // through automatically. Adding a new non-IC entry to the deny
+    // list is an intentional edit that reviewers can verify against
+    // the XML's stated `Source:` ordering.
+    //
+    // Tracking issue for the broader "second banner line / caveat
+    // markings" data model: github.com/marquetools/marque#128.
+    const NON_IC_DISSEM_DENY_LIST: &[&str] = &[
+        // DOD-SAP-source — explicitly named in the XML's `Source:`
+        // line as out of CAPCO scope.
+        "WAIVED",
+        // ISOO CUI Registry / handling caveats — out of CAPCO scope
+        // per §A line 283. These are "second banner line" markings
+        // in the ICRM sense; CAPCO-2016 disclaims them explicitly.
+        "AC", "AWP", "DL_ONLY", "FED_ONLY", "FEDCON", "NOCON",
+    ];
+
+    let raw_dissem_entries = parse_cve_xml(&cve_dir.join("CVEnumISMDissem.xml"));
+    assert_required("DissemControl", &raw_dissem_entries, "CVEnumISMDissem.xml");
+    let dissem_entries: Vec<(String, String)> = raw_dissem_entries
+        .into_iter()
+        .filter(|(value, _)| !NON_IC_DISSEM_DENY_LIST.contains(&value.as_str()))
+        .collect();
+    assert_required(
+        "DissemControl (post-deny-list)",
+        &dissem_entries,
+        "CVEnumISMDissem.xml — every entry was filtered out by NON_IC_DISSEM_DENY_LIST",
+    );
     emit_enum(
         &mut content,
         "DissemControl",
         &dissem_entries,
-        "Dissemination controls from CVEnumISMDissem.xml.",
+        "IC dissemination controls from CVEnumISMDissem.xml. \
+         CUI / DOD-SAP / handling-caveat entries are deny-listed in \
+         build.rs per CAPCO-2016 §A line 283 (caveats are out of \
+         CAPCO scope) and the XML's own Source: field naming \
+         IC Register vs ISOO CUI Registry as separate sources.",
     );
 
     // --- SAR Identifiers ---
