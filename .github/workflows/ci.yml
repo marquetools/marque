@@ -63,6 +63,20 @@ jobs:
       - name: cargo nextest
         run: cargo nextest run --workspace --profile ci
 
+      # Phase 4 (US2) regression suites are file-level gated on
+      # `decoder-harness` and `corpus-override` features that are NOT
+      # in any default feature set. Without this explicit invocation
+      # the SC-004 always-on regression floor (decoder_accuracy.rs),
+      # the corpus-override audit-trail invariants (corpus_override.rs +
+      # cli_corpus_override.rs), and the decoder diagnostic harness
+      # (decoder_diagnostic.rs) are all dormant. Run them with both
+      # features enabled.
+      - name: cargo nextest (Phase 4 gated suites)
+        run: |
+          cargo nextest run --profile ci \
+            -p marque-engine -p marque \
+            --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
   wasm:
     name: WASM build
     needs: check
