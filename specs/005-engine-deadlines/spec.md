@@ -189,7 +189,7 @@ pub struct LintResult {
 }
 ```
 
-`candidates_total` is the count produced by the scanner pass (which runs to completion before the per-candidate rule loop starts — scanner is bounded by document length and is not subject to mid-document abort in this design). `candidates_processed` is the number that survived their full rule pass before abort. The pair lets a renderer compute "we covered 47% of the document."
+`candidates_total` is the count produced by the scanner pass (which runs to completion before the per-candidate rule loop starts — scanner is bounded by document length and is not subject to mid-document abort in this design). `candidates_processed` is the number that survived the per-candidate deadline check at the top of each loop iteration — counted ABOVE the early-continue paths (page-break reset, empty-span skip, ambiguous-recognition skip) so that on a non-truncated pass `candidates_processed == candidates_total`. (If the counter only fired on the rule-loop completion path, structural early-continue candidates like page-breaks would silently break that invariant on multi-page documents.) The pair lets a renderer compute "we covered 47% of the document."
 
 If you prefer (a) symmetric truncated-flag everywhere — cleaner API, weaker compliance gate — I'll switch the recommendation. The audit-integrity argument is the load-bearing one for (c).
 

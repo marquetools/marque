@@ -400,8 +400,10 @@ PY
 # check_deadline_overhead
 #
 # Spec 005 T018 / T019: enforces that the deadline-aware lint path adds
-# ≤ `deadline_overhead.max_ratio` overhead vs the unbounded path on the
-# 10 KB representative input. The two benches live in
+# ≤ `deadline_overhead.max_ratio_pct` overhead vs the unbounded path on
+# the 10 KB representative input. (The threshold key is integer-percent;
+# both this script and `benches/baseline.json` use `max_ratio_pct`.) The
+# two benches live in
 # `crates/engine/benches/deadline_overhead.rs` and are named
 # `deadline_overhead_baseline` (no deadline) and
 # `deadline_overhead_with_deadline` (1-hour deadline that never trips).

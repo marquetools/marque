@@ -486,11 +486,25 @@ fn fix_with_deadline_during_fix_call_returns_deadline_exceeded() {
     // microseconds — there is simply no margin window where
     // `deadline > lint_time && deadline < lint_time + apply_time`.
     let eng = engine();
-    let src = many_banners_with_fixes(20_000);
+    // Bounded fixture size — large enough that `fix` takes long
+    // enough on every machine class for a half-baseline deadline
+    // to land mid-call, small enough that the test does not bloat
+    // the suite runtime in debug/CI. 4_000 banners produces ~50KB
+    // of source and ~4_000 fix proposals; on slow CI runners this
+    // typically runs in 50–200ms total (warmup + baseline +
+    // bounded run), versus the prior 20K-banner version which
+    // could spend several seconds in the apply loop alone.
+    let src = many_banners_with_fixes(4_000);
 
-    // Warm up caches so the baseline measurement is representative of
-    // the steady-state cost the deadline budget must respect.
-    let _ = eng.fix(&src, FixMode::Apply);
+    // Warm caches WITHOUT paying the full apply cost up front:
+    // the lint pass on the real fixture is what dominates the
+    // baseline below, so warming lint is sufficient. A separate
+    // tiny `fix(Apply)` warm-up exercises the apply codepath
+    // (so the splice and audit-record paths are also warm)
+    // without scaling that warm-up cost with the test fixture.
+    let _ = eng.lint(&src);
+    let warmup_src = many_banners_with_fixes(128);
+    let _ = eng.fix(&warmup_src, FixMode::Apply);
 
     let baseline_start = Instant::now();
     let _ = eng.fix(&src, FixMode::Apply);
