@@ -89,10 +89,12 @@ check every box on the first read should request changes.
    crate parses its primary source (XSD, JSON registry, structured
    manual) at build time and emits binary valid/invalid predicates
    into `OUT_DIR/`. Hand-written `Rule` implementations consume those
-   predicates. The active source version is pinned in
-   `[package.metadata.marque] <scheme>-schema-version` in the crate's
-   `Cargo.toml`. Bumps are intentional, never silent. The crate stays
-   WASM-safe (no runtime I/O, no format adapters).
+   predicates. The active source version is pinned explicitly in
+   `[package.metadata.marque]` using a scheme-specific key (e.g.,
+   `ism-schema-version` for the `marque-ism` crate today; future
+   crates pick a parallel key for their own primary source). Bumps
+   are intentional, never silent. The crate stays WASM-safe (no
+   runtime I/O, no format adapters).
 
 4. **Every new vocabulary entry cites a verified passage in its
    scheme's primary source.** A `citation` field with the right
@@ -127,17 +129,31 @@ leave the workspace in a buildable, test-passing state.
 Do not skip hooks (`--no-verify`) and do not bypass signing
 (`--no-gpg-sign`). If a hook fails, fix the underlying issue.
 
-## License sign-off
+## Licensing and contributions
 
-All `marque` source code is licensed under the **Marque License 1.0**
-(`LicenseRef-MarqueLicense-1.0`). See `LICENSE.md` at the workspace
-root and the constitution's Tech Stack section for the rationale
-behind retiring the prior permissive-core / commercial-integrations
-split.
+All `marque` source code is distributed under the terms in
+[`LICENSE.md`](./LICENSE.md) (Marque License 1.0,
+`LicenseRef-MarqueLicense-1.0`). The constitution's Tech Stack
+section records the rationale behind retiring the prior
+permissive-core / commercial-integrations split.
 
-By submitting a contribution you agree the contribution is licensed
-under the Marque License 1.0 and that you have the right to make the
-contribution under those terms.
+**Contributions are governed by [`CLA.md`](./CLA.md), not by a
+blanket "every contribution lands under ML-1.0" claim.** `CLA.md`
+covers two paths:
+
+- **Official U.S. Government contributions** — government employees
+  and qualifying federal contractors take a public-domain path and
+  cannot agree to the CLA. The required statement and the procedure
+  are spelled out in `CLA.md` under "Official Contributions"; Knitli
+  redistributes those contributions under the Marque License (and
+  any other license at Knitli's choice, since public-domain works
+  are freely relicensable) and applies a "Public Domain" label so
+  other government projects can find them.
+- **Commercial and unofficial contributions** — by submitting, you
+  agree to the CLA's terms (Knitli may use, modify, and relicense
+  your contribution; you grant a patent license; you represent that
+  you have the right to contribute). Read `CLA.md` end-to-end before
+  opening a non-trivial PR.
 
 Marque crates may depend on permissively-licensed crates (Apache-2.0,
 MIT, BSD-2/3-Clause, ISC, Unicode-3.0, Zlib, CC0-1.0, MIT-0). They

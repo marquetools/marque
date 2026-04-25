@@ -143,11 +143,11 @@ SAR (Special Access Required) markings are modeled structurally, not as a CVE-de
 - `AppliedFix` (`marque-rules`) — a promoted `FixProposal` with `timestamp`, `classifier_id`, `dry_run`, `input`. Constructed only by `Engine::fix`. Serves as the audit record.
 - `RuleContext` (`marque-rules`) — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`). Also carries an optional `Arc<PageContext>` for banner/CAB candidates so banner-validation rules can compare the observed banner against the composite expected from all preceding portions.
 - `PageContext` (`marque-ism`) — page-level aggregation of portion markings: `max()` for classification, union for SCI/SAR/dissem controls, intersection (with NOFORN supersession) for `REL TO`, max-date for `declassify_on`. The engine builds this incrementally during `lint()` and hands banner/CAB rules an `Arc<PageContext>` via `RuleContext`.
-- `Recognizer<S>` (`marque-scheme`) — pluggable first stage of the engine. Turns a byte slice + `ParseContext` into `Parsed<S::Marking>`. Two implementations ship: `StrictRecognizer` (zero-FP header-only, the existing structural parser) and `DecoderRecognizer` (Phase D probabilistic / bag-of-tokens, dispatched via `--deep-scan`). Domain-neutral: depends only on the scheme's `Marking` and the `Parsed` / `Candidate` / `EvidenceFeature` primitives in `marque-scheme::ambiguity`.
+- `Recognizer<S>` (trait in `marque-scheme`; impls in `marque-engine`) — pluggable first stage of the engine. Turns a byte slice + `ParseContext` into `Parsed<S::Marking>`. The trait lives in `marque_scheme::recognizer`; the two shipped concrete implementations are `marque_engine::StrictRecognizer` (zero-FP header-only, the existing structural parser) and `marque_engine::DecoderRecognizer` (Phase D probabilistic / bag-of-tokens, dispatched via `--deep-scan`). Trait is domain-neutral: depends only on the scheme's `Marking` and the `Parsed` / `Candidate` / `EvidenceFeature` primitives in `marque_scheme::ambiguity`.
 - `Vocabulary<S>` (`marque-scheme`) — per-token metadata surface (authority, owner/producer, point of contact, deprecation, URN, schema version, portion/banner forms). Returns `&'static` data, zero runtime allocation (SC-008). Implemented for `CapcoScheme` from build-time-generated tables; rules read this instead of hardcoding metadata.
 - `Codec<S>` (`marque-scheme`) — pinned trait surface for grammar serialization (encode/decode round-trip). No concrete impls in-tree; Phase G lands XML and JSON. `Codec::decode` returns `Parsed<S::Marking>` so ambiguity preserves through the codec layer (FR-019, SC-010).
 - `Confidence` + `FeatureId` (`marque-rules`) — Phase D audit-provenance payload attached to every `FixProposal`. Carries `recognition` and `rule` confidence axes (combined as their product), optional `region` and `runner_up_ratio`, and a closed list of named `FeatureId` contributions. `f32` at the audit boundary (`f64` internally in the decoder). Adding a `FeatureId` variant requires a coordinated bump of `MARQUE_AUDIT_SCHEMA`.
-- Topological scheduler (`marque-engine::scheduler`) — runs Kahn's algorithm over `PageRewrite::reads` / `writes` once at `Engine::new` to produce a deterministic rewrite order (writers before readers). Cycles fail with `EngineConstructionError::RewriteCycle`; `Custom` rewrites with empty axis annotations fail with `UnannotatedCustomAxes`. The cached order drives per-document evaluation without re-sorting.
+- Topological scheduler (`marque_engine::scheduler`) — runs Kahn's algorithm over `PageRewrite::reads` / `writes` once at `Engine::new` to produce a deterministic rewrite order (writers before readers). Cycles fail with `EngineConstructionError::RewriteCycle`; `Custom` rewrites with empty axis annotations fail with `UnannotatedCustomAxes`. The cached order drives per-document evaluation without re-sorting.
 
 ### Architectural Invariants (do not bypass)
 
@@ -246,9 +246,9 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 54 CAPCO ru
 **Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
-- Rust 1.89+ (edition 2024) — pinned by constitution Tech Stack
+- Rust 1.85+ (edition 2024) — `rust-version = "1.85"` in workspace `Cargo.toml`; constitution Tech Stack pins the floor
 - `memchr` 2 — SIMD candidate detection (Phase 1 scanner)
-- `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections; `daachorse` on WASM per Tech Stack
+- `aho-corasick` 1 — token matching (Phase 2 parser) + pre-scanner text corrections; used on both native and WASM. The constitution Tech Stack reserves `daachorse` for the WASM target as a future binary-size optimization, not yet wired
 - `quick-xml` — build-time ODNI XSD/Schematron parsing
 - `serde` + `serde_json` — build-time JSON codepath for per-term vocabulary data (runtime deserialization not required; data is emitted as `&'static` const tables by `build.rs`)
 - `phf` — compile-time replacement lookup (perfect hash)
