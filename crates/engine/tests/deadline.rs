@@ -37,6 +37,65 @@ fn engine() -> Engine {
 // exercise the rule loop, not just the empty-document path.
 const TEST_SRC: &[u8] = b"SECRET//NOFORN\n\n(S//NF) Sample portion that triggers rules.\n";
 
+/// Compare two `FixResult`s field-by-field for shim-parity tests.
+///
+/// `FixResult` (and the types it contains) does not derive `PartialEq`
+/// — `AppliedFix::timestamp` and `Confidence`'s f32 axes can drift in
+/// ways that aren't load-bearing. This helper asserts equality on the
+/// fields that *should* match between two equivalent code paths
+/// (source bytes, audit-record content, remaining diagnostics) so a
+/// regression that produces the same counts but different entries
+/// fails the test.
+fn assert_fix_results_match_byte_for_byte(
+    actual: &marque_engine::FixResult,
+    expected: &marque_engine::FixResult,
+    label: &str,
+) {
+    assert_eq!(actual.source, expected.source, "{label}: source bytes");
+    assert_eq!(
+        actual.applied.len(),
+        expected.applied.len(),
+        "{label}: applied count"
+    );
+    for (i, (a, e)) in actual
+        .applied
+        .iter()
+        .zip(expected.applied.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            a.proposal.rule, e.proposal.rule,
+            "{label}: applied[{i}].rule"
+        );
+        assert_eq!(
+            a.proposal.span, e.proposal.span,
+            "{label}: applied[{i}].span"
+        );
+        assert_eq!(
+            a.proposal.replacement, e.proposal.replacement,
+            "{label}: applied[{i}].replacement"
+        );
+        assert_eq!(a.source, e.source, "{label}: applied[{i}].source");
+        assert_eq!(a.dry_run, e.dry_run, "{label}: applied[{i}].dry_run");
+    }
+    assert_eq!(
+        actual.remaining_diagnostics.len(),
+        expected.remaining_diagnostics.len(),
+        "{label}: remaining count"
+    );
+    for (i, (a, e)) in actual
+        .remaining_diagnostics
+        .iter()
+        .zip(expected.remaining_diagnostics.iter())
+        .enumerate()
+    {
+        assert_eq!(a.rule, e.rule, "{label}: remaining[{i}].rule");
+        assert_eq!(a.severity, e.severity, "{label}: remaining[{i}].severity");
+        assert_eq!(a.span, e.span, "{label}: remaining[{i}].span");
+        assert_eq!(a.message, e.message, "{label}: remaining[{i}].message");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // T005 — default options carry no deadline / no threshold override
 // ---------------------------------------------------------------------------
@@ -83,6 +142,23 @@ fn lint_shim_matches_lint_with_options_default() {
         assert_eq!(a.span, b.span);
         assert_eq!(a.message, b.message);
         assert_eq!(a.citation, b.citation);
+        // Catch divergence in fix proposals — the shim could produce
+        // identical metadata but mismatched replacements / spans /
+        // sources without this. `FixProposal` does not derive `PartialEq`
+        // (the Confidence axes are f32), so compare the load-bearing
+        // fields explicitly.
+        assert_eq!(
+            a.fix.is_some(),
+            b.fix.is_some(),
+            "shim vs _with_options fix presence differs for {:?}",
+            a.rule
+        );
+        if let (Some(a_fix), Some(b_fix)) = (&a.fix, &b.fix) {
+            assert_eq!(a_fix.rule, b_fix.rule);
+            assert_eq!(a_fix.span, b_fix.span);
+            assert_eq!(a_fix.replacement, b_fix.replacement);
+            assert_eq!(a_fix.source, b_fix.source);
+        }
     }
 
     // Phase 1 keeps the new fields at their default zero values for
@@ -112,11 +188,10 @@ fn fix_with_threshold_ok_matches_fix_with_options_threshold_override() {
         .fix_with_options(TEST_SRC, FixMode::DryRun, &opts)
         .expect("0.5 is in range");
 
-    assert_eq!(via_threshold.source, via_options.source);
-    assert_eq!(via_threshold.applied.len(), via_options.applied.len());
-    assert_eq!(
-        via_threshold.remaining_diagnostics.len(),
-        via_options.remaining_diagnostics.len()
+    assert_fix_results_match_byte_for_byte(
+        &via_threshold,
+        &via_options,
+        "fix_with_threshold vs fix_with_options",
     );
 }
 
@@ -125,20 +200,32 @@ fn fix_with_threshold_invalid_threshold_path_matches_fix_with_options() {
     // The error branch: both entry points reject NaN as
     // `InvalidThreshold(_)`. `fix_with_threshold` returns the bare
     // `InvalidThreshold` (its public signature); `fix_with_options`
-    // wraps it in `EngineError::InvalidThreshold`.
+    // wraps it in `EngineError::InvalidThreshold`. Beyond the variant
+    // shape, the NaN payload itself MUST survive through both paths
+    // — a regression that swallowed the offending value (e.g.,
+    // re-mapping to a sentinel like 0.0 in the wrap layer) would
+    // change the user-facing diagnostic and the error's `Display`
+    // string. Destructuring pins it.
     let eng = engine();
     let nan = f32::NAN;
 
     let via_threshold = eng.fix_with_threshold(TEST_SRC, FixMode::DryRun, Some(nan));
-    assert!(matches!(via_threshold, Err(InvalidThreshold(_))));
+    match via_threshold {
+        Err(InvalidThreshold(value)) => assert!(value.is_nan()),
+        other => panic!("expected Err(InvalidThreshold(NaN)), got {other:?}"),
+    }
 
     let mut opts = FixOptions::default();
     opts.threshold_override = Some(nan);
     let via_options = eng.fix_with_options(TEST_SRC, FixMode::DryRun, &opts);
-    assert!(matches!(
-        via_options,
-        Err(marque_engine::EngineError::InvalidThreshold(_))
-    ));
+    match via_options {
+        Err(marque_engine::EngineError::InvalidThreshold(InvalidThreshold(value))) => {
+            assert!(value.is_nan());
+        }
+        other => panic!(
+            "expected Err(EngineError::InvalidThreshold(InvalidThreshold(NaN))), got {other:?}"
+        ),
+    }
 }
 
 #[test]
@@ -151,10 +238,9 @@ fn fix_shim_matches_fix_with_options_default() {
         .fix_with_options(TEST_SRC, FixMode::DryRun, &FixOptions::default())
         .expect("default options cannot fail");
 
-    assert_eq!(via_shim.source, via_options.source);
-    assert_eq!(via_shim.applied.len(), via_options.applied.len());
-    assert_eq!(
-        via_shim.remaining_diagnostics.len(),
-        via_options.remaining_diagnostics.len()
+    assert_fix_results_match_byte_for_byte(
+        &via_shim,
+        &via_options,
+        "fix shim vs fix_with_options(default)",
     );
 }
