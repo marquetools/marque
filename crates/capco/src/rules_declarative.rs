@@ -109,7 +109,7 @@ static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 /// from the earlier `validate()`-plus-filter pattern:
 ///
 /// - `evaluate_named_constraint` takes `&IsmAttributes` directly, so
-///   the wrapper doesn't have to `CapcoMarking(attrs.clone())` to
+///   the wrapper doesn't have to `CapcoMarking::new(attrs.clone())` to
 ///   cross the trait boundary.
 /// - It finds the constraint by name (linear scan of ~13 entries)
 ///   and dispatches only that one predicate. The old `validate()`

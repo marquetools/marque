@@ -92,7 +92,7 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                 if leading_ws != 0 {
                     shift_token_spans(&mut parsed.attrs, leading_ws);
                 }
-                Parsed::Unambiguous(CapcoMarking(parsed.attrs))
+                Parsed::Unambiguous(CapcoMarking::new(parsed.attrs))
             }
             Err(_) => Parsed::Ambiguous {
                 candidates: Vec::new(),

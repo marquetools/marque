@@ -87,6 +87,7 @@
 
 use std::collections::BTreeSet;
 
+use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
@@ -94,7 +95,7 @@ use marque_ism::{
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
-use marque_rules::confidence::FeatureId;
+use marque_rules::confidence::{FeatureContribution, FeatureId};
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -231,7 +232,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //     canonicalizations, but must drop them before the
             //     marking leaves the decoder.
             parsed.attrs.token_spans = Box::new([]);
-            let marking = CapcoMarking(parsed.attrs);
+            let marking = CapcoMarking::new(parsed.attrs);
 
             // 3c. The strict parser is lenient — it accepts any
             //     `BYTES//BYTES` shape and emits an `IsmAttributes`
@@ -267,6 +268,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 marking,
                 prior,
                 posterior,
+                canonical_bytes: attempt.bytes.into_boxed_slice(),
                 features: attempt.features,
             });
         }
@@ -286,8 +288,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         scored.truncate(K_MAX_CANDIDATES);
 
         // 6. Decision: top-over-runner-up log margin on the posterior.
-        let top = &scored[0];
-        let top_score = top.posterior;
+        let top_score = scored[0].posterior;
         let runner_up_score = scored
             .get(1)
             .map(|c| c.posterior)
@@ -295,7 +296,32 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         let log_margin = top_score - runner_up_score;
 
         if scored.len() == 1 || log_margin >= UNAMBIGUOUS_LOG_MARGIN {
-            return Parsed::Unambiguous(top.marking.clone());
+            // Move the top candidate out so we can hand `canonical_bytes`
+            // and `features` directly to provenance without an extra
+            // clone — the marking carries the heaviest payload and we
+            // only need it once.
+            let top = scored.swap_remove(0);
+            let runner_up_ratio = if runner_up_score.is_finite() {
+                Some(log_margin.exp())
+            } else {
+                None
+            };
+            let mut marking = top.marking;
+            marking.1 = Some(DecoderProvenance {
+                canonical_bytes: top.canonical_bytes,
+                posterior: top.posterior,
+                runner_up_ratio,
+                features: top
+                    .features
+                    .into_iter()
+                    .map(|f| FeatureContribution {
+                        id: f.id,
+                        delta: f.delta,
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            });
+            return Parsed::Unambiguous(marking);
         }
 
         // Ambiguous: return the whole K-truncated set with per-feature
@@ -339,6 +365,13 @@ struct ScoredCandidate {
     /// comparisons inside the decoder; not stored in the emitted
     /// `Candidate` record.
     posterior: f32,
+    /// Canonical byte string the strict parser accepted for this
+    /// candidate. Threaded into [`DecoderProvenance::canonical_bytes`]
+    /// when this candidate wins the Unambiguous collapse, so the
+    /// engine can emit a `FixSource::DecoderPosterior` rewrite from
+    /// the original mangled bytes to this canonical form (Phase 4
+    /// PR-4b, T068).
+    canonical_bytes: Box<[u8]>,
     features: Vec<FeatureEntry>,
 }
 
@@ -1270,7 +1303,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"SECRET//NOFORN")
             .expect("SECRET//NOFORN must parse");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
 
         let features = vec![
             FeatureEntry {
@@ -1326,7 +1359,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(SERCET//NOFORN)")
             .expect("strict parser should accept (SERCET//NOFORN) leniently");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             is_nontrivial_marking(&marking),
             "NOFORN survives as a dissem control → marking is nontrivial"
@@ -1350,7 +1383,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//NF)")
             .expect("canonical portion must strict-parse");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             strict_parse_is_complete(&marking, MarkingType::Portion),
             "canonical (S//NF) must be accepted as complete; attrs = {:?}",
@@ -1373,7 +1406,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//FRBN)")
             .expect("strict parser accepts (S//FRBN) leniently");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         // `S` resolved, so classification is Some — but the
         // Unknown-tail check still fires.
         assert!(
@@ -1399,7 +1432,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"FROBNITZ//WIBBLE")
             .expect("strict parser should accept arbitrary bytes");
-        let marking = CapcoMarking(parsed.attrs);
+        let marking = CapcoMarking::new(parsed.attrs);
         assert!(
             !is_nontrivial_marking(&marking),
             "empty marking must be filtered"

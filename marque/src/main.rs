@@ -120,6 +120,17 @@ struct CommonOptions {
     /// with input paths and with `fix`.
     #[arg(long)]
     explain_config: bool,
+
+    /// Enable the Phase D probabilistic decoder for mangled-marking
+    /// recovery (typo / token-reorder / superseded-token / case
+    /// canonicalization). Without this flag the engine runs strict-only
+    /// for SC-001 interactive-authoring latency. With it set, the
+    /// strict path still runs first; the decoder fallback only fires
+    /// when the strict result is incomplete or zero-candidate, and any
+    /// fix it produces carries `FixSource::DecoderPosterior` plus a
+    /// non-trivial `Confidence` record (FR-011 / T064).
+    #[arg(long)]
+    deep_scan: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -264,6 +275,13 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
             eprintln!("error: failed to construct engine: {err}");
             return err.exit_code();
         }
+    };
+    // Phase 4 PR-4b — `--deep-scan` opt-in installs the decoder fallback.
+    // Strict-only by default keeps SC-001 latency intact.
+    let engine = if common.deep_scan {
+        engine.with_deep_scan()
+    } else {
+        engine
     };
     let format: render::Format = common
         .format
@@ -437,6 +455,12 @@ fn run_fix(
             eprintln!("error: failed to construct engine: {err}");
             return err.exit_code();
         }
+    };
+    // Phase 4 PR-4b — `--deep-scan` opt-in installs the decoder fallback.
+    let engine = if common.deep_scan {
+        engine.with_deep_scan()
+    } else {
+        engine
     };
 
     let engine_mode = if dry_run {

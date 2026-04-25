@@ -436,6 +436,17 @@ struct CachedEngine {
 
 thread_local! {
     static ENGINE_CACHE: RefCell<Option<CachedEngine>> = const { RefCell::new(None) };
+
+    /// Single-instance cache for the deep-scan engine.
+    ///
+    /// Phase 4 PR-4b T067a — `lint_deep_scan` / `fix_deep_scan` take ONLY
+    /// the byte buffer (FR-013a + Gate 2 enforcement: no runtime config
+    /// reaches the WASM artifact). Because the deep-scan engine has no
+    /// caller-supplied config to invalidate against, we cache one instance
+    /// for the lifetime of the WASM module rather than rebuild per call.
+    /// Construction installs `StrictOrDecoderRecognizer`, which carries
+    /// the compile-time-baked corpus priors from `marque-capco::priors`.
+    static DEEP_SCAN_ENGINE_CACHE: RefCell<Option<Engine>> = const { RefCell::new(None) };
 }
 
 /// Execute `f` against a cached `Engine`, rebuilding only when `config_json`
@@ -477,6 +488,38 @@ fn with_engine<T>(
         }
 
         f(&cache.as_ref().unwrap().engine)
+    })
+}
+
+/// Execute `f` against the cached deep-scan engine, building it on first
+/// access. Phase 4 PR-4b T067a — single-instance cache because
+/// `lint_deep_scan` / `fix_deep_scan` accept no runtime config (Gate 2).
+///
+/// Build configuration: `Config::default()` + `default_ruleset()` +
+/// `default_scheme()` + `WasmClock` + `with_deep_scan()`. The deep-scan
+/// recognizer reads its corpus priors from compile-time-baked
+/// `marque-capco::priors` tables — no runtime path can override them
+/// (FR-013a / Gate 2 invariant).
+fn with_deep_scan_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Result<T, String> {
+    DEEP_SCAN_ENGINE_CACHE.with(|cell| {
+        let mut cache = cell.try_borrow_mut().map_err(|_| {
+            "deep-scan engine cache is locked (likely a prior WASM panic poisoned the RefCell)"
+                .to_string()
+        })?;
+
+        if cache.is_none() {
+            let engine = Engine::with_clock(
+                Config::default(),
+                marque_engine::default_ruleset(),
+                marque_engine::default_scheme(),
+                Box::new(WasmClock),
+            )
+            .map_err(|e| format!("deep-scan engine construction failed: {e}"))?
+            .with_deep_scan();
+            *cache = Some(engine);
+        }
+
+        f(cache.as_ref().unwrap())
     })
 }
 
@@ -556,6 +599,85 @@ pub fn fix_native(
 
         // Serialize directly into a byte buffer to avoid serde_json::to_string's
         // intermediate String allocation.
+        let mut buf = Vec::with_capacity(1024);
+        serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
+        String::from_utf8(buf).map_err(|e| e.to_string())
+    })
+}
+
+/// Lint a byte buffer with the Phase D probabilistic decoder enabled.
+///
+/// Phase 4 PR-4b T067a. Returns NDJSON conforming to
+/// `contracts/diagnostic.json` byte-for-byte parity with the CLI's
+/// `marque check --deep-scan --format json` (SC-008 extended to the
+/// decoder path; T067b parity test pins this).
+///
+/// # Gate-2 contract (FR-013a / `cli-server-wasm-gates.md` Gate 2)
+///
+/// This entry point accepts ONLY the byte buffer. There is no
+/// `config_json` parameter, no threshold parameter, no priors override
+/// parameter — by design. The decoder reads its corpus priors from
+/// compile-time-baked tables in `marque-capco::priors`; a WASM caller
+/// cannot redirect, override, or tamper with those priors at runtime.
+/// This is the security boundary described in
+/// `docs/security/WHITEPAPER.md` §10.3 and the foundational plan: the
+/// WASM artifact is a closed-box recognizer.
+pub fn lint_deep_scan_native(bytes: &[u8]) -> Result<String, String> {
+    with_deep_scan_engine(|engine| {
+        let result = engine.lint(bytes);
+        let mut buf = Vec::with_capacity(result.diagnostics.len() * 256);
+        for d in &result.diagnostics {
+            serde_json::to_writer(&mut buf, &diagnostic_to_json(d)).map_err(|e| e.to_string())?;
+            buf.push(b'\n');
+        }
+        String::from_utf8(buf).map_err(|e| e.to_string())
+    })
+}
+
+/// Fix a byte buffer with the Phase D probabilistic decoder enabled.
+///
+/// Phase 4 PR-4b T067a. Returns the same JSON envelope as [`fix_native`]
+/// (`fixed_text`, `applied`, `remaining`). The deep-scan recognizer is
+/// installed via `Engine::with_deep_scan`; mangled-marking
+/// recoveries surface as `FixSource::DecoderPosterior` audit records.
+///
+/// # Gate-2 contract
+///
+/// As with [`lint_deep_scan_native`], the only argument is the byte
+/// buffer. The confidence threshold defaults to `Config::default()`'s
+/// value (the same threshold the CLI uses without `--confidence-threshold`).
+/// A caller that needs a different threshold must use the strict-path
+/// [`fix_native`] entry point on a separate (non-deep-scan) build.
+pub fn fix_deep_scan_native(bytes: &[u8]) -> Result<String, String> {
+    with_deep_scan_engine(|engine| {
+        let result = engine.fix(bytes, FixMode::Apply);
+        let fixed_text = String::from_utf8(result.source)
+            .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
+
+        let applied: Vec<Box<serde_json::value::RawValue>> = result
+            .applied
+            .iter()
+            .map(serialize_applied_fix)
+            .collect::<Result<_, _>>()?;
+
+        let remaining: Vec<Box<serde_json::value::RawValue>> = result
+            .remaining_diagnostics
+            .iter()
+            .map(|d| {
+                let mut buf = Vec::with_capacity(256);
+                serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                    .map_err(|e| e.to_string())?;
+                let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
+                serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
+            })
+            .collect::<Result<_, _>>()?;
+
+        let fix_result = FixResultJson {
+            fixed_text,
+            applied,
+            remaining,
+        };
+
         let mut buf = Vec::with_capacity(1024);
         serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
         String::from_utf8(buf).map_err(|e| e.to_string())
@@ -687,6 +809,37 @@ pub fn fix(text: &str, threshold: f32, config_json: Option<String>) -> Result<St
 #[wasm_bindgen]
 pub fn lint_batch(entries_json: &str, config_json: Option<String>) -> Result<String, JsValue> {
     lint_batch_native(entries_json, config_json).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Lint a byte buffer with the Phase D probabilistic decoder enabled.
+///
+/// Phase 4 PR-4b T067a / FR-013a / `cli-server-wasm-gates.md` Gate 2.
+/// The signature accepts **only** the byte buffer — no config, no
+/// threshold, no priors override. The decoder uses compile-time-baked
+/// corpus priors from `marque-capco::priors`. T067c pins this
+/// no-extra-parameter contract at compile time.
+///
+/// Returns NDJSON conforming to `contracts/diagnostic.json`. Mangled
+/// markings recovered via the decoder surface as synthetic `R001
+/// decoder-recognition` diagnostics; their fix records carry
+/// `source = DecoderPosterior`.
+#[wasm_bindgen]
+pub fn lint_deep_scan(bytes: &[u8]) -> Result<String, JsValue> {
+    lint_deep_scan_native(bytes).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Fix a byte buffer with the Phase D probabilistic decoder enabled.
+///
+/// Phase 4 PR-4b T067a / FR-013a / `cli-server-wasm-gates.md` Gate 2.
+/// As with [`lint_deep_scan`], the signature accepts only the byte
+/// buffer; the decoder cannot be reconfigured at runtime. The
+/// confidence threshold is the engine default (`Config::default()`).
+///
+/// Returns a JSON object with `fixed_text`, `applied` (audit records),
+/// and `remaining` (diagnostics whose fix was below threshold).
+#[wasm_bindgen]
+pub fn fix_deep_scan(bytes: &[u8]) -> Result<String, JsValue> {
+    fix_deep_scan_native(bytes).map_err(|e| JsValue::from_str(&e))
 }
 
 // ---------------------------------------------------------------------------
