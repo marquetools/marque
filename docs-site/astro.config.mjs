@@ -32,7 +32,7 @@ export default defineConfig({
     // Vendored locally under `src/assets/Fira-Code/font/` (SIL OFL 1.1) so the
     // build does not depend on `api.fontsource.org` / `cdn.jsdelivr.net` at
     // build time. See `src/assets/Fira-Code/README.md` and whitepaper §8.6
-    // (gap register #18, closed in v0.4).
+    // (gap register #18, closed in v0.6).
     {
       provider: fontProviders.local(),
       name: 'Fira Code',

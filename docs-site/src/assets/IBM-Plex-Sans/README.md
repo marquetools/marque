@@ -45,7 +45,7 @@ Fontsource API and the jsDelivr CDN at build time. Vendoring the
 font files removes the build-time CDN dependency entirely — the build
 is fully reproducible offline, and the bytes used in production are
 the bytes committed to this repo. See whitepaper §8.6 (gap register
-row 18 in v0.3 / closed in v0.4).
+row 18, closed in v0.6).
 
 ## License
 
