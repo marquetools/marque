@@ -12,16 +12,24 @@
 //! parameter to either export fails to compile here, with a type-error
 //! pointing at the offending signature.
 //!
-//! The check covers the native-callable form (`lint_deep_scan_native`
-//! / `fix_deep_scan_native`); the wasm-bindgen exports (`lint_deep_scan`
-//! / `fix_deep_scan`) require the wasm32 target to instantiate, so
-//! their signatures are guarded inside `#[cfg(target_arch = "wasm32")]`
-//! below. The native-callable forms are what every parity test and
-//! every internal caller invokes, so the signature pin on those is
-//! load-bearing.
+//! ## Scope: native-callable forms only
 //!
-//! Native-only (this file is not built into the WASM artifact); the
-//! `wasm32`-gated block exists only as a compile-time signature pin.
+//! The pin covers the native-callable surface
+//! (`lint_deep_scan_native` / `fix_deep_scan_native`), which is what
+//! every internal caller and parity test goes through. The `#[wasm_bindgen]`
+//! exports `lint_deep_scan` / `fix_deep_scan` are thin wrappers around
+//! those natives that adapt the error type from `String` to `JsValue`
+//! and forward the byte buffer unchanged — adding a parameter to a
+//! wasm-bindgen export without first adding it to its native peer is
+//! not an addition pattern any reasonable refactor would take.
+//!
+//! Pinning the wasm-bindgen signatures directly would require the
+//! wasm32 target to instantiate `JsValue` (and `wasm-bindgen`'s proc
+//! macro), so the file is `#![cfg(not(target_arch = "wasm32"))]`. The
+//! tighter end-to-end signature gate for the wasm-bindgen layer lives
+//! in the wasm-pack build itself (CI runs `wasm-pack build --target
+//! web --release`, which fails compilation if the bindgen-export
+//! signatures drift from valid `JsValue`-bearing forms).
 
 #![cfg(not(target_arch = "wasm32"))]
 

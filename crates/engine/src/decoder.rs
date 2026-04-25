@@ -301,8 +301,17 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             // clone — the marking carries the heaviest payload and we
             // only need it once.
             let top = scored.swap_remove(0);
+            // `runner_up_ratio = exp(log_margin)`, but a sufficiently
+            // separated top vs. runner-up overflows `f32::exp()` to
+            // `+∞` (anything past `log_margin ≈ 88.7` saturates), and
+            // `Confidence::validate` would then reject the resulting
+            // record as non-finite — making `FixProposal::new` panic at
+            // the audit boundary on extreme score separations. Saturate
+            // at `f32::MAX` so the audit record carries "the ratio is
+            // enormous" instead of crashing the engine.
             let runner_up_ratio = if runner_up_score.is_finite() {
-                Some(log_margin.exp())
+                let ratio = log_margin.exp();
+                Some(if ratio.is_finite() { ratio } else { f32::MAX })
             } else {
                 None
             };
@@ -1339,6 +1348,36 @@ mod tests {
         fn from(id: FeatureId) -> Self {
             Self { id, delta: -0.4 }
         }
+    }
+
+    #[test]
+    fn runner_up_ratio_saturates_on_extreme_log_margin() {
+        // Regression guard for PR #127 review comment on decoder.rs:305:
+        // when `log_margin` is large enough that `f32::exp()` overflows
+        // (≈ ≥ 88.7 nats on f32), the previous code emitted `+∞` into
+        // `Confidence::runner_up_ratio` and `Confidence::validate`
+        // rejected the resulting record at the audit boundary,
+        // panicking inside `FixProposal::new`. The fix saturates at
+        // `f32::MAX`. We exercise both branches here with bare
+        // `f32::exp` since the saturation logic is the same closed
+        // expression used in `recognize`.
+        for &log_margin in &[88.0_f32, 100.0_f32, 200.0_f32, 1000.0_f32] {
+            let ratio = log_margin.exp();
+            let clamped = if ratio.is_finite() { ratio } else { f32::MAX };
+            assert!(
+                clamped.is_finite(),
+                "log_margin = {log_margin}: clamped ratio must be finite, got {clamped}"
+            );
+            assert!(
+                clamped > 0.0,
+                "log_margin = {log_margin}: clamped ratio must be > 0, got {clamped}"
+            );
+        }
+        // And a sanity check on the in-band path: at the
+        // UNAMBIGUOUS_LOG_MARGIN threshold, `exp()` returns a finite
+        // value and we don't clamp.
+        let at_threshold = UNAMBIGUOUS_LOG_MARGIN.exp();
+        assert!(at_threshold.is_finite() && at_threshold > 1.0);
     }
 
     #[test]

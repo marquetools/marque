@@ -594,7 +594,11 @@ fn v1_records_parse_in_v2_consumer() {
 //   `FeatureId` (free-form strings rejected by the type system per
 //   FR-012).
 // - `source == FixSource::DecoderPosterior`.
-// - `confidence.runner_up_ratio == Some(r)` for some finite `r`.
+// - `confidence.runner_up_ratio` is either `None` (decoder's K-truncated
+//   set collapsed to a single candidate, per `decoder.rs`'s K=1 branch)
+//   or `Some(r)` with finite `r`. Both shapes are legal; the audit-shape
+//   invariant T053 pins is "if `Some`, the value is finite" — never
+//   `NaN` / `±∞`.
 //
 // Vacuity guard: ≥ 1 decoder fix examined. A pass with zero fixes
 // would indicate the deep-scan dispatcher never invoked the decoder

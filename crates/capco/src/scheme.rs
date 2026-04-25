@@ -147,7 +147,7 @@ impl CapcoMarking {
     /// Construct a strict-path `CapcoMarking` (no decoder provenance).
     ///
     /// Convenience constructor that mirrors the pre-PR-4b tuple-struct
-    /// constructor `CapcoMarking::new(attrs)`. Use this in tests and
+    /// literal `CapcoMarking(attrs)`. Use this in tests and
     /// strict-path recognizers; the decoder constructs the marking by
     /// setting tuple-position 1 directly when it has provenance to
     /// attach.

@@ -464,7 +464,10 @@ fn with_engine<T>(
 ) -> Result<T, String> {
     ENGINE_CACHE.with(|cell| {
         let mut cache = cell.try_borrow_mut().map_err(|_| {
-            "engine cache is locked (likely a prior WASM panic poisoned the RefCell)".to_string()
+            "engine cache is already mutably borrowed (either re-entrancy in the WASM callsite \
+             or a prior WASM trap left the borrow alive — traps don't unwind, so a `RefMut` \
+             alive at the trap site is never dropped)"
+                .to_string()
         })?;
 
         let needs_rebuild = match &*cache {
@@ -503,7 +506,9 @@ fn with_engine<T>(
 fn with_deep_scan_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Result<T, String> {
     DEEP_SCAN_ENGINE_CACHE.with(|cell| {
         let mut cache = cell.try_borrow_mut().map_err(|_| {
-            "deep-scan engine cache is locked (likely a prior WASM panic poisoned the RefCell)"
+            "deep-scan engine cache is already mutably borrowed (either re-entrancy in the \
+             WASM callsite or a prior WASM trap left the borrow alive — traps don't unwind, \
+             so a `RefMut` alive at the trap site is never dropped)"
                 .to_string()
         })?;
 
