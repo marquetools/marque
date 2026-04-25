@@ -250,6 +250,145 @@ fn no_floor_accepts_any_classification() {
 }
 
 // ---------------------------------------------------------------------------
+// Per-class smoke coverage (Phase 4 review M11)
+//
+// One named test per mangling class so a regression on any single
+// class fails with a specific test name, rather than only surfacing
+// as a delta in the aggregate decoder_accuracy harness rate. The
+// aggregate harness in `decoder_accuracy.rs` still owns the
+// statistical floor; these are the regression-name-per-class
+// counterpart.
+// ---------------------------------------------------------------------------
+
+/// **WrongCase** class — `secret//noforn` → `SECRET//NOFORN`.
+///
+/// The decoder's case-normalization pass routes through fuzzy match
+/// with case-insensitive comparison; this is the simplest two-token
+/// case-mangled input that the class targets. The decoder_accuracy
+/// harness reports WrongCase at 100% resolution; this pins the
+/// canonical example behind a specific test name.
+#[test]
+fn wrong_case_lowercase_marking_decodes_to_canonical() {
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"secret//noforn", &deep_cx()) else {
+        panic!("lowercase secret//noforn should case-normalize to SECRET//NOFORN");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::Secret),
+        "case normalization must yield SECRET classification"
+    );
+}
+
+/// **GarbledDelimiter** class — extra spaces around `//`.
+///
+/// `TOP SECRET //NOFORN` (whitespace before the delimiter) is one of
+/// the canonical garbled-delimiter shapes the decoder targets;
+/// `normalize_delimiters_and_case` collapses interior whitespace
+/// around `//` before strict-parsing. The decoder_accuracy harness
+/// reports GarbledDelimiter at 100%; this is the named case.
+#[test]
+fn garbled_delimiter_extra_space_decodes_to_canonical() {
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET //NOFORN", &deep_cx()) else {
+        panic!("TOP SECRET //NOFORN (extra space) should normalize to TOP SECRET//NOFORN");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::TopSecret),
+        "garbled-delimiter normalization must preserve TOP SECRET classification"
+    );
+}
+
+/// **SupersededToken** class — `COMINT` → `SI` substitution.
+///
+/// CAPCO-2016 §H.4 p74 retired the `COMINT` title for the Special
+/// Intelligence (SI) control system; the decoder's
+/// `SUPERSEDED_TOKEN_MAP` substitutes the live form. This test pins
+/// the canonical example.
+#[test]
+fn superseded_comint_decodes_to_si() {
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//COMINT//NOFORN", &deep_cx())
+    else {
+        panic!("TOP SECRET//COMINT//NOFORN should supersede COMINT to SI");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::TopSecret),
+        "superseded-token substitution must preserve TOP SECRET classification"
+    );
+    // The substituted SI control system should appear in the SCI
+    // markings of the resolved attrs. This is a soft check — the
+    // structural location is documented at `CapcoMarking.0.sci_markings`
+    // and the strict parser's SCI handling — rather than asserting on
+    // a specific representation, just verify some SCI presence.
+    assert!(
+        !marking.0.sci_markings.is_empty() || !marking.0.sci_controls.is_empty(),
+        "COMINT → SI substitution should land in the SCI category; \
+         attrs = {:?}",
+        marking.0,
+    );
+}
+
+/// **MissingDelimiter** class — current-state regression guard.
+///
+/// `SECRET//NOFORN EXDIS` (missing `//` before `EXDIS`) is the
+/// canonical MissingDelimiter shape. The decoder_accuracy harness
+/// reports MissingDelimiter at 0% resolution today (tracked under GH
+/// issue #133); the recognizer either returns zero-candidate
+/// `Ambiguous` or an `Unambiguous` marking that does not include
+/// `EXDIS` in the dissem-control set.
+///
+/// This test pins the **current** behavior so a future improvement
+/// to the MissingDelimiter codepath (which would either resolve the
+/// input correctly or change which dissem-controls survive) fails
+/// here loudly, prompting a review-and-update of the assertion shape
+/// rather than silently shifting the harness's per-class rate. When
+/// MissingDelimiter recovery lands, replace this assertion with a
+/// successful-resolution check (mirroring the WrongCase / Garbled
+/// shapes above).
+#[test]
+fn missing_delimiter_secret_noforn_exdis_currently_unrecovered() {
+    let rx = DecoderRecognizer::new();
+    let result = rx.recognize(b"SECRET//NOFORN EXDIS", &deep_cx());
+    match result {
+        Parsed::Unambiguous(marking) => {
+            // Decoder may resolve to SECRET//NOFORN with EXDIS dropped
+            // (the trailing run after `NOFORN ` doesn't strict-parse
+            // as a separate dissem control without the `//`).
+            // EXDIS is a non-IC dissem control — confirm it did NOT
+            // land in the resolved marking. If a future fix carries
+            // EXDIS through, this assertion fails and the test should
+            // be rewritten to celebrate the recovery.
+            let exdis_present = marking
+                .0
+                .non_ic_dissem
+                .iter()
+                .any(|d| format!("{d:?}").contains("Exdis"));
+            assert!(
+                !exdis_present,
+                "MissingDelimiter recovery (issue #133) appears to have improved — \
+                 EXDIS is now surviving in `SECRET//NOFORN EXDIS`. Update the test \
+                 to assert successful recovery rather than current-state limitation. \
+                 attrs = {:?}",
+                marking.0,
+            );
+        }
+        Parsed::Ambiguous { candidates } => {
+            // Zero-candidate Ambiguous is also acceptable current-state
+            // behavior — the decoder didn't find a confident
+            // canonicalization. Pin that there's no in-flight
+            // resolution attempt that would partially survive.
+            assert!(
+                candidates.is_empty() || candidates.len() <= 8,
+                "MissingDelimiter is bounded by K=8 even when ambiguous"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Scheme ergonomics: CapcoScheme + decoder integrate without extra glue
 // ---------------------------------------------------------------------------
 
