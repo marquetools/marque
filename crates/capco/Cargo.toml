@@ -66,3 +66,11 @@ default = []
 corpus-override = []
 corpus-harness = []
 decoder-harness = []
+# `count-allocs`: enables the zero-allocation regression gate for
+# `Vocabulary` accessors in `crates/capco/tests/vocabulary.rs`. Mirrors
+# the `count-allocs` feature in `marque-core` (gap register #15) — it
+# installs a process-wide counting global allocator, so we keep it
+# opt-in to avoid polluting the default `cargo test` run. CI invokes
+# this with `cargo test -p marque-capco --features count-allocs --test
+# vocabulary -- --test-threads=1`.
+count-allocs = []
