@@ -13,20 +13,33 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Status
 
-This is the historical review record. The four HIGH findings (H1–H4) were addressed in **PR #142** (`phase4-review-fixes`); the mechanical-hygiene MEDIUM/LOW items in **PR #144**; the test-coverage MEDIUM items in **PR #145**; and the per-class accuracy-gate refinement (M1) in this branch. The remaining MEDIUM and LOW items are tracked below and queued for follow-up PRs.
+This is the historical review record. All findings are resolved across six follow-up PRs: HIGH (#142), mechanical hygiene (#144), test coverage (#145), per-class accuracy gate (#147), server two-pass refactor (#151), and the remaining policy decisions (#153). L1 was no-action and FP1 is recorded as a false positive — see the per-section notes below.
 
 | Finding | Resolution |
 |---------|------------|
-| H1 | Fixed by commit `1d6f20d` — v2 emitter now reads top-level `confidence` / `source` snapshot |
-| H2 | Fixed by commit `b8443e9` — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
-| H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
-| H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
+| H1 | Fixed by commit `1d6f20d` (PR #142) — v2 emitter now reads top-level `confidence` / `source` snapshot |
+| H2 | Fixed by commit `b8443e9` (PR #142) — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
+| H3 | Fixed by commit `edf0e64` (PR #142) — CI step added to run `decoder-harness` + `corpus-override` gated suites |
+| H4 | Fixed by commit `33f0c48` (PR #142) — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
 | M1 | Fixed by PR #147 — per-class regression floors added to T057 harness |
-| M6 | Fixed by `phase4-review-followups-policy` — `validate_log_prior` already rejected `-Inf`; rationale documented at the API and in the diagnostic |
+| M2 | Fixed by PR #145 (`ce73190`) — `static_assertions::assert_impl_all!` covering `Box<dyn Rule>` / `Arc<dyn Rule>` / `Box<dyn RuleSet>` / `Arc<dyn RuleSet>` added in new `crates/rules/tests/send_sync.rs`. Companion file: the recognizer trait-object form was already pinned in `crates/scheme/tests/send_sync.rs`. Together these front-load the Constitution VI Send+Sync evidence at the trait-defining crates' compile rather than at every consuming call site |
+| M3 | Fixed by PR #144 (`681b654`) — `#[must_use = "..."]` added to `Engine::with_deep_scan` and `Engine::with_corpus_override` so silent drops produce a compiler warning |
+| M4 | Fixed by PR #144 (`681b654`) — `unwrap_or(MarkingType::Banner)` replaced with `let Some(kind) = infer_marking_type(bytes) else { return strict_result; }`, matching the comment's intent and the recognizer guard at `decoder.rs:156-159` |
+| M5 | Fixed by PR #144 (`681b654`) — dead second guard in `try_canonical_reorder` removed (the preceding `class_segments.is_empty()` early-return makes the second check unreachable) |
+| M6 | Fixed by PR #153 (`phase4-review-followups-policy`) — `validate_log_prior` already rejected `-Inf`; rationale documented at the API and in the diagnostic |
 | M7 | Fixed by PR #151 — `body_has_override` parameter dropped, body-channel check extracted to `reject_if_body_carries_corpus_override`, both narrowed to `pub(crate)` |
-| M8 | Fixed by `phase4-review-followups-policy` — `require_probability` and `validate_floor` tightened from `[0.0, 1.0]` to `(0.0, 1.0]`; runtime priors test mirrored |
-| L5 | Fixed by `phase4-review-followups-policy` — Constitution V Principle V test-fixture carve-out added (1.2.0 → 1.3.0 amend); `__engine_promote` doc, READMEs, CLAUDE.md, and the two test call sites updated in lockstep |
-| L6 | Fixed by `phase4-review-followups-policy` — `lint_10kb` baseline gains `drift_alert_upper_ci_us: 1000`; `bench-check.sh` honors the absolute drift alert when present and falls back to the +10% gate otherwise |
+| M8 | Fixed by PR #153 (`phase4-review-followups-policy`) — `require_probability` and `validate_floor` tightened from `[0.0, 1.0]` to `(0.0, 1.0]`; runtime priors test mirrored |
+| M9 | Fixed by PR #144 (`681b654`) — `schema_version_is_pinned` renamed to `schema_version_matches_expected_at_runtime` so the test name matches its actual semantics; build-time pin still enforced by `build.rs:73-82` |
+| M10 | Fixed by PR #145 (`ce73190`) — `rejects_corpus_override_query_uppercase` and `rejects_corpus_override_query_percent_encoded_hyphen` integration tests added against the live handler |
+| M11 | Fixed by PR #145 (`ce73190`) — per-class `#[test]` cases added for missing-delimiter, superseded-token, wrong-case, and garbled-delimiter so a regression in any single class fails without running the full 200-case harness |
+| L1 | No action — `f32::MAX` saturation at `decoder.rs:308-314` is correct against `Confidence::validate` and the design is documented in `audit-record-v2.md` |
+| L2 | Fixed by PR #144 (`681b654`) — `UNAMBIGUOUS_LOG_MARGIN` comment clarified to "≈5× odds ratio" so the shorthand can't be misread as "5× probability" |
+| L3 | Fixed by PR #144 (`681b654`) — sort comparator switched to `f32::total_cmp` (stable since 1.62), removing the `unwrap_or(Ordering::Equal)` NaN fallback |
+| L4 | Fixed by PR #144 (`681b654`) — `marque-config` workspace pin in the root `Cargo.toml:32` carries `default-features = false`, and `crates/wasm/Cargo.toml` documents the workspace-level pin at lines 92-94 so a future reader can see why no per-crate pin is needed. Defense-in-depth against a future change to `marque-config` defaults |
+| L5 | Fixed by PR #153 (`phase4-review-followups-policy`) — Constitution V Principle V test-fixture carve-out added (1.2.0 → 1.3.0 amend); `__engine_promote` doc, READMEs, CLAUDE.md, and the two test call sites updated in lockstep |
+| L6 | Fixed by PR #153 (`phase4-review-followups-policy`) — `lint_10kb` baseline gains `drift_alert_upper_ci_us: 1000`; `bench-check.sh` honors the absolute drift alert when present and falls back to the +10% gate otherwise |
+| L7 | Fixed by PR #144 (`681b654`) — `render_audit_error_frame` doc-comment updated to `Shape: {"schema":"<AUDIT_SCHEMA_VERSION>",...}` so it can't drift from the dynamic `format!` output |
+| FP1 | Recorded as a false positive — see "False Positives" section below |
 
 ## Decision (at time of review): REQUEST CHANGES
 
