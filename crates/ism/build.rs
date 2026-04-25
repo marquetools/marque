@@ -918,8 +918,15 @@ fn collect_cve_metadata(cve_dir: &Path) -> (Vec<CveFileMetadata>, Vec<TokenMetad
     let entries = fs::read_dir(cve_dir)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", cve_dir.display()));
 
+    // Fail loudly on a per-entry I/O error rather than silently
+    // dropping the bad entry — a transient `read_dir` failure should
+    // not produce an incomplete vocabulary table that compiles cleanly.
     let mut paths: Vec<std::path::PathBuf> = entries
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("failed to read entry in {}: {e}", cve_dir.display()))
+                .path()
+        })
         .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
         .collect();
     // Deterministic emission order so downstream binary search and
