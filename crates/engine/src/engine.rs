@@ -496,14 +496,24 @@ impl Engine {
                     // skip it. Other rules and other candidates keep
                     // running.
                     //
-                    // `AssertUnwindSafe` is sound here because every
-                    // captured value is either an immutable borrow
-                    // (`&attrs`, `&ctx`) or a `Send + Sync` reference
-                    // (`rule`, which is `Box<dyn Rule>` and
-                    // `Rule: Send + Sync`). The diagnostics we'd
-                    // otherwise have appended on success aren't
-                    // captured — they're built fresh inside the
-                    // closure.
+                    // `AssertUnwindSafe` is a deliberate best-effort
+                    // containment — `Send + Sync` (which `Rule`
+                    // requires) is NOT the same property as
+                    // `UnwindSafe`. The justification rests on the
+                    // engine's stateless-rule contract
+                    // (`crates/rules/src/lib.rs` `Rule` doc comments):
+                    // `check()` must not mutate state visible across
+                    // invocations. A rule that violates that contract
+                    // via interior mutability could in principle
+                    // observe a torn invariant after a panic — but the
+                    // alternative is to abort the whole `lint()` on
+                    // any rule defect, which is the bug this wrapper
+                    // exists to fix. Containing the failure to the
+                    // offending rule is strictly better than letting
+                    // it cascade. Diagnostics we'd otherwise have
+                    // appended on success are built fresh inside the
+                    // closure, so they don't pollute the outer
+                    // accumulator on the panic path.
                     //
                     // Requires `panic = "unwind"` in the release
                     // profile (`Cargo.toml`). With `panic = "abort"`
@@ -1028,14 +1038,6 @@ fn canonicalize_rule_overrides(
     Ok(())
 }
 
-/// Return the closest known rule key (ID or name) to `needle` by
-/// Levenshtein distance, if the closest candidate is within a small
-/// edit-distance threshold. Threshold scales with `needle.len()`: short
-/// strings only match on ≤ 1 edit, longer strings tolerate more.
-///
-/// Returns `None` when no candidate is close enough to be useful —
-/// "did you mean 'REL-TO-noforn-supersession'?" for a user who typed
-/// "E999" would be worse than no suggestion at all.
 /// Best-effort string extraction from a `catch_unwind` payload.
 ///
 /// Rust panic payloads are `Box<dyn Any + Send>`. The standard
@@ -1057,6 +1059,14 @@ fn panic_payload_to_string(
     }
 }
 
+/// Return the closest known rule key (ID or name) to `needle` by
+/// Levenshtein distance, if the closest candidate is within a small
+/// edit-distance threshold. Threshold scales with `needle.len()`: short
+/// strings only match on ≤ 1 edit, longer strings tolerate more.
+///
+/// Returns `None` when no candidate is close enough to be useful —
+/// "did you mean 'REL-TO-noforn-supersession'?" for a user who typed
+/// "E999" would be worse than no suggestion at all.
 fn suggest_closest<'a, I>(needle: &str, candidates: I) -> Option<String>
 where
     I: Iterator<Item = &'a str>,
