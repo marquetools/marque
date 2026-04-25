@@ -347,7 +347,12 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
 #[tokio::test]
 async fn body_at_or_below_explicit_limit_is_processed() {
     let limit = 4096usize;
-    // Stay well under the cap so the handler runs and returns 200.
+    // Stay well under the cap so the handler runs end-to-end. Asserting
+    // `OK` (not just "not 413") is load-bearing — a regression in
+    // `build_app_with_limit` that wired the layer in a way that
+    // dropped the route entirely (404), confused the JSON extractor
+    // (422), or failed to share state (500) would otherwise pass this
+    // test with a non-413 status.
     let small = r#"{"text":"SECRET//NF\n"}"#;
     assert!(small.len() < limit, "test setup: body must fit in limit");
 
@@ -356,11 +361,12 @@ async fn body_at_or_below_explicit_limit_is_processed() {
         .await
         .unwrap();
 
-    assert_ne!(
+    assert_eq!(
         resp.status(),
-        StatusCode::PAYLOAD_TOO_LARGE,
-        "body of {} bytes against a {limit}-byte limit must NOT return 413",
-        small.len()
+        StatusCode::OK,
+        "body of {} bytes against a {limit}-byte limit must return 200; got {}",
+        small.len(),
+        resp.status()
     );
 }
 
