@@ -22,6 +22,8 @@
 //! Kept in its own module so callers can match on the error without
 //! pulling in the runtime pipeline.
 
+use crate::engine::InvalidThreshold;
+use crate::output::LintResult;
 use marque_scheme::{CategoryId, RewriteId};
 
 /// Errors that will be raised while constructing an `Engine`.
@@ -172,3 +174,86 @@ impl std::fmt::Display for EngineConstructionError {
 }
 
 impl std::error::Error for EngineConstructionError {}
+
+// ---------------------------------------------------------------------------
+// Runtime engine errors (spec 005)
+// ---------------------------------------------------------------------------
+
+/// Runtime errors from `Engine::lint_with_options` /
+/// `Engine::fix_with_options` (spec 005).
+///
+/// Distinct from [`EngineConstructionError`] by design — construction
+/// errors are build-time configuration defects the integrator fixes
+/// before shipping; `EngineError` reports runtime conditions (a
+/// per-call deadline expired, a per-call threshold override is
+/// out of range) the caller can react to. Keeping the two enums
+/// separate means matching on one does not force callers to pattern
+/// against build-time variants they could never encounter at
+/// request time.
+///
+/// `#[non_exhaustive]` so future runtime conditions (memory budget
+/// exceeded, per-rule deadline expired, cancellation token tripped)
+/// can land without a semver-breaking change.
+///
+/// Spec §R5 (asymmetric response shape): the lint path does not
+/// return `EngineError::DeadlineExceeded` on its own — partial lint
+/// results are surfaced through `LintResult.truncated` instead, so
+/// the caller can render whatever diagnostics were produced before
+/// the abort. Only `fix_with_options` raises `DeadlineExceeded`,
+/// because a partial `FixResult` would commit half a fix to the
+/// audit stream (Constitution V Principle V).
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum EngineError {
+    /// `fix_with_options` aborted before applying every fix because
+    /// the call's deadline expired. `partial_lint` is the
+    /// `LintResult` that the lint pass produced before the abort —
+    /// callers can render its diagnostics to the user even though no
+    /// fixes were committed. `partial_lint.truncated` indicates
+    /// whether the lint pass itself was also truncated (deadline
+    /// expired during scanning) versus the fix-application loop
+    /// (lint pass completed, fixes did not).
+    ///
+    /// Carries the lint result by value (not boxed) because the
+    /// happy path returns `Ok(FixResult)` and the size penalty on
+    /// the error variant is paid only on the cold path.
+    DeadlineExceeded { partial_lint: LintResult },
+    /// `fix_with_options` rejected the per-call confidence
+    /// threshold override. Wraps the existing standalone
+    /// [`InvalidThreshold`] struct so `Engine::fix_with_threshold`
+    /// can keep its `Result<FixResult, InvalidThreshold>` public
+    /// signature unchanged while internally routing through
+    /// `fix_with_options`.
+    InvalidThreshold(InvalidThreshold),
+}
+
+impl std::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DeadlineExceeded { partial_lint } => write!(
+                f,
+                "engine deadline exceeded after processing {}/{} candidates",
+                partial_lint.candidates_processed, partial_lint.candidates_total
+            ),
+            Self::InvalidThreshold(it) => it.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            // `DeadlineExceeded` is not caused by an inner error — it
+            // reports a runtime condition (the deadline elapsed) with
+            // no underlying failure to chain.
+            Self::DeadlineExceeded { .. } => None,
+            Self::InvalidThreshold(it) => Some(it),
+        }
+    }
+}
+
+impl From<InvalidThreshold> for EngineError {
+    fn from(value: InvalidThreshold) -> Self {
+        Self::InvalidThreshold(value)
+    }
+}

@@ -7,9 +7,46 @@
 use marque_rules::{AppliedFix, Diagnostic};
 
 /// Result of a lint pass — diagnostics without source modification.
+///
+/// `#[non_exhaustive]` so future lint-time observations (per-rule
+/// timing histograms, decoder posterior quartiles, etc.) can join
+/// without breaking callers that brace-construct. External callers
+/// MUST construct via `Default::default()` plus public field
+/// assignment (struct-update syntax is only allowed in-crate):
+///
+/// ```
+/// use marque_engine::LintResult;
+/// let mut result = LintResult::default();
+/// result.diagnostics.clear();
+/// ```
+///
+/// Spec 005 added `truncated`, `candidates_processed`, and
+/// `candidates_total` to surface deadline-driven cooperative
+/// cancellation. On a fully-completed pass `truncated` is `false`
+/// and `candidates_processed == candidates_total`. On an
+/// already-expired deadline the pass returns immediately with
+/// `truncated: true` and both counts at `0`. Mid-document expiry
+/// produces `truncated: true` with `0 < candidates_processed <
+/// candidates_total`.
+#[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct LintResult {
     pub diagnostics: Vec<Diagnostic>,
+    /// `true` when the lint pass aborted before processing every
+    /// scanner-emitted candidate due to deadline expiry. The
+    /// `diagnostics` vector contains every diagnostic produced from
+    /// candidates that *were* processed before the abort. Spec §R3.
+    pub truncated: bool,
+    /// Number of scanner-emitted candidates the engine processed
+    /// before returning. On a non-truncated pass equals
+    /// `candidates_total`. Set during Phase 2 wiring; Phase 1 leaves
+    /// this `0` for back-compat with callers that already exist.
+    pub candidates_processed: usize,
+    /// Total number of scanner-emitted candidates (the
+    /// post-scanner, pre-rule-loop count). Populated from the
+    /// scanner output regardless of whether the pass completed.
+    /// Phase 1 leaves this `0`; Phase 2 wires it.
+    pub candidates_total: usize,
 }
 
 impl LintResult {
@@ -83,6 +120,7 @@ mod tests {
     fn is_clean_returns_true_when_no_diagnostics() {
         let clean_result = LintResult {
             diagnostics: vec![],
+            ..Default::default()
         };
         assert!(clean_result.is_clean());
     }
@@ -98,6 +136,7 @@ mod tests {
                 "test",
                 None,
             )],
+            ..Default::default()
         };
         assert!(!dirty_result.is_clean());
     }
@@ -148,6 +187,7 @@ mod tests {
                     None,
                 ),
             ],
+            ..Default::default()
         };
         assert_eq!(result.info_count(), 2);
         assert_eq!(result.warn_count(), 1);
