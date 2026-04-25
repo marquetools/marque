@@ -72,11 +72,20 @@ impl Rule for AlwaysFire {
 Two contracts in this crate are enforced by convention, not the type system —
 violating them is a compliance bug, not just a style issue:
 
-1. **`AppliedFix::__engine_promote` is engine-only.** Rule crates and CLI
-   code must never construct `AppliedFix` directly. They produce
-   `FixProposal` values; only `marque_engine::Engine::fix` may promote them.
-   Bypassing this skips the confidence-threshold gate, the fix-ordering
-   sort, and the overlap guard, and corrupts the audit log.
+1. **`AppliedFix::__engine_promote` is engine-only in production code.**
+   Rule crates and CLI code must never construct `AppliedFix` directly
+   in production paths. They produce `FixProposal` values; only
+   `marque_engine::Engine::fix` may promote them. Bypassing this skips
+   the confidence-threshold gate, the fix-ordering sort, and the
+   overlap guard, and corrupts the audit log.
+
+   Test code (`#[cfg(test)]` modules, `tests/` integration files,
+   `dev-dependencies`-gated test-utility crates) MAY call
+   `__engine_promote` to fabricate synthetic `AppliedFix` fixtures
+   for testing audit emitters, sentinel checks, and renderers
+   without a full `Engine`. The carve-out is scoped per Constitution
+   V Principle V — see the doc comment on `__engine_promote` for the
+   three constraints.
 2. **`FixProposal` is pure data.** No timestamps, no classifier identity,
    no runtime context. That purity is what makes rule output snapshot-
    testable without a clock or user identity.

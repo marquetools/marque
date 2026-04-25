@@ -177,6 +177,11 @@ mod tests {
 
     #[test]
     fn strict_context_floors_are_valid_probabilities() {
+        // Mirrors the build-time policy in
+        // `crates/capco/build.rs::require_probability` per Phase 4
+        // review M8: floors live in `(0.0, 1.0]`. `0.0` is rejected
+        // because it silently makes the strict-context rule a no-op
+        // (the feature contribution becomes algebraically identity).
         let p = STRICT_CONTEXT_PRIORS;
         for (name, value) in [
             ("confidential_floor", p.confidential_floor),
@@ -184,8 +189,9 @@ mod tests {
             ("top_secret_floor", p.top_secret_floor),
         ] {
             assert!(
-                (0.0..=1.0).contains(&value),
-                "{name} = {value} is not a valid probability"
+                value > 0.0 && value <= 1.0,
+                "{name} = {value} is not a valid strict-context floor; \
+                 must be in (0.0, 1.0] (0.0 is a silent-no-op footgun)"
             );
         }
     }

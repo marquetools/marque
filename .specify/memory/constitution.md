@@ -7,6 +7,44 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.2.0 → 1.3.0
+
+Bump type: MINOR
+  - Principle V (Audit-First Compliance) materially expanded with an
+    explicit test-fixture carve-out for `AppliedFix::__engine_promote`.
+    The prior wording — "Only `Engine::fix_inner` MAY call it" — was
+    absolute and contradicted two existing legitimate test-code call
+    sites (`crates/engine/tests/audit.rs::fabricate_leaky_fix` and
+    `marque/src/render.rs` renderer unit test). Phase 4 review L5
+    confirmed the test-code calls are correct in spirit; the
+    constitution now scopes the carve-out tightly so it cannot become
+    a loophole: (1) call sites in `#[cfg(test)]` / `tests/` /
+    `dev-dependencies`-gated crates only; (2) fabricated `AppliedFix`
+    never commingled with engine output; (3) covers test-fixture
+    construction only — not "convenience" CLI / batch / benchmark
+    constructors.
+
+Modified sections:
+  - Principle V (Audit-First Compliance) — added "Test-fixture
+    carve-out" sub-bullet under the engine-only contract.
+
+No new principles. No removed principles. Templates unaffected.
+
+Follow-up artifact updates (landed in the same commit, kept in
+lockstep so the three sources cannot drift):
+  - `crates/rules/src/lib.rs` `__engine_promote` doc comment — added
+    a "Test-fixture carve-out" section at the API surface.
+  - `crates/rules/README.md` and `crates/engine/README.md` —
+    softened "must never construct" to "must never in production
+    paths" + carve-out paragraph.
+  - `CLAUDE.md` Architectural Invariants — same shape, matched
+    language so the four sources stay aligned.
+  - `crates/engine/tests/audit.rs::fabricate_leaky_fix` and
+    `marque/src/render.rs` test — inline comments rewritten to
+    cite Constitution V Principle V instead of "documented test-only
+    exception" with no actual cite target.
+
+==================
 Version change: 1.1.1 → 1.2.0
 
 Bump type: MINOR
@@ -275,10 +313,36 @@ non-negotiable in the IC/DoD compliance context.
   runtime state (timestamp, classifier ID, dry-run flag, input). The
   `AppliedFix::__engine_promote` constructor is `pub #[doc(hidden)]` because
   `marque-rules` is a dependency of `marque-engine` and sealing at the
-  visibility level is not possible; the convention is binding. Only
-  `Engine::fix_inner` MAY call it. Any other caller bypasses the
-  confidence-threshold gate, fix-ordering invariants, and overlap guard, and
-  corrupts the audit log — which is the compliance output, not a convenience.
+  visibility level is not possible; the convention is binding. In
+  production code, only `Engine::fix_inner` MAY call it. Any other
+  production caller bypasses the confidence-threshold gate,
+  fix-ordering invariants, and overlap guard, and corrupts the audit
+  log — which is the compliance output, not a convenience.
+  - **Test-fixture carve-out**: test code MAY call
+    `__engine_promote` directly to construct synthetic `AppliedFix`
+    fixtures whose purpose is exercising audit-emission machinery
+    (renderers, sentinel checks, NDJSON serialization) without
+    spinning up a full `Engine`. Three constraints scope this
+    carve-out tightly so it cannot become a loophole:
+    1. The call site MUST live inside `#[cfg(test)]` modules,
+       `tests/` integration files, or `dev-dependencies`-gated
+       test-utility crates. Calling `__engine_promote` from
+       `cfg(not(test))` code — including from a `pub` test helper
+       in a non-test module — violates the carve-out.
+    2. The fabricated `AppliedFix` MUST never be commingled with
+       engine-promoted fixes (e.g., spliced into a real audit
+       stream). Test fixtures and engine output are disjoint sets;
+       the carve-out exists to construct the input to a checker,
+       not to manufacture audit records.
+    3. The carve-out covers test-fixture *construction*. It does
+       not cover any other purpose — building "convenience"
+       `AppliedFix` values for CLI helpers, batch tooling, or
+       benchmark drivers is not test-fixture construction and
+       falls under the engine-only contract.
+    Each test call site MUST carry an inline comment naming the
+    carve-out (e.g., `// Test-fixture carve-out per Constitution V`)
+    so a future reviewer encountering the call understands why it
+    exists without re-deriving the policy.
 - Every `AppliedFix` MUST record: rule ID, original text, replacement text,
   confidence score, timestamp, classifier ID (when present), and dry-run flag
   — regardless of confidence level, including 1.0-confidence fixes.
@@ -590,4 +654,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-24
+**Version**: 1.3.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-26
