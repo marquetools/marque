@@ -246,3 +246,218 @@ fn fouo_remains_active_dissem_control() {
 // from the other integration tests in this file (which would
 // otherwise allocate freely inside the same process and inflate the
 // shared counter even with a `MEASURE_LOCK`).
+
+// ---------------------------------------------------------------------------
+// T077a — expanded trait coverage: panic paths, banner-abbreviation
+//         arms, and metadata round-trip equivalence.
+// ---------------------------------------------------------------------------
+//
+// The original T071–T077 tests cover the happy-path active-sentinel
+// loop. Codecov flagged ~37 uncovered lines in
+// `crates/capco/src/vocabulary.rs` — primarily the panic branches in
+// `canonical_for` / `entry_for` / `derived_for_token` /
+// `token_derived` (none of the active sentinels ever hit them) and
+// the `Some` arm of `derive_banner_abbreviation`. T077a closes that
+// gap so the production code paths CI exercises match the production
+// code paths real callers will hit.
+
+/// Sentinels whose canonical CVE value has a distinct banner form
+/// (`portion_to_banner(canonical)` returns `Some(banner)` with
+/// `banner != canonical`). For these, `banner_abbreviation()` must
+/// return `Some` — see CAPCO-2016 §G.1 Table 4 (banner column 2 ≠
+/// portion column 3).
+fn distinct_banner_form_sentinels() -> &'static [(TokenId, &'static str, &'static str)] {
+    // (TokenId, canonical/portion, expected banner abbreviation)
+    &[
+        (TOK_NOFORN, "NF", "NOFORN"),
+        (TOK_UCNI, "UCNI", "DOE UCNI"),
+        (TOK_NODIS, "ND", "NODIS"),
+        (TOK_EXDIS, "XD", "EXDIS"),
+    ]
+}
+
+/// Sentinels whose canonical CVE value is identical to its banner
+/// form (no distinct authorized abbreviation in the CAPCO Register).
+/// `banner_abbreviation()` must return `None` for these.
+fn same_form_sentinels() -> &'static [TokenId] {
+    &[
+        TOK_RD,
+        TOK_FRD,
+        TOK_TFNI,
+        TOK_CNWDI,
+        TOK_HCS,
+        TOK_RESTRICTED,
+    ]
+}
+
+#[test]
+fn banner_abbreviation_some_for_distinct_form() {
+    let scheme = CapcoScheme::new();
+    for (token, _portion, expected_banner) in distinct_banner_form_sentinels() {
+        let abbr = scheme.banner_abbreviation(token);
+        assert_eq!(
+            abbr,
+            Some(*expected_banner),
+            "banner_abbreviation({token:?}) should be Some({expected_banner:?}) — \
+             CAPCO-2016 §G.1 Table 4 lists a distinct authorized banner abbreviation",
+        );
+        // And the banner_form() accessor must match the expected
+        // banner (not the portion-form canonical).
+        assert_eq!(
+            scheme.banner_form(token),
+            *expected_banner,
+            "banner_form({token:?}) disagrees with banner_abbreviation",
+        );
+    }
+}
+
+#[test]
+fn banner_abbreviation_none_for_same_form() {
+    let scheme = CapcoScheme::new();
+    for token in same_form_sentinels() {
+        assert_eq!(
+            scheme.banner_abbreviation(token),
+            None,
+            "banner_abbreviation({token:?}) should be None — CAPCO-2016 §G.1 \
+             Table 4 lists no distinct banner abbreviation for this marking",
+        );
+        // For same-form markings the portion form and banner form
+        // are byte-identical.
+        assert_eq!(
+            scheme.portion_form(token),
+            scheme.banner_form(token),
+            "portion_form / banner_form must match when no distinct abbreviation exists ({token:?})",
+        );
+    }
+}
+
+/// `metadata()` returns the same `Authority`, `OwnerProducer`, and
+/// `PointOfContact` that the per-field accessors return. The single-
+/// source-of-truth invariant from PR review #2 — drift between
+/// `scheme.authority(t)` and `scheme.metadata(t).authority` must be
+/// unrepresentable.
+#[test]
+fn metadata_agrees_with_per_field_accessors() {
+    let scheme = CapcoScheme::new();
+    for token in active_sentinels() {
+        let m = scheme.metadata(token);
+        assert_eq!(
+            &m.authority,
+            scheme.authority(token),
+            "metadata({token:?}).authority differs from scheme.authority",
+        );
+        assert_eq!(
+            &m.owner_producer,
+            scheme.owner_producer(token),
+            "metadata({token:?}).owner_producer differs from scheme.owner_producer",
+        );
+        assert_eq!(
+            &m.point_of_contact,
+            scheme.point_of_contact(token),
+            "metadata({token:?}).point_of_contact differs from scheme.point_of_contact",
+        );
+        assert_eq!(
+            m.portion_form,
+            scheme.portion_form(token),
+            "metadata({token:?}).portion_form differs",
+        );
+        assert_eq!(
+            m.banner_form,
+            scheme.banner_form(token),
+            "metadata({token:?}).banner_form differs",
+        );
+        assert_eq!(
+            m.banner_abbreviation,
+            scheme.banner_abbreviation(token),
+            "metadata({token:?}).banner_abbreviation differs",
+        );
+        // `Authority.point_of_contact` must equal the standalone
+        // POC accessor — the embedded copy is the canonical one.
+        assert_eq!(
+            &m.authority.point_of_contact,
+            scheme.point_of_contact(token),
+            "metadata({token:?}).authority.point_of_contact differs from \
+             scheme.point_of_contact — single-source-of-truth invariant violated",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Panic-path coverage for the four sentinel-resolution chokepoints in
+// `crates/capco/src/vocabulary.rs`. Each accessor reaches a different
+// helper, so each helper gets its own #[should_panic] test —
+// otherwise a refactor that loses one of the panic sites would still
+// pass coverage by reaching only the first one.
+// ---------------------------------------------------------------------------
+
+use marque_capco::scheme::{
+    TOK_FGI_MARKER, TOK_IC_DISSEM, TOK_JOINT, TOK_NON_IC_DISSEM, TOK_NON_US_CLASSIFICATION,
+    TOK_US_CLASSIFIED, TOK_USA,
+};
+
+/// `authority()` reaches `derived_for_token` → `entry_for` →
+/// `canonical_for`; the panic surfaces from `canonical_for` first.
+/// `TOK_FGI_MARKER` is a grammar-shape sentinel deliberately absent
+/// from `SENTINEL_TO_CANONICAL`.
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn authority_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.authority(&TOK_FGI_MARKER);
+}
+
+/// `owner_producer()` shares the same chokepoint as `authority()`;
+/// distinct test so a refactor that diverts one accessor away from
+/// `derived_for_token` doesn't silently lose coverage on the other.
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn owner_producer_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.owner_producer(&TOK_USA);
+}
+
+/// `point_of_contact()` likewise — `TOK_JOINT` is a classification-
+/// prefix sentinel without a single CVE value.
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn point_of_contact_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.point_of_contact(&TOK_JOINT);
+}
+
+/// `metadata()` reaches `token_derived` (the per-token cache);
+/// `metadata`'s panic message is structurally similar to
+/// `derived_for_token`'s but originates from a different helper.
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn metadata_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.metadata(&TOK_US_CLASSIFIED);
+}
+
+/// `portion_form()` / `banner_form()` / `banner_abbreviation()` /
+/// `deprecation()` route through `token_derived` too — bundle them
+/// into a single panic test so each accessor gets exercised on the
+/// unknown-id path. `TOK_NON_US_CLASSIFICATION`,
+/// `TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM` are aggregate sentinels (no
+/// single CVE value).
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn portion_form_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.portion_form(&TOK_NON_US_CLASSIFICATION);
+}
+
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn banner_form_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.banner_form(&TOK_IC_DISSEM);
+}
+
+#[test]
+#[should_panic(expected = "no canonical CVE")]
+fn deprecation_panics_on_unknown_token() {
+    let scheme = CapcoScheme::new();
+    let _ = scheme.deprecation(&TOK_NON_IC_DISSEM);
+}

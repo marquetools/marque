@@ -45,7 +45,8 @@
 //! referenced by index. The composed `TokenMetadataFull<TokenId>`
 //! records are similarly built once. Calls after the first do zero
 //! heap allocation — exercised by the count-allocs test in
-//! `tests/vocabulary.rs` (gated on the `count-allocs` feature).
+//! `crates/capco/tests/vocabulary_zero_alloc.rs` (gated on the
+//! `count-allocs` feature).
 
 use crate::scheme::{
     CapcoScheme, TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD,
@@ -55,7 +56,7 @@ use marque_ism::generated::migrations::find_migration;
 use marque_ism::generated::vocabulary::{
     CveFileMetadata, TokenMetadataEntry, lookup_token_metadata,
 };
-use marque_ism::marking_forms::{banner_to_portion, portion_to_banner};
+use marque_ism::marking_forms::portion_to_banner;
 use marque_scheme::{
     Authority, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenId,
     TokenMetadataFull, Vocabulary,
@@ -425,11 +426,3 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
     }
 }
 
-// `banner_to_portion` is imported but the current sentinel set never
-// needs the banner→portion direction (every canonical IS the portion
-// form). Keep the import so a future sentinel that maps to a banner
-// form can use it without reaching back into `marque-ism`.
-#[allow(dead_code)]
-fn _banner_to_portion_anchor() -> Option<&'static str> {
-    banner_to_portion("NOFORN")
-}
