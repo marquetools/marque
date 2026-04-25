@@ -52,15 +52,15 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 3a: CLI surface wiring
 
-- [ ] T020 Reuse the existing `humantime = { workspace = true }` dependency already declared in `marque/Cargo.toml`; no new dependency entry needed for the CLI flag. (Confirmed at `marque/Cargo.toml:30`.)
-- [ ] T021 Add `--deadline <DURATION>` flag to the CLI in `marque/src/main.rs` (or wherever the clap definition lives), documented as "Maximum wall-clock budget for processing each input document. Format: humantime, e.g. '30s', '2m'."
-- [ ] T022 Validate `--deadline 0` rejection at parse time: clap value parser returns an error → `EX_USAGE` (64).
-- [ ] T023 Convert the parsed `Duration` to `Instant::now() + duration` per invocation; pass into `Engine::lint_with_options` / `fix_with_options`.
-- [ ] T024 Render truncated `LintResult` from `lint`: existing renderer + final stderr line `"⚠ deadline exceeded: covered N/M candidates"` printed when `result.truncated`.
-- [ ] T025 Handle `EngineError::DeadlineExceeded` from fix: print partial-lint diagnostics to stderr, exit `EX_TEMPFAIL` (75) with a clear stderr explanation.
-- [ ] T026 [P] Test `cli_deadline_zero_exits_with_EX_USAGE` in `marque/tests/cli.rs`.
-- [ ] T027 [P] Test `cli_deadline_truncates_check_output_with_warning` in `marque/tests/cli.rs`: invoke `marque check --deadline 1ms` against a fixture with many candidates, assert truncated output + warning line.
-- [ ] T028 [P] Test `cli_deadline_fix_exits_EX_TEMPFAIL` in `marque/tests/cli.rs`: invoke `marque fix --deadline 1ms`, assert exit 75.
+- [x] T020 Reuse the existing `humantime = { workspace = true }` dependency already declared in `marque/Cargo.toml`; no new dependency entry needed for the CLI flag. (Confirmed at `marque/Cargo.toml:30`.)
+- [x] T021 Add `--deadline <DURATION>` flag to the CLI in `marque/src/main.rs` (or wherever the clap definition lives), documented as "Maximum wall-clock budget for processing each input document. Format: humantime, e.g. '30s', '2m'."
+- [x] T022 Validate `--deadline 0` rejection at parse time: humantime parse failure (e.g. `--deadline 0` with no unit) and an explicit `Duration::ZERO` (e.g. `--deadline 0s`) both surface as `EX_USAGE` (64). Validation lives in `validate_deadline()`, mirroring the post-parse `validate_threshold()` pattern.
+- [x] T023 Convert the parsed `Duration` to `Instant::now() + duration` per invocation; pass into `Engine::lint_with_options` / `fix_with_options`.
+- [x] T024 Render truncated `LintResult` from `lint`: existing renderer + final stderr line `"⚠ deadline exceeded: covered N/M candidates"` printed when `result.truncated`.
+- [x] T025 Handle `EngineError::DeadlineExceeded` from fix: print partial-lint diagnostics to stderr, exit `EX_TEMPFAIL` (75) with a clear stderr explanation.
+- [x] T026 [P] Test `cli_deadline_zero_exits_with_ex_usage` (and `_zero_seconds_` and `_unparseable_` variants) in `marque/tests/cli_deadline.rs`.
+- [x] T027 [P] Test `cli_deadline_truncates_check_output_with_warning` in `marque/tests/cli_deadline.rs`: invoke `marque check --deadline 1ms` against a 4 000-banner stdin input, assert stderr warning + exit 0/1/2.
+- [x] T028 [P] Test `cli_deadline_fix_exits_ex_tempfail` in `marque/tests/cli_deadline.rs`: invoke `marque fix --deadline 1ms`, assert exit 75 and stderr explanation.
 
 ---
 
