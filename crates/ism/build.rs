@@ -46,6 +46,7 @@ fn main() {
     generate_values(out_path, &schema_dir);
     generate_validators(out_path, &schema_dir);
     generate_migrations(out_path, &schema_dir);
+    generate_vocabulary(out_path, &schema_dir);
 }
 
 // ---------------------------------------------------------------------------
@@ -830,4 +831,454 @@ pub fn find_migration(deprecated: &str) -> Option<&'static MigrationEntry> {
 
     let path = out.join("migrations.rs");
     fs::write(&path, content).unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
+}
+
+// ---------------------------------------------------------------------------
+// T080 / T081: Per-token metadata from ODNI JSON sidecars
+// ---------------------------------------------------------------------------
+//
+// The XML codepath above (T006) extracts the closed CVE token vocabulary —
+// that is what the strict parser, the corrections map, and the rule
+// predicates consume. The JSON codepath here is parallel and additive
+// (FR-018 + R5): it reads the ODNI JSON sidecars in the same CVE_ISM/
+// directory to recover *per-term metadata* the XML never carried —
+// publishing authority (URN, source, schema version, point of contact)
+// and the long-form description that pairs with each canonical value.
+//
+// The XML and JSON codepaths are both active. Neither falls back to the
+// other. If a CVE file exists in JSON but not XML, the strict parser
+// will not recognize the values — even though the metadata table will
+// surface them; that is a deliberate split because the strict parser is
+// the sole arbiter of token shape (foundational invariant from PR-3),
+// and a JSON-only token would bypass that invariant.
+//
+// The emitted tables are the raw data backing PR-2's
+// `impl Vocabulary<CapcoScheme>` (task T084). Per Constitution VII the
+// `marque-scheme` `Vocabulary<S>` / `TokenMetadataFull<Token>` types
+// cannot be referenced from this crate — `marque-ism` does not depend
+// on `marque-scheme`. The composition into the trait surface happens in
+// `marque-capco` where both dependency chains converge.
+
+/// Per-CVE-file metadata extracted from `CVE.IRM` and the file-level
+/// `CVE.specVersion` / `CVE.ism:DESVersion` fields.
+struct CveFileMetadata {
+    /// Stable identifier for the per-file constant emitted into
+    /// `vocabulary.rs` (e.g., `CVE_DISSEM`, `CVE_SCI_CONTROLS`). Derived
+    /// by stripping the `CVEnumISM` / `CVEnum` prefix and the `.json`
+    /// suffix, then `to_rust_ident` + `SCREAMING_SNAKE_CASE`.
+    const_ident: String,
+    urn: String,
+    title: String,
+    source: String,
+    poc_name: String,
+    poc_email: String,
+    owner_producer: String,
+    spec_version: String,
+    des_version: String,
+}
+
+/// One token's metadata: canonical value + long-form description, paired
+/// with a reference to the [`CveFileMetadata`] that published it.
+struct TokenMetadataEntry {
+    value: String,
+    description: String,
+    /// Index into the emitted `CVE_FILES` slice. Resolved at codegen time.
+    cve_file_const_ident: String,
+}
+
+/// Read the entire CVE_ISM/ JSON sidecar set; return both the per-file
+/// records and the flat (token, metadata) map.
+///
+/// JSON shape (matches every file in the v2022-DEC bundle):
+///
+/// ```jsonc
+/// {
+///   "CVE": {
+///     "ism:ownerProducer": "USA",
+///     "specVersion": "...",
+///     "ism:DESVersion": "...",
+///     "Enumeration": {
+///       "Term": [ { "Description": { "text": "..." }, "Value": { "text": "..." } }, ... ]
+///       // OR a single object when there is exactly one term — handled below.
+///     },
+///     "IRM": {
+///       "URN": "urn:us:gov:ic:cvenum:ism:...",
+///       "Title": { "text": "..." },
+///       "Source": { "text": "..." },
+///       "PointOfContact": { "Name": "...", "Email": "..." }
+///     }
+///   }
+/// }
+/// ```
+fn collect_cve_metadata(cve_dir: &Path) -> (Vec<CveFileMetadata>, Vec<TokenMetadataEntry>) {
+    let mut files: Vec<CveFileMetadata> = Vec::new();
+    let mut tokens: Vec<TokenMetadataEntry> = Vec::new();
+
+    let entries = fs::read_dir(cve_dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", cve_dir.display()));
+
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
+        .collect();
+    // Deterministic emission order so downstream binary search and
+    // git-diff readability are stable across rebuilds.
+    paths.sort();
+
+    for path in &paths {
+        let raw = fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        let value: serde_json::Value = serde_json::from_str(&raw)
+            .unwrap_or_else(|e| panic!("JSON parse error in {}: {e}", path.display()));
+
+        let cve = value
+            .get("CVE")
+            .unwrap_or_else(|| panic!("{}: top-level `CVE` object missing", path.display()));
+
+        let const_ident = cve_file_const_ident(path);
+
+        let irm = cve
+            .get("IRM")
+            .unwrap_or_else(|| panic!("{}: CVE.IRM missing", path.display()));
+
+        let file_meta = CveFileMetadata {
+            const_ident: const_ident.clone(),
+            urn: required_string(irm, "URN", path),
+            title: nested_text(irm, "Title", path).unwrap_or_default(),
+            source: nested_text(irm, "Source", path).unwrap_or_default(),
+            poc_name: irm
+                .get("PointOfContact")
+                .and_then(|p| p.get("Name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+            poc_email: irm
+                .get("PointOfContact")
+                .and_then(|p| p.get("Email"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+            owner_producer: cve
+                .get("ism:ownerProducer")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+            spec_version: cve
+                .get("specVersion")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+            des_version: cve
+                .get("ism:DESVersion")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+        };
+
+        // Walk the term list. The JSON shape *should* be an array; we
+        // accept a single-object form too because nothing in the JSON
+        // spec forbids it and a future CVE file with one term might
+        // deserialize that way.
+        let term_value = cve.get("Enumeration").and_then(|e| e.get("Term"));
+        let term_iter: Vec<&serde_json::Value> = match term_value {
+            Some(serde_json::Value::Array(arr)) => arr.iter().collect(),
+            Some(obj @ serde_json::Value::Object(_)) => vec![obj],
+            None => Vec::new(), // SAR is legitimately empty (matches XML codepath).
+            Some(other) => panic!(
+                "{}: CVE.Enumeration.Term has unexpected JSON type {:?}",
+                path.display(),
+                other
+            ),
+        };
+
+        for term in term_iter {
+            let value_text = nested_text(term, "Value", path).unwrap_or_else(|| {
+                panic!(
+                    "{}: term missing Value.text — every CVE term must carry a canonical value",
+                    path.display()
+                )
+            });
+            let desc_text = nested_text(term, "Description", path).unwrap_or_default();
+            tokens.push(TokenMetadataEntry {
+                value: value_text,
+                description: desc_text,
+                cve_file_const_ident: const_ident.clone(),
+            });
+        }
+
+        files.push(file_meta);
+    }
+
+    (files, tokens)
+}
+
+/// Extract `obj.{field}.text` (the standard ODNI JSON shape for
+/// human-readable text fields). Returns `None` when the path is absent.
+///
+/// Handles three observed shapes:
+/// - Bare string (`"field": "value"`)
+/// - Object with text field (`"field": { "text": "value", ... }`)
+/// - Array of objects (`"field": [ { "text": "a", ... }, { "text": "b", ... } ]`)
+///   joined with `"; "` so multi-source IRM Source fields (e.g.,
+///   `CVEnumISMNotice.json`) round-trip into a readable single string.
+fn nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> Option<String> {
+    fn extract_text(val: &serde_json::Value) -> Option<String> {
+        match val {
+            serde_json::Value::String(s) => Some(s.to_owned()),
+            serde_json::Value::Object(map) => map
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_owned()),
+            _ => None,
+        }
+    }
+
+    match obj.get(field) {
+        Some(serde_json::Value::Array(arr)) => {
+            let parts: Vec<String> = arr.iter().filter_map(extract_text).collect();
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join("; "))
+            }
+        }
+        Some(v @ (serde_json::Value::Object(_) | serde_json::Value::String(_))) => extract_text(v),
+        Some(other) => panic!(
+            "{}: field `{field}` has unexpected JSON type {:?}",
+            path.display(),
+            other
+        ),
+        None => None,
+    }
+}
+
+fn required_string(obj: &serde_json::Value, field: &str, path: &Path) -> String {
+    obj.get(field)
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: required field `{field}` missing or not a string",
+                path.display()
+            )
+        })
+        .to_owned()
+}
+
+/// `CVEnumISMDissem.json` → `CVE_DISSEM`, `CVEnumISMSCIControls.json` →
+/// `CVE_SCI_CONTROLS`, `CVEnumISMCUIBasic.json` → `CVE_CUI_BASIC`,
+/// `CVEnumISMAtomicEnergyMarkings.json` → `CVE_ATOMIC_ENERGY_MARKINGS`,
+/// `CVEnumISM25X.json` → `CVE_25X`,
+/// `CVEnumNTKAccessPolicy.json` → `CVE_NTK_ACCESS_POLICY`.
+fn cve_file_const_ident(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_else(|| panic!("non-UTF-8 file name: {}", path.display()));
+
+    // Strip the `CVEnumISM` / `CVEnum` prefix.
+    let core = stem
+        .strip_prefix("CVEnumISM")
+        .or_else(|| stem.strip_prefix("CVEnum"))
+        .unwrap_or(stem);
+
+    // Convert CamelCase / PascalCase → SCREAMING_SNAKE_CASE.
+    // Boundary rules:
+    //   - lower / digit → upper (`AtomicE` → `ATOMIC_E`)
+    //   - upper-run end → next word (`SCICont` → `SCI_CONT`: the `C`
+    //     before lowercase `o` starts a new word)
+    let chars: Vec<char> = core.chars().collect();
+    let mut body = String::with_capacity(core.len() * 2);
+    for (i, &ch) in chars.iter().enumerate() {
+        if i > 0 {
+            let prev = chars[i - 1];
+            let starts_word_by_case =
+                ch.is_ascii_uppercase() && (prev.is_ascii_lowercase() || prev.is_ascii_digit());
+            let ends_uppercase_run = ch.is_ascii_uppercase()
+                && prev.is_ascii_uppercase()
+                && i + 1 < chars.len()
+                && chars[i + 1].is_ascii_lowercase();
+            if starts_word_by_case || ends_uppercase_run {
+                body.push('_');
+            }
+        }
+        body.push(ch.to_ascii_uppercase());
+    }
+
+    if body.is_empty() {
+        "CVE".to_owned()
+    } else {
+        format!("CVE_{body}")
+    }
+}
+
+fn generate_vocabulary(out: &Path, schema_dir: &Path) {
+    use std::collections::BTreeMap;
+    use std::fmt::Write;
+
+    let cve_dir = schema_dir.join("CVE_ISM");
+    let (files, tokens) = collect_cve_metadata(&cve_dir);
+
+    assert!(
+        !files.is_empty(),
+        "build.rs: collect_cve_metadata produced zero CveFileMetadata records — \
+         the JSON sidecar set under {} is missing or unreadable.",
+        cve_dir.display()
+    );
+
+    // Deduplicate tokens by value. The CVE_ISM/ JSON set has overlap
+    // (e.g., FOUO appears in CVEnumISMDissem.json AND CVEnumISMNotice
+    // does not, but classification levels appear in both
+    // ClassificationAll and ClassificationUS). When two files publish
+    // the same canonical value, prefer the more specific source — for
+    // now, deterministic "first-wins by sorted file path" matches the
+    // existing XML codepath's behavior, which iterates files in the
+    // same order. Future PR can introduce an explicit precedence rule
+    // if a real conflict arises that "first-wins" gets wrong.
+    let mut by_value: BTreeMap<String, &TokenMetadataEntry> = BTreeMap::new();
+    for entry in &tokens {
+        by_value.entry(entry.value.clone()).or_insert(entry);
+    }
+
+    let mut content =
+        String::from("// Generated by build.rs from ODNI ISM JSON sidecars — DO NOT EDIT.\n\n");
+
+    writeln!(
+        content,
+        "/// Per-CVE-file publishing metadata.\n\
+         ///\n\
+         /// One instance per `CVEnum*.json` file under\n\
+         /// `crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/`. Every token-level\n\
+         /// metadata entry references one of these so the same authority,\n\
+         /// point of contact, and schema-version provenance is shared\n\
+         /// across all tokens published in that file.\n\
+         #[derive(Debug, Clone, Copy)]\n\
+         pub struct CveFileMetadata {{\n\
+         \x20   /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
+         \x20   pub const_name: &'static str,\n\
+         \x20   /// Source-of-record URN, e.g.,\n\
+         \x20   /// `urn:us:gov:ic:cvenum:ism:dissem`.\n\
+         \x20   pub urn: &'static str,\n\
+         \x20   /// CVE title text.\n\
+         \x20   pub title: &'static str,\n\
+         \x20   /// Free-form `Source` text from the CVE IRM.\n\
+         \x20   pub source: &'static str,\n\
+         \x20   /// Point-of-contact name.\n\
+         \x20   pub poc_name: &'static str,\n\
+         \x20   /// Point-of-contact email.\n\
+         \x20   pub poc_email: &'static str,\n\
+         \x20   /// Owner/producer code, e.g., `\"USA\"`.\n\
+         \x20   pub owner_producer: &'static str,\n\
+         \x20   /// CVE `specVersion`, e.g., `\"202111.202211\"`.\n\
+         \x20   pub spec_version: &'static str,\n\
+         \x20   /// CVE `ism:DESVersion`, e.g., `\"202111\"`.\n\
+         \x20   pub des_version: &'static str,\n\
+         \x20   /// Pinned schema package version (`SCHEMA_VERSION`).\n\
+         \x20   pub schema_version: &'static str,\n\
+         }}\n"
+    )
+    .unwrap();
+
+    writeln!(
+        content,
+        "/// Per-token metadata published by exactly one [`CveFileMetadata`].\n\
+         #[derive(Debug, Clone, Copy)]\n\
+         pub struct TokenMetadataEntry {{\n\
+         \x20   /// Canonical CVE value, e.g., `\"NOFORN\"` or `\"S\"`.\n\
+         \x20   pub value: &'static str,\n\
+         \x20   /// Long-form description, e.g., `\"NOT RELEASABLE TO\n\
+         \x20   /// FOREIGN NATIONALS\"`. Empty when the source CVE file\n\
+         \x20   /// did not provide a description.\n\
+         \x20   pub description: &'static str,\n\
+         \x20   /// CVE file that published this token.\n\
+         \x20   pub cve_file: &'static CveFileMetadata,\n\
+         }}\n"
+    )
+    .unwrap();
+
+    // Emit one `pub static` per CVE file.
+    for f in &files {
+        writeln!(content, "/// CVE-file metadata for `{}`.", f.const_ident).unwrap();
+        writeln!(
+            content,
+            "pub static {ident}: CveFileMetadata = CveFileMetadata {{\n\
+             \x20   const_name: {name:?},\n\
+             \x20   urn: {urn:?},\n\
+             \x20   title: {title:?},\n\
+             \x20   source: {source:?},\n\
+             \x20   poc_name: {poc_name:?},\n\
+             \x20   poc_email: {poc_email:?},\n\
+             \x20   owner_producer: {owner_producer:?},\n\
+             \x20   spec_version: {spec_version:?},\n\
+             \x20   des_version: {des_version:?},\n\
+             \x20   schema_version: {schema_version:?},\n\
+             }};\n",
+            ident = f.const_ident,
+            name = f.const_ident,
+            urn = f.urn,
+            title = f.title,
+            source = f.source,
+            poc_name = f.poc_name,
+            poc_email = f.poc_email,
+            owner_producer = f.owner_producer,
+            spec_version = f.spec_version,
+            des_version = f.des_version,
+            schema_version = SCHEMA_VERSION,
+        )
+        .unwrap();
+    }
+
+    // Slice of every CVE file metadata record, in deterministic
+    // (sorted by const name) order.
+    writeln!(
+        content,
+        "/// Every CVE-file metadata record published by this build.\n\
+         pub static CVE_FILES: &[&CveFileMetadata] = &["
+    )
+    .unwrap();
+    for f in &files {
+        writeln!(content, "    &{},", f.const_ident).unwrap();
+    }
+    writeln!(content, "];\n").unwrap();
+
+    // Sorted-by-value token table, paired with its CVE file metadata.
+    // BTreeMap iteration is sorted, so the emitted slice is sorted too —
+    // `lookup_token_metadata` can use `binary_search_by_key`.
+    writeln!(
+        content,
+        "/// Sorted (by canonical value) per-token metadata entries.\n\
+         /// Use [`lookup_token_metadata`] for O(log n) name → metadata\n\
+         /// lookup.\n\
+         pub static TOKEN_METADATA: &[TokenMetadataEntry] = &["
+    )
+    .unwrap();
+    for (value, entry) in &by_value {
+        writeln!(
+            content,
+            "    TokenMetadataEntry {{ value: {value:?}, description: {desc:?}, cve_file: &{cve_file} }},",
+            value = value,
+            desc = entry.description,
+            cve_file = entry.cve_file_const_ident,
+        )
+        .unwrap();
+    }
+    writeln!(content, "];\n").unwrap();
+
+    // Lookup helper.
+    writeln!(
+        content,
+        "/// Look up per-token metadata by canonical CVE value.\n\
+         /// Returns `None` for values not published by any CVE file in\n\
+         /// the active schema package.\n\
+         pub fn lookup_token_metadata(value: &str) -> Option<&'static TokenMetadataEntry> {{\n\
+         \x20   TOKEN_METADATA\n\
+         \x20       .binary_search_by_key(&value, |e| e.value)\n\
+         \x20       .ok()\n\
+         \x20       .map(|i| &TOKEN_METADATA[i])\n\
+         }}\n"
+    )
+    .unwrap();
+
+    let path = out.join("vocabulary.rs");
+    fs::write(&path, &content)
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }
