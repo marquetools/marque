@@ -598,7 +598,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_body_limit_var_unparseable_is_rejected() {
+    fn classify_body_limit_var_unparsable_is_rejected() {
         let err = classify_body_limit_var(Ok("not-a-number".to_owned()))
             .expect_err("garbage value must be rejected");
         assert!(
