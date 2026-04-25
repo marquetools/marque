@@ -90,6 +90,9 @@ criterion = { version = "0.8.2", features = ["html_reports"] }
 # Snapshot testing
 insta = { version = "1.47.2", features = ["json"] }
 
+# Compile-time trait-bound assertions
+static_assertions = "1.1.0"
+
 js-sys = "0.3.95"
 serde-wasm-bindgen = "0.6.5"
 # WASM
