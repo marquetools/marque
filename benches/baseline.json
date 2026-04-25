@@ -19,7 +19,7 @@
     "mean_us": 593,
     "upper_ci_us": 603,
     "unit": "microseconds",
-    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. Captured on a WSL2 dev machine; reference-machine re-capture is welcome but not required — the SC-002 18ms absolute target is the load-bearing gate, the per-bench `upper_ci_us` exists for the +10% regression-detection step in `scripts/bench-check.sh`.",
+    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a WSL2 dev machine; reference-machine re-capture is welcome but not required — the SC-002 18ms absolute target is the load-bearing gate, the per-bench `upper_ci_us` exists for the +10% regression-detection step in `scripts/bench-check.sh`.",
     "target_upper_ci_us": 18000
   },
   "lint_scaling": {
