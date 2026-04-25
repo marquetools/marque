@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Status
 
-This is the historical review record. The four HIGH findings (H1–H4) below were addressed in **PR #142** (`phase4-review-fixes`); see the per-finding resolution notes inline. The 11 MEDIUM and 7 LOW items remain open as recommended follow-ups.
+This is the historical review record. The four HIGH findings (H1–H4) were addressed in **PR #142** (`phase4-review-fixes`); the mechanical-hygiene MEDIUM/LOW items in **PR #144**; the test-coverage MEDIUM items in **PR #145**; and the per-class accuracy-gate refinement (M1) in this branch. The remaining MEDIUM and LOW items are tracked below and queued for follow-up PRs.
 
 | Finding | Resolution |
 |---------|------------|
@@ -21,6 +21,8 @@ This is the historical review record. The four HIGH findings (H1–H4) below wer
 | H2 | Fixed by commit `b8443e9` — `feature_label()` deleted, `EvidenceFeature::label` routed through `FeatureId::as_str()` |
 | H3 | Fixed by commit `edf0e64` — CI step added to run `decoder-harness` + `corpus-override` gated suites |
 | H4 | Fixed by commit `33f0c48` — `SUPERSEDED_TOKEN_MAP` citation corrected from `§A.6 p16` to `§H.4 p74` |
+| M1 | Fixed by PR #147 — per-class regression floors added to T057 harness |
+| M7 | Fixed by `phase4-review-followups-server-refactor` — `body_has_override` parameter dropped, body-channel check extracted to `reject_if_body_carries_corpus_override` |
 
 ## Decision (at time of review): REQUEST CHANGES
 
@@ -124,6 +126,8 @@ The 50% aggregate floor cannot detect a per-class regression masked by another c
 
 **Fix**: Pin currently-passing classes (Reordering 100%, WrongCase 100%, GarbledDelimiter 100%) at their current rates as per-class floors; ratchet Typo and MissingDelimiter as #133's checklist clears.
 
+**Resolution** — Landed on branch `phase4-review-followups-accuracy-floors`. New `PER_CLASS_FLOORS` table (`decoder_accuracy.rs`) pins all six mangling classes: `GarbledDelimiter`/`Reordering`/`WrongCase` at 1.00 (currently perfect), `SupersededToken` at 0.50 (n=3 threshold), `Typo` at 0.15 (~3pp under measured 20%), `MissingDelimiter` at 0.00 (placeholder for ratchet). New `resolution_rate_per_class_does_not_regress` test enforces the table and structurally requires every observed class to be pinned (so a new mangling class cannot land silently uncovered) and every pinned class to exist in the fixture set (so a class going missing fails loudly).
+
 ### M2 — Missing `static_assertions::assert_impl_all!` for `Box<dyn Recognizer<CapcoScheme>>: Send + Sync`
 
 **File**: workspace-wide (no occurrence)
@@ -177,6 +181,8 @@ Error message says "not NaN, +Inf, or -Inf" but `-Inf` is a legitimate "infinite
 `reject_if_corpus_override` is called with `body_has_override = false` (hardcoded), then a separate post-deserialization `if req._corpus_override.is_present()` runs. The `body_has_override` parameter is dead at every call site. Future refactor risk: a developer might consolidate the path and inadvertently drop the second check.
 
 **Fix**: Either remove the `body_has_override` parameter and handle body rejection entirely inside the handler post-deserialization, or add a doc comment at `reject_if_corpus_override` explaining the two-pass rationale.
+
+**Resolution** — Landed on branch `phase4-review-followups-server-refactor`. Took the first option: dropped the `body_has_override` parameter (the function now only inspects header + query, matching its name), extracted the duplicated post-deserialization body-channel check into a new `reject_if_body_carries_corpus_override(endpoint, &PresenceMarker)` helper, and rewrote both function doc comments to spell out the two-pass design (`reject_if_corpus_override` runs before deserialization so a malformed body still fails with `400` rather than axum's default `422`; `reject_if_body_carries_corpus_override` runs after `serde_json::from_slice` succeeds). Both handlers shrank by ~9 lines each and the duplicated `tracing::warn!(channel = "body", ...)` block is gone. All 22 server integration tests still pass.
 
 ### M8 — `require_probability` allows `p == 0.0`
 
