@@ -1033,6 +1033,141 @@ fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #133 PR 9: REL TO structural repair (preprocessing)
+// ---------------------------------------------------------------------------
+//
+// Four structural patterns recovered as preprocessing in
+// `generate_candidate_bytes` (before fuzzy correction). Preprocessing
+// rather than separate-candidate emission because (a) fuzzy correction
+// would silently rewrite `RELT` → `REL` before pattern 2's header
+// normalize could fire, and (b) REL TO trigraphs do NOT contribute to
+// the prior in `canonical_tokens_for`, so a separate fix candidate
+// would tie with the raw on prior and lose on emit-order.
+//
+// Patterns 1 and 2 are literal-shape transforms — `REL OT ` and
+// `RELT O ` are not valid CAPCO anywhere. Patterns 3 and 4 are
+// trigraph-guarded: the fix only fires when `is_trigraph(joined)`
+// returns true AND the shorter prefix alone is not a trigraph.
+//
+// The riskier per-trigraph fuzzy cluster (`USB → USA`, `AUT → AUS`,
+// `ASU → AUS`) is deferred to issue #186 because it requires
+// corpus-weighted priors plus block-level CAPCO §H.8 invariants
+// (originator-first, alphabetical sort, no duplicates) to safely
+// disambiguate against valid trigraphs like AUT (Austria) and UZB
+// (Uzbekistan).
+
+#[test]
+fn typo_rel_ot_resolves_via_header_normalize() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/b5c53e55302e8c5f.json`
+    // (`SECRET//REL OT USA, AUS, GBR`). Header transposition: TO
+    // appears as OT. Preprocessing rewrites `REL OT ` → `REL TO `
+    // before fuzzy/strict run.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL OT USA, AUS, GBR", &deep_cx())
+    else {
+        panic!("`REL OT` must resolve via header normalize");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert_eq!(
+        marking.0.rel_to.len(),
+        3,
+        "REL TO must carry 3 trigraphs (USA, AUS, GBR); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_relt_o_resolves_via_header_normalize() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/a41b81bc72978bc5.json`
+    // (`SECRET//RELT O USA, AUS, GBR`). Header token-boundary slip:
+    // the trailing T migrated from REL to the start of the gap before
+    // O. Preprocessing rewrites `RELT O ` → `REL TO ` before the
+    // fuzzy pass would otherwise silently rewrite `RELT` → `REL`
+    // (distance 1 deletion of T against the in-vocab DissemControl
+    // `REL` token), which would make the strict parser land at
+    // [AUS, GBR] with USA dropped.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//RELT O USA, AUS, GBR", &deep_cx())
+    else {
+        panic!("`RELT O` must resolve via header normalize");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert_eq!(
+        marking.0.rel_to.len(),
+        3,
+        "REL TO must carry 3 trigraphs (USA, AUS, GBR); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_a_us_resolves_via_entry_token_boundary() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/1b4875ece8a0a396.json`
+    // (`SECRET//REL TO USA,A US, GBR`). Entry token-boundary: AUS
+    // appears as `A US` with a stray space. Preprocessing rewrites
+    // the 4-character entry `A US` → `AUS` only when `is_trigraph`
+    // confirms the joined 3-letter string is a valid country code.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA,A US, GBR", &deep_cx())
+    else {
+        panic!("`A US` inside REL TO must resolve via entry token-boundary");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert_eq!(
+        marking.0.rel_to.len(),
+        3,
+        "REL TO must carry 3 trigraphs (USA, AUS, GBR); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_au_comma_s_resolves_via_entry_comma_misplacement() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/83e3ea8d68711138.json`
+    // (`SECRET//REL TO USA, AU,S GBR`). Entry comma misplacement:
+    // the comma in `AUS, GBR` slipped left one position to produce
+    // `AU,S GBR`. Preprocessing rewrites `AU,S ` → `AUS, ` only
+    // when `is_trigraph(AU + S)` (i.e., AUS) is true AND
+    // `is_trigraph(AU)` is false — the trigraph guard excludes
+    // false-positive shapes like `EU,S USA` where the comma is
+    // between the valid 2-char EU and a separate entry.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, AU,S GBR", &deep_cx())
+    else {
+        panic!("`AU,S GBR` inside REL TO must resolve via entry comma misplacement");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert_eq!(
+        marking.0.rel_to.len(),
+        3,
+        "REL TO must carry 3 trigraphs (USA, AUS, GBR); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn rel_to_structural_repair_does_not_corrupt_aut_austria() {
+    // Defensive regression test: AUT is a valid country trigraph
+    // (Austria, ISO 3166-1 alpha-3). The riskier per-trigraph fuzzy
+    // recovery deferred to issue #186 would have to disambiguate
+    // AUT-as-typo-for-AUS from AUT-as-Austria using corpus priors
+    // and block-level invariants. PR 9's structural repair is
+    // intentionally narrower: it only touches literal-shape
+    // patterns and trigraph-joinable tokens. AUT in a valid
+    // position must round-trip unchanged.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, AUT", &deep_cx()) else {
+        panic!("`REL TO USA, AUT` (AUT = Austria) must round-trip unchanged");
+    };
+    assert_eq!(
+        marking.0.rel_to.len(),
+        2,
+        "REL TO must keep both USA and AUT (Austria); attrs = {:?}",
+        marking.0,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //

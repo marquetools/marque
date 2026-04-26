@@ -12,19 +12,15 @@
 //! ## Three gates, three purposes
 //!
 //! - `resolution_rate_at_0_85` — the literal SC-004 target.
-//!   Asserts ≥85% resolution rate at recognition ≥0.85. Marked
-//!   `#[ignore]` until the decoder reaches the target (currently
-//!   ~53% aggregate; see per-class table below). PRs that improve
-//!   the decoder run `cargo test -p marque-engine \
-//!   --features decoder-harness -- --ignored` to verify; once
-//!   passing, remove the `#[ignore]` attribute and the test becomes
-//!   the load-bearing SC-004 gate.
+//!   Asserts ≥85% resolution rate at recognition ≥0.85. Always-on
+//!   as of issue #133 PR 9 (2026-04-26): the decoder cleared 85.8%
+//!   aggregate after REL TO structural repair landed, so this test
+//!   is no longer `#[ignore]`d and is the load-bearing SC-004 gate.
 //! - `resolution_rate_does_not_regress` — always-on aggregate
-//!   accuracy floor pinned just below the current measured rate.
-//!   Catches decoder regressions before they reach the corpus.
-//!   Ratchet the floor up in lockstep with measured accuracy
-//!   improvements; never lower it without a planned reason recorded
-//!   in the commit message.
+//!   accuracy floor. Now pinned at the same 85% as the SC-004
+//!   target gate; both fail CI together if accuracy drops. Ratchet
+//!   below the new measured rate when subsequent PRs land further
+//!   accuracy gains.
 //! - `resolution_rate_per_class_does_not_regress` — always-on
 //!   *per-class* accuracy floors. Catches a regression in one
 //!   mangling class that another class's improvement would
@@ -36,18 +32,14 @@
 //! ## Why three gates and not one
 //!
 //! Landing T057 with a single ≥85%-gated test would either (a) fail
-//! today and put CI in a known-bad state, or (b) be silently lowered
+//! historically and put CI in a known-bad state during the climb
+//! from ~53% aggregate to today's 85.8%, or (b) be silently lowered
 //! to a passing threshold and lose its meaning. The aggregate-floor
-//! split fixed (b) but had a residual hole: an aggregate gate cannot
-//! distinguish "every class held its rate" from "class A regressed
-//! and class B compensated", and at the current ~53% aggregate the
-//! offset window is wide enough for a real regression in a
-//! perfect-today class (Reordering, WrongCase, GarbledDelimiter) to
-//! sit underneath it. The per-class gate closes that hole. Together
-//! the three gates preserve the SC-004 contract intact, give CI a
-//! meaningful aggregate floor today, and surface per-class
-//! regressions as soon as they happen instead of after the next
-//! ratchet.
+//! split fixed (b); the per-class gate closes the residual hole that
+//! an aggregate gate cannot distinguish "every class held its rate"
+//! from "class A regressed and class B compensated". With the
+//! decoder now clearing 85% (issue #133 PR 9), all three gates are
+//! always-on and the SC-004 contract is enforced strictly.
 //!
 //! ## Why recognizer-level, not Engine-level
 //!
@@ -127,16 +119,18 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-26, after issue #133 PR 8 landed
-/// the bare-`TOP` addition to `EXTENDED_CORRECTION_VOCAB` and the
-/// 3-char `OTP→TOP` + extended 2-char `TP`/`TO`→`TOP`
-/// classification heuristic). The vocab addition gives the standard
-/// fuzzy path a `TOP` correction target (3-char `TPP`/`UOP` at
-/// dist 1, 4-char `TDOP`/`QTOP`/`TOPW` at dist 1 via the
-/// length-diff filter, plus the `TOPS ECRET` token-boundary case);
-/// the heuristic extension covers the residual cases the fuzzy
-/// path's `MIN_USEFUL_CONFIDENCE` floor and `MIN_FUZZY_LEN` block
-/// (`OTP→TOP` is dist 2 transposition, `TP`/`TO` are 2-char):
+/// Current measured rate (2026-04-26, after issue #133 PR 9 landed
+/// REL TO structural repair as preprocessing — header
+/// transposition (`REL OT` → `REL TO`), header token-boundary
+/// (`RELT O` → `REL TO`), entry token-boundary (`A US` → `AUS`
+/// inside an entry), and entry comma misplacement (`AU,S GBR` →
+/// `AUS, GBR`). All four are structural patches gated by literal-
+/// shape matching (patterns 1, 2) or by the trigraph dictionary
+/// (`is_trigraph` for patterns 3, 4) — no fuzzy guessing. The
+/// riskier per-trigraph fuzzy cluster (`USB → USA`, `AUT → AUS`,
+/// `ASU → AUS`) is deferred to issue #186 because it requires
+/// corpus-weighted priors plus block-level CAPCO §H.8 invariants
+/// to disambiguate safely:
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
@@ -144,23 +138,26 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 90       | 130   |  69.2%  |
+/// | Typo              | 94       | 130   |  72.3%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **219**  | **260** | **84.2%** |
+/// | **Aggregate**     | **223**  | **260** | **85.8%** |
 ///
-/// 0.81 is intentionally ~3 percentage points below the current
-/// 84.2% aggregate rate, leaving headroom of several fixtures so
-/// small corpus noise does not trip the regression gate. Remaining
-/// gap to SC-004's 85% target (~0.8 pp) sits entirely in the Typo
-/// class: REL TO trigraph typos (`USB→USA`, `UTA→USA` — ~7
-/// fixtures, needs trigraph fuzzy correction wired through the
-/// REL TO parser), SCI compartment typos (`ABCE→ABCD`,
-/// `INUEL→INTEL` — ~4 fixtures, needs SCI compartment fuzzy),
-/// SPECIAL ACCESS REQUIRED program-nickname typos (`BUUTER`,
-/// `BUTETR`, `POPCORNJ` — ~5 fixtures, blocked by issue #180
-/// per-org SAR vocab), and SAR identifier-internal typos
-/// (`CD-ZYY`, `J1 2J54` — ~7 fixtures, also blocked by #180).
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.81;
+/// Pinned at the SC-004 target (0.85). Now that the decoder
+/// clears 85% (PR 9 lifted it to 85.8%), the regression floor and
+/// the SC-004 target gate enforce the same threshold — both fail
+/// CI together if accuracy drops below 85%. Prior PRs kept the
+/// regression floor several percentage points below the measured
+/// rate as headroom against noise; that gap is no longer needed
+/// because the target gate (`resolution_rate_at_0_85`) is now
+/// load-bearing rather than `#[ignore]`d. A future PR that
+/// improves accuracy further can ratchet this back to a noise-
+/// tolerant gap below the new measured rate; until then,
+/// 0.85-equals-0.85 is the simplest correct policy.
+///
+/// Remaining accuracy gains (REL TO trigraph fuzzy via #186, SCI
+/// compartment fuzzy, SAR program-nickname / identifier-internal
+/// typos via #180) are tracked separately.
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -180,11 +177,12 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.81;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.66` (~3 percentage points below the
-///   current 90/130 = 69.2% rate after PR 8). Wide-enough margin
+/// - **`Typo`** pinned at `0.69` (~3 percentage points below the
+///   current 94/130 = 72.3% rate after PR 9). Wide-enough margin
 ///   to absorb one or two fixtures dropping; a sustained drop
 ///   trips the gate. Ratchet up as subsequent #133 PRs land REL
-///   TO trigraph fuzzy and SCI compartment fuzzy.
+///   TO trigraph fuzzy (issue #186), SCI compartment fuzzy, and
+///   the SAR / program-nickname recovery work blocked on #180.
 /// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
 ///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
 ///   helper already produced canonical bytes for every fixture, and
@@ -193,25 +191,21 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.81;
 ///   losing to the absorbing parse. Any future fixture that
 ///   regresses fails the gate.
 ///
-/// Last ratcheted (2026-04-26, issue #133 PR 8) to the rates
-/// observed after the bare-`TOP` vocab addition and the 3-char
-/// `OTP→TOP` + extended 2-char `TP`/`TO`→`TOP` classification
-/// heuristic landed. One class moved: `Typo` (56.9% → 69.2%, +16
-/// fixtures); the aggregate moved (78.1% → 84.2%). The +16 came
-/// from the TOP-classification typo cluster: 6 dist-1 vocab
-/// recoveries (`TPP`×4, `UOP`×2 → 3-char `TOP`), 3 4-char one-
-/// extra-letter vocab recoveries (`TDOP`/`QTOP`/`TOPW`), 1
-/// token-boundary case (`TOPS ECRET` → `TOPS`/`ECRET` both fuzzy-
-/// correct), 2 `OTP→TOP` 3-char heuristic recoveries (T↔O
-/// transposition blocked by `MIN_USEFUL_CONFIDENCE` for the
-/// vocab path), and 4 2-char `TP`/`TO` heuristic recoveries
-/// (below `MIN_FUZZY_LEN`).
+/// Last ratcheted (2026-04-26, issue #133 PR 9) to the rates
+/// observed after REL TO structural repair landed as preprocessing
+/// in `generate_candidate_bytes`. One class moved: `Typo` (69.2%
+/// → 72.3%, +4 fixtures); the aggregate moved (84.2% → 85.8%) —
+/// crossing the SC-004 ≥85% target. The +4 came from the four
+/// REL TO structural patterns: header transposition (`REL OT` →
+/// `REL TO`), header token-boundary (`RELT O` → `REL TO`), entry
+/// token-boundary (`A US` → `AUS`), and entry comma misplacement
+/// (`AU,S GBR` → `AUS, GBR`).
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
     ("MissingDelimiter", 1.00),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
-    ("Typo", 0.66),
+    ("Typo", 0.69),
     ("WrongCase", 1.00),
 ];
 
@@ -539,24 +533,16 @@ fn run_sweep() -> AccuracyReport {
     }
 }
 
-/// SC-004 literal target gate. Currently `#[ignore]` because the
-/// decoder is at ~53% aggregate vs the 85% target. PRs that improve
-/// decoder accuracy run with `-- --ignored` to verify; once passing
-/// this becomes the load-bearing SC-004 gate.
+/// SC-004 literal target gate — load-bearing as of issue #133 PR 9
+/// (2026-04-26). The decoder reached 85.8% aggregate after REL TO
+/// structural repair landed as preprocessing in
+/// `generate_candidate_bytes`, crossing the 85% threshold.
 ///
-/// The gate exists today (rather than landing it later when the
-/// decoder reaches the target) so:
-///
-/// - The exact accuracy claim from the spec is encoded in code, not
-///   floating in a doc.
-/// - PRs that touch the decoder can run this with `-- --ignored` to
-///   measure progress against the target without relying on ad-hoc
-///   shell pipelines.
-/// - When the target is reached, the only change required is
-///   removing `#[ignore]` — no test rewrite, no threshold-tuning
-///   PR.
+/// This gate is now always-on: a regression below 85% blocks CI.
+/// The complementary `resolution_rate_does_not_regress` gate is
+/// pinned ~1 pp lower (0.85 → matches target floor) so a small dip
+/// catches before it widens; this gate is the strict SC-004 line.
 #[test]
-#[ignore = "SC-004 ≥85% target; current decoder ~84% (post-#133 PRs 1+3+5+6+7+8), see resolution_rate_does_not_regress for the always-on regression gate"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

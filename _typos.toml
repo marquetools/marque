@@ -77,6 +77,16 @@ spcial = "spcial"
 ECRET = "ECRET"
 OTP = "OTP"
 UOP = "UOP"
+# Intentional misspellings for REL TO header recovery (issue #133
+# PR 9). `OT` is the corpus-attested TO transposition (`REL OT` →
+# `REL TO`); `RELT` is the token-boundary slip (`RELT O` →
+# `REL TO`). Both appear in `crates/engine/src/decoder.rs` doc
+# comments, unit-test names, and `crates/engine/tests/decoder_recovery.rs`
+# integration-test doc comments that pin the REL TO structural
+# repair recovery path.
+OT = "OT"
+ot = "ot"
+RELT = "RELT"
 # Python package names that look like typos but aren't
 certifi = "certifi"
 
