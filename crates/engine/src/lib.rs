@@ -33,6 +33,21 @@ pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use recognizer::StrictRecognizer;
 
+/// Re-export of [`web_time::Instant`].
+///
+/// On native targets this is `std::time::Instant` verbatim
+/// (`web_time` `pub use`s the std type). On `wasm32-unknown-unknown`
+/// it's a `Performance.now()` / `Date.now()` polyfill — `std::time::
+/// Instant::now()` panics on that target. The engine's per-candidate
+/// deadline check (spec 005) calls `Instant::now()` whenever a
+/// caller-supplied deadline is set, so any embedder constructing a
+/// `LintOptions { deadline: Some(_) }` for the WASM target MUST use
+/// this `Instant` (or `web_time::Instant` directly) rather than
+/// `std::time::Instant`. CLI and server callers can keep using
+/// `std::time::Instant` because the two types are identical on
+/// native, and those binaries do not target wasm32-unknown-unknown.
+pub use web_time::Instant;
+
 /// Audit-record schema version emitted by this build.
 ///
 /// Set at build time by `crates/engine/build.rs` (see `MARQUE_AUDIT_SCHEMA`),

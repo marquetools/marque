@@ -82,11 +82,13 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 3c: WASM surface wiring
 
-- [ ] T040 Add `deadline_ms: Option<f64>` to the JS-side options object in `crates/wasm/src/lib.rs` (matching the existing options shape; if no options object exists yet, this lands as part of one).
-- [ ] T041 wasm-bindgen shim: validate `deadline_ms.is_finite() && deadline_ms >= 0.0` (negative / NaN / Inf rejected with a clear JS-thrown error).
-- [ ] T042 Convert valid `deadline_ms` to `Instant::now() + Duration::from_millis(deadline_ms as u64)` inside the wasm function body; pass to `Engine::lint_with_options`.
-- [ ] T043 Add Constitution III analysis to `crates/wasm/src/lib.rs` doc comment: confirm `deadline_ms` does not introduce a new recognizer codepath or alter posteriors (it's a runtime budget cap, not a vocabulary or scoring change).
-- [ ] T044 [P] Test `wasm_deadline_ms_truncates_lint_output_byte_identically_to_native_cli` in `crates/wasm/tests/parity.rs`: same fixture + same deadline → byte-identical NDJSON between WASM and native CLI (extends existing SC-008 parity).
+- [x] T040 Added `deadline_ms: Option<f64>` to `WasmConfig` in `crates/wasm/src/lib.rs`. Carried through `parse_wasm_config` alongside the existing `Config`-level fields.
+- [x] T041 Validation in `parse_deadline_ms`: `is_finite() && >= 0.0`; negative / NaN / Inf rejected with a structured JS error string. `serde_json` handles the bulk of the rejection at JSON-parse time; the explicit `is_finite()` check is the second line of defense.
+- [x] T042 `stamp_deadline()` converts a parsed `Duration` to `Instant::now().checked_add(d)`, mapping overflow to a JS error. Passed into `Engine::lint_with_options` / `fix_with_options`. `EngineError::DeadlineExceeded` from fix returns `Err(...)` carrying a JSON-serialized `DeadlineExceededBodyJson` (mirrors the server's 504 response shape).
+- [x] T043 Constitution III analysis added to the crate-level doc comment. Confirms `deadline_ms` does not introduce a new recognizer codepath, does not alter posteriors, and does not change the vocabulary surface. Notes that `lint_deep_scan` / `fix_deep_scan` (Gate 2) deliberately remain byte-only.
+- [x] T044 [P] `wasm_deadline_ms_generous_matches_native_full_lint` and `wasm_deadline_ms_zero_yields_empty_ndjson_byte_identical_to_native` in `crates/wasm/tests/deadline_parity.rs` (new file). Verifies byte-identical NDJSON across two deterministic deadline shapes. Mid-pass truncation parity intentionally not tested — `Instant::now()` is sampled independently per call.
+
+**Required infrastructure**: added `web-time` workspace dep + engine dep; replaced `use std::time::Instant` with `use web_time::Instant` in `crates/engine/src/options.rs` and `crates/engine/src/engine.rs`. `web_time::Instant` is a literal `pub use` of `std::time::Instant` on native targets and a `Performance.now()` polyfill on `wasm32-unknown-unknown` — without this, the engine's per-candidate `Instant::now()` deadline check would panic in the WASM target. Re-exported as `marque_engine::Instant` so the WASM crate doesn't need its own web-time dep.
 
 ---
 
