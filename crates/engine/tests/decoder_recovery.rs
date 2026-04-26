@@ -879,6 +879,160 @@ fn typo_left_attach_t_resolves_via_collapse_stray_char_slash() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #133 PR 8: 3-char classification typo recovery
+// ---------------------------------------------------------------------------
+//
+// Two complementary recovery paths added in PR 8:
+//
+// 1. **Bare `TOP` added to `EXTENDED_CORRECTION_VOCAB`.** The CVE
+//    schema only lists the multi-word `TOP SECRET` entry, so without
+//    bare `TOP` the fuzzy matcher had no target for `TPP→TOP`-style
+//    typos at the leading classification slot. With `TOP` in vocab
+//    the standard distance-1 fuzzy path recovers `TPP`, `UOP`, plus
+//    4-char one-extra-letter cases (`TDOP`, `QTOP`, `TOPW`) and the
+//    `TOPS ECRET` token-boundary case (`TOPS`→`TOP` at distance 1
+//    via the length-diff filter, then strict parser re-joins
+//    `TOP SECRET`).
+//
+// 2. **3-char heuristic for `OTP`→`TOP`** plus 2-char heuristic
+//    extension for `TP`/`TO`→`TOP`. `OTP` is dist 2 from `TOP`
+//    under standard Levenshtein (T↔O transposition counts as 2
+//    substitutions), and the fuzzy matcher's
+//    `MIN_USEFUL_CONFIDENCE` floor (0.45) blocks distance-2
+//    corrections for 3-char inputs (confidence 0.40). `TP`/`TO`
+//    are 2-char and below `MIN_FUZZY_LEN`. Both paths take a
+//    targeted heuristic at the leading classification slot.
+//
+// `is_canonical_short_classification` was widened to recognize bare
+// `TOP` so the heuristic doesn't fire on already-canonical
+// `TOP SECRET//...` input.
+//
+// SC-004 movement: Typo class 56.9% → 69.2% (+12.3 pp, +16
+// fixtures); aggregate 78.1% → 84.2% (+6.1 pp). Five named
+// integration tests below pin the canonical fixture for each
+// recovery branch.
+
+#[test]
+fn typo_tpp_resolves_via_top_vocab_addition() {
+    // Pinned fixture family: `tests/fixtures/mangled/typo/ed06b49d58c3c389.json`
+    // (`TPP SECRET//SI//NOFORN`). PR 8 adds bare `TOP` to the fuzzy
+    // correction vocab; standard dist-1 fuzzy then handles
+    // `TPP→TOP`. Strict parser re-joins `TOP SECRET` into the
+    // canonical multi-word classification.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TPP SECRET//SI//NOFORN", &deep_cx()) else {
+        panic!("`TPP SECRET//SI//NOFORN` must resolve via TOP-vocab fuzzy path");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    assert!(
+        marking
+            .0
+            .sci_controls
+            .iter()
+            .any(|c| matches!(c, SciControl::Si)),
+        "SI must survive; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_4char_one_extra_letter_resolves_via_top_vocab() {
+    // Pinned fixture family: `TDOP`/`QTOP`/`TOPW SECRET//...` —
+    // 4-char inputs at edit distance 1 from `TOP` via the
+    // Levenshtein length-diff filter. The vocab path covers all
+    // three with no extra heuristic.
+    let rx = DecoderRecognizer::new();
+    for input in &[
+        b"TDOP SECRET//SI//NOFORN".as_slice(),
+        b"QTOP SECRET//SI//NOFORN".as_slice(),
+        b"TOPW SECRET//SI//NOFORN".as_slice(),
+    ] {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, &deep_cx()) else {
+            panic!(
+                "{:?} must resolve via TOP-vocab fuzzy path",
+                std::str::from_utf8(input).unwrap_or("<non-utf8>")
+            );
+        };
+        assert_eq!(
+            effective_level(&marking),
+            Some(Classification::TopSecret),
+            "4-char one-extra-letter `TOP`-typo must resolve to TopSecret"
+        );
+    }
+}
+
+#[test]
+fn typo_otp_resolves_via_3char_heuristic() {
+    // Pinned fixture: `OTP SECRET//...` shape. T↔O transposition
+    // is dist 2 under standard Levenshtein, so the vocab fuzzy
+    // path's confidence floor blocks it; the 3-char classification
+    // heuristic is the recovery path. `FixSource` for this path is
+    // `DecoderClassificationHeuristic` (Severity::Warn,
+    // Confidence::rule capped at 0.80).
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"OTP SECRET//SI//NOFORN", &deep_cx()) else {
+        panic!("`OTP SECRET//...` must resolve via 3-char heuristic");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    assert!(
+        marking
+            .0
+            .sci_controls
+            .iter()
+            .any(|c| matches!(c, SciControl::Si)),
+        "SI must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_tp_and_to_resolve_via_2char_heuristic_extension() {
+    // PR 8's 2-char heuristic extension. `TP`/`TO` at the leading
+    // classification slot map to `TOP` (the elided-middle-O and
+    // elided-trailing-P cases respectively). Bare `TP`/`TO` have
+    // no other canonical CAPCO meaning, so the heuristic isn't
+    // ambiguous in practice.
+    let rx = DecoderRecognizer::new();
+    for input in &[
+        b"TP SECRET//SI//NOFORN".as_slice(),
+        b"TO SECRET//SI//NOFORN".as_slice(),
+    ] {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, &deep_cx()) else {
+            panic!(
+                "{:?} must resolve via 2-char TP/TO heuristic",
+                std::str::from_utf8(input).unwrap_or("<non-utf8>")
+            );
+        };
+        assert_eq!(
+            effective_level(&marking),
+            Some(Classification::TopSecret),
+            "2-char `TP`/`TO` classification typo must resolve to TopSecret"
+        );
+    }
+}
+
+#[test]
+fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
+    // Pinned fixture: `TOPS ECRET//...` — token-boundary issue
+    // where the `S` of `SECRET` migrated to the end of `TOP`. PR 8
+    // recovers because `TOPS` (4 chars) fuzzy-matches `TOP` (3 chars)
+    // at edit distance 1 (delete trailing `S`), and `ECRET` (5 chars)
+    // fuzzy-matches `SECRET` (6 chars) at edit distance 1 (insert
+    // leading `S`). The strict parser then re-joins them as
+    // `TOP SECRET`.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOPS ECRET//SI//NOFORN", &deep_cx()) else {
+        panic!("`TOPS ECRET//...` must resolve via TOP+SECRET vocab fuzzy");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //

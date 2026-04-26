@@ -127,21 +127,16 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-26, after issue #133 PR 7 landed
-/// the `try_collapse_stray_char_slash` recovery pass in
-/// `crates/engine/src/decoder.rs`): the pass walks the fuzzy-corrected
-/// text looking for `<alnum>/<single_alnum_char>/<alnum>` patterns
-/// and emits three candidate transforms (drop X, right-attach X,
-/// left-attach X) per match — the strict parser's
-/// `TokenKind::Unknown` filter then naturally selects the one
-/// transform that produces fully-recognized tokens. PR 7 also
-/// briefly experimented with lowering `MIN_FUZZY_LEN` from 3 to 2
-/// but reverted because 2-char SAR sub-compartment letters (most
-/// visibly `RB` in the canonical SAR fixture) collide with `RS`
-/// (the RSEN portion form) at edit distance 1 and silently corrupt
-/// SAR sub-compartments into dissem controls (4-fixture regression
-/// vs 1-fixture win). The `MIN_FUZZY_LEN` doc in `crates/core/src/
-/// fuzzy.rs` carries the full rationale:
+/// Current measured rate (2026-04-26, after issue #133 PR 8 landed
+/// the bare-`TOP` addition to `EXTENDED_CORRECTION_VOCAB` and the
+/// 3-char `OTP→TOP` + extended 2-char `TP`/`TO`→`TOP`
+/// classification heuristic). The vocab addition gives the standard
+/// fuzzy path a `TOP` correction target (3-char `TPP`/`UOP` at
+/// dist 1, 4-char `TDOP`/`QTOP`/`TOPW` at dist 1 via the
+/// length-diff filter, plus the `TOPS ECRET` token-boundary case);
+/// the heuristic extension covers the residual cases the fuzzy
+/// path's `MIN_USEFUL_CONFIDENCE` floor and `MIN_FUZZY_LEN` block
+/// (`OTP→TOP` is dist 2 transposition, `TP`/`TO` are 2-char):
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
@@ -149,21 +144,23 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 74       | 130   |  56.9%  |
+/// | Typo              | 90       | 130   |  69.2%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **203**  | **260** | **78.1%** |
+/// | **Aggregate**     | **219**  | **260** | **84.2%** |
 ///
-/// 0.75 is intentionally ~3 percentage points below the current
-/// 78.1% aggregate rate, leaving headroom of several fixtures so
+/// 0.81 is intentionally ~3 percentage points below the current
+/// 84.2% aggregate rate, leaving headroom of several fixtures so
 /// small corpus noise does not trip the regression gate. Remaining
-/// gap to SC-004's 85% target (~7 pp) sits entirely in the Typo
-/// class: 3-char classification typos (`TPP→TOP`) outside the PR 2
-/// heuristic's scope, multi-pattern `/X/` inputs (`S/I/T/K`) where
-/// PR 7's first-match-only scope leaves residual stray characters,
-/// REL TO trigraph typos (`USB→USA`) without a trigraph fuzzy code
-/// path, and SAR identifier-internal typos blocked by the absence
-/// of a per-org SAR vocabulary (issue #180).
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
+/// gap to SC-004's 85% target (~0.8 pp) sits entirely in the Typo
+/// class: REL TO trigraph typos (`USB→USA`, `UTA→USA` — ~7
+/// fixtures, needs trigraph fuzzy correction wired through the
+/// REL TO parser), SCI compartment typos (`ABCE→ABCD`,
+/// `INUEL→INTEL` — ~4 fixtures, needs SCI compartment fuzzy),
+/// SPECIAL ACCESS REQUIRED program-nickname typos (`BUUTER`,
+/// `BUTETR`, `POPCORNJ` — ~5 fixtures, blocked by issue #180
+/// per-org SAR vocab), and SAR identifier-internal typos
+/// (`CD-ZYY`, `J1 2J54` — ~7 fixtures, also blocked by #180).
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.81;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -183,11 +180,11 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.53` (~4 percentage points below the
-///   current 74/130 = 56.9% rate after PR 7). Wide-enough margin
+/// - **`Typo`** pinned at `0.66` (~3 percentage points below the
+///   current 90/130 = 69.2% rate after PR 8). Wide-enough margin
 ///   to absorb one or two fixtures dropping; a sustained drop
-///   trips the gate. Ratchet up as subsequent #133 PRs land
-///   3-char classification-typo coverage and trigraph fuzzy.
+///   trips the gate. Ratchet up as subsequent #133 PRs land REL
+///   TO trigraph fuzzy and SCI compartment fuzzy.
 /// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
 ///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
 ///   helper already produced canonical bytes for every fixture, and
@@ -196,24 +193,25 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
 ///   losing to the absorbing parse. Any future fixture that
 ///   regresses fails the gate.
 ///
-/// Last ratcheted (2026-04-26, issue #133 PR 7) to the rates
-/// observed after `try_collapse_stray_char_slash` landed. One class
-/// moved:
-/// `Typo` (50.0% → 56.9%, +9 fixtures); the aggregate moved
-/// (74.6% → 78.1%). All +9 came from `<alnum>/<single_alnum_char>/
-/// <alnum>` shapes — drop-X (`/R/`/`/L/`/`/M/`/`/U/` between two
-/// known tokens), right-attach-X (`/N/OFORN`, `/I/TK`), and
-/// left-attach-X (`SECRE/T/`, `RB/N/`). The
-/// `MIN_FUZZY_LEN`-lowering arm of PR 7 was reverted before commit
-/// after corpus measurement showed `RB→RS` SAR-sub-compartment
-/// regressions (4 fixtures lost vs 1 UK→TK fixture won) — see the
-/// `MIN_FUZZY_LEN` doc in `crates/core/src/fuzzy.rs`.
+/// Last ratcheted (2026-04-26, issue #133 PR 8) to the rates
+/// observed after the bare-`TOP` vocab addition and the 3-char
+/// `OTP→TOP` + extended 2-char `TP`/`TO`→`TOP` classification
+/// heuristic landed. One class moved: `Typo` (56.9% → 69.2%, +16
+/// fixtures); the aggregate moved (78.1% → 84.2%). The +16 came
+/// from the TOP-classification typo cluster: 6 dist-1 vocab
+/// recoveries (`TPP`×4, `UOP`×2 → 3-char `TOP`), 3 4-char one-
+/// extra-letter vocab recoveries (`TDOP`/`QTOP`/`TOPW`), 1
+/// token-boundary case (`TOPS ECRET` → `TOPS`/`ECRET` both fuzzy-
+/// correct), 2 `OTP→TOP` 3-char heuristic recoveries (T↔O
+/// transposition blocked by `MIN_USEFUL_CONFIDENCE` for the
+/// vocab path), and 4 2-char `TP`/`TO` heuristic recoveries
+/// (below `MIN_FUZZY_LEN`).
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
     ("MissingDelimiter", 1.00),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
-    ("Typo", 0.53),
+    ("Typo", 0.66),
     ("WrongCase", 1.00),
 ];
 
@@ -558,7 +556,7 @@ fn run_sweep() -> AccuracyReport {
 ///   removing `#[ignore]` — no test rewrite, no threshold-tuning
 ///   PR.
 #[test]
-#[ignore = "SC-004 ≥85% target; current decoder ~78% (post-#133 PRs 1+3+5+6+7), see resolution_rate_does_not_regress for the always-on regression gate"]
+#[ignore = "SC-004 ≥85% target; current decoder ~84% (post-#133 PRs 1+3+5+6+7+8), see resolution_rate_does_not_regress for the always-on regression gate"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

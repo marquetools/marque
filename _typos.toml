@@ -68,6 +68,15 @@ SPCIAL = "SPCIAL"
 SEPCIAL = "SEPCIAL"
 SPECAL = "SPECAL"
 spcial = "spcial"
+# Intentional misspellings for 3-char classification typo recovery
+# (issue #133 PR 8). `ECRET` appears in test code and doc comments
+# describing the `TOPS ECRET` token-boundary typo (the leading `S`
+# of `SECRET` migrated to the end of `TOP`); the canonical
+# replacement is `SECRET`. `OTP` and `UOP` are corpus-attested
+# `TOP` typos used in test names and doc comments.
+ECRET = "ECRET"
+OTP = "OTP"
+UOP = "UOP"
 # Python package names that look like typos but aren't
 certifi = "certifi"
 

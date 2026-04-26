@@ -49,6 +49,28 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
         .expect("CVE token automaton construction failed")
 });
 
+/// Classification structural keywords not present as standalone
+/// entries in `ALL_CVE_TOKENS`. Issue #133 PR 8.
+///
+/// `TOP SECRET` is in `ALL_CVE_TOKENS` as a single multi-word entry,
+/// but the bare `TOP` is not — and the decoder's `scan_token`
+/// tokenizer splits on whitespace, so an input like `TPP SECRET`
+/// arrives at the fuzzy matcher as the standalone token `TPP` with
+/// no `TOP` correction target available. Adding `TOP` to the fuzzy
+/// vocab lets the standard edit-distance path recover the
+/// `TPP→TOP`, `UOP→TOP`, `TDOP→TOP`, `QTOP→TOP`, `TOPW→TOP` family
+/// of typos seen in the SC-004 mangled corpus. The strict parser
+/// then re-joins `TOP SECRET` into the canonical multi-word
+/// classification.
+///
+/// Round-trip safety: a fuzzy-correction returning `TOP` for an
+/// input typo lands as the bare token `TOP`, which the strict
+/// parser combines with the following `SECRET` token into
+/// `MarkingClassification::Us(Classification::TopSecret)` via the
+/// usual two-word classification path. Round-trip pinned by the
+/// PR-8 integration tests in `decoder_recovery.rs`.
+const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
+
 /// SAR structural keywords (CAPCO-2016 §H.5 p100, "SAR-" indicator and
 /// "SPECIAL ACCESS REQUIRED-" full form), included in the fuzzy
 /// correction vocabulary so OCR/transcription typos in the indicator
@@ -122,6 +144,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
         v.push(f.banner);
     }
     v.extend_from_slice(SAR_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.sort();
     v.dedup();
     v
@@ -345,6 +368,29 @@ mod tests {
                  a post-2016 ICRM addition"
             );
         }
+    }
+
+    #[test]
+    fn correction_vocab_contains_top_classification_keyword() {
+        // Issue #133 PR 8: bare `TOP` lives outside `ALL_CVE_TOKENS`
+        // because the CVE schema only lists the full multi-word
+        // `TOP SECRET` classification entry. The decoder's
+        // `scan_token` whitespace tokenizer arrives at the fuzzy
+        // matcher with `TPP` (or other 3/4-char typos) as a
+        // standalone token, so without `TOP` in the correction vocab
+        // there's no fuzzy target and the candidate gets dropped.
+        // Adding `TOP` here lets the standard edit-distance fuzzy
+        // path recover `TPP→TOP` (dist 1), `UOP→TOP` (dist 1),
+        // `TDOP→TOP` (dist 1, 4-char input via length-diff filter),
+        // `QTOP→TOP` (dist 1), and `TOPW→TOP` (dist 1). Strict
+        // parser then re-joins `TOP SECRET` into the canonical
+        // multi-word classification.
+        let vocab = CapcoTokenSet.correction_vocab();
+        assert!(
+            vocab.binary_search(&"TOP").is_ok(),
+            "correction_vocab MUST contain bare \"TOP\" — issue #133 PR 8 \
+             classification typo recovery target",
+        );
     }
 
     #[test]
