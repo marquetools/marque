@@ -128,15 +128,21 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// improvement would mask here. Both are needed.
 ///
 /// Current measured rate (2026-04-26, branch
-/// `fix/issue-133-pr6-sar-tail-recovery` after issue #133 PR 6 landed
-/// SAR indicator-keyword structural repair (`USAR-` → `SAR-` prefix
-/// strip and `SARBP` → `SAR-BP` missing-hyphen insertion) in
-/// `try_sar_indicator_repair`, the `SPECIAL`/`ACCESS` SAR structural
-/// keywords in `EXTENDED_CORRECTION_VOCAB` (so SPCIAL/CCESS/SPECAL
-/// fuzzy-correct via the existing matcher), and the
-/// `CUSTOM_SCI_MARKING_PENALTY` structural penalty in
-/// `score_candidate` (demotes lenient-strict-parse candidates that
-/// absorbed stray text as `Custom`-system SCI controls):
+/// `fix/issue-133-pr7-2char-tail-fuzzy` after issue #133 PR 7 landed
+/// the `try_collapse_stray_char_slash` recovery pass in
+/// `crates/engine/src/decoder.rs`. The pass walks the fuzzy-corrected
+/// text looking for `<alnum>/<single_alnum_char>/<alnum>` patterns
+/// and emits three candidate transforms (drop X, right-attach X,
+/// left-attach X) per match — the strict parser's
+/// `TokenKind::Unknown` filter then naturally selects the one
+/// transform that produces fully-recognized tokens. PR 7 also
+/// briefly experimented with lowering `MIN_FUZZY_LEN` from 3 to 2
+/// but reverted because 2-char SAR sub-compartment letters (most
+/// visibly `RB` in the canonical SAR fixture) collide with `RS`
+/// (the RSEN portion form) at edit distance 1 and silently corrupt
+/// SAR sub-compartments into dissem controls (4-fixture regression
+/// vs 1-fixture win). The `MIN_FUZZY_LEN` doc in `crates/core/src/
+/// fuzzy.rs` carries the full rationale:
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
@@ -144,22 +150,21 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 65       | 130   |  50.0%  |
+/// | Typo              | 74       | 130   |  56.9%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **194**  | **260** | **74.6%** |
+/// | **Aggregate**     | **203**  | **260** | **78.1%** |
 ///
-/// 0.71 is intentionally ~3 percentage points below the current
-/// 74.6% aggregate rate, leaving headroom of several fixtures so
+/// 0.75 is intentionally ~3 percentage points below the current
+/// 78.1% aggregate rate, leaving headroom of several fixtures so
 /// small corpus noise does not trip the regression gate. Remaining
-/// gap to SC-004's 85% target sits entirely in the Typo class:
-/// 2-char tail-token typos (`UK→TK`) blocked by `MIN_FUZZY_LEN = 3`
-/// and 3-char classification typos (`TPP→TOP`) outside the PR 2
-/// heuristic's scope. Per-org SAR vocabulary loading would unlock
-/// the SAR identifier-internal typos (`BUTETR→BUTTER`,
-/// `BP-J1 2J54→BP-J12 J54`, `CD-ZYY→CD-YYY`) but is intentionally
-/// deferred — config-loaded vocab is a separate trust-boundary
-/// design concern.
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.71;
+/// gap to SC-004's 85% target (~7 pp) sits entirely in the Typo
+/// class: 3-char classification typos (`TPP→TOP`) outside the PR 2
+/// heuristic's scope, multi-pattern `/X/` inputs (`S/I/T/K`) where
+/// PR 7's first-match-only scope leaves residual stray characters,
+/// REL TO trigraph typos (`USB→USA`) without a trigraph fuzzy code
+/// path, and SAR identifier-internal typos blocked by the absence
+/// of a per-org SAR vocabulary (issue #180).
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -179,12 +184,11 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.71;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.47` (~3 percentage points below the
-///   current 65/130 = 50.0% rate after PR 6). Wide-enough margin
+/// - **`Typo`** pinned at `0.53` (~3 percentage points below the
+///   current 74/130 = 56.9% rate after PR 7). Wide-enough margin
 ///   to absorb one or two fixtures dropping; a sustained drop
 ///   trips the gate. Ratchet up as subsequent #133 PRs land
-///   2-char tail-typo recovery and 3-char classification-typo
-///   coverage.
+///   3-char classification-typo coverage and trigraph fuzzy.
 /// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
 ///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
 ///   helper already produced canonical bytes for every fixture, and
@@ -194,26 +198,23 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.71;
 ///   regresses fails the gate.
 ///
 /// Last ratcheted (2026-04-26, branch
-/// `fix/issue-133-pr6-sar-tail-recovery`) to the rates observed
-/// after `try_sar_indicator_repair` and `CUSTOM_SCI_MARKING_PENALTY`
-/// landed. One class moved: `Typo` (44.6% → 50.0%, +7 fixtures);
-/// the aggregate moved (71.9% → 74.6%). The +7 came entirely from
-/// SAR-shape Typo fixtures: 5 SPECIAL/ACCESS keyword typos (now
-/// recoverable via the extended fuzzy vocab) plus 2 USAR-prefix
-/// fixtures (now recoverable via `try_sar_indicator_repair`). The
-/// SARBP missing-hyphen fixture (`fbf5ed813c109c14.json`) was
-/// already resolving via a different path pre-PR-6 — `SARBP` is
-/// 5 alnum chars and the fuzzy matcher had no close vocab target,
-/// so the strict parser dropped it; with PR 6 the canonical
-/// recognition path is now structural (`try_sar_indicator_repair`)
-/// rather than an accident of strict-parser fall-through, which
-/// makes the recovery pinnable in `decoder_recovery.rs`.
+/// `fix/issue-133-pr7-2char-tail-fuzzy`) to the rates observed
+/// after `try_collapse_stray_char_slash` landed. One class moved:
+/// `Typo` (50.0% → 56.9%, +9 fixtures); the aggregate moved
+/// (74.6% → 78.1%). All +9 came from `<alnum>/<single_alnum_char>/
+/// <alnum>` shapes — drop-X (`/R/`/`/L/`/`/M/`/`/U/` between two
+/// known tokens), right-attach-X (`/N/OFORN`, `/I/TK`), and
+/// left-attach-X (`SECRE/T/`, `RB/N/`). The
+/// `MIN_FUZZY_LEN`-lowering arm of PR 7 was reverted before commit
+/// after corpus measurement showed `RB→RS` SAR-sub-compartment
+/// regressions (4 fixtures lost vs 1 UK→TK fixture won) — see the
+/// `MIN_FUZZY_LEN` doc in `crates/core/src/fuzzy.rs`.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
     ("MissingDelimiter", 1.00),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
-    ("Typo", 0.47),
+    ("Typo", 0.53),
     ("WrongCase", 1.00),
 ];
 
@@ -558,7 +559,7 @@ fn run_sweep() -> AccuracyReport {
 ///   removing `#[ignore]` — no test rewrite, no threshold-tuning
 ///   PR.
 #[test]
-#[ignore = "SC-004 ≥85% target; current decoder ~75% (post-#133 PRs 1+3+5+6), see resolution_rate_does_not_regress for the always-on regression gate"]
+#[ignore = "SC-004 ≥85% target; current decoder ~78% (post-#133 PRs 1+3+5+6+7), see resolution_rate_does_not_regress for the always-on regression gate"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

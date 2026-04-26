@@ -33,6 +33,8 @@
 //!    from fuzzy matching because edit distance is semantically unreliable at
 //!    that length. `C`, `S`, `U` are valid in context but look similar enough to
 //!    dozens of other possibilities that any fuzzy suggestion would be noise.
+//!    See [`MIN_FUZZY_LEN`] for the 2-char rationale (PR 7 SAR
+//!    sub-compartment false-positives).
 //!
 //! 5. **Confidence scores.** Each `FuzzyCorrection` carries a base confidence
 //!    derived from edit distance and token length. The calling engine multiplies
@@ -211,9 +213,26 @@ impl<'v> FuzzyVocabMatcher<'v> {
 
 /// Minimum input token length for fuzzy matching.
 ///
-/// Tokens shorter than this are excluded: single-char tokens (`S`, `C`, `U`,
-/// `R`) are valid CAPCO abbreviations and at edit distance 1 from too many
-/// other short tokens to produce reliable corrections.
+/// Tokens shorter than this are excluded. Single- and two-char tokens
+/// are too noisy for context-free edit-distance correction:
+///
+/// - **Single-char**: `S`, `C`, `U`, `R` are valid classification CAPCO
+///   abbreviations and at edit distance 1 from too many other
+///   single-char tokens to produce reliable corrections.
+/// - **Two-char**: tried briefly during issue #133 PR 7 to recover
+///   `UK → TK`-style typos, but reverted because of false-positive
+///   collisions with SAR identifier sub-compartment letters. Most
+///   visibly, the canonical Enron-corpus SAR fixture
+///   `SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN`
+///   has `RB` as a standalone 2-char token (sub-compartment of XRA),
+///   and `RB` is at edit distance 1 from `RS` (the IC dissem portion
+///   form for RSEN) — so 2-char fuzzy silently converted SAR
+///   sub-compartment letters into dissem controls. The fuzzy
+///   matcher has no context awareness to know "we're inside a SAR
+///   block, skip identifier-shaped tokens", so the safer choice is
+///   to keep 2-char tokens out of fuzzy and address the
+///   `UK→TK`-style cases via a context-aware structural pass in
+///   the decoder.
 pub const MIN_FUZZY_LEN: usize = 3;
 
 /// Maximum Levenshtein edit distance considered for a correction.
@@ -443,6 +462,13 @@ mod tests {
     fn short_token_returns_none() {
         // Single-char inputs are below MIN_FUZZY_LEN.
         assert!(matcher().correct("S").is_none());
+        // 2-char inputs are also below MIN_FUZZY_LEN — issue #133 PR 7
+        // experimented with lowering this to 2 but reverted because
+        // 2-char SAR identifier sub-compartments (most visibly `RB`
+        // in the canonical Enron-corpus SAR fixture) collide with
+        // `RS` (the RSEN portion form) at edit distance 1, silently
+        // corrupting SAR sub-compartment text into dissem controls.
+        // See `MIN_FUZZY_LEN` doc for the full PR-7 rationale.
         assert!(matcher().correct("NF").is_none());
     }
 
