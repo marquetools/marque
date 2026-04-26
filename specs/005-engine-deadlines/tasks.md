@@ -105,12 +105,12 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 4: Whitepaper updates + gap closure
 
-- [ ] T051 Rewrite `docs/security/WHITEPAPER.md` §9.7 from `[NON-GOAL]` to `[LANDED]`. New body: cooperative-cancellation model, per-candidate + per-fix granularity, asymmetric response shape (truncated `LintResult` for lint, `Err(DeadlineExceeded)` for fix per Constitution V Principle V), per-surface wiring summary.
-- [ ] T052 Update §10.2 server section: `X-Marque-Deadline` header (unsigned-integer milliseconds, e.g. `30000`), `MARQUE_MAX_DEADLINE` env var (also milliseconds), per-endpoint default 30 s (= `30000`), cap default 60 s (= `60000`), 400/504 response codes.
-- [ ] T053 Update §10.3 WASM section: `deadline_ms` parameter, Constitution III runtime-config-restriction analysis, parity invariant preserved.
-- [ ] T054 Update §9 Status footer: §9.7 flipped from `[NON-GOAL]` to `[LANDED]`.
-- [ ] T055 Strike gap register row #7 in §17 with PR / commit reference; mirror the format of rows 6, 8, 10 (the prior P1 closures).
-- [ ] T056 Add Appendix C v0.13 changelog entry summarizing the four-phase landing.
+- [x] T051 Rewrite `docs/security/WHITEPAPER.md` §9.7 from `[NON-GOAL]` to `[LANDED]`. New body: cooperative-cancellation model, per-candidate + per-fix granularity, asymmetric response shape (truncated `LintResult` for lint, `Err(DeadlineExceeded)` for fix per Constitution V Principle V), per-surface wiring summary.
+- [x] T052 Update §10.2 server section: `X-Marque-Deadline` header (unsigned-integer milliseconds, e.g. `30000`), `MARQUE_MAX_DEADLINE` env var (also milliseconds), per-endpoint default 30 s (= `30000`), cap default 60 s (= `60000`), 400/504 response codes.
+- [x] T053 Update §10.3 WASM section: `deadline_ms` parameter, Constitution III runtime-config-restriction analysis, parity invariant preserved.
+- [x] T054 Update §9 Status footer: §9.7 flipped from `[NON-GOAL]` to `[LANDED]`. (Resolved by T051 — §9.7 is the only Status footer in §9; also added `--deadline` line to §10.1 CLI block as a side-quest.)
+- [x] T055 Strike gap register row #7 in §17 with PR / commit reference; mirror the format of rows 6, 8, 10 (the prior P1 closures).
+- [x] T056 Add Appendix C v0.13 changelog entry summarizing the four-phase landing.
 
 **Phase 4 checkpoint**: `gh issue close 139` with PR reference; gap register down to one open P1 (none — this is the last); whitepaper §9.7 fully landed.
 

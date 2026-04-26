@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.10 · **Last amended**: 2026-04-25
+**Document version**: 0.13 · **Last amended**: 2026-04-26
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -974,13 +974,146 @@ Unbounded fix loops are impossible.
 
 ### 9.7 Timeouts & cancellation
 
-**`[NON-GOAL]`** at the engine layer. Per-document timeouts and
-cancellation are deployment concerns (HTTP handler deadline, batch-job
-SLA). Calling `Engine::lint` synchronously blocks the caller thread
-until completion.
+**`[LANDED]` (spec 005, v0.13).** The engine accepts a per-call
+deadline and cooperatively aborts at well-defined boundaries. The
+prior framing (deployment concern; engine synchronously blocks) was
+correct as a worst-case but left every surface — CLI, server, WASM,
+batch — to invent its own timeout shim, none of which could see
+inside the lint loop. Spec 005 lands a uniform deadline parameter at
+the engine and threads it through every surface.
 
-**Status**: `[LANDED]` for §§9.1 (partial, see gap)–9.6;
-`[NON-GOAL]` for §9.7.
+**Per-call options surface.** `LintOptions { deadline: Option<Instant> }`
+and `FixOptions { deadline: Option<Instant>, threshold_override:
+Option<f32> }` (`crates/engine/src/options.rs`) are both
+`#[non_exhaustive]` and reach the engine via two new methods:
+`Engine::lint_with_options(&[u8], &LintOptions) -> LintResult` and
+`Engine::fix_with_options(&[u8], FixMode, &FixOptions) -> Result<FixResult, EngineError>`
+(`crates/engine/src/engine.rs`). The pre-existing `Engine::lint` /
+`Engine::fix` / `Engine::fix_with_threshold` shims now delegate to
+the `_with_options` paths with `Default::default()` options — zero
+behavior change for callers that don't set a deadline.
+
+The deadline is an absolute `Instant` (not a `Duration`), so a slow
+preceding stage (concurrency-controller wait, HTTP middleware, batch
+permit acquisition) cannot consume the budget — the caller stamps
+`Instant::now() + duration` at the boundary it cares about, and the
+engine carries no implicit clock. `web_time::Instant` is re-exported
+as `marque_engine::Instant` so the same type works on native and
+`wasm32-unknown-unknown` (where `std::time::Instant::now()` panics).
+
+**Cooperative cancellation.** The engine checks the deadline at
+three boundaries:
+
+1. Pre-pass, before the scanner runs (`Engine::lint_with_options`
+   top of body). An already-expired deadline returns
+   `LintResult { truncated: true, candidates_processed: 0,
+   candidates_total: 0, diagnostics: vec![] }` immediately for
+   lint, or `Err(EngineError::DeadlineExceeded { partial_lint })`
+   for fix.
+2. Per-candidate, at the top of the candidate iteration loop
+   (`Engine::lint_with_options`). On expiry the loop breaks with
+   `truncated: true` and `candidates_processed` set to the count
+   completed so far; `candidates_total` is the scanner's full
+   candidate count.
+3. Pre-fix-loop and per-fix-application, in `Engine::fix_inner`.
+   `fix_inner` calls `lint_with_options` with the same deadline used
+   for fix application — the budget is shared across both passes, not
+   per-pass. So the `partial_lint` carried in
+   `EngineError::DeadlineExceeded` distinguishes two trip points via
+   `partial_lint.truncated`:
+   - **Lint-time trip** (`partial_lint.truncated == true`) — the
+     deadline expired during lint; `partial_lint.candidates_processed
+     < candidates_total` shows how far the lint pass got. The server
+     surfaces this as `truncated_by: "lint"` in the 504 body.
+   - **Fix-time trip** (`partial_lint.truncated == false`) — lint
+     completed and the deadline tripped at the pre-fix check or
+     during fix application. `partial_lint` is the complete
+     `LintResult`; only the fix application is partial. The server
+     surfaces this as `truncated_by: "fix"` in the 504 body.
+
+   The asymmetric-response invariant (no partial `FixResult` ever
+   constructed) holds in both cases — lint is observation, fix is
+   commitment, and the deadline trip never produces a half-applied
+   fix regardless of which boundary fires.
+
+There is no preemptive cancellation. A pathological rule that
+spins for minutes inside a single candidate would still complete
+that candidate before the next deadline check. The spec records
+this as an explicit non-goal — preemption would require either
+panic-as-control-flow (rejected under panic-free hot-path policy,
+§4.3) or a separate worker thread per document (rejected under
+zero-copy / streaming-core, §3.2). The boundary granularity is
+calibrated to the fix-loop and candidate-loop scale (microseconds
+to single-digit milliseconds per iteration on the SC-001 corpus),
+which is fine enough that an operator-set 30 s deadline trips
+within tens of microseconds of expiry on hardware where
+`Instant::now()` is a vDSO read.
+
+**Asymmetric response shape (Constitution V Principle V).** Lint
+returns a partial `LintResult` with `truncated: true`; fix returns
+`Err(EngineError::DeadlineExceeded { partial_lint })`. The split is
+load-bearing: a partial `FixResult` would commit half a fix to the
+audit stream (mid-document text rewrite, audit record emitted, second
+half of the rewrite never executed), violating audit-record integrity.
+A truncated lint commits nothing — diagnostics are pure observation
+— so the partial result is safe to return.
+
+`EngineError` (`crates/engine/src/errors.rs`) is the new runtime-error
+enum, distinct from the existing `EngineConstructionError` (build-time
+errors). Variants today: `DeadlineExceeded { partial_lint: LintResult }`,
+`InvalidThreshold(InvalidThreshold)`. The enum is `#[non_exhaustive]`
+so future runtime-error variants land without a semver break.
+
+**Per-surface wiring summary.** Each surface stamps its own deadline
+at the boundary it owns; the engine sees only `Option<Instant>`.
+
+| Surface | Stamping site | Surface error |
+|---|---|---|
+| CLI (`marque`) | `--deadline <humantime>` accepted by `clap` as `Option<String>`, then parsed via `humantime::parse_duration` in `validate_deadline()`; `Instant::now() + d` per invocation | `EX_TEMPFAIL` (75) on fix expiry; stderr warning + truncated render on lint expiry |
+| Server (`marque-server`) | `X-Marque-Deadline: <u64-ms>` header (or per-endpoint default 30 s); `Instant::now() + d` per request, **after** body deserialization | `400` on bad header; `504` on fix expiry; `200 + Marque-Truncated: true` on lint expiry |
+| WASM (`marque-wasm`) | `deadline_ms: f64` on the JS-side options object; `Instant::now() + d` per call, validated `is_finite() && >= 0.0` | JS error string on overflow / invalid; mirrors server `504` body shape on fix expiry |
+| Batch (`BatchEngine`) | `BatchOptions::per_doc_deadline: Option<Duration>`; **`Instant::now() + d` AFTER permit acquisition** so concurrency-controller wait does not consume the budget | `BatchError::DocumentDeadlineExceeded { partial_lint }` per-document; `is_deadline_exceeded()` predicate distinct from `is_panic()` / `is_shutdown()` / `is_cancelled()` |
+
+The batch case is the subtle one: stamping `Instant::now() + d` at
+permit acquisition (rather than at `lint_many` entry) means an
+earlier slow document holding the semaphore does not eat into a
+later fast document's budget. Each document gets its full
+configured deadline starting from the moment it begins work.
+
+**Constitution III analysis.** The deadline parameter does not
+introduce a new recognizer codepath, does not alter recognizer
+posteriors, and does not change the vocabulary surface. It is a
+runtime budget cap on existing behavior, not a semantic surface.
+This is explicitly permitted under Principle III's WASM
+runtime-config restriction — only changes that expand the
+engine's semantic surface (e.g., loading decoder priors at runtime)
+are forbidden through the WASM boundary.
+
+**Not on the deadline path.** Build-time work
+(`marque-ism/build.rs`, corpus bake), the `Engine::new` constructor
+(rule-set wiring, scheduler validation), and the WASM `Engine`
+cache hit (`crates/wasm/src/lib.rs::with_engine`) all run without
+a deadline check. These are bounded by code size, not input size.
+
+**Tests**: `crates/engine/tests/deadline.rs` (Phase 1+2 — types,
+shim equivalence, pre-pass / per-candidate / per-fix trips,
+generous-deadline-runs-to-completion sanity);
+`crates/engine/benches/deadline_overhead.rs` (overhead bench;
+permissive 10 % gate today, target 2 %, gated by host-clock
+variance — see T018 in `specs/005-engine-deadlines/tasks.md`);
+`marque/tests/cli_deadline.rs` (CLI surface, baseline-derived
+truncation, JSON-vs-human output discipline);
+`crates/server/tests/http_deadline.rs` (header parsing, default,
+truncation, 504 / 400 / 504 vs config-issue 500, duplicate-header
+rejection, ordering invariant);
+`crates/wasm/tests/deadline_parity.rs` (WASM↔native byte-identical
+NDJSON parity at generous and zero deadlines);
+`crates/engine/tests/batch_deadline.rs` (per-doc isolation, lint
+truncation as `Ok`, no-deadline sanity, overflow does not silently
+disable the budget, variant matchability / predicates / Display /
+source).
+
+**Status**: `[LANDED]` for §§9.1 (partial, see gap)–9.7.
 
 ---
 
@@ -990,6 +1123,16 @@ until completion.
 
 - Accepts `--corpus-override <file>` (T3 CLI-side; principal is the
   operator).
+- Accepts `--deadline <humantime>` (e.g., `30s`, `2m`) on `check` and
+  `fix`; per-invocation `Instant::now() + d` stamping. `--deadline 0`
+  / `--deadline 0s` / unparseable values surface as `EX_USAGE` (64).
+  Truncated `LintResult` from `check` renders normally with a final
+  stderr `"⚠ deadline exceeded: covered N/M candidates"` line (Human
+  format only — JSON format suppresses trailing narration to keep
+  the NDJSON stream pipeable). `EngineError::DeadlineExceeded` from
+  `fix` exits `EX_TEMPFAIL` (75) with stderr explanation. The
+  `--dry-run` re-lint reuses the same `FixOptions` so the deadline
+  applies across primary + replay (a single budget covers both).
 - Emits audit records to stderr.
 - No shell invocation; paths come from `clap` as `PathBuf` values.
 
@@ -1038,10 +1181,48 @@ until completion.
   tests in `crates/server/tests/http.rs` (T049, T050, plus the
   percent-encoded, case-insensitive, multiple-param, and empty-value-
   shape variants).
+- **Per-request deadline: landed (gap register #7, closed in v0.13).**
+  `X-Marque-Deadline` header carries an unsigned-integer count of
+  milliseconds (e.g., `X-Marque-Deadline: 30000` for 30 s). Parsed via
+  `str::parse::<u64>()` — no `humantime` dep on the server graph (the
+  WASM-safe allow-list cannot drag it in transitively). `MARQUE_MAX_DEADLINE`
+  env var sets the cap (default `60000` = 60 s, accept range
+  `[MIN_DEADLINE_MS=1, MAX_DEADLINE_CAP_MS=600000]` = 1 ms to 10 min);
+  values that fail to parse or fall outside the range fail fast at
+  startup with `EX_USAGE` (64) — same shape as the body-size resolver.
+  Per-endpoint default deadline 30 s when the header is absent
+  (`DEFAULT_ENDPOINT_DEADLINE_MS=30000`). Resolved cap logged on the
+  startup `listening` line as `deadline_cap_ms`.
+  Header validation (`resolve_request_deadline` in
+  `crates/server/src/lib.rs`) rejects negative / non-numeric / overflow
+  / below 1 ms / above the configured cap with `400 Bad Request`, runs
+  **before** JSON body deserialization so a bad header takes
+  precedence over body validation (`422`), and uses
+  `headers.get_all().iter()` to reject duplicate `X-Marque-Deadline`
+  headers (a single client setting two values is a configuration bug
+  the server surfaces explicitly rather than silently picking one).
+  `stamp_request_deadline` maps `Instant::now().checked_add(d)` overflow
+  to `500 Internal Server Error` (the configured cap allows a duration
+  the host's monotonic clock can't represent — a server misconfiguration,
+  not a client error). Truncated lint surfaces as HTTP 200 with the
+  partial body and a `Marque-Truncated: true` response header for
+  clients that don't deserialize the full body.
+  `EngineError::DeadlineExceeded` from fix surfaces as HTTP 504
+  Gateway Timeout with `DeadlineExceededBody { truncated_by,
+  diagnostics, error_count, warn_count, fix_count, candidates_processed,
+  candidates_total }`. The `fix_handler` catch-all maps any future
+  unknown `EngineError` variant to `500` so an enum addition cannot
+  accidentally surface as `422`. Tests in
+  `crates/server/tests/http_deadline.rs` cover header parsing
+  (zero / non-numeric / negative / above-cap / just-above-configured-cap
+  / overflow / duplicate-header), default-deadline behavior (no
+  `Marque-Truncated` on the happy path), truncation, the 504 fix path,
+  and the validate-header-before-body ordering invariant.
 
 **Status**: `[LANDED]` for T3 corpus-override enforcement (T049 / T050
-/ T066) and the body-size cap; `[PARTIAL]` for the broader surface
-(auth middleware, per-document timeout — see gap register P1-7).
+/ T066), the body-size cap, and the per-request deadline (gap #7
+closed in v0.13); `[PARTIAL]` for the broader surface (auth
+middleware still un-wired).
 
 ### 10.3 `marque-wasm`
 
@@ -1067,6 +1248,44 @@ until completion.
   declared at the workspace level in `Cargo.toml
   workspace.lints.rust` check-cfg so rustc does not warn about the
   deliberately-undeclared feature probe.
+- **Per-call deadline: landed (gap register #7 partial closure,
+  v0.13).** `WasmConfig.deadline_ms: Option<f64>` accepted on the
+  JS-side options object passed to `lint` / `fix`. Validation in
+  `parse_deadline_ms` requires `is_finite() && >= 0.0` — `serde_json`
+  rejects most pathological inputs at JSON-parse time; the explicit
+  `is_finite()` check is the second line of defense against `NaN` /
+  `±Inf` from a hand-rolled JSON producer. Per-call stamping at
+  `Instant::now().checked_add(Duration::from_millis(...))`; overflow
+  surfaces as a JS error string (the host's `Performance.now()`
+  origin doesn't permit the requested deadline). The engine sees
+  `Option<Instant>` only; `web_time::Instant` is the
+  `Performance.now()` polyfill on `wasm32-unknown-unknown` and a
+  literal `pub use` of `std::time::Instant` on native (so the
+  shared-engine path stays one codepath). `EngineError::DeadlineExceeded`
+  from fix returns `Err(...)` carrying a JSON-serialized
+  `DeadlineExceededBodyJson` that mirrors the server's 504 response
+  body shape, so a JS-side caller can dispatch on the same fields
+  whether it talks to the WASM module or the HTTP endpoint.
+  Constitution III analysis (recorded in the crate-level doc comment):
+  `deadline_ms` does not introduce a new recognizer codepath, does
+  not alter posteriors, and does not change the vocabulary surface.
+  The deep-scan entry points (`lint_deep_scan` / `fix_deep_scan`,
+  Gate 2 / FR-019) deliberately remain byte-only — runtime-tunable
+  decoder priors would expand the recognizer surface and are
+  forbidden through the WASM boundary; deadline is a budget cap, not
+  a recognizer surface, so it is permitted. `WasmConfigCacheKey` (the
+  cache-key projection used by `with_engine`) **excludes**
+  `deadline_ms`: the cache stores a configured `Engine`, and a
+  per-call deadline does not change what the engine *is*. Cache hits
+  also avoid building a fresh `Config` on the hot path —
+  `with_engine` accepts `FnOnce() -> Result<Config, String>` and only
+  calls it on cache miss. SC-008 byte-identical NDJSON parity is
+  preserved at both deadline shapes (generous deadline = full lint;
+  zero deadline = empty NDJSON), validated by
+  `crates/wasm/tests/deadline_parity.rs`. Mid-pass truncation parity
+  is intentionally not tested across the WASM↔native boundary —
+  `Instant::now()` is sampled independently per call and the trip
+  point is a hardware-clock race.
 
 **Status**: `[LANDED]`.
 
@@ -1262,7 +1481,7 @@ possible), and a **remediation plan**. Severities:
 | 1 | ~~`MARQUE_AUDIT_SCHEMA` not wired; `render.rs` hard-codes `"marque-mvp-1"`~~ **Resolved (PR-4).** Engine exposes `pub const AUDIT_SCHEMA_VERSION` from `env!("MARQUE_AUDIT_SCHEMA")`; `marque/src/render.rs` and `crates/wasm/src/lib.rs` dispatch v1/v2 emitter struct from the const-folded `AUDIT_SCHEMA_IS_V2` selector. Build-time validation against `["marque-mvp-1", "marque-mvp-2"]` panics on unknown values. T054 (back-compat parse) and T055 (single-schema stream invariant) ride on top of the wiring. | ~~P0~~ closed | FR-014, T005, T054, T055 | Done |
 | 5 | ~~`__engine_promote` seal is convention-only~~ | ~~P1~~ | ~~Constitution V invariant~~ | **Resolved.** `EnginePromotionToken` (private `_seal: ()` field, `crates/rules/src/lib.rs`) seals `AppliedFix::__engine_promote` at the type level — external crates cannot brace-construct the token. The single bypass surface is `EnginePromotionToken::__engine_construct()` (`#[doc(hidden)]`, engine-only by convention), called from one place in production: the `engine_promotion_token()` helper in `crates/engine/src/engine.rs`. Two test-only exceptions (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) carry inline carve-out comments per Constitution V Principle V. Tests: `compile_fail` doctest on `EnginePromotionToken` proves brace construction is rejected; `crates/rules/tests/engine_promotion_seal.rs` proves the documented door works across the crate boundary. §6.2 rewritten |
 | 6 | ~~Server has no explicit `DefaultBodyLimit`~~ | ~~P1~~ | ~~§10.2~~ | **Resolved.** `marque_server::DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024`; applied via `axum::extract::DefaultBodyLimit::max(N)` in `build_app` / `build_app_with_limit`. Override at runtime via `MARQUE_MAX_BODY_BYTES` (resolved by `marque_server::resolve_body_limit`; values below 1 KiB rejected at startup with `EX_USAGE`). Tests in `crates/server/tests/http.rs` exercise both the `413` path and a `default_limit_admits_realistic_traffic` regression guard against a future drop-the-constant change |
-| 7 | No per-document timeout at the engine or server layer | P1 | §9.7 | Document deployment guidance; consider an optional deadline parameter on `Engine::lint` |
+| 7 | ~~No per-document timeout at the engine or server layer~~ | ~~P1~~ | ~~§9.7~~ | **Resolved (spec 005, PRs #161 / #162 / #163 / #164 / #165 / #166).** `LintOptions { deadline: Option<Instant> }` and `FixOptions { deadline, threshold_override }` (`crates/engine/src/options.rs`, both `#[non_exhaustive]`) feed `Engine::lint_with_options` / `Engine::fix_with_options`. Cooperative-cancellation checks at three boundaries: pre-pass, per-candidate, per-fix-application (`crates/engine/src/engine.rs`). Asymmetric response shape per Constitution V Principle V — lint returns `LintResult { truncated: true, candidates_processed, candidates_total }`, fix returns `Err(EngineError::DeadlineExceeded { partial_lint })` (no partial `FixResult` ever constructed). Per-surface wiring: CLI `--deadline <humantime>` (`marque/src/main.rs`); server `X-Marque-Deadline: <u64-ms>` header + `MARQUE_MAX_DEADLINE` env-var cap (`crates/server/src/lib.rs`); WASM `WasmConfig.deadline_ms: Option<f64>` validated `is_finite() && >= 0.0` (`crates/wasm/src/lib.rs`); batch `BatchOptions.per_doc_deadline: Option<Duration>` stamped after permit acquisition with `BatchError::DocumentDeadlineExceeded { partial_lint }` (`crates/engine/src/batch.rs`). `web_time::Instant` re-exported as `marque_engine::Instant` carries the type across native and WASM. Tests: `crates/engine/tests/deadline.rs`, `crates/engine/tests/batch_deadline.rs`, `marque/tests/cli_deadline.rs`, `crates/server/tests/http_deadline.rs`, `crates/wasm/tests/deadline_parity.rs`. Bench: `crates/engine/benches/deadline_overhead.rs` (10 % gate today, 2 % target). §9.7 rewritten in v0.13 |
 | 8 | ~~`BatchEngine` `.expect()` panics on semaphore close~~ | ~~P1~~ | ~~§9.4, `batch.rs:196, 226`~~ | **Resolved.** New `BatchError::ShutdownInProgress` variant with matching `is_shutdown()` predicate; `From<tokio::sync::AcquireError>` impl maps the (only possible) error. Both `lint_many` and `fix_many` propagate the variant per-document instead of panicking. Unit tests cover `is_*` discrimination, `Display`, `Error::source`, and the `From` conversion driven through a closed `Semaphore` |
 | 9 | ~~Strict-context floor (T1) not wired in decoder~~ | ~~P1~~ | ~~T045, T062, FR-011~~ | **Resolved (PR #114, commit `bc57bfc`).** `DecoderRecognizer::recognize` (`crates/engine/src/decoder.rs:148-159`) reads `ParseContext.strict_evidence` before any prior consultation and returns zero-candidate `Parsed::Ambiguous` when set; the engine drives this from the deep-scan opt-in at `crates/engine/src/engine.rs:369-374`. The related FR-011 per-page classification floor accumulates strict-path classifications at `engine.rs:338-419`, threads via `ParseContext.classification_floor`, and the decoder drops sub-floor candidates at `decoder.rs:251-257`. Floor resets on `MarkingType::PageBreak` per Constitution VI. Tests pin the gate (`decoder_defers_to_strict_when_strict_evidence_is_set`) and the floor (`unclassified_candidate_rejected_below_secret_floor` and three siblings in `decoder_recovery.rs`). §9.3 updated with the wiring citations |
 | 10 | ~~`Confidence::validate` panic on bad rule halts the document~~ | ~~P1~~ | ~~§6.3~~ | **Resolved.** `Engine::lint` wraps every `Rule::check` call in `std::panic::catch_unwind(AssertUnwindSafe(...))`. Caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for that candidate; sibling rules + remaining candidates keep running. `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test |
@@ -1314,3 +1533,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.10 | 2026-04-25 | One more P1 gap closed. Gap #10: `Engine::lint` wraps every `Rule::check` in `std::panic::catch_unwind(AssertUnwindSafe(...))`; caught panics emit `tracing::warn!` at `marque_engine::rule_panic` and the rule is skipped for the candidate without aborting the document. `Cargo.toml` `[profile.release]` switched from `panic = "abort"` to `panic = "unwind"` so the catch fires in release. Tests in `crates/engine/tests/rule_panic_isolation.rs` cover bare panic, the real `FixProposal::new` invalid-`Confidence` panic, sibling-rules-continue, and a CAPCO smoke test. §6.3 rewritten. Gap register row 10 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.11 | 2026-04-25 | Documentation drift fix — Gap #9 (P1) closed retroactively. The strict-context floor was wired by Phase 4 PR #114 (commit `bc57bfc`, T045/T062/FR-011): `DecoderRecognizer::recognize` returns zero-candidate `Parsed::Ambiguous` when `cx.strict_evidence` is set, the engine drives `strict_evidence: !self.deep_scan` per-candidate, the FR-011 per-page classification floor accumulates from strict-path recognitions only, and four tests in `crates/engine/tests/decoder_recovery.rs` plus the inline `decoder_defers_to_strict_when_strict_evidence_is_set` test pin the behavior. §9.3 expanded with the wiring citations. Gap register row 9 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.12 | 2026-04-25 | Gap #5 (P1) closed — type-level seal for `AppliedFix::__engine_promote`. New `EnginePromotionToken` ZST in `marque-rules` carries a private `_seal: ()` field; brace construction from outside `marque-rules` is rejected by Rust's privacy rules. The token threads as the sixth argument of `__engine_promote`. Single bypass surface (`EnginePromotionToken::__engine_construct()`) is `#[doc(hidden)]` and engine-only by convention; production code mints it from exactly one place — the private `engine_promotion_token()` helper in `crates/engine/src/engine.rs` — feeding the three production promotion sites. Two test-fixture carve-outs (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) updated with inline carve-out comments. Acceptance: `compile_fail` doctest on `EnginePromotionToken` pins brace-construction rejection at the doctest's separate-crate compile; `crates/rules/tests/engine_promotion_seal.rs::documented_door_can_mint_token_from_outside_marque_rules` proves the documented door works. §6.2 rewritten. Gap register row 5 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.13 | 2026-04-26 | Last P1 gap closed — gap #7, per-document timeout. Spec 005 landed in six PRs over four phases. Header date bumped 2026-04-25 → 2026-04-26 to match this entry; the 0.10 → 0.12 entries date-stamped 2026-04-25 are unchanged. **Phase 1** (PR #161): foundational types — `LintOptions { deadline: Option<Instant> }` and `FixOptions { deadline, threshold_override }` (both `#[non_exhaustive]`), `Engine::lint_with_options` / `fix_with_options`, `EngineError` runtime-error enum, back-compat shims preserved. Zero behavior change. **Phase 2** (PR #162): cooperative cancellation wired in `Engine` at three boundaries — pre-pass, per-candidate, per-fix-application — producing truncated `LintResult` for lint and `Err(EngineError::DeadlineExceeded { partial_lint })` for fix per Constitution V Principle V. `crates/engine/benches/deadline_overhead.rs` bench gated at 10 % (target 2 %; tightening blocked on host-clock variance). **Phase 3a** (PR #163): CLI `--deadline <humantime>` flag, `EX_TEMPFAIL` (75) on fix expiry, `EX_USAGE` (64) on `--deadline 0`, JSON-mode trailing-narration suppressed to keep the NDJSON pipe-clean, `--dry-run` re-lint reuses the same `FixOptions`. **Phase 3b** (PR #164): server `X-Marque-Deadline: <u64-ms>` header, `MARQUE_MAX_DEADLINE` env-var cap mirroring `resolve_body_limit`, per-endpoint default 30 s, header-validation-before-body-deserialization ordering invariant, duplicate-header rejection, `400` / `504` / `500`-on-config-overflow response codes, `Marque-Truncated` response header on truncated lint. **Phase 3c** (PR #165): WASM `WasmConfig.deadline_ms: Option<f64>` validated `is_finite() && >= 0.0`, Constitution III runtime-config-restriction analysis recorded in crate-level docs, `WasmConfigCacheKey` projection excludes `deadline_ms`, `with_engine` accepts `FnOnce -> Result<Config, String>` to avoid building `Config` on cache hit, SC-008 byte-identical NDJSON parity preserved at generous and zero deadlines. **Phase 3d** (PR #166): `BatchOptions` gains `#[non_exhaustive]` + `per_doc_deadline: Option<Duration>`, `BatchEngine::lint_many_with_options` / `fix_many_with_options`, `BatchError::DocumentDeadlineExceeded { partial_lint }` per-document with `is_deadline_exceeded()` predicate distinct from `is_panic()` / `is_shutdown()` / `is_cancelled()`. Per-doc `Instant::now() + d` stamping happens AFTER permit acquisition so concurrency-controller wait does not consume the budget; `checked_add` overflow maps to `deadline = now` (engine treats as expired) rather than silently disabling the operator-configured budget. Required infrastructure: `web-time` workspace dep + engine dep; `web_time::Instant` re-exported as `marque_engine::Instant` so the engine's per-candidate `Instant::now()` works on `wasm32-unknown-unknown` (where `std::time::Instant::now()` panics). §9.7 rewritten from `[NON-GOAL]` to `[LANDED]`; §10.1 (CLI), §10.2 (server), §10.3 (WASM) each updated with deadline-handling block; gap register row 7 struck through. | Adam Poulemanos (with Claude Code) |
