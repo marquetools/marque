@@ -376,68 +376,209 @@ fn superseded_comint_decodes_to_si() {
     );
 }
 
-/// **MissingDelimiter** class — current-state regression guard.
+/// **MissingDelimiter** class — recovery test (issue #133 PR 3).
 ///
 /// `SECRET//NOFORN EXDIS` (missing `//` before `EXDIS`) is the
-/// canonical MissingDelimiter shape. The decoder_accuracy harness
-/// reports MissingDelimiter at 0% resolution today (tracked under GH
-/// issue #133); the recognizer either returns zero-candidate
-/// `Ambiguous` or an `Unambiguous` marking that does not include
-/// `EXDIS` in the dissem-control set.
+/// canonical MissingDelimiter shape. The decoder's
+/// `try_insert_delimiter` helper inserts `//` at category-transition
+/// whitespace gaps before unambiguous segment-starting dissem
+/// long-forms (`NOFORN`, `EXDIS`, `ORCON`, …); the result strict-
+/// parses as `SECRET//NOFORN//EXDIS` with both dissems landing in
+/// the right slots (`Nf` → `dissem_controls`, `Exdis` →
+/// `non_ic_dissem`).
 ///
-/// This test pins the **current** behavior so a future improvement
-/// to the MissingDelimiter codepath (which would either resolve the
-/// input correctly or change which dissem-controls survive) fails
-/// here loudly, prompting a review-and-update of the assertion shape
-/// rather than silently shifting the harness's per-class rate. When
-/// MissingDelimiter recovery lands, replace this assertion with a
-/// successful-resolution check (mirroring the WrongCase / Garbled
-/// shapes above).
+/// Renamed from `missing_delimiter_secret_noforn_exdis_currently_unrecovered`
+/// — the "currently unrecovered" framing was the temporary state
+/// pinned in PR 1's predecessor and explicitly invited replacement
+/// when the helper lands. Recovery is now the regression-guarded
+/// shape.
 #[test]
-fn missing_delimiter_secret_noforn_exdis_currently_unrecovered() {
+fn missing_delimiter_secret_noforn_exdis_resolves() {
     let rx = DecoderRecognizer::new();
-    let result = rx.recognize(b"SECRET//NOFORN EXDIS", &deep_cx());
-    match result {
-        Parsed::Unambiguous(marking) => {
-            // Decoder may resolve to SECRET//NOFORN with EXDIS dropped
-            // (the trailing run after `NOFORN ` doesn't strict-parse
-            // as a separate dissem control without the `//`).
-            // EXDIS is a non-IC dissem control — confirm it did NOT
-            // land in the resolved marking via a direct variant check
-            // (avoids the Debug-format brittleness and per-iter
-            // allocation that the closure-with-format! shape would
-            // introduce). If a future fix carries EXDIS through, this
-            // assertion fails and the test should be rewritten to
-            // celebrate the recovery.
-            assert!(
-                !marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis),
-                "MissingDelimiter recovery (issue #133) appears to have improved — \
-                 EXDIS is now surviving in `SECRET//NOFORN EXDIS`. Update the test \
-                 to assert successful recovery rather than current-state limitation. \
-                 attrs = {:?}",
-                marking.0,
-            );
-        }
-        Parsed::Ambiguous { candidates } => {
-            // Zero-candidate Ambiguous is the current-state shape —
-            // the decoder doesn't find a confident canonicalization
-            // for `SECRET//NOFORN EXDIS` today (issue #133). Asserting
-            // an empty candidate set is the strict regression guard:
-            // if a future improvement starts producing non-empty
-            // ambiguous candidates here, the assertion fails and the
-            // test should be rewritten to assert the new recovery
-            // shape rather than relying on `<= K_MAX_CANDIDATES`
-            // (which is always true and would mask any partial
-            // improvement).
-            assert!(
-                candidates.is_empty(),
-                "MissingDelimiter recovery (issue #133) appears to have improved — \
-                 ambiguous candidates are now being produced for `SECRET//NOFORN EXDIS`. \
-                 Update the test to assert the new recovery behavior rather than the \
-                 current zero-candidate limitation. candidates = {candidates:?}",
-            );
-        }
-    }
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN EXDIS", &deep_cx()) else {
+        panic!(
+            "SECRET//NOFORN EXDIS must resolve unambiguously after issue #133 \
+             PR 3 missing-delimiter insertion lands"
+        );
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::Secret),
+        "classification must survive the delimiter insertion; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must land in dissem_controls; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis),
+        "EXDIS must land in non_ic_dissem after `//` is inserted before \
+         it (issue #133 PR 3 missing-delimiter insertion); attrs = {:?}",
+        marking.0,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #133 PR 3: missing-delimiter insertion
+// ---------------------------------------------------------------------------
+//
+// `try_insert_delimiter` walks the input and inserts `//` at
+// category-transition whitespace gaps. Two rules drive insertion:
+//
+//   1. Classification → next segment: the first non-classification
+//      token after the classification phrase, when no `//` has been
+//      emitted yet, gets `//` prepended.
+//   2. Hard-splitter dissem long-form: a small set of unambiguous
+//      tokens (`NOFORN`, `EXDIS`, `ORCON`, `PROPIN`, `IMCON`,
+//      `RELIDO`, `RSEN`, `EYESONLY`, `FOUO`, `FISA`, `DSEN`,
+//      `NODIS`, `LIMDIS`, `ORCON-USGOV`) ALWAYS start a new segment
+//      when they appear after whitespace.
+//
+// Exception: `SBU NOFORN` / `LES NOFORN` are non-IC dissem banner
+// long forms (`SbuNf` / `LesNf`); the helper does not split between
+// `SBU`/`LES` and a following `NOFORN`.
+//
+// The PR 3 helper does NOT yet handle SCI starters (`SI`, `HCS`,
+// `TK`), SAR prefixes (`SAR-*`), or `SPECIAL ACCESS REQUIRED-*` —
+// those need classification-context lookahead and are deferred to
+// the planned PR 4 / corpus-confidence work. The hard-splitter +
+// classification-boundary rules cover ~15 of 17 MissingDelimiter
+// fixtures; the SCI/SAR/SPECIAL family covers the remaining ~2.
+
+#[test]
+fn missing_delimiter_classification_then_rel_to() {
+    // `SECRET REL TO USA, AUS, GBR` — REL TO is a category-starter
+    // after classification with a missing `//`. The classification-
+    // boundary rule (Rule 1) inserts `//` between SECRET and REL,
+    // producing `SECRET//REL TO USA, AUS, GBR` which strict-parses
+    // to a SECRET marking with USA/AUS/GBR in `rel_to`.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET REL TO USA, AUS, GBR", &deep_cx())
+    else {
+        panic!("SECRET REL TO USA, AUS, GBR should resolve via delimiter insertion");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::Secret),
+        "classification must survive; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        !marking.0.rel_to.is_empty(),
+        "REL TO list must populate after `//` is inserted; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn missing_delimiter_top_secret_classification_then_dissem() {
+    // `TOP SECRET//HCS-P INTEL OPS ORCON/NOFORN` — gap is between
+    // OPS (SCI sub-compartment) and ORCON (dissem long-form).
+    // Hard-splitter rule (Rule 2) fires on ORCON.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//HCS-P INTEL OPS ORCON/NOFORN", &deep_cx())
+    else {
+        panic!("HCS-P INTEL OPS ORCON/NOFORN should resolve");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::TopSecret),
+        "TOP SECRET must survive; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Oc)
+            && marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "ORCON and NOFORN must both land in dissem_controls (the \
+         original `ORCON/NOFORN` block contains both); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn missing_delimiter_two_dissems() {
+    // `SECRET NOFORN//EXDIS` — gap between SECRET and NOFORN is
+    // covered by the classification-boundary rule (Rule 1); also
+    // by the hard-splitter rule on NOFORN.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET NOFORN//EXDIS", &deep_cx()) else {
+        panic!("SECRET NOFORN//EXDIS should resolve");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret),);
+    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis));
+}
+
+#[test]
+fn missing_delimiter_hard_splitter_inside_segment() {
+    // `TOP SECRET//SI/TK NOFORN` — NOFORN follows whitespace inside
+    // an SCI segment. Hard-splitter rule fires on NOFORN.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SI/TK NOFORN", &deep_cx()) else {
+        panic!("TOP SECRET//SI/TK NOFORN should resolve");
+    };
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must land in dissem_controls; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.sci_controls.contains(&SciControl::Si)
+            && marking.0.sci_controls.contains(&SciControl::Tk),
+        "SI/TK must land in sci_controls as both SI and TK (the \
+         original `SI/TK` block contains both); attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn missing_delimiter_does_not_split_sbu_noforn() {
+    // `SECRET//SBU NOFORN` — SBU NOFORN is the non-IC dissem
+    // **banner long form** for `NonIcDissem::SbuNf`. The helper
+    // must NOT split between SBU and NOFORN. The strict parser
+    // accepts `SBU NOFORN` as a single non-IC dissem entry via
+    // `parse_non_ic_full_form`.
+    //
+    // The assertion requires `Parsed::Unambiguous` with `SbuNf` in
+    // `non_ic_dissem`. An earlier `if let Parsed::Unambiguous(..)`
+    // shape silently passed when the recognizer returned
+    // `Parsed::Ambiguous` — defeating the regression guard. If the
+    // helper ever incorrectly splits SBU and NOFORN, SBU on its
+    // own doesn't resolve, the candidate is discarded by step 3a,
+    // and the recognizer returns zero-candidate Ambiguous —
+    // exactly the case the previous shape silently allowed.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//SBU NOFORN", &deep_cx()) else {
+        panic!("SECRET//SBU NOFORN must resolve unambiguously");
+    };
+    assert!(
+        marking.0.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "SBU NOFORN must land as a single non-IC dissem entry \
+         (`NonIcDissem::SbuNf`), not split into separate tokens; \
+         attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn missing_delimiter_no_change_on_already_canonical() {
+    // `SECRET//NOFORN//EXDIS` is fully canonical — the helper
+    // must not insert anything (would produce a no-op candidate
+    // that would dedup against the fuzzy candidate but is still
+    // wasted work). Because the helper returns `Option<String>`
+    // (None when no insertions), this test exercises the early-
+    // return path through the decoder's normal recovery on a
+    // clean input.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN//EXDIS", &deep_cx()) else {
+        panic!("SECRET//NOFORN//EXDIS should resolve directly");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis));
 }
 
 // ---------------------------------------------------------------------------
