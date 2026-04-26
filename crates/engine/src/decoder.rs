@@ -1471,8 +1471,8 @@ fn try_sar_indicator_repair(text: &str) -> Option<String> {
     let mut changed = false;
 
     while i < bytes.len() {
-        let at_boundary = i == 0
-            || matches!(bytes[i - 1], b'/' | b'(' | b' ' | b'\t' | b'\n' | b'\r');
+        let at_boundary =
+            i == 0 || matches!(bytes[i - 1], b'/' | b'(' | b' ' | b'\t' | b'\n' | b'\r');
 
         if at_boundary {
             // Pattern A: <prefix>SAR- where prefix is 1-3 ASCII
@@ -1576,8 +1576,8 @@ fn match_sar_missing_hyphen(bytes: &[u8], i: usize) -> Option<usize> {
     if !(2..=3).contains(&run) {
         return None;
     }
-    let next_is_delim = j == bytes.len()
-        || matches!(bytes[j], b'-' | b'/' | b' ' | b'\t' | b'\n' | b'\r');
+    let next_is_delim =
+        j == bytes.len() || matches!(bytes[j], b'-' | b'/' | b' ' | b'\t' | b'\n' | b'\r');
     if !next_is_delim {
         return None;
     }
@@ -3391,9 +3391,7 @@ mod tests {
             try_sar_indicator_repair(
                 "SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN"
             ),
-            Some(
-                "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN".to_owned()
-            )
+            Some("SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN".to_owned())
         );
     }
 
@@ -3567,7 +3565,11 @@ mod tests {
             panic!("USAR-BP-... must resolve via SAR indicator repair");
         };
         assert_eq!(
-            marking.0.classification.as_ref().map(|c| c.effective_level()),
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
             Some(Classification::Secret),
         );
         assert!(
@@ -3592,13 +3594,16 @@ mod tests {
         // §H.5 p100. Pinned per
         // `tests/fixtures/mangled/typo/fbf5ed813c109c14.json`.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(marking) =
-            rx.recognize(b"TOP SECRET//SARBP//NOFORN", &deep_cx())
+        let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SARBP//NOFORN", &deep_cx())
         else {
             panic!("SARBP must resolve via SAR indicator repair");
         };
         assert_eq!(
-            marking.0.classification.as_ref().map(|c| c.effective_level()),
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
             Some(Classification::TopSecret),
         );
         let sar = marking
@@ -3629,7 +3634,11 @@ mod tests {
             panic!("SPCIAL must fuzzy-correct to SPECIAL");
         };
         assert_eq!(
-            marking.0.classification.as_ref().map(|c| c.effective_level()),
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
             Some(Classification::TopSecret),
         );
         let sar = marking

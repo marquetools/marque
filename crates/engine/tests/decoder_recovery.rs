@@ -723,8 +723,7 @@ fn typo_sarbp_missing_hyphen_resolves_via_indicator_repair() {
     // (alnum run 2-3 chars before delim) fires and inserts the
     // hyphen.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) =
-        rx.recognize(b"TOP SECRET//SARBP//NOFORN", &deep_cx())
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SARBP//NOFORN", &deep_cx())
     else {
         panic!("SARBP must resolve via SAR indicator repair");
     };
