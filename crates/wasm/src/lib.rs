@@ -93,7 +93,7 @@ use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, Li
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
@@ -444,52 +444,72 @@ struct WasmConfig {
     deadline_ms: Option<f64>,
 }
 
-/// Parse the JS-side `config_json` into the engine-level `Config`,
-/// a separate optional deadline `Duration`, and a normalized cache
-/// key for [`with_engine`].
+/// Parse the JS-side `config_json` into a [`WasmConfig`], a per-call
+/// deadline `Duration`, and a normalized cache key for
+/// [`with_engine`].
 ///
-/// The deadline does not live on `Config` — it's a per-call concern
-/// carried through `LintOptions` / `FixOptions` — but it shares the
-/// same JSON envelope so JS callers can pass everything in one
-/// object. The third return value is the **engine cache key**,
-/// constructed by serializing only the engine-relevant fields
-/// (`classifier_id`, `confidence_threshold`, `corrections`) and
-/// deliberately excluding `deadline_ms`. This means a caller varying
-/// `deadline_ms` per call does not trigger an `Engine` rebuild
-/// (AhoCorasick / ruleset / scheme construction); the cached engine
-/// is reused. Constitution III analysis at the top of this file
-/// explains why `deadline_ms` is non-semantic and therefore safe to
-/// drop from the cache key.
+/// Returns `WasmConfig` (not yet a built `Config`) so the engine
+/// cache hit path can avoid building a full `Config` (and the
+/// associated HashMap moves) when the cached engine is reusable.
+/// `Config` is constructed lazily inside [`with_engine`] via the
+/// caller-supplied `build_config` closure on cache miss only.
 ///
-/// Returns `Ok(Some(_))` for the cache key when any cache-relevant
-/// field is set, and `Ok(None)` when the caller passed
-/// `WasmConfig::default()` (matching the existing default-config
-/// fast path in `with_engine`).
+/// The third return value is the **engine cache key**, constructed
+/// by serializing only the engine-relevant fields (`classifier_id`,
+/// `confidence_threshold`, `corrections`) and deliberately excluding
+/// `deadline_ms`. This means a caller varying `deadline_ms` per call
+/// does not trigger an `Engine` rebuild. Constitution III analysis
+/// at the top of this file explains why `deadline_ms` is
+/// non-semantic and therefore safe to drop from the cache key.
+///
+/// `corrections` is serialized via `BTreeMap<&str, &str>` (sorted by
+/// key) so the cache-key string is stable across calls — `HashMap`
+/// iteration order is non-deterministic, which would otherwise
+/// produce different cache-key strings for byte-equal corrections
+/// content and force unnecessary engine rebuilds.
+///
+/// Returns `Ok(None)` for the cache key when no cache-relevant field
+/// is set (default config OR an empty corrections map); a
+/// deadline-only invocation hits the same default-config cache slot.
 fn parse_wasm_config(
     json: &Option<String>,
-) -> Result<(Config, Option<Duration>, Option<String>), String> {
+) -> Result<(WasmConfig, Option<Duration>, Option<String>), String> {
     let wasm_cfg: WasmConfig = match json {
         Some(s) => serde_json::from_str(s).map_err(|e| e.to_string())?,
         None => WasmConfig::default(),
     };
+    let deadline_duration = parse_deadline_ms(wasm_cfg.deadline_ms)?;
+    let cache_key = build_cache_key(&wasm_cfg)?;
+    Ok((wasm_cfg, deadline_duration, cache_key))
+}
 
+/// Build an engine-level [`Config`] from a parsed [`WasmConfig`].
+///
+/// Consumes `wasm_cfg` so `classifier_id` and `corrections` move
+/// into the resulting `Config` rather than being cloned —
+/// non-trivial savings when a caller passes a large corrections
+/// map. Called only on engine cache miss inside [`with_engine`];
+/// cache-hit calls drop `wasm_cfg` (and its `corrections` HashMap)
+/// without ever invoking this function.
+fn build_engine_config(wasm_cfg: WasmConfig) -> Result<Config, String> {
     let mut config = Config::default();
-    config.user.classifier_id = wasm_cfg.classifier_id.clone();
+    config.user.classifier_id = wasm_cfg.classifier_id;
     if let Some(threshold) = wasm_cfg.confidence_threshold {
         config
             .set_confidence_threshold(threshold)
             .map_err(|e| e.to_string())?;
     }
-    if let Some(corrections) = wasm_cfg.corrections.clone() {
+    if let Some(corrections) = wasm_cfg.corrections {
         config.corrections = corrections;
     }
-    let deadline_duration = parse_deadline_ms(wasm_cfg.deadline_ms)?;
-    let cache_key = build_cache_key(&wasm_cfg)?;
-    Ok((config, deadline_duration, cache_key))
+    Ok(config)
 }
 
 /// Cache-relevant projection of [`WasmConfig`]. Serialized to build
-/// the engine cache key — `deadline_ms` is excluded.
+/// the engine cache key — `deadline_ms` is excluded; `corrections`
+/// is projected through a `BTreeMap` so iteration order is stable
+/// (HashMap iteration is non-deterministic and would produce
+/// different cache-key strings for byte-equal content).
 #[derive(Serialize)]
 struct WasmConfigCacheKey<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -497,26 +517,33 @@ struct WasmConfigCacheKey<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     confidence_threshold: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    corrections: Option<&'a HashMap<String, String>>,
+    corrections: Option<BTreeMap<&'a str, &'a str>>,
 }
 
 /// Build the engine cache key for a parsed [`WasmConfig`].
 ///
-/// Returns `Ok(None)` when no cache-relevant field is set (i.e., the
-/// caller passed `WasmConfig::default()`); this matches the
-/// "default-config" path in [`with_engine`] so a deadline-only
-/// invocation hits the same cache slot as a no-config invocation.
+/// Returns `Ok(None)` when no cache-relevant field is set — this
+/// includes both `WasmConfig::default()` and configurations whose
+/// only signal is an empty `corrections` map (`Some({})` → treated
+/// as `None` so callers don't get a separate cache slot for
+/// "default with empty corrections" vs. "absent corrections"). A
+/// deadline-only invocation hits the same cache slot as a no-config
+/// invocation.
 fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
-    if cfg.classifier_id.is_none()
-        && cfg.confidence_threshold.is_none()
-        && cfg.corrections.is_none()
-    {
+    let corrections_present = cfg.corrections.as_ref().is_some_and(|c| !c.is_empty());
+    if cfg.classifier_id.is_none() && cfg.confidence_threshold.is_none() && !corrections_present {
         return Ok(None);
     }
     let projection = WasmConfigCacheKey {
         classifier_id: cfg.classifier_id.as_deref(),
         confidence_threshold: cfg.confidence_threshold,
-        corrections: cfg.corrections.as_ref(),
+        corrections: cfg.corrections.as_ref().filter(|c| !c.is_empty()).map(|c| {
+            // Project HashMap → BTreeMap for stable iteration order.
+            // Borrowed (&str, &str) pairs avoid String allocations.
+            c.iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect::<BTreeMap<_, _>>()
+        }),
     };
     serde_json::to_string(&projection)
         .map(Some)
@@ -603,29 +630,29 @@ thread_local! {
 /// engine-relevant cache key differs from the previously cached
 /// configuration.
 ///
-/// The hot path (same engine config across calls) is an
-/// `Option<String>` comparison and a `RefCell` borrow — no
-/// allocations, no AhoCorasick rebuild.
+/// The hot path (cache hit) is an `Option<String>` comparison and a
+/// `RefCell` borrow — no JSON parse beyond the upfront one in
+/// `parse_wasm_config`, no `Config` construction, no AhoCorasick
+/// rebuild. `build_config` is invoked only on cache miss; on cache
+/// hit the closure is dropped without being called, releasing any
+/// owned `corrections` HashMap without a move.
 ///
 /// `cache_key` is the normalized projection produced by
-/// [`build_cache_key`] — engine-relevant fields only,
-/// `deadline_ms` excluded — so a caller varying `deadline_ms` per
-/// call does not invalidate the cache.
-///
-/// `config` is the parsed engine config, used only on cache miss to
-/// build a fresh `Engine`. Constructing it eagerly (vs. via a
-/// closure) wastes a `Config::default() + a few field assignments`
-/// on cache hit; that cost is sub-microsecond compared to the
-/// AhoCorasick rebuild it avoids on cache miss.
+/// [`build_cache_key`] — engine-relevant fields only, `deadline_ms`
+/// excluded — so a caller varying `deadline_ms` per call does not
+/// invalidate the cache.
 ///
 /// Uses `try_borrow_mut` to recover gracefully if a prior WASM trap
 /// left the RefCell in a borrowed state (WASM traps don't unwind, so
 /// `borrow_mut` guards are never released on panic).
-fn with_engine<T>(
+fn with_engine<T, F>(
     cache_key: &Option<String>,
-    config: Config,
+    build_config: F,
     f: impl FnOnce(&Engine) -> Result<T, String>,
-) -> Result<T, String> {
+) -> Result<T, String>
+where
+    F: FnOnce() -> Result<Config, String>,
+{
     ENGINE_CACHE.with(|cell| {
         let mut cache = cell.try_borrow_mut().map_err(|_| {
             "engine cache is already mutably borrowed (either re-entrancy in the WASM callsite \
@@ -640,6 +667,7 @@ fn with_engine<T>(
         };
 
         if needs_rebuild {
+            let config = build_config()?;
             let engine = Engine::with_clock(
                 config,
                 marque_engine::default_ruleset(),
@@ -697,8 +725,12 @@ fn with_deep_scan_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Res
 
 /// Pre-warm the engine cache (native entry point for tests).
 pub fn configure_native(config_json: Option<String>) -> Result<(), String> {
-    let (config, _, cache_key) = parse_wasm_config(&config_json)?;
-    with_engine(&cache_key, config, |_| Ok(()))
+    let (wasm_cfg, _, cache_key) = parse_wasm_config(&config_json)?;
+    with_engine(
+        &cache_key,
+        move || build_engine_config(wasm_cfg),
+        |_| Ok(()),
+    )
 }
 
 /// Lint text, returning NDJSON conforming to `contracts/diagnostic.json`.
@@ -720,23 +752,28 @@ pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, St
     // negative) before any engine work, regardless of whether the
     // engine cache is warm. The cache key strips `deadline_ms` so a
     // caller varying the budget per call hits the warm cache.
-    let (config, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
+    let (wasm_cfg, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
     let deadline = stamp_deadline(deadline_duration)?;
-    with_engine(&cache_key, config, |engine| {
-        let mut lint_opts = LintOptions::default();
-        lint_opts.deadline = deadline;
-        let result = engine.lint_with_options(text.as_bytes(), &lint_opts);
+    with_engine(
+        &cache_key,
+        move || build_engine_config(wasm_cfg),
+        |engine| {
+            let mut lint_opts = LintOptions::default();
+            lint_opts.deadline = deadline;
+            let result = engine.lint_with_options(text.as_bytes(), &lint_opts);
 
-        // Write NDJSON directly into a byte buffer — avoids the intermediate
-        // String allocation that serde_json::to_string produces per diagnostic.
-        let mut buf = Vec::with_capacity(result.diagnostics.len() * 256);
-        for d in &result.diagnostics {
-            serde_json::to_writer(&mut buf, &diagnostic_to_json(d)).map_err(|e| e.to_string())?;
-            buf.push(b'\n');
-        }
-        // serde_json always produces valid UTF-8.
-        String::from_utf8(buf).map_err(|e| e.to_string())
-    })
+            // Write NDJSON directly into a byte buffer — avoids the intermediate
+            // String allocation that serde_json::to_string produces per diagnostic.
+            let mut buf = Vec::with_capacity(result.diagnostics.len() * 256);
+            for d in &result.diagnostics {
+                serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                    .map_err(|e| e.to_string())?;
+                buf.push(b'\n');
+            }
+            // serde_json always produces valid UTF-8.
+            String::from_utf8(buf).map_err(|e| e.to_string())
+        },
+    )
 }
 
 /// Fix text, returning a JSON object with `fixed_text`, `applied` audit records,
@@ -758,57 +795,61 @@ pub fn fix_native(
     threshold: f32,
     config_json: Option<String>,
 ) -> Result<String, String> {
-    let (config, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
+    let (wasm_cfg, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
     let deadline = stamp_deadline(deadline_duration)?;
-    with_engine(&cache_key, config, |engine| {
-        let mut fix_opts = FixOptions::default();
-        fix_opts.threshold_override = Some(threshold);
-        fix_opts.deadline = deadline;
-        let result = match engine.fix_with_options(text.as_bytes(), FixMode::Apply, &fix_opts) {
-            Ok(r) => r,
-            Err(EngineError::DeadlineExceeded { partial_lint }) => {
-                return Err(deadline_exceeded_payload(&partial_lint));
-            }
-            Err(e) => return Err(e.to_string()),
-        };
+    with_engine(
+        &cache_key,
+        move || build_engine_config(wasm_cfg),
+        |engine| {
+            let mut fix_opts = FixOptions::default();
+            fix_opts.threshold_override = Some(threshold);
+            fix_opts.deadline = deadline;
+            let result = match engine.fix_with_options(text.as_bytes(), FixMode::Apply, &fix_opts) {
+                Ok(r) => r,
+                Err(EngineError::DeadlineExceeded { partial_lint }) => {
+                    return Err(deadline_exceeded_payload(&partial_lint));
+                }
+                Err(e) => return Err(e.to_string()),
+            };
 
-        let fixed_text = String::from_utf8(result.source)
-            .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
+            let fixed_text = String::from_utf8(result.source)
+                .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
-        let applied: Vec<Box<serde_json::value::RawValue>> = result
-            .applied
-            .iter()
-            .map(serialize_applied_fix)
-            .collect::<Result<_, _>>()?;
+            let applied: Vec<Box<serde_json::value::RawValue>> = result
+                .applied
+                .iter()
+                .map(serialize_applied_fix)
+                .collect::<Result<_, _>>()?;
 
-        // Remaining diagnostics as pre-serialized raw JSON. Each diagnostic
-        // is serialized once into a byte buffer and wrapped as RawValue so
-        // the parent FixResultJson serialization embeds it verbatim — no
-        // intermediate serde_json::Value tree, no double serialization.
-        let remaining: Vec<Box<serde_json::value::RawValue>> = result
-            .remaining_diagnostics
-            .iter()
-            .map(|d| {
-                let mut buf = Vec::with_capacity(256);
-                serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
-                    .map_err(|e| e.to_string())?;
-                let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
-                serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
-            })
-            .collect::<Result<_, _>>()?;
+            // Remaining diagnostics as pre-serialized raw JSON. Each diagnostic
+            // is serialized once into a byte buffer and wrapped as RawValue so
+            // the parent FixResultJson serialization embeds it verbatim — no
+            // intermediate serde_json::Value tree, no double serialization.
+            let remaining: Vec<Box<serde_json::value::RawValue>> = result
+                .remaining_diagnostics
+                .iter()
+                .map(|d| {
+                    let mut buf = Vec::with_capacity(256);
+                    serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                        .map_err(|e| e.to_string())?;
+                    let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
+                    serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
+                })
+                .collect::<Result<_, _>>()?;
 
-        let fix_result = FixResultJson {
-            fixed_text,
-            applied,
-            remaining,
-        };
+            let fix_result = FixResultJson {
+                fixed_text,
+                applied,
+                remaining,
+            };
 
-        // Serialize directly into a byte buffer to avoid serde_json::to_string's
-        // intermediate String allocation.
-        let mut buf = Vec::with_capacity(1024);
-        serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
-        String::from_utf8(buf).map_err(|e| e.to_string())
-    })
+            // Serialize directly into a byte buffer to avoid serde_json::to_string's
+            // intermediate String allocation.
+            let mut buf = Vec::with_capacity(1024);
+            serde_json::to_writer(&mut buf, &fix_result).map_err(|e| e.to_string())?;
+            String::from_utf8(buf).map_err(|e| e.to_string())
+        },
+    )
 }
 
 /// Body shape for a deadline-exceeded fix error (mirrors the
@@ -980,36 +1021,41 @@ pub fn lint_batch_native(
     config_json: Option<String>,
 ) -> Result<String, String> {
     let entries: Vec<BatchEntry> = serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
-    let (config, _, cache_key) = parse_wasm_config(&config_json)?;
+    let (wasm_cfg, _, cache_key) = parse_wasm_config(&config_json)?;
 
-    with_engine(&cache_key, config, |engine| {
-        let results: Vec<BatchResultEntry<'_>> = entries
-            .iter()
-            .map(|entry| {
-                let result = engine.lint(entry.text.as_bytes());
-                let diagnostics = result
-                    .diagnostics
-                    .iter()
-                    .map(|d| {
-                        let mut buf = Vec::with_capacity(256);
-                        serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
-                            .map_err(|e| e.to_string())?;
-                        let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
-                        serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
+    with_engine(
+        &cache_key,
+        move || build_engine_config(wasm_cfg),
+        |engine| {
+            let results: Vec<BatchResultEntry<'_>> = entries
+                .iter()
+                .map(|entry| {
+                    let result = engine.lint(entry.text.as_bytes());
+                    let diagnostics = result
+                        .diagnostics
+                        .iter()
+                        .map(|d| {
+                            let mut buf = Vec::with_capacity(256);
+                            serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
+                                .map_err(|e| e.to_string())?;
+                            let json = String::from_utf8(buf).map_err(|e| e.to_string())?;
+                            serde_json::value::RawValue::from_string(json)
+                                .map_err(|e| e.to_string())
+                        })
+                        .collect::<Result<_, String>>()?;
+
+                    Ok(BatchResultEntry {
+                        id: &entry.id,
+                        diagnostics,
                     })
-                    .collect::<Result<_, String>>()?;
-
-                Ok(BatchResultEntry {
-                    id: &entry.id,
-                    diagnostics,
                 })
-            })
-            .collect::<Result<_, String>>()?;
+                .collect::<Result<_, String>>()?;
 
-        let mut buf = Vec::with_capacity(results.len() * 512);
-        serde_json::to_writer(&mut buf, &results).map_err(|e| e.to_string())?;
-        String::from_utf8(buf).map_err(|e| e.to_string())
-    })
+            let mut buf = Vec::with_capacity(results.len() * 512);
+            serde_json::to_writer(&mut buf, &results).map_err(|e| e.to_string())?;
+            String::from_utf8(buf).map_err(|e| e.to_string())
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

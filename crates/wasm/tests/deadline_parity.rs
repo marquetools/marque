@@ -199,6 +199,57 @@ fn wasm_deadline_ms_zero_yields_empty_ndjson_byte_identical_to_native() {
 }
 
 #[test]
+fn wasm_corrections_cache_key_is_stable_across_calls() {
+    // The cache key MUST be byte-stable for byte-equal corrections
+    // content regardless of HashMap iteration order — otherwise the
+    // engine cache invalidates on every call. We can't directly
+    // observe the cache-key string from the public surface, but we
+    // can pin the load-bearing post-condition: sequential calls
+    // with identical-content `corrections` produce byte-identical
+    // NDJSON, exercising the BTreeMap projection in
+    // `build_cache_key`. If the cache key were HashMap-order
+    // sensitive, calls would alternate between cache hit and cache
+    // miss; the cache-miss path is functionally correct (rebuilds
+    // the engine) but slower — this test pins *correctness*, the
+    // perf invariant is documented in the `build_cache_key` doc
+    // comment.
+    let cfg = r#"{"corrections":{"NF":"NOFORN","SI":"SPECIAL INTELLIGENCE","TS":"TOP SECRET"}}"#;
+    let fixture = "(S//NF) Sentence one.\n";
+
+    let first = marque_wasm::lint_native(fixture, Some(cfg.to_owned())).expect("lint first");
+    let second = marque_wasm::lint_native(fixture, Some(cfg.to_owned())).expect("lint second");
+    let third = marque_wasm::lint_native(fixture, Some(cfg.to_owned())).expect("lint third");
+
+    assert_eq!(
+        first, second,
+        "consecutive identical calls must produce identical NDJSON"
+    );
+    assert_eq!(
+        first, third,
+        "third identical call must produce identical NDJSON"
+    );
+}
+
+#[test]
+fn wasm_empty_corrections_hits_default_cache_slot() {
+    // `Some({})` for corrections must be treated equivalently to
+    // `None` for cache-key purposes — otherwise a caller passing
+    // `{"corrections": {}}` gets a separate cache slot from a
+    // caller passing nothing, doubling engine construction cost
+    // for no observable benefit. The `build_cache_key` doc comment
+    // pins this invariant.
+    let no_config = marque_wasm::lint_native("(U)\n", None).expect("lint no config");
+    let empty_corrections =
+        marque_wasm::lint_native("(U)\n", Some(r#"{"corrections":{}}"#.to_owned()))
+            .expect("lint empty corrections");
+    assert_eq!(
+        no_config, empty_corrections,
+        "empty corrections map must produce the same NDJSON as no config — \
+         both should hit the default-cache slot"
+    );
+}
+
+#[test]
 fn wasm_deadline_ms_does_not_invalidate_engine_cache() {
     // The cache key produced by `parse_wasm_config` MUST exclude
     // `deadline_ms` so a caller varying the per-call budget does not
