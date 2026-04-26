@@ -11,6 +11,7 @@ use aho_corasick::AhoCorasick;
 use std::sync::LazyLock;
 
 use crate::generated::values;
+use crate::marking_forms::MARKING_FORMS;
 
 /// Minimal interface the parser needs from the token set.
 /// Implemented by `CapcoTokenSet`; injected at engine init.
@@ -48,6 +49,48 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
         .expect("CVE token automaton construction failed")
 });
 
+/// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
+/// from [`MARKING_FORMS`] (e.g., `NOFORN`, `ORCON`, `PROPIN`, `EXDIS`,
+/// `NODIS`), sorted and deduplicated.
+///
+/// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
+/// (`NF`, `OC`, `PR`, `XD`, `ND`) and a handful of single-form tokens
+/// (`RELIDO`, `FISA`, `FOUO`). The banner long forms — which are valid
+/// inputs the strict parser handles via
+/// [`crate::marking_forms::banner_to_portion`] — were missing from the
+/// vocabulary the fuzzy matcher consults, so an OCR/transcription typo
+/// like `NOFORON` (distance 1 from `NOFORN`) found no correction target
+/// and the decoder discarded it as `TokenKind::Unknown`. See issue #133.
+///
+/// Round-trip safety: the strict parser's `parse_dissem_full_form` and
+/// `parse_non_ic_full_form` already accept the banner forms here and
+/// translate them to the canonical portion enum, so a fuzzy correction
+/// returning `NOFORN` (rather than `NF`) lands on the same final
+/// [`crate::DissemControl::Nf`] after strict parsing.
+///
+/// Multi-word banner forms (`DEA SENSITIVE`, `SBU NOFORN`,
+/// `LES NOFORN`, `DOD UCNI`, `DOE UCNI`) are retained intentionally.
+/// The decoder's per-token fuzzy tokenizer (`scan_token` in
+/// `crates/engine/src/decoder.rs`) splits raw input on whitespace, so
+/// these never appear as a single *input* token to the matcher — but
+/// fuzzy correction can still emit one of them as the canonical
+/// *output* for a whitespace-free typo (e.g., `SBUNOFORN` →
+/// `SBU NOFORN`, distance 1, single-character insertion of the
+/// space). The strict parser then accepts the corrected multi-word
+/// form via `parse_non_ic_full_form` / `parse_dissem_full_form` and
+/// translates it to the canonical portion enum, so the round-trip
+/// lands at the expected `NonIcDissem::SbuNf` (or peer). Pinned by
+/// `marque-core::fuzzy::tests::real_vocab_emits_multi_word_banner_for_whitespace_free_typo`.
+static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    let mut v: Vec<&'static str> = values::ALL_CVE_TOKENS.to_vec();
+    for f in MARKING_FORMS {
+        v.push(f.banner);
+    }
+    v.sort();
+    v.dedup();
+    v
+});
+
 pub struct CapcoTokenSet;
 
 impl TokenSet for CapcoTokenSet {
@@ -69,7 +112,7 @@ impl TokenSet for CapcoTokenSet {
     }
 
     fn correction_vocab(&self) -> &[&'static str] {
-        values::ALL_CVE_TOKENS
+        EXTENDED_CORRECTION_VOCAB.as_slice()
     }
 }
 
@@ -194,6 +237,39 @@ mod tests {
                  it is a non-IC caveat (CAPCO-2016 line 283 \
                  disclaimer) that should be filtered by build.rs's \
                  NON_IC_DISSEM_DENY_LIST"
+            );
+        }
+    }
+
+    #[test]
+    fn correction_vocab_contains_dissem_banner_long_forms() {
+        // Issue #133 root cause #1: the fuzzy matcher saw only
+        // `ALL_CVE_TOKENS`, which carries the dissem **portion**
+        // abbreviations (NF, OC, PR) plus `RELIDO`/`FISA`/`FOUO`,
+        // but not the banner long forms (NOFORN, ORCON, PROPIN,
+        // EXDIS, NODIS, …). So `NOFORON` had no edit-distance
+        // candidate and the decoder discarded it. The extended
+        // vocab pulls every entry's banner form from
+        // `marking_forms::MARKING_FORMS`, with the strict parser's
+        // `parse_dissem_full_form` then normalizing the matched
+        // long form to the canonical portion enum.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &[
+            "NOFORN",
+            "ORCON",
+            "ORCON-USGOV",
+            "IMCON",
+            "PROPIN",
+            "RSEN",
+            "LIMDIS",
+            "EXDIS",
+            "NODIS",
+        ] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab MUST contain {expected:?} — \
+                 banner long form per CAPCO-2016 §G.1 Table 4 \
+                 (issue #133 root cause #1)"
             );
         }
     }

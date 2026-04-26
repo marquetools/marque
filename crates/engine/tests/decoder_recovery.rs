@@ -67,30 +67,42 @@ fn sercet_decodes_to_secret_via_edit_distance_one() {
 }
 
 #[test]
-fn double_typo_zero_candidate_when_one_token_is_ambiguous() {
-    // `SERCET//NOFRN` — SERCET is edit-distance-1 from SECRET, but
-    // NOFRN is equidistant from NOFORN and potentially other 5-letter
-    // CAPCO tokens so the fuzzy matcher returns None (ambiguous).
-    // After PR #114 round-3 tightening, a canonicalization where the
-    // tail token falls through to strict parse as `TokenKind::Unknown`
-    // is rejected — so this input must return zero-candidate rather
-    // than fabricating a partial `SECRET` marking with NOFRN silently
-    // discarded. This is the correct honesty invariant from the
-    // reviewer's concern: if the decoder can't fully explain all the
-    // observed tokens, it surfaces zero candidates and lets the
-    // engine emit a diagnostic instead.
+fn fuzzy_ambiguity_yields_zero_candidate() {
+    // `SECRET//RSE` — `RSE` is at fuzzy edit-distance 1 from BOTH
+    // `RS` (delete E) AND `RSEN` (insert N), both of which are in
+    // the extended correction vocab after the issue #133 long-form
+    // dissem fix. The matcher returns `None` on the two-way tie,
+    // the unknown token passes through to strict parse as
+    // `TokenKind::Unknown`, and the decoder's step-3a Unknown-span
+    // filter rejects the partial candidate.
+    //
+    // Honesty invariant FR-015: when any token is unresolvable,
+    // the decoder surfaces zero candidates rather than fabricating
+    // a marking that silently drops the unresolved token.
+    //
+    // Renamed and re-anchored from
+    // `double_typo_zero_candidate_when_one_token_is_ambiguous`
+    // (originally used `SERCET//NOFRN`). That example stopped
+    // exercising the ambiguity path once the issue #133 long-form
+    // vocab fix added `NOFORN` to the matcher's vocabulary —
+    // `NOFRN → NOFORN` is now unambiguously distance-1. The
+    // FR-015 invariant still warrants a regression test, just with
+    // an example that holds under the extended vocab. The companion
+    // `partial_canonicalization_with_unresolvable_token_returns_zero_candidate`
+    // covers the distinct "uncorrectable / no candidate close
+    // enough" path (e.g., `SECRET//WIBBLE`).
     let rx = DecoderRecognizer::new();
-    match rx.recognize(b"SERCET//NOFRN", &deep_cx()) {
+    match rx.recognize(b"SECRET//RSE", &deep_cx()) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
             "decoder must not fabricate partial candidates when any \
-             token is unresolvable (FR-015 honesty invariant); \
+             token is fuzzy-ambiguous (FR-015 honesty invariant); \
              got {} candidate(s)",
             candidates.len(),
         ),
         Parsed::Unambiguous(m) => panic!(
-            "expected zero-candidate; fabricated partial marking would \
-             regress the r3 fix. marking = {:?}",
+            "expected zero-candidate; fabricated partial marking \
+             would regress the r3 fix. marking = {:?}",
             m.0,
         ),
     }

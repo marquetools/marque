@@ -523,6 +523,75 @@ mod tests {
         assert!((correction_confidence(1, 12) - 0.70).abs() < eps); // capped at 6
     }
 
+    // ----- Real-vocab regression tests (issue #133 root cause #1) -----
+    //
+    // These tests use `CapcoTokenSet::correction_vocab()` directly so a
+    // future change that removed the banner long-form additions from
+    // the extended vocab (or unintentionally narrowed it back to
+    // `ALL_CVE_TOKENS`) would fail here, not silently regress the
+    // SC-004 accuracy harness. The unit tests above use a minimal
+    // local TEST_VOCAB and would not catch the regression.
+
+    #[test]
+    fn real_vocab_corrects_noforon_to_noforn() {
+        // Issue #133 root cause #1, primary example from PR #136
+        // diagnostic: `NOFORON` is one insertion away from `NOFORN`.
+        // Before the long-form vocab fix this returned None because
+        // `NOFORN` was not in the matcher's vocabulary at all.
+        use marque_ism::CapcoTokenSet;
+        use marque_ism::token_set::TokenSet as _;
+        let vocab = CapcoTokenSet.correction_vocab();
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        let result = matcher.correct("NOFORON");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("NOFORN"));
+        assert_eq!(result.map(|c| c.distance), Some(1));
+    }
+
+    #[test]
+    fn real_vocab_corrects_nofron_to_noforn() {
+        // Adjacent transposition (R↔O): standard Levenshtein distance 2.
+        use marque_ism::CapcoTokenSet;
+        use marque_ism::token_set::TokenSet as _;
+        let vocab = CapcoTokenSet.correction_vocab();
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        let result = matcher.correct("NOFRON");
+        assert_eq!(result.map(|c| c.token), Some("NOFORN"));
+    }
+
+    #[test]
+    fn real_vocab_corrects_orcon_typo() {
+        // Coverage for the §G.1 Table 4 ORCON / OC pair beyond NOFORN.
+        use marque_ism::CapcoTokenSet;
+        use marque_ism::token_set::TokenSet as _;
+        let vocab = CapcoTokenSet.correction_vocab();
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        let result = matcher.correct("ORCN");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("ORCON"));
+    }
+
+    #[test]
+    fn real_vocab_emits_multi_word_banner_for_whitespace_free_typo() {
+        // Pin the documented behavior of multi-word entries in
+        // `EXTENDED_CORRECTION_VOCAB`. The fuzzy matcher CAN emit a
+        // multi-word vocab entry as the correction for a
+        // whitespace-free typo (here: `SBUNOFORN` → `SBU NOFORN` at
+        // distance 1, single-character insertion of the space).
+        // The strict parser then accepts the corrected form via
+        // `parse_non_ic_full_form`, so the round-trip lands as the
+        // expected `NonIcDissem::SbuNf`.
+        //
+        // Pinning this lets us word the doc comment on
+        // `EXTENDED_CORRECTION_VOCAB` accurately — multi-word
+        // entries are reachable, not "inert".
+        use marque_ism::CapcoTokenSet;
+        use marque_ism::token_set::TokenSet as _;
+        let vocab = CapcoTokenSet.correction_vocab();
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        let result = matcher.correct("SBUNOFORN");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("SBU NOFORN"));
+        assert_eq!(result.map(|c| c.distance), Some(1));
+    }
+
     #[test]
     fn correction_confidence_distance2_scales_with_length() {
         let eps = 1e-5_f32;
