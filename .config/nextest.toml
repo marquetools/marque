@@ -22,3 +22,26 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 [profile.ci]
 fail-fast = false
 retries = 0
+
+# Timing-sensitive tests in `crates/engine/tests/deadline.rs` measure
+# a baseline `t_fix` then assert that a deadline at `t_fix/2` trips
+# mid-call. The shape races whenever concurrent tests on the same
+# runner steal CPU during the baseline measurement vs. the bounded
+# run — `fix_with_deadline_during_fix_call_returns_deadline_exceeded`
+# has flaked exactly this way on PR #199. Two surgical mitigations:
+#
+#  1. `threads-required = num-cpus` reserves every available thread,
+#     so nextest schedules these tests alone on the runner. This
+#     eliminates the cross-test CPU-contention root cause.
+#  2. `retries = 2` absorbs any residual timing noise (e.g.,
+#     hypervisor scheduling jitter on shared CI infra) without
+#     masking a genuine regression — a real bug would fail all 3
+#     attempts.
+#
+# Scoped by `binary(deadline)` so only the deadline test binary is
+# affected. Other tests retain `retries = 0` and the default thread
+# scheduling, preserving fast feedback on real failures.
+[[profile.ci.overrides]]
+filter = 'binary(deadline)'
+retries = 2
+threads-required = 'num-cpus'
