@@ -62,8 +62,8 @@
 
 use marque_core::Scanner;
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, Once};
 
 // =====================================================================
 // Counting global allocator.
@@ -181,7 +181,7 @@ const BUDGET_PER_PAGE: usize = 6;
 // Tests.
 // =====================================================================
 
-/// Run a scan once before the measurement window so any first-call
+/// Run a scan once before any measurement window so any first-call
 /// initialization (lazy SIMD feature detection inside `memchr`,
 /// per-thread output-capture buffer setup inside the test runner,
 /// global string-interner setup inside `assert!`-related machinery,
@@ -199,19 +199,37 @@ const BUDGET_PER_PAGE: usize = 6;
 /// did on first use. That cost showed up as 3-4 phantom allocs
 /// on the larger buffer and false-positived the size-independence
 /// assertion. Adding a long-buffer scan here lifts that floor.
+///
+/// `Once` is load-bearing, not just an optimization. Each test
+/// calls `warm_up()` at its top, but `Scanner::scan` allocates
+/// (it pushes into a `Vec`); under `--test-threads=N>1` a warm-up
+/// in test A could allocate inside test B's measurement window
+/// after B sampled `before` and entered its closure. The
+/// `MEASURE_LOCK` mutex only serializes the count_allocs body —
+/// it cannot stop concurrent warm-ups from polluting the global
+/// counter. `Once` collapses warm-up to exactly one execution
+/// across the entire test binary, before the first measurement,
+/// so subsequent test calls fall through immediately and do not
+/// allocate. The file's header comment still recommends
+/// `--test-threads=1` as the supported configuration, but `Once`
+/// removes the warm-up-driven failure mode for anyone who runs
+/// without that flag.
 fn warm_up() {
-    let _ = Scanner::scan(b"TOP SECRET//SI//NOFORN\n");
-    let _ = Scanner::scan(b"(S//NF) sample portion.");
-    let _ = Scanner::scan(b"");
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let _ = Scanner::scan(b"TOP SECRET//SI//NOFORN\n");
+        let _ = Scanner::scan(b"(S//NF) sample portion.");
+        let _ = Scanner::scan(b"");
 
-    // Long buffer with a single banner candidate, matching the
-    // shape of the size-independence fixture below. Sized to the
-    // same 4 KB ballpark so any lazy init that depends on input
-    // length crossing a stdlib / allocator threshold fires here,
-    // not inside a measurement window.
-    let mut long = vec![b' '; 4096];
-    long.extend_from_slice(b"\nTOP SECRET//SI//NOFORN\n");
-    let _ = Scanner::scan(&long);
+        // Long buffer with a single banner candidate, matching
+        // the shape of the size-independence fixture below.
+        // Sized to the same 4 KB ballpark so any lazy init that
+        // depends on input length crossing a stdlib / allocator
+        // threshold fires here, not inside a measurement window.
+        let mut long = vec![b' '; 4096];
+        long.extend_from_slice(b"\nTOP SECRET//SI//NOFORN\n");
+        let _ = Scanner::scan(&long);
+    });
 }
 
 #[test]
@@ -317,7 +335,8 @@ TOP SECRET//SI//NOFORN
 ///
 /// The noise floor must be tight enough that a real per-byte /
 /// per-line / per-window regression still trips the gate on the
-/// 4 KB fixture. With the fixture at 4119 bytes:
+/// 4 KB fixture. With the fixture at 4120 bytes (4096 spaces +
+/// `"\nTOP SECRET//SI//NOFORN\n"`, 24 bytes):
 ///   - a per-byte alloc would add 4096+ extras (catastrophically over)
 ///   - a per-100-byte alloc would add 41 extras
 ///   - a per-1000-byte alloc would add 4 extras (just over)
@@ -351,13 +370,20 @@ fn scanner_alloc_count_is_buffer_size_independent() {
         std::hint::black_box(result);
     });
 
-    let diff = allocs_large.saturating_sub(allocs_small);
+    // `abs_diff` rather than `saturating_sub`: the invariant is
+    // symmetric — buffer size must not drive alloc count in
+    // *either* direction. A regression where the small-buffer
+    // path allocates more than the large-buffer path is just as
+    // much a "depends on buffer size" violation as the other
+    // direction; `saturating_sub` would silently treat that as
+    // diff = 0 and pass.
+    let diff = allocs_large.abs_diff(allocs_small);
     assert!(
         diff <= SIZE_INDEPENDENCE_NOISE_FLOOR,
         "Scanner::scan allocation count must depend on candidate count, \
          not buffer size. small (23 B): {allocs_small} alloc(s); \
          large (4 KB): {allocs_large} alloc(s); \
-         diff {diff} > noise floor {SIZE_INDEPENDENCE_NOISE_FLOOR}. \
+         |diff| {diff} > noise floor {SIZE_INDEPENDENCE_NOISE_FLOOR}. \
          A diff over the floor implies a per-byte / per-line / \
          per-window allocation in the scanner — anything proportional \
          to input size would generate dozens to thousands of extras \
