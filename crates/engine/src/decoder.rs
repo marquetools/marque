@@ -3611,6 +3611,54 @@ mod tests {
     }
 
     #[test]
+    fn match_sar_missing_hyphen_rejects_non_delim_following_char() {
+        // Alnum run is in the §H.5 p100 2-3 window, but the byte
+        // immediately after the run is non-alphanumeric AND not in
+        // the delimiter set (`-`, `/`, ` `, `\t`, `\n`, `\r`).
+        // Every non-delim non-alnum byte triggers the
+        // `next_is_delim = false` branch and the helper returns
+        // `None` — refusing to repair grammatically-suspicious
+        // shapes (a SAR identifier doesn't terminate at `,`, `)`,
+        // `;`, etc.). Direct-helper test because the higher-level
+        // pinning in `try_sar_indicator_repair` only exercises a
+        // subset of these via the boundary check upstream.
+        let cases: &[&[u8]] = &[
+            b"SARBP)",  // closing paren — same byte that ends a portion mark
+            b"SARBP,",  // comma — common typo separator
+            b"SARBP;",  // semicolon
+            b"SARBP*",  // asterisk
+            b"SARBP=",  // equals
+            b"SARABC.", // period after 3-char id
+            b"SARABC?", // question mark
+        ];
+        for input in cases {
+            assert_eq!(
+                match_sar_missing_hyphen(input, 0),
+                None,
+                "input {:?} has non-delim follower; helper must refuse repair",
+                std::str::from_utf8(input).unwrap_or("<non-utf8>"),
+            );
+        }
+    }
+
+    #[test]
+    fn sar_indicator_repair_skips_pattern_b_with_non_delim_follower() {
+        // End-to-end pinning of the same `next_is_delim = false`
+        // rejection through `try_sar_indicator_repair`. `SARBP)`
+        // appears at a `//` boundary (so `at_boundary` is true and
+        // Pattern B is attempted), the alnum run is 2, but `)` isn't
+        // in the delim set — the helper falls through to the
+        // verbatim-copy default. Without the rejection branch we'd
+        // emit `SAR-BP)`, silently inventing a hyphen for a
+        // grammatically-suspicious input.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//SARBP)//NOFORN"),
+            None,
+            "Pattern B must refuse to fire when the post-alnum char isn't a delim",
+        );
+    }
+
+    #[test]
     fn decoder_recovers_usar_prefix_via_sar_indicator_repair() {
         // End-to-end recognizer test: the canonical USAR-BP fixture
         // shape from the mangled corpus must resolve unambiguously
