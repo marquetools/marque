@@ -1312,6 +1312,93 @@ fn heuristic_does_not_fire_on_canonical_classification() {
 }
 
 // ---------------------------------------------------------------------------
+// SCI delimiter recovery (issue #198 — #133 PR 10)
+// ---------------------------------------------------------------------------
+//
+// End-to-end verification that the preprocessing in
+// `try_sci_delimiter_repair` flows through the recognizer and produces
+// a parsed CapcoMarking with the expected SCI controls. Per-pattern
+// unit tests live in `decoder.rs::tests`; these guard the
+// preprocessing→recognizer integration.
+
+#[test]
+fn sci_delimiter_repair_recovers_concatenated_compound_hcsp() {
+    // `(S//HCSP)` — concatenated `HCS-P` (Pattern A). Preprocessing
+    // rewrites HCSP → HCS-P; the strict parser then accepts HCS-P as
+    // a registered control-compartment compound.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//HCSP)", &deep_cx()) else {
+        panic!("(S//HCSP) should resolve via SCI delimiter repair");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(
+        marking.0.sci_controls.contains(&SciControl::HcsP),
+        "HcsP must land in sci_controls; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn sci_delimiter_repair_recovers_missing_slash_sitk() {
+    // `(S//SITK)` — concatenated `SI` + `TK` (Pattern B).
+    // Preprocessing rewrites SITK → SI/TK; both bare control
+    // systems must land in sci_controls.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SITK)", &deep_cx()) else {
+        panic!("(S//SITK) should resolve via SCI delimiter repair");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(
+        marking.0.sci_controls.contains(&SciControl::Si)
+            && marking.0.sci_controls.contains(&SciControl::Tk),
+        "SI and TK must both land in sci_controls; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn sci_delimiter_repair_recovers_wrong_delimiter_si_dash_tk() {
+    // `(S//SI-TK)` — `-` between two bare CS is wrong (Pattern C).
+    // Preprocessing rewrites SI-TK → SI/TK. SI-TK is NOT a registered
+    // CVE compound, so the rewrite is unambiguous.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-TK)", &deep_cx()) else {
+        panic!("(S//SI-TK) should resolve via SCI delimiter repair");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(
+        marking.0.sci_controls.contains(&SciControl::Si)
+            && marking.0.sci_controls.contains(&SciControl::Tk),
+        "SI and TK must both land in sci_controls; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn sci_delimiter_repair_leaves_canonical_compound_alone() {
+    // `(S//SI-G)` — SI-G is a registered CVE compound. Preprocessing
+    // must NOT rewrite it (Pattern C short-circuits on registered
+    // compounds). Resolves via the normal strict path.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-G)", &deep_cx()) else {
+        panic!("(S//SI-G) must resolve as canonical SI-G");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    // SI-G is a registered CVE compound; the parser emits the
+    // `SiG` variant directly into `sci_controls` (not the bare `Si`
+    // plus a separate compartment) per the structural-or-CVE
+    // dispatch in `parse_sci_block`. This assertion is what makes
+    // the test load-bearing as a regression guard against Pattern C
+    // erroneously firing on the canonical form.
+    assert!(
+        marking.0.sci_controls.contains(&SciControl::SiG),
+        "SI-G must land in sci_controls as the SiG compound (no Pattern C \
+         rewrite); attrs = {:?}",
+        marking.0,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Scheme ergonomics: CapcoScheme + decoder integrate without extra glue
 // ---------------------------------------------------------------------------
 
