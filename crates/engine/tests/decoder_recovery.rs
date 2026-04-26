@@ -797,8 +797,8 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
 // Three integration tests below pin a named fixture from the SC-004
 // mangled corpus per recovery branch (drop / right-attach /
 // left-attach), so the harness's `Typo`-class rate movement
-// (74.6% → 78.1% post-PR-7, +9 fixtures) is anchored to specific
-// recovery shapes rather than an opaque aggregate.
+// (50.0% → 56.9% post-PR-7; 65→74/130, +9 fixtures) is anchored to
+// specific recovery shapes rather than an opaque aggregate.
 
 #[test]
 fn typo_drop_stray_r_resolves_via_collapse_stray_char_slash() {
