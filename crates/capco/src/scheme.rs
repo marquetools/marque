@@ -1918,6 +1918,7 @@ impl CapcoScheme {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::{DissemControl, IsmAttributes, MarkingClassification, Trigraph};

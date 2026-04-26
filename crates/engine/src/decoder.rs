@@ -1671,7 +1671,8 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// FOUO, …) have hard reserved meanings as dissem controls per CAPCO-
 /// 2016 §H.8/§H.9; they have no in-segment role inside SCI or SAR
 /// sub-components. A strict parse that places such a token under
-/// [`SarMarking`] or [`SciMarking`] is essentially always a missing-
+/// [`marque_ism::SarMarking`] or [`marque_ism::SciMarking`] is
+/// essentially always a missing-
 /// `//` artifact in the input — the alternative parse with the token
 /// emitted as a dissem control is the correct interpretation. (REL
 /// TO is intentionally excluded from the penalty surface here: its
@@ -1690,9 +1691,9 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// contributes classification + the dissem token's prior, which is a
 /// MORE NEGATIVE log-posterior. Without a corrective penalty the
 /// absorbing parse always wins. SCI absorption usually self-resolves
-/// because [`Parser::parse`]'s SCI subgrammar produces
-/// [`TokenKind::Unknown`] for non-alphanumeric/wrong-shape compartment
-/// tokens (which step 3a then drops), but SAR's grammar accepts any
+/// because [`marque_core::Parser::parse`]'s SCI subgrammar produces
+/// [`marque_ism::TokenKind::Unknown`] for non-alphanumeric/wrong-shape
+/// compartment tokens (which step 3a then drops), but SAR's grammar accepts any
 /// `[A-Z0-9]+` identifier and absorbs cleanly — leaving SAR as the
 /// observed failure mode on the SC-004 corpus (the `SAR-BP-J12 …` and
 /// `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` fixtures pre-PR-5).
@@ -2025,6 +2026,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
@@ -2756,6 +2758,32 @@ mod tests {
     }
 
     #[test]
+    fn absorbs_hard_splitter_in_sar_detects_noforn_as_compartment_identifier() {
+        // PR #178 review (Codecov, decoder.rs:1795): pin the
+        // SAR-compartment-IDENTIFIER branch (vs the sub-compartment
+        // branch covered above). Some absorbing parses end up with the
+        // hard splitter as the compartment identifier itself rather
+        // than a sub-compartment leaf — e.g., a `SAR-BP NOFORN` shape
+        // where the strict parser emits `BP` as the program and
+        // `NOFORN` as a bare compartment with no sub-compartments.
+        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            Box::new([SarProgram::new(
+                Box::from("BP"),
+                Box::new([SarCompartment::new(Box::from("NOFORN"), Box::new([]))]),
+            )]),
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sar_markings = Some(sar);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "NOFORN as SAR compartment identifier must be detected as absorption"
+        );
+    }
+
+    #[test]
     fn absorbs_hard_splitter_accepts_clean_sar() {
         // Negative case: a SAR with realistic identifiers (`BP`, `J12`,
         // `RB`) and no hard-splitter token anywhere. Must NOT trigger
@@ -2804,6 +2832,32 @@ mod tests {
         assert!(
             absorbs_hard_splitter_in_sar_or_sci(&marking),
             "ORCON as SCI sub-compartment must be detected as absorption"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_in_sci_detects_orcon_as_compartment_identifier() {
+        // PR #178 review (Codecov, decoder.rs:1811): pin the SCI-
+        // compartment-IDENTIFIER branch (vs the sub-compartment branch
+        // above). Defensive coverage — today's strict-parser SCI path
+        // drops most absorption via the `TokenKind::Unknown` filter at
+        // step 3a, but a future grammar change that lets a hard
+        // splitter through as the compartment id needs the penalty
+        // active.
+        use marque_ism::{
+            IsmAttributes, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+        };
+        let sci = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([SciCompartment::new(Box::from("ORCON"), Box::new([]))]),
+            None,
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sci_markings = Box::new([sci]);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "ORCON as SCI compartment identifier must be detected as absorption"
         );
     }
 

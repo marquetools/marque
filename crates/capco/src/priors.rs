@@ -122,6 +122,7 @@ pub fn template_log_prior(name: &str) -> Option<f32> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

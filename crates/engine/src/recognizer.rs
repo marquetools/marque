@@ -178,6 +178,7 @@ fn is_cab_head(bytes: &[u8]) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

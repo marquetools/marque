@@ -39,6 +39,7 @@ pub fn categories_in_render_order(categories: &[Category]) -> Vec<&Category> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::category::{AggregationOp, Cardinality, CategoryId, IntraOrdering};

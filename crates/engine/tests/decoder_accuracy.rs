@@ -147,12 +147,17 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | WrongCase         | 18       | 18    | 100.0%  |
 /// | **Aggregate**     | **187**  | **260** | **71.9%** |
 ///
-/// 0.69 (one fixture below the current 71.9%) gives a small noise
-/// margin against the new floor. Remaining gap to SC-004's 85%
-/// target sits entirely in the Typo class: 3+ char tail-token typos
-/// (`UK→TK`, `USAR→SAR`, missing-hyphen SAR forms) outside the PR 2
-/// heuristic's scope and the `TPP→TOP` 3-char classification typo —
-/// addressed by extending corpus-confidence work in subsequent PRs.
+/// 0.69 is intentionally ~3 percentage points below the current
+/// 71.9% aggregate rate, leaving headroom of several fixtures so
+/// small corpus noise does not trip the regression gate. (Earlier
+/// wording said "one fixture below 71.9%" — that was wrong: with
+/// 260 fixtures, one fixture below is ~71.5%, not 69.0%; PR #178
+/// review caught the math drift and the comment is now accurate.)
+/// Remaining gap to SC-004's 85% target sits entirely in the Typo
+/// class: 3+ char tail-token typos (`UK→TK`, `USAR→SAR`, missing-
+/// hyphen SAR forms) outside the PR 2 heuristic's scope and the
+/// `TPP→TOP` 3-char classification typo — addressed by extending
+/// corpus-confidence work in subsequent PRs.
 const AGGREGATE_FLOOR_REGRESSION: f64 = 0.69;
 
 /// Per-class regression floors. Pinned against the current measured
