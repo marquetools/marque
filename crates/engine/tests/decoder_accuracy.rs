@@ -183,7 +183,7 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.53` (~3 percentage points below the
+/// - **`Typo`** pinned at `0.53` (~4 percentage points below the
 ///   current 74/130 = 56.9% rate after PR 7). Wide-enough margin
 ///   to absorb one or two fixtures dropping; a sustained drop
 ///   trips the gate. Ratchet up as subsequent #133 PRs land
