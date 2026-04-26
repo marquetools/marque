@@ -444,34 +444,83 @@ struct WasmConfig {
     deadline_ms: Option<f64>,
 }
 
-/// Parse the JS-side `config_json` into the engine-level `Config` plus
-/// a separate optional deadline `Duration`.
+/// Parse the JS-side `config_json` into the engine-level `Config`,
+/// a separate optional deadline `Duration`, and a normalized cache
+/// key for [`with_engine`].
 ///
 /// The deadline does not live on `Config` — it's a per-call concern
 /// carried through `LintOptions` / `FixOptions` — but it shares the
 /// same JSON envelope so JS callers can pass everything in one
-/// object. Splitting the parse into `(Config, Option<Duration>)`
-/// keeps the engine's cache key (config_json) doing exactly what it
-/// did before: a different deadline does not invalidate the cached
-/// engine, because the engine is unaware of it.
-fn parse_wasm_config(json: &Option<String>) -> Result<(Config, Option<Duration>), String> {
+/// object. The third return value is the **engine cache key**,
+/// constructed by serializing only the engine-relevant fields
+/// (`classifier_id`, `confidence_threshold`, `corrections`) and
+/// deliberately excluding `deadline_ms`. This means a caller varying
+/// `deadline_ms` per call does not trigger an `Engine` rebuild
+/// (AhoCorasick / ruleset / scheme construction); the cached engine
+/// is reused. Constitution III analysis at the top of this file
+/// explains why `deadline_ms` is non-semantic and therefore safe to
+/// drop from the cache key.
+///
+/// Returns `Ok(Some(_))` for the cache key when any cache-relevant
+/// field is set, and `Ok(None)` when the caller passed
+/// `WasmConfig::default()` (matching the existing default-config
+/// fast path in `with_engine`).
+fn parse_wasm_config(
+    json: &Option<String>,
+) -> Result<(Config, Option<Duration>, Option<String>), String> {
     let wasm_cfg: WasmConfig = match json {
         Some(s) => serde_json::from_str(s).map_err(|e| e.to_string())?,
         None => WasmConfig::default(),
     };
 
     let mut config = Config::default();
-    config.user.classifier_id = wasm_cfg.classifier_id;
+    config.user.classifier_id = wasm_cfg.classifier_id.clone();
     if let Some(threshold) = wasm_cfg.confidence_threshold {
         config
             .set_confidence_threshold(threshold)
             .map_err(|e| e.to_string())?;
     }
-    if let Some(corrections) = wasm_cfg.corrections {
+    if let Some(corrections) = wasm_cfg.corrections.clone() {
         config.corrections = corrections;
     }
     let deadline_duration = parse_deadline_ms(wasm_cfg.deadline_ms)?;
-    Ok((config, deadline_duration))
+    let cache_key = build_cache_key(&wasm_cfg)?;
+    Ok((config, deadline_duration, cache_key))
+}
+
+/// Cache-relevant projection of [`WasmConfig`]. Serialized to build
+/// the engine cache key — `deadline_ms` is excluded.
+#[derive(Serialize)]
+struct WasmConfigCacheKey<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classifier_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence_threshold: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    corrections: Option<&'a HashMap<String, String>>,
+}
+
+/// Build the engine cache key for a parsed [`WasmConfig`].
+///
+/// Returns `Ok(None)` when no cache-relevant field is set (i.e., the
+/// caller passed `WasmConfig::default()`); this matches the
+/// "default-config" path in [`with_engine`] so a deadline-only
+/// invocation hits the same cache slot as a no-config invocation.
+fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
+    if cfg.classifier_id.is_none()
+        && cfg.confidence_threshold.is_none()
+        && cfg.corrections.is_none()
+    {
+        return Ok(None);
+    }
+    let projection = WasmConfigCacheKey {
+        classifier_id: cfg.classifier_id.as_deref(),
+        confidence_threshold: cfg.confidence_threshold,
+        corrections: cfg.corrections.as_ref(),
+    };
+    serde_json::to_string(&projection)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 /// Validate a JS-side `deadline_ms` value and convert to `Duration`.
@@ -482,10 +531,15 @@ fn parse_wasm_config(json: &Option<String>) -> Result<(Config, Option<Duration>)
 ///   these; rejecting them loudly catches a serialization or
 ///   transformation bug before it reaches the engine.
 /// - Otherwise → `Ok(Some(Duration::from_millis(value as u64)))`.
-///   `Duration::from_millis` saturates at u64::MAX ms; we don't add
-///   our own ceiling here because the resulting `Instant::now() + d`
-///   uses `checked_add` at the call site (mirroring the CLI's
-///   overflow handling).
+///   The `f64 as u64` cast truncates the fractional component
+///   (`1.7` → `1`) and saturates above `u64::MAX` to `u64::MAX`. We
+///   accept fractional millisecond inputs (rounding toward zero) so
+///   JS callers building from `Date.now() / 4` style arithmetic
+///   don't have to round before passing; if a future tighter
+///   contract requires whole-millisecond inputs only, add an
+///   `ms.fract() != 0.0` rejection here. The saturated `u64::MAX`
+///   case is handled at the call site by `Instant::now().checked_add(d)`,
+///   which surfaces the overflow as a JS error rather than panicking.
 fn parse_deadline_ms(value: Option<f64>) -> Result<Option<Duration>, String> {
     let Some(ms) = value else {
         return Ok(None);
@@ -499,13 +553,6 @@ fn parse_deadline_ms(value: Option<f64>) -> Result<Option<Duration>, String> {
         return Err(format!("deadline_ms must be non-negative; got {ms}"));
     }
     Ok(Some(Duration::from_millis(ms as u64)))
-}
-
-/// Back-compat thin wrapper: parses just the `Config` half. Kept for
-/// `compute_banner_native` / `generate_cab_native` and any internal
-/// caller that doesn't need the deadline.
-fn parse_config(json: &Option<String>) -> Result<Config, String> {
-    parse_wasm_config(json).map(|(cfg, _)| cfg)
 }
 
 /// Stamp `Instant::now() + duration`, mapping platform-clock overflow
@@ -552,17 +599,31 @@ thread_local! {
     static DEEP_SCAN_ENGINE_CACHE: RefCell<Option<Engine>> = const { RefCell::new(None) };
 }
 
-/// Execute `f` against a cached `Engine`, rebuilding only when `config_json`
-/// differs from the previously cached configuration.
+/// Execute `f` against a cached `Engine`, rebuilding only when the
+/// engine-relevant cache key differs from the previously cached
+/// configuration.
 ///
-/// The hot path (same config across calls) is an `Option<String>` comparison
-/// and a `RefCell` borrow — no allocations, no AhoCorasick rebuild.
+/// The hot path (same engine config across calls) is an
+/// `Option<String>` comparison and a `RefCell` borrow — no
+/// allocations, no AhoCorasick rebuild.
 ///
-/// Uses `try_borrow_mut` to recover gracefully if a prior WASM trap left the
-/// RefCell in a borrowed state (WASM traps don't unwind, so `borrow_mut`
-/// guards are never released on panic).
+/// `cache_key` is the normalized projection produced by
+/// [`build_cache_key`] — engine-relevant fields only,
+/// `deadline_ms` excluded — so a caller varying `deadline_ms` per
+/// call does not invalidate the cache.
+///
+/// `config` is the parsed engine config, used only on cache miss to
+/// build a fresh `Engine`. Constructing it eagerly (vs. via a
+/// closure) wastes a `Config::default() + a few field assignments`
+/// on cache hit; that cost is sub-microsecond compared to the
+/// AhoCorasick rebuild it avoids on cache miss.
+///
+/// Uses `try_borrow_mut` to recover gracefully if a prior WASM trap
+/// left the RefCell in a borrowed state (WASM traps don't unwind, so
+/// `borrow_mut` guards are never released on panic).
 fn with_engine<T>(
-    config_json: &Option<String>,
+    cache_key: &Option<String>,
+    config: Config,
     f: impl FnOnce(&Engine) -> Result<T, String>,
 ) -> Result<T, String> {
     ENGINE_CACHE.with(|cell| {
@@ -575,11 +636,10 @@ fn with_engine<T>(
 
         let needs_rebuild = match &*cache {
             None => true,
-            Some(cached) => cached.config_key.as_deref() != config_json.as_deref(),
+            Some(cached) => cached.config_key.as_deref() != cache_key.as_deref(),
         };
 
         if needs_rebuild {
-            let config = parse_config(config_json)?;
             let engine = Engine::with_clock(
                 config,
                 marque_engine::default_ruleset(),
@@ -589,7 +649,7 @@ fn with_engine<T>(
             .map_err(|e| format!("engine construction failed: {e}"))?;
             *cache = Some(CachedEngine {
                 engine,
-                config_key: config_json.clone(),
+                config_key: cache_key.clone(),
             });
         }
 
@@ -637,7 +697,8 @@ fn with_deep_scan_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Res
 
 /// Pre-warm the engine cache (native entry point for tests).
 pub fn configure_native(config_json: Option<String>) -> Result<(), String> {
-    with_engine(&config_json, |_| Ok(()))
+    let (config, _, cache_key) = parse_wasm_config(&config_json)?;
+    with_engine(&cache_key, config, |_| Ok(()))
 }
 
 /// Lint text, returning NDJSON conforming to `contracts/diagnostic.json`.
@@ -657,10 +718,11 @@ pub fn configure_native(config_json: Option<String>) -> Result<(), String> {
 pub fn lint_native(text: &str, config_json: Option<String>) -> Result<String, String> {
     // Parse upfront to fail fast on a bad `deadline_ms` (NaN / Inf /
     // negative) before any engine work, regardless of whether the
-    // engine cache is warm.
-    let (_, deadline_duration) = parse_wasm_config(&config_json)?;
+    // engine cache is warm. The cache key strips `deadline_ms` so a
+    // caller varying the budget per call hits the warm cache.
+    let (config, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
     let deadline = stamp_deadline(deadline_duration)?;
-    with_engine(&config_json, |engine| {
+    with_engine(&cache_key, config, |engine| {
         let mut lint_opts = LintOptions::default();
         lint_opts.deadline = deadline;
         let result = engine.lint_with_options(text.as_bytes(), &lint_opts);
@@ -696,9 +758,9 @@ pub fn fix_native(
     threshold: f32,
     config_json: Option<String>,
 ) -> Result<String, String> {
-    let (_, deadline_duration) = parse_wasm_config(&config_json)?;
+    let (config, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
     let deadline = stamp_deadline(deadline_duration)?;
-    with_engine(&config_json, |engine| {
+    with_engine(&cache_key, config, |engine| {
         let mut fix_opts = FixOptions::default();
         fix_opts.threshold_override = Some(threshold);
         fix_opts.deadline = deadline;
@@ -762,13 +824,27 @@ struct DeadlineExceededBodyJson<'a> {
     diagnostics: Vec<DiagnosticJson<'a>>,
 }
 
+/// Fallback payload when the primary serialization fails. Carries
+/// only the `truncated_by` discriminator and an `error` message —
+/// no diagnostics, no counts. Serialized via `serde_json::to_string`
+/// so the `error` field is correctly JSON-escaped if the inner
+/// message happens to contain quotes or backslashes (e.g., a
+/// `serde_json::Error` formatted with a path that includes those
+/// characters).
+#[derive(Serialize)]
+struct DeadlineExceededFallback<'a> {
+    truncated_by: &'static str,
+    error: &'a str,
+}
+
 fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult) -> String {
+    let truncated_by = if partial_lint.truncated {
+        "lint"
+    } else {
+        "fix"
+    };
     let body = DeadlineExceededBodyJson {
-        truncated_by: if partial_lint.truncated {
-            "lint"
-        } else {
-            "fix"
-        },
+        truncated_by,
         candidates_processed: partial_lint.candidates_processed,
         candidates_total: partial_lint.candidates_total,
         diagnostics: partial_lint
@@ -777,8 +853,31 @@ fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult) -> String
             .map(diagnostic_to_json)
             .collect(),
     };
-    serde_json::to_string(&body)
-        .unwrap_or_else(|e| format!(r#"{{"truncated_by":"fix","error":"{e}"}}"#))
+    // The primary path serializes a struct of basic types; serde_json
+    // failure here would imply a fundamental serializer bug. The
+    // fallback exists for defense-in-depth — and crucially, it
+    // round-trips through `serde_json::to_string` so the `error`
+    // field is properly JSON-escaped. A `format!(r#"..."{e}"..."#)`
+    // would produce invalid JSON if `e` contained a quote or
+    // backslash; JS callers parsing the message as JSON would then
+    // see a parse error instead of the structured shape we promised.
+    match serde_json::to_string(&body) {
+        Ok(s) => s,
+        Err(primary_err) => {
+            let fallback = DeadlineExceededFallback {
+                truncated_by,
+                error: &primary_err.to_string(),
+            };
+            // If even this micro-payload fails to serialize, return a
+            // hand-built constant — no interpolation, no escaping
+            // hazards. We accept losing the original error message in
+            // this terminal-case-of-a-terminal-case path.
+            serde_json::to_string(&fallback).unwrap_or_else(|_| {
+                r#"{"truncated_by":"fix","error":"deadline-exceeded payload serialization failed"}"#
+                    .to_owned()
+            })
+        }
+    }
 }
 
 /// Lint a byte buffer with the Phase D probabilistic decoder enabled.
@@ -881,8 +980,9 @@ pub fn lint_batch_native(
     config_json: Option<String>,
 ) -> Result<String, String> {
     let entries: Vec<BatchEntry> = serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
+    let (config, _, cache_key) = parse_wasm_config(&config_json)?;
 
-    with_engine(&config_json, |engine| {
+    with_engine(&cache_key, config, |engine| {
         let results: Vec<BatchResultEntry<'_>> = entries
             .iter()
             .map(|entry| {
@@ -935,7 +1035,7 @@ pub fn init() {
 /// default configuration.
 #[wasm_bindgen]
 pub fn configure(config_json: Option<String>) -> Result<(), JsValue> {
-    with_engine(&config_json, |_| Ok(())).map_err(|e| JsValue::from_str(&e))
+    configure_native(config_json).map_err(|e| JsValue::from_str(&e))
 }
 
 /// Lint a text string for classification marking violations.

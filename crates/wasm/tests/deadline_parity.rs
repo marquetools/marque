@@ -199,6 +199,44 @@ fn wasm_deadline_ms_zero_yields_empty_ndjson_byte_identical_to_native() {
 }
 
 #[test]
+fn wasm_deadline_ms_does_not_invalidate_engine_cache() {
+    // The cache key produced by `parse_wasm_config` MUST exclude
+    // `deadline_ms` so a caller varying the per-call budget does not
+    // pay the AhoCorasick / ruleset / scheme rebuild cost on every
+    // call.
+    //
+    // We cannot directly observe cache hits from the public surface,
+    // but we can observe the post-condition: NDJSON output is
+    // byte-identical across calls that should hit the same cached
+    // engine. A regression that invalidated the cache on every
+    // `deadline_ms` change would still produce identical NDJSON
+    // (engine behavior doesn't depend on the cache), so this test
+    // is a partial pin: it verifies behavior is preserved, not that
+    // the cache is hot. The cache-key contract itself is enforced by
+    // the unit-level shape of `build_cache_key` (deadline_ms field
+    // is absent from `WasmConfigCacheKey`).
+    marque_wasm::configure_native(None).expect("pre-warm");
+
+    let fixture = "(S//NF) Sentence one. (TS//SI) Sentence two.\n";
+    let with_deadline_a =
+        marque_wasm::lint_native(fixture, Some(r#"{"deadline_ms": 1000}"#.to_owned()))
+            .expect("lint with deadline_ms=1000");
+    let with_deadline_b =
+        marque_wasm::lint_native(fixture, Some(r#"{"deadline_ms": 2000}"#.to_owned()))
+            .expect("lint with deadline_ms=2000");
+    let no_deadline = marque_wasm::lint_native(fixture, None).expect("lint without deadline");
+
+    assert_eq!(
+        with_deadline_a, with_deadline_b,
+        "varying deadline_ms across two generous-budget calls must produce identical NDJSON"
+    );
+    assert_eq!(
+        with_deadline_a, no_deadline,
+        "a generous deadline_ms must produce the same NDJSON as no deadline at all"
+    );
+}
+
+#[test]
 fn wasm_rejects_negative_deadline_ms() {
     // T041 validation — negative `deadline_ms` is rejected before any
     // engine work. JS callers should never construct this; rejecting

@@ -16,9 +16,17 @@
 //! semver-breaking change. From outside the engine crate, construct
 //! via `Default::default()` + public field assignment:
 //!
+//! Use `marque_engine::Instant` (a `web_time` re-export) rather than
+//! `std::time::Instant` so the example works on every supported
+//! target. On native the two are the same type (literal `pub use`),
+//! so this is also drop-in for native-only callers; on
+//! `wasm32-unknown-unknown`, `std::time::Instant::now()` panics with
+//! "time not implemented on this platform" while `web_time` polyfills
+//! via `Performance.now()`.
+//!
 //! ```
-//! use marque_engine::{LintOptions, FixOptions};
-//! use std::time::{Duration, Instant};
+//! use marque_engine::{Instant, LintOptions, FixOptions};
+//! use std::time::Duration;
 //!
 //! let mut lint = LintOptions::default();
 //! lint.deadline = Some(Instant::now() + Duration::from_secs(1));
