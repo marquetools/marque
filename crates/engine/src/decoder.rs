@@ -2362,6 +2362,17 @@ fn try_sci_delimiter_repair(text: &str) -> Option<String> {
         return None;
     }
 
+    // ASCII-only guard. The SCI control-system vocabulary
+    // (`SciControlBare::ALL`) and the registered compound names
+    // (`SciControl::ALL`) are pure ASCII, as are the delimiters this
+    // function recognizes (`-`, `/`, `(`, `)`, space, tab, newline,
+    // CR, comma). So any non-ASCII input cannot match any pattern;
+    // bailing early avoids the byte-vs-char-boundary hazard that
+    // would otherwise arise from indexing `text` with byte offsets.
+    if !text.is_ascii() {
+        return None;
+    }
+
     let bytes = text.as_bytes();
     let mut result: Option<String> = None;
     let mut last_copied = 0usize;
@@ -2441,6 +2452,19 @@ fn contains_any_sci_root(text: &str) -> bool {
 /// 3. Pattern B (no `-`, splits into two bare CS, unambiguous)
 fn repair_sci_token(token: &str) -> Option<String> {
     if token.is_empty() {
+        return None;
+    }
+
+    // ASCII-only guard. The CVE vocabulary is pure ASCII, so a non-
+    // ASCII token cannot match any pattern; bailing early ensures
+    // the byte-offset slicing below (`token[..split]`,
+    // `token[split..]`, `token[..dash_pos]`, `token[dash_pos + 1..]`)
+    // never lands in the middle of a multi-byte UTF-8 sequence. This
+    // is a defense-in-depth check — the only production caller
+    // (`try_sci_delimiter_repair`) already gates on ASCII — but
+    // keeping it here makes the function's invariant local and
+    // self-evident for any future caller (e.g., a unit test).
+    if !token.is_ascii() {
         return None;
     }
 
@@ -4957,6 +4981,22 @@ mod tests {
         assert!(try_sci_delimiter_repair("CONFIDENTIAL//NOFORN").is_none());
         assert!(try_sci_delimiter_repair("(C)").is_none());
         assert!(try_sci_delimiter_repair("").is_none());
+    }
+
+    #[test]
+    fn sci_delimiter_repair_does_not_panic_on_non_ascii() {
+        // The function must not panic on multi-byte UTF-8 input. The
+        // SCI vocabulary is pure ASCII, so any non-ASCII input is
+        // unmatchable — bail early rather than risk a byte-offset
+        // slice landing mid-codepoint. Inputs intentionally chosen
+        // to exercise both the outer scanner (`try_sci_delimiter_repair`)
+        // and the inner per-token classifier (`repair_sci_token`).
+        assert!(try_sci_delimiter_repair("SECRET//SI/TK//日本語").is_none());
+        assert!(try_sci_delimiter_repair("Ω SI TK").is_none());
+        assert!(try_sci_delimiter_repair("こんにちは").is_none());
+        // Direct call to the per-token helper with non-ASCII content.
+        assert!(repair_sci_token("SI日").is_none());
+        assert!(repair_sci_token("日本").is_none());
     }
 
     #[test]
