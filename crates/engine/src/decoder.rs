@@ -256,6 +256,32 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
+            // 3e. Portion/Banner shapes REQUIRE a classification to
+            //     be a meaningful marking. The strict parser is
+            //     lenient — `(YS//NF)` parses to a marking with
+            //     `classification: None, dissem_controls: [Nf]`
+            //     because `YS` doesn't resolve to any
+            //     [`Classification`] variant. The decoder's
+            //     bag-of-tokens scorer rewards FEWER negative-log-
+            //     prior tokens, so without this filter the
+            //     no-classification candidate would outrank a
+            //     heuristic-corrected `(TS//NF)` candidate that
+            //     contributed both `TOP SECRET` and `NF` priors.
+            //
+            //     For CAB shapes the analogous completeness check
+            //     is "any of classified_by / derived_from /
+            //     declassify_on / declass_exemption is set" —
+            //     [`is_nontrivial_marking`] above already covers
+            //     that for the CAB code path. For
+            //     [`MarkingType::PageBreak`] this filter is
+            //     intentionally a no-op: page breaks are control
+            //     shapes the decoder shouldn't be asked to recover.
+            if matches!(kind, MarkingType::Portion | MarkingType::Banner)
+                && marking.0.classification.is_none()
+            {
+                continue;
+            }
+
             // 4. Score: compute prior and posterior separately. The
             //    prior is the sum of baked corpus log-priors over the
             //    marking's canonical tokens; the posterior is the
@@ -275,6 +301,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 posterior,
                 canonical_bytes: attempt.bytes.into_boxed_slice(),
                 features: attempt.features,
+                fix_source: attempt.fix_source,
             });
         }
 
@@ -345,12 +372,11 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 None
             };
             let mut marking = top.marking;
-            marking.1 = Some(DecoderProvenance {
-                canonical_bytes: top.canonical_bytes,
-                posterior: top.posterior,
+            marking.1 = Some(DecoderProvenance::new(
+                top.canonical_bytes,
+                top.posterior,
                 runner_up_ratio,
-                features: top
-                    .features
+                top.features
                     .into_iter()
                     .map(|f| FeatureContribution {
                         id: f.id,
@@ -358,7 +384,8 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                     })
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
-            });
+                top.fix_source,
+            ));
             return Parsed::Unambiguous(marking);
         }
 
@@ -399,11 +426,17 @@ struct ScoredCandidate {
     /// Canonical byte string the strict parser accepted for this
     /// candidate. Threaded into [`DecoderProvenance::canonical_bytes`]
     /// when this candidate wins the Unambiguous collapse, so the
-    /// engine can emit a `FixSource::DecoderPosterior` rewrite from
-    /// the original mangled bytes to this canonical form (Phase 4
-    /// PR-4b, T068).
+    /// engine can emit the decoder fix from the original mangled
+    /// bytes to this canonical form (Phase 4 PR-4b, T068).
     canonical_bytes: Box<[u8]>,
     features: Vec<FeatureEntry>,
+    /// Provenance discriminator carried from the originating
+    /// [`CanonicalAttempt`]. The engine maps this to
+    /// [`Severity::Fix`](marque_rules::Severity::Fix) for
+    /// `DecoderPosterior` and
+    /// [`Severity::Warn`](marque_rules::Severity::Warn) for
+    /// `DecoderClassificationHeuristic` (issue #133 PR 2).
+    fix_source: marque_rules::FixSource,
 }
 
 /// One feature recorded during candidate generation, paired with its
@@ -439,6 +472,16 @@ fn feature_entry_to_evidence(f: &FeatureEntry) -> EvidenceFeature {
 struct CanonicalAttempt {
     bytes: Vec<u8>,
     features: Vec<FeatureEntry>,
+    /// Which decoder path produced this attempt. Defaults to
+    /// [`marque_rules::FixSource::DecoderPosterior`] for the standard
+    /// vocab-based pipeline (delimiter normalization, fuzzy
+    /// correction, token reorder, superseded-token replacement).
+    /// The position-aware classification heuristic emits attempts
+    /// with [`marque_rules::FixSource::DecoderClassificationHeuristic`]
+    /// (issue #133 PR 2) so the engine can downgrade to
+    /// [`marque_rules::Severity::Warn`] and cap
+    /// [`marque_rules::Confidence::rule`].
+    fix_source: marque_rules::FixSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -507,18 +550,28 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     }
 
     let mut attempts: Vec<CanonicalAttempt> = Vec::new();
-    let mut emit = |bytes: Vec<u8>, features: Vec<FeatureEntry>| {
-        // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
-        // work downstream is bounded even if new transform stages are added.
-        if attempts.len() >= K_MAX_CANDIDATES * 2 {
-            return;
-        }
-        // Dedup by the canonical byte string — different transform
-        // sequences can converge on the same output.
-        if !attempts.iter().any(|a| a.bytes == bytes) {
-            attempts.push(CanonicalAttempt { bytes, features });
-        }
-    };
+    let mut emit =
+        |bytes: Vec<u8>, features: Vec<FeatureEntry>, fix_source: marque_rules::FixSource| {
+            // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
+            // work downstream is bounded even if new transform stages are added.
+            if attempts.len() >= K_MAX_CANDIDATES * 2 {
+                return;
+            }
+            // Dedup by the canonical byte string — different transform
+            // sequences can converge on the same output. Emit-first wins:
+            // the standard vocab-based attempts are emitted before the
+            // heuristic attempt, so a heuristic candidate with bytes that
+            // converge on a vocab-based result is dropped here, preserving
+            // the more authoritative `FixSource::DecoderPosterior`
+            // provenance.
+            if !attempts.iter().any(|a| a.bytes == bytes) {
+                attempts.push(CanonicalAttempt {
+                    bytes,
+                    features,
+                    fix_source,
+                });
+            }
+        };
 
     // ---- Raw: just trim + normalize delimiters/case. --------------
     let (normalized, delim_features) = normalize_delimiters_and_case(trimmed);
@@ -533,7 +586,11 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     // by default.
     let mut features = delim_features.clone();
     features.extend(fuzzy_features.iter().copied());
-    emit(fuzzy_corrected.clone().into_bytes(), features);
+    emit(
+        fuzzy_corrected.clone().into_bytes(),
+        features,
+        marque_rules::FixSource::DecoderPosterior,
+    );
 
     // ---- Also attempt a token-reorder pass. The reorder is gentle:
     //      inside each `//`-separated segment, if the segment's tokens
@@ -546,7 +603,39 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
             id: FeatureId::TokenReorder,
             delta: -0.4,
         });
-        emit(reordered.into_bytes(), features);
+        emit(
+            reordered.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
+    // ---- Position-aware classification heuristic (issue #133 PR 2).
+    //      Runs LAST so the dedup-keep-first guard above lets a
+    //      vocab-based attempt with the same canonical bytes win the
+    //      provenance contest — the heuristic only "wins" when no
+    //      vocab path produces the same shape.
+    //
+    //      Scoring intentionally adds NO `EditDistance1` penalty.
+    //      The heuristic's value comes from RECOGNIZING a
+    //      classification token where the vocab-only path would
+    //      leave the slot as `classification: None`. The added prior
+    //      contribution from the recognized classification (e.g.,
+    //      `log_prior("TOP SECRET")`) is what should put the
+    //      heuristic candidate ahead of the no-classification fuzzy
+    //      fallback. An EditDistance penalty would push the
+    //      heuristic candidate BELOW the no-classification candidate
+    //      and the fuzzy one would win — defeating the heuristic's
+    //      purpose. The audit-record provenance still distinguishes
+    //      this path through `FixSource::DecoderClassificationHeuristic`.
+    if let Some(heuristic_bytes) = try_classification_heuristic_fix(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        emit(
+            heuristic_bytes.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderClassificationHeuristic,
+        );
     }
 
     attempts
@@ -789,6 +878,182 @@ fn scan_token(text: &str) -> usize {
 ///   Special Intelligence (SI) control system is no longer valid.")
 ///   inside §H.4 SCI Control System Markings.
 const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
+
+// ---------------------------------------------------------------------------
+// Position-aware short-token classification heuristic (issue #133 PR 2)
+// ---------------------------------------------------------------------------
+
+/// Try to fix a malformed leading classification token using a
+/// keyboard-proximity heuristic.
+///
+/// `MIN_FUZZY_LEN = 3` blocks the vocab-based fuzzy matcher from
+/// running on 1- and 2-character tokens — `R`, `W`, `YS`, `XS` etc.
+/// are too short for edit-distance to be reliable against the closed
+/// vocabulary alone. But when such a token sits at the **leading
+/// classification position** of a portion or banner marking, the
+/// position itself is strong evidence: the user intended a
+/// classification level, and the malformed token is almost certainly
+/// keyboard-adjacent to a real one.
+///
+/// This helper applies a small keyboard-proximity table to the first
+/// whitespace-separated token of the first `//`-separated segment.
+/// It returns the corrected text (with the leading token replaced)
+/// when a rule fires. Returns `None` when the leading token is
+/// already canonical, longer than 2 chars, or doesn't match any
+/// rule.
+///
+/// # Confidence
+///
+/// The decoder tags this attempt's [`CanonicalAttempt::fix_source`]
+/// with [`FixSource::DecoderClassificationHeuristic`]. The engine
+/// then (a) downgrades the diagnostic severity to
+/// [`Severity::Warn`](marque_rules::Severity::Warn) — always-visible
+/// in `--check`, exits non-zero — and (b) caps
+/// [`Confidence::rule`](marque_rules::Confidence) at `0.80` so
+/// `combined ≤ 0.80` stays below the default `confidence_threshold`
+/// of `0.95`. The heuristic only auto-applies in `--fix` mode when
+/// the user has explicitly lowered the threshold, opting into the
+/// heuristic's bar of evidence.
+///
+/// # Rules (CAPCO-2016 §A.2 classification levels: U, R, C, S, TS)
+///
+/// Length is checked first — a 2-char token never reaches the 1-char
+/// table. The keyboard-proximity sets are derived from the standard
+/// QWERTY layout: keys physically adjacent to S (`A`, `W`, `E`, `Z`)
+/// likely correspond to S typos; keys adjacent to T (`R`, `Y`, `H`,
+/// `G`, `F`) likely correspond to T typos when followed by an
+/// S-cluster character (so the pair maps to `TS`). The table is
+/// intentionally narrow — wider sets produce more false positives
+/// in normal prose.
+///
+/// **Length 2** (checked first):
+/// - `[T, R, Y, H, G][A, W, E, Z, S]` → `TS` (e.g., `RS`, `YS`, `HE`)
+/// - `[F][A, W, E, Z, S]` → `TS` (e.g., `FS`, `FE`)
+///
+/// **Length 1**:
+/// - `[A, W, E, Z]` → `S` (S-key neighbors; bare `S` is canonical)
+/// - `[V, F]` → `C` (C-key neighbors; bare `C` is canonical)
+/// - `[X]` → `S` (X is between C and S on QWERTY; default to the
+///   higher classification per the issue #133 PR 2 design note)
+///
+/// **Length 3+**: returns `None`. Long-token typos benefit from the
+/// vocab-based fuzzy matcher (`MIN_FUZZY_LEN = 3`) and the
+/// keyboard-proximity heuristic adds nothing. (The 3-char country-
+/// code → non-US-classification path from the issue #133 PR 2
+/// sketch is deferred to a follow-up.)
+///
+/// **Bare canonical**: returns `None` when the leading token is
+/// already a known classification short form (`U`, `R`, `C`, `S`,
+/// `TS`). The strict parser would already accept those.
+///
+/// # CAB markings
+///
+/// Returns `None` when `text` looks like a CAB (Classification
+/// Authority Block) — those are keyed authority lines, not
+/// classification-leading shapes, and the heuristic would emit
+/// nonsense if applied. The check mirrors [`is_cab_head`].
+fn try_classification_heuristic_fix(text: &str) -> Option<String> {
+    // Skip CAB shapes — they don't have a leading classification token.
+    if is_cab_head(text.as_bytes()) {
+        return None;
+    }
+
+    // Strip portion-form parens (preserve them at output).
+    let (open_paren, body, close_paren) = if text.starts_with('(') && text.ends_with(')') {
+        ("(", &text[1..text.len() - 1], ")")
+    } else {
+        ("", text, "")
+    };
+
+    // First `//`-separated segment carries the leading classification.
+    let first_seg_end = body.find("//").unwrap_or(body.len());
+    let first_seg = &body[..first_seg_end];
+    let after_first_seg = &body[first_seg_end..];
+
+    // First whitespace-delimited token of that segment.
+    let first_seg_trimmed_start = first_seg
+        .char_indices()
+        .find(|(_, c)| !c.is_whitespace())
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let leading_ws = &first_seg[..first_seg_trimmed_start];
+    let after_leading_ws = &first_seg[first_seg_trimmed_start..];
+    let token_end = after_leading_ws
+        .find(char::is_whitespace)
+        .unwrap_or(after_leading_ws.len());
+    let first_token = &after_leading_ws[..token_end];
+    let after_first_token = &after_leading_ws[token_end..];
+
+    // Bare canonical → no fix needed.
+    if is_canonical_short_classification(first_token) {
+        return None;
+    }
+
+    let replacement = match first_token.len() {
+        2 => try_2char_classification_heuristic(first_token)?,
+        1 => try_1char_classification_heuristic(first_token)?,
+        _ => return None,
+    };
+
+    Some(format!(
+        "{open_paren}{leading_ws}{replacement}{after_first_token}{after_first_seg}{close_paren}"
+    ))
+}
+
+/// True when `token` is a known CAPCO-2016 classification short
+/// form (U, R, C, S, TS). The full-word forms (UNCLASSIFIED,
+/// RESTRICTED, etc.) and `TOP SECRET` are intentionally NOT matched
+/// here: a malformed full-word would already be handled by the
+/// vocab-based fuzzy matcher (`SECRET` is in `correction_vocab`),
+/// and `TOP SECRET` is a multi-word token that the helper's
+/// whitespace tokenizer treats as `TOP` alone (bare `TOP` is not a
+/// classification, so it falls through — but the vocab matcher
+/// would correct it via `SBUNOFORN`-style multi-word emission).
+fn is_canonical_short_classification(token: &str) -> bool {
+    matches!(token, "U" | "R" | "C" | "S" | "TS")
+}
+
+/// 2-char keyboard-proximity rule: maps to `TS` when the pair is a
+/// T-cluster + S-cluster combination. See module-level table.
+fn try_2char_classification_heuristic(token: &str) -> Option<&'static str> {
+    let bytes = token.as_bytes();
+    debug_assert_eq!(bytes.len(), 2);
+    let first = bytes[0].to_ascii_uppercase();
+    let second = bytes[1].to_ascii_uppercase();
+
+    // T-key cluster: T itself plus QWERTY-adjacent keys (R, Y above-
+    // adjacent on the home row; H, G, F on the row below). Wide
+    // enough to catch the common transposition typos; narrow
+    // enough to avoid touching unrelated 2-char prose.
+    let t_cluster = matches!(first, b'T' | b'R' | b'Y' | b'H' | b'G' | b'F');
+    // S-key cluster: S plus QWERTY-adjacent keys (A, W, E above-
+    // adjacent on the upper row; Z below).
+    let s_cluster = matches!(second, b'A' | b'W' | b'E' | b'Z' | b'S');
+
+    if t_cluster && s_cluster {
+        Some("TS")
+    } else {
+        None
+    }
+}
+
+/// 1-char keyboard-proximity rule. Maps to S, C per the §A.2 short-
+/// form classification ladder. See module-level table for the
+/// per-character mapping rationale.
+fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
+    let bytes = token.as_bytes();
+    debug_assert_eq!(bytes.len(), 1);
+    match bytes[0].to_ascii_uppercase() {
+        b'A' | b'W' | b'E' | b'Z' => Some("S"),
+        b'V' | b'F' => Some("C"),
+        // X is between C and S on QWERTY; default to the higher
+        // classification (S) per the issue #133 PR 2 design note —
+        // false-negative cost (under-classified) > false-positive
+        // cost (over-classified) for IC compliance work.
+        b'X' => Some("S"),
+        _ => None,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Token reordering
@@ -1316,6 +1581,167 @@ mod tests {
         }
     }
 
+    // ----- Position-aware classification heuristic (issue #133 PR 2) -----
+
+    #[test]
+    fn heuristic_2char_ts_cluster() {
+        // T-cluster + S-cluster → TS. Cover the full 6×5 = 30
+        // combinations that should fire, plus a couple that shouldn't.
+        for first in &['T', 'R', 'Y', 'H', 'G', 'F'] {
+            for second in &['A', 'W', 'E', 'Z', 'S'] {
+                let token: String = [*first, *second].iter().collect();
+                assert_eq!(
+                    try_2char_classification_heuristic(&token),
+                    Some("TS"),
+                    "{token:?} should heuristic-fix to TS"
+                );
+            }
+        }
+        // Lowercase variants normalize via the helper's
+        // to_ascii_uppercase.
+        assert_eq!(try_2char_classification_heuristic("ys"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("Ys"), Some("TS"));
+    }
+
+    #[test]
+    fn heuristic_2char_no_match_outside_clusters() {
+        // First char outside T-cluster → no match.
+        for token in &["AS", "WS", "ZS", "BS", "DS", "QS"] {
+            assert_eq!(
+                try_2char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+        // Second char outside S-cluster → no match.
+        for token in &["TR", "RY", "HG", "GH", "FB"] {
+            assert_eq!(
+                try_2char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_1char_s_cluster() {
+        // S-key neighbors → S. Bare S is canonical and excluded by
+        // the upstream `is_canonical_short_classification` guard, so
+        // the helper returns Some("S") for S-key neighbors and the
+        // outer logic suppresses the no-op case.
+        for token in &["A", "W", "E", "Z"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                Some("S"),
+                "{token:?} should heuristic-fix to S"
+            );
+        }
+        // X is between C and S; defaults to S per the design note.
+        assert_eq!(try_1char_classification_heuristic("X"), Some("S"));
+    }
+
+    #[test]
+    fn heuristic_1char_c_cluster() {
+        // C-key neighbors → C.
+        for token in &["V", "F"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                Some("C"),
+                "{token:?} should heuristic-fix to C"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_1char_no_match_outside_clusters() {
+        // Letters not in any heuristic cluster.
+        for token in &["B", "D", "G", "K", "M", "N", "Q", "T", "Y"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_skips_canonical_classifications() {
+        // Bare canonical short forms must not produce a heuristic
+        // fix — the strict parser already accepts them.
+        for canonical in &["U", "R", "C", "S", "TS"] {
+            assert!(
+                is_canonical_short_classification(canonical),
+                "{canonical:?} should be recognized as canonical"
+            );
+        }
+        // And the wrapper helper short-circuits these.
+        assert_eq!(try_classification_heuristic_fix("(S//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(TS//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(C//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn heuristic_fixes_portion_form() {
+        assert_eq!(
+            try_classification_heuristic_fix("(YS//NF)").as_deref(),
+            Some("(TS//NF)")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("(W//NF)").as_deref(),
+            Some("(S//NF)")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("(F//NF)").as_deref(),
+            Some("(C//NF)")
+        );
+        // Lowercase first token (inside parens).
+        assert_eq!(
+            try_classification_heuristic_fix("(ys//NF)").as_deref(),
+            Some("(TS//NF)")
+        );
+    }
+
+    #[test]
+    fn heuristic_fixes_banner_form() {
+        // Banner shapes don't have parens but otherwise behave the
+        // same — leading classification token in the first segment.
+        assert_eq!(
+            try_classification_heuristic_fix("RS//NOFORN").as_deref(),
+            Some("TS//NOFORN")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("X//NOFORN").as_deref(),
+            Some("S//NOFORN")
+        );
+    }
+
+    #[test]
+    fn heuristic_skips_cab_shape() {
+        // CAB lines don't have a leading classification token. The
+        // `is_cab_head` short-circuit at the top of the helper should
+        // catch every CAB-keyword prefix.
+        assert_eq!(try_classification_heuristic_fix("Classified By: foo"), None);
+        assert_eq!(try_classification_heuristic_fix("Derived From: bar"), None);
+        assert_eq!(try_classification_heuristic_fix("Declassify On: baz"), None);
+    }
+
+    #[test]
+    fn heuristic_skips_long_token() {
+        // 3+ char tokens go through the vocab fuzzy path; the
+        // heuristic adds nothing.
+        assert_eq!(try_classification_heuristic_fix("(YES//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(SECT//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn heuristic_skips_unknown_first_char() {
+        // First char isn't in any heuristic cluster → no fix.
+        assert_eq!(try_classification_heuristic_fix("(B//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(QS//NF)"), None);
+    }
+
     #[test]
     fn decoder_defers_to_strict_when_strict_evidence_is_set() {
         let rx = DecoderRecognizer::new();
@@ -1367,6 +1793,7 @@ mod tests {
         let attempt = CanonicalAttempt {
             bytes: b"SECRET//NOFORN".to_vec(),
             features: features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
         };
         let (prior, posterior) = score_candidate(&attempt, &marking);
 

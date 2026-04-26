@@ -219,6 +219,25 @@ pub enum FixSource {
     /// [`FixProposal::confidence`] so auditors can reconstruct the
     /// scoring path.
     DecoderPosterior,
+    /// Decoder produced this fix via a position-aware short-token
+    /// classification heuristic — a keyboard-proximity table applied
+    /// to the leading classification slot of a portion or banner
+    /// marking when the token is too short for vocab-based fuzzy
+    /// matching (e.g., `(YS//NF) → (TS//NF)`, `(W//NF) → (S//NF)`).
+    /// See issue #133 PR 2.
+    ///
+    /// The heuristic is inherently less certain than a fuzzy-vocab
+    /// match because the inference is "this token is keyboard-
+    /// adjacent to a known classification" rather than "this token
+    /// is edit-distance ≤ 2 from a known canonical token in a
+    /// closed vocabulary." The engine therefore (a) emits the
+    /// diagnostic at [`Severity::Warn`] (the fix-and-warn pattern —
+    /// always visible, non-zero exit code in `--check`), and
+    /// (b) caps [`Confidence::rule`] at `0.80` so `combined ≤ 0.80`
+    /// stays below the default `confidence_threshold` of `0.95`.
+    /// The fix only auto-applies when the user has explicitly
+    /// lowered the threshold to opt into the heuristic's bar.
+    DecoderClassificationHeuristic,
 }
 
 /// Canonical citation string for diagnostics whose authority is the user's

@@ -233,6 +233,7 @@ fn fix_source_str(source: FixSource) -> &'static str {
         FixSource::CorrectionsMap => "CorrectionsMap",
         FixSource::MigrationTable => "MigrationTable",
         FixSource::DecoderPosterior => "DecoderPosterior",
+        FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
     }
 }
 
