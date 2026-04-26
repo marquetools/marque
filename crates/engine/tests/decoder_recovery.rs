@@ -775,6 +775,110 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #133 PR 7: stray-character `/X/` recovery
+// ---------------------------------------------------------------------------
+//
+// The `try_collapse_stray_char_slash` pass walks the fuzzy-corrected
+// text looking for the `<alnum>/<single_alnum_char>/<alnum>` pattern
+// and emits three candidate transforms (drop X, right-attach X to
+// next token, left-attach X to previous token). Step 3a's
+// `TokenKind::Unknown` filter is the natural disambiguator: only the
+// transform that produces fully-recognized tokens survives.
+//
+// PR 7 also briefly experimented with lowering `MIN_FUZZY_LEN` from
+// 3 to 2 to recover `UK→TK`-style 2-char tail typos, but reverted
+// because the canonical Enron-corpus SAR fixture has `RB` as a
+// standalone 2-char sub-compartment token and `RB` is at edit
+// distance 1 from `RS` (the RSEN portion form) — so 2-char fuzzy
+// silently corrupted SAR sub-compartments into dissem controls.
+// Net 4 SAR-shape regressions vs 1 UK→TK win. The `MIN_FUZZY_LEN`
+// doc in `crates/core/src/fuzzy.rs` carries the full rationale.
+//
+// Three integration tests below pin a named fixture from the SC-004
+// mangled corpus per recovery branch (drop / right-attach /
+// left-attach), so the harness's `Typo`-class rate movement
+// (50.0% → 56.9% post-PR-7; 65→74/130, +9 fixtures) is anchored to
+// specific recovery shapes rather than an opaque aggregate.
+
+#[test]
+fn typo_drop_stray_r_resolves_via_collapse_stray_char_slash() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/7885156a2c2c125f.json`
+    // (`SECRET//NOFORN/R/EXDIS`). The drop-X transform produces
+    // canonical `SECRET//NOFORN//EXDIS`; the right-attach
+    // (`...//REXDIS`) and left-attach (`...//NOFORNR//EXDIS`)
+    // candidates contain Unknown tokens and are filtered by step 3a.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN/R/EXDIS", &deep_cx()) else {
+        panic!("`/R/` between NOFORN and EXDIS must resolve via drop-X");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis),
+        "EXDIS must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_right_attach_n_resolves_via_collapse_stray_char_slash() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/2cb13fe4682ff31c.json`
+    // (`TOP SECRET//SI/N/OFORN`). The right-attach transform
+    // re-attaches the stray `N` to the leading position of `OFORN`,
+    // producing canonical `TOP SECRET//SI//NOFORN`. The drop
+    // (`...//SI//OFORN` — OFORN unknown) and left-attach
+    // (`...//SIN//OFORN` — both unknown) candidates are filtered
+    // by step 3a.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SI/N/OFORN", &deep_cx()) else {
+        panic!("`/N/` before OFORN must resolve via right-attach");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    assert!(
+        marking
+            .0
+            .sci_controls
+            .iter()
+            .any(|c| matches!(c, SciControl::Si)),
+        "SI must survive; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must be reconstructed from N + OFORN; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_left_attach_t_resolves_via_collapse_stray_char_slash() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/cff1d0ac74e901c3.json`
+    // (`SECRE/T/REL TO USA, AUS, GBR`). The left-attach transform
+    // re-attaches the stray `T` to the trailing position of `SECRE`,
+    // producing canonical `SECRET//REL TO USA, AUS, GBR`. The drop
+    // (`SECRE//REL TO ...` — SECRE unknown classification) and
+    // right-attach (`SECRE//TREL TO ...` — both unknown) candidates
+    // are filtered by step 3a / 3e (Portion/Banner without
+    // classification).
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRE/T/REL TO USA, AUS, GBR", &deep_cx())
+    else {
+        panic!("`/T/` after SECRE must resolve via left-attach");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert_eq!(
+        marking.0.rel_to.len(),
+        3,
+        "REL TO must carry 3 trigraphs (USA, AUS, GBR); attrs = {:?}",
+        marking.0,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //
