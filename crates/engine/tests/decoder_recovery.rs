@@ -564,6 +564,73 @@ fn missing_delimiter_does_not_split_sbu_noforn() {
 }
 
 #[test]
+fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
+    // `SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN`
+    // (issue #133 PR 5). The SAR grammar accepts any alphanumeric
+    // identifier, so the strict parser cleanly absorbs `NOFORN` as
+    // the trailing sub-compartment of the `XR-XRA` compartment when
+    // no `//` separator precedes it. The competing delim-inserted
+    // candidate puts `NOFORN` into `dissem_controls` instead — that's
+    // the canonical interpretation. Before PR 5 the bag-of-tokens
+    // scorer rewarded the absorbing parse (fewer scored tokens →
+    // higher posterior because log-priors are negative);
+    // `HARD_SPLITTER_ABSORPTION_PENALTY` flips the contest.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN",
+        &deep_cx(),
+    ) else {
+        panic!("SAR with trailing NOFORN must resolve unambiguously");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    assert!(
+        marking.0.sar_markings.is_some(),
+        "SAR block must be present; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must land in dissem_controls (delim-inserted candidate \
+         beats the absorbing one via HARD_SPLITTER_ABSORPTION_PENALTY); \
+         attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn missing_delimiter_full_sar_with_trailing_noforn_resolves() {
+    // `TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN`
+    // (issue #133 PR 5). Same scoring problem as the abbreviated SAR
+    // shape above, but here `NOFORN` gets absorbed as the trailing
+    // word of the multi-word `Full`-indicator program nickname
+    // (`identifier: "BUTTER POPCORN NOFORN"`). The `Full` shape needs
+    // the per-word check inside `contains_hard_splitter_word` to fire.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN",
+        &deep_cx(),
+    ) else {
+        panic!("`Full`-indicator SAR with trailing NOFORN must resolve");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    let sar = marking
+        .0
+        .sar_markings
+        .as_ref()
+        .expect("SAR block must be present");
+    assert_eq!(sar.programs.len(), 1, "exactly one program; got {sar:?}");
+    assert_eq!(
+        &*sar.programs[0].identifier, "BUTTER POPCORN",
+        "program identifier must be the clean nickname (no NOFORN absorbed); got {sar:?}",
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must land in dissem_controls; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
 fn missing_delimiter_no_change_on_already_canonical() {
     // `SECRET//NOFORN//EXDIS` is fully canonical — the helper
     // must not insert anything (would produce a no-op candidate

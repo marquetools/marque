@@ -128,31 +128,37 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// improvement would mask here. Both are needed.
 ///
 /// Current measured rate (2026-04-26, branch
-/// `fix/issue-133-pr3-missing-delimiter` after issue #133 PR 3
-/// landed `try_insert_delimiter` — the helper inserts `//` at
-/// category-transition whitespace gaps via classification-boundary
-/// (Rule 1) and hard-splitter dissem-long-form (Rule 2) rules):
+/// `fix/issue-133-pr5-sci-sar-special-delim` after issue #133 PR 5
+/// landed `HARD_SPLITTER_ABSORPTION_PENALTY` in
+/// `marque_engine::decoder::score_candidate` — the penalty
+/// demotes strict parses that bury reserved dissem-control tokens
+/// (NOFORN, ORCON, …) inside SAR program/compartment slots, which
+/// is what was letting the absorbing parse beat the delim-inserted
+/// parse in the bag-of-tokens scorer for the 2 remaining
+/// MissingDelimiter fixtures):
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
 /// | GarbledDelimiter  | 51       | 51    | 100.0%  |
-/// | MissingDelimiter  | 15       | 17    |  88.2%  |
+/// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
 /// | Typo              | 58       | 130   |  44.6%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **185**  | **260** | **71.2%** |
+/// | **Aggregate**     | **187**  | **260** | **71.9%** |
 ///
-/// 68% gives ~3 percentage-point noise margin against the 71.2%
-/// floor. Remaining gap to SC-004's 85% target: (a) the 2
-/// unresolved MissingDelimiter fixtures need SCI-starter
-/// (`TOP SECRET HCS-P//...`) and SAR-prefix (`TOP SECRET SAR-BP//...`)
-/// insertion rules — those need classification-context lookahead
-/// and are deferred to PR 4. (b) Typo class still concentrates
-/// 3+ char tail-token typos (`UK→TK`, `USAR→SAR`, missing-hyphen
-/// SAR forms) outside the PR 2 heuristic's scope — addressed by
-/// extending the corpus-confidence work in PR 4.
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.68;
+/// 0.69 is intentionally ~3 percentage points below the current
+/// 71.9% aggregate rate, leaving headroom of several fixtures so
+/// small corpus noise does not trip the regression gate. (Earlier
+/// wording said "one fixture below 71.9%" — that was wrong: with
+/// 260 fixtures, one fixture below is ~71.5%, not 69.0%; PR #178
+/// review caught the math drift and the comment is now accurate.)
+/// Remaining gap to SC-004's 85% target sits entirely in the Typo
+/// class: 3+ char tail-token typos (`UK→TK`, `USAR→SAR`, missing-
+/// hyphen SAR forms) outside the PR 2 heuristic's scope and the
+/// `TPP→TOP` 3-char classification typo — addressed by extending
+/// corpus-confidence work in subsequent PRs.
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.69;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -176,24 +182,25 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.68;
 ///   current 58/130 = 44.6% rate). Wide-enough margin to absorb
 ///   one or two fixtures dropping; a sustained drop trips the
 ///   gate. Ratchet up as #133 PR 4 corpus-confidence work lands.
-/// - **`MissingDelimiter`** pinned at `0.85` (~3 percentage points
-///   below the current 15/17 = 88.2% rate after #133 PR 3 landed
-///   `try_insert_delimiter`). The 2 remaining unresolved fixtures
-///   need SCI-starter / SAR-prefix / SPECIAL-ACCESS-REQUIRED
-///   insertion rules deferred to PR 4.
+/// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
+///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
+///   helper already produced canonical bytes for every fixture, and
+///   PR 5's `HARD_SPLITTER_ABSORPTION_PENALTY` flipped the scoring
+///   contest for the 2 SAR-with-trailing-NOFORN cases that were
+///   losing to the absorbing parse. Any future fixture that
+///   regresses fails the gate.
 ///
 /// Last ratcheted (2026-04-26, branch
-/// `fix/issue-133-pr3-missing-delimiter`) to the rates observed
-/// after the missing-delimiter helper landed in
-/// `marque_engine::decoder::try_insert_delimiter`. Two classes
-/// moved from the prior baseline: `MissingDelimiter`
-/// (0.0% → 88.2%, +15 fixtures) and the aggregate
-/// (65.4% → 71.2%). No other scoring or recognition code
-/// changed; the PR 2 heuristic is unchanged from its
-/// previous-baseline behavior on the existing corpus.
+/// `fix/issue-133-pr5-sci-sar-special-delim`) to the rates observed
+/// after `HARD_SPLITTER_ABSORPTION_PENALTY` landed. One class
+/// moved: `MissingDelimiter` (88.2% → 100.0%, +2 fixtures); the
+/// aggregate moved (71.2% → 71.9%). No other recognition code
+/// changed; PR 5 is purely a scoring penalty for one structurally-
+/// invalid parse shape that the bag-of-tokens scorer was previously
+/// rewarding.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
-    ("MissingDelimiter", 0.85),
+    ("MissingDelimiter", 1.00),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
     ("Typo", 0.42),
@@ -541,7 +548,7 @@ fn run_sweep() -> AccuracyReport {
 ///   removing `#[ignore]` — no test rewrite, no threshold-tuning
 ///   PR.
 #[test]
-#[ignore = "SC-004 ≥85% target; current decoder ~71% (post-#133 PRs 1+3), see resolution_rate_does_not_regress for the always-on regression gate"]
+#[ignore = "SC-004 ≥85% target; current decoder ~72% (post-#133 PRs 1+3+5), see resolution_rate_does_not_regress for the always-on regression gate"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

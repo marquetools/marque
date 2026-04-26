@@ -565,6 +565,7 @@ impl BoundedLattice for FgiSet {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::type_complexity)] // Test-fixture DSL; explicit shape is clearer than a newtype.
 mod tests {
     use super::*;

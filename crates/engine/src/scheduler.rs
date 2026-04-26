@@ -321,6 +321,7 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_scheme::{

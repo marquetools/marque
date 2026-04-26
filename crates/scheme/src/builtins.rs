@@ -748,6 +748,7 @@ impl<A: BoundedLattice, B: BoundedLattice> BoundedLattice for Product<A, B> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

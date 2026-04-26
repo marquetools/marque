@@ -1171,22 +1171,20 @@ fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
 /// helper is wrong); rather than emit a wildly-rewritten candidate,
 /// we cap and let the result strict-parse on the partial rewrite.
 ///
-/// # Out of v1 scope (deferred)
+/// # SCI / SAR / SPECIAL-ACCESS-REQUIRED coverage
 ///
-/// - SCI starter insertion (`TOP SECRET SI//...` cases): would
-///   require detecting SCI-shape tokens in classification context.
-///   `SI`, `HCS`, `TK` are 2-3 char tokens and could collide with
-///   compartment names in some SAR contexts; the safer path is to
-///   wait for the v2 / corpus-confidence work in the planned PR 4.
-/// - SAR-prefix insertion (`TOP SECRET SAR-BP//...`): same reason.
-/// - SPECIAL ACCESS REQUIRED-... insertion: lookahead-multi-word
-///   pattern, separate detection logic.
-///
-/// These three categories account for the remaining 2 of the 17
-/// MissingDelimiter fixtures; the v1 hard-splitter +
-/// classification-boundary rules resolve 15 of 17 (88.2% per
-/// `crates/engine/tests/decoder_accuracy.rs` after this PR landed).
-/// Follow-up tracked.
+/// The PR-3-era doc note here used to defer SCI-starter (`TOP SECRET
+/// SI ...`), SAR-prefix (`TOP SECRET SAR-BP ...`), and
+/// `SPECIAL ACCESS REQUIRED-...` insertion to a follow-up. That defer
+/// was based on a misread: rule 1 (classification → next segment)
+/// already fires on every one of those shapes because
+/// [`is_classification_token`] includes `TOP` and
+/// [`is_classification_continuation`] handles the `TOP → SECRET`
+/// special case, so the helper produces the canonical bytes for all
+/// 17 MissingDelimiter fixtures in the SC-004 corpus. The remaining
+/// 2/17 failures pre-PR-5 were a SCORING contest, not a missing
+/// rewrite — handled by [`HARD_SPLITTER_ABSORPTION_PENALTY`] in
+/// [`score_candidate`], not here.
 fn try_insert_delimiter(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut result = String::with_capacity(text.len() + 8);
@@ -1665,6 +1663,57 @@ fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType) -> bool {
 /// `crates/capco/corpus/priors.json`).
 const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 
+/// Posterior penalty applied when a candidate's strict parse buries a
+/// reserved dissem-control token (a hard splitter — see
+/// [`is_hard_splitter`]) inside a SAR or SCI sub-component slot.
+///
+/// **Why this exists.** Hard-splitter tokens (NOFORN, ORCON, EXDIS,
+/// FOUO, …) have hard reserved meanings as dissem controls per CAPCO-
+/// 2016 §H.8/§H.9; they have no in-segment role inside SCI or SAR
+/// sub-components. A strict parse that places such a token under
+/// [`marque_ism::SarMarking`] or [`marque_ism::SciMarking`] is
+/// essentially always a missing-
+/// `//` artifact in the input — the alternative parse with the token
+/// emitted as a dissem control is the correct interpretation. (REL
+/// TO is intentionally excluded from the penalty surface here: its
+/// payload is a list of country trigraphs whose grammar accepts only
+/// 3-letter alpha codes drawn from the CVE-derived trigraph table,
+/// so a 4+-char hard splitter cannot land in a REL TO slot in the
+/// first place. The Copilot review on PR #178 flagged a wider doc
+/// claim that suggested otherwise — the doc is now scoped to the
+/// slots the penalty actually defends.)
+///
+/// **Why scoring needs help.** The bag-of-tokens scorer above sums
+/// log-priors for the marking's canonical tokens, and `canonical_tokens_for`
+/// deliberately excludes SAR program/compartment/sub-compartment text
+/// (open-set agency-assigned codewords). So an absorbing parse contributes
+/// only the classification's prior; the equivalent delim-inserted parse
+/// contributes classification + the dissem token's prior, which is a
+/// MORE NEGATIVE log-posterior. Without a corrective penalty the
+/// absorbing parse always wins. SCI absorption usually self-resolves
+/// because [`marque_core::Parser::parse`]'s SCI subgrammar produces
+/// [`marque_ism::TokenKind::Unknown`] for non-alphanumeric/wrong-shape
+/// compartment tokens (which step 3a then drops), but SAR's grammar accepts any
+/// `[A-Z0-9]+` identifier and absorbs cleanly — leaving SAR as the
+/// observed failure mode on the SC-004 corpus (the `SAR-BP-J12 …` and
+/// `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` fixtures pre-PR-5).
+///
+/// **Magnitude.** Empirically the absorbing-vs-delim-inserted spread
+/// on those two fixtures is ~9 nats; the [`MISSING_TOKEN_LOG_PRIOR`]
+/// floor (`-12.0`) gives a comfortable margin and is robust to small
+/// future shifts in the priors table. Defining the penalty as
+/// `MISSING_TOKEN_LOG_PRIOR` (rather than re-stating the literal)
+/// keeps the two below-floor signals mechanically at parity for any
+/// candidate that triggers both — a future ratchet of one constant
+/// pulls the other along.
+///
+/// **Safety.** Hard-splitter tokens are all 4+ chars and have shapes
+/// distinct from real SAR identifiers (`BP`, `CD`, `XR` are 2-char;
+/// `BUTTER POPCORN`, `J12`, `K15`, `XRA` are alphanumeric short
+/// codes that don't collide with the hard-splitter list). So this
+/// penalty cannot fire on a legitimate SAR/SCI parse.
+const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
+
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
 /// Returns `(prior, posterior)` where:
@@ -1675,13 +1724,19 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 ///   to carry (see `crates/scheme/src/ambiguity.rs`). Tokens missing
 ///   from the baked table contribute [`MISSING_TOKEN_LOG_PRIOR`]
 ///   (a below-observed-floor penalty) rather than `0.0`.
-/// - `posterior` = `prior + Σ attempt.features[i].delta`. This is the
-///   quantity the decoder sorts and thresholds on.
+/// - `posterior` = `prior + Σ attempt.features[i].delta + structural
+///   penalties`. This is the quantity the decoder sorts and thresholds
+///   on. The only structural penalty today is
+///   [`HARD_SPLITTER_ABSORPTION_PENALTY`], applied when the strict
+///   parse buries a reserved dissem-control token in a SAR/SCI slot.
 ///
 /// Splitting the two prevents the caller from writing the full
 /// posterior into `Candidate::prior_log_odds` — that would double-
 /// count the feature deltas once any resolver re-adds
-/// `EvidenceFeature.log_odds`.
+/// `EvidenceFeature.log_odds`. Structural penalties are deliberately
+/// folded into the posterior only (not the prior or the per-feature
+/// log-odds): they are a likelihood statement about parse plausibility,
+/// not a corpus-frequency claim about token co-occurrence.
 ///
 /// Precision: computed in `f32` — the baked priors are already `f32`
 /// and the feature deltas are small constants (single-digit magnitude
@@ -1698,11 +1753,86 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
         prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
     }
 
-    // Posterior: prior plus feature deltas.
+    // Posterior: prior plus feature deltas plus structural penalties.
     let feature_sum: f32 = attempt.features.iter().map(|f| f.delta).sum();
-    let posterior = prior + feature_sum;
+    let mut posterior = prior + feature_sum;
+    if absorbs_hard_splitter_in_sar_or_sci(marking) {
+        posterior += HARD_SPLITTER_ABSORPTION_PENALTY;
+    }
 
     (prior, posterior)
+}
+
+/// True when the strict parse of a candidate buries a hard-splitter
+/// dissem-control token (NOFORN, ORCON, EXDIS, FOUO, …) inside a SAR
+/// program/compartment/sub-compartment slot or an SCI compartment/
+/// sub-compartment slot.
+///
+/// Used by [`score_candidate`] to apply
+/// [`HARD_SPLITTER_ABSORPTION_PENALTY`] — the penalty exists because
+/// SAR's grammar accepts any alphanumeric identifier and quietly
+/// absorbs trailing dissem-control tokens that should have been
+/// separated from the SAR block by `//`. See the
+/// `HARD_SPLITTER_ABSORPTION_PENALTY` doc for the full rationale.
+///
+/// Identifiers are checked both as whole strings AND as whitespace-
+/// separated word sequences. The whitespace split matters for the
+/// `Full` SAR indicator form (`SPECIAL ACCESS REQUIRED-BUTTER
+/// POPCORN`): a multi-word program nickname like `"BUTTER POPCORN"`
+/// may have `NOFORN` absorbed as a trailing word, producing
+/// `identifier: "BUTTER POPCORN NOFORN"`. Without the per-word
+/// check, the absorption pattern slips past the whole-string
+/// `is_hard_splitter` lookup.
+fn absorbs_hard_splitter_in_sar_or_sci(marking: &CapcoMarking) -> bool {
+    let attrs = &marking.0;
+
+    if let Some(sar) = attrs.sar_markings.as_ref() {
+        for prog in sar.programs.iter() {
+            if contains_hard_splitter_word(&prog.identifier) {
+                return true;
+            }
+            for comp in prog.compartments.iter() {
+                if contains_hard_splitter_word(&comp.identifier) {
+                    return true;
+                }
+                if comp
+                    .sub_compartments
+                    .iter()
+                    .any(|sub| contains_hard_splitter_word(sub))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    for sci in attrs.sci_markings.iter() {
+        for comp in sci.compartments.iter() {
+            if contains_hard_splitter_word(&comp.identifier) {
+                return true;
+            }
+            if comp
+                .sub_compartments
+                .iter()
+                .any(|sub| contains_hard_splitter_word(sub))
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// True when `s` is a hard-splitter token, or contains a hard-
+/// splitter token as a whitespace-separated word. The per-word check
+/// covers multi-word `Full` SAR program nicknames (`BUTTER POPCORN`)
+/// that absorbed a trailing dissem-control word.
+fn contains_hard_splitter_word(s: &str) -> bool {
+    if is_hard_splitter(s) {
+        return true;
+    }
+    s.split_whitespace().any(is_hard_splitter)
 }
 
 /// Enumerate the canonical tokens present in `marking` that have a
@@ -1896,6 +2026,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
@@ -2554,6 +2685,243 @@ mod tests {
             "`FRBN` is Unknown-kind → strict parse is incomplete; attrs = {:?}",
             marking.0,
         );
+    }
+
+    #[test]
+    fn contains_hard_splitter_word_detects_per_word() {
+        // Whole-string match.
+        assert!(contains_hard_splitter_word("NOFORN"));
+        assert!(contains_hard_splitter_word("ORCON"));
+        assert!(contains_hard_splitter_word("EXDIS"));
+        // Per-word match (the `Full` SAR-program-nickname absorption
+        // shape — `BUTTER POPCORN NOFORN`).
+        assert!(contains_hard_splitter_word("BUTTER POPCORN NOFORN"));
+        assert!(contains_hard_splitter_word("ORCON BUTTER POPCORN"));
+        assert!(contains_hard_splitter_word("BUTTER NOFORN POPCORN"));
+        // Negatives — clean SAR identifiers must not match.
+        assert!(!contains_hard_splitter_word("BP"));
+        assert!(!contains_hard_splitter_word("J12"));
+        assert!(!contains_hard_splitter_word("XRA"));
+        assert!(!contains_hard_splitter_word("BUTTER POPCORN"));
+        assert!(!contains_hard_splitter_word(""));
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_detects_full_sar_program_with_trailing_noforn() {
+        // The `SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN` shape:
+        // strict parser builds a `Full`-indicator SAR with the program
+        // identifier `"BUTTER POPCORN NOFORN"` (multi-word nickname,
+        // NOFORN absorbed as the trailing word). Pinned to ensure the
+        // per-word check in `contains_hard_splitter_word` keeps firing.
+        use marque_ism::{IsmAttributes, SarIndicator, SarMarking, SarProgram};
+        let sar = SarMarking::new(
+            SarIndicator::Full,
+            Box::new([SarProgram::new(
+                Box::from("BUTTER POPCORN NOFORN"),
+                Box::new([]),
+            )]),
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sar_markings = Some(sar);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "NOFORN as trailing word of multi-word SAR program identifier must be detected"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_in_sar_detects_noforn_as_subcomp() {
+        // Direct construction: a SAR program with NOFORN buried as a
+        // sub-compartment of a normal compartment. Mirrors the parse
+        // shape produced by `SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/
+        // XR-XRA RB NOFORN` when the strict parser absorbs NOFORN at
+        // the SAR-block tail.
+        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            Box::new([SarProgram::new(
+                Box::from("BP"),
+                Box::new([SarCompartment::new(
+                    Box::from("J12"),
+                    Box::new([Box::from("RB"), Box::from("NOFORN")]),
+                )]),
+            )]),
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sar_markings = Some(sar);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "NOFORN as SAR sub-compartment must be detected as absorption"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_in_sar_detects_noforn_as_compartment_identifier() {
+        // PR #178 review (Codecov, decoder.rs:1795): pin the
+        // SAR-compartment-IDENTIFIER branch (vs the sub-compartment
+        // branch covered above). Some absorbing parses end up with the
+        // hard splitter as the compartment identifier itself rather
+        // than a sub-compartment leaf — e.g., a `SAR-BP NOFORN` shape
+        // where the strict parser emits `BP` as the program and
+        // `NOFORN` as a bare compartment with no sub-compartments.
+        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            Box::new([SarProgram::new(
+                Box::from("BP"),
+                Box::new([SarCompartment::new(Box::from("NOFORN"), Box::new([]))]),
+            )]),
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sar_markings = Some(sar);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "NOFORN as SAR compartment identifier must be detected as absorption"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_accepts_clean_sar() {
+        // Negative case: a SAR with realistic identifiers (`BP`, `J12`,
+        // `RB`) and no hard-splitter token anywhere. Must NOT trigger
+        // the penalty.
+        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        let sar = SarMarking::new(
+            SarIndicator::Abbrev,
+            Box::new([SarProgram::new(
+                Box::from("BP"),
+                Box::new([SarCompartment::new(
+                    Box::from("J12"),
+                    Box::new([Box::from("RB"), Box::from("XRA")]),
+                )]),
+            )]),
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sar_markings = Some(sar);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            !absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "clean SAR identifiers must not trigger the absorption penalty"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_in_sci_detects_orcon_as_subcomp() {
+        // Defensive coverage for SCI absorption — the existing strict-
+        // parser path drops most SCI absorption via the
+        // `TokenKind::Unknown` filter in step 3a, but a future grammar
+        // change that loosens SCI compartment shape could let a hard
+        // splitter through. Pinned so the penalty stays defensive.
+        use marque_ism::{
+            IsmAttributes, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+        };
+        let sci = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([SciCompartment::new(
+                Box::from("G"),
+                Box::new([Box::from("ORCON")]),
+            )]),
+            None,
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sci_markings = Box::new([sci]);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "ORCON as SCI sub-compartment must be detected as absorption"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_in_sci_detects_orcon_as_compartment_identifier() {
+        // PR #178 review (Codecov, decoder.rs:1811): pin the SCI-
+        // compartment-IDENTIFIER branch (vs the sub-compartment branch
+        // above). Defensive coverage — today's strict-parser SCI path
+        // drops most absorption via the `TokenKind::Unknown` filter at
+        // step 3a, but a future grammar change that lets a hard
+        // splitter through as the compartment id needs the penalty
+        // active.
+        use marque_ism::{
+            IsmAttributes, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+        };
+        let sci = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([SciCompartment::new(Box::from("ORCON"), Box::new([]))]),
+            None,
+        );
+        let mut attrs = IsmAttributes::default();
+        attrs.sci_markings = Box::new([sci]);
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "ORCON as SCI compartment identifier must be detected as absorption"
+        );
+    }
+
+    #[test]
+    fn absorbs_hard_splitter_negative_on_empty_marking() {
+        // Sanity floor: a marking with neither SAR nor SCI never
+        // triggers the penalty.
+        use marque_ism::IsmAttributes;
+        let attrs = IsmAttributes::default();
+        let marking = CapcoMarking::new(attrs);
+        assert!(
+            !absorbs_hard_splitter_in_sar_or_sci(&marking),
+            "marking without SAR/SCI must not trigger the penalty"
+        );
+    }
+
+    #[test]
+    fn decoder_resolves_sar_with_trailing_noforn_via_absorption_penalty() {
+        // The SC-004 fixtures `SAR-BP-J12 …` and
+        // `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` with a trailing
+        // NOFORN have always produced the right candidate bytes from
+        // `try_insert_delimiter`, but lost the scoring contest before
+        // PR-5 because the absorbing strict parse contributed only the
+        // classification's prior while the delim-inserted parse paid
+        // the additional log-prior of NF. The
+        // `HARD_SPLITTER_ABSORPTION_PENALTY` flips the contest; this
+        // test pins both fixture shapes.
+        let rx = DecoderRecognizer::new();
+        for input in &[
+            "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN",
+            "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN",
+        ] {
+            let parsed = rx.recognize(input.as_bytes(), &deep_cx());
+            match parsed {
+                Parsed::Unambiguous(m) => {
+                    assert!(
+                        m.0.sar_markings.is_some(),
+                        "input {input:?}: expected SAR present in winning candidate"
+                    );
+                    // PR #178 review (Copilot, decoder.rs:2841): assert
+                    // the SPECIFIC dissem control we expect — `Nf`.
+                    // The previous `!is_empty()` check would silently
+                    // accept a future regression that emitted a
+                    // different dissem token (e.g., a misclassified
+                    // `Oc`/`Pr`) and still call the test green.
+                    assert!(
+                        m.0.dissem_controls
+                            .iter()
+                            .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
+                        "input {input:?}: expected NOFORN (DissemControl::Nf) to land \
+                         as a dissem control (winning candidate must be the delim-\
+                         inserted form, not the absorbing one); got dissem_controls = \
+                         {:?}",
+                        m.0.dissem_controls,
+                    );
+                    assert!(
+                        !absorbs_hard_splitter_in_sar_or_sci(&m),
+                        "input {input:?}: winning marking must not bury a hard \
+                         splitter inside SAR/SCI"
+                    );
+                }
+                other => panic!("input {input:?}: expected Unambiguous, got {other:?}"),
+            }
+        }
     }
 
     #[test]

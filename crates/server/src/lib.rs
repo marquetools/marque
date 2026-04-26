@@ -801,6 +801,7 @@ pub fn build_app_with_limit(state: AppState, body_limit_bytes: usize) -> Router 
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
