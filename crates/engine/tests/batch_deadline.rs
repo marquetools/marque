@@ -138,6 +138,42 @@ async fn batch_lint_many_truncates_slow_doc_without_erroring() {
 }
 
 #[tokio::test]
+async fn batch_per_doc_deadline_overflow_does_not_silently_disable_budget() {
+    // `Duration::MAX` is ~584 billion years; adding it to any
+    // realistic `Instant` overflows. An earlier implementation used
+    // `and_then(checked_add)` which silently returned `None` and
+    // dropped the deadline — letting an operator-configured budget
+    // disappear because of a clock-arithmetic edge case. The
+    // current implementation maps overflow to "already expired" so
+    // the engine's pre-pass deadline check trips immediately. This
+    // test pins that behavior so a future regression can't quietly
+    // re-introduce silent-drop semantics.
+    let mut opts = BatchOptions::default();
+    opts.max_concurrent_docs = Some(2);
+    opts.per_doc_deadline = Some(Duration::MAX);
+
+    let batch = BatchEngine::new(engine(), opts);
+    let docs: Vec<(String, Vec<u8>)> = vec![
+        ("doc1".to_owned(), b"(S//NF) Some text.\n".to_vec()),
+        ("doc2".to_owned(), b"(U) More text.\n".to_vec()),
+    ];
+
+    let results: Vec<(String, Result<FixResult, BatchError>)> =
+        batch.fix_many(docs).collect().await;
+    // Both docs must report deadline exceeded, NOT succeed (which
+    // would be the bug — overflow silently dropping the deadline).
+    for (id, result) in &results {
+        let err = result
+            .as_ref()
+            .expect_err("overflow must NOT disable the deadline");
+        assert!(
+            err.is_deadline_exceeded(),
+            "doc {id} must report deadline exceeded; got: {err:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn batch_no_deadline_runs_all_docs_to_completion() {
     // Sanity: with `per_doc_deadline: None`, even the slow doc
     // completes. Confirms the deadline plumbing is opt-in and

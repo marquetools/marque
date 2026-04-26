@@ -46,11 +46,11 @@
 //! ```
 
 use std::sync::Arc;
-// `BatchEngine` is gated behind the `batch` Cargo feature (tokio dep);
-// the feature is not declared on the WASM target, so `std::time::Instant`
-// is the right choice here even though the rest of the engine uses
-// `web_time::Instant` for cross-target compatibility. This module
-// never compiles for `wasm32-unknown-unknown`.
+// Batch processing uses `std::time::Instant`. `BatchEngine` depends
+// on tokio (gated behind the `batch` Cargo feature), and tokio
+// itself does not target `wasm32-unknown-unknown`, so this module
+// never reaches the WASM clock-polyfill question — std's `Instant`
+// is sufficient.
 use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt, stream};
@@ -323,8 +323,10 @@ impl BatchEngine {
     }
 
     /// Lint many documents concurrently. Yields `(id, Result)` in
-    /// completion order; an `Err` indicates the per-document task panicked
-    /// or was cancelled — it does not abort the batch.
+    /// completion order; an `Err` indicates the per-document task
+    /// panicked, was cancelled, or could not start because shutdown
+    /// is in progress (the `ConcurrencyController` semaphore was
+    /// closed) — it does not abort the batch.
     ///
     /// Honors `BatchOptions::per_doc_deadline` from construction time
     /// (spec 005 §R2). A deadline-truncated lint surfaces as
@@ -380,7 +382,17 @@ impl BatchEngine {
                     // (a backed-up batch) don't consume the document's
                     // engine budget.
                     let result = tokio::task::spawn_blocking(move || {
-                        let deadline = per_doc_deadline.and_then(|d| Instant::now().checked_add(d));
+                        // `checked_add` overflow must not silently drop
+                        // the deadline (which would let an unbounded
+                        // pass run after the operator explicitly
+                        // configured a budget). Treat overflow as an
+                        // already-expired deadline so the engine's
+                        // pre-pass check trips immediately — same
+                        // behavior as `Instant::now() - 1ms`.
+                        let deadline = per_doc_deadline.map(|d| {
+                            let now = Instant::now();
+                            now.checked_add(d).unwrap_or(now)
+                        });
                         // In-crate construction may use struct-update
                         // syntax across `#[non_exhaustive]` — only the
                         // outside-the-defining-crate boundary is restricted.
@@ -458,7 +470,14 @@ impl BatchEngine {
                     // matching on `BatchError` see the deadline-trip
                     // signal at the same level as panic / shutdown.
                     let result = tokio::task::spawn_blocking(move || {
-                        let deadline = per_doc_deadline.and_then(|d| Instant::now().checked_add(d));
+                        // Same overflow semantics as `lint_many_inner` —
+                        // overflow folds to "already expired" so the
+                        // operator-configured deadline is never silently
+                        // disabled.
+                        let deadline = per_doc_deadline.map(|d| {
+                            let now = Instant::now();
+                            now.checked_add(d).unwrap_or(now)
+                        });
                         let opts = FixOptions {
                             deadline,
                             ..FixOptions::default()
