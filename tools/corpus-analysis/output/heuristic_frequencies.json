@@ -1,6 +1,6 @@
 {
   "schema_version": "marque-heuristic-frequency-1",
-  "generated_at": "2026-04-26T14:45:09.731618+00:00",
+  "generated_at": "2026-04-26T15:14:17.700850+00:00",
   "docs_processed": 510596,
   "marking_context_window_chars": 30,
   "marking_shape_signals": [
@@ -257,8 +257,5 @@
     "triggers_with_zero_marking_context": 23,
     "max_marking_context_count": 168
   },
-  "corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b",
-  "metadata": {
-    "corpus_path": "/home/knitli/marque/tools/corpus-analysis/.cache/enron_mail"
-  }
+  "corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b"
 }

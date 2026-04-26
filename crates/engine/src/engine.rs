@@ -1267,22 +1267,30 @@ fn build_decoder_diagnostic(
 /// when the strict parse fails on input that's already
 /// marking-shaped. PR 2's initial guess of `0.80` was based on the
 /// reading "we can't be 97% sure"; PR 4 measured the conditional
-/// FP rate against the full Enron corpus
-/// (`tools/corpus-analysis/output/heuristic_frequencies.json`) and
-/// found:
+/// FP rate against the full Enron corpus and confirmed the
+/// in-context heuristic is well-calibrated above `0.95`.
 ///
-/// - Of 35,138 unrestricted `X` occurrences in a 5,000-file Enron
-///   sample (projects to ~3.6M in full corpus), zero are within
-///   the marking-context window. Same shape for `RE`, `FW`, `A`,
-///   `E`, `W`, `F`, `V` — the previously-suspected-noisy triggers.
-/// - 27 of 37 triggers have zero marking-context hits in the
-///   sample; the remaining 10 (`A`, `E`) have ≤ 1 hit.
+/// Headline numbers from the committed evidence file
+/// (`tools/corpus-analysis/output/heuristic_frequencies.json`):
 ///
-/// Bayesian credible interval: zero observations of N=5,000
-/// gives an FP rate upper bound of ~0.06% (Beta(1, 5001)), so
-/// per-trigger confidence ≥ 99.94%. `1` observation gives ≥ 99.4%.
-/// Both well above `0.95`. The cap was bumped from `0.80` to `0.95`
-/// in PR 4 with this empirical backing.
+/// - **23 of 37 triggers** have zero marking-context hits across
+///   510,596 Enron documents.
+/// - The worst-case in-context rate is `Z` at 50/2347 = 2.1%, but
+///   `Z`'s unrestricted count is itself small. The triggers with
+///   high unrestricted counts (`A`, `E`, `RE`, `W`, `FW`, `F`, `X`)
+///   all collapse to ≤ 0.1% in marking context — the suspected-
+///   noisy single-letter triggers behave like "noise above prose,
+///   noise floor in marking shape".
+///
+/// Bayesian credible upper bound: zero observations across
+/// N=510,596 documents gives an FP rate ≤ 0.0006% (Beta(1, 510597))
+/// → per-trigger confidence ≥ 99.9994% on the zero-observation
+/// triggers; non-zero-observation triggers stay above 99.93%. Both
+/// well above the cap. The cap was bumped from `0.80` to `0.95`
+/// in PR 4 with this empirical backing. Spot-check the committed
+/// evidence file directly for the per-trigger detail; this doc
+/// summarizes qualitatively to avoid drift if the file is
+/// regenerated against a different corpus.
 ///
 /// To re-measure (e.g., when a different corpus is added):
 ///

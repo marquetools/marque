@@ -679,10 +679,13 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
 HEURISTIC_FREQUENCY_SCHEMA_VERSION = "marque-heuristic-frequency-1"
 
 # Trigger tokens for the position-aware classification heuristic.
-# Mirrors `try_classification_heuristic_fix` in
-# `crates/engine/src/decoder.rs` — a divergence between this list and
-# the Rust helper means the analysis no longer measures what it claims
-# to measure. Pinned by tests in the engine crate.
+# Keep in sync with `try_classification_heuristic_fix` in
+# `crates/engine/src/decoder.rs` — a divergence between this list
+# and the Rust helper means the analysis no longer measures what it
+# claims to measure. The cross-language sync is convention only;
+# there is no automated test that asserts the two lists match.
+# Reviewers updating the Rust helper's trigger table MUST update
+# this list at the same time.
 HEURISTIC_TRIGGERS_1CHAR = ("A", "W", "E", "Z", "V", "F", "X")
 HEURISTIC_TRIGGERS_2CHAR = tuple(
     f"{first}{second}"
@@ -1277,10 +1280,12 @@ def main():
 
     if args.mode == "heuristic-frequency":
         results = measure_heuristic_trigger_frequency(corpus_path, args.max_docs)
+        # Intentionally omit `corpus_path` from committed output —
+        # absolute developer-environment paths leak machine-specific
+        # detail and churn diffs across machines. The
+        # `corpus_fingerprint` (SHA-512 over file metadata, content-
+        # ignorant per Constitution V) is the reproducible identifier.
         results["corpus_fingerprint"] = _corpus_fingerprint(corpus_path)
-        results["metadata"] = {
-            "corpus_path": str(corpus_path),
-        }
         output_json = json.dumps(results, indent=2)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)

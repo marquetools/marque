@@ -1019,14 +1019,18 @@ fn try_classification_heuristic_fix(text: &str) -> Option<String> {
     // heuristic when the input has no marking-shape signal beyond the
     // leading token — i.e., nothing after the first token within the
     // first segment AND no `//`-separated tail. The corpus measurement
-    // (PR 4) validated heuristic confidence at ≥99.97% only for the
-    // *in-context* case (trigger appears within ~30 chars of `//` or
-    // a recognized vocab token). For lone inputs the empirical FP
-    // rate against Enron body text is much higher (`A` alone has
-    // 214,539 unrestricted occurrences vs 168 in-context out of 510k
-    // documents); auto-applying lone-case fixes would surface as
-    // false positives on parenthetical references like `(A)` /
-    // `(W)` / `(F)` that are common in business prose.
+    // committed at `tools/corpus-analysis/output/heuristic_frequencies.json`
+    // validated heuristic confidence well above the acceptance
+    // threshold only for the *in-context* case (trigger appears within
+    // ~30 chars of `//` or a recognized vocab token). For lone inputs
+    // the empirical FP rate against Enron body text is many orders of
+    // magnitude higher — high-frequency triggers like `A` and `E` have
+    // tens of thousands of unrestricted occurrences vs at most a few
+    // hundred in marking-context, and a fix-and-warn that auto-applies
+    // at default threshold would produce false positives on
+    // parenthetical refs like `(A)` / `(W)` / `(F)` common in business
+    // prose. Spot-check the evidence file directly for per-trigger
+    // detail.
     //
     // Form-field input (`(YS)` typed into a portion-mark field)
     // SHOULD heuristic-fix at high confidence — the caller knows the
