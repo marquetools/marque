@@ -7,19 +7,19 @@
     "date_captured": "2026-04-26"
   },
   "lint_10kb": {
-    "lower_ci_us": 534,
-    "mean_us": 537,
-    "upper_ci_us": 541,
+    "lower_ci_us": 746,
+    "mean_us": 749,
+    "upper_ci_us": 753,
     "unit": "microseconds",
-    "_note": "Values are Criterion 95% confidence-interval bounds captured on a GitHub Actions ubuntu-latest hosted runner (two independent runs observed [534–535µs, 537–540µs] upper-CI). The baseline is now CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~596µs). The `drift_alert_upper_ci_us` workaround used in the WSL2-captured baseline is no longer needed and has been removed. The SC-001 16ms absolute target remains the load-bearing constitution gate.",
+    "_note": "Values are Criterion 95% confidence-interval bounds captured on a GitHub Actions ubuntu-latest hosted runner (observed [746–747µs, 749–750µs, 752–753µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~828µs). The SC-001 16ms absolute target remains the load-bearing constitution gate.",
     "target_upper_ci_us": 16000
   },
   "decoder_10kb_one_mangled_region": {
-    "lower_ci_us": 669,
-    "mean_us": 672,
-    "upper_ci_us": 681,
+    "lower_ci_us": 917,
+    "mean_us": 918,
+    "upper_ci_us": 919,
     "unit": "microseconds",
-    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a GitHub Actions ubuntu-latest hosted runner (two independent runs observed [668–673µs, 679–680µs] upper-CI). The baseline is now CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~750µs). The `drift_alert_upper_ci_us` workaround used in the WSL2-captured baseline is no longer needed and has been removed. The SC-002 18ms absolute target remains the load-bearing constitution gate.",
+    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a GitHub Actions ubuntu-latest hosted runner (observed [916–917µs, 917–918µs, 918–919µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~1011µs). The SC-002 18ms absolute target remains the load-bearing constitution gate.",
     "target_upper_ci_us": 18000
   },
   "lint_scaling": {
