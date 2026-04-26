@@ -610,6 +610,32 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- Missing-delimiter insertion (issue #133 PR 3). Walks the
+    //      fuzzy-corrected text, inserts `//` at category-transition
+    //      whitespace gaps. Tagged with `FixSource::DecoderPosterior`
+    //      because the recovery is structural (missing punctuation),
+    //      not a probabilistic guess like the classification heuristic
+    //      below — auto-applies at default threshold when its strict
+    //      parse + scoring outranks competing candidates.
+    if let Some(delim_inserted) = try_insert_delimiter(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        // No FeatureId for delimiter insertion in the audit schema.
+        // Reuse `BaseRateCommonMarking` with a small negative delta
+        // to record that this attempt required cleanup beyond the
+        // raw input — keeps the canonical-arrived-clean attempt
+        // ranked higher when both produce the same shape.
+        features.push(FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: -0.3,
+        });
+        emit(
+            delim_inserted.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Position-aware classification heuristic (issue #133 PR 2).
     //      Runs LAST so the dedup-keep-first guard above lets a
     //      vocab-based attempt with the same canonical bytes win the
@@ -1053,6 +1079,270 @@ fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
         b'X' => Some("S"),
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Missing-delimiter insertion (issue #133 PR 3)
+// ---------------------------------------------------------------------------
+
+/// Try to insert missing `//` segment separators at category-transition
+/// boundaries.
+///
+/// CAPCO grammar requires `//` between segments —
+/// `CLASSIFICATION//SCI_BLOCK//SAR_BLOCK//DISSEM_BLOCK`. Real-world
+/// transcription frequently substitutes whitespace for one or more
+/// `//` separators, producing inputs the strict parser cannot
+/// recover (`SECRET//NOFORN EXDIS` strict-parses as
+/// `classification: Secret, dissem: [Nf]` with `EXDIS` left as
+/// `TokenKind::Unknown`; the decoder's step-3a Unknown-span filter
+/// then discards the candidate).
+///
+/// This helper walks the input left-to-right and inserts `//` at
+/// whitespace gaps that separate two distinct CAPCO segments. Two
+/// rules drive insertion:
+///
+/// 1. **Classification → next segment.** Tokens at the start of the
+///    input are classification-context (`U`, `R`, `C`, `S`, `TS`,
+///    `UNCLASSIFIED`, …, plus the `TOP SECRET` two-word
+///    classification). The first non-classification token after the
+///    classification phrase, when no `//` has been emitted yet,
+///    triggers `//` insertion before it. Covers the
+///    `TOP SECRET HCS-P INTEL OPS//ORCON/NOFORN` / `SECRET REL TO
+///    USA, AUS, GBR` family.
+///
+/// 2. **Hard-splitter dissem long-form.** A small set of unambiguous
+///    long-form dissem control tokens (`NOFORN`, `ORCON`, `PROPIN`,
+///    `IMCON`, `RELIDO`, `RSEN`, `EYESONLY`, `EXDIS`, `NODIS`,
+///    `LIMDIS`, `FOUO`, `FISA`, `DSEN`) ALWAYS start a new segment
+///    when they appear after a whitespace gap, regardless of
+///    preceding context — these tokens have no in-segment role
+///    inside SCI/SAR/REL TO blocks. Covers the `NOFORN EXDIS` /
+///    `... SI NOFORN` / `... HCS-P INTEL OPS ORCON/NOFORN` family.
+///
+/// Exceptions (do NOT insert):
+///
+/// - `SBU NOFORN` / `LES NOFORN` — non-IC dissem **banner long
+///   forms** for `NonIcDissem::SbuNf` / `NonIcDissem::LesNf`. When
+///   the previous token is `SBU` or `LES`, treat `NOFORN` as part
+///   of the multi-word atom.
+///
+/// Returns `None` when no insertion was made — the caller should
+/// not emit a duplicate of the input.
+///
+/// # Bounded
+///
+/// Hard-capped at [`MAX_DELIMITER_INSERTIONS`] insertions per call.
+/// More than four insertions in a single marking is suspicious and
+/// likely indicates the input isn't a CAPCO marking at all (or the
+/// helper is wrong); rather than emit a wildly-rewritten candidate,
+/// we cap and let the result strict-parse on the partial rewrite.
+///
+/// # Out of v1 scope (deferred)
+///
+/// - SCI starter insertion (`TOP SECRET SI//...` cases): would
+///   require detecting SCI-shape tokens in classification context.
+///   `SI`, `HCS`, `TK` are 2-3 char tokens and could collide with
+///   compartment names in some SAR contexts; the safer path is to
+///   wait for the v2 / corpus-confidence work in the planned PR 4.
+/// - SAR-prefix insertion (`TOP SECRET SAR-BP//...`): same reason.
+/// - SPECIAL ACCESS REQUIRED-... insertion: lookahead-multi-word
+///   pattern, separate detection logic.
+///
+/// These three categories together account for ~6 of the 17
+/// MissingDelimiter fixtures; the v1 hard-splitter + classification-
+/// boundary rules cover the remaining ~11. Follow-up tracked.
+fn try_insert_delimiter(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut result = String::with_capacity(text.len() + 8);
+    let mut insertions = 0;
+
+    let mut prev_token: Option<&str> = None;
+    let mut in_classification = true;
+    let mut seen_double_slash = false;
+
+    let mut i = 0;
+    while i < bytes.len() {
+        // Existing `//` delimiter — copy and reset state.
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            result.push_str("//");
+            seen_double_slash = true;
+            in_classification = false;
+            prev_token = None;
+            i += 2;
+            continue;
+        }
+
+        // Whitespace run — collect, then look at next token.
+        if bytes[i].is_ascii_whitespace() {
+            let ws_start = i;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            let ws = &text[ws_start..i];
+
+            // Find the next token (alnum + internal `-`) starting at `i`.
+            let token_start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-') {
+                i += 1;
+            }
+            if token_start == i {
+                // Whitespace then non-token character (e.g., `,` or `/` or end).
+                // Just copy the whitespace and continue.
+                result.push_str(ws);
+                continue;
+            }
+            let next_token = &text[token_start..i];
+
+            let should_insert = decide_insert_delimiter(
+                prev_token,
+                next_token,
+                in_classification,
+                seen_double_slash,
+            );
+
+            if should_insert && insertions < MAX_DELIMITER_INSERTIONS {
+                result.push_str("//");
+                insertions += 1;
+                seen_double_slash = true;
+                in_classification = false;
+            } else {
+                result.push_str(ws);
+            }
+            result.push_str(next_token);
+
+            // Update state.
+            if !is_classification_continuation(next_token, prev_token) {
+                in_classification = false;
+            }
+            prev_token = Some(next_token);
+            continue;
+        }
+
+        // Non-whitespace, non-`//` character — likely a `/` (single
+        // slash, used as intra-segment separator e.g.
+        // `ORCON/NOFORN`), comma, paren, or part of a token. Copy
+        // verbatim and continue. Tokens that contain only alnum + `-`
+        // are handled in the whitespace branch via the lookahead;
+        // the leading-token-at-position-0 case enters here.
+        let other_start = i;
+        // Take a token (alnum + internal `-`) if at one.
+        if bytes[i].is_ascii_alphanumeric() {
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-') {
+                i += 1;
+            }
+            let leading_token = &text[other_start..i];
+            result.push_str(leading_token);
+            // Update prev_token / classification state for the
+            // leading token (no insertion possible at position 0).
+            if !is_classification_continuation(leading_token, prev_token) {
+                in_classification = false;
+            }
+            prev_token = Some(leading_token);
+            continue;
+        }
+
+        // Single non-token character (`/`, `(`, `)`, `,`).
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+
+    if insertions == 0 { None } else { Some(result) }
+}
+
+/// Hard cap on the number of `//` insertions per call. More than 4
+/// in a single marking is very suspicious — real markings rarely
+/// have that many segments at all. The cap prevents the helper
+/// from rewriting non-marking prose that happens to contain
+/// splitter words.
+const MAX_DELIMITER_INSERTIONS: usize = 4;
+
+/// Decide whether to insert `//` at a whitespace gap before
+/// `next_token`. See [`try_insert_delimiter`] doc for the rules.
+fn decide_insert_delimiter(
+    prev_token: Option<&str>,
+    next_token: &str,
+    in_classification: bool,
+    seen_double_slash: bool,
+) -> bool {
+    // Multi-word atom exceptions: don't split between SBU/LES and
+    // their NOFORN companion (banner long forms for NonIcDissem
+    // SbuNf/LesNf).
+    if next_token == "NOFORN" && matches!(prev_token, Some("SBU") | Some("LES")) {
+        return false;
+    }
+
+    // Rule 1: classification → next segment. The first non-
+    // classification token after the classification phrase, when no
+    // `//` has been emitted yet.
+    if in_classification && !seen_double_slash && !is_classification_token(next_token) {
+        return true;
+    }
+
+    // Rule 2: hard-splitter dissem long-form. These tokens always
+    // start a new segment when they appear after whitespace.
+    is_hard_splitter(next_token)
+}
+
+/// True when `token` is a classification short or long form that
+/// can appear in classification context.
+fn is_classification_token(token: &str) -> bool {
+    matches!(
+        token,
+        "U" | "R"
+            | "C"
+            | "S"
+            | "TS"
+            | "TOP"
+            | "UNCLASSIFIED"
+            | "RESTRICTED"
+            | "CONFIDENTIAL"
+            | "SECRET"
+    )
+}
+
+/// True when `next_token` continues the classification phrase from
+/// `prev_token`. Specifically: `TOP SECRET` is the only multi-word
+/// classification CAPCO recognizes; `SECRET` after `TOP` continues
+/// the classification.
+fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) -> bool {
+    if next_token == "SECRET" && prev_token == Some("TOP") {
+        return true;
+    }
+    is_classification_token(next_token)
+}
+
+/// True when `token` is an unambiguous segment-starting dissem
+/// long-form. These tokens have no in-segment role inside SCI / SAR /
+/// REL TO blocks, so seeing one after whitespace always indicates a
+/// missing `//` separator. Pinned by
+/// `try_insert_delimiter_inserts_before_long_form_dissem`.
+///
+/// Excluded from this set:
+///
+/// - 2-char short forms (`NF`, `OC`, `PR`, `IMC`, `RS`) — could
+///   collide with SAR compartment / sub-compartment naming.
+/// - SCI starters (`SI`, `HCS`, `TK`, `KDK`) — 2-3 char tokens that
+///   appear in compartment context.
+/// - SAR prefixes (`SAR-*`) — handled in v2 with classification-
+///   context lookahead.
+fn is_hard_splitter(token: &str) -> bool {
+    matches!(
+        token,
+        "NOFORN"
+            | "ORCON"
+            | "ORCON-USGOV"
+            | "PROPIN"
+            | "IMCON"
+            | "RELIDO"
+            | "RSEN"
+            | "EYESONLY"
+            | "FOUO"
+            | "FISA"
+            | "DSEN"
+            | "EXDIS"
+            | "NODIS"
+            | "LIMDIS"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1578,6 +1868,164 @@ mod tests {
             zone: None,
             position: None,
             classification_floor: None,
+        }
+    }
+
+    // ----- Missing-delimiter insertion (issue #133 PR 3) -----
+
+    #[test]
+    fn try_insert_delimiter_inserts_before_long_form_dissem() {
+        // Hard-splitter rule: long-form dissem after whitespace.
+        let cases: &[(&str, &str)] = &[
+            ("SECRET//NOFORN EXDIS", "SECRET//NOFORN//EXDIS"),
+            ("SECRET//NOFORN ORCON", "SECRET//NOFORN//ORCON"),
+            ("SECRET//SI ORCON", "SECRET//SI//ORCON"),
+        ];
+        for (input, expected) in cases {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should produce {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_classification_boundary() {
+        // Rule 1: classification → next segment.
+        let cases: &[(&str, &str)] = &[
+            (
+                "SECRET REL TO USA, AUS, GBR",
+                "SECRET//REL TO USA, AUS, GBR",
+            ),
+            ("SECRET NOFORN", "SECRET//NOFORN"),
+            ("TOP SECRET NOFORN", "TOP SECRET//NOFORN"),
+        ];
+        for (input, expected) in cases {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should produce {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_top_secret() {
+        // TOP SECRET is the only multi-word classification — the
+        // helper must not insert `//` between TOP and SECRET.
+        // The first rule fires only on the first NON-classification
+        // token; SECRET after TOP is a classification continuation.
+        let result = try_insert_delimiter("TOP SECRET//NF");
+        // No insertion needed at all (input is already canonical).
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_sbu_noforn() {
+        // SBU NOFORN is the non-IC dissem banner long form for
+        // SbuNf — must remain a single multi-word atom.
+        let result = try_insert_delimiter("SECRET//SBU NOFORN");
+        assert_eq!(result, None, "SBU NOFORN must not be split; got {result:?}");
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_les_noforn() {
+        // LES NOFORN is the non-IC dissem banner long form for
+        // LesNf — must remain a single multi-word atom.
+        let result = try_insert_delimiter("SECRET//LES NOFORN");
+        assert_eq!(result, None, "LES NOFORN must not be split; got {result:?}");
+    }
+
+    #[test]
+    fn try_insert_delimiter_no_op_on_canonical() {
+        // Already-canonical inputs produce None (no insertion).
+        for input in &[
+            "SECRET//NOFORN",
+            "TOP SECRET//SI//NOFORN",
+            "(S//NF)",
+            "UNCLASSIFIED",
+        ] {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result, None,
+                "input {input:?} is canonical; should produce None, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_capped_at_max_insertions() {
+        // Pathological input with many splitters — the cap should
+        // limit insertions. Hard cap is `MAX_DELIMITER_INSERTIONS`
+        // (4 today); 6 splitters in the input should produce at
+        // most 4 insertions in the output.
+        let input = "SECRET NOFORN ORCON PROPIN IMCON RELIDO RSEN";
+        let result = try_insert_delimiter(input);
+        assert!(result.is_some());
+        let inserted = result.unwrap();
+        let inserted_count = inserted.matches("//").count();
+        assert!(
+            inserted_count <= MAX_DELIMITER_INSERTIONS,
+            "must not exceed MAX_DELIMITER_INSERTIONS={MAX_DELIMITER_INSERTIONS}; \
+             got {inserted_count} insertions in {inserted:?}"
+        );
+    }
+
+    #[test]
+    fn try_insert_delimiter_preserves_existing_double_slash() {
+        // Existing `//` separators must be preserved verbatim.
+        let result = try_insert_delimiter("SECRET//NOFORN EXDIS");
+        let s = result.expect("should insert");
+        // Three `//` total: original SECRET//NOFORN, plus inserted
+        // NOFORN//EXDIS.
+        let count = s.matches("//").count();
+        assert_eq!(
+            count, 2,
+            "expected 2 `//` total (1 preserved + 1 inserted), got {count} in {s:?}"
+        );
+    }
+
+    #[test]
+    fn is_hard_splitter_covers_documented_long_forms() {
+        // Pin the hard-splitter set against accidental shrinkage —
+        // every long-form dissem from the doc table must remain
+        // a hard splitter.
+        for token in &[
+            "NOFORN",
+            "ORCON",
+            "ORCON-USGOV",
+            "PROPIN",
+            "IMCON",
+            "RELIDO",
+            "RSEN",
+            "EYESONLY",
+            "FOUO",
+            "FISA",
+            "DSEN",
+            "EXDIS",
+            "NODIS",
+            "LIMDIS",
+        ] {
+            assert!(
+                is_hard_splitter(token),
+                "{token:?} must be a hard splitter (issue #133 PR 3)"
+            );
+        }
+    }
+
+    #[test]
+    fn is_hard_splitter_excludes_short_forms() {
+        // Short-form abbreviations (NF, OC, PR, IMC, RS) are
+        // intentionally excluded — they could collide with SAR
+        // compartment / sub-compartment naming.
+        for token in &["NF", "OC", "PR", "IMC", "RS"] {
+            assert!(
+                !is_hard_splitter(token),
+                "{token:?} is intentionally NOT a hard splitter (collision risk)"
+            );
         }
     }
 

@@ -128,28 +128,31 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// improvement would mask here. Both are needed.
 ///
 /// Current measured rate (2026-04-26, branch
-/// `fix/issue-133-pr1-long-form-dissem-vocab` after issue #133 PR 1
-/// landed the dissem banner-form additions to `correction_vocab`):
+/// `fix/issue-133-pr3-missing-delimiter` after issue #133 PR 3
+/// landed `try_insert_delimiter` — the helper inserts `//` at
+/// category-transition whitespace gaps via classification-boundary
+/// (Rule 1) and hard-splitter dissem-long-form (Rule 2) rules):
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
 /// | GarbledDelimiter  | 51       | 51    | 100.0%  |
-/// | MissingDelimiter  | 0        | 17    |   0.0%  |
+/// | MissingDelimiter  | 15       | 17    |  88.2%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
 /// | Typo              | 58       | 130   |  44.6%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **170**  | **260** | **65.4%** |
+/// | **Aggregate**     | **185**  | **260** | **71.2%** |
 ///
-/// 62% gives ~3 percentage-point noise margin against the 65.4%
-/// floor. The gap to SC-004's 85% target is concentrated in the
-/// remaining Typo cases (short-token classification typos like
-/// `UK→TK`, `TPP→TOP`, `XS→TS` requiring the issue #133 PR 2
-/// position-aware short-token heuristic; SAR-prefix typos like
-/// `USAR→SAR`; missing-hyphen forms like `SARBP→SAR-BP`) and the
-/// MissingDelimiter class (issue #133 PR 3 candidate generator
-/// that inserts `//` at category transitions).
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.62;
+/// 68% gives ~3 percentage-point noise margin against the 71.2%
+/// floor. Remaining gap to SC-004's 85% target: (a) the 2
+/// unresolved MissingDelimiter fixtures need SCI-starter
+/// (`TOP SECRET HCS-P//...`) and SAR-prefix (`TOP SECRET SAR-BP//...`)
+/// insertion rules — those need classification-context lookahead
+/// and are deferred to PR 4. (b) Typo class still concentrates
+/// 3+ char tail-token typos (`UK→TK`, `USAR→SAR`, missing-hyphen
+/// SAR forms) outside the PR 2 heuristic's scope — addressed by
+/// extending the corpus-confidence work in PR 4.
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.68;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -170,29 +173,27 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.62;
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
 /// - **`Typo`** pinned at `0.42` (~3 percentage points below the
-///   current 58/130 = 44.6% rate after the issue #133 PR 1 dissem
-///   long-form vocab fix). Wide-enough margin to absorb one or
-///   two fixtures dropping; a sustained drop trips the gate.
-///   Ratchet up as #133 PR 2 (position-aware short-token typos)
-///   and PR 3 (missing-delimiter inserter) land.
-/// - **`MissingDelimiter`** pinned at `0.00`. Currently 0/17 — no
-///   regression is possible below zero. The slot is included so
-///   the entry-count invariant in the test catches a class going
-///   missing entirely (e.g., fixture-tree corruption that empties
-///   the directory), and so the ratchet step when the
-///   missing-delimiter decoder gap closes is "edit this floor",
-///   not "remember to add this class".
+///   current 58/130 = 44.6% rate). Wide-enough margin to absorb
+///   one or two fixtures dropping; a sustained drop trips the
+///   gate. Ratchet up as #133 PR 4 corpus-confidence work lands.
+/// - **`MissingDelimiter`** pinned at `0.85` (~3 percentage points
+///   below the current 15/17 = 88.2% rate after #133 PR 3 landed
+///   `try_insert_delimiter`). The 2 remaining unresolved fixtures
+///   need SCI-starter / SAR-prefix / SPECIAL-ACCESS-REQUIRED
+///   insertion rules deferred to PR 4.
 ///
 /// Last ratcheted (2026-04-26, branch
-/// `fix/issue-133-pr1-long-form-dissem-vocab`) to the rates
-/// observed after the dissem banner-form vocab extension landed
-/// in `marque-ism::token_set::EXTENDED_CORRECTION_VOCAB`. The
-/// only class that moved from the prior baseline is `Typo`
-/// (20.0% → 44.6%, +32 fixtures resolved); aggregate moved
-/// 53.1% → 65.4%. No other scoring or recognition code changed.
+/// `fix/issue-133-pr3-missing-delimiter`) to the rates observed
+/// after the missing-delimiter helper landed in
+/// `marque_engine::decoder::try_insert_delimiter`. Two classes
+/// moved from the prior baseline: `MissingDelimiter`
+/// (0.0% → 88.2%, +15 fixtures) and the aggregate
+/// (65.4% → 71.2%). No other scoring or recognition code
+/// changed; the PR 2 heuristic is unchanged from its
+/// previous-baseline behavior on the existing corpus.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
-    ("MissingDelimiter", 0.00),
+    ("MissingDelimiter", 0.85),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
     ("Typo", 0.42),
