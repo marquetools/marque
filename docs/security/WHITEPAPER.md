@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.13 · **Last amended**: 2026-04-26
+**Document version**: 0.14 · **Last amended**: 2026-04-26
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -313,8 +313,10 @@ convention.
 Cited: `crates/engine/src/engine.rs:504, 517, 612` (production call
 sites) and Constitution V "Architectural Invariants".
 
-**Status**: `[LANDED]` for call-site discipline; `[PARTIAL]` for
-type-level seal — see gap register (P1-5).
+**Status**: `[LANDED]`. Type-level seal landed in v0.12 via
+`EnginePromotionToken` (private `_seal: ()` ZST, `crates/rules/src/lib.rs`)
+threaded as the sixth argument of `__engine_promote`. See gap register
+row 5 (struck through) and §6.2 for the full call-site analysis.
 
 ### 3.5 Rule and recognizer statelessness
 
@@ -345,7 +347,12 @@ Citations are verified at PR time and re-verified at propagation.
 Principle VIII (Constitution) is the full contract; SC-009 and FR-021
 are the spec-side enforcement.
 
-**Status**: `[PARTIAL]` — systematic citation audit task T089 is open.
+**Status**: `[LANDED]`. T089 citation-verification pass landed in
+PR #154 (commit `cdc0866`); every `Constraint`, `PageRewrite`, and
+`TokenMetadataFull` citation re-verified against
+`crates/capco/docs/CAPCO-2016.md` and `crates/ism/schemas/ISM-v2022-DEC/`.
+Future propagations re-verify per Constitution VIII; FR-021 + SC-009
+remain the standing enforcement.
 
 ---
 
@@ -1330,8 +1337,11 @@ CI pipelines inject `MARQUE_CLASSIFIER_ID` via environment.
 | `MARQUE_AUDIT_SCHEMA` | Build-time audit schema selector (Phase D; FR-014) |
 | `MARQUE_ENRON_CORPUS` | Required for corpus regeneration in `tools/corpus-analysis/` |
 
-**Status**: `[LANDED]` for §§11.1–11.4 behaviors; `[PARTIAL]` for
-`MARQUE_AUDIT_SCHEMA` wiring.
+**Status**: `[LANDED]`. `MARQUE_AUDIT_SCHEMA` wired in v0.5 via
+PR #122 — `crates/engine/build.rs` reads the env var, validates against
+the closed accept-list `["marque-mvp-1", "marque-mvp-2"]`, and emits
+`pub const AUDIT_SCHEMA_VERSION` consumed by `marque/src/render.rs` and
+`crates/wasm/src/lib.rs`. See gap register row 1 (struck through).
 
 ---
 
@@ -1441,10 +1451,12 @@ implications:
 - Source revisions are planned migrations, not silent refreshes.
 
 SC-009 (corpus-wide citation verification) and FR-021 (citation
-verified at commit) are the spec-side enforcement. Task T089 is the
-systematic audit pass.
+verified at commit) are the spec-side enforcement. T089 was the
+one-shot systematic audit pass and landed in PR #154 (commit
+`cdc0866`); the standing FR-021 commit-time verification is the
+ongoing guard.
 
-**Status**: `[PARTIAL]`.
+**Status**: `[LANDED]`.
 
 ---
 
@@ -1534,3 +1546,4 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.11 | 2026-04-25 | Documentation drift fix — Gap #9 (P1) closed retroactively. The strict-context floor was wired by Phase 4 PR #114 (commit `bc57bfc`, T045/T062/FR-011): `DecoderRecognizer::recognize` returns zero-candidate `Parsed::Ambiguous` when `cx.strict_evidence` is set, the engine drives `strict_evidence: !self.deep_scan` per-candidate, the FR-011 per-page classification floor accumulates from strict-path recognitions only, and four tests in `crates/engine/tests/decoder_recovery.rs` plus the inline `decoder_defers_to_strict_when_strict_evidence_is_set` test pin the behavior. §9.3 expanded with the wiring citations. Gap register row 9 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.12 | 2026-04-25 | Gap #5 (P1) closed — type-level seal for `AppliedFix::__engine_promote`. New `EnginePromotionToken` ZST in `marque-rules` carries a private `_seal: ()` field; brace construction from outside `marque-rules` is rejected by Rust's privacy rules. The token threads as the sixth argument of `__engine_promote`. Single bypass surface (`EnginePromotionToken::__engine_construct()`) is `#[doc(hidden)]` and engine-only by convention; production code mints it from exactly one place — the private `engine_promotion_token()` helper in `crates/engine/src/engine.rs` — feeding the three production promotion sites. Two test-fixture carve-outs (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) updated with inline carve-out comments. Acceptance: `compile_fail` doctest on `EnginePromotionToken` pins brace-construction rejection at the doctest's separate-crate compile; `crates/rules/tests/engine_promotion_seal.rs::documented_door_can_mint_token_from_outside_marque_rules` proves the documented door works. §6.2 rewritten. Gap register row 5 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.13 | 2026-04-26 | Last P1 gap closed — gap #7, per-document timeout. Spec 005 landed in six PRs over four phases. Header date bumped 2026-04-25 → 2026-04-26 to match this entry; the 0.10 → 0.12 entries date-stamped 2026-04-25 are unchanged. **Phase 1** (PR #161): foundational types — `LintOptions { deadline: Option<Instant> }` and `FixOptions { deadline, threshold_override }` (both `#[non_exhaustive]`), `Engine::lint_with_options` / `fix_with_options`, `EngineError` runtime-error enum, back-compat shims preserved. Zero behavior change. **Phase 2** (PR #162): cooperative cancellation wired in `Engine` at three boundaries — pre-pass, per-candidate, per-fix-application — producing truncated `LintResult` for lint and `Err(EngineError::DeadlineExceeded { partial_lint })` for fix per Constitution V Principle V. `crates/engine/benches/deadline_overhead.rs` bench gated at 10 % (target 2 %; tightening blocked on host-clock variance). **Phase 3a** (PR #163): CLI `--deadline <humantime>` flag, `EX_TEMPFAIL` (75) on fix expiry, `EX_USAGE` (64) on `--deadline 0`, JSON-mode trailing-narration suppressed to keep the NDJSON pipe-clean, `--dry-run` re-lint reuses the same `FixOptions`. **Phase 3b** (PR #164): server `X-Marque-Deadline: <u64-ms>` header, `MARQUE_MAX_DEADLINE` env-var cap mirroring `resolve_body_limit`, per-endpoint default 30 s, header-validation-before-body-deserialization ordering invariant, duplicate-header rejection, `400` / `504` / `500`-on-config-overflow response codes, `Marque-Truncated` response header on truncated lint. **Phase 3c** (PR #165): WASM `WasmConfig.deadline_ms: Option<f64>` validated `is_finite() && >= 0.0`, Constitution III runtime-config-restriction analysis recorded in crate-level docs, `WasmConfigCacheKey` projection excludes `deadline_ms`, `with_engine` accepts `FnOnce -> Result<Config, String>` to avoid building `Config` on cache hit, SC-008 byte-identical NDJSON parity preserved at generous and zero deadlines. **Phase 3d** (PR #166): `BatchOptions` gains `#[non_exhaustive]` + `per_doc_deadline: Option<Duration>`, `BatchEngine::lint_many_with_options` / `fix_many_with_options`, `BatchError::DocumentDeadlineExceeded { partial_lint }` per-document with `is_deadline_exceeded()` predicate distinct from `is_panic()` / `is_shutdown()` / `is_cancelled()`. Per-doc `Instant::now() + d` stamping happens AFTER permit acquisition so concurrency-controller wait does not consume the budget; `checked_add` overflow maps to `deadline = now` (engine treats as expired) rather than silently disabling the operator-configured budget. Required infrastructure: `web-time` workspace dep + engine dep; `web_time::Instant` re-exported as `marque_engine::Instant` so the engine's per-candidate `Instant::now()` works on `wasm32-unknown-unknown` (where `std::time::Instant::now()` panics). §9.7 rewritten from `[NON-GOAL]` to `[LANDED]`; §10.1 (CLI), §10.2 (server), §10.3 (WASM) each updated with deadline-handling block; gap register row 7 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.14 | 2026-04-26 | Stale `[PARTIAL]` status notes flipped to `[LANDED]` after a doc-vs-state audit caught four section footers still claiming work-in-progress for items the gap register and Appendix C already record as resolved. **§3.4** (engine-promotion boundary): seal-by-convention claim updated to reflect the v0.12 `EnginePromotionToken` ZST landing (gap row 5 struck through). **§3.7** (authoritative source fidelity): "T089 is open" replaced with the PR #154 / commit `cdc0866` landing reference; FR-021 commit-time verification cited as the standing guard. **§11.4** (environment surface): `MARQUE_AUDIT_SCHEMA` wiring claim replaced with the v0.5 / PR #122 landing — env-var read in `crates/engine/build.rs`, accept-list `["marque-mvp-1", "marque-mvp-2"]`, `pub const AUDIT_SCHEMA_VERSION` consumed by CLI + WASM emitters. **§15** (citation integrity): same T089 update as §3.7 plus the FR-021 standing-guard framing. No code changes — pure doc-state reconciliation. The two genuinely-open `[PARTIAL]` notes (§3.3 WASM-safe-set drift compile-fail test absent; §10.2 server auth middleware un-wired) and the two `[PLANNED]` v0.2 cache notes (§6.8, §12.1) stand. | Adam Poulemanos (with Claude Code) |
