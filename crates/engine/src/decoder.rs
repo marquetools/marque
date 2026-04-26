@@ -91,7 +91,7 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
-    CapcoTokenSet, Classification, SciControlSystem,
+    CapcoTokenSet, Classification, SciControl, SciControlBare, SciControlSystem,
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
@@ -2315,47 +2315,16 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 // SCI delimiter recovery (issue #198 — #133 PR 10)
 // ---------------------------------------------------------------------------
 
-/// Bare SCI control systems from `CVEnumISMSCIControls.xml`.
-///
-/// Closed list — the SCI grammar's *control system* slot is CVE-bounded,
-/// even though compartments and sub-compartments are agency-extensible
-/// per CAPCO-2016 §A.6 p16. Used by [`repair_sci_token`] to detect
-/// concatenated and wrong-delimiter pairs.
-const SCI_BARE_CONTROL_SYSTEMS: &[&str] = &["BUR", "HCS", "KLM", "MVL", "RSV", "SI", "TK"];
-
-/// Registered control-compartment compounds from
-/// `CVEnumISMSCIControls.xml`. Used by [`repair_sci_token`] to short-
-/// circuit when a hyphenated token is already a valid CVE entry (so
-/// `SI-G` is left alone, but `SI-TK` rewrites to `SI/TK`).
-const SCI_REGISTERED_COMPOUNDS: &[&str] = &[
-    "HCS-O", "HCS-P", "HCS-X", "KLM-R", "SI-EU", "SI-G", "SI-NK", "TK-BLFH", "TK-IDIT", "TK-KAND",
-];
-
-/// Concatenated forms of [`SCI_REGISTERED_COMPOUNDS`] (the canonical
-/// hyphenated form with the hyphen removed). Pattern A targets.
-///
-/// Listed longest-first so a future loop-based matcher cannot pick the
-/// shorter `SIG` over `SINK` for `SINK` input. The current matcher uses
-/// equality and is order-insensitive, but the ordering convention is
-/// preserved for the safety of any future prefix-matching variant.
-const SCI_CONCATENATED_COMPOUNDS: &[(&str, &str)] = &[
-    ("TKBLFH", "TK-BLFH"),
-    ("TKIDIT", "TK-IDIT"),
-    ("TKKAND", "TK-KAND"),
-    ("HCSO", "HCS-O"),
-    ("HCSP", "HCS-P"),
-    ("HCSX", "HCS-X"),
-    ("KLMR", "KLM-R"),
-    ("SIEU", "SI-EU"),
-    ("SINK", "SI-NK"),
-    ("SIG", "SI-G"),
-];
-
 /// SCI delimiter recovery preprocessing — issue #198, #133 PR 10.
 ///
 /// Repairs three classes of SCI delimiter typos against the closed
-/// CVE-bounded vocabulary in [`SCI_BARE_CONTROL_SYSTEMS`] and
-/// [`SCI_REGISTERED_COMPOUNDS`]:
+/// CVE vocabulary in `CVEnumISMSCIControls.xml`. Vocabulary checks
+/// dispatch through the build-time-generated [`SciControlBare::parse`]
+/// (bare control systems) and [`SciControl::parse`] (the full CVE set
+/// including all registered control-compartment compounds), so the
+/// repair surface tracks ODNI schema updates automatically — no
+/// hand-maintained vocabulary slice to drift out of sync per
+/// Constitution IV (Layer 1 generated predicates):
 ///
 /// - **Pattern A (concatenated compound)**: a token equal to a compound
 ///   with the hyphen removed → canonical hyphenated form. `HCSP →
@@ -2457,32 +2426,56 @@ fn contains_any_sci_root(text: &str) -> bool {
 /// Per-token classifier for SCI delimiter repair. Returns the repaired
 /// token if one of patterns A/B/C matches; otherwise `None`.
 ///
+/// All vocabulary checks dispatch through the build-time-generated
+/// [`SciControlBare::parse`] and [`SciControl::parse`] (from
+/// `marque-ism`'s generated `values.rs`), so the repair surface tracks
+/// `CVEnumISMSCIControls.xml` automatically. New CVE compounds added
+/// in a future ODNI schema bump (e.g., a hypothetical `SI-XYZ`) are
+/// auto-discovered by Pattern A without any code change here.
+///
 /// Pattern dispatch order:
-/// 1. Pattern A (exact match against [`SCI_CONCATENATED_COMPOUNDS`])
-/// 2. Pattern C (token contains `-`)
-/// 3. Pattern B (no `-`, length 4–6, splits into two bare CS)
+/// 1. Pattern A (split into bare-CS prefix + suffix; if
+///    `{prefix}-{suffix}` is a registered CVE value, return it)
+/// 2. Pattern C (token contains `-`, neither side is a registered
+///    compound's compartment, both halves are bare CS)
+/// 3. Pattern B (no `-`, splits into two bare CS, unambiguous)
 fn repair_sci_token(token: &str) -> Option<String> {
     if token.is_empty() {
         return None;
     }
 
-    // Pattern A — concatenated registered compound.
-    for &(concat, canonical) in SCI_CONCATENATED_COMPOUNDS {
-        if token == concat {
-            return Some(canonical.to_string());
+    let len = token.len();
+
+    // Pattern A — concatenated registered compound. Walk every split
+    // where the prefix is a bare control system; if `{prefix}-{suffix}`
+    // is in the CVE vocabulary, return the canonical hyphenated form.
+    // Bare CS lengths are 2 or 3; suffix length range comes from CVE
+    // (max compartment-form suffix is 4 chars, e.g. TK-BLFH).
+    if !token.contains('-') && (3..=8).contains(&len) {
+        for &split in &[2usize, 3] {
+            if split >= len {
+                continue;
+            }
+            let prefix = &token[..split];
+            let suffix = &token[split..];
+            if SciControlBare::parse(prefix).is_some() {
+                let canonical = format!("{prefix}-{suffix}");
+                if SciControl::parse(&canonical).is_some() {
+                    return Some(canonical);
+                }
+            }
         }
     }
 
     // Pattern C — wrong delimiter (`-` between two bare CS). Skip if
-    // the whole token is itself a registered compound.
+    // the whole token is itself a registered CVE compound.
     if let Some(dash_pos) = token.find('-') {
-        if SCI_REGISTERED_COMPOUNDS.contains(&token) {
+        if SciControl::parse(token).is_some() {
             return None;
         }
         let prefix = &token[..dash_pos];
         let suffix = &token[dash_pos + 1..];
-        if SCI_BARE_CONTROL_SYSTEMS.contains(&prefix) && SCI_BARE_CONTROL_SYSTEMS.contains(&suffix)
-        {
+        if SciControlBare::parse(prefix).is_some() && SciControlBare::parse(suffix).is_some() {
             return Some(format!("{prefix}/{suffix}"));
         }
         return None;
@@ -2493,7 +2486,6 @@ fn repair_sci_token(token: &str) -> Option<String> {
     // [4..=6]. Try splits at positions 2 and 3 (the only split points
     // that can yield two valid bare-CS halves) and require an
     // unambiguous match.
-    let len = token.len();
     if !(4..=6).contains(&len) {
         return None;
     }
@@ -2508,8 +2500,7 @@ fn repair_sci_token(token: &str) -> Option<String> {
         }
         let prefix = &token[..split];
         let suffix = &token[split..];
-        if SCI_BARE_CONTROL_SYSTEMS.contains(&prefix) && SCI_BARE_CONTROL_SYSTEMS.contains(&suffix)
-        {
+        if SciControlBare::parse(prefix).is_some() && SciControlBare::parse(suffix).is_some() {
             if found.is_some() {
                 return None;
             }
@@ -4875,6 +4866,28 @@ mod tests {
         // concatenated forms (6 chars) are matched correctly.
         let result = try_sci_delimiter_repair("SECRET//TKKAND//NOFORN");
         assert_eq!(result.as_deref(), Some("SECRET//TK-KAND//NOFORN"));
+    }
+
+    #[test]
+    fn sci_delimiter_repair_schema_coverage_bur_compounds() {
+        // Pattern A is schema-driven via `SciControl::parse`, so it
+        // covers every CVE compound automatically — including the
+        // BUR-* family that an earlier hand-maintained list omitted.
+        // Locks in the schema-derived contract: any future ODNI
+        // schema bump that adds new compounds is auto-covered without
+        // changes to this file.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//BURBLG//NOFORN").as_deref(),
+            Some("SECRET//BUR-BLG//NOFORN"),
+        );
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//BURDTP//NOFORN").as_deref(),
+            Some("SECRET//BUR-DTP//NOFORN"),
+        );
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//BURWRG//NOFORN").as_deref(),
+            Some("SECRET//BUR-WRG//NOFORN"),
+        );
     }
 
     #[test]
