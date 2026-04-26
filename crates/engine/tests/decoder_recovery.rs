@@ -69,7 +69,7 @@ fn sercet_decodes_to_secret_via_edit_distance_one() {
 #[test]
 fn fuzzy_ambiguity_yields_zero_candidate() {
     // `SECRET//RSE` — `RSE` is at fuzzy edit-distance 1 from BOTH
-    // `RS` (insert E) AND `RSEN` (delete N), both of which are in
+    // `RS` (delete E) AND `RSEN` (insert N), both of which are in
     // the extended correction vocab after the issue #133 long-form
     // dissem fix. The matcher returns `None` on the two-way tie,
     // the unknown token passes through to strict parse as
