@@ -16,3 +16,7 @@ The year **is 2026**.
 **Vulnerability:** The basic path traversal check `!absPath.startsWith(DEMO_ROOT)` in the static dev server `demo/bin/serve.js` was flawed. Using `startsWith` allows bypassing the check if a sibling directory exists that starts with the same prefix as `DEMO_ROOT` (e.g., `DEMO_ROOT`="demo", `absPath`="demo-secrets/foo.txt").
 **Learning:** `String.prototype.startsWith()` is never a sufficient mechanism for ensuring a directory constraint or path containment, because file paths are structured with directories separated by slashes, whereas strings are plain character arrays without hierarchy.
 **Prevention:** For custom static servers, properly validate path boundaries by converting user paths to relative paths relative to the intended web root, and verifying they do not start with `..` (ensuring boundary containment) and are not absolute paths. Using `path.relative()` combined with proper boundaries ensures containment without prefix overlap vulnerabilities.
+## 2026-04-26 - [MEDIUM] Missing Security Headers
+**Vulnerability:** The custom dev server in `demo/bin/serve.js` did not set the `X-Content-Type-Options: nosniff` header.
+**Learning:** Without this header, browsers might perform MIME-sniffing and interpret files with incorrect MIME types as executable scripts, which could lead to XSS if a user uploads a malicious file.
+**Prevention:** Always include `X-Content-Type-Options: nosniff` in responses from custom HTTP servers to enforce strict MIME type checking.
