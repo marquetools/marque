@@ -17,10 +17,11 @@
 # across the SC-005 sweep. Fails if R² falls below the `r_squared_min`
 # threshold in `benches/baseline.json`.
 #
-# Three gates are checked:
+# Four gates are checked:
 #   - `lint_10kb`                         (SC-001, target 16ms upper CI)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#   - `deadline_overhead`                 (Spec 005, with-deadline overhead ≤ max_ratio_pct)
 #
 # Per-bench regression policy:
 #   - If `drift_alert_upper_ci_us` is set in `benches/baseline.json` for a

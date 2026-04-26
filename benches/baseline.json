@@ -3,7 +3,7 @@
   "reference_machine": {
     "cpu": "x86_64 GitHub Actions hosted runner (ubuntu-latest, 4-core). See git log for exact capture commit.",
     "profile": "GitHub Actions ubuntu-latest, hosted runner",
-    "rust_version": "1.94+",
+    "rust_version": "1.89",
     "date_captured": "2026-04-26"
   },
   "lint_10kb": {
