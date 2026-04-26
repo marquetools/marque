@@ -82,6 +82,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
     }
 }
 

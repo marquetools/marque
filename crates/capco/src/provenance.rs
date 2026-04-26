@@ -36,7 +36,7 @@
 //! `FixSource::DecoderPosterior`, locking the audit-record provenance
 //! per FR-009 and the data-model spec.
 
-use marque_rules::FeatureContribution;
+use marque_rules::{FeatureContribution, FixSource};
 
 /// Provenance trace recorded when a probabilistic recognizer (the
 /// Phase D decoder) produces a marking. Strict-path recognizers leave
@@ -46,7 +46,7 @@ use marque_rules::FeatureContribution;
 ///
 /// - `canonical_bytes` — the canonicalized byte string the decoder
 ///   accepted. Used by the engine as the replacement text in the
-///   synthetic `FixSource::DecoderPosterior` fix.
+///   synthetic decoder fix.
 /// - `posterior` — the natural-log posterior of the top candidate
 ///   (`prior + Σ feature.delta`, in nats). Negative; closer to zero
 ///   means more probable.
@@ -60,13 +60,31 @@ use marque_rules::FeatureContribution;
 ///   decoder recorded while canonicalizing. Threaded into
 ///   [`Confidence::features`](marque_rules::Confidence::features)
 ///   verbatim.
+/// - `fix_source` — provenance discriminator for the decoder fix
+///   path. [`FixSource::DecoderPosterior`] for vocab-based corrections
+///   (the default decoder pipeline);
+///   [`FixSource::DecoderClassificationHeuristic`] for fixes produced
+///   by the position-aware short-token classification heuristic
+///   (issue #133 PR 2). The engine reads this to choose
+///   `Severity::Fix` vs `Severity::Warn` and to cap
+///   `Confidence::rule` for the heuristic path so the combined
+///   confidence stays below the default `confidence_threshold` of
+///   `0.95` — the heuristic is always-visible but only auto-applies
+///   when the user explicitly opts into a lower threshold.
 ///
 /// Held as `Box<[T]>` (not `Vec<T>`) so the in-memory size after
 /// recognition is the smallest legal representation — markings flow
 /// through `Engine::lint` in tight loops, and a 24-byte `Vec` header
 /// per non-decoder-path marking would inflate the strict-path hot
 /// path for no benefit.
+///
+/// Marked `#[non_exhaustive]` so additional discriminators / sidecar
+/// fields can land in future PRs without breaking external
+/// constructors. Internal construction is in
+/// `marque_engine::decoder` (the decoder pipeline) and
+/// `marque_capco::provenance::tests`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct DecoderProvenance {
     /// Canonicalized bytes that strict-parsed under the decoder.
     pub canonical_bytes: Box<[u8]>,
@@ -77,9 +95,34 @@ pub struct DecoderProvenance {
     pub runner_up_ratio: Option<f32>,
     /// Per-feature contributions recorded during canonicalization.
     pub features: Box<[FeatureContribution]>,
+    /// Provenance discriminator for the decoder fix path. See the
+    /// type-level doc above for the engine's interpretation.
+    pub fix_source: FixSource,
 }
 
 impl DecoderProvenance {
+    /// Construct a `DecoderProvenance` record. Required because the
+    /// struct is `#[non_exhaustive]` and cannot be built with
+    /// struct-literal syntax from other crates (the decoder lives in
+    /// `marque-engine`, this type lives in `marque-capco`).
+    ///
+    /// All fields documented on the struct itself.
+    pub fn new(
+        canonical_bytes: Box<[u8]>,
+        posterior: f32,
+        runner_up_ratio: Option<f32>,
+        features: Box<[FeatureContribution]>,
+        fix_source: FixSource,
+    ) -> Self {
+        Self {
+            canonical_bytes,
+            posterior,
+            runner_up_ratio,
+            features,
+            fix_source,
+        }
+    }
+
     /// Convert the decoder's natural-log posterior into a recognition
     /// confidence in `[0.0, 1.0)` for `Confidence::recognition`.
     ///
@@ -126,6 +169,7 @@ mod tests {
                 id: FeatureId::EditDistance1,
                 delta: -0.5,
             }]),
+            fix_source: FixSource::DecoderPosterior,
         }
     }
 
