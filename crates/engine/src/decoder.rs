@@ -998,12 +998,22 @@ const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
 /// intentionally narrow — wider sets produce more false positives
 /// in normal prose.
 ///
-/// **Length 3** (issue #133 PR 8):
+/// **Length 3** (issue #133 PR 8) — exactly one mapping:
 /// - `OTP` → `TOP` (T↔O transposition; standard Levenshtein dist 2,
 ///   blocked by `MIN_USEFUL_CONFIDENCE` for 3-char inputs at dist 2,
 ///   so the vocab path can't catch it even with `TOP` in vocab).
-///   Plus other transposition / common-prefix variants when they
-///   appear in the leading classification slot.
+///
+/// The 3-char rule is intentionally a single hardcoded mapping —
+/// the dense 3-char trigraph vocab (`TON`, `TUR`, `TWN`, …, 289
+/// entries) means a wider "all transpositions of TOP" rule
+/// would generate too many false positives. Other corpus-attested
+/// 3-char `TOP` typos (`TPP`, `UOP`) are at standard Levenshtein
+/// dist 1 from the bare `TOP` in `EXTENDED_CORRECTION_VOCAB` and
+/// recover via the vocab path; only transposition (which standard
+/// Levenshtein scores as dist 2) needs the heuristic. See
+/// [`try_3char_classification_heuristic`] for the implementation
+/// and the `try_3char_classification_heuristic_only_matches_otp`
+/// regression-pin for the narrow-scope policy.
 ///
 /// **Length 2** (checked second):
 /// - `[T, R, Y, H, G][A, W, E, Z, S]` → `TS` (e.g., `RS`, `YS`, `HE`)
@@ -1028,7 +1038,13 @@ const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
 ///
 /// **Bare canonical**: returns `None` when the leading token is
 /// already a known classification short form (`U`, `R`, `C`, `S`,
-/// `TS`). The strict parser would already accept those.
+/// `TS`) OR the bare leading word `TOP` of the two-word
+/// `TOP SECRET` classification. PR 8 added `TOP` to the canonical
+/// short-circuit set because the new length-3 `OTP→TOP` heuristic
+/// would otherwise have to walk the heuristic path on every
+/// already-canonical `TOP SECRET//...` input. The strict parser
+/// already accepts all of these. See
+/// [`is_canonical_short_classification`] for the implementation.
 ///
 /// # CAB markings
 ///
