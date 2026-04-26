@@ -127,10 +127,9 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-26, branch
-/// `fix/issue-133-pr7-2char-tail-fuzzy` after issue #133 PR 7 landed
+/// Current measured rate (2026-04-26, after issue #133 PR 7 landed
 /// the `try_collapse_stray_char_slash` recovery pass in
-/// `crates/engine/src/decoder.rs`. The pass walks the fuzzy-corrected
+/// `crates/engine/src/decoder.rs`): the pass walks the fuzzy-corrected
 /// text looking for `<alnum>/<single_alnum_char>/<alnum>` patterns
 /// and emits three candidate transforms (drop X, right-attach X,
 /// left-attach X) per match — the strict parser's
@@ -197,9 +196,9 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.75;
 ///   losing to the absorbing parse. Any future fixture that
 ///   regresses fails the gate.
 ///
-/// Last ratcheted (2026-04-26, branch
-/// `fix/issue-133-pr7-2char-tail-fuzzy`) to the rates observed
-/// after `try_collapse_stray_char_slash` landed. One class moved:
+/// Last ratcheted (2026-04-26, issue #133 PR 7) to the rates
+/// observed after `try_collapse_stray_char_slash` landed. One class
+/// moved:
 /// `Typo` (50.0% → 56.9%, +9 fixtures); the aggregate moved
 /// (74.6% → 78.1%). All +9 came from `<alnum>/<single_alnum_char>/
 /// <alnum>` shapes — drop-X (`/R/`/`/L/`/`/M/`/`/U/` between two
