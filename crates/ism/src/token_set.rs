@@ -49,9 +49,39 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
         .expect("CVE token automaton construction failed")
 });
 
+/// SAR structural keywords (CAPCO-2016 §H.5 p100, "SAR-" indicator and
+/// "SPECIAL ACCESS REQUIRED-" full form), included in the fuzzy
+/// correction vocabulary so OCR/transcription typos in the indicator
+/// keywords (`SPCIAL`, `CCESS`, `SEPCIAL`, etc.) get corrected to the
+/// canonical form before the strict SAR parser's literal `starts_with`
+/// matches in `crates/core/src/parser.rs::parse_sar_category` run.
+///
+/// These keywords are NOT in `ALL_CVE_TOKENS` because the ODNI
+/// `CVEnumISMSAR.xml` is empty — SAR program identifiers are
+/// agency-assigned codewords not centrally registered. The structural
+/// SAR parser handles `SAR-`/`SPECIAL ACCESS REQUIRED-` as fixed
+/// literal indicator strings, but the fuzzy matcher had no way to
+/// recover a typo in those keywords because they weren't in any
+/// vocabulary it consulted. Issue #133 PR 6.
+///
+/// `REQUIRED` is intentionally excluded: in real corpus inputs it is
+/// always followed immediately by `-<program-nickname>` (e.g.,
+/// `REQUIRED-BUTTER`), and the decoder's `scan_token` includes
+/// internal hyphens in a single token, so `REQUIRED-BUTTER` is one
+/// 14-character token that no fuzzy correction targeting `REQUIRED`
+/// (8 chars) can reach within `MAX_EDIT_DISTANCE = 2`. Adding
+/// `REQUIRED` would be a no-op for this hot path; if a future
+/// fixture surfaces with `REQUIRED` as an isolated token (e.g.,
+/// `SPECIAL ACCESS REQUIRED -BUTTER`), revisit. `SAR` is similarly
+/// excluded because it is always glued to a program identifier
+/// (`SAR-BP-J12`) — see `try_sar_indicator_repair` in
+/// `crates/engine/src/decoder.rs` for the structural prefix-strip /
+/// missing-hyphen path that handles `USAR-BP` / `SARBP`.
+const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
-/// from [`MARKING_FORMS`] (e.g., `NOFORN`, `ORCON`, `PROPIN`, `EXDIS`,
-/// `NODIS`), sorted and deduplicated.
+/// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`], sorted and
+/// deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
 /// (`NF`, `OC`, `PR`, `XD`, `ND`) and a handful of single-form tokens
@@ -66,7 +96,12 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// `parse_non_ic_full_form` already accept the banner forms here and
 /// translate them to the canonical portion enum, so a fuzzy correction
 /// returning `NOFORN` (rather than `NF`) lands on the same final
-/// [`crate::DissemControl::Nf`] after strict parsing.
+/// [`crate::DissemControl::Nf`] after strict parsing. The SAR
+/// structural keywords (`SAR_STRUCTURAL_KEYWORDS`) are similarly
+/// round-trip safe: `parse_sar_category` accepts the canonical
+/// `SPECIAL ACCESS REQUIRED-` indicator literally, so a correction
+/// returning `SPECIAL` for `SPCIAL` lands at the same `SarMarking`
+/// after strict parsing.
 ///
 /// Multi-word banner forms (`DEA SENSITIVE`, `SBU NOFORN`,
 /// `LES NOFORN`, `DOD UCNI`, `DOE UCNI`) are retained intentionally.
@@ -86,6 +121,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     for f in MARKING_FORMS {
         v.push(f.banner);
     }
+    v.extend_from_slice(SAR_STRUCTURAL_KEYWORDS);
     v.sort();
     v.dedup();
     v
@@ -307,6 +343,36 @@ mod tests {
                 "correction_vocab MUST contain {expected:?} — \
                  IC dissem control per CAPCO-2016 §A.5 / §H.8 or \
                  a post-2016 ICRM addition"
+            );
+        }
+    }
+
+    #[test]
+    fn correction_vocab_contains_sar_structural_keywords() {
+        // Issue #133 PR 6: the SAR indicator keywords (`SPECIAL`,
+        // `ACCESS`) live outside `ALL_CVE_TOKENS` because the ODNI
+        // `CVEnumISMSAR.xml` is empty (SAR program identifiers are
+        // agency-assigned and not centrally registered). The structural
+        // SAR parser handles the `SPECIAL ACCESS REQUIRED-` indicator
+        // as a literal string match, but the fuzzy matcher had no
+        // vocabulary entry for `SPECIAL` or `ACCESS` — so an OCR typo
+        // like `SPCIAL` (distance 1 from `SPECIAL`) produced no
+        // correction, the token survived as `TokenKind::Unknown`,
+        // and the decoder discarded the candidate via step 3a's
+        // Unknown-span filter. This test pins the fix.
+        //
+        // `REQUIRED` and `SAR` are deliberately NOT in this list —
+        // they are always glued to a program nickname / identifier
+        // (`REQUIRED-BUTTER`, `SAR-BP-J12`) inside one `scan_token`
+        // chunk, so adding them to the vocab is a no-op for the hot
+        // path. See `SAR_STRUCTURAL_KEYWORDS` doc comment.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &["ACCESS", "SPECIAL"] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab MUST contain {expected:?} — \
+                 SAR structural keyword per CAPCO-2016 §H.5 p100 \
+                 (issue #133 PR 6)"
             );
         }
     }

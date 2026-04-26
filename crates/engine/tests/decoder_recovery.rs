@@ -649,6 +649,133 @@ fn missing_delimiter_no_change_on_already_canonical() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #133 PR 6: SAR indicator-keyword structural repair
+// ---------------------------------------------------------------------------
+//
+// Three structural recovery paths added in PR 6:
+//   1. `[A-Z]{1,3}SAR-` → `SAR-` prefix strip (USAR-BP, ABSAR-BP, …).
+//   2. `SAR[A-Z0-9]{2,3}<delim>` → `SAR-<rest><delim>` missing-hyphen
+//      insertion (SARBP, SARABC).
+//   3. `SPECIAL`, `ACCESS` added to `EXTENDED_CORRECTION_VOCAB` so
+//      the fuzzy matcher can recover SPCIAL/SEPCIAL/SPECAL/CCESS-
+//      style keyword typos via the existing per-token correction
+//      path.
+//
+// The structural penalty `CUSTOM_SCI_MARKING_PENALTY` in
+// `score_candidate` is a peer change: without it, a raw `USAR-BP-J12`
+// segment is interpreted by the lenient strict-parser as 3 custom-
+// system SCI markings (USAR/CD/XR with `canonical_enum: None`), and
+// the bag-of-tokens scorer can't distinguish that interpretation
+// from the SAR-repaired candidate. The penalty demotes the
+// custom-only-SCI parse so the SAR-repaired candidate wins by a
+// margin clearing `UNAMBIGUOUS_LOG_MARGIN`.
+//
+// All three integration tests below pin a named fixture from the
+// SC-004 mangled corpus so the harness's `Typo`-class rate (`50.0%`
+// post-PR-6) is anchored to specific recovery shapes rather than an
+// opaque aggregate.
+
+#[test]
+fn typo_usar_prefix_resolves_via_indicator_repair() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/d04f45f7a4f5a8b4.json`
+    // (`SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN`).
+    // The full Enron-corpus SAR shape with a stray `U` prefix on the
+    // SAR indicator. Pre-PR-6 this resolved as 3 custom-system SCI
+    // markings (lenient strict parse) competing with the SAR-repaired
+    // candidate at a tied posterior; both `try_sar_indicator_repair`
+    // (added the SAR candidate) and `CUSTOM_SCI_MARKING_PENALTY`
+    // (demoted the custom-SCI candidate) had to land together to
+    // clear the `UNAMBIGUOUS_LOG_MARGIN` threshold.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
+        &deep_cx(),
+    ) else {
+        panic!("USAR-BP-... must resolve via SAR indicator repair");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    let sar = marking
+        .0
+        .sar_markings
+        .as_ref()
+        .expect("SAR block must be present after USAR→SAR repair");
+    assert_eq!(
+        sar.programs.len(),
+        3,
+        "expected 3 programs (BP, CD, XR); got {sar:?}"
+    );
+    assert_eq!(&*sar.programs[0].identifier, "BP");
+    assert_eq!(&*sar.programs[1].identifier, "CD");
+    assert_eq!(&*sar.programs[2].identifier, "XR");
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_sarbp_missing_hyphen_resolves_via_indicator_repair() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/fbf5ed813c109c14.json`
+    // (`TOP SECRET//SARBP//NOFORN`). The minimal missing-hyphen
+    // case — `SARBP` is 5 alnum chars (SAR + 2-char identifier)
+    // with no separator. `try_sar_indicator_repair`'s Pattern B
+    // (alnum run 2-3 chars before delim) fires and inserts the
+    // hyphen.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//SARBP//NOFORN", &deep_cx())
+    else {
+        panic!("SARBP must resolve via SAR indicator repair");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    let sar = marking
+        .0
+        .sar_markings
+        .as_ref()
+        .expect("SAR block must be present after SARBP→SAR-BP repair");
+    assert_eq!(sar.programs.len(), 1);
+    assert_eq!(&*sar.programs[0].identifier, "BP");
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/1f75ddd89b432949.json`
+    // (`TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN`).
+    // `SPCIAL` is a missing-`E` typo on `SPECIAL` (edit distance 1).
+    // PR 6's vocab addition of `SPECIAL` to
+    // `SAR_STRUCTURAL_KEYWORDS` lets the existing per-token fuzzy
+    // matcher recover it; the strict SAR parser then matches the
+    // canonical `SPECIAL ACCESS REQUIRED-BUTTER POPCORN` indicator
+    // literally. No structural-repair pass is involved — this case
+    // exercises the vocab path only.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
+        &deep_cx(),
+    ) else {
+        panic!("SPCIAL must fuzzy-correct to SPECIAL via extended vocab");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
+    let sar = marking
+        .0
+        .sar_markings
+        .as_ref()
+        .expect("SAR block must be present after SPCIAL→SPECIAL fuzzy");
+    assert_eq!(sar.programs.len(), 1);
+    assert_eq!(
+        &*sar.programs[0].identifier, "BUTTER POPCORN",
+        "Full-form program identifier must round-trip; got {sar:?}",
+    );
+    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //
