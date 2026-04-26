@@ -1483,9 +1483,26 @@ fn try_sar_indicator_repair(text: &str) -> Option<String> {
     }
 
     let bytes = text.as_bytes();
-    let mut result = String::with_capacity(text.len() + 4);
+    // Lazy allocation: `result` stays `None` until the first repair
+    // pattern matches, at which point we allocate and copy the
+    // verbatim prefix `text[..first_match_start]` into it. Inputs that
+    // contain `SAR` but no repair-eligible pattern (the common case
+    // for canonical SAR markings like `SECRET//SAR-BP//NOFORN`) walk
+    // the bytes without ever allocating the output string. The
+    // bytes-walk-only-no-alloc path matters because every candidate
+    // bytes attempt the decoder generates calls into this helper, so
+    // a per-call allocation would multiply allocator pressure across
+    // the K candidates / N inputs hot path of the recognizer.
+    let mut result: Option<String> = None;
+    // `last_copied` is the byte index up to which `result` has been
+    // populated. When a repair fires, we batch-copy the verbatim span
+    // `text[last_copied..i]` into `result` before pushing the
+    // canonical replacement; on the final return we flush
+    // `text[last_copied..]`. The batch-copy approach also avoids the
+    // per-character `chars().next()` UTF-8 iteration cost on the
+    // verbatim-byte stretches.
+    let mut last_copied: usize = 0;
     let mut i = 0;
-    let mut changed = false;
 
     while i < bytes.len() {
         let at_boundary =
@@ -1510,8 +1527,10 @@ fn try_sar_indicator_repair(text: &str) -> Option<String> {
             // `SAR-` is OCR/transcription drift regardless of
             // whether the prefix bytes spell a CAPCO token.
             if let Some((_prefix_len, post)) = match_sar_prefix(bytes, i) {
-                result.push_str("SAR-");
-                changed = true;
+                let r = result.get_or_insert_with(|| String::with_capacity(text.len() + 4));
+                r.push_str(&text[last_copied..i]);
+                r.push_str("SAR-");
+                last_copied = post;
                 i = post;
                 continue;
             }
@@ -1522,30 +1541,38 @@ fn try_sar_indicator_repair(text: &str) -> Option<String> {
             // hyphen between SAR and the identifier. Inserting that
             // hyphen does not invent identifier vocabulary.
             if let Some(end) = match_sar_missing_hyphen(bytes, i) {
-                result.push_str("SAR-");
-                result.push_str(&text[i + 3..end]);
-                changed = true;
+                let r = result.get_or_insert_with(|| String::with_capacity(text.len() + 4));
+                r.push_str(&text[last_copied..i]);
+                r.push_str("SAR-");
+                r.push_str(&text[i + 3..end]);
+                last_copied = end;
                 i = end;
                 continue;
             }
         }
 
-        // Default: copy the current UTF-8 char verbatim. Use char
-        // iteration rather than `bytes[i] as char` so multi-byte
-        // sequences (rare but possible in OCR'd input) round-trip
-        // intact.
+        // Default: advance past the current UTF-8 char without copying.
+        // The verbatim span [last_copied..i] gets batch-copied into
+        // `result` the next time a repair pattern fires (or flushed
+        // on return below). Using char iteration rather than
+        // `bytes[i] as char` keeps `i` aligned to char boundaries so
+        // the `text[last_copied..i]` slice indexing is always valid
+        // — multi-byte sequences (rare but possible in OCR'd input)
+        // therefore round-trip intact.
         let ch = text[i..]
             .chars()
             .next()
             .expect("byte index must remain on a char boundary");
-        result.push(ch);
         i += ch.len_utf8();
     }
 
-    if !changed {
-        return None;
-    }
-    Some(result)
+    // Flush any verbatim trailing span into the result. If `result`
+    // is still `None`, no repair fired, and we never allocated —
+    // return `None` to signal the no-op path.
+    result.map(|mut r| {
+        r.push_str(&text[last_copied..]);
+        r
+    })
 }
 
 /// At byte position `i`, look for `[A-Z]{1,3}SAR-`. Returns
