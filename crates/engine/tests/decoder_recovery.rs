@@ -491,8 +491,9 @@ fn missing_delimiter_top_secret_classification_then_dissem() {
     );
     assert!(
         marking.0.dissem_controls.contains(&DissemControl::Oc)
-            || marking.0.dissem_controls.contains(&DissemControl::Nf),
-        "ORCON or NF must land in dissem_controls; attrs = {:?}",
+            && marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "ORCON and NOFORN must both land in dissem_controls (the \
+         original `ORCON/NOFORN` block contains both); attrs = {:?}",
         marking.0,
     );
 }
@@ -526,8 +527,9 @@ fn missing_delimiter_hard_splitter_inside_segment() {
     );
     assert!(
         marking.0.sci_controls.contains(&SciControl::Si)
-            || marking.0.sci_controls.contains(&SciControl::Tk),
-        "SI or TK must land in sci_controls; attrs = {:?}",
+            && marking.0.sci_controls.contains(&SciControl::Tk),
+        "SI/TK must land in sci_controls as both SI and TK (the \
+         original `SI/TK` block contains both); attrs = {:?}",
         marking.0,
     );
 }
@@ -539,22 +541,26 @@ fn missing_delimiter_does_not_split_sbu_noforn() {
     // must NOT split between SBU and NOFORN. The strict parser
     // accepts `SBU NOFORN` as a single non-IC dissem entry via
     // `parse_non_ic_full_form`.
+    //
+    // The assertion requires `Parsed::Unambiguous` with `SbuNf` in
+    // `non_ic_dissem`. An earlier `if let Parsed::Unambiguous(..)`
+    // shape silently passed when the recognizer returned
+    // `Parsed::Ambiguous` — defeating the regression guard. If the
+    // helper ever incorrectly splits SBU and NOFORN, SBU on its
+    // own doesn't resolve, the candidate is discarded by step 3a,
+    // and the recognizer returns zero-candidate Ambiguous —
+    // exactly the case the previous shape silently allowed.
     let rx = DecoderRecognizer::new();
-    if let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//SBU NOFORN", &deep_cx()) {
-        // The marking should resolve cleanly — either as a single
-        // non-IC dissem (SbuNf) or with NF in dissem_controls if
-        // the parser path differs. The critical regression guard
-        // is that the helper didn't split between SBU and NOFORN.
-        // If it did split, the strict parse would put SBU on its
-        // own (which doesn't resolve, would be Unknown) and the
-        // candidate would be discarded by step 3a.
-        let has_classification = marking.0.classification.is_some();
-        assert!(
-            has_classification,
-            "SBU NOFORN must not be incorrectly split; attrs = {:?}",
-            marking.0,
-        );
-    }
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//SBU NOFORN", &deep_cx()) else {
+        panic!("SECRET//SBU NOFORN must resolve unambiguously");
+    };
+    assert!(
+        marking.0.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "SBU NOFORN must land as a single non-IC dissem entry \
+         (`NonIcDissem::SbuNf`), not split into separate tokens; \
+         attrs = {:?}",
+        marking.0,
+    );
 }
 
 #[test]

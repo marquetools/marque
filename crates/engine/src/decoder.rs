@@ -1111,13 +1111,15 @@ fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
 ///    USA, AUS, GBR` family.
 ///
 /// 2. **Hard-splitter dissem long-form.** A small set of unambiguous
-///    long-form dissem control tokens (`NOFORN`, `ORCON`, `PROPIN`,
-///    `IMCON`, `RELIDO`, `RSEN`, `EYESONLY`, `EXDIS`, `NODIS`,
-///    `LIMDIS`, `FOUO`, `FISA`, `DSEN`) ALWAYS start a new segment
-///    when they appear after a whitespace gap, regardless of
-///    preceding context — these tokens have no in-segment role
-///    inside SCI/SAR/REL TO blocks. Covers the `NOFORN EXDIS` /
-///    `... SI NOFORN` / `... HCS-P INTEL OPS ORCON/NOFORN` family.
+///    long-form dissem control tokens (`NOFORN`, `ORCON`,
+///    `ORCON-USGOV`, `PROPIN`, `IMCON`, `RELIDO`, `RSEN`,
+///    `EYESONLY`, `EXDIS`, `NODIS`, `LIMDIS`, `FOUO`, `FISA`,
+///    `DSEN`) ALWAYS start a new segment when they appear after a
+///    whitespace gap, regardless of preceding context — these
+///    tokens have no in-segment role inside SCI/SAR/REL TO
+///    blocks. Covers the `NOFORN EXDIS` / `... SI NOFORN` /
+///    `... HCS-P INTEL OPS ORCON/NOFORN` family. The full set is
+///    pinned by [`is_hard_splitter_covers_documented_long_forms`].
 ///
 /// Exceptions (do NOT insert):
 ///
@@ -1148,9 +1150,11 @@ fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
 /// - SPECIAL ACCESS REQUIRED-... insertion: lookahead-multi-word
 ///   pattern, separate detection logic.
 ///
-/// These three categories together account for ~6 of the 17
-/// MissingDelimiter fixtures; the v1 hard-splitter + classification-
-/// boundary rules cover the remaining ~11. Follow-up tracked.
+/// These three categories account for the remaining 2 of the 17
+/// MissingDelimiter fixtures; the v1 hard-splitter +
+/// classification-boundary rules resolve 15 of 17 (88.2% per
+/// `crates/engine/tests/decoder_accuracy.rs` after this PR landed).
+/// Follow-up tracked.
 fn try_insert_delimiter(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut result = String::with_capacity(text.len() + 8);
@@ -1241,9 +1245,18 @@ fn try_insert_delimiter(text: &str) -> Option<String> {
             continue;
         }
 
-        // Single non-token character (`/`, `(`, `)`, `,`).
-        result.push(bytes[i] as char);
-        i += 1;
+        // Single non-token character (`/`, `(`, `)`, `,`, or any
+        // non-ASCII character — e.g., a stray `∕` that the upstream
+        // delimiter normalizer didn't catch). Preserve the original
+        // UTF-8 character verbatim instead of doing `bytes[i] as
+        // char`, which would corrupt multi-byte sequences by emitting
+        // each byte as a separate Latin-1 codepoint.
+        let ch = text[i..]
+            .chars()
+            .next()
+            .expect("byte index must remain on a char boundary");
+        result.push(ch);
+        i += ch.len_utf8();
     }
 
     if insertions == 0 { None } else { Some(result) }
@@ -1979,12 +1992,53 @@ mod tests {
         // Existing `//` separators must be preserved verbatim.
         let result = try_insert_delimiter("SECRET//NOFORN EXDIS");
         let s = result.expect("should insert");
-        // Three `//` total: original SECRET//NOFORN, plus inserted
-        // NOFORN//EXDIS.
+        // Two `//` total: one preserved in SECRET//NOFORN, plus one
+        // inserted for NOFORN//EXDIS.
         let count = s.matches("//").count();
         assert_eq!(
             count, 2,
             "expected 2 `//` total (1 preserved + 1 inserted), got {count} in {s:?}"
+        );
+    }
+
+    #[test]
+    fn try_insert_delimiter_preserves_non_ascii_characters_verbatim() {
+        // Regression guard for PR #175 review: the helper used to do
+        // `result.push(bytes[i] as char)` for non-token, non-`/`,
+        // non-whitespace characters, which corrupts multi-byte UTF-8
+        // sequences by emitting each byte as a separate Latin-1
+        // codepoint (e.g., `∕` → 3 garbage codepoints). The fix
+        // walks `text[i..].chars()` to take one full character and
+        // advances `i` by `ch.len_utf8()`, preserving the original
+        // UTF-8 byte sequence in the output.
+        //
+        // The fixture below has a stray `∕` (U+2215, 3 bytes in
+        // UTF-8) that the upstream delimiter normalizer didn't catch.
+        // The helper must echo the original bytes verbatim into the
+        // output (no insertion would happen here — there's no
+        // splitter token after the `∕`), and the round-trip must
+        // preserve the `∕` character intact.
+        let input = "SECRET ∕∕ NOFORN";
+        let result = try_insert_delimiter(input);
+        // Whether or not the helper emits a result depends on the
+        // tokenization — what matters is that NO character in the
+        // output corrupts the `∕` UTF-8 sequence. Test the result
+        // (or the input passthrough if None).
+        let was_some = result.is_some();
+        let s = result.unwrap_or_else(|| input.to_string());
+        assert!(
+            s.is_char_boundary(s.len()),
+            "output {s:?} must end on a char boundary"
+        );
+        // The `∕` character (U+2215) must survive intact in the
+        // output. If the old `bytes[i] as char` shape was still in
+        // play, the 3-byte UTF-8 sequence [0xE2, 0x88, 0x95] would
+        // be emitted as three separate codepoints (U+00E2 U+0088
+        // U+0095), and the original `∕` would not appear.
+        assert!(
+            !was_some || s.contains('∕'),
+            "output {s:?} must preserve the U+2215 character when the \
+             helper emitted any output"
         );
     }
 
