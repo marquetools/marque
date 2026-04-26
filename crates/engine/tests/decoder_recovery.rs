@@ -441,6 +441,150 @@ fn missing_delimiter_secret_noforn_exdis_currently_unrecovered() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #133 PR 2: position-aware short-token classification heuristic
+// ---------------------------------------------------------------------------
+//
+// The keyboard-proximity heuristic resolves 1- and 2-character typos
+// in the leading classification slot of portion or banner markings —
+// shapes the vocab-based fuzzy matcher cannot touch (`MIN_FUZZY_LEN
+// = 3`). The recognizer flags these with
+// `FixSource::DecoderClassificationHeuristic` so the engine emits
+// `Severity::Warn` (always-visible in `--check`) and caps
+// `Confidence::rule` at 0.80 (below the default 0.95 threshold —
+// auto-applies only with explicit user opt-in via lower threshold).
+//
+// The Enron-corpus-derived mangled-fixture tree at
+// `tests/fixtures/mangled/typo/` contains very few short-leading-
+// classification typos (mostly 3+ char tail-token typos like UK→TK,
+// USAR→SAR), so the SC-004 harness's per-class rate doesn't move
+// from this heuristic alone. These integration tests pin the
+// heuristic's behavior on synthetic inputs that exercise the
+// keyboard-proximity table directly. A follow-up PR adding fixtures
+// for this typo class will make the SC-004 movement measurable.
+
+#[test]
+fn heuristic_2char_ts_decodes_portion() {
+    // (YS//NF) — `YS` is the keyboard-proximity-typo for `TS`
+    // (Y is one key left of T on QWERTY, S is unchanged). Outside
+    // the heuristic's scope it would be left as-is and the strict
+    // parse would land with classification=None (YS doesn't
+    // resolve), making the candidate fail the engine's expected-
+    // attrs equality.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", &deep_cx()) else {
+        panic!("(YS//NF) should resolve to (TS//NF) via the heuristic");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::TopSecret),
+        "YS leading position should heuristic-fix to TS; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NF must survive the heuristic-corrected canonicalization"
+    );
+}
+
+#[test]
+fn heuristic_1char_s_decodes_portion() {
+    // (W//NF) — `W` is QWERTY-adjacent to S (one key above).
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(W//NF)", &deep_cx()) else {
+        panic!("(W//NF) should resolve to (S//NF) via the heuristic");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::Secret),
+        "W leading position should heuristic-fix to S; attrs = {:?}",
+        marking.0,
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NF must survive"
+    );
+}
+
+#[test]
+fn heuristic_1char_c_decodes_portion() {
+    // (V//NF) — V is QWERTY-adjacent to C (one key right).
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(V//NF)", &deep_cx()) else {
+        panic!("(V//NF) should resolve to (C//NF) via the heuristic");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::Confidential),
+        "V leading position should heuristic-fix to C; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn heuristic_decodes_banner_form() {
+    // Banner form (no parens) — same heuristic applies.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"RS//NOFORN", &deep_cx()) else {
+        panic!("RS//NOFORN should heuristic-resolve to TS//NOFORN");
+    };
+    assert_eq!(
+        effective_level(&marking),
+        Some(Classification::TopSecret),
+        "RS heuristic-fixes to TS in banner shape; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn heuristic_emits_classification_heuristic_provenance() {
+    // The decoder must tag the canonicalization attempt with
+    // `FixSource::DecoderClassificationHeuristic` so the engine
+    // can downgrade severity and cap rule confidence. The check
+    // here is on the marking's `provenance.fix_source` field
+    // (PR 2 plumbing) — without it the engine would treat the
+    // fix the same as a vocab-based decoder fix, which would
+    // (a) auto-apply at default threshold and (b) show as
+    // `Severity::Fix` instead of `Severity::Warn`, defeating the
+    // fix-and-warn intent.
+    use marque_rules::FixSource;
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", &deep_cx()) else {
+        panic!("(YS//NF) must resolve unambiguously");
+    };
+    let provenance = marking
+        .1
+        .as_ref()
+        .expect("decoder marking must carry provenance");
+    assert_eq!(
+        provenance.fix_source,
+        FixSource::DecoderClassificationHeuristic,
+        "heuristic-corrected candidate must tag its provenance source"
+    );
+}
+
+#[test]
+fn heuristic_does_not_fire_on_canonical_classification() {
+    // (S//NF) is fully canonical — the heuristic must not fire
+    // (would emit a no-op rewrite). The decoder should produce
+    // an Unambiguous marking with `provenance.fix_source ==
+    // DecoderPosterior` (the standard vocab path), or nothing at
+    // all if the strict path picked up the marking.
+    use marque_rules::FixSource;
+    let rx = DecoderRecognizer::new();
+    if let Parsed::Unambiguous(marking) = rx.recognize(b"(S//NF)", &deep_cx())
+        && let Some(provenance) = marking.1.as_ref()
+    {
+        assert_ne!(
+            provenance.fix_source,
+            FixSource::DecoderClassificationHeuristic,
+            "heuristic must not fire on already-canonical (S//NF); \
+             attrs = {:?}",
+            marking.0,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Scheme ergonomics: CapcoScheme + decoder integrate without extra glue
 // ---------------------------------------------------------------------------
 

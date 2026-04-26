@@ -54,13 +54,17 @@ fn applied_fix_has_all_required_fields() {
             marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
             marque_rules::FixSource::MigrationTable => "MigrationTable",
             marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+            marque_rules::FixSource::DecoderClassificationHeuristic => {
+                "DecoderClassificationHeuristic"
+            }
         };
         assert!(
             [
                 "BuiltinRule",
                 "CorrectionsMap",
                 "MigrationTable",
-                "DecoderPosterior"
+                "DecoderPosterior",
+                "DecoderClassificationHeuristic",
             ]
             .contains(&source_str),
             "source must be a valid enum variant"

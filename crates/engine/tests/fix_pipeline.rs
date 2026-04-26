@@ -198,6 +198,7 @@ fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
     };
     let mut record = json!({
         "schema": marque_engine::AUDIT_SCHEMA_VERSION,

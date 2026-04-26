@@ -1194,9 +1194,41 @@ fn build_decoder_diagnostic(
         });
     }
 
+    // Dispatch on the decoder's `fix_source`. Standard vocab-based
+    // recognition emits at `Severity::Fix` with `rule = 1.0` (engine
+    // applies whenever `recognition >= confidence_threshold`). The
+    // position-aware classification heuristic (issue #133 PR 2) emits
+    // at `Severity::Warn` with `rule = 0.80` capping
+    // `combined ≤ 0.80`, which sits below the default
+    // `confidence_threshold` of `0.95` — the heuristic is always-
+    // visible in `--check` (non-zero exit code) but only auto-applies
+    // when the user has explicitly lowered the threshold to opt into
+    // its bar of evidence.
+    //
+    // The `0.80` cap is a global default for PR 2; a follow-up PR
+    // will replace it with a per-token confidence derived from
+    // counting heuristic-trigger tokens against the Enron corpus
+    // (zero corpus appearances → high confidence; many → lower or
+    // skip the rule).
+    let (severity, rule_axis, fix_source) = match provenance.fix_source {
+        FixSource::DecoderClassificationHeuristic => (
+            Severity::Warn,
+            HEURISTIC_RULE_AXIS_CAP,
+            FixSource::DecoderClassificationHeuristic,
+        ),
+        // All non-heuristic decoder paths use the existing posterior
+        // shape. Strict-source variants (BuiltinRule, CorrectionsMap,
+        // MigrationTable) do not flow through this builder — they
+        // come from rule-pipeline emissions, not the decoder — so
+        // routing them to `DecoderPosterior` here is a defensive
+        // default that preserves the existing strict-decoder shape
+        // for any future fix-source variant.
+        _ => (Severity::Fix, 1.0, FixSource::DecoderPosterior),
+    };
+
     let confidence = Confidence {
         recognition: provenance.recognition_score(),
-        rule: 1.0,
+        rule: rule_axis,
         region: None,
         runner_up_ratio: provenance.runner_up_ratio,
         features,
@@ -1204,7 +1236,7 @@ fn build_decoder_diagnostic(
     let rule = RuleId::new(DECODER_RULE_ID);
     let proposal = FixProposal::new(
         rule.clone(),
-        FixSource::DecoderPosterior,
+        fix_source,
         span,
         original,
         replacement,
@@ -1213,15 +1245,25 @@ fn build_decoder_diagnostic(
     );
     Some(Diagnostic::new(
         rule,
-        // `Severity::Fix` so the engine's normal fix gate applies the
-        // proposal in `--fix` mode and surfaces it in `--check` mode.
-        Severity::Fix,
+        severity,
         span,
         format!("decoder-recognized canonical form: {original:?} → {replacement:?}"),
         DECODER_CITATION,
         Some(proposal),
     ))
 }
+
+/// `Confidence::rule` cap for the position-aware classification
+/// heuristic (`FixSource::DecoderClassificationHeuristic`). Pinned
+/// at `0.80` so `combined ≤ 0.80` stays below the default
+/// `confidence_threshold` of `0.95` — heuristic fixes never auto-
+/// apply at the default threshold; user must explicitly drop
+/// `confidence_threshold` to opt into the heuristic's bar.
+///
+/// Replaceable with a per-token table baked from corpus analysis
+/// in a follow-up PR; the global cap is the conservative default
+/// for PR 2.
+const HEURISTIC_RULE_AXIS_CAP: f32 = 0.80;
 
 // ---------------------------------------------------------------------------
 // Rule-override canonicalization (task #49)

@@ -91,6 +91,9 @@ fn diag_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
                 marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
                 marque_rules::FixSource::MigrationTable => "MigrationTable",
                 marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+                marque_rules::FixSource::DecoderClassificationHeuristic => {
+                    "DecoderClassificationHeuristic"
+                }
             },
             replacement: f.replacement.as_ref(),
             confidence: f.confidence.combined(),
