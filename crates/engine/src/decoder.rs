@@ -1669,11 +1669,18 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 ///
 /// **Why this exists.** Hard-splitter tokens (NOFORN, ORCON, EXDIS,
 /// FOUO, …) have hard reserved meanings as dissem controls per CAPCO-
-/// 2016 §H.8/§H.9; they have no in-segment role inside SCI/SAR/REL TO
-/// blocks. A strict parse that places such a token under
+/// 2016 §H.8/§H.9; they have no in-segment role inside SCI or SAR
+/// sub-components. A strict parse that places such a token under
 /// [`SarMarking`] or [`SciMarking`] is essentially always a missing-
 /// `//` artifact in the input — the alternative parse with the token
-/// emitted as a dissem control is the correct interpretation.
+/// emitted as a dissem control is the correct interpretation. (REL
+/// TO is intentionally excluded from the penalty surface here: its
+/// payload is a list of country trigraphs whose grammar accepts only
+/// 3-letter alpha codes drawn from the CVE-derived trigraph table,
+/// so a 4+-char hard splitter cannot land in a REL TO slot in the
+/// first place. The Copilot review on PR #178 flagged a wider doc
+/// claim that suggested otherwise — the doc is now scoped to the
+/// slots the penalty actually defends.)
 ///
 /// **Why scoring needs help.** The bag-of-tokens scorer above sums
 /// log-priors for the marking's canonical tokens, and `canonical_tokens_for`
@@ -1691,18 +1698,20 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` fixtures pre-PR-5).
 ///
 /// **Magnitude.** Empirically the absorbing-vs-delim-inserted spread
-/// on those two fixtures is ~9 nats; `-12.0` gives a comfortable
-/// margin so the corrective penalty is robust to small future shifts
-/// in the priors table. The same magnitude is used for
-/// [`MISSING_TOKEN_LOG_PRIOR`], so the two below-floor signals stay
-/// at parity in any candidate that triggers both.
+/// on those two fixtures is ~9 nats; the [`MISSING_TOKEN_LOG_PRIOR`]
+/// floor (`-12.0`) gives a comfortable margin and is robust to small
+/// future shifts in the priors table. Defining the penalty as
+/// `MISSING_TOKEN_LOG_PRIOR` (rather than re-stating the literal)
+/// keeps the two below-floor signals mechanically at parity for any
+/// candidate that triggers both — a future ratchet of one constant
+/// pulls the other along.
 ///
 /// **Safety.** Hard-splitter tokens are all 4+ chars and have shapes
 /// distinct from real SAR identifiers (`BP`, `CD`, `XR` are 2-char;
 /// `BUTTER POPCORN`, `J12`, `K15`, `XRA` are alphanumeric short
 /// codes that don't collide with the hard-splitter list). So this
 /// penalty cannot fire on a legitimate SAR/SCI parse.
-const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = -12.0;
+const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
@@ -2834,11 +2843,20 @@ mod tests {
                         m.0.sar_markings.is_some(),
                         "input {input:?}: expected SAR present in winning candidate"
                     );
+                    // PR #178 review (Copilot, decoder.rs:2841): assert
+                    // the SPECIFIC dissem control we expect — `Nf`.
+                    // The previous `!is_empty()` check would silently
+                    // accept a future regression that emitted a
+                    // different dissem token (e.g., a misclassified
+                    // `Oc`/`Pr`) and still call the test green.
                     assert!(
-                        !m.0.dissem_controls.is_empty(),
-                        "input {input:?}: expected NOFORN to land as a dissem control \
-                         (winning candidate must be the delim-inserted form, not the \
-                         absorbing one); got dissem_controls = {:?}",
+                        m.0.dissem_controls
+                            .iter()
+                            .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
+                        "input {input:?}: expected NOFORN (DissemControl::Nf) to land \
+                         as a dissem control (winning candidate must be the delim-\
+                         inserted form, not the absorbing one); got dissem_controls = \
+                         {:?}",
                         m.0.dissem_controls,
                     );
                     assert!(
