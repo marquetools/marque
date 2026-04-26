@@ -226,10 +226,22 @@ impl From<tokio::sync::AcquireError> for BatchError {
 /// `per_doc_deadline` is orthogonal and applies separately to each
 /// document's permit-acquired execution slice.
 ///
-/// `#[non_exhaustive]` so future per-doc concerns (memory budgets,
-/// per-rule deadlines, cancellation tokens) can join without a
-/// semver-breaking change. From outside the engine crate, construct
-/// via `Default::default()` + public field assignment:
+/// # Breaking change in this release
+///
+/// This struct gained `#[non_exhaustive]` and a new `per_doc_deadline`
+/// field in spec 005 Phase 3d. **Downstream code that previously
+/// constructed `BatchOptions` with a struct literal**
+/// (`BatchOptions { max_concurrent_docs, max_inflight_bytes }`) **will
+/// no longer compile** — `#[non_exhaustive]` blocks cross-crate
+/// struct-literal construction unconditionally, even when every
+/// existing field is supplied. Switch to
+/// `Default::default()` + public field assignment, shown below. (The
+/// CHANGELOG / release notes for this version surface this explicitly.)
+///
+/// `#[non_exhaustive]` was added so future per-doc concerns (memory
+/// budgets, per-rule deadlines, cancellation tokens) can join without
+/// a further breaking-change cycle for downstream callers using the
+/// recommended construction pattern.
 ///
 /// ```rust,no_run
 /// use marque_engine::BatchOptions;
@@ -385,10 +397,10 @@ impl BatchEngine {
                         // `checked_add` overflow must not silently drop
                         // the deadline (which would let an unbounded
                         // pass run after the operator explicitly
-                        // configured a budget). Treat overflow as an
-                        // already-expired deadline so the engine's
-                        // pre-pass check trips immediately — same
-                        // behavior as `Instant::now() - 1ms`.
+                        // configured a budget). Treat overflow as
+                        // `deadline = now`, which the engine's pre-pass
+                        // check (`now >= deadline`) treats as expired
+                        // and aborts on entry.
                         let deadline = per_doc_deadline.map(|d| {
                             let now = Instant::now();
                             now.checked_add(d).unwrap_or(now)
@@ -471,7 +483,8 @@ impl BatchEngine {
                     // signal at the same level as panic / shutdown.
                     let result = tokio::task::spawn_blocking(move || {
                         // Same overflow semantics as `lint_many_inner` —
-                        // overflow folds to "already expired" so the
+                        // overflow folds to `deadline = now` (which the
+                        // engine treats as already expired) so the
                         // operator-configured deadline is never silently
                         // disabled.
                         let deadline = per_doc_deadline.map(|d| {
