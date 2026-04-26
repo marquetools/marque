@@ -998,9 +998,31 @@ const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
 /// intentionally narrow — wider sets produce more false positives
 /// in normal prose.
 ///
-/// **Length 2** (checked first):
+/// **Length 3** (issue #133 PR 8) — exactly one mapping:
+/// - `OTP` → `TOP` (T↔O transposition; standard Levenshtein dist 2,
+///   blocked by `MIN_USEFUL_CONFIDENCE` for 3-char inputs at dist 2,
+///   so the vocab path can't catch it even with `TOP` in vocab).
+///
+/// The 3-char rule is intentionally a single hardcoded mapping —
+/// the dense 3-char trigraph vocab (`TON`, `TUR`, `TWN`, …, 289
+/// entries) means a wider "all transpositions of TOP" rule
+/// would generate too many false positives. Other corpus-attested
+/// 3-char `TOP` typos (`TPP`, `UOP`) are at standard Levenshtein
+/// dist 1 from the bare `TOP` in `EXTENDED_CORRECTION_VOCAB` and
+/// recover via the vocab path; only transposition (which standard
+/// Levenshtein scores as dist 2) needs the heuristic. See
+/// [`try_3char_classification_heuristic`] for the implementation
+/// and the `try_3char_classification_heuristic_only_matches_otp`
+/// regression-pin for the narrow-scope policy.
+///
+/// **Length 2** (checked second):
 /// - `[T, R, Y, H, G][A, W, E, Z, S]` → `TS` (e.g., `RS`, `YS`, `HE`)
 /// - `[F][A, W, E, Z, S]` → `TS` (e.g., `FS`, `FE`)
+/// - `TP` → `TOP` (issue #133 PR 8; corpus-attested keyboard typo
+///   where the middle `O` was elided; bare `TP` has no other
+///   canonical CAPCO meaning).
+/// - `TO` → `TOP` (issue #133 PR 8; same family — trailing `P`
+///   elided).
 ///
 /// **Length 1**:
 /// - `[A, W, E, Z]` → `S` (S-key neighbors; bare `S` is canonical)
@@ -1008,15 +1030,21 @@ const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
 /// - `[X]` → `S` (X is between C and S on QWERTY; default to the
 ///   higher classification per the issue #133 PR 2 design note)
 ///
-/// **Length 3+**: returns `None`. Long-token typos benefit from the
-/// vocab-based fuzzy matcher (`MIN_FUZZY_LEN = 3`) and the
-/// keyboard-proximity heuristic adds nothing. (The 3-char country-
-/// code → non-US-classification path from the issue #133 PR 2
-/// sketch is deferred to a follow-up.)
+/// **Length 4+**: returns `None`. Long-token typos benefit from the
+/// vocab-based fuzzy matcher (4-char `TDOP`/`QTOP`/`TOPW` recover
+/// to `TOP` at edit distance 1 via the standard fuzzy path now
+/// that `TOP` lives in `EXTENDED_CORRECTION_VOCAB`); the
+/// keyboard-proximity heuristic adds nothing here.
 ///
 /// **Bare canonical**: returns `None` when the leading token is
 /// already a known classification short form (`U`, `R`, `C`, `S`,
-/// `TS`). The strict parser would already accept those.
+/// `TS`) OR the bare leading word `TOP` of the two-word
+/// `TOP SECRET` classification. PR 8 added `TOP` to the canonical
+/// short-circuit set because the new length-3 `OTP→TOP` heuristic
+/// would otherwise have to walk the heuristic path on every
+/// already-canonical `TOP SECRET//...` input. The strict parser
+/// already accepts all of these. See
+/// [`is_canonical_short_classification`] for the implementation.
 ///
 /// # CAB markings
 ///
@@ -1094,6 +1122,7 @@ fn try_classification_heuristic_fix(text: &str) -> Option<String> {
     }
 
     let replacement = match first_token.len() {
+        3 => try_3char_classification_heuristic(first_token)?,
         2 => try_2char_classification_heuristic(first_token)?,
         1 => try_1char_classification_heuristic(first_token)?,
         _ => return None,
@@ -1105,20 +1134,41 @@ fn try_classification_heuristic_fix(text: &str) -> Option<String> {
 }
 
 /// True when `token` is a known CAPCO-2016 classification short
-/// form (U, R, C, S, TS). The full-word forms (UNCLASSIFIED,
-/// RESTRICTED, etc.) and `TOP SECRET` are intentionally NOT matched
-/// here: a malformed full-word would already be handled by the
-/// vocab-based fuzzy matcher (`SECRET` is in `correction_vocab`),
-/// and `TOP SECRET` is a multi-word token that the helper's
-/// whitespace tokenizer treats as `TOP` alone (bare `TOP` is not a
-/// classification, so it falls through — but the vocab matcher
-/// would correct it via `SBUNOFORN`-style multi-word emission).
+/// form (U, R, C, S, TS) OR the bare leading word of the
+/// `TOP SECRET` two-word classification.
+///
+/// The full-word forms (UNCLASSIFIED, RESTRICTED, etc.) are
+/// intentionally NOT matched here: a malformed full-word would
+/// already be handled by the vocab-based fuzzy matcher (`SECRET`
+/// is in `correction_vocab`).
+///
+/// Issue #133 PR 8 added `TOP` to the match set. Pre-PR-8 the
+/// helper's whitespace tokenizer treated `TOP` as a non-canonical
+/// token and the heuristic fired on perfectly-canonical
+/// `TOP SECRET//...` input — a no-op when the heuristic returned
+/// `None` for length-3 inputs, but a latent footgun once the
+/// length-3 arm started returning `Some` (PR 8). Recognizing bare
+/// `TOP` as canonical short-circuits the heuristic on the
+/// already-correct case.
 fn is_canonical_short_classification(token: &str) -> bool {
-    matches!(token, "U" | "R" | "C" | "S" | "TS")
+    matches!(token, "U" | "R" | "C" | "S" | "TS" | "TOP")
 }
 
-/// 2-char keyboard-proximity rule: maps to `TS` when the pair is a
-/// T-cluster + S-cluster combination. See module-level table.
+/// 2-char keyboard-proximity rule. Two mappings:
+///
+/// 1. T-cluster + S-cluster pair → `TS` (the original PR 2 rule).
+/// 2. Specific `TP` / `TO` pair → `TOP` (issue #133 PR 8). These
+///    are corpus-attested classification typos where the middle
+///    `O` (`TP`) or trailing `P` (`TO`) was elided. Bare `TP` and
+///    `TO` have no other canonical CAPCO meaning at the leading
+///    classification position — `TP` isn't an SCI control or
+///    dissem, `TO` isn't either (the `REL TO` keyword path lives
+///    inside the structural REL TO parser, not here).
+///
+/// The TS rule is checked first; rule 2 only fires when rule 1
+/// doesn't (so `TS` itself, which has T-cluster + S-cluster, would
+/// already be marked canonical by `is_canonical_short_classification`
+/// upstream and the heuristic doesn't run on it).
 fn try_2char_classification_heuristic(token: &str) -> Option<&'static str> {
     let bytes = token.as_bytes();
     debug_assert_eq!(bytes.len(), 2);
@@ -1135,10 +1185,59 @@ fn try_2char_classification_heuristic(token: &str) -> Option<&'static str> {
     let s_cluster = matches!(second, b'A' | b'W' | b'E' | b'Z' | b'S');
 
     if t_cluster && s_cluster {
-        Some("TS")
-    } else {
-        None
+        return Some("TS");
     }
+
+    // PR 8: `TP` / `TO` → `TOP`. Tight pattern (literal pair, not
+    // cluster) because broadening to e.g. `T[A-Z]` → `TOP` would
+    // collide with too many real 2-char tokens in non-marking
+    // prose. Anchored to T as the first byte and P / O as the
+    // second.
+    if first == b'T' && matches!(second, b'P' | b'O') {
+        return Some("TOP");
+    }
+
+    None
+}
+
+/// 3-char keyboard-proximity rule (issue #133 PR 8). Maps a small
+/// set of corpus-attested 3-char classification typos to their
+/// canonical form when they appear in the leading classification
+/// slot.
+///
+/// The vocab-based fuzzy matcher catches `TPP→TOP`, `UOP→TOP`, and
+/// other distance-1 inputs once `TOP` lives in
+/// `EXTENDED_CORRECTION_VOCAB`. This heuristic covers the residual
+/// cases the fuzzy path can't reach:
+///
+/// - **`OTP` → `TOP`** — T↔O transposition. Standard Levenshtein
+///   counts a transposition as 2 substitutions (distance 2), and
+///   the fuzzy matcher's `MIN_USEFUL_CONFIDENCE` floor (0.45)
+///   blocks distance-2 corrections for 3-char inputs (confidence
+///   0.40). Switching the matcher to Damerau-Levenshtein would
+///   recover this case but expand the false-positive surface
+///   across the whole vocab; a targeted heuristic at the
+///   classification slot is the lower-blast-radius fix.
+///
+/// Returns `None` for any other 3-char input — the heuristic is
+/// intentionally narrow to avoid false positives in the dense
+/// 3-char trigraph vocab (`TON`, `TUR`, `TWN`, …).
+fn try_3char_classification_heuristic(token: &str) -> Option<&'static str> {
+    let bytes = token.as_bytes();
+    debug_assert_eq!(bytes.len(), 3);
+    // Uppercase comparison is unnecessary here because the
+    // `normalize_delimiters_and_case` pass upstream uppercases
+    // ASCII before this helper runs, but we mirror the
+    // length-1 / length-2 helpers' style for consistency.
+    let upper = [
+        bytes[0].to_ascii_uppercase(),
+        bytes[1].to_ascii_uppercase(),
+        bytes[2].to_ascii_uppercase(),
+    ];
+    if upper == *b"OTP" {
+        return Some("TOP");
+    }
+    None
 }
 
 /// 1-char keyboard-proximity rule. Maps to S, C per the §A.2 short-
@@ -2845,11 +2944,123 @@ mod tests {
 
     #[test]
     fn heuristic_skips_long_token() {
-        // 3+ char tokens go through the vocab fuzzy path; the
-        // heuristic adds nothing.
+        // 4+ char tokens fall through the length match arm — the
+        // vocab fuzzy path handles them. 3-char tokens are mostly
+        // handled by the vocab path too (now that PR 8 added bare
+        // `TOP` to `EXTENDED_CORRECTION_VOCAB`, shapes like `TPP`
+        // and `UOP` correct via dist-1 fuzzy); the 3-char heuristic
+        // is intentionally narrow (only `OTP` → `TOP`) so unrelated
+        // 3-char tokens like `YES` return None.
         assert_eq!(try_classification_heuristic_fix("(YES//NF)"), None);
         assert_eq!(try_classification_heuristic_fix("(SECT//NF)"), None);
         assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+    }
+
+    // ----- 3-char classification heuristic (issue #133 PR 8) -----
+
+    #[test]
+    fn heuristic_recovers_otp_to_top_via_3char_rule() {
+        // OTP → TOP: T↔O transposition. Standard Levenshtein dist 2
+        // blocked by the vocab fuzzy path's `MIN_USEFUL_CONFIDENCE`
+        // floor; the targeted 3-char heuristic is the recovery path.
+        let cases: &[(&str, &str)] = &[
+            ("OTP SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("(OTP//NF)", "(TOP//NF)"),
+            ("OTP SECRET//SI//NOFORN", "TOP SECRET//SI//NOFORN"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_3char_classification_heuristic_only_matches_otp() {
+        // The 3-char heuristic is intentionally narrow (a single
+        // hardcoded `OTP → TOP` mapping). Any other 3-char input
+        // returns None and falls through to other recovery paths.
+        // Pinned because the dense 3-char trigraph vocab (TON, TUR,
+        // TWN, …) means a wider rule would generate too many false
+        // positives.
+        assert_eq!(try_3char_classification_heuristic("OTP"), Some("TOP"));
+        for not_a_match in &["TON", "TPP", "UOP", "TIP", "TPO", "TOO", "ABC", "YES"] {
+            assert_eq!(
+                try_3char_classification_heuristic(not_a_match),
+                None,
+                "3-char heuristic must not fire on {not_a_match:?}",
+            );
+        }
+    }
+
+    // ----- Extended 2-char heuristic for TP/TO → TOP -----
+
+    #[test]
+    fn heuristic_recovers_tp_and_to_to_top_via_2char_rule() {
+        // PR 8 extended the 2-char heuristic to map `TP`/`TO` → `TOP`.
+        // These are corpus-attested classification typos where the
+        // middle `O` (`TP`) or trailing `P` (`TO`) was elided. They
+        // must not collide with the TS rule because neither `P` nor
+        // `O` is in the S-cluster.
+        let cases: &[(&str, &str)] = &[
+            ("TP SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("TO SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("(TP//NF)", "(TOP//NF)"),
+            ("(TO//NF)", "(TOP//NF)"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_2char_classification_heuristic_ts_rule_takes_precedence() {
+        // The TS rule (T-cluster + S-cluster pair) is checked first;
+        // the TP/TO → TOP rule is a fallback. None of the TP/TO
+        // characters are in the S-cluster (P, O), so there's no
+        // ambiguity in practice — but pinning the precedence here
+        // keeps a future widening of the TP/TO rule from silently
+        // overriding the TS rule.
+        // Pure T-cluster + S-cluster → TS.
+        assert_eq!(try_2char_classification_heuristic("TS"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("RS"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("YS"), Some("TS"));
+        // T + non-S-cluster → TOP (only for P/O).
+        assert_eq!(try_2char_classification_heuristic("TP"), Some("TOP"));
+        assert_eq!(try_2char_classification_heuristic("TO"), Some("TOP"));
+        // T + other non-S-cluster → still None (don't broaden).
+        assert_eq!(try_2char_classification_heuristic("TI"), None);
+        assert_eq!(try_2char_classification_heuristic("TX"), None);
+    }
+
+    #[test]
+    fn is_canonical_short_classification_recognizes_top() {
+        // PR 8 added bare `TOP` to the canonical-short set so the
+        // classification heuristic doesn't fire on already-canonical
+        // `TOP SECRET//...` input (whose first whitespace-token is
+        // `TOP`). Pre-PR-8 this was a no-op because the length-3
+        // heuristic always returned None; PR 8's OTP rule made it
+        // load-bearing.
+        assert!(is_canonical_short_classification("TOP"));
+        // Existing canonical short forms still recognized.
+        for s in &["U", "R", "C", "S", "TS"] {
+            assert!(
+                is_canonical_short_classification(s),
+                "{s:?} must be recognized as canonical short classification",
+            );
+        }
+        // Non-canonical or wrong-case forms still return false.
+        assert!(!is_canonical_short_classification("TPP"));
+        assert!(!is_canonical_short_classification("top")); // case-sensitive
+        assert!(!is_canonical_short_classification("TOPS"));
     }
 
     #[test]
