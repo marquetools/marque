@@ -1,6 +1,6 @@
 {
   "schema_version": "marque-heuristic-frequency-1",
-  "generated_at": "2026-04-26T15:14:17.700850+00:00",
+  "generated_at": "2026-04-26T15:41:38.542768+00:00",
   "docs_processed": 510596,
   "marking_context_window_chars": 30,
   "marking_shape_signals": [
@@ -32,211 +32,211 @@
     "A": {
       "rule_target": "S",
       "length": 1,
-      "unrestricted_count": 214539,
-      "marking_context_count": 168
+      "unrestricted_count": 2044559,
+      "marking_context_count": 3137
     },
     "W": {
       "rule_target": "S",
       "length": 1,
-      "unrestricted_count": 42225,
-      "marking_context_count": 24
+      "unrestricted_count": 56242,
+      "marking_context_count": 527
     },
     "E": {
       "rule_target": "S",
       "length": 1,
-      "unrestricted_count": 237749,
-      "marking_context_count": 54
+      "unrestricted_count": 379564,
+      "marking_context_count": 1289
     },
     "Z": {
       "rule_target": "S",
       "length": 1,
-      "unrestricted_count": 2347,
-      "marking_context_count": 50
+      "unrestricted_count": 4349,
+      "marking_context_count": 64
     },
     "V": {
       "rule_target": "C",
       "length": 1,
-      "unrestricted_count": 14360,
-      "marking_context_count": 3
+      "unrestricted_count": 23331,
+      "marking_context_count": 814
     },
     "F": {
       "rule_target": "C",
       "length": 1,
-      "unrestricted_count": 26686,
-      "marking_context_count": 14
+      "unrestricted_count": 34097,
+      "marking_context_count": 172
     },
     "X": {
       "rule_target": "S",
       "length": 1,
-      "unrestricted_count": 23667,
-      "marking_context_count": 8
+      "unrestricted_count": 31895,
+      "marking_context_count": 49
     },
     "TA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 311,
+      "unrestricted_count": 601,
       "marking_context_count": 0
     },
     "TW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 14735,
-      "marking_context_count": 14
+      "unrestricted_count": 15151,
+      "marking_context_count": 34
     },
     "TE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 4862,
-      "marking_context_count": 14
+      "unrestricted_count": 5267,
+      "marking_context_count": 23
     },
     "TZ": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 42,
-      "marking_context_count": 0
+      "unrestricted_count": 64,
+      "marking_context_count": 2
     },
     "TS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 1451,
-      "marking_context_count": 0
+      "unrestricted_count": 1790,
+      "marking_context_count": 3
     },
     "RA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 139,
+      "unrestricted_count": 496,
       "marking_context_count": 0
     },
     "RW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 305,
+      "unrestricted_count": 336,
       "marking_context_count": 0
     },
     "RE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 65547,
-      "marking_context_count": 34
+      "unrestricted_count": 214230,
+      "marking_context_count": 415
     },
     "RZ": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 27,
-      "marking_context_count": 0
+      "unrestricted_count": 35,
+      "marking_context_count": 1
     },
     "RS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 1011,
+      "unrestricted_count": 4307,
       "marking_context_count": 0
     },
     "YA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 114,
-      "marking_context_count": 1
+      "unrestricted_count": 3080,
+      "marking_context_count": 4
     },
     "YW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 4,
+      "unrestricted_count": 5,
       "marking_context_count": 0
     },
     "YE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 60,
+      "unrestricted_count": 313,
       "marking_context_count": 0
     },
     "YZ": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 0,
-      "marking_context_count": 0
+      "unrestricted_count": 20,
+      "marking_context_count": 4
     },
     "YS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 9,
+      "unrestricted_count": 15,
       "marking_context_count": 0
     },
     "HA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 405,
+      "unrestricted_count": 1933,
       "marking_context_count": 0
     },
     "HW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 216,
-      "marking_context_count": 0
+      "unrestricted_count": 228,
+      "marking_context_count": 4
     },
     "HE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 3436,
-      "marking_context_count": 0
+      "unrestricted_count": 257508,
+      "marking_context_count": 251
     },
     "HZ": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 11,
-      "marking_context_count": 0
+      "unrestricted_count": 38,
+      "marking_context_count": 3
     },
     "HS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 511,
-      "marking_context_count": 0
+      "unrestricted_count": 574,
+      "marking_context_count": 4
     },
     "GA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 2521,
-      "marking_context_count": 0
+      "unrestricted_count": 2891,
+      "marking_context_count": 4
     },
     "GW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 371,
+      "unrestricted_count": 415,
       "marking_context_count": 0
     },
     "GE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 16131,
-      "marking_context_count": 0
+      "unrestricted_count": 21786,
+      "marking_context_count": 50
     },
     "GZ": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 1,
+      "unrestricted_count": 64,
       "marking_context_count": 0
     },
     "GS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 559,
-      "marking_context_count": 0
+      "unrestricted_count": 2372,
+      "marking_context_count": 3
     },
     "FA": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 236,
+      "unrestricted_count": 326,
       "marking_context_count": 2
     },
     "FW": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 36084,
-      "marking_context_count": 33
+      "unrestricted_count": 41823,
+      "marking_context_count": 117
     },
     "FE": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 366,
+      "unrestricted_count": 844,
       "marking_context_count": 9
     },
     "FZ": {
@@ -248,14 +248,14 @@
     "FS": {
       "rule_target": "TS",
       "length": 2,
-      "unrestricted_count": 373,
-      "marking_context_count": 0
+      "unrestricted_count": 546,
+      "marking_context_count": 10
     }
   },
   "summary": {
     "total_triggers": 37,
-    "triggers_with_zero_marking_context": 23,
-    "max_marking_context_count": 168
+    "triggers_with_zero_marking_context": 11,
+    "max_marking_context_count": 3137
   },
   "corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b"
 }

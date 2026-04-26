@@ -742,14 +742,30 @@ def measure_heuristic_trigger_frequency(
     Returns a dict with the schema documented in
     `tools/corpus-analysis/output/heuristic_frequencies.json`.
     """
+    # Case-insensitive matching mirrors the decoder's runtime
+    # behavior. `marque-engine::decoder::normalize_delimiters_and_case`
+    # uppercases inputs that contain any lowercase character before
+    # running the heuristic, so a real-world input of `(ys//noforn)`
+    # becomes `(YS//NOFORN)` and the heuristic fires on the uppercase
+    # `YS`. A case-sensitive analyzer (matching only uppercase
+    # triggers) would undercount the empirical denominator —
+    # specifically, lowercase appearances of trigger tokens (`re` in
+    # "regarding", `we`, `at`) AND lowercase marking signals
+    # (`secret`, `noforn`) would be invisible to the analyzer but
+    # eligible for runtime heuristic firing post-uppercase. The
+    # `re.IGNORECASE` flag closes that gap.
     trigger_pats = {
-        t: re.compile(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])")
+        t: re.compile(
+            r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])",
+            re.IGNORECASE,
+        )
         for t in ALL_HEURISTIC_TRIGGERS
     }
     signal_pat = re.compile(
         r"(?<![A-Za-z0-9])("
         + "|".join(re.escape(s) for s in MARKING_SHAPE_SIGNALS)
-        + r")(?![A-Za-z0-9])"
+        + r")(?![A-Za-z0-9])",
+        re.IGNORECASE,
     )
     slash_pat = re.compile(r"//")
 

@@ -1271,24 +1271,51 @@ fn build_decoder_diagnostic(
 /// in-context heuristic is well-calibrated above `0.95`.
 ///
 /// Headline numbers from the committed evidence file
-/// (`tools/corpus-analysis/output/heuristic_frequencies.json`):
+/// (`tools/corpus-analysis/output/heuristic_frequencies.json`,
+/// case-insensitive scan over 510,596 Enron documents — case-
+/// insensitive because the decoder uppercases inputs before running
+/// the heuristic, so a runtime-faithful measurement must capture
+/// lowercase trigger appearances too):
 ///
-/// - **23 of 37 triggers** have zero marking-context hits across
-///   510,596 Enron documents.
-/// - The worst-case in-context rate is `Z` at 50/2347 = 2.1%, but
-///   `Z`'s unrestricted count is itself small. The triggers with
-///   high unrestricted counts (`A`, `E`, `RE`, `W`, `FW`, `F`, `X`)
-///   all collapse to ≤ 0.1% in marking context — the suspected-
-///   noisy single-letter triggers behave like "noise above prose,
-///   noise floor in marking shape".
+/// - **11 of 37 triggers** have zero marking-context hits across
+///   the corpus (the case-sensitive prior measurement reported
+///   23/37, but those numbers undercounted the runtime distribution).
+/// - The worst-case per-occurrence in-context rate is `V` at
+///   814/23,331 ≈ 3.49% (`V`→`C` heuristic). Interpreted as "of
+///   every 100 standalone `V` tokens in body text, ~3.5 sit
+///   within ~30 chars of a marking-shape signal." Corresponds to
+///   ~96.5% per-occurrence precision — still above the 0.95 cap,
+///   though with thinner headroom than the prior measurement
+///   showed.
+/// - Most other non-zero triggers stay below ~1.5% per-occurrence
+///   (A: 0.15%, E: 0.34%, RE: 0.19%, W: 0.94%, F: 0.50%, etc.).
 ///
-/// Bayesian credible upper bound: zero observations across
-/// N=510,596 documents gives an FP rate ≤ 0.0006% (Beta(1, 510597))
-/// → per-trigger confidence ≥ 99.9994% on the zero-observation
-/// triggers; non-zero-observation triggers stay above 99.93%. Both
-/// well above the cap. The cap was bumped from `0.80` to `0.95`
-/// in PR 4 with this empirical backing. Spot-check the committed
-/// evidence file directly for the per-trigger detail; this doc
+/// **Cap calibration**: the 0.95 cap is justified by the measured
+/// per-occurrence in-context rates above. Two prior framings of
+/// this paragraph (a "5,000-file sample" with hand-derived numbers
+/// and a "Bayesian credible upper bound ≥ 99.94%" calculation) were
+/// dropped because (a) the sample numbers were superseded by the
+/// full-corpus measurement, and (b) the Bayesian calculation used
+/// a different denominator (`marking_context / total_docs`) than
+/// the per-occurrence rate (`marking_context / unrestricted`),
+/// making them not directly comparable. Use the measured per-
+/// occurrence rates directly.
+///
+/// **Important caveat — loose upper bound**: the per-occurrence rate
+/// is an UPPER BOUND on the heuristic's true FP rate, not the rate
+/// itself. The metric counts "trigger token appears within ~30 chars
+/// of a marking signal," which catches every potential heuristic-
+/// fire input but ALSO includes many that the
+/// [`try_classification_heuristic_fix`](crate::decoder)
+/// guards (lone-input check, leading-position requirement,
+/// multi-token-after-leading-position requirement) would filter out
+/// before the heuristic ever fires. The true FP rate is likely well
+/// below the worst-case 3.49% bound — but if real-world deployment
+/// shows V-shaped triggers producing too many false positives, the
+/// per-trigger plumbing originally proposed for PR 4 should land
+/// (skip-list V, drop its rule confidence, etc.).
+///
+/// Spot-check the evidence file for per-trigger detail; this doc
 /// summarizes qualitatively to avoid drift if the file is
 /// regenerated against a different corpus.
 ///
