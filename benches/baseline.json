@@ -1,28 +1,26 @@
 {
   "_comment": "SC-001a / SC-002 baseline — manually captured, never auto-updated. Re-capture requires a reviewed commit.",
   "reference_machine": {
-    "cpu": "x86_64 under WSL2 (AMD/Intel laptop-class, >=3GHz base). See git log for exact hardware at capture time.",
-    "profile": "release (cargo bench default)",
-    "rust_version": "1.85+",
-    "date_captured": "2026-04-25"
+    "cpu": "x86_64 GitHub Actions hosted runner (ubuntu-latest, 4-core). See git log for exact capture commit.",
+    "profile": "GitHub Actions ubuntu-latest, hosted runner",
+    "rust_version": "1.89",
+    "date_captured": "2026-04-26"
   },
   "lint_10kb": {
-    "lower_ci_us": 276,
-    "mean_us": 280,
-    "upper_ci_us": 285,
+    "lower_ci_us": 746,
+    "mean_us": 749,
+    "upper_ci_us": 753,
     "unit": "microseconds",
-    "_note": "Values are criterion 95% confidence interval bounds (advisory; reference-machine measurement). Reproduces ~620µs on WSL2 dev machines, so the +10% percentage gate against `upper_ci_us` would always fail there; SC-001 is well within reach in either case (16ms target). Per Phase 4 review L6: this bench uses the absolute `drift_alert_upper_ci_us` field below instead of the per-machine percentage gate. Anything over 1ms on the strict path is suspicious and worth investigating; the 16ms absolute target remains the SC-001 contract.",
-    "target_upper_ci_us": 16000,
-    "drift_alert_upper_ci_us": 1000
+    "_note": "Values are Criterion 95% confidence-interval bounds captured on a GitHub Actions ubuntu-latest hosted runner (observed [746–747µs, 749–750µs, 752–753µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~828µs). The SC-001 16ms absolute target remains the load-bearing constitution gate.",
+    "target_upper_ci_us": 16000
   },
   "decoder_10kb_one_mangled_region": {
-    "lower_ci_us": 586,
-    "mean_us": 593,
-    "upper_ci_us": 603,
+    "lower_ci_us": 917,
+    "mean_us": 918,
+    "upper_ci_us": 919,
     "unit": "microseconds",
-    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a WSL2 dev machine. The +10%-vs-`upper_ci_us` regression gate is retired here for the same reason it was retired for `lint_10kb` (see that bench's `_note`): Criterion's upper-CI bound is a function of sample variance, so on a jittery WSL2 host the upper-CI walks out non-linearly faster than the mean (observed 564 µs upper-CI on a clean run vs 724 µs on a noisy run on the same machine — a 28% spread on the gate metric while the underlying mean moved 22%). Comparing two upper-CI values with a 10% gate therefore false-positives on host scheduler noise. Per Phase 4 review L6: this bench uses the absolute `drift_alert_upper_ci_us` field below instead. The SC-002 18ms absolute target is the load-bearing gate; anything over 2ms on the decoder path is suspicious and worth investigating.",
-    "target_upper_ci_us": 18000,
-    "drift_alert_upper_ci_us": 2000
+    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a GitHub Actions ubuntu-latest hosted runner (observed [916–917µs, 917–918µs, 918–919µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~1011µs). The SC-002 18ms absolute target remains the load-bearing constitution gate.",
+    "target_upper_ci_us": 18000
   },
   "lint_scaling": {
     "r_squared_min": 0.9,

@@ -17,20 +17,22 @@
 # across the SC-005 sweep. Fails if R² falls below the `r_squared_min`
 # threshold in `benches/baseline.json`.
 #
-# Three gates are checked:
-#   - `lint_10kb`                         (SC-001, target 16ms upper CI; drift alert 1ms)
+# Four gates are checked:
+#   - `lint_10kb`                         (SC-001, target 16ms upper CI)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#   - `deadline_overhead`                 (Spec 005, with-deadline overhead ≤ max_ratio_pct)
 #
 # Per-bench regression policy:
 #   - If `drift_alert_upper_ci_us` is set in `benches/baseline.json` for a
-#     bench, that absolute value is the threshold. Always enforced (Phase 4
-#     review L6) — these are deliberately picked to be machine-portable, so
-#     the `MARQUE_BENCH_SKIP_REGRESSION=1` CI override does not apply.
+#     bench, that absolute value is the threshold. Always enforced — these
+#     are deliberately picked to be machine-portable, so the
+#     `MARQUE_BENCH_SKIP_REGRESSION=1` env-var override does not apply.
 #   - Otherwise, the threshold is `upper_ci_us * 1.10` (+10% vs the reference
-#     baseline). CI sets `MARQUE_BENCH_SKIP_REGRESSION=1` to skip this gate
-#     because the WSL2 baseline doesn't reproduce on GitHub Actions runners
-#     (T086); the absolute `target_upper_ci_us` gate (16ms / 18ms) still runs.
+#     baseline). The baseline is captured on a GitHub Actions ubuntu-latest
+#     runner so this gate is meaningful in CI. Set
+#     `MARQUE_BENCH_SKIP_REGRESSION=1` only when running locally on hardware
+#     with a substantially different performance profile.
 #
 # SC-005 unit-of-analysis note: the constitution and SC-005 spec both call
 # for "linear scaling" of the lint hot path. The existing `linear_scaling.rs`
@@ -53,18 +55,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASELINE="$REPO_ROOT/benches/baseline.json"
 
-# Skip the +10%-vs-baseline regression check when the runner profile does
-# not match the captured baseline. The baseline lives in `benches/baseline.json`
-# under `reference_machine.cpu` and is captured on a WSL2 dev machine; a
-# GitHub Actions `ubuntu-latest` runner is a different profile entirely
-# (different CPU, different scheduler noise, different cache topology) and
-# +10% vs that baseline is meaningless. The absolute `target_upper_ci_us`
-# gate (16ms / 18ms) and the SC-005 R² floor still run — those are the
-# load-bearing constitution-level checks.
-#
-# CI sets `MARQUE_BENCH_SKIP_REGRESSION=1` until a CI-machine baseline is
-# captured in a follow-up PR. Local dev runs without the env var and
-# enforces +10%.
+# `MARQUE_BENCH_SKIP_REGRESSION=1` skips the +10%-vs-baseline percentage
+# check. The baseline in `benches/baseline.json` is captured on a GitHub
+# Actions ubuntu-latest runner, so the gate is meaningful on CI. Set this
+# env var only when running locally on a machine with a substantially
+# different performance profile.
 SKIP_REGRESSION="${MARQUE_BENCH_SKIP_REGRESSION:-0}"
 
 if [[ "${1:-}" == "--skip" ]]; then
