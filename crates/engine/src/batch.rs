@@ -19,12 +19,16 @@
 //! ```rust,no_run
 //! use marque_engine::{Engine, batch::{BatchEngine, BatchOptions}};
 //! use futures::StreamExt;
+//! use std::time::Duration;
 //!
 //! # async fn example(engine: Engine) {
-//! let batch = BatchEngine::new(engine, BatchOptions {
-//!     max_concurrent_docs: Some(16),
-//!     max_inflight_bytes: Some(256 * 1024 * 1024), // 256 MiB
-//! });
+//! // `BatchOptions` is `#[non_exhaustive]`, so construct via
+//! // `Default::default()` + field assignment.
+//! let mut options = BatchOptions::default();
+//! options.max_concurrent_docs = Some(16);
+//! options.max_inflight_bytes = Some(256 * 1024 * 1024); // 256 MiB
+//! options.per_doc_deadline = Some(Duration::from_secs(5));
+//! let batch = BatchEngine::new(engine, options);
 //!
 //! let docs = vec![
 //!     ("doc1".to_owned(), b"TOP SECRET//SI".to_vec()),
@@ -42,11 +46,17 @@
 //! ```
 
 use std::sync::Arc;
+// `BatchEngine` is gated behind the `batch` Cargo feature (tokio dep);
+// the feature is not declared on the WASM target, so `std::time::Instant`
+// is the right choice here even though the rest of the engine uses
+// `web_time::Instant` for cross-target compatibility. This module
+// never compiles for `wasm32-unknown-unknown`.
+use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt, stream};
 use recoco_utils::concur_control::{ConcurrencyController, Options as ConcurOptions};
 
-use crate::{Engine, FixResult, LintResult};
+use crate::{Engine, EngineError, FixOptions, FixResult, LintOptions, LintResult};
 
 /// Error returned when a single document in a batch fails to process.
 ///
@@ -76,6 +86,30 @@ pub enum BatchError {
     /// real worker-task panic. `is_panic()` returns `false` for this
     /// variant; `is_shutdown()` returns `true`.
     ShutdownInProgress,
+    /// `fix_many` aborted this document's fix pass because the
+    /// per-document deadline (set on `BatchOptions::per_doc_deadline`)
+    /// expired. Spec 005 §R4 / Constitution V Principle V — no partial
+    /// `FixResult` is ever produced; the caller receives the partial
+    /// `LintResult` so it can render whatever diagnostics the engine
+    /// surfaced before the abort.
+    ///
+    /// `is_deadline_exceeded()` returns `true` for this variant only.
+    /// `is_panic()` and `is_shutdown()` return `false` — a deadline
+    /// trip is a routine operational signal, not a worker bug or
+    /// runtime shutdown.
+    ///
+    /// Note: only the **fix** path produces this variant. `lint_many`
+    /// surfaces a deadline-truncated lint as `Ok(LintResult { truncated:
+    /// true, .. })` so the partial diagnostics flow through the same
+    /// success channel — there is no asymmetric response shape on the
+    /// lint side because no audit-stream invariant is at risk.
+    DocumentDeadlineExceeded {
+        /// The lint pass produced before the deadline tripped. May
+        /// itself be truncated (`partial_lint.truncated`) if the
+        /// deadline expired during the lint phase rather than the
+        /// fix-application phase.
+        partial_lint: LintResult,
+    },
 }
 
 impl BatchError {
@@ -87,6 +121,7 @@ impl BatchError {
         match self {
             Self::TaskFailed(e) => e.is_panic(),
             Self::ShutdownInProgress => false,
+            Self::DocumentDeadlineExceeded { .. } => false,
         }
     }
 
@@ -100,6 +135,7 @@ impl BatchError {
         match self {
             Self::TaskFailed(e) => e.is_cancelled(),
             Self::ShutdownInProgress => false,
+            Self::DocumentDeadlineExceeded { .. } => false,
         }
     }
 
@@ -112,6 +148,19 @@ impl BatchError {
     /// should drain any remaining items in the result stream and exit.
     pub fn is_shutdown(&self) -> bool {
         matches!(self, Self::ShutdownInProgress)
+    }
+
+    /// Returns `true` if this error was caused by the per-document
+    /// deadline expiring during a `fix_many` call.
+    ///
+    /// Routine operational signal — the document took longer to
+    /// process than its budget allowed. Callers should render the
+    /// embedded `partial_lint` diagnostics and either skip the
+    /// document or retry with a larger budget. Distinct from
+    /// `is_panic()` (worker bug) and `is_shutdown()` (runtime
+    /// end-of-life).
+    pub fn is_deadline_exceeded(&self) -> bool {
+        matches!(self, Self::DocumentDeadlineExceeded { .. })
     }
 }
 
@@ -131,6 +180,11 @@ impl std::fmt::Display for BatchError {
             Self::ShutdownInProgress => {
                 f.write_str("ConcurrencyController semaphore closed (shutdown in progress)")
             }
+            Self::DocumentDeadlineExceeded { partial_lint } => write!(
+                f,
+                "document deadline exceeded after {}/{} candidates",
+                partial_lint.candidates_processed, partial_lint.candidates_total
+            ),
         }
     }
 }
@@ -140,6 +194,11 @@ impl std::error::Error for BatchError {
         match self {
             Self::TaskFailed(e) => Some(e),
             Self::ShutdownInProgress => None,
+            // Like `EngineError::DeadlineExceeded`, the deadline trip
+            // is not caused by an inner error — it reports a runtime
+            // condition (the deadline elapsed) with no underlying
+            // failure to chain.
+            Self::DocumentDeadlineExceeded { .. } => None,
         }
     }
 }
@@ -160,10 +219,26 @@ impl From<tokio::sync::AcquireError> for BatchError {
     }
 }
 
-/// Concurrency limits for batch processing.
+/// Concurrency limits and per-document budgets for batch processing.
 ///
-/// Both limits are optional and independent. When both are set the more
-/// restrictive one governs at any given moment.
+/// All fields are optional and independent. When both concurrency limits
+/// are set the more restrictive one governs at any given moment;
+/// `per_doc_deadline` is orthogonal and applies separately to each
+/// document's permit-acquired execution slice.
+///
+/// `#[non_exhaustive]` so future per-doc concerns (memory budgets,
+/// per-rule deadlines, cancellation tokens) can join without a
+/// semver-breaking change. From outside the engine crate, construct
+/// via `Default::default()` + public field assignment:
+///
+/// ```rust,no_run
+/// use marque_engine::BatchOptions;
+/// use std::time::Duration;
+///
+/// let mut opts = BatchOptions::default();
+/// opts.per_doc_deadline = Some(Duration::from_secs(5));
+/// ```
+#[non_exhaustive]
 pub struct BatchOptions {
     /// Maximum documents in-flight simultaneously.
     ///
@@ -185,6 +260,22 @@ pub struct BatchOptions {
     /// Useful for memory-bounded batch runs over large corpora. `None` means
     /// unlimited (byte accounting is still tracked for observability).
     pub max_inflight_bytes: Option<usize>,
+
+    /// Per-document wall-clock budget (spec 005 §R2). When `Some(d)`,
+    /// each document's lint/fix call gets its own deadline of
+    /// `Instant::now() + d` stamped **after** the document acquires
+    /// its concurrency permit — `ConcurrencyController` wait time
+    /// does not consume the budget. A slow document does not borrow
+    /// from a fast document's slice.
+    ///
+    /// On expiry: lint returns `Ok(LintResult { truncated: true, .. })`
+    /// (partial diagnostics matter to the caller). Fix returns
+    /// `Err(BatchError::DocumentDeadlineExceeded { partial_lint })`
+    /// per Constitution V Principle V — no partial `FixResult` is
+    /// ever produced.
+    ///
+    /// `None` (default) means no per-document deadline.
+    pub per_doc_deadline: Option<Duration>,
 }
 
 impl Default for BatchOptions {
@@ -192,6 +283,7 @@ impl Default for BatchOptions {
         Self {
             max_concurrent_docs: Some(32),
             max_inflight_bytes: None,
+            per_doc_deadline: None,
         }
     }
 }
@@ -204,6 +296,15 @@ pub struct BatchEngine {
     controller: Arc<ConcurrencyController>,
     /// Buffer cap forwarded to `buffer_unordered`.
     concurrent: usize,
+    /// Default per-document deadline (spec 005 §R2). Stamped into an
+    /// `Instant` after each document acquires its concurrency permit
+    /// — so a slow earlier document does not consume budget allotted
+    /// to a later one, and `ConcurrencyController` wait time does
+    /// not count against the engine's slice. `None` means no
+    /// deadline; the construction-time default flows through
+    /// `lint_many` / `fix_many`. Per-call `_with_options` variants
+    /// can override.
+    per_doc_deadline: Option<Duration>,
 }
 
 impl BatchEngine {
@@ -217,15 +318,44 @@ impl BatchEngine {
             engine: Arc::new(engine),
             controller: Arc::new(controller),
             concurrent,
+            per_doc_deadline: options.per_doc_deadline,
         }
     }
 
     /// Lint many documents concurrently. Yields `(id, Result)` in
     /// completion order; an `Err` indicates the per-document task panicked
     /// or was cancelled — it does not abort the batch.
+    ///
+    /// Honors `BatchOptions::per_doc_deadline` from construction time
+    /// (spec 005 §R2). A deadline-truncated lint surfaces as
+    /// `Ok(LintResult { truncated: true, .. })` — the partial
+    /// diagnostics are useful, so they flow through the success
+    /// channel rather than `Err`.
     pub fn lint_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> impl Stream<Item = (String, Result<LintResult, BatchError>)> {
+        self.lint_many_inner(docs, self.per_doc_deadline)
+    }
+
+    /// Same as [`lint_many`] but reads `per_doc_deadline` from the
+    /// supplied [`BatchOptions`] instead of the construction-time
+    /// default. Other fields on `opts` are reserved for future
+    /// per-call overrides; in MVP only `per_doc_deadline` is honored.
+    ///
+    /// [`lint_many`]: BatchEngine::lint_many
+    pub fn lint_many_with_options(
+        &self,
+        docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+        opts: &BatchOptions,
+    ) -> impl Stream<Item = (String, Result<LintResult, BatchError>)> {
+        self.lint_many_inner(docs, opts.per_doc_deadline)
+    }
+
+    fn lint_many_inner(
+        &self,
+        docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+        per_doc_deadline: Option<Duration>,
     ) -> impl Stream<Item = (String, Result<LintResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
@@ -245,9 +375,23 @@ impl BatchEngine {
                         Ok(p) => p,
                         Err(e) => return (id, Err(BatchError::from(e))),
                     };
-                    let result = tokio::task::spawn_blocking(move || engine.lint(&data))
-                        .await
-                        .map_err(BatchError::from);
+                    // Spec 005 §R2: the deadline is stamped AFTER permit
+                    // acquisition so slow `ConcurrencyController` waits
+                    // (a backed-up batch) don't consume the document's
+                    // engine budget.
+                    let result = tokio::task::spawn_blocking(move || {
+                        let deadline = per_doc_deadline.and_then(|d| Instant::now().checked_add(d));
+                        // In-crate construction may use struct-update
+                        // syntax across `#[non_exhaustive]` — only the
+                        // outside-the-defining-crate boundary is restricted.
+                        let opts = LintOptions {
+                            deadline,
+                            ..LintOptions::default()
+                        };
+                        engine.lint_with_options(&data, &opts)
+                    })
+                    .await
+                    .map_err(BatchError::from);
                     (id, result)
                 }
             })
@@ -255,11 +399,42 @@ impl BatchEngine {
     }
 
     /// Fix many documents concurrently. Yields `(id, Result)` in
-    /// completion order; an `Err` indicates the per-document task panicked
-    /// or was cancelled — it does not abort the batch.
+    /// completion order; an `Err` indicates the per-document task
+    /// panicked, was cancelled, hit the per-document deadline, or the
+    /// runtime is shutting down — it does not abort the batch.
+    ///
+    /// Honors `BatchOptions::per_doc_deadline` from construction
+    /// time. A deadline trip on the fix path returns
+    /// `Err(BatchError::DocumentDeadlineExceeded { partial_lint })`
+    /// per Constitution V Principle V — no partial `FixResult` is
+    /// ever produced. Match on `is_deadline_exceeded()` to
+    /// distinguish from worker bugs (`is_panic()`) or shutdown
+    /// (`is_shutdown()`).
     pub fn fix_many(
         &self,
         docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> impl Stream<Item = (String, Result<FixResult, BatchError>)> {
+        self.fix_many_inner(docs, self.per_doc_deadline)
+    }
+
+    /// Same as [`fix_many`] but reads `per_doc_deadline` from the
+    /// supplied [`BatchOptions`] instead of the construction-time
+    /// default. Other fields on `opts` are reserved for future
+    /// per-call overrides; in MVP only `per_doc_deadline` is honored.
+    ///
+    /// [`fix_many`]: BatchEngine::fix_many
+    pub fn fix_many_with_options(
+        &self,
+        docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+        opts: &BatchOptions,
+    ) -> impl Stream<Item = (String, Result<FixResult, BatchError>)> {
+        self.fix_many_inner(docs, opts.per_doc_deadline)
+    }
+
+    fn fix_many_inner(
+        &self,
+        docs: impl IntoIterator<Item = (String, Vec<u8>)>,
+        per_doc_deadline: Option<Duration>,
     ) -> impl Stream<Item = (String, Result<FixResult, BatchError>)> {
         let engine = Arc::clone(&self.engine);
         let controller = Arc::clone(&self.controller);
@@ -271,20 +446,53 @@ impl BatchEngine {
                 let controller = Arc::clone(&controller);
                 async move {
                     let byte_len = data.len();
-                    // Whitepaper §9.4 / gap register #8: surface a closed
-                    // controller as `BatchError::ShutdownInProgress` rather
-                    // than `.expect()`-panicking. The `From<AcquireError>`
-                    // impl above maps the only possible error.
                     let _permit = match controller.acquire(Some(|| byte_len)).await {
                         Ok(p) => p,
                         Err(e) => return (id, Err(BatchError::from(e))),
                     };
+                    // Spec 005 §R2 — same per-permit stamping as
+                    // `lint_many`. Spec 005 §R4: a deadline trip on the
+                    // fix path returns `Err(EngineError::DeadlineExceeded
+                    // { partial_lint })`, which we re-shape into
+                    // `BatchError::DocumentDeadlineExceeded` so callers
+                    // matching on `BatchError` see the deadline-trip
+                    // signal at the same level as panic / shutdown.
                     let result = tokio::task::spawn_blocking(move || {
-                        engine.fix(&data, crate::FixMode::Apply)
+                        let deadline = per_doc_deadline.and_then(|d| Instant::now().checked_add(d));
+                        let opts = FixOptions {
+                            deadline,
+                            ..FixOptions::default()
+                        };
+                        engine.fix_with_options(&data, crate::FixMode::Apply, &opts)
                     })
-                    .await
-                    .map_err(BatchError::from);
-                    (id, result)
+                    .await;
+                    let mapped = match result {
+                        Ok(Ok(fix_result)) => Ok(fix_result),
+                        Ok(Err(EngineError::DeadlineExceeded { partial_lint })) => {
+                            Err(BatchError::DocumentDeadlineExceeded { partial_lint })
+                        }
+                        // `EngineError::InvalidThreshold` cannot fire here
+                        // because `FixOptions` carries no `threshold_override`
+                        // (default is `None`, falling back to the engine's
+                        // pre-validated config threshold). A future addition
+                        // of per-doc threshold overrides on `BatchOptions`
+                        // would need to thread `EngineError::InvalidThreshold`
+                        // into a new `BatchError` variant; until then the
+                        // arm is `unreachable!` so a silent breakage is
+                        // visible at the next test run.
+                        Ok(Err(EngineError::InvalidThreshold(_))) => unreachable!(
+                            "BatchEngine does not set FixOptions::threshold_override; \
+                             InvalidThreshold cannot fire"
+                        ),
+                        // `EngineError` is `#[non_exhaustive]` for crate
+                        // outsiders, but inside `marque-engine` we see all
+                        // variants — adding a future variant will produce
+                        // a non-exhaustive-match error here, forcing an
+                        // explicit `BatchError` mapping decision rather
+                        // than a silently-eaten wildcard.
+                        Err(join_error) => Err(BatchError::from(join_error)),
+                    };
+                    (id, mapped)
                 }
             })
             .buffer_unordered(concurrent)
