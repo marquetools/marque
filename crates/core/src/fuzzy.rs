@@ -570,6 +570,29 @@ mod tests {
     }
 
     #[test]
+    fn real_vocab_emits_multi_word_banner_for_whitespace_free_typo() {
+        // Pin the documented behavior of multi-word entries in
+        // `EXTENDED_CORRECTION_VOCAB`. The fuzzy matcher CAN emit a
+        // multi-word vocab entry as the correction for a
+        // whitespace-free typo (here: `SBUNOFORN` → `SBU NOFORN` at
+        // distance 1, single-character insertion of the space).
+        // The strict parser then accepts the corrected form via
+        // `parse_non_ic_full_form`, so the round-trip lands as the
+        // expected `NonIcDissem::SbuNf`.
+        //
+        // Pinning this lets us word the doc comment on
+        // `EXTENDED_CORRECTION_VOCAB` accurately — multi-word
+        // entries are reachable, not "inert".
+        use marque_ism::CapcoTokenSet;
+        use marque_ism::token_set::TokenSet as _;
+        let vocab = CapcoTokenSet.correction_vocab();
+        let matcher = FuzzyVocabMatcher::new(vocab);
+        let result = matcher.correct("SBUNOFORN");
+        assert_eq!(result.as_ref().map(|c| c.token), Some("SBU NOFORN"));
+        assert_eq!(result.map(|c| c.distance), Some(1));
+    }
+
+    #[test]
     fn correction_confidence_distance2_scales_with_length() {
         let eps = 1e-5_f32;
         assert!((correction_confidence(2, 5) - 0.40).abs() < eps); // 0.40 + 0 bonus

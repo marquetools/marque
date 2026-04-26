@@ -68,12 +68,19 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// returning `NOFORN` (rather than `NF`) lands on the same final
 /// [`crate::DissemControl::Nf`] after strict parsing.
 ///
-/// Multi-word entries (`DEA SENSITIVE`, `SBU NOFORN`, `LES NOFORN`,
-/// `DOD UCNI`, `DOE UCNI`) are included for completeness but the
-/// per-token fuzzy tokenizer in `marque-engine`'s decoder splits on
-/// whitespace, so they will never appear as a single input token to
-/// the matcher. They cost one extra binary-search slot each and are
-/// otherwise inert.
+/// Multi-word banner forms (`DEA SENSITIVE`, `SBU NOFORN`,
+/// `LES NOFORN`, `DOD UCNI`, `DOE UCNI`) are retained intentionally.
+/// The decoder's per-token fuzzy tokenizer (`scan_token` in
+/// `crates/engine/src/decoder.rs`) splits raw input on whitespace, so
+/// these never appear as a single *input* token to the matcher — but
+/// fuzzy correction can still emit one of them as the canonical
+/// *output* for a whitespace-free typo (e.g., `SBUNOFORN` →
+/// `SBU NOFORN`, distance 1, single-character insertion of the
+/// space). The strict parser then accepts the corrected multi-word
+/// form via `parse_non_ic_full_form` / `parse_dissem_full_form` and
+/// translates it to the canonical portion enum, so the round-trip
+/// lands at the expected `NonIcDissem::SbuNf` (or peer). Pinned by
+/// `marque-core::fuzzy::tests::real_vocab_emits_multi_word_banner_for_whitespace_free_typo`.
 static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     let mut v: Vec<&'static str> = values::ALL_CVE_TOKENS.to_vec();
     for f in MARKING_FORMS {
