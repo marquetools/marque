@@ -541,7 +541,7 @@ fn run_sweep() -> AccuracyReport {
 ///   removing `#[ignore]` — no test rewrite, no threshold-tuning
 ///   PR.
 #[test]
-#[ignore = "SC-004 ≥85% target; current decoder ~53%, see resolution_rate_does_not_regress for the always-on regression gate"]
+#[ignore = "SC-004 ≥85% target; current decoder ~71% (post-#133 PRs 1+3), see resolution_rate_does_not_regress for the always-on regression gate"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

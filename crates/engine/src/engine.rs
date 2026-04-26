@@ -1198,18 +1198,11 @@ fn build_decoder_diagnostic(
     // recognition emits at `Severity::Fix` with `rule = 1.0` (engine
     // applies whenever `recognition >= confidence_threshold`). The
     // position-aware classification heuristic (issue #133 PR 2) emits
-    // at `Severity::Warn` with `rule = 0.80` capping
-    // `combined ≤ 0.80`, which sits below the default
-    // `confidence_threshold` of `0.95` — the heuristic is always-
-    // visible in `--check` (non-zero exit code) but only auto-applies
-    // when the user has explicitly lowered the threshold to opt into
-    // its bar of evidence.
-    //
-    // The `0.80` cap is a global default for PR 2; a follow-up PR
-    // will replace it with a per-token confidence derived from
-    // counting heuristic-trigger tokens against the Enron corpus
-    // (zero corpus appearances → high confidence; many → lower or
-    // skip the rule).
+    // at `Severity::Warn` (always-visible in `--check`, non-zero exit
+    // code) with `rule = HEURISTIC_RULE_AXIS_CAP = 0.95` matching the
+    // default `confidence_threshold`. PR 4's empirical corpus
+    // measurement justifies the `0.95` value — see the cap's doc
+    // comment for the analysis script and measured numbers.
     let (severity, rule_axis, fix_source) = match provenance.fix_source {
         FixSource::DecoderClassificationHeuristic => (
             Severity::Warn,
@@ -1255,15 +1248,57 @@ fn build_decoder_diagnostic(
 
 /// `Confidence::rule` cap for the position-aware classification
 /// heuristic (`FixSource::DecoderClassificationHeuristic`). Pinned
-/// at `0.80` so `combined ≤ 0.80` stays below the default
-/// `confidence_threshold` of `0.95` — heuristic fixes never auto-
-/// apply at the default threshold; user must explicitly drop
-/// `confidence_threshold` to opt into the heuristic's bar.
+/// at `0.95` matching the default `confidence_threshold` — solo-
+/// candidate heuristic fixes auto-apply at the default threshold;
+/// multi-candidate cases (heuristic plus a competing recovery)
+/// drop below `0.95` because `recognition` falls with the runner-
+/// up margin and the user retains agency to verify. The diagnostic
+/// is always emitted at [`Severity::Warn`](marque_rules::Severity::Warn)
+/// regardless of confidence, so `--check` exits non-zero whenever
+/// the heuristic fires.
 ///
-/// Replaceable with a per-token table baked from corpus analysis
-/// in a follow-up PR; the global cap is the conservative default
-/// for PR 2.
-const HEURISTIC_RULE_AXIS_CAP: f32 = 0.80;
+/// # Empirical justification (issue #133 PR 4)
+///
+/// The relevant FP rate isn't "trigger appears in arbitrary prose"
+/// but "trigger appears as a standalone token in a context that
+/// also contains marking-shape signals (`//` outside URLs, or any
+/// CAPCO marking long-form like `NOFORN`/`SECRET`/`REL TO`/etc.)
+/// within proximity" — because the decoder heuristic only fires
+/// when the strict parse fails on input that's already
+/// marking-shaped. PR 2's initial guess of `0.80` was based on the
+/// reading "we can't be 97% sure"; PR 4 measured the conditional
+/// FP rate against the full Enron corpus
+/// (`tools/corpus-analysis/output/heuristic_frequencies.json`) and
+/// found:
+///
+/// - Of 35,138 unrestricted `X` occurrences in a 5,000-file Enron
+///   sample (projects to ~3.6M in full corpus), zero are within
+///   the marking-context window. Same shape for `RE`, `FW`, `A`,
+///   `E`, `W`, `F`, `V` — the previously-suspected-noisy triggers.
+/// - 27 of 37 triggers have zero marking-context hits in the
+///   sample; the remaining 10 (`A`, `E`) have ≤ 1 hit.
+///
+/// Bayesian credible interval: zero observations of N=5,000
+/// gives an FP rate upper bound of ~0.06% (Beta(1, 5001)), so
+/// per-trigger confidence ≥ 99.94%. `1` observation gives ≥ 99.4%.
+/// Both well above `0.95`. The cap was bumped from `0.80` to `0.95`
+/// in PR 4 with this empirical backing.
+///
+/// To re-measure (e.g., when a different corpus is added):
+///
+/// ```text
+/// python3 tools/corpus-analysis/analyze.py \
+///     --mode heuristic-frequency \
+///     --output tools/corpus-analysis/output/heuristic_frequencies.json
+/// ```
+///
+/// If a future measurement shows a trigger's marking-context FP
+/// rate above ~1% (e.g., a corpus that contains heavy use of one
+/// of these tokens in a marking-adjacent way), this cap should
+/// drop or the per-trigger plumbing originally proposed for PR 4
+/// should land. Pinned at the engine boundary by
+/// `engine::tests::heuristic_rule_axis_cap_matches_default_threshold`.
+const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 
 // ---------------------------------------------------------------------------
 // Rule-override canonicalization (task #49)
@@ -1453,6 +1488,40 @@ mod tests {
         Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
     };
     use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn heuristic_rule_axis_cap_matches_default_threshold() {
+        // Issue #133 PR 4 invariant: the position-aware classification
+        // heuristic's `Confidence::rule` cap is pinned at the default
+        // `confidence_threshold` (0.95). Solo-candidate heuristic
+        // fixes auto-apply at the default threshold; the empirical
+        // corpus measurement (see `HEURISTIC_RULE_AXIS_CAP` doc and
+        // `tools/corpus-analysis/output/heuristic_frequencies.json`)
+        // justifies confidence ≥ 99.4% per-trigger, comfortably above
+        // the cap.
+        //
+        // If a future change drops `HEURISTIC_RULE_AXIS_CAP` below
+        // `Config::default().confidence_threshold()`, that's a
+        // behavioral regression: heuristic fixes that previously auto-
+        // applied at the default threshold would silently stop
+        // applying, and the user-visible "fix-and-warn" surface
+        // collapses to "warn-only-without-fix" without an explicit
+        // intent recorded in the change.
+        //
+        // If a future change drops the default `confidence_threshold`
+        // below `HEURISTIC_RULE_AXIS_CAP`, that's the inverse problem:
+        // the heuristic suddenly becomes more aggressive than the
+        // governance signal we agreed on. Either way, the equality
+        // pin here forces a coordinated decision.
+        let default_threshold = Config::default().confidence_threshold();
+        assert!(
+            (HEURISTIC_RULE_AXIS_CAP - default_threshold).abs() < 1e-6,
+            "HEURISTIC_RULE_AXIS_CAP={HEURISTIC_RULE_AXIS_CAP} must equal \
+             Config::default().confidence_threshold()={default_threshold}; \
+             a divergence requires an intentional governance change recorded \
+             in the cap's doc comment"
+        );
+    }
 
     /// A test rule that emits a fixed list of FixProposals on every check call,
     /// ignoring the parsed attributes. Lets us drive the engine deterministically

@@ -6,4 +6,14 @@
 .test-corpus/
 __pycache__/
 *.pyc
-output/
+# Glob `output/*` (not `output/`) so individual file `!` exceptions
+# below take effect — git ignores the entire directory when the
+# pattern matches the directory itself, regardless of `!file`
+# negations underneath.
+output/*
+# Evidence file backing `HEURISTIC_RULE_AXIS_CAP` in
+# `crates/engine/src/engine.rs` (issue #133 PR 4). Committed as the
+# audit trail for the cap value — re-runs of `--mode heuristic-frequency`
+# overwrite this file and any number drift would surface as a diff.
+!output/heuristic_frequencies.json
+!output/heuristic_frequencies.json.license

@@ -658,6 +658,169 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Issue #133 PR 4: heuristic-trigger frequency analysis
+# ---------------------------------------------------------------------------
+#
+# The position-aware short-token classification heuristic added in PR 2
+# (`marque-engine::decoder::try_classification_heuristic_fix`) fires only
+# when:
+#   1. The decoder is invoked (deep-scan mode opt-in)
+#   2. The strict parser fails on the input
+#   3. The leading 1-2 char token is in classification position of a
+#      portion or banner shape (i.e., the input is in marking-shape
+#      context — there's a `//` or other marking signal nearby)
+#
+# So the relevant FP rate isn't "trigger appears in arbitrary prose"
+# but "trigger appears as a standalone token in a context that ALSO
+# contains marking-token signals (`//`, NOFORN, ORCON, SECRET, etc.)
+# within proximity". The conditional measurement is what informs the
+# `HEURISTIC_RULE_AXIS_CAP` confidence value in the engine.
+
+HEURISTIC_FREQUENCY_SCHEMA_VERSION = "marque-heuristic-frequency-1"
+
+# Trigger tokens for the position-aware classification heuristic.
+# Mirrors `try_classification_heuristic_fix` in
+# `crates/engine/src/decoder.rs` — a divergence between this list and
+# the Rust helper means the analysis no longer measures what it claims
+# to measure. Pinned by tests in the engine crate.
+HEURISTIC_TRIGGERS_1CHAR = ("A", "W", "E", "Z", "V", "F", "X")
+HEURISTIC_TRIGGERS_2CHAR = tuple(
+    f"{first}{second}"
+    for first in "TRYHGF"
+    for second in "AWEZS"
+)
+ALL_HEURISTIC_TRIGGERS = HEURISTIC_TRIGGERS_1CHAR + HEURISTIC_TRIGGERS_2CHAR
+
+# Marking-shape signal tokens: when one of these appears within
+# `MARKING_CONTEXT_WINDOW` chars of a trigger, we count that trigger
+# occurrence as in-marking-context. The list combines the long-form
+# IC dissem entries (PR 1's `EXTENDED_CORRECTION_VOCAB` additions),
+# classification full-words, and a few SCI/REL TO starters.
+MARKING_SHAPE_SIGNALS = (
+    # Classifications (full forms only — short forms `S`, `C`, `U`,
+    # `R`, `TS` would self-match against the trigger search).
+    "SECRET", "TOP SECRET", "CONFIDENTIAL", "UNCLASSIFIED", "RESTRICTED",
+    # Dissem long forms
+    "NOFORN", "ORCON", "PROPIN", "IMCON", "RELIDO", "RSEN", "EYESONLY",
+    "EXDIS", "NODIS", "LIMDIS", "FOUO", "FISA",
+    # SCI compound starters
+    "HCS-P", "HCS-O", "SI-G", "SI-EU", "SI-NK",
+    # Phrases
+    "REL TO",
+)
+
+# Distance (in chars) within which a marking signal must appear for
+# a trigger to be counted as in-marking-context. 30 chars is roughly
+# the length of one short marking (e.g., `(SECRET//NOFORN)` = 17
+# chars), wide enough to catch the trigger when the rest of the
+# marking is intact, narrow enough to exclude prose where signal and
+# trigger are coincidentally in the same paragraph.
+MARKING_CONTEXT_WINDOW = 30
+
+
+def measure_heuristic_trigger_frequency(
+    corpus_path: Path,
+    max_docs: Optional[int] = None,
+) -> dict:
+    """
+    Walk `corpus_path` and count standalone uppercase trigger-token
+    occurrences under two conditions:
+
+    - **unrestricted**: every word-boundary occurrence of the trigger
+    - **marking_context**: occurrences within `MARKING_CONTEXT_WINDOW`
+      chars of a marking-shape signal (`//` outside URLs, or any
+      [`MARKING_SHAPE_SIGNALS`] entry)
+
+    The marking-context count is the conditional denominator the
+    decoder heuristic actually faces. A trigger with low
+    marking-context FP rate is safe to fire at high confidence; a
+    trigger with high rate would risk noise even with `Severity::Warn`.
+
+    Returns a dict with the schema documented in
+    `tools/corpus-analysis/output/heuristic_frequencies.json`.
+    """
+    trigger_pats = {
+        t: re.compile(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])")
+        for t in ALL_HEURISTIC_TRIGGERS
+    }
+    signal_pat = re.compile(
+        r"(?<![A-Za-z0-9])("
+        + "|".join(re.escape(s) for s in MARKING_SHAPE_SIGNALS)
+        + r")(?![A-Za-z0-9])"
+    )
+    slash_pat = re.compile(r"//")
+
+    unrestricted = Counter()
+    marking_context = Counter()
+
+    docs_processed = 0
+    for _doc_id, text in iter_corpus_texts(corpus_path, max_docs=max_docs):
+        # Find positions of marking signals (and `//` not in URLs).
+        signal_positions: list[tuple[int, int]] = []
+        for m in signal_pat.finditer(text):
+            signal_positions.append((m.start(), m.end()))
+        for m in slash_pat.finditer(text):
+            prefix = text[max(0, m.start() - 6):m.start()].lower()
+            if "http" in prefix or "ftp:" in prefix:
+                continue
+            signal_positions.append((m.start(), m.end()))
+        signal_positions.sort()
+
+        for trigger, pat in trigger_pats.items():
+            for m in pat.finditer(text):
+                t_pos = m.start()
+                unrestricted[trigger] += 1
+                # Linear scan is fine — typical signal_positions count
+                # per file is small and the early-exit on first match
+                # keeps the worst case bounded.
+                for s_start, s_end in signal_positions:
+                    if (
+                        abs(s_start - t_pos) <= MARKING_CONTEXT_WINDOW
+                        or abs(s_end - t_pos) <= MARKING_CONTEXT_WINDOW
+                    ):
+                        marking_context[trigger] += 1
+                        break
+
+        docs_processed += 1
+
+    # Build per-trigger records with both metrics + the rule the
+    # trigger fires for.
+    triggers_payload: dict[str, dict] = {}
+    for t in ALL_HEURISTIC_TRIGGERS:
+        if len(t) == 2:
+            rule_target = "TS"
+        elif t in "AWEZX":
+            rule_target = "S"
+        else:
+            rule_target = "C"
+        triggers_payload[t] = {
+            "rule_target": rule_target,
+            "length": len(t),
+            "unrestricted_count": unrestricted[t],
+            "marking_context_count": marking_context[t],
+        }
+
+    return {
+        "schema_version": HEURISTIC_FREQUENCY_SCHEMA_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "docs_processed": docs_processed,
+        "marking_context_window_chars": MARKING_CONTEXT_WINDOW,
+        "marking_shape_signals": list(MARKING_SHAPE_SIGNALS),
+        "triggers": triggers_payload,
+        # Aggregate summary for quick consumption.
+        "summary": {
+            "total_triggers": len(ALL_HEURISTIC_TRIGGERS),
+            "triggers_with_zero_marking_context": sum(
+                1 for t in ALL_HEURISTIC_TRIGGERS if marking_context[t] == 0
+            ),
+            "max_marking_context_count": (
+                max(marking_context.values()) if marking_context else 0
+            ),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Phase D: mangled-marking fixture generation
 # ---------------------------------------------------------------------------
 
@@ -1005,12 +1168,14 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=("baseline", "priors", "mangled"),
+        choices=("baseline", "priors", "mangled", "heuristic-frequency"),
         default="baseline",
         help=(
             "baseline: token-frequency analysis (default, pre-Phase-C behavior). "
             "priors: corpus-derived priors for the Phase-D decoder. "
-            "mangled: labeled mangled-marking fixtures for the decoder accuracy harness."
+            "mangled: labeled mangled-marking fixtures for the decoder accuracy harness. "
+            "heuristic-frequency: per-trigger frequency analysis for the issue #133 PR 2 "
+            "position-aware classification heuristic — used to set HEURISTIC_RULE_AXIS_CAP."
         ),
     )
     parser.add_argument(
@@ -1108,6 +1273,37 @@ def main():
             print(f"Results written to {args.output}", file=sys.stderr)
         else:
             print(output_json)
+        return
+
+    if args.mode == "heuristic-frequency":
+        results = measure_heuristic_trigger_frequency(corpus_path, args.max_docs)
+        results["corpus_fingerprint"] = _corpus_fingerprint(corpus_path)
+        results["metadata"] = {
+            "corpus_path": str(corpus_path),
+        }
+        output_json = json.dumps(results, indent=2)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(output_json)
+            print(f"Heuristic-frequency results written to {args.output}", file=sys.stderr)
+        else:
+            print(output_json)
+        # Print a quick human-readable summary on stderr.
+        print(
+            f"\nDocs processed: {results['docs_processed']}",
+            file=sys.stderr,
+        )
+        s = results["summary"]
+        print(
+            f"Triggers with zero marking-context hits: "
+            f"{s['triggers_with_zero_marking_context']} / {s['total_triggers']}",
+            file=sys.stderr,
+        )
+        print(
+            f"Max marking-context count for any trigger: "
+            f"{s['max_marking_context_count']}",
+            file=sys.stderr,
+        )
         return
 
     # mangled mode

@@ -1,0 +1,264 @@
+{
+  "schema_version": "marque-heuristic-frequency-1",
+  "generated_at": "2026-04-26T14:45:09.731618+00:00",
+  "docs_processed": 510596,
+  "marking_context_window_chars": 30,
+  "marking_shape_signals": [
+    "SECRET",
+    "TOP SECRET",
+    "CONFIDENTIAL",
+    "UNCLASSIFIED",
+    "RESTRICTED",
+    "NOFORN",
+    "ORCON",
+    "PROPIN",
+    "IMCON",
+    "RELIDO",
+    "RSEN",
+    "EYESONLY",
+    "EXDIS",
+    "NODIS",
+    "LIMDIS",
+    "FOUO",
+    "FISA",
+    "HCS-P",
+    "HCS-O",
+    "SI-G",
+    "SI-EU",
+    "SI-NK",
+    "REL TO"
+  ],
+  "triggers": {
+    "A": {
+      "rule_target": "S",
+      "length": 1,
+      "unrestricted_count": 214539,
+      "marking_context_count": 168
+    },
+    "W": {
+      "rule_target": "S",
+      "length": 1,
+      "unrestricted_count": 42225,
+      "marking_context_count": 24
+    },
+    "E": {
+      "rule_target": "S",
+      "length": 1,
+      "unrestricted_count": 237749,
+      "marking_context_count": 54
+    },
+    "Z": {
+      "rule_target": "S",
+      "length": 1,
+      "unrestricted_count": 2347,
+      "marking_context_count": 50
+    },
+    "V": {
+      "rule_target": "C",
+      "length": 1,
+      "unrestricted_count": 14360,
+      "marking_context_count": 3
+    },
+    "F": {
+      "rule_target": "C",
+      "length": 1,
+      "unrestricted_count": 26686,
+      "marking_context_count": 14
+    },
+    "X": {
+      "rule_target": "S",
+      "length": 1,
+      "unrestricted_count": 23667,
+      "marking_context_count": 8
+    },
+    "TA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 311,
+      "marking_context_count": 0
+    },
+    "TW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 14735,
+      "marking_context_count": 14
+    },
+    "TE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 4862,
+      "marking_context_count": 14
+    },
+    "TZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 42,
+      "marking_context_count": 0
+    },
+    "TS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 1451,
+      "marking_context_count": 0
+    },
+    "RA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 139,
+      "marking_context_count": 0
+    },
+    "RW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 305,
+      "marking_context_count": 0
+    },
+    "RE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 65547,
+      "marking_context_count": 34
+    },
+    "RZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 27,
+      "marking_context_count": 0
+    },
+    "RS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 1011,
+      "marking_context_count": 0
+    },
+    "YA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 114,
+      "marking_context_count": 1
+    },
+    "YW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 4,
+      "marking_context_count": 0
+    },
+    "YE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 60,
+      "marking_context_count": 0
+    },
+    "YZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 0,
+      "marking_context_count": 0
+    },
+    "YS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 9,
+      "marking_context_count": 0
+    },
+    "HA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 405,
+      "marking_context_count": 0
+    },
+    "HW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 216,
+      "marking_context_count": 0
+    },
+    "HE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 3436,
+      "marking_context_count": 0
+    },
+    "HZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 11,
+      "marking_context_count": 0
+    },
+    "HS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 511,
+      "marking_context_count": 0
+    },
+    "GA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 2521,
+      "marking_context_count": 0
+    },
+    "GW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 371,
+      "marking_context_count": 0
+    },
+    "GE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 16131,
+      "marking_context_count": 0
+    },
+    "GZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 1,
+      "marking_context_count": 0
+    },
+    "GS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 559,
+      "marking_context_count": 0
+    },
+    "FA": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 236,
+      "marking_context_count": 2
+    },
+    "FW": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 36084,
+      "marking_context_count": 33
+    },
+    "FE": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 366,
+      "marking_context_count": 9
+    },
+    "FZ": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 2,
+      "marking_context_count": 0
+    },
+    "FS": {
+      "rule_target": "TS",
+      "length": 2,
+      "unrestricted_count": 373,
+      "marking_context_count": 0
+    }
+  },
+  "summary": {
+    "total_triggers": 37,
+    "triggers_with_zero_marking_context": 23,
+    "max_marking_context_count": 168
+  },
+  "corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b",
+  "metadata": {
+    "corpus_path": "/home/knitli/marque/tools/corpus-analysis/.cache/enron_mail"
+  }
+}

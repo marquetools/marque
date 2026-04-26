@@ -1015,6 +1015,34 @@ fn try_classification_heuristic_fix(text: &str) -> Option<String> {
         return None;
     }
 
+    // **Lone-input safety guard (issue #133 PR 4 / #176).** Skip the
+    // heuristic when the input has no marking-shape signal beyond the
+    // leading token — i.e., nothing after the first token within the
+    // first segment AND no `//`-separated tail. The corpus measurement
+    // (PR 4) validated heuristic confidence at ≥99.97% only for the
+    // *in-context* case (trigger appears within ~30 chars of `//` or
+    // a recognized vocab token). For lone inputs the empirical FP
+    // rate against Enron body text is much higher (`A` alone has
+    // 214,539 unrestricted occurrences vs 168 in-context out of 510k
+    // documents); auto-applying lone-case fixes would surface as
+    // false positives on parenthetical references like `(A)` /
+    // `(W)` / `(F)` that are common in business prose.
+    //
+    // Form-field input (`(YS)` typed into a portion-mark field)
+    // SHOULD heuristic-fix at high confidence — the caller knows the
+    // input is a marking attempt — but we don't yet have an input-
+    // source signal to distinguish form-field from document-content.
+    // Tracked in #176 (input-source signal on ParseContext); when
+    // that lands, this safety guard becomes conditional on
+    // `ParseContext::input_source == DocumentContent`.
+    // Trailing whitespace doesn't count as "other content" — `(YS )`
+    // is functionally equivalent to `(YS)` for the lone-case test.
+    let has_other_marking_content = after_first_token.chars().any(|c| !c.is_whitespace())
+        || after_first_seg.chars().any(|c| !c.is_whitespace());
+    if !has_other_marking_content {
+        return None;
+    }
+
     let replacement = match first_token.len() {
         2 => try_2char_classification_heuristic(first_token)?,
         1 => try_1char_classification_heuristic(first_token)?,
@@ -2242,6 +2270,62 @@ mod tests {
         // First char isn't in any heuristic cluster → no fix.
         assert_eq!(try_classification_heuristic_fix("(B//NF)"), None);
         assert_eq!(try_classification_heuristic_fix("(QS//NF)"), None);
+    }
+
+    #[test]
+    fn heuristic_skips_lone_inputs() {
+        // Issue #133 PR 4 / #176 lone-input safety guard. The
+        // heuristic must NOT fire on inputs without marking-shape
+        // signals beyond the leading token — auto-applying lone-case
+        // fixes would surface as false positives on parenthetical
+        // refs like `(A)`, `(W)`, `(F)` that are common in business
+        // prose. The corpus measurement at PR 4 found `A` alone has
+        // 214,539 unrestricted body-text occurrences in the Enron
+        // corpus vs 168 in marking-context — the lone-case FP rate
+        // is ~3 orders of magnitude higher than the in-context rate.
+        //
+        // Form-field input (caller asserts the input IS a marking
+        // attempt) should still fire; tracking via #176 — when the
+        // input-source signal lands, this guard becomes conditional.
+        for lone in &[
+            "(YS)",  // 2-char trigger, parens, nothing else
+            "(W)",   // 1-char trigger
+            "(F)",   // 1-char trigger
+            "(X)",   // 1-char trigger
+            "YS",    // banner-shape lone
+            "W",     // bare lone token
+            "(YS )", // trailing whitespace only
+        ] {
+            assert_eq!(
+                try_classification_heuristic_fix(lone),
+                None,
+                "lone input {lone:?} must not fire heuristic (#133 PR 4 / #176 lone-input guard)"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_fires_when_marking_signal_present() {
+        // Counterpart to `heuristic_skips_lone_inputs`. The guard is
+        // about LONE inputs only; inputs with ANY marking content
+        // beyond the leading token (a `//` separator OR another
+        // whitespace-separated token in the first segment) still
+        // fire normally.
+        let cases: &[(&str, &str)] = &[
+            ("(YS//NF)", "(TS//NF)"), // `//` separator after token
+            ("(YS NF)", "(TS NF)"),   // whitespace + another token
+            ("YS//NOFORN", "TS//NOFORN"),
+            ("W//NF", "S//NF"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?} \
+                 (marking signal present); got {result:?}"
+            );
+        }
     }
 
     #[test]
