@@ -1955,9 +1955,16 @@ fn try_collapse_stray_char_slash(text: &str) -> Vec<String> {
 /// The trigraph dictionary itself is the source of authority — no
 /// new vocabulary is invented.
 ///
-/// Returns `None` when no pattern matched (no allocation in the
-/// common case where the input has no REL block or has a
-/// canonical-shape REL TO block).
+/// Returns `None` when no pattern matched. Allocation behavior:
+///
+/// - Inputs with no `REL` substring short-circuit before any work.
+/// - Inputs with `REL` but no header-typo pattern run the header
+///   walk allocation-free; the entry-level pass then short-circuits
+///   on inputs lacking a literal `REL TO ` anchor.
+/// - Inputs containing `REL TO ` in canonical form walk the entries
+///   without allocating until a fix actually fires.
+///
+/// Allocation only occurs once a pattern produces a fixed string.
 fn try_rel_to_structural_repair(text: &str) -> Option<String> {
     // Cheap pre-check: if `REL` doesn't appear at all, no repair is
     // possible. Saves the byte-walk cost on the overwhelmingly common
@@ -2062,20 +2069,39 @@ fn try_rel_to_header_normalize(text: &str) -> Option<String> {
 /// (`CapcoTokenSet::is_trigraph`). The trigraph dictionary is the
 /// arbiter of "valid country code" — no fuzzy guessing.
 fn try_rel_to_entry_normalize(text: &str) -> Option<String> {
+    // Cheap pre-check: entry-level patterns 3 and 4 only fire inside a
+    // `REL TO ` block, so `apply_rel_to_entry_pass` cannot match
+    // without that anchor. Skip the `to_owned()` allocation entirely
+    // when the input has no `REL TO ` substring (the common path for
+    // canonical inputs and for non-REL-TO segments of the broader
+    // structural-repair caller).
+    if !text.contains("REL TO ") {
+        return None;
+    }
+
     let token_set = CapcoTokenSet;
-    let mut current = text.to_owned();
     let mut any_change = false;
+    let mut current: Option<String> = None;
 
     // Loop until no further fix fires. Most inputs converge in one
     // pass; the loop guards against the rare case where fixing one
     // pattern exposes another (e.g., a comma misplacement that ends a
     // block adjacent to a token-boundary pattern in the next entry).
-    while let Some(rewritten) = apply_rel_to_entry_pass(&current, &token_set) {
-        current = rewritten;
-        any_change = true;
+    // First iteration borrows `text`; subsequent iterations re-pass the
+    // previously rewritten `String` so the only allocation is the one
+    // produced by the first successful fix (and any further passes).
+    loop {
+        let input: &str = current.as_deref().unwrap_or(text);
+        match apply_rel_to_entry_pass(input, &token_set) {
+            Some(rewritten) => {
+                current = Some(rewritten);
+                any_change = true;
+            }
+            None => break,
+        }
     }
 
-    any_change.then_some(current)
+    if any_change { current } else { None }
 }
 
 /// Single pass of REL TO entry normalization. Returns the rewritten
@@ -2750,18 +2776,36 @@ fn lenient_rel_prefix_penalty(canonical_bytes: &[u8], marking: &CapcoMarking) ->
 /// boundary. Mirrors the boundary check used by
 /// [`try_rel_to_header_normalize`] so penalty and repair fire on the
 /// same set of candidates.
+///
+/// Walks via [`str::char_indices`] (after a UTF-8 validation) so the
+/// scan advances on character boundaries — identical to the
+/// normalizer. Practically the two approaches agree for any input
+/// that contains the 7-ASCII-byte target patterns at all (UTF-8
+/// continuation bytes can't appear inside a literal-ASCII run), but
+/// keeping the shapes aligned removes a class of subtle drift if
+/// either side later relaxes its match.
+///
+/// Returns `false` for non-UTF-8 input rather than panicking — the
+/// candidate emitter only produces UTF-8, so this is a defensive
+/// guard, not an expected path.
 fn has_malformed_rel_pattern_at_boundary(bytes: &[u8]) -> bool {
-    let mut i = 0;
-    while i + 7 <= bytes.len() {
-        let at_boundary =
-            i == 0 || matches!(bytes[i - 1], b'/' | b'(' | b' ' | b'\t' | b'\n' | b'\r');
-        if at_boundary {
-            let window = &bytes[i..i + 7];
-            if window == b"RELT O " || window == b"REL OT " {
-                return true;
-            }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let raw = text.as_bytes();
+    for (i, _) in text.char_indices() {
+        if i + 7 > raw.len() {
+            break;
         }
-        i += 1;
+        let at_boundary =
+            i == 0 || matches!(raw[i - 1], b'/' | b'(' | b' ' | b'\t' | b'\n' | b'\r');
+        if !at_boundary {
+            continue;
+        }
+        let window = &raw[i..i + 7];
+        if window == b"RELT O " || window == b"REL OT " {
+            return true;
+        }
     }
     false
 }

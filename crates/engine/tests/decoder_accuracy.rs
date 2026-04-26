@@ -540,8 +540,10 @@ fn run_sweep() -> AccuracyReport {
 ///
 /// This gate is now always-on: a regression below 85% blocks CI.
 /// The complementary `resolution_rate_does_not_regress` gate is
-/// pinned ~1 pp lower (0.85 → matches target floor) so a small dip
-/// catches before it widens; this gate is the strict SC-004 line.
+/// currently pinned at the same 0.85 floor as this target (no
+/// headroom buffer until a future PR ratchets accuracy past 85%);
+/// see [`AGGREGATE_FLOOR_REGRESSION`] for the floor policy. Both
+/// gates fail CI together if accuracy drops below 85%.
 #[test]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
