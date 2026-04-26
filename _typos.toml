@@ -8,6 +8,16 @@
 [files]
 extend-exclude = [
   "crates/ism/schemas/",
+  # The token_set source carries the canonical doc / regression-guard
+  # narrative for every CAPCO keyword the fuzzy matcher can recover —
+  # `SPCIAL`, `CCESS`, `SEPCIAL`, `NOFORON`, `SBUNOFORN`, etc. Each
+  # of those lives in a doc comment whose entire purpose is showing
+  # the typo→canonical mapping. Per-word allowlisting would track an
+  # ever-growing list as new keyword recovery lands; whole-file
+  # exclusion is the maintenance-cheap choice. Real typo coverage on
+  # the file is not load-bearing — it has no user-facing strings, no
+  # error messages, no public API names that need spell-checking.
+  "crates/ism/src/token_set.rs",
   # Design docs and specs contain intentional misspellings as examples
   "docs/plans/",
   "docs/reviews/",
@@ -48,6 +58,16 @@ CONFIDETIAL = "CONFIDETIAL"
 SECRRET = "SECRRET"
 UNCLASSIFEID = "UNCLASSIFEID"
 canonicalizations = "canonicalizations"
+# Intentional misspellings for SAR indicator-keyword recovery (issue #133 PR 6).
+# These appear in `crates/engine/src/decoder.rs` doc comments, unit-test
+# names, and `crates/engine/tests/decoder_recovery.rs` integration-test
+# names that pin the SAR-keyword fuzzy-match recovery path. Each is the
+# fixture-derived typo of `SPECIAL` / `ACCESS` from the SC-004 mangled
+# corpus; the canonical replacement is the unmangled keyword.
+SPCIAL = "SPCIAL"
+SEPCIAL = "SEPCIAL"
+SPECAL = "SPECAL"
+spcial = "spcial"
 # Python package names that look like typos but aren't
 certifi = "certifi"
 

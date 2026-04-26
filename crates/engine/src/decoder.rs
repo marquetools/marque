@@ -91,7 +91,7 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
-    CapcoTokenSet, Classification,
+    CapcoTokenSet, Classification, SciControlSystem,
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
@@ -1417,9 +1417,26 @@ fn is_hard_splitter(token: &str) -> bool {
 /// Repair stray-prefix and missing-hyphen mangling around the SAR
 /// `SAR-` indicator (CAPCO-2016 §H.5 p100). Two structural patterns:
 ///
-/// 1. **Prefix strip** — `<boundary>[A-Z]{1,3}SAR-` → `<boundary>SAR-`
-///    when the prefix isn't itself a known CAPCO token or trigraph.
-///    Recovers `SECRET//USAR-BP-J12...` → `SECRET//SAR-BP-J12...`.
+/// 1. **Prefix strip** — `<boundary>[A-Z]{1,3}SAR-` → `<boundary>SAR-`.
+///    Strips ANY attached 1–3 letter ASCII-uppercase prefix before
+///    the SAR indicator, including prefixes whose bytes happen to
+///    spell a known CAPCO token (`U`, `S`, `SI`, `USA`, …). Canonical
+///    CAPCO never glues a classification token, SCI control, or
+///    trigraph directly to `SAR-` without a `//` separator, so a
+///    prefix at a `//`/`(`/start boundary is OCR/transcription drift
+///    regardless of whether the prefix bytes form a CVE token in
+///    isolation. Recovers `SECRET//USAR-BP-J12...` →
+///    `SECRET//SAR-BP-J12...` and `(USASAR-BP)` → `(SAR-BP)`. The
+///    "smallest prefix that aligns with `SAR-`" wins (see
+///    [`match_sar_prefix`]) so an ambiguous input like `USASAR-`
+///    strips the longest aligning prefix (`USA`, length 3) — there
+///    is no shorter alignment because `USASAR-` only contains `SAR-`
+///    starting at offset 3. An earlier defensive guard that refused
+///    to strip CAPCO-token prefixes was removed because it broke
+///    the central `USAR-` case (`U` IS the UNCLASSIFIED portion
+///    form); the test
+///    `sar_indicator_repair_strips_even_capco_token_prefix` pins
+///    the policy.
 ///
 /// 2. **Missing-hyphen insertion** — `<boundary>SAR[A-Z0-9]{2,3}<delim>`
 ///    → `<boundary>SAR-[A-Z0-9]{2,3}<delim>`, where `<delim>` is `-`,
@@ -1910,8 +1927,8 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// penalty cannot fire on a legitimate SAR/SCI parse.
 const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
-/// Per-entry structural penalty for SCI markings that did not project
-/// to a CVE enum value (`canonical_enum: None`). Issue #133 PR 6.
+/// Per-entry structural penalty for SCI markings whose control system
+/// landed as [`SciControlSystem::Custom`]. Issue #133 PR 6.
 ///
 /// **Why this penalty exists.** `marque_core::Parser`'s structural SCI
 /// subparser (CAPCO-2016 §A.6 grammar) accepts any alphanumeric
@@ -1920,12 +1937,13 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// compound SCI shapes (`SI-G ABCD DEFG-MMM AACD`) parse correctly,
 /// but it has a side effect: a typo'd or stray segment like
 /// `USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB` parses cleanly into
-/// three `Custom` SCI markings (USAR/CD/XR with attached
+/// three `Custom`-system SCI markings (USAR/CD/XR with attached
 /// compartments). The bag-of-tokens scorer can't tell that this is
-/// the wrong interpretation — `Custom` SCI controls don't appear in
-/// `canonical_tokens_for`, so they don't shift the prior either way,
-/// and the candidate ties with structurally-richer alternatives like
-/// the SAR-repaired candidate that `try_sar_indicator_repair` emits.
+/// the wrong interpretation — `Custom` SCI control systems don't
+/// appear in `canonical_tokens_for`, so they don't shift the prior
+/// either way, and the candidate ties with structurally-richer
+/// alternatives like the SAR-repaired candidate that
+/// `try_sar_indicator_repair` emits.
 ///
 /// **What the penalty does.** Adds [`MISSING_TOKEN_LOG_PRIOR`] (the
 /// same below-observed-floor magnitude as
@@ -1945,14 +1963,26 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// remains the sole candidate when no alternative interpretation
 /// exists, so the dispatcher still emits `Unambiguous`.
 ///
-/// **Safety.** A candidate that contains a CVE-projected SCI
-/// alongside a single `Custom` (e.g., `SI-G ABCD//99`) gets a single
-/// `-12.0` penalty for the `Custom` entry only, which is a
-/// reasonable cost for a structurally suspicious mixed shape. A
-/// candidate with all-CVE SCIs (`SI-G//TK-BLFH`) gets zero penalty
-/// from this path. The penalty does NOT fire on candidates with
-/// empty `sci_markings` — so the SAR-repaired candidate (which
-/// projects no SCI) is unaffected.
+/// **Safety / discriminator choice.** The discriminator is
+/// `sm.system == SciControlSystem::Custom(_)`, NOT
+/// `sm.canonical_enum.is_none()`. The two are NOT equivalent:
+/// `canonical_enum` is also `None` for legitimate `Published`-system
+/// SCI markings whenever the `{system}-{first_compartment}` pair
+/// doesn't map to a CVE atom (per the `canonical_enum` doc in
+/// `crates/scheme/src/scheme.rs` — populated only when "the bare
+/// control or `{ctrl}-{first_comp}` matches a CVE value AND no
+/// sub-compartments are present"). Using `canonical_enum` as the
+/// discriminator would penalize legitimate `SI-G ABCD DEFG-MMM AACD`-
+/// style markings (system=`Published(Si)`, sub-compartments present
+/// → canonical_enum=None), broadly skewing scoring against rich
+/// SCI shapes. Discriminating on `system` directly catches the
+/// USAR/CD/XR custom-only case while leaving every published SCI
+/// marking — bare or compound — untouched. A candidate with mixed
+/// SCI (e.g., `SI-G ABCD//99`) gets a single penalty for the `99`
+/// `Custom` entry only, which is a reasonable cost for a
+/// structurally suspicious mixed shape. The penalty does NOT fire
+/// on candidates with empty `sci_markings` — so the SAR-repaired
+/// candidate (which projects no SCI) is unaffected.
 const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
@@ -2006,14 +2036,16 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
 }
 
 /// Total per-entry penalty for SCI markings whose strict parse landed
-/// as `SciControlSystem::Custom(...)` (i.e., `canonical_enum: None`).
-/// See [`CUSTOM_SCI_MARKING_PENALTY`] for rationale.
+/// with [`SciControlSystem::Custom`] as the control system. See
+/// [`CUSTOM_SCI_MARKING_PENALTY`] for rationale, including why this
+/// discriminates on `sm.system` rather than on
+/// `sm.canonical_enum.is_none()`.
 fn custom_sci_marking_penalty(marking: &CapcoMarking) -> f32 {
     let attrs = &marking.0;
     let custom_count = attrs
         .sci_markings
         .iter()
-        .filter(|sm| sm.canonical_enum.is_none())
+        .filter(|sm| matches!(sm.system, SciControlSystem::Custom(_)))
         .count();
     custom_count as f32 * CUSTOM_SCI_MARKING_PENALTY
 }
