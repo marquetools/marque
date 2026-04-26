@@ -574,7 +574,7 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         };
 
     // ---- Raw: just trim + normalize delimiters/case. --------------
-    let (normalized, delim_features) = normalize_delimiters_and_case(trimmed);
+    let (normalized, mut delim_features) = normalize_delimiters_and_case(trimmed);
 
     // ---- REL TO structural repair (issue #133 PR 9) — applied as
     //      PREPROCESSING (before fuzzy correction) rather than as a
@@ -604,7 +604,29 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     //      would tie with the raw on prior and lose on emit-order.
     //      Preprocessing eliminates the competing-raw-candidate
     //      problem entirely.
-    let repaired_text = try_rel_to_structural_repair(&normalized).unwrap_or(normalized);
+    //
+    //      When structural repair fires, push a `BaseRateCommonMarking`
+    //      feature onto `delim_features` so every candidate derived
+    //      from the repaired text inherits the marker. This mirrors
+    //      `try_insert_delimiter` and `try_sar_indicator_repair`
+    //      (which add their own per-candidate `BaseRateCommonMarking`)
+    //      and ensures the audit/provenance trace reflects that the
+    //      input required cleanup beyond delimiter/case normalization.
+    //      No dedicated `FeatureId` for structural repair exists in
+    //      the audit schema (`marque-mvp-2`); reusing
+    //      `BaseRateCommonMarking` keeps the schema closed and
+    //      composes additively with the other normalization paths
+    //      that share the same id.
+    let repaired_text = match try_rel_to_structural_repair(&normalized) {
+        Some(repaired) => {
+            delim_features.push(FeatureEntry {
+                id: FeatureId::BaseRateCommonMarking,
+                delta: -0.3,
+            });
+            repaired
+        }
+        None => normalized,
+    };
 
     // ---- Per-token fuzzy correction on the repaired text. --------
     let vocab = CapcoTokenSet.correction_vocab();
@@ -2024,8 +2046,9 @@ fn try_rel_to_header_normalize(text: &str) -> Option<String> {
             let window = &bytes[i..i + 7];
             // Pattern A (transposition): `REL OT ` → `REL TO `.
             // Pattern B (token-boundary): `RELT O ` → `REL TO `.
-            // Both patterns are exactly 7 bytes and overlap at no
-            // shared prefix, so a single window check is sufficient.
+            // Both patterns are exactly 7 bytes; the same 7-byte
+            // window is compared against each full literal
+            // explicitly, so a single window read covers both.
             if window == b"REL OT " || window == b"RELT O " {
                 let r = result.get_or_insert_with(|| String::with_capacity(text.len()));
                 r.push_str(&text[last_copied..i]);
@@ -2059,11 +2082,15 @@ fn try_rel_to_header_normalize(text: &str) -> Option<String> {
 ///   is replaced with the joined 3-letter trigraph when the join is a
 ///   known trigraph and the 1-letter prefix alone is not.
 ///
-/// - **Comma misplacement** — across an entry pair, `<2-upper>,<1-upper>`
-///   (entry N ends with two letters, entry N+1 starts with one letter
-///   followed by content) is replaced with `<3-upper joined>,` and the
-///   leading character is stripped from entry N+1, when the join is a
-///   known trigraph and the 2-letter prefix alone is not.
+/// - **Comma misplacement** — across an entry pair,
+///   `<2-upper>,<1-upper><space>...` (entry N ends with two letters,
+///   entry N+1 starts with one letter followed by a space and then
+///   content) is replaced with `<3-upper joined>,` and the leading
+///   character is stripped from entry N+1, when the join is a known
+///   trigraph and the 2-letter prefix alone is not. The space guard
+///   (the 1-upper must be followed by ASCII space) is what
+///   distinguishes the misplacement shape from a legitimate
+///   shorter-than-3 entry typo and is enforced by `fix_rel_to_block`.
 ///
 /// Both patterns require the corrected output to be a known trigraph
 /// (`CapcoTokenSet::is_trigraph`). The trigraph dictionary is the
@@ -2646,57 +2673,20 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// candidate (which projects no SCI) is unaffected.
 const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
-/// Penalty for candidates whose `canonical_bytes` carry a malformed
-/// `REL` header pattern that the strict parser silently absorbed.
-/// Issue #133 PR 9.
-///
-/// **Why this exists.** The strict REL TO subparser is lenient: it
-/// tries `strip_prefix("REL TO")` first, then falls back to
-/// `strip_prefix("REL")`. The fallback is what makes the parser
-/// accept e.g. `REL JUNK USA, AUS, GBR` and silently drop the
-/// `JUNK USA` entry while emitting `[AUS, GBR]` as recovered
-/// trigraphs. This lenience is correct for canonical CAPCO inputs
-/// (where `REL TO` is always a literal prefix) but it gives a
-/// **mangled** REL header — `RELT O ` (token-boundary slip) or
-/// `REL OT ` (TO transposition) — a free pass through strict
-/// parsing.
-///
-/// Without this penalty, the decoder's PR-9 structural repair
-/// (`try_rel_to_structural_repair`) generates the canonical-shape
-/// fix but loses the scoring contest because the raw candidate's
-/// strict parse landed two trigraphs (`AUS, GBR`), the fix
-/// candidate's strict parse landed three (`USA, AUS, GBR`), and
-/// REL TO trigraphs do **not** contribute to the prior in
-/// `canonical_tokens_for` (only classification, SCI, dissem, NIC,
-/// AEA, FGI do). The two candidates therefore tie on prior, and
-/// emit-order tie-breaks to the raw — silently dropping USA from
-/// every recovered REL TO marking that started with a malformed
-/// REL header.
-///
-/// **What the penalty does.** Adds [`MISSING_TOKEN_LOG_PRIOR`]
-/// (~ -12 nats, the same magnitude as `CUSTOM_SCI_MARKING_PENALTY`
-/// and `HARD_SPLITTER_ABSORPTION_PENALTY`) to any candidate whose
-/// `canonical_bytes` contain a `RELT O ` or `REL OT ` substring
-/// at a token boundary AND whose strict-parsed marking has a
-/// non-empty `rel_to`. The discriminator is the literal pattern in
-/// the canonicalized bytes — the patterns themselves are not valid
-/// CAPCO anywhere, so any candidate carrying them through to
-/// scoring has a structurally suspicious shape regardless of what
-/// trigraphs were silently recovered. The PR-9 repair candidate
-/// (which rewrites the bytes to canonical `REL TO `) does NOT
-/// match the pattern and is therefore not penalized; it wins by
-/// the [`MISSING_TOKEN_LOG_PRIOR`] margin (~5 orders of
-/// posterior-odds magnitude — well above
-/// [`UNAMBIGUOUS_LOG_MARGIN`]).
-///
-/// **Why a constant rather than a per-trigraph contribution.**
-/// REL TO trigraph priors don't exist today (issue #186 covers
-/// adding them as part of the corpus-weighted recovery work); the
-/// penalty is the surgical patch that makes structural REL TO
-/// repair work without that infrastructure. When #186 lands, this
-/// penalty becomes redundant and should be removed at the same
-/// time the trigraph priors are wired in.
-const LENIENT_REL_PREFIX_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
+// (`LENIENT_REL_PREFIX_PENALTY` removed — under the current PR-9
+// architecture, `try_rel_to_structural_repair` runs as preprocessing
+// on the normalized text before any candidate is emitted, so
+// `RELT O ` / `REL OT ` patterns at a token boundary are rewritten
+// to canonical `REL TO ` before scoring sees them. The defense-in-
+// depth scorer penalty that PR 9 originally introduced was meant to
+// break a tie between competing raw vs. repaired *candidates* —
+// that tie no longer exists since the repair is no longer a
+// separate candidate. The accuracy harness
+// (`resolution_rate_at_0_85`, `resolution_rate_does_not_regress`,
+// per-class floors) is the load-bearing regression gate for this
+// recovery path. Issue #186 (REL TO trigraph corpus-weighted
+// recovery) is the followup that handles the remaining lenient-
+// header cases via priors rather than scorer penalties.)
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
@@ -2744,70 +2734,8 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
         posterior += HARD_SPLITTER_ABSORPTION_PENALTY;
     }
     posterior += custom_sci_marking_penalty(marking);
-    posterior += lenient_rel_prefix_penalty(&attempt.bytes, marking);
 
     (prior, posterior)
-}
-
-/// Per-candidate penalty for the lenient-REL-prefix shape. Returns
-/// [`LENIENT_REL_PREFIX_PENALTY`] when both conditions hold:
-///
-/// 1. `canonical_bytes` carry a `RELT O ` or `REL OT ` substring at a
-///    token boundary (start of input, or preceded by `/`, `(`, or
-///    whitespace).
-/// 2. The strict-parsed marking has a non-empty `rel_to` (i.e., the
-///    strict parser fell back to the bare `REL` prefix and silently
-///    landed at least one trigraph despite the malformed header).
-///
-/// Returns `0.0` otherwise. See [`LENIENT_REL_PREFIX_PENALTY`] for the
-/// full rationale.
-fn lenient_rel_prefix_penalty(canonical_bytes: &[u8], marking: &CapcoMarking) -> f32 {
-    if marking.0.rel_to.is_empty() {
-        return 0.0;
-    }
-    if has_malformed_rel_pattern_at_boundary(canonical_bytes) {
-        LENIENT_REL_PREFIX_PENALTY
-    } else {
-        0.0
-    }
-}
-
-/// True when `bytes` contains `RELT O ` or `REL OT ` at a token
-/// boundary. Mirrors the boundary check used by
-/// [`try_rel_to_header_normalize`] so penalty and repair fire on the
-/// same set of candidates.
-///
-/// Walks via [`str::char_indices`] (after a UTF-8 validation) so the
-/// scan advances on character boundaries — identical to the
-/// normalizer. Practically the two approaches agree for any input
-/// that contains the 7-ASCII-byte target patterns at all (UTF-8
-/// continuation bytes can't appear inside a literal-ASCII run), but
-/// keeping the shapes aligned removes a class of subtle drift if
-/// either side later relaxes its match.
-///
-/// Returns `false` for non-UTF-8 input rather than panicking — the
-/// candidate emitter only produces UTF-8, so this is a defensive
-/// guard, not an expected path.
-fn has_malformed_rel_pattern_at_boundary(bytes: &[u8]) -> bool {
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return false;
-    };
-    let raw = text.as_bytes();
-    for (i, _) in text.char_indices() {
-        if i + 7 > raw.len() {
-            break;
-        }
-        let at_boundary =
-            i == 0 || matches!(raw[i - 1], b'/' | b'(' | b' ' | b'\t' | b'\n' | b'\r');
-        if !at_boundary {
-            continue;
-        }
-        let window = &raw[i..i + 7];
-        if window == b"RELT O " || window == b"REL OT " {
-            return true;
-        }
-    }
-    false
 }
 
 /// Total per-entry penalty for SCI markings whose strict parse landed
