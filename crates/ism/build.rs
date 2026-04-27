@@ -1534,7 +1534,14 @@ fn load_country_extensions(
     let mut seen: std::collections::BTreeSet<String> = cve_codes.clone();
 
     for entry in parsed.code {
-        let code = entry.code;
+        // Destructure upfront so the field bindings are explicit
+        // and a future reader doesn't have to track per-field
+        // partial moves out of `entry`.
+        let CodeEntry {
+            code,
+            description: raw_description,
+            members: raw_members,
+        } = entry;
 
         // Required-description check (issue #183 PR-B): the
         // `description` field is required for auditor traceability —
@@ -1543,8 +1550,29 @@ fn load_country_extensions(
         // Both "field omitted" and "field whitespace-only" route
         // through this single panic so the build error always
         // names the offending `code` and `path`.
-        let description = match entry.description {
-            Some(d) if !d.trim().is_empty() => d,
+        //
+        // Reject `\n` / `\r` in the description because the value
+        // is emitted directly into a generated `///` doc comment
+        // block — a multi-line value would break the next line out
+        // of the comment and produce a values.rs that fails to
+        // compile. Single-line is a stricter constraint than the
+        // CAPCO byte set requires for `code`, but the auditor-
+        // traceability use case is well-served by single-line
+        // descriptions.
+        let description = match raw_description {
+            Some(d) if !d.trim().is_empty() => {
+                if d.contains('\n') || d.contains('\r') {
+                    panic!(
+                        "{path}: country extension `code = {code:?}` has a \
+                         multi-line `description`. The value is emitted into \
+                         a generated `///` doc comment in values.rs; \
+                         line-break characters (`\\n`, `\\r`) must be \
+                         removed (or replaced with spaces) before the build \
+                         can proceed.",
+                    );
+                }
+                d
+            }
             _ => panic!(
                 "{path}: country extension `code = {code:?}` is missing \
                  required `description` field (or it is whitespace-only). \
@@ -1592,7 +1620,7 @@ fn load_country_extensions(
         // a distinct error rather than via a forward-reference
         // confusion). `members = []` is treated as `members = None`
         // (recognition-only, opaque).
-        let members: Vec<String> = match entry.members {
+        let members: Vec<String> = match raw_members {
             None => Vec::new(),
             Some(m) if m.is_empty() => Vec::new(),
             Some(m) => {

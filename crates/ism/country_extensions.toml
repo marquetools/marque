@@ -51,10 +51,14 @@
 #     here would diverge the recognition surface.
 #   - `code` MUST NOT duplicate a CVE entry or an earlier
 #     extension entry.
-#   - `description` is required (and must be non-whitespace); it
-#     appears in build output and in code-search results when an
-#     auditor traces an unfamiliar code back to its source. Both
-#     "field omitted" and "field whitespace-only" produce a clear
+#   - `description` is required (and must be non-whitespace,
+#     single-line); it appears in build output and in code-search
+#     results when an auditor traces an unfamiliar code back to
+#     its source. The value is emitted directly into a generated
+#     `///` doc comment block, so embedded `\n` / `\r` characters
+#     are rejected at build time — write multi-paragraph
+#     descriptions as one line with explicit ` — ` separators.
+#     "Field omitted" and "field whitespace-only" produce a clear
 #     panic naming the offending `code`.
 #   - `members` (when present) MUST each:
 #       * be exactly **3 bytes** (a country trigraph). Tetragraph-
