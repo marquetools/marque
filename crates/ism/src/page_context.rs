@@ -43,9 +43,9 @@
 //! no explicit date is present.
 
 use crate::attrs::{
-    AeaMarking, Classification, DeclassExemption, DissemControl, FgiMarker, IsmAttributes,
-    MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
-    SciCompartment, SciControl, SciControlSystem, SciMarking, Trigraph,
+    AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
+    IsmAttributes, MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking,
+    SarProgram, SciCompartment, SciControl, SciControlSystem, SciMarking,
 };
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
@@ -348,19 +348,24 @@ impl PageContext {
         seen.into_iter().collect()
     }
 
-    /// The REL TO trigraph list the banner must carry.
+    /// The REL TO country-code list the banner must carry.
     ///
-    /// The result is the **intersection** of all REL TO lists across portions,
-    /// with tetragraph expansion (FVEY → {AUS, CAN, GBR, NZL, USA}) applied
-    /// before intersection.
+    /// The result is the **intersection** of all REL TO lists across
+    /// portions, with tetragraph expansion (FVEY →
+    /// {AUS, CAN, GBR, NZL, USA}) applied before intersection. Codes
+    /// without a known membership table (NATO until Phase F lands the
+    /// member list, plus operation-specific codes like RSMA / ISAF /
+    /// KFOR) are treated as opaque atoms — they survive intersection
+    /// only when present in every portion's list.
     ///
     /// Returns an empty slice when:
     /// - No portions have a REL TO list, OR
     /// - Any portion carries NOFORN (which supersedes REL TO on the banner)
     ///
-    /// When the intersection is empty (no common countries), this returns
-    /// an empty vec — the caller should add NF to dissem controls.
-    pub fn expected_rel_to(&self) -> Vec<Trigraph> {
+    /// When the intersection is empty (no common countries), this
+    /// returns an empty vec — the caller should add NF to dissem
+    /// controls.
+    pub fn expected_rel_to(&self) -> Vec<CountryCode> {
         // If any portion is NOFORN, NOFORN wins — REL TO is superseded.
         let any_noforn = self.portions.iter().any(|a| {
             a.dissem_controls
@@ -388,8 +393,11 @@ impl PageContext {
             return vec![];
         }
 
-        // Expand each portion's REL TO into a set of trigraphs, resolving
-        // known tetragraphs (FVEY, ACGU, etc.) into constituent countries.
+        // Expand each portion's REL TO into a set of code strings,
+        // resolving known tetragraphs (FVEY, ACGU, …) into constituent
+        // trigraphs. Opaque codes (NATO, RSMA, …) pass through as
+        // single atoms, so they survive intersection only when every
+        // portion lists them.
         let expanded: Vec<std::collections::BTreeSet<&str>> = rel_to_portions
             .iter()
             .map(|a| {
@@ -414,27 +422,26 @@ impl PageContext {
             result = result.intersection(set).copied().collect();
         }
 
-        // Convert back to Trigraphs, sorted with USA first.
-        let mut trigraphs: Vec<Trigraph> = result
+        // Convert back to typed codes, USA first then alphabetical.
+        // The intersection works in `&str` space so we re-typed at the
+        // boundary; every entry came from a `CountryCode::as_str()`
+        // call above so `try_new` is infallible here in practice, but
+        // we use `filter_map` defensively so a future refactor that
+        // lets non-CountryCode entries into `expanded` cannot panic.
+        let mut codes: Vec<CountryCode> = result
             .iter()
-            .filter_map(|s| {
-                if s.len() == 3 {
-                    Trigraph::try_new(s.as_bytes().try_into().ok()?)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
             .collect();
 
         // USA first, rest alphabetical.
-        if let Some(pos) = trigraphs.iter().position(|t| *t == Trigraph::USA) {
+        if let Some(pos) = codes.iter().position(|c| *c == CountryCode::USA) {
             if pos != 0 {
-                let usa = trigraphs.remove(pos);
-                trigraphs.insert(0, usa);
+                let usa = codes.remove(pos);
+                codes.insert(0, usa);
             }
         }
 
-        trigraphs
+        codes
     }
 
     /// The maximum (furthest-out) declassification date observed across all
@@ -651,20 +658,18 @@ impl PageContext {
             });
         }
 
-        // Convert country strings back to Trigraphs (only 3-char codes).
-        let trigraphs: Vec<Trigraph> = countries
+        // Convert country strings back to typed codes. Every entry
+        // here came from a `CountryCode::as_str()` call upstream, so
+        // `try_new` is infallible in practice; `filter_map` is
+        // defensive for any future refactor that lets non-CountryCode
+        // entries into the `countries` set.
+        let codes: Vec<CountryCode> = countries
             .iter()
-            .filter_map(|s| {
-                if s.len() == 3 {
-                    Trigraph::try_new(s.as_bytes().try_into().ok()?)
-                } else {
-                    None // Skip tetragraphs like NATO for now
-                }
-            })
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
             .collect();
 
         Some(FgiMarker {
-            countries: trigraphs.into(),
+            countries: codes.into(),
         })
     }
 
@@ -977,30 +982,33 @@ mod tests {
 
     #[test]
     fn expected_rel_to_intersection() {
-        use crate::attrs::Trigraph;
+        use crate::attrs::CountryCode;
         let mut ctx = PageContext::new();
         let a1 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
+                .into_boxed_slice(),
             ..Default::default()
         };
         let a2 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"DEU").unwrap()].into_boxed_slice(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"DEU").unwrap()]
+                .into_boxed_slice(),
             ..Default::default()
         };
         ctx.add_portion(a1);
         ctx.add_portion(a2);
         // Only USA appears in both → intersection is [USA]
         let rel = ctx.expected_rel_to();
-        assert_eq!(rel, vec![Trigraph::USA]);
+        assert_eq!(rel, vec![CountryCode::USA]);
     }
 
     #[test]
     fn noforn_supersedes_rel_to() {
-        use crate::attrs::{DissemControl, Trigraph};
+        use crate::attrs::{CountryCode, DissemControl};
         let mut ctx = PageContext::new();
         // Portion 1: REL TO USA, GBR
         let a1 = IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
+                .into_boxed_slice(),
             ..Default::default()
         };
         // Portion 2: NOFORN
@@ -1182,7 +1190,7 @@ mod tests {
         // Another with source-acknowledged FGI.
         ctx.add_portion(IsmAttributes {
             fgi_marker: Some(FgiMarker {
-                countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+                countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
             }),
             ..Default::default()
         });
@@ -1200,13 +1208,13 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
             fgi_marker: Some(FgiMarker {
-                countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+                countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
             }),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
             fgi_marker: Some(FgiMarker {
-                countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
             }),
             ..Default::default()
         });
@@ -1221,33 +1229,38 @@ mod tests {
         // Portion 1: REL TO USA, FVEY (expands to USA, AUS, CAN, GBR, NZL)
         // Portion 2: REL TO USA, AUS, CAN
         // Intersection: USA, AUS, CAN
-        // Note: we can't store "FVEY" in Trigraph (4 chars), so this test
-        // uses the expanded form directly. The expansion logic is tested
-        // via the expand_tetragraph function.
+        // Note: post-issue-#183 PR-A `CountryCode` can store
+        // tetragraphs like "FVEY" directly; this older test uses
+        // the pre-expanded constituent trigraphs to exercise the
+        // intersection-after-expansion path. Tetragraph storage
+        // and expansion are exercised by
+        // `rel_to_intersection_expands_fvey_into_constituent_trigraphs`
+        // (and peers) above; the `expand_tetragraph` helper itself
+        // is tested in `crates/capco/src/vocab.rs`.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
             rel_to: vec![
-                Trigraph::USA,
-                Trigraph::try_new(*b"AUS").unwrap(),
-                Trigraph::try_new(*b"CAN").unwrap(),
-                Trigraph::try_new(*b"GBR").unwrap(),
-                Trigraph::try_new(*b"NZL").unwrap(),
+                CountryCode::USA,
+                CountryCode::try_new(b"AUS").unwrap(),
+                CountryCode::try_new(b"CAN").unwrap(),
+                CountryCode::try_new(b"GBR").unwrap(),
+                CountryCode::try_new(b"NZL").unwrap(),
             ]
             .into(),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
             rel_to: vec![
-                Trigraph::USA,
-                Trigraph::try_new(*b"AUS").unwrap(),
-                Trigraph::try_new(*b"CAN").unwrap(),
+                CountryCode::USA,
+                CountryCode::try_new(b"AUS").unwrap(),
+                CountryCode::try_new(b"CAN").unwrap(),
             ]
             .into(),
             ..Default::default()
         });
         let rel = ctx.expected_rel_to();
         assert_eq!(rel.len(), 3);
-        assert_eq!(rel[0], Trigraph::USA); // USA first
+        assert_eq!(rel[0], CountryCode::USA); // USA first
         assert_eq!(rel[1].as_str(), "AUS");
         assert_eq!(rel[2].as_str(), "CAN");
     }
@@ -1258,17 +1271,106 @@ mod tests {
         // Wait, USA is common. Let's test non-overlapping non-USA countries.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"AUS").unwrap()].into(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"AUS").unwrap()].into(),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
             ..Default::default()
         });
         let rel = ctx.expected_rel_to();
         // USA is the intersection — still produces a result.
         assert_eq!(rel.len(), 1);
-        assert_eq!(rel[0], Trigraph::USA);
+        assert_eq!(rel[0], CountryCode::USA);
+    }
+
+    // -----------------------------------------------------------------------
+    // Issue #183 PR-A — banner roll-up must (a) expand FVEY/ACGU into
+    // their constituent trigraphs before intersection and (b) treat
+    // opaque codes (NATO, RSMA, …) as atoms that survive intersection
+    // only when present in every portion.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn rel_to_intersection_expands_fvey_into_constituent_trigraphs() {
+        // Portion 1: REL TO USA, FVEY  → expanded {AUS, CAN, GBR, NZL, USA}
+        // Portion 2: REL TO USA, NZL   → atoms     {NZL, USA}
+        // Intersection: {NZL, USA} → banner: USA first, NZL alphabetical.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"FVEY").unwrap()].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NZL").unwrap()].into(),
+            ..Default::default()
+        });
+        let rel = ctx.expected_rel_to();
+        let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
+        assert_eq!(codes, vec!["USA", "NZL"]);
+    }
+
+    #[test]
+    fn rel_to_opaque_tetragraph_in_one_portion_drops_from_intersection() {
+        // Portion 1: REL TO USA, NATO  → atoms {NATO, USA} (NATO opaque)
+        // Portion 2: REL TO USA, GBR   → atoms {GBR, USA}
+        // Intersection: {USA}. NATO is not in portion 2's set, so the
+        // opaque atom drops out — the banner cannot claim a NATO
+        // release the second portion didn't authorize.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
+            ..Default::default()
+        });
+        let rel = ctx.expected_rel_to();
+        let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
+        assert_eq!(codes, vec!["USA"]);
+    }
+
+    #[test]
+    fn rel_to_opaque_tetragraph_in_every_portion_survives_intersection() {
+        // Portion 1: REL TO USA, NATO  → atoms {NATO, USA}
+        // Portion 2: REL TO USA, NATO  → atoms {NATO, USA}
+        // Intersection: {NATO, USA} — NATO survives because both
+        // portions explicitly list it. USA renders first per CAPCO
+        // §H.8 ordering.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            ..Default::default()
+        });
+        let rel = ctx.expected_rel_to();
+        let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
+        assert_eq!(codes, vec!["USA", "NATO"]);
+    }
+
+    #[test]
+    fn rel_to_fvey_intersected_with_acgu_yields_acgu_members() {
+        // Portion 1: REL TO USA, FVEY → {AUS, CAN, GBR, NZL, USA}
+        // Portion 2: REL TO USA, ACGU → {AUS, CAN, GBR, USA}
+        // Intersection: ACGU members. NZL drops out (not in ACGU);
+        // ACGU-as-tetragraph itself never appears because it expanded
+        // into its members on portion 2 before intersection.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"FVEY").unwrap()].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"ACGU").unwrap()].into(),
+            ..Default::default()
+        });
+        let rel = ctx.expected_rel_to();
+        let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
+        assert_eq!(codes, vec!["USA", "AUS", "CAN", "GBR"]);
     }
 
     // --- Dissem special cases ---

@@ -6,4 +6,4 @@
 //!
 //! Canonical definitions live in `marque_ism::attrs`.
 
-pub use marque_ism::attrs::{Classification, IsmAttributes, Trigraph};
+pub use marque_ism::attrs::{Classification, CountryCode, IsmAttributes};

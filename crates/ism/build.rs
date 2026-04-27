@@ -538,7 +538,14 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             .join("CVEnumISMCATRelTo.xsd"),
     );
 
-    // Emit trigraph array (not an enum — too many values, and Trigraph is a [u8; 3] newtype).
+    // Emit the country-code recognition slice (not an enum — the
+    // CVE list has hundreds of entries; `CountryCode` is the typed
+    // wrapper). Despite the legacy `TRIGRAPHS` name, this slice
+    // carries the full CVE recognition surface: 2-byte (`EU`),
+    // 3-byte trigraphs, 4-byte tetragraphs (`FVEY`, `NATO`, …),
+    // and 15-byte `AUSTRALIA_GROUP`. The name is kept for
+    // backwards compatibility with consumers; PR-B may rename to
+    // `COUNTRY_CODES` alongside the `is_trigraph` rename.
     //
     // M-3: sort and deduplicate into a BTreeSet before emission so
     // `is_trigraph` in token_set.rs can use `binary_search` over a
@@ -549,8 +556,10 @@ fn generate_values(out: &Path, schema_dir: &Path) {
         trigraphs.into_iter().map(|(v, _)| v).collect();
     writeln!(
         content,
-        "/// All valid country/entity trigraphs from CVEnumISMCATRelTo.xsd,\n\
-         /// sorted ascending and deduplicated. `is_trigraph` uses binary_search."
+        "/// All valid country / country-group codes from \
+         CVEnumISMCATRelTo.xsd,\n\
+         /// sorted ascending and deduplicated. `is_trigraph` uses \
+         binary_search."
     )
     .unwrap();
     writeln!(content, "/// {} entries total.", sorted_trigraphs.len()).unwrap();

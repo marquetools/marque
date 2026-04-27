@@ -17,17 +17,19 @@
 //!
 //! Consumers: [`marque_ism::PageContext::expected_rel_to`] today calls
 //! a private helper with the same data; this module is the canonical
-//! home. Phase C will migrate the `PageContext` helper to import from
-//! here (requires a `marque-ism ← marque-capco` dep edge that's not
-//! yet established). The tables stay in sync by unit tests in this
-//! crate until that migration lands.
+//! home. Issue #183 PR-B will consolidate by emitting the canonical
+//! membership table from `marque-ism::generated` (the dep edge
+//! direction matches Constitution VII), at which point both this
+//! module and `page_context.rs` re-export from one source. Until
+//! then, unit tests in this crate keep the two copies in sync.
 //!
-//! # Why `&'static [&'static str]` (and not trigraphs)
+//! # Why `&'static [&'static str]` (and not typed `CountryCode`)
 //!
-//! The consumer is code that already has a trigraph-string side-buffer
-//! for comparison; bridging through `[u8; 3]` would force the lookup
-//! to re-encode on every intersection. A downstream user who wants
-//! typed `Trigraph` values can `Trigraph::try_new` from each entry.
+//! The consumer is code that already has a code-string side-buffer
+//! for comparison; bridging through the typed form would force the
+//! lookup to re-encode on every intersection. A downstream user who
+//! wants typed `CountryCode` values can `CountryCode::try_new` from
+//! each entry.
 
 /// Five Eyes: AUS, CAN, GBR, NZL, USA.
 ///
