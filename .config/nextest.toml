@@ -30,7 +30,7 @@ retries = 0
 # run — `fix_with_deadline_during_fix_call_returns_deadline_exceeded`
 # has flaked exactly this way on PR #199. Two surgical mitigations:
 #
-#  1. `threads-required = 'num-cpus'` reserves every available thread,
+#  1. `threads-required = "num-cpus"` reserves every available thread,
 #     so nextest schedules these tests alone on the runner. This
 #     eliminates the cross-test CPU-contention root cause.
 #  2. `retries = 2` absorbs any residual timing noise (e.g.,
