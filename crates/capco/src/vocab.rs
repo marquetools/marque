@@ -6,73 +6,70 @@
 //!
 //! # Tetragraph expansion
 //!
-//! CAPCO's REL TO lists can carry **tetragraphs** (four-letter country
-//! group codes) in addition to three-letter trigraphs. The tetragraphs
-//! expand to constituent trigraphs before intersection — a portion
-//! releasable to `FVEY` is releasable to every Five Eyes nation. The
-//! membership table below is hand-curated from the CAPCO Register
-//! and related community documentation — *not* derived from ODNI CVE
-//! XML. The CVE files list tetragraphs as valid tokens but do not
-//! record their membership.
+//! CAPCO's REL TO lists can carry **tetragraphs** (four-letter
+//! country-group codes) in addition to three-letter trigraphs. The
+//! tetragraphs expand to constituent trigraphs before intersection —
+//! a portion releasable to `FVEY` is releasable to every Five Eyes
+//! nation.
 //!
-//! Consumers: [`marque_ism::PageContext::expected_rel_to`] today calls
-//! a private helper with the same data; this module is the canonical
-//! home. Issue #183 PR-B will consolidate by emitting the canonical
-//! membership table from `marque-ism::generated` (the dep edge
-//! direction matches Constitution VII), at which point both this
-//! module and `page_context.rs` re-export from one source. Until
-//! then, unit tests in this crate keep the two copies in sync.
+//! Issue #183 PR-B: this module is now a thin re-export over
+//! [`marque_ism::TETRAGRAPH_MEMBERS`] /
+//! [`marque_ism::lookup_tetragraph_members`] — the canonical
+//! membership table emitted by `marque-ism::build.rs` from
+//! hand-curated CAPCO Register data plus any org-specific extensions
+//! declared in `crates/ism/country_extensions.toml`. Pre-PR-B this
+//! crate and `marque-ism::page_context` carried two private copies of
+//! the FVEY/ACGU table that drifted independently; consolidating to
+//! one source eliminates the drift.
 //!
 //! # Why `&'static [&'static str]` (and not typed `CountryCode`)
 //!
 //! The consumer is code that already has a code-string side-buffer
 //! for comparison; bridging through the typed form would force the
 //! lookup to re-encode on every intersection. A downstream user who
-//! wants typed `CountryCode` values can `CountryCode::try_new` from
-//! each entry.
+//! wants typed [`marque_ism::CountryCode`] values can
+//! `CountryCode::try_new` from each entry.
 
 /// Five Eyes: AUS, CAN, GBR, NZL, USA.
 ///
 /// CAPCO Register defines FVEY as the Australia / Canada / United
-/// Kingdom / New Zealand / United States community.
+/// Kingdom / New Zealand / United States community. Convenience
+/// re-export of the row served by
+/// [`marque_ism::lookup_tetragraph_members`] for the `"FVEY"` key.
 pub const FVEY: &[&str] = &["AUS", "CAN", "GBR", "NZL", "USA"];
 
 /// Four Eyes minus New Zealand: AUS, CAN, GBR, USA.
 ///
-/// Used for intelligence-sharing arrangements that exclude NZL.
+/// Convenience re-export of the row served by
+/// [`marque_ism::lookup_tetragraph_members`] for the `"ACGU"` key.
 pub const ACGU: &[&str] = &["AUS", "CAN", "GBR", "USA"];
 
-/// NATO tetragraph expansion — **intentionally empty**.
+/// NATO tetragraph expansion — **intentionally empty / opaque**.
 ///
-/// NATO membership is treaty-driven and changes over time; the full
-/// list (30 members as of this writing) lives in the CVE country
-/// trigraph table, not here. When a `REL TO NATO` portion composes
-/// against a `REL TO USA, GBR` portion, the NATO expansion should
-/// resolve to every current NATO member — but that list is outside
-/// the CVE scope marque ships, so for now `NATO` stays opaque to the
-/// expansion function (portions marked REL TO NATO intersect with
-/// REL TO USA, GBR as the empty set unless downstream code has a
-/// runtime NATO member list).
+/// NATO membership is treaty-driven and changes over time; the
+/// canonical member list is **not** emitted by `marque-ism`'s
+/// tetragraph table — `lookup_tetragraph_members("NATO")` returns
+/// `None`, and `REL TO NATO` therefore composes as an opaque atom
+/// in intersection.
 ///
-/// Phase F's NATO scheme adapter will land the membership table
-/// alongside the NATO classification lattice; `marque-capco` will
-/// then defer to that source.
+/// A future NATO scheme adapter (tracked alongside the Phase F
+/// NATO classification lattice) will land the membership table;
+/// once it does, this module's documentation should switch to
+/// reference that source instead of describing the gap.
 pub const NATO: &[&str] = &[];
 
 /// Look up a tetragraph's constituent trigraphs. Returns `None` for
-/// unknown or non-tetragraph codes (pass-through).
+/// unknown / opaque codes (NATO and operation-specific tetragraphs
+/// like RSMA / ISAF / KFOR) and for trigraphs (which have no
+/// expansion).
+///
+/// Issue #183 PR-B: thin wrapper around the canonical generated
+/// table in `marque-ism`. The pre-PR-B `match` arms on
+/// `FVEY`/`ACGU`/(NATO-opaque-via-`_`) are replaced by a single
+/// `binary_search`-backed lookup, so extension-defined tetragraphs
+/// are picked up automatically.
 pub fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
-    match code {
-        "FVEY" => Some(FVEY),
-        "ACGU" => Some(ACGU),
-        // NATO stays opaque per the module docs until the Phase F
-        // adapter lands a canonical membership table. We could return
-        // `Some(NATO)` here (empty slice) but that would make any
-        // `REL TO NATO ⋂ REL TO USA` compose to empty — returning
-        // `None` preserves NATO as an opaque pass-through token
-        // instead.
-        _ => None,
-    }
+    marque_ism::lookup_tetragraph_members(code)
 }
 
 #[cfg(test)]

@@ -920,18 +920,22 @@ fn render_sar_block(sar: &SarMarking) -> String {
 
 /// Expand known tetragraphs into their constituent trigraphs.
 ///
-/// Per CAPCO, tetragraphs like FVEY represent groups of countries:
-/// - FVEY = Five Eyes: AUS, CAN, GBR, NZL, USA
-/// - ACGU = AUS, CAN, GBR, USA (Four Eyes minus NZL)
+/// Issue #183 PR-B: thin wrapper around the canonical
+/// [`crate::lookup_tetragraph_members`] table emitted by `build.rs`
+/// (which sources FVEY/ACGU from the hand-curated CAPCO Register
+/// data and any org-specific extensions with `members` from
+/// `country_extensions.toml`). Pre-PR-B this module carried its
+/// own private duplicate of the FVEY/ACGU table; the duplicate
+/// is retired so a single source of truth feeds both the banner
+/// roll-up here and the `marque-capco::vocab::expand_tetragraph`
+/// public API.
 ///
-/// Returns `None` for trigraphs and unknown codes (pass through as-is).
+/// Returns `None` for trigraphs, opaque tetragraphs (NATO and
+/// operation-specific codes like RSMA / ISAF / KFOR), and
+/// unrecognized codes — opaque atoms must pass through unchanged
+/// so the intersection treats them correctly.
 fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
-    match code {
-        "FVEY" => Some(&["AUS", "CAN", "GBR", "NZL", "USA"]),
-        "ACGU" => Some(&["AUS", "CAN", "GBR", "USA"]),
-        // Add more tetragraphs as needed.
-        _ => None,
-    }
+    crate::lookup_tetragraph_members(code)
 }
 
 #[cfg(test)]
@@ -1371,6 +1375,40 @@ mod tests {
         let rel = ctx.expected_rel_to();
         let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
         assert_eq!(codes, vec!["USA", "AUS", "CAN", "GBR"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Issue #183 PR-B — `expand_tetragraph` now reads from the canonical
+    // generated `marque_ism::TETRAGRAPH_MEMBERS` table (single source of
+    // truth shared with `marque-capco::vocab::expand_tetragraph`). Pin
+    // the consolidation by exercising the wrapper directly: post-PR-B
+    // both consumers must agree on every code.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn expand_tetragraph_reads_canonical_table_for_fvey_acgu() {
+        assert_eq!(
+            super::expand_tetragraph("FVEY"),
+            Some(crate::lookup_tetragraph_members("FVEY").unwrap()),
+            "page_context::expand_tetragraph must defer to the \
+             canonical marque_ism::lookup_tetragraph_members for FVEY"
+        );
+        assert_eq!(
+            super::expand_tetragraph("ACGU"),
+            Some(crate::lookup_tetragraph_members("ACGU").unwrap()),
+        );
+    }
+
+    #[test]
+    fn expand_tetragraph_returns_none_for_opaque_and_unknown() {
+        // NATO and operation-specific tetragraphs (RSMA, ISAF, …)
+        // stay opaque — the generated table omits them, so the
+        // wrapper returns `None` and intersection treats them as
+        // atoms. Trigraphs (no expansion defined) also return None.
+        assert!(super::expand_tetragraph("NATO").is_none());
+        assert!(super::expand_tetragraph("RSMA").is_none());
+        assert!(super::expand_tetragraph("USA").is_none());
+        assert!(super::expand_tetragraph("XYZW").is_none());
     }
 
     // --- Dissem special cases ---

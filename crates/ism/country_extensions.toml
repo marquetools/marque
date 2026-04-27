@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+# Org-specific country / country-group code extensions.
+#
+# CAPCO REL TO blocks recognize the codes published in ODNI's CVE
+# trigraph table (`crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/
+# CVEGenerated/CVEnumISMCATRelTo.xsd`): 280 ISO trigraphs (`USA`,
+# `GBR`, …), 58 tetragraph / country-group codes (`FVEY`, `ACGU`,
+# `NATO`, `RSMA`/`ISAF`/`KFOR`/…), the 2-byte `EU`, and the 15-byte
+# `AUSTRALIA_GROUP`. That set is sufficient for upstream releases.
+#
+# Org forks that need to recognize additional codes — historical
+# (e.g., `MNFI` for Multi-National Forces Iraq, active 2003–2010),
+# agency-internal cooperation groups, partner-program codewords —
+# add `[[code]]` entries here. The build embeds them into the
+# `TRIGRAPHS` recognition set and the canonical
+# `TETRAGRAPH_MEMBERS` membership table at compile time.
+#
+# Trust boundary: build-time, not runtime. Per Constitution III,
+# the WASM target MUST NOT accept runtime configuration that
+# expands the engine's semantic surface; a build-time TOML
+# satisfies this — the extension surface is sealed in the
+# binary, not loaded by an embedder.
+#
+# Schema (each entry):
+#
+#   [[code]]
+#   code = "MNFI"
+#   description = "Multi-National Forces Iraq (historical, 2003–2010)"
+#   # `members` omitted → recognition-only, opaque to expansion.
+#   # Today's intersection (atom semantics):
+#   #     REL TO USA, MNFI ∩ REL TO USA, GBR  →  {USA}
+#   # USA appears in both portions and survives. MNFI is treated
+#   # as an atom (not present in portion 2), so it drops. GBR
+#   # also drops (not present in portion 1's atom-set).
+#   #
+#   # CAVEAT: this answer is correct ONLY if GBR was not a
+#   # member of MNFI. If GBR WAS a member, the correct
+#   # intersection is `{USA, GBR}` and today's atom-semantics
+#   # silently loses it. Diagnosing this membership-uncertain
+#   # case is tracked as issue #206 — until that lands,
+#   # extensions for historical / unknown-membership groups are
+#   # safe to register but the operator must verify the banner
+#   # roll-up against authoritative membership data.
+#
+#   [[code]]
+#   code = "MYORG"
+#   description = "Internal cooperation group"
+#   members = ["USA", "GBR", "AUS"]
+#   # `members` present → expansion-enabled. Intersection:
+#   #     REL TO USA, MYORG ∩ REL TO USA, GBR  →  {USA, GBR}
+#   # MYORG expands to {USA, GBR, AUS} on portion 1; intersect
+#   # with portion 2's {USA, GBR} = {USA, GBR}.
+#
+# Validation (enforced at build time; failures produce a clear
+# `build.rs` panic with the offending entry):
+#
+#   - `code` MUST be 2–16 bytes from the CAPCO byte set:
+#     ASCII uppercase letter (`A`–`Z`), ASCII digit (`0`–`9`), or
+#     underscore (`_`). Hyphens, lowercase, and other punctuation
+#     are rejected — no CAPCO entry uses them and accepting them
+#     here would diverge the recognition surface.
+#   - `code` MUST NOT duplicate a CVE entry or an earlier
+#     extension entry.
+#   - `description` is required (and must be non-whitespace,
+#     single-line); it appears in build output and in code-search
+#     results when an auditor traces an unfamiliar code back to
+#     its source. The value is emitted directly into a generated
+#     `///` doc comment block, so embedded `\n` / `\r` characters
+#     are rejected at build time — write multi-paragraph
+#     descriptions as one line with explicit ` — ` separators.
+#     "Field omitted" and "field whitespace-only" produce a clear
+#     panic naming the offending `code`.
+#   - `members` (when present) MUST each:
+#       * be exactly **3 bytes** (a country trigraph). Tetragraph-
+#         of-tetragraphs is rejected so single-level expansion
+#         stays well-defined; the consumer (`expand_tetragraph`)
+#         does not perform recursive expansion.
+#       * already be in the recognition set — either a CVE
+#         trigraph or a 3-byte extension defined earlier in this
+#         file. Forward references are rejected to keep the
+#         membership table acyclic by construction.
+#       * not equal the extension's own `code` (self-reference is
+#         rejected — an extension cannot expand to itself).
+#   - `members = []` is treated identically to omitting `members`
+#     (recognition-only, opaque).
+#
+# Default: empty. An empty file (or one with no `[[code]]`
+# entries) produces a build byte-identical to a build with no
+# extensions at all — `TRIGRAPHS` and `TETRAGRAPH_MEMBERS` carry
+# only ODNI-published content.
+
+# (Add extension entries below this line.)
