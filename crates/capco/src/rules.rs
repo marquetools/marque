@@ -351,8 +351,12 @@ impl Rule for PortionMarkInBannerRule {
 ///   #183 PR-A) now carries tetragraphs, but E002 still sorts the
 ///   list as a flat alphabetical sequence rather than the §H.8 p151
 ///   "trigraphs alpha, then tetragraphs alpha, USA first" form.
-///   Separate follow-up — the canonicalizer just needs to partition
-///   on `code.len() <= 3` before sorting.
+///   Separate follow-up — the canonicalizer should partition true
+///   country trigraphs (`code.len() == 3`) from the remaining codes
+///   (the 2-byte `EU`, the 4-byte tetragraphs, and 15-byte
+///   `AUSTRALIA_GROUP` belong in the non-trigraph bucket) before
+///   sorting, or ideally derive the buckets from the CVE schema
+///   groups in `CVEnumISMCATRelTo.xsd`.
 /// - "REL TO USA" alone (p151, a non-authorized marking with no
 ///   following country codes) is out of scope. E002 does not fire when
 ///   USA is present and first; a separate rule is needed for that case.
@@ -2570,10 +2574,14 @@ impl Rule for NonIcInClassifiedBannerRule {
 ///   follow-up; no FGI-ordering test fixtures exist today.
 /// - **Tetragraph partition sorting** — issue #183 PR-A widened
 ///   `CountryCode` so 4-byte tetragraphs round-trip through
-///   `attrs.rel_to`, but `canonicalize_trigraph_list` still sorts the
-///   whole list flat-alphabetically rather than the §H.8 p151
+///   `attrs.rel_to`, but `canonicalize_trigraph_list` still sorts
+///   the whole list flat-alphabetically rather than the §H.8 p151
 ///   "trigraphs alpha, then tetragraphs alpha" partition. Follow-up:
-///   sort by `(code.len() > 3, code.as_str())`.
+///   bucket true trigraphs (`code.len() == 3`) before everything
+///   else (the 2-byte `EU`, the 4-byte tetragraphs, and 15-byte
+///   `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
+///   derive the buckets from the CVE schema groups in
+///   `CVEnumISMCATRelTo.xsd`.
 ///
 /// # Interaction with E002
 ///
@@ -2740,7 +2748,11 @@ impl Rule for CountryCodeOrderingRule {
 /// entries in `attrs.rel_to`, but this helper still sorts the whole
 /// list flat-alphabetically rather than the §H.3 p56 / §H.8 p151
 /// "trigraphs alpha, then tetragraphs alpha" partition. Follow-up:
-/// sort by `(code.len() > 3, code.as_str())`.
+/// bucket true trigraphs (`code.len() == 3`) before everything else
+/// (the 2-byte `EU`, the 4-byte tetragraphs, and 15-byte
+/// `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
+/// derive the buckets from the CVE schema groups in
+/// `CVEnumISMCATRelTo.xsd`.
 fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&marque_ism::CountryCode::USA);

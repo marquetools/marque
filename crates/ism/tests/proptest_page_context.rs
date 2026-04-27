@@ -44,27 +44,27 @@ fn arb_dissem_subset() -> impl Strategy<Value = Vec<DissemControl>> {
     subsequence(stable, 0..=len).prop_map(|v| v)
 }
 
-static VALID_TRIGRAPHS: &[[u8; 3]] = &[
+static VALID_COUNTRY_CODES: &[[u8; 3]] = &[
     *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA",
 ];
 
 fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
-    let all_trigraphs: Vec<[u8; 3]> = VALID_TRIGRAPHS.to_vec();
-    let len = all_trigraphs.len();
+    let all_codes: Vec<[u8; 3]> = VALID_COUNTRY_CODES.to_vec();
+    let len = all_codes.len();
     prop_oneof![
         // Empty (no REL TO constraint)
         Just(vec![]),
         // USA only
         Just(vec![CountryCode::try_new(b"USA").unwrap()]),
         // USA + some partner nations
-        subsequence(all_trigraphs, 1..=len).prop_map(|subset| {
+        subsequence(all_codes, 1..=len).prop_map(|subset| {
             // USA must be first; ensure it's present and de-duplicated.
-            let mut trigraphs: Vec<CountryCode> = std::iter::once(*b"USA")
+            let mut codes: Vec<CountryCode> = std::iter::once(*b"USA")
                 .chain(subset.into_iter().filter(|b| *b != *b"USA"))
                 .map(|b| CountryCode::try_new(&b).unwrap())
                 .collect();
-            trigraphs.dedup_by_key(|t| t.as_str().to_owned());
-            trigraphs
+            codes.dedup_by_key(|c| c.as_str().to_owned());
+            codes
         }),
     ]
 }
@@ -139,7 +139,7 @@ proptest! {
         }
     }
 
-    // If a trigraph appears in expected_rel_to(), it must appear in every
+    // If a country code appears in expected_rel_to(), it must appear in every
     // portion that carries a non-empty REL TO list (intersection property).
     #[test]
     fn rel_to_intersection_property(portions in arb_portions()) {
@@ -168,7 +168,7 @@ proptest! {
                     portion.rel_to.iter().map(|t| t.as_str().to_owned()).collect();
                 prop_assert!(
                     portion_strs.contains(t_str),
-                    "trigraph {:?} in roll-up but missing from portion {:?}",
+                    "country code {:?} in roll-up but missing from portion {:?}",
                     t_str,
                     portion.rel_to,
                 );

@@ -118,13 +118,13 @@ fn arb_sar_set() -> impl Strategy<Value = SarSet> {
 // FgiSet strategy
 // ---------------------------------------------------------------------------
 
-static VALID_TRIGRAPHS: &[[u8; 3]] = &[
+static VALID_COUNTRY_CODES: &[[u8; 3]] = &[
     *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA", *b"JPN",
 ];
 
-fn arb_trigraph() -> impl Strategy<Value = CountryCode> {
-    (0..VALID_TRIGRAPHS.len()).prop_map(|i| {
-        CountryCode::try_new(&VALID_TRIGRAPHS[i]).expect("static trigraphs are valid")
+fn arb_country_code() -> impl Strategy<Value = CountryCode> {
+    (0..VALID_COUNTRY_CODES.len()).prop_map(|i| {
+        CountryCode::try_new(&VALID_COUNTRY_CODES[i]).expect("static country codes are valid")
     })
 }
 
@@ -132,12 +132,12 @@ fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
     prop_oneof![
         Just(FgiSet::None),
         Just(FgiSet::bottom()),
-        proptest::collection::vec(arb_trigraph(), 0..=4).prop_map(|countries| {
+        proptest::collection::vec(arb_country_code(), 0..=4).prop_map(|countries| {
             // Deduplicate — FgiMarker doesn't require uniqueness but the lattice
-            // operates on sets; duplicate trigraphs don't change the semantic.
+            // operates on sets; duplicate codes don't change the semantic.
             let mut deduped = countries;
-            deduped.sort_by_key(|t| t.as_str().to_owned());
-            deduped.dedup_by_key(|t| t.as_str().to_owned());
+            deduped.sort_by_key(|c| c.as_str().to_owned());
+            deduped.dedup_by_key(|c| c.as_str().to_owned());
             FgiSet::from_marker(Some(&FgiMarker {
                 countries: deduped.into_boxed_slice(),
             }))
