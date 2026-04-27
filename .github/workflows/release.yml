@@ -139,11 +139,55 @@ jobs:
             "${TAG}"
           echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
 
+      # Issue #191 — SBOM generation in two formats:
+      #   1. SPDX (tag-value) via `reuse spdx` — free from existing REUSE
+      #      annotations; covers every file's license and copyright.
+      #      NTIA minimum-elements compliant. `reuse` is already pinned in
+      #      CI (`ci.yml` `reuse` job); the same version is installed here
+      #      to keep behaviour consistent.
+      #   2. CycloneDX (JSON + XML) via `cargo cyclonedx` — walks
+      #      Cargo.lock and emits the full transitive dep graph with
+      #      versions, licenses, and checksums. The format most SBOM
+      #      consumers and vulnerability scanners (Grype, Trivy,
+      #      Dependency-Track) expect for supply-chain analysis.
+      #
+      # TODO(#191): SHA-pin `cargo-cyclonedx` per §8.3 once a stable
+      # release is confirmed by the maintainers.
+      - name: Generate SBOMs
+        id: sbom
+        if: inputs.dry-run == false
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          # SPDX — generated from existing REUSE annotations
+          pipx install "reuse==5.0.2"
+          reuse spdx \
+            --output "marque-${VERSION}.spdx" \
+            --add-license-concluded \
+            --creator-organization "Knitli Inc."
+          # CycloneDX — full transitive dependency graph from Cargo.lock
+          cargo install cargo-cyclonedx --locked
+          cargo cyclonedx --format json --workspace \
+            --output-file "marque-${VERSION}.cyclonedx.json"
+          cargo cyclonedx --format xml --workspace \
+            --output-file "marque-${VERSION}.cyclonedx.xml"
+          echo "spdx=marque-${VERSION}.spdx" >> "$GITHUB_OUTPUT"
+          echo "cdx=marque-${VERSION}.cyclonedx.json" >> "$GITHUB_OUTPUT"
+          echo "cdxml=marque-${VERSION}.cyclonedx.xml" >> "$GITHUB_OUTPUT"
+
       - name: Attest source archive
         if: inputs.dry-run == false
         uses: actions/attest-build-provenance@10334b5f1e684784025c3fc0a277c88c19089275
         with:
           subject-path: ${{ steps.archive.outputs.archive }}
+
+      - name: Attest SBOMs
+        if: inputs.dry-run == false
+        uses: actions/attest-build-provenance@10334b5f1e684784025c3fc0a277c88c19089275
+        with:
+          subject-path: |
+            ${{ steps.sbom.outputs.spdx }}
+            ${{ steps.sbom.outputs.cdx }}
+            ${{ steps.sbom.outputs.cdxml }}
 
       - name: Create GitHub release
         if: inputs.dry-run == false
@@ -151,19 +195,30 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
-          files: ${{ steps.archive.outputs.archive }}
+          files: |
+            ${{ steps.archive.outputs.archive }}
+            ${{ steps.sbom.outputs.spdx }}
+            ${{ steps.sbom.outputs.cdx }}
+            ${{ steps.sbom.outputs.cdxml }}
           generate_release_notes: true
           body: |
             Signed source archive: `${{ steps.archive.outputs.archive }}`
+            SBOMs: `${{ steps.sbom.outputs.spdx }}` (SPDX), `${{ steps.sbom.outputs.cdx }}` (CycloneDX JSON), `${{ steps.sbom.outputs.cdxml }}` (CycloneDX XML)
 
-            This is the workspace-state provenance artifact from
+            The source archive is a workspace-state provenance artifact from
             `git archive` at the release tag. It is not byte-identical
             to any crates.io per-crate tarball — crates.io uses
             `cargo package` with per-crate `include`/`exclude` rules.
 
-            Verify with the GitHub CLI:
+            Verify all artifacts with the GitHub CLI:
 
             ```
             gh attestation verify ${{ steps.archive.outputs.archive }} \
+              --owner marquetools
+            gh attestation verify ${{ steps.sbom.outputs.spdx }} \
+              --owner marquetools
+            gh attestation verify ${{ steps.sbom.outputs.cdx }} \
+              --owner marquetools
+            gh attestation verify ${{ steps.sbom.outputs.cdxml }} \
               --owner marquetools
             ```
