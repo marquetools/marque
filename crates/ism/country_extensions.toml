@@ -51,14 +51,22 @@
 #     here would diverge the recognition surface.
 #   - `code` MUST NOT duplicate a CVE entry or an earlier
 #     extension entry.
-#   - `description` is required; it appears in build output and
-#     in code-search results when an auditor traces an unfamiliar
-#     code back to its source.
-#   - `members` (when present) MUST each already be in the
-#     recognition set — either a CVE entry or an extension
-#     defined earlier in this file. Forward references are
-#     rejected to keep the membership table acyclic by
-#     construction.
+#   - `description` is required (and must be non-whitespace); it
+#     appears in build output and in code-search results when an
+#     auditor traces an unfamiliar code back to its source. Both
+#     "field omitted" and "field whitespace-only" produce a clear
+#     panic naming the offending `code`.
+#   - `members` (when present) MUST each:
+#       * be exactly **3 bytes** (a country trigraph). Tetragraph-
+#         of-tetragraphs is rejected so single-level expansion
+#         stays well-defined; the consumer (`expand_tetragraph`)
+#         does not perform recursive expansion.
+#       * already be in the recognition set — either a CVE
+#         trigraph or a 3-byte extension defined earlier in this
+#         file. Forward references are rejected to keep the
+#         membership table acyclic by construction.
+#       * not equal the extension's own `code` (self-reference is
+#         rejected — an extension cannot expand to itself).
 #   - `members = []` is treated identically to omitting `members`
 #     (recognition-only, opaque).
 #

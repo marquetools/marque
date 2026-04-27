@@ -1480,7 +1480,13 @@ mod ext_toml {
     #[derive(Deserialize)]
     pub(super) struct CodeEntry {
         pub code: String,
-        pub description: String,
+        // Optional at the wire level so a missing field surfaces as
+        // our own targeted panic naming the offending `code`, rather
+        // than a generic serde "missing field `description`" error
+        // with no context. The validation in `load_country_extensions`
+        // rejects None (and whitespace-only) with a clear message.
+        #[serde(default)]
+        pub description: Option<String>,
         #[serde(default)]
         pub members: Option<Vec<String>>,
     }
@@ -1534,14 +1540,18 @@ fn load_country_extensions(
         // `description` field is required for auditor traceability —
         // a code lookup in the generated output must surface a
         // human-readable string explaining what the code means.
-        if entry.description.trim().is_empty() {
-            panic!(
+        // Both "field omitted" and "field whitespace-only" route
+        // through this single panic so the build error always
+        // names the offending `code` and `path`.
+        let description = match entry.description {
+            Some(d) if !d.trim().is_empty() => d,
+            _ => panic!(
                 "{path}: country extension `code = {code:?}` is missing \
                  required `description` field (or it is whitespace-only). \
                  Every extension MUST carry a non-empty description so an \
                  auditor tracing the code can find its provenance.",
-            );
-        }
+            ),
+        };
 
         // Length check.
         if !(2..=16).contains(&code.len()) {
@@ -1573,20 +1583,48 @@ fn load_country_extensions(
         }
 
         // Validate members (if present): each must already be in
-        // the recognition set. `members = []` is treated as
-        // `members = None` (recognition-only, opaque).
+        // the recognition set, must be a 3-byte trigraph (atomic
+        // country code — tetragraph-of-tetragraphs is rejected so
+        // single-level expansion stays well-defined), and must not
+        // be the extension's own code (self-reference is rejected
+        // — `seen.insert(code)` above intentionally goes before
+        // member validation so self-membership is caught here as
+        // a distinct error rather than via a forward-reference
+        // confusion). `members = []` is treated as `members = None`
+        // (recognition-only, opaque).
         let members: Vec<String> = match entry.members {
             None => Vec::new(),
             Some(m) if m.is_empty() => Vec::new(),
             Some(m) => {
                 for member in &m {
+                    if member == &code {
+                        panic!(
+                            "{path}: country extension `code = {code:?}` \
+                             lists itself in `members`. An extension cannot \
+                             expand to itself.",
+                        );
+                    }
+                    if member.len() != 3 {
+                        panic!(
+                            "{path}: country extension `code = {code:?}` \
+                             references member {member:?} of length {}. \
+                             Tetragraph membership entries MUST be 3-byte \
+                             country trigraphs (USA, GBR, AUS, …) so \
+                             single-level expansion stays well-defined; \
+                             tetragraph-of-tetragraphs would require \
+                             recursive expansion which the consumer \
+                             (`expand_tetragraph`) does not perform.",
+                            member.len(),
+                        );
+                    }
                     if !seen.contains(member) {
                         panic!(
                             "{path}: country extension `code = {code:?}` \
                              references member {member:?} which is not in \
                              the recognition set. Members must be CVE \
-                             entries or extensions defined earlier in this \
-                             file (forward references are rejected).",
+                             trigraphs or 3-byte extensions defined \
+                             earlier in this file (forward references \
+                             are rejected).",
                         );
                     }
                 }
@@ -1596,7 +1634,7 @@ fn load_country_extensions(
 
         out.push(CountryExtension {
             code,
-            description: entry.description,
+            description,
             members,
         });
     }

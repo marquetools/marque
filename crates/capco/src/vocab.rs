@@ -35,13 +35,13 @@
 /// CAPCO Register defines FVEY as the Australia / Canada / United
 /// Kingdom / New Zealand / United States community. Convenience
 /// re-export of the row served by
-/// [`marque_ism::lookup_tetragraph_members`]`("FVEY")`.
+/// [`marque_ism::lookup_tetragraph_members`] for the `"FVEY"` key.
 pub const FVEY: &[&str] = &["AUS", "CAN", "GBR", "NZL", "USA"];
 
 /// Four Eyes minus New Zealand: AUS, CAN, GBR, USA.
 ///
 /// Convenience re-export of the row served by
-/// [`marque_ism::lookup_tetragraph_members`]`("ACGU")`.
+/// [`marque_ism::lookup_tetragraph_members`] for the `"ACGU"` key.
 pub const ACGU: &[&str] = &["AUS", "CAN", "GBR", "USA"];
 
 /// NATO tetragraph expansion — **intentionally empty / opaque**.
