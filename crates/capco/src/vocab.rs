@@ -47,11 +47,10 @@ pub const ACGU: &[&str] = &["AUS", "CAN", "GBR", "USA"];
 /// NATO tetragraph expansion — **intentionally empty / opaque**.
 ///
 /// NATO membership is treaty-driven and changes over time; the
-/// canonical member list (32 members as of this writing) is **not**
-/// emitted by `marque-ism`'s tetragraph table —
-/// `lookup_tetragraph_members("NATO")` returns `None`, and
-/// `REL TO NATO` therefore composes as an opaque atom in
-/// intersection.
+/// canonical member list is **not** emitted by `marque-ism`'s
+/// tetragraph table — `lookup_tetragraph_members("NATO")` returns
+/// `None`, and `REL TO NATO` therefore composes as an opaque atom
+/// in intersection.
 ///
 /// A future NATO scheme adapter (tracked alongside the Phase F
 /// NATO classification lattice) will land the membership table;

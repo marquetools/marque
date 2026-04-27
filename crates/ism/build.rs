@@ -673,12 +673,15 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     // IMCON would normally live here, but the dissem CVE already covers
     // them, so the BTreeSet drops the duplicates automatically.
     all_tokens.insert("EYES ONLY".to_owned());
-    // Issue #183 PR-B: extension codes are also valid tokens for
-    // canonicalization (an extension like `MNFI` should round-trip
-    // through `CapcoTokenSet::canonicalize`, not just `is_trigraph`).
-    for ext in &extensions {
-        all_tokens.insert(ext.code.clone());
-    }
+    // Issue #183 PR-B note: country-code extensions are NOT inserted
+    // into `ALL_CVE_TOKENS`. CVE country codes themselves (`USA`,
+    // `GBR`, `FVEY`, …) are not in this slice either — they live
+    // exclusively in `TRIGRAPHS`, reached via `is_trigraph` from the
+    // REL TO parser. Adding extensions here would give them
+    // canonicalize / fuzzy-correction privileges that real CVE
+    // trigraphs don't have, which would be an asymmetric and
+    // surprising behavior change. Recognition flows through
+    // `is_trigraph` for both CVE codes and extensions, uniformly.
 
     writeln!(
         content,
