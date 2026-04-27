@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Plan: Per-Document Deadlines
 
-**Status**: Approved — Phase 1 ready to start (all Q1–Q7 resolved 2026-04-25 in PR #159 review; see `spec.md` § Open questions resolution)
+**Status**: active — Approved; Phase 1 ready to start (all Q1–Q7 resolved 2026-04-25 in PR #159 review; see `spec.md` § Open questions resolution)
 **Spec**: [spec.md](spec.md)
 **Branch**: `feat/engine-deadlines` (proposed)
 
