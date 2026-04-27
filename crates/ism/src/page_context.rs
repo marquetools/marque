@@ -1229,9 +1229,14 @@ mod tests {
         // Portion 1: REL TO USA, FVEY (expands to USA, AUS, CAN, GBR, NZL)
         // Portion 2: REL TO USA, AUS, CAN
         // Intersection: USA, AUS, CAN
-        // Note: we can't store "FVEY" in CountryCode (4 chars), so this test
-        // uses the expanded form directly. The expansion logic is tested
-        // via the expand_tetragraph function.
+        // Note: post-issue-#183 PR-A `CountryCode` can store
+        // tetragraphs like "FVEY" directly; this older test uses
+        // the pre-expanded constituent trigraphs to exercise the
+        // intersection-after-expansion path. Tetragraph storage
+        // and expansion are exercised by
+        // `rel_to_intersection_expands_fvey_into_constituent_trigraphs`
+        // (and peers) above; the `expand_tetragraph` helper itself
+        // is tested in `crates/capco/src/vocab.rs`.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
             rel_to: vec![

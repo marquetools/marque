@@ -1113,9 +1113,10 @@ fn parse_rel_to_with_spans(
         // Issue #183: drop the historical `b.len() != 3` gate that
         // silently dropped tetragraphs (`FVEY`, `NATO`, `ACGU`, …)
         // and the longer registered codes (`EU`, `AUSTRALIA_GROUP`)
-        // from `rel_to`. `is_trigraph` already covers the full CVE
-        // recognition surface (260 trigraphs + 58 tetragraphs +
-        // `EU` + `AUSTRALIA_GROUP`); `CountryCode::try_new` accepts
+        // from `rel_to`. `is_trigraph` already covers the full
+        // registered CVE recognition surface, including trigraphs,
+        // tetragraphs, and longer special forms such as `EU` and
+        // `AUSTRALIA_GROUP`; `CountryCode::try_new` accepts
         // 2..=16-byte codes in the CAPCO byte set, so any code that
         // passed `is_trigraph` will also pass `try_new` here.
         let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
@@ -1784,6 +1785,40 @@ mod tests {
             }
             other => panic!("expected Joint, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn joint_banner_parses_top_secret_multi_word_level() {
+        // The JOINT parser has a separate two-token path for the
+        // multi-word `TOP SECRET` level (vs. the single-token `S` /
+        // `TS` / `C` / `U` abbreviations). Exercises lines 905-907
+        // and 909 of `parse_joint_classification`.
+        let parsed = parse_banner("//JOINT TOP SECRET USA GBR");
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Joint(j)) => {
+                assert_eq!(j.level, Classification::TopSecret);
+                assert_eq!(j.countries.len(), 2);
+                assert_eq!(j.countries[0], CountryCode::USA);
+                assert_eq!(j.countries[1].as_str(), "GBR");
+            }
+            other => panic!("expected Joint(TopSecret), got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn joint_banner_rejects_bare_top_without_secret() {
+        // `TOP` alone is not a valid classification level — the
+        // JOINT parser must return None and let the parent path
+        // try other foreign-classification shapes. Exercises the
+        // `else { return None; }` branch of the TOP-SECRET path.
+        let parsed = parse_banner("//JOINT TOP USA GBR");
+        assert!(
+            !matches!(
+                parsed.attrs.classification,
+                Some(MarkingClassification::Joint(_))
+            ),
+            "bare TOP must not parse as a JOINT classification"
+        );
     }
 
     #[test]

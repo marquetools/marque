@@ -1083,31 +1083,15 @@ pub struct CountryCode {
 
 impl CountryCode {
     /// The always-valid `USA` country code constant.
-    pub const USA: Self = Self::const_new(b"USA");
-
-    /// `const`-context constructor used by the [`CountryCode::USA`]
-    /// constant. Panics at compile time on invalid input — callers in
-    /// runtime code MUST use [`CountryCode::try_new`].
-    const fn const_new(bytes: &[u8]) -> Self {
-        assert!(
-            bytes.len() >= 2 && bytes.len() <= COUNTRY_CODE_CAPACITY,
-            "CountryCode constant length out of range",
-        );
-        let mut padded = [0u8; COUNTRY_CODE_CAPACITY];
-        let mut i = 0;
-        while i < bytes.len() {
-            assert!(
-                Self::is_valid_byte(bytes[i]),
-                "CountryCode constant contains invalid byte",
-            );
-            padded[i] = bytes[i];
-            i += 1;
-        }
-        Self {
-            bytes: padded,
-            len: bytes.len() as u8,
-        }
-    }
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context;
+    /// the `expect` is statically unreachable for `b"USA"` (3 bytes,
+    /// all ASCII uppercase) and exists only to satisfy `const`
+    /// unwrap.
+    pub const USA: Self = match Self::try_new(b"USA") {
+        Some(c) => c,
+        None => panic!("CountryCode::USA literal must satisfy try_new invariants"),
+    };
 
     /// Returns `true` if `b` is in the CAPCO country-code byte set:
     /// ASCII uppercase letter, ASCII digit, or underscore. Digits cover
@@ -1278,6 +1262,49 @@ mod country_code_tests {
         // Both still usable — `Copy` not `Move`.
         assert_eq!(original, copy);
         assert_eq!(original.as_str(), copy.as_str());
+    }
+
+    #[test]
+    fn display_renders_active_bytes_only() {
+        // Display impl writes the active byte slice; the zero
+        // padding past `len` must never reach the formatter.
+        let usa = CountryCode::USA;
+        let fvey = CountryCode::try_new(b"FVEY").unwrap();
+        let ag = CountryCode::try_new(b"AUSTRALIA_GROUP").unwrap();
+        assert_eq!(format!("{usa}"), "USA");
+        assert_eq!(format!("{fvey}"), "FVEY");
+        assert_eq!(format!("{ag}"), "AUSTRALIA_GROUP");
+    }
+
+    #[test]
+    fn as_bytes_excludes_zero_padding() {
+        let usa = CountryCode::USA;
+        assert_eq!(usa.as_bytes(), b"USA");
+        let fvey = CountryCode::try_new(b"FVEY").unwrap();
+        assert_eq!(fvey.as_bytes(), b"FVEY");
+    }
+
+    #[test]
+    fn is_empty_invariant_always_false() {
+        // `try_new` rejects `len < 2`, so a constructed `CountryCode`
+        // is never empty. `is_empty` exists only to satisfy clippy's
+        // `len_without_is_empty`; pin the invariant so a future
+        // refactor that loosens `try_new` is forced to revisit it.
+        assert!(!CountryCode::USA.is_empty());
+        assert!(!CountryCode::try_new(b"EU").unwrap().is_empty());
+        assert!(!CountryCode::try_new(b"AUSTRALIA_GROUP").unwrap().is_empty());
+    }
+
+    #[test]
+    fn usa_constant_matches_try_new() {
+        // `pub const USA` constructs via `try_new` in const context.
+        // Pin the equivalence so a future change to either path
+        // (e.g., adding a normalization step to `try_new` but not
+        // the const constructor) breaks loudly.
+        let runtime = CountryCode::try_new(b"USA").unwrap();
+        assert_eq!(CountryCode::USA, runtime);
+        assert_eq!(CountryCode::USA.as_bytes(), runtime.as_bytes());
+        assert_eq!(CountryCode::USA.len(), runtime.len());
     }
 }
 

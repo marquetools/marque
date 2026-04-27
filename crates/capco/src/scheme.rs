@@ -1947,6 +1947,25 @@ mod tests {
     }
 
     #[test]
+    fn satisfies_tok_usa_reads_rel_to_for_country_code_usa() {
+        // Pin the `TokenRef::Token(TOK_USA)` predicate path
+        // touched by issue #183 PR-A's `Trigraph::USA` →
+        // `CountryCode::USA` rename. No constraint in the current
+        // catalog dispatches `TokenRef::Token(TOK_USA)` (USA-in-
+        // REL-TO is read directly by the rule layer), but the
+        // `satisfies_attrs` arm exists for future T035b consumption
+        // and must read `rel_to` correctly.
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.rel_to = vec![CountryCode::USA].into();
+        let m = CapcoMarking::new(a);
+        assert!(scheme.satisfies(&m, &TokenRef::Token(TOK_USA)));
+
+        let m_empty = CapcoMarking::new(mk_attrs());
+        assert!(!scheme.satisfies(&m_empty, &TokenRef::Token(TOK_USA)));
+    }
+
+    #[test]
     fn category_contains_returns_false_for_unhandled_pair() {
         let a = mk_attrs();
         let m = CapcoMarking::new(a);

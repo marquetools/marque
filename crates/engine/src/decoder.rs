@@ -3095,10 +3095,10 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 ///
 /// - `sar_markings` — SAR program identifiers are agency-assigned
 ///   codewords (open set, not in the baked priors).
-/// - `rel_to` country trigraphs — `CountryCode::as_str()` returns a
+/// - `rel_to` country codes — `CountryCode::as_str()` returns a
 ///   `&str` tied to `&self`, not `&'static str`. Plumbing a
 ///   static-string helper is left as future work; the priors
-///   corpus-coverage for trigraphs is sparse anyway.
+///   corpus coverage for country codes is sparse anyway.
 /// - CAB fields (`classified_by`, `derived_from`, `declassify_on`) —
 ///   free-form text, not CVE-enumerable.
 ///
