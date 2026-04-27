@@ -55,11 +55,11 @@ jobs:
           plugin_marketplaces: |
             https://github.com/anthropics/claude-code.git
             https://github.com/knitli/toolshed.git
-            tools/capco-validators
+
           plugins: |
             code-review@claude-code-plugins
             strip-ansi@toolshed
-            capco-validators@capco-validators-dev
+
           prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           use_commit_signing: true
           allowed_bots: "gemini[bot],jules[bot],copilot[bot],dependabot[bot],claude[bot]"
