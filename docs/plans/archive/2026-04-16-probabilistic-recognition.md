@@ -1,7 +1,7 @@
 # Probabilistic Recognition Architecture
 
 **Date**: 2026-04-16
-**Status**: Design discussion, pre-implementation
+**Status**: archived — implemented as Phase 4 (PRs #111, #112, #114, #122, #127, #131, #135) and Phase 5 (vocabulary surface, PRs #141 → #146). Architectural framing recast in `2026-04-19-recursive-lattice-and-decoder.md`; the empirical Enron base rates from §3 of this doc remain authoritative inputs to the corpus-priors bake. Kept for historical context.
 **Context**: Brainstorming session following demo site repair. The demo exposed that the current binary scanner/parser leaves significant capability on the table.
 
 ---

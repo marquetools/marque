@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # SCI Compartments and Sub-Compartments
 
-**Status**: Draft
+**Status**: archived — implemented. Hybrid CVE + structural model shipped: `parse_sci_block` subparser in `marque-core/src/parser.rs`, `SciMarking` data model with `sci_markings` + `sci_controls` projection on `IsmAttributes`, four rules E032–E035, banner roll-up via `PageContext::expected_sci_markings()`. Phase B canonicalization layered `SciSet` (`marque_capco::lattice`) on top. See CLAUDE.md "SCI Compartments (Hybrid CVE + Structural)" + "Recent Changes" → "SCI compartments (#003)". Kept for historical context.
 **Branch**: `feat/sci-compartments`
 **Authority**: CAPCO Register and Manual (31 December 2016), §A.6 (pp 15–17; Figure 2 on p17; canonical example on p16) and §H.4 (pp 60–98).
 **Schema reference**: `CVEnumISMSCIControls.xml` from ISM-v2022-DEC (17 enumerated values). Diverges from the 2016 manual — see §R1 below.

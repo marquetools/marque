@@ -487,7 +487,11 @@ impl<T: Ord + Clone> ModeSet<T> {
     pub fn extend_counts(&self, other: &Self) -> Self {
         let mut out = self.0.clone();
         for (k, v) in &other.0 {
-            *out.entry(k.clone()).or_insert(0) += v;
+            if let Some(slot) = out.get_mut(k) {
+                *slot += v;
+            } else {
+                out.insert(k.clone(), *v);
+            }
         }
         Self(out)
     }
@@ -499,9 +503,12 @@ impl<T: Ord + Clone> Lattice for ModeSet<T> {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.0.clone();
         for (k, v) in &other.0 {
-            let slot = out.entry(k.clone()).or_insert(0);
-            if *v > *slot {
-                *slot = *v;
+            if let Some(slot) = out.get_mut(k) {
+                if *v > *slot {
+                    *slot = *v;
+                }
+            } else {
+                out.insert(k.clone(), *v);
             }
         }
         Self(out)
