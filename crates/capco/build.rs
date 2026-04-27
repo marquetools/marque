@@ -287,6 +287,7 @@ fn require_probability(
             key,
         )
     });
+    #[allow(clippy::nonminimal_bool)]
     if !v.is_finite() || !(v > 0.0 && v <= 1.0) {
         panic!(
             "marque-capco build failed: {} -> {}.{} = {} is not a valid \
