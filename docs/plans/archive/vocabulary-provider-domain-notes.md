@@ -1,6 +1,7 @@
 # VocabularyProvider — Domain Notes from Design Discussion
 
 **Date**: 2026-04-16
+**Status**: archived — superseded by `2026-04-17-marking-scheme-lattice-design.md` (which incorporated all flagged constraints) and then by `2026-04-19-recursive-lattice-and-decoder.md`. The `Vocabulary<S>` trait shipped in Phase 5 (PRs #141 → #146); the constraints listed below are addressed there. Kept for historical context.
 **Context**: Design critique of the VocabularyProvider trait sketch. These notes capture domain-specific constraints that the trait must be able to express.
 
 ---
