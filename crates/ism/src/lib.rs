@@ -30,7 +30,9 @@ pub use attrs::{
     SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl, SciControlBare,
     SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
-pub use generated::values::{SCHEMA_VERSION, is_bare_cve_value};
+pub use generated::values::{
+    SCHEMA_VERSION, TETRAGRAPH_MEMBERS, is_bare_cve_value, lookup_tetragraph_members,
+};
 pub use page_context::{PageContext, sar_sort_key};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
 pub use token_set::{CapcoTokenSet, TokenSet};
