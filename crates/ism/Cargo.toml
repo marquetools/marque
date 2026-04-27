@@ -24,6 +24,11 @@ include = [
   "LICENSE.md*",
   "README.md",
   "build.rs",
+  # Issue #183 PR-B: org-specific country-code extensions (built into
+  # the binary at compile time). Default committed file is empty, so
+  # publishing this is a no-op for upstream consumers; org forks edit
+  # the file and rebuild.
+  "country_extensions.toml",
   "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
   # NTK files included alongside ISM so build.rs sees the same JSON set
   # at crates.io as in the repo (build.rs reads every `*.json` under
@@ -54,6 +59,7 @@ xmloxide = { workspace = true }
 anyhow = { workspace = true }
 memchr = { workspace = true }
 quick-xml = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 

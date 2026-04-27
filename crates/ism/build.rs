@@ -538,37 +538,104 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             .join("CVEnumISMCATRelTo.xsd"),
     );
 
+    // Build the canonical recognition set from the CVE entries.
+    let cve_codes: std::collections::BTreeSet<String> =
+        trigraphs.into_iter().map(|(v, _)| v).collect();
+
+    // Issue #183 PR-B: load org-specific country-code extensions
+    // from `country_extensions.toml`. Empty file (or no [[code]]
+    // entries) is a no-op — the generated tables are byte-
+    // identical to a build without the file. Validation is
+    // strict: each extension `code` must satisfy the CAPCO byte
+    // set, must not duplicate a CVE entry or earlier extension,
+    // and any `members` must already be recognized.
+    let extensions = load_country_extensions("country_extensions.toml", &cve_codes);
+
+    // Merge: extension recognition codes go into TRIGRAPHS
+    // alongside CVE entries. The BTreeSet keeps the slice sorted
+    // for `is_trigraph` binary_search.
+    let mut sorted_trigraphs = cve_codes.clone();
+    for ext in &extensions {
+        sorted_trigraphs.insert(ext.code.clone());
+    }
+
+    // Surface extensions as a doc comment block so an auditor
+    // grepping the generated values.rs for an unfamiliar code can
+    // find its provenance immediately. Empty extensions list is a
+    // no-op (skip the header).
+    if !extensions.is_empty() {
+        writeln!(content, "/// Org-specific country-code extensions from").unwrap();
+        writeln!(content, "/// `crates/ism/country_extensions.toml`:").unwrap();
+        for ext in &extensions {
+            let kind = if ext.members.is_empty() {
+                "opaque"
+            } else {
+                "expansion-enabled"
+            };
+            writeln!(
+                content,
+                "/// - `{}` ({kind}): {}",
+                ext.code,
+                ext.description.trim(),
+            )
+            .unwrap();
+        }
+        writeln!(content, "///").unwrap();
+    }
+
     // Emit the country-code recognition slice (not an enum — the
     // CVE list has hundreds of entries; `CountryCode` is the typed
     // wrapper). Despite the legacy `TRIGRAPHS` name, this slice
     // carries the full CVE recognition surface: 2-byte (`EU`),
     // 3-byte trigraphs, 4-byte tetragraphs (`FVEY`, `NATO`, …),
     // and 15-byte `AUSTRALIA_GROUP`. The name is kept for
-    // backwards compatibility with consumers; PR-B may rename to
-    // `COUNTRY_CODES` alongside the `is_trigraph` rename.
+    // backwards compatibility with consumers; a future PR may
+    // rename to `COUNTRY_CODES` alongside the `is_trigraph`
+    // rename.
     //
     // M-3: sort and deduplicate into a BTreeSet before emission so
     // `is_trigraph` in token_set.rs can use `binary_search` over a
     // guaranteed-sorted slice. The XSD emits entries in document order
     // (USA first, then alphabetical), so an unsorted emission would
     // silently break binary_search if the ODNI bundle ever reorders.
-    let sorted_trigraphs: std::collections::BTreeSet<String> =
-        trigraphs.into_iter().map(|(v, _)| v).collect();
     writeln!(
         content,
-        "/// All valid country / country-group codes from \
-         CVEnumISMCATRelTo.xsd,\n\
-         /// sorted ascending and deduplicated. `is_trigraph` uses \
+        "/// All valid country / country-group codes — CVE entries \
+         from CVEnumISMCATRelTo.xsd plus any org-specific\n\
+         /// extensions from `country_extensions.toml`. Sorted \
+         ascending and deduplicated. `is_trigraph` uses \
          binary_search."
     )
     .unwrap();
-    writeln!(content, "/// {} entries total.", sorted_trigraphs.len()).unwrap();
+    writeln!(
+        content,
+        "/// {} entries total ({} CVE + {} extension).",
+        sorted_trigraphs.len(),
+        cve_codes.len(),
+        extensions.len(),
+    )
+    .unwrap();
     writeln!(content, "pub static TRIGRAPHS: &[&str] = &[").unwrap();
     for value in &sorted_trigraphs {
         writeln!(content, "    {value:?},").unwrap();
     }
     writeln!(content, "];").unwrap();
     writeln!(content).unwrap();
+
+    // Issue #183 PR-B: emit the canonical tetragraph membership
+    // table. CVE files list tetragraph codes (`FVEY`, `ACGU`, …)
+    // but do not record their constituent trigraphs; the
+    // membership data is hand-curated from the CAPCO Register
+    // here. Extensions with a non-empty `members` list participate
+    // in expansion; extensions without members (and CVE codes
+    // without entries here, e.g. NATO and operation-specific codes
+    // like RSMA) stay opaque — they survive REL TO intersection
+    // only when present in every portion's list.
+    //
+    // Sorted by code for stable diffs and binary-search lookup
+    // (consumers in `marque-ism::page_context` and
+    // `marque-capco::vocab` both use this single source of truth).
+    emit_tetragraph_members(&mut content, &extensions);
 
     // --- Emit a flat token list for the Aho-Corasick automaton ---
     //
@@ -606,6 +673,12 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     // IMCON would normally live here, but the dissem CVE already covers
     // them, so the BTreeSet drops the duplicates automatically.
     all_tokens.insert("EYES ONLY".to_owned());
+    // Issue #183 PR-B: extension codes are also valid tokens for
+    // canonicalization (an extension like `MNFI` should round-trip
+    // through `CapcoTokenSet::canonicalize`, not just `is_trigraph`).
+    for ext in &extensions {
+        all_tokens.insert(ext.code.clone());
+    }
 
     writeln!(
         content,
@@ -1362,4 +1435,256 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
     let path = out.join("vocabulary.rs");
     fs::write(&path, &content)
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
+}
+
+// ---------------------------------------------------------------------------
+// Issue #183 PR-B: org-specific country-code extensions
+// ---------------------------------------------------------------------------
+
+/// Built-in tetragraph membership table.
+///
+/// CVE files list tetragraph **codes** (`FVEY`, `ACGU`, …) but do
+/// not record their constituent trigraphs. The membership data
+/// below is hand-curated from the CAPCO Register and is the
+/// canonical source consumed by `marque-ism::page_context` and
+/// `marque-capco::vocab`.
+///
+/// NATO and operation-specific tetragraphs (RSMA, ISAF, KFOR, …)
+/// are intentionally absent — they stay opaque (treated as atoms
+/// in REL TO intersection) until a future scheme adapter lands a
+/// canonical membership table for them.
+const BUILTIN_TETRAGRAPH_MEMBERS: &[(&str, &[&str])] = &[
+    // ACGU = AUS, CAN, GBR, USA (Four Eyes minus NZL).
+    ("ACGU", &["AUS", "CAN", "GBR", "USA"]),
+    // FVEY = AUS, CAN, GBR, NZL, USA (Five Eyes).
+    ("FVEY", &["AUS", "CAN", "GBR", "NZL", "USA"]),
+];
+
+/// Parsed extension entry from `country_extensions.toml`.
+struct CountryExtension {
+    code: String,
+    description: String,
+    members: Vec<String>,
+}
+
+/// TOML wire types for the extensions file.
+mod ext_toml {
+    use serde::Deserialize;
+
+    #[derive(Deserialize, Default)]
+    pub(super) struct ExtensionsFile {
+        #[serde(default)]
+        pub code: Vec<CodeEntry>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct CodeEntry {
+        pub code: String,
+        pub description: String,
+        #[serde(default)]
+        pub members: Option<Vec<String>>,
+    }
+}
+
+/// Returns true if `b` is in the CAPCO country-code byte set:
+/// ASCII uppercase, ASCII digit, or underscore. Mirrors
+/// `marque_ism::CountryCode::is_valid_byte` — keep these two in
+/// sync if the byte set ever widens.
+fn is_valid_extension_byte(b: u8) -> bool {
+    b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'
+}
+
+/// Read & validate `country_extensions.toml`. Returns extensions
+/// in declaration order (matters for forward-reference checks in
+/// `members`). Empty / missing file is a no-op (returns `[]`).
+///
+/// Validation:
+/// - `code` length 2..=16, all bytes in CAPCO byte set
+/// - `code` not duplicating a CVE entry or earlier extension
+/// - each `members` entry must already be recognized (CVE or
+///   earlier extension); forward references rejected
+///
+/// Failures `panic!` from `build.rs`, which surfaces as a clear
+/// build error pointing at the offending entry.
+fn load_country_extensions(
+    path: &str,
+    cve_codes: &std::collections::BTreeSet<String>,
+) -> Vec<CountryExtension> {
+    use ext_toml::*;
+
+    // Rerun the build whenever the extensions file changes.
+    println!("cargo:rerun-if-changed={path}");
+
+    let raw = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => panic!("failed to read {path}: {e}"),
+    };
+
+    let parsed: ExtensionsFile =
+        toml::from_str(&raw).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"));
+
+    let mut out: Vec<CountryExtension> = Vec::new();
+    let mut seen: std::collections::BTreeSet<String> = cve_codes.clone();
+
+    for entry in parsed.code {
+        let code = entry.code;
+
+        // Required-description check (issue #183 PR-B): the
+        // `description` field is required for auditor traceability —
+        // a code lookup in the generated output must surface a
+        // human-readable string explaining what the code means.
+        if entry.description.trim().is_empty() {
+            panic!(
+                "{path}: country extension `code = {code:?}` is missing \
+                 required `description` field (or it is whitespace-only). \
+                 Every extension MUST carry a non-empty description so an \
+                 auditor tracing the code can find its provenance.",
+            );
+        }
+
+        // Length check.
+        if !(2..=16).contains(&code.len()) {
+            panic!(
+                "{path}: country extension `code = {code:?}` has invalid \
+                 length {} — CAPCO codes are 2..=16 bytes",
+                code.len(),
+            );
+        }
+        // Byte-set check.
+        for &b in code.as_bytes() {
+            if !is_valid_extension_byte(b) {
+                panic!(
+                    "{path}: country extension `code = {code:?}` contains \
+                     byte 0x{b:02X} ({:?}) outside the CAPCO byte set \
+                     (ASCII uppercase letter, ASCII digit, underscore). \
+                     Hyphens are NOT accepted — no CVE entry uses them.",
+                    b as char,
+                );
+            }
+        }
+        // Duplicate check (CVE + earlier extensions).
+        if !seen.insert(code.clone()) {
+            panic!(
+                "{path}: country extension `code = {code:?}` duplicates a \
+                 CVE entry or an earlier extension. Each code must be \
+                 unique across the union.",
+            );
+        }
+
+        // Validate members (if present): each must already be in
+        // the recognition set. `members = []` is treated as
+        // `members = None` (recognition-only, opaque).
+        let members: Vec<String> = match entry.members {
+            None => Vec::new(),
+            Some(m) if m.is_empty() => Vec::new(),
+            Some(m) => {
+                for member in &m {
+                    if !seen.contains(member) {
+                        panic!(
+                            "{path}: country extension `code = {code:?}` \
+                             references member {member:?} which is not in \
+                             the recognition set. Members must be CVE \
+                             entries or extensions defined earlier in this \
+                             file (forward references are rejected).",
+                        );
+                    }
+                }
+                m
+            }
+        };
+
+        out.push(CountryExtension {
+            code,
+            description: entry.description,
+            members,
+        });
+    }
+
+    out
+}
+
+/// Emit `pub static TETRAGRAPH_MEMBERS: &[(&str, &[&str])]`. Built-in
+/// FVEY/ACGU rows are emitted first; extension entries with non-
+/// empty `members` are appended. The final slice is sorted by code
+/// for stable diffs and for binary-search lookup at the consumer
+/// side.
+fn emit_tetragraph_members(content: &mut String, extensions: &[CountryExtension]) {
+    use std::fmt::Write;
+
+    // Collect (code, members) tuples from built-ins + extensions
+    // with members. Extensions without members participate in
+    // recognition (via TRIGRAPHS) but not in expansion.
+    let mut rows: Vec<(&str, Vec<&str>)> = BUILTIN_TETRAGRAPH_MEMBERS
+        .iter()
+        .map(|(code, members)| (*code, members.to_vec()))
+        .collect();
+    for ext in extensions {
+        if !ext.members.is_empty() {
+            rows.push((
+                ext.code.as_str(),
+                ext.members.iter().map(String::as_str).collect(),
+            ));
+        }
+    }
+    rows.sort_by_key(|(code, _)| *code);
+
+    writeln!(
+        content,
+        "/// Canonical tetragraph / country-group code membership \
+         table (issue #183 PR-B).\n\
+         ///\n\
+         /// CVE files list tetragraph codes but do not record \
+         their constituent trigraphs.\n\
+         /// This table is the single source of truth consumed by \
+         banner roll-up and rule\n\
+         /// evaluation. Codes absent from this table (NATO, \
+         operation-specific tetragraphs\n\
+         /// like RSMA / ISAF / KFOR, extensions without `members`) \
+         are opaque — they\n\
+         /// survive REL TO intersection only when present in every \
+         portion's list.\n\
+         ///\n\
+         /// Sorted by code for stable diffs and `binary_search` \
+         lookup. {} entries total.",
+        rows.len(),
+    )
+    .unwrap();
+    writeln!(
+        content,
+        "pub static TETRAGRAPH_MEMBERS: &[(&str, &[&str])] = &["
+    )
+    .unwrap();
+    for (code, members) in &rows {
+        write!(content, "    ({code:?}, &[").unwrap();
+        for (i, m) in members.iter().enumerate() {
+            if i > 0 {
+                write!(content, ", ").unwrap();
+            }
+            write!(content, "{m:?}").unwrap();
+        }
+        writeln!(content, "]),").unwrap();
+    }
+    writeln!(content, "];").unwrap();
+    writeln!(content).unwrap();
+
+    // Lookup helper.
+    writeln!(
+        content,
+        "/// Look up a tetragraph's constituent trigraphs.\n\
+         ///\n\
+         /// Returns `None` for codes not in the membership table — \
+         either trigraphs (for which\n\
+         /// expansion is undefined), opaque tetragraphs (NATO, \
+         RSMA, …), or unrecognized\n\
+         /// codes. Callers should treat `None` as \"opaque atom \
+         in intersection\".\n\
+         pub fn lookup_tetragraph_members(code: &str) -> Option<&'static [&'static str]> {{\n\
+         \x20   TETRAGRAPH_MEMBERS\n\
+         \x20       .binary_search_by_key(&code, |(c, _)| *c)\n\
+         \x20       .ok()\n\
+         \x20       .map(|i| TETRAGRAPH_MEMBERS[i].1)\n\
+         }}\n"
+    )
+    .unwrap();
 }
