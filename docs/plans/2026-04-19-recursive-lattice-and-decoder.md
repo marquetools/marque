@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Marque: recursive lattices, lossless tokens, and the probabilistic decoder
 
 **Date:** 2026-04-19 (revised), 2026-04-20 (amended 7a, 12 phase C, 14)
-**Status:** proposed — supersedes §§3–5 of
+**Status:** active — Phase A and Phase B shipped (the Phase B work landed in #69 and the lattice/scheduler series; CLAUDE.md "Recent Changes" tracks per-phase merge IDs). Phases C–H queued; the live tracking surface for those is `specs/004-constraints-decoder-vocab/` (spec, plan, tasks). Supersedes §§3–5 of
 `2026-04-17-marking-scheme-lattice-design.md` end-to-end (trait
 surface, probabilistic disambiguation, migration sequence). The phase
 letters in §12 below are re-scoped: old Phase D ("Implement CUI") is

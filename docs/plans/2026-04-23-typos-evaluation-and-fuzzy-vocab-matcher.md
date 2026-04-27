@@ -7,7 +7,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Typos Evaluation and Fuzzy Vocabulary Matcher
 
 **Date:** 2026-04-23
-**Status:** implemented — `marque-core::fuzzy` shipped; Phase D integration queued.
+**Status:** active — `marque-core::fuzzy` shipped (Phase 1 of the plan); Phase D integration into the decoder still queued. Treat as live until the integration lands and the plan can move to `archive/`.
 **Issue:** #94 — Evaluate and adapt crate-ci/typos for typo correction in markings
 **Relates to:** `2026-04-16-probabilistic-recognition.md` §3 (Layer 3 token resolution)
 

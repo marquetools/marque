@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # Per-Document Deadlines on `Engine::lint` and `Engine::fix`
 
-**Status**: Approved — Phase 1 ready to start (all design decisions resolved 2026-04-25 in PR #159 review)
+**Status**: active — Approved; Phase 1 ready to start (all design decisions resolved 2026-04-25 in PR #159 review)
 **Branch**: `feat/engine-deadlines` (proposed)
 **Closes**: #139 (P1 gap-register row 7)
 **Authority**: Whitepaper §9.7 (`docs/security/WHITEPAPER.md`), Constitution Principle I (uncompromising performance), Principle V (audit-first compliance), Principle VI (dataflow pipeline model)

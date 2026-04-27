@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-constraints-decoder-vocab`
 **Created**: 2026-04-20
-**Status**: Draft
+**Status**: archived — Phases C, D, and E all shipped. Phase C (declarative constraints + topological page-rewrite scheduler) landed via #69 and the rewrite series; Phase D (probabilistic recognition + audit v2) landed via PRs #111, #112, #114, #122, #127, #131, #135; Phase E (vocabulary surface + `Codec<S>` + `Vocabulary<S>` impl + Phase-E readiness stub) landed via PRs #141 → #146. See CLAUDE.md "Recent Changes" → "Phase 5", "Phase 4". Kept for historical context.
 **Input**: User description: "'docs/plans/2026-04-19-recursive-lattice-and-decoder.md' phases C, D, and E"
 
 ---

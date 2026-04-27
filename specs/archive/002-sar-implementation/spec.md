@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # SAR (Special Access Required) Implementation
 
-**Status**: Draft
+**Status**: archived — implemented. `SarMarking` shipped in `marque-ism`; structural subparser `parse_sar_category` shipped in `marque-core`; six SAR rules E026–E031 (portion form, classification constraint, ordering, indicator-repeat coalescing, banner roll-up) shipped per CAPCO-2016 §H.5. See CLAUDE.md "Recent Changes" → "Phase 8: SAR implementation". Kept for historical context.
 **Branch**: `feat/sar-implementation`
 **Authority**: CAPCO Register and Manual (31 December 2016), §H.5 (pp 99–102) and §A.6 (pp 15–17)
 
