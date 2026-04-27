@@ -889,12 +889,12 @@ SUPERSEDED_TOKEN_MAP = {
 #   CLASS//SCI//DISSEM
 # where CLASS is one of the known classification tokens.
 _MARKING_PORTION_RE = re.compile(
-    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/\-]+)+)\)"
+    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,\-]+)+)\)"
 )
 _MARKING_BANNER_RE = re.compile(
     r"(?:^|(?<=\s))"
     r"((?:UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP SECRET|RESTRICTED)"
-    r"(?://[A-Z][A-Z0-9 ,/\-]+)+)"
+    r"(?://[A-Z][A-Z0-9 ,\-]+)+)"
     r"(?=\s|$)",
     re.MULTILINE,
 )
