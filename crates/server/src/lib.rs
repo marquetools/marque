@@ -41,7 +41,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{DefaultBodyLimit, State},
-    http::{HeaderMap, StatusCode, Uri},
+    http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
@@ -797,6 +797,10 @@ pub fn build_app_with_limit(state: AppState, body_limit_bytes: usize) -> Router 
         .route("/v1/lint", post(lint_handler))
         .route("/v1/fix", post(fix_handler))
         .layer(DefaultBodyLimit::max(body_limit_bytes))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            header::HeaderValue::from_static("nosniff"),
+        ))
         .with_state(state)
 }
 
