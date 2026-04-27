@@ -42,7 +42,7 @@ jobs:
         uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
         with:
           install: true
-          install_args: bun
+          install_args: pnpm
           experimental: true
           cache: true
           reshim: true
