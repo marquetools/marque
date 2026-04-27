@@ -8,7 +8,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Feature Branch**: `001-marque-mvp`
 **Created**: 2026-04-08
-**Status**: Draft
+**Status**: archived — implemented. MVP shipped with 54 CAPCO rules (E001–E016, E020–E051, S001–S003, W002–W003, C001), CLI (`check`/`fix`), WASM parity, batch processing, criterion benchmarks meeting SC-001/SC-005, corpus-accuracy harness meeting SC-002/SC-003. See CLAUDE.md "Current Status" for the live state. Kept for historical context.
 **Input**: User description: "Shoehorn the existing design doc (docs/plans/2026-03-11-marque-design.md) into the speckit process to validate scope and requirements for the Marque MVP."
 
 ## User Scenarios & Testing *(mandatory)*
