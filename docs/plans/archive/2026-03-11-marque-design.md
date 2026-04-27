@@ -1,6 +1,6 @@
 # Marque — Design Document
 **Date**: 2026-03-11
-**Status**: Initial design, pre-implementation
+**Status**: archived — superseded by `2026-04-17-marking-scheme-lattice-design.md` (and again by `2026-04-19-recursive-lattice-and-decoder.md`). Original CAPCO-centric design implemented across Phases 1–9, the SCI/SAR specs, and the recursive-lattice work — see CLAUDE.md "Recent Changes" for the full landing trail. Pipeline + crate-graph framing remain accurate; rule-set scope and trait surface have moved on. Kept for historical context.
 **Working directory**: `/home/knitli/classified`
 
 ---

@@ -1,6 +1,7 @@
 # VocabularyProvider as Signal Codebook
 
 **Date**: 2026-04-16
+**Status**: archived — explicitly demoted by `2026-04-17-marking-scheme-lattice-design.md`: "we keep 'projection is lossy compression' as a useful intuition and drop the Fourier / SNR / matched-filter framings from the architecture. Those were reaching, and the grammar-plus-lattice framing covers the same ground with less machinery." Kept for historical context.
 **Context**: Alternative framing of the VocabularyProvider trait, abstracted away from classification-specific terminology. Intended to help evaluate the design from outside the CAPCO domain.
 
 ---

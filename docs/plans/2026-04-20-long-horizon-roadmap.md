@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Marque: long-horizon roadmap (ABAC, metadata, grammar expansion)
 
 **Date:** 2026-04-20
-**Status:** proposed — strategic roadmap picking up after the 2026-04-19
+**Status:** active — strategic roadmap picking up after the 2026-04-19
 phase sequence (A shipped; B–H queued). Does not revise any shipped or
 queued phase; defines Phases J/K/L (ABAC, metadata handling, grammar
 expansion) and reaffirms Phase I as the mixed-scheme slot already

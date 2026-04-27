@@ -1,7 +1,7 @@
 # Marque: Marking-Scheme Lattice Design
 
 **Date**: 2026-04-17
-**Status**: Design consolidation — supersedes the four prior plan documents below.
+**Status**: archived — §§3–5 superseded by `2026-04-19-recursive-lattice-and-decoder.md` (trait surface, probabilistic disambiguation, migration sequence). §§0–2 (problem statement, core algebra, Phase A scaffolding) carry forward via the 04-19 plan and remain authoritative. Implementation landed across Phases A, B, and Phase 3 of `specs/004-constraints-decoder-vocab/`. Kept for historical context.
 **Branch**: `claude/marking-scheme-lattice-design-FzkPx`
 
 This document consolidates four prior design discussions and establishes the
