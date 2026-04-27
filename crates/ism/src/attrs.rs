@@ -1046,8 +1046,8 @@ impl std::fmt::Display for NonIcDissem {
 /// Maximum byte length of a CAPCO country code.
 ///
 /// The longest entry in `CVEnumISMCATRelTo.xsd` is `AUSTRALIA_GROUP`
-/// (15 bytes); 16 leaves one byte of headroom and keeps the struct on
-/// a clean alignment boundary.
+/// (15 bytes); 16 leaves one byte of headroom for any future
+/// addition without forcing a struct-layout change.
 const COUNTRY_CODE_CAPACITY: usize = 16;
 
 /// A CAPCO country / country-group code, 2–16 ASCII bytes.
@@ -1066,10 +1066,11 @@ const COUNTRY_CODE_CAPACITY: usize = 16;
 /// tetragraphs) so that [`CountryCode::as_str`] can return a `&str`
 /// infallibly without panicking at runtime.
 ///
-/// `Copy` is preserved (24 bytes after padding) so the type composes
-/// in iterator chains and `BTreeSet`-based intersection without
-/// manual `.clone()` calls. The fixed-array form keeps `IsmAttributes::rel_to`
-/// (`Box<[CountryCode]>`) heap-free per entry on the parsing hot path.
+/// `Copy` is preserved so the type composes in iterator chains and
+/// `BTreeSet`-based intersection without manual `.clone()` calls.
+/// The fixed-array form keeps each `CountryCode` entry inline in
+/// `IsmAttributes::rel_to` (`Box<[CountryCode]>`) on the parsing
+/// hot path — no per-code heap allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CountryCode {
     /// Code bytes, zero-padded after `len`. Derived `Ord` compares
@@ -1140,10 +1141,11 @@ impl CountryCode {
     /// CAPCO byte set, which is a subset of ASCII / valid UTF-8.
     #[inline]
     pub fn as_str(&self) -> &str {
-        // SAFETY: `CountryCode` can only be constructed via `try_new`
-        // or `const_new`, both of which require every active byte to
-        // be ASCII uppercase, ASCII digit, or underscore. ASCII is a
-        // subset of valid UTF-8.
+        // SAFETY: `CountryCode` can only be constructed via
+        // `try_new` or constants (e.g. `CountryCode::USA`) that
+        // route through `try_new` in const context. Both paths
+        // require every active byte to be ASCII uppercase, ASCII
+        // digit, or underscore. ASCII is a subset of valid UTF-8.
         #[allow(unsafe_code)]
         unsafe {
             std::str::from_utf8_unchecked(self.as_bytes())
