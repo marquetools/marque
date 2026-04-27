@@ -287,7 +287,7 @@ fn require_probability(
             key,
         )
     });
-    if !v.is_finite() || !(v > 0.0 && v <= 1.0) {
+    if !v.is_finite() || v <= 0.0 || v > 1.0 {
         panic!(
             "marque-capco build failed: {} -> {}.{} = {} is not a valid \
              strict_context_priors floor in (0.0, 1.0]. `0.0` is rejected \

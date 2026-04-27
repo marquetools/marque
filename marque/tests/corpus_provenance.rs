@@ -119,35 +119,55 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
 fn sc002a_no_classifier_id_in_corpus_fixtures() {
     let corpus_dir = workspace_root().join("tests").join("corpus");
     let files = walkdir(&corpus_dir);
-    let mut violations = Vec::new();
 
-    for file in &files {
-        if !file.extension().is_some_and(|e| e == "txt" || e == "json") {
-            continue;
-        }
-        let Ok(content) = std::fs::read_to_string(file) else {
-            continue;
-        };
-        // A realistic classifier ID is a quoted numeric string of 5+ digits.
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some((_, remainder)) = line.split_once("classifier_id") {
-                if let Some(start) = remainder.find('"') {
-                    let quoted = &remainder[start + 1..];
-                    if let Some(end) = quoted.find('"') {
-                        let value = &quoted[..end];
-                        if value.len() >= 5 && value.chars().all(|c| c.is_ascii_digit()) {
-                            violations.push(format!(
-                                "{}:{}: {}",
-                                file.display(),
-                                line_num + 1,
-                                line.trim()
-                            ));
+    let max_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let thread_count = max_threads.min(files.len().max(1));
+    let chunk_size = files.len().div_ceil(thread_count);
+
+    let mut violations: Vec<_> = std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for chunk in files.chunks(chunk_size) {
+            handles.push(s.spawn(move || {
+                let mut local_violations = Vec::new();
+                for file in chunk {
+                    if !file.extension().is_some_and(|e| e == "txt" || e == "json") {
+                        continue;
+                    }
+                    if let Ok(content) = std::fs::read_to_string(file) {
+                        // A realistic classifier ID is a quoted numeric string of 5+ digits.
+                        for (line_num, line) in content.lines().enumerate() {
+                            if let Some((_, remainder)) = line.split_once("classifier_id") {
+                                if let Some(start) = remainder.find('"') {
+                                    let quoted = &remainder[start + 1..];
+                                    if let Some(end) = quoted.find('"') {
+                                        let value = &quoted[..end];
+                                        if value.len() >= 5
+                                            && value.chars().all(|c| c.is_ascii_digit())
+                                        {
+                                            local_violations.push(format!(
+                                                "{}:{}: {}",
+                                                file.display(),
+                                                line_num + 1,
+                                                line.trim()
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
+                local_violations
+            }));
         }
-    }
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap())
+            .collect()
+    });
+    violations.sort(); // Sorting to ensure deterministic error messaging
 
     assert!(
         violations.is_empty(),
