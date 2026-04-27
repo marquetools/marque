@@ -184,17 +184,18 @@ mod tests {
         // because it silently makes the strict-context rule a no-op
         // (the feature contribution becomes algebraically identity).
         let p = STRICT_CONTEXT_PRIORS;
-        for (name, value) in [
-            ("confidential_floor", p.confidential_floor),
-            ("secret_floor", p.secret_floor),
-            ("top_secret_floor", p.top_secret_floor),
-        ] {
-            assert!(
-                value > 0.0 && value <= 1.0,
-                "{name} = {value} is not a valid strict-context floor; \
-                 must be in (0.0, 1.0] (0.0 is a silent-no-op footgun)"
-            );
-        }
+        assert!(
+            p.confidential_floor > 0.0 && p.confidential_floor <= 1.0,
+            "confidential_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+        );
+        assert!(
+            p.secret_floor > 0.0 && p.secret_floor <= 1.0,
+            "secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+        );
+        assert!(
+            p.top_secret_floor > 0.0 && p.top_secret_floor <= 1.0,
+            "top_secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+        );
     }
 
     #[test]
