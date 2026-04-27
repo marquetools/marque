@@ -20,3 +20,8 @@ The year **is 2026**.
 **Vulnerability:** The custom dev server in `demo/bin/serve.js` did not set the `X-Content-Type-Options: nosniff` header.
 **Learning:** Without this header, browsers might perform MIME-sniffing and interpret files with incorrect MIME types as executable scripts, which could lead to XSS if a user uploads a malicious file.
 **Prevention:** Always include `X-Content-Type-Options: nosniff` in responses from custom HTTP servers to enforce strict MIME type checking.
+
+## 2026-04-27 - [MEDIUM] Missing Security Headers on REST API
+**Vulnerability:** The `marque-server` axum REST API lacked the `X-Content-Type-Options: nosniff` header.
+**Learning:** Axum does not add security headers by default. If `nosniff` is missing, API clients or browsers directly interacting with the endpoints might perform MIME sniffing and misinterpret the response, which could pose XSS risks.
+**Prevention:** Use `tower_http::set_header::SetResponseHeaderLayer` to globally enforce `X-Content-Type-Options: nosniff` across all axum routes. Ensure `tower-http` has the `set-header` feature enabled.

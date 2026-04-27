@@ -2292,9 +2292,9 @@ dependencies = [
 
 [[package]]
 name = "xmloxide"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df7dedd9d53eb09b20705cbd82a9ba100b4eb46348114580ed9e4cdae39df5bf"
+checksum = "b30d101346507be4768e9827e745381179b507fc3bd4f19f27ca1ca1983b083e"
 dependencies = [
  "encoding_rs",
 ]

@@ -102,6 +102,8 @@ has no runtime deps on `marque-ism`/`marque-core`/`marque-rules`.
 | `marque-server` | axum REST microservice wrapping `marque-engine`. Auth/logging via Tower middleware. |
 | `marque` | Thin CLI binary. Subcommands: `check`, `fix`, `metadata`. |
 
+`crates/cui/` is a placeholder for a future CUI rule crate — currently holds the vendored 2019 NARA CUI Marking Handbook (`docs/`) and `REUSE.toml` only, **not** a workspace member, no `Cargo.toml`, no source. When the CUI crate lands it MUST follow the `build.rs` → generated-predicates pattern established by `marque-ism` (Principle IV) and remain WASM-safe (Principle III).
+
 ### Processing Pipeline
 
 ```
@@ -227,6 +229,7 @@ The active schema version is pinned in `crates/ism/Cargo.toml` under `[package.m
 3. Rule IDs follow: `E###` = error, `W###` = warning, `C###` = correction.
 4. Rules are stateless; all config-dependent behavior (severity overrides, classifier ID injection) is handled by the engine.
 5. Fixes with `confidence < threshold` are surfaced as suggestions; those at or above are auto-applied by `Engine::fix`.
+6. Cite the authoritative section in the rule (e.g., `CAPCO-2016 §H.5 p99`) and verify the citation against the primary source — `crates/capco/docs/CAPCO-2016.md` — before opening the PR. **Constitution Principle VIII (Authoritative Source Fidelity)** treats a fabricated, hallucinated, misattributed, or silently-drifted citation as a correctness defect of the same severity as a wrong predicate. A citation that cannot be traced to a real passage MUST be removed, not left in place pending follow-up.
 
 ## REST API Surface
 
@@ -243,7 +246,7 @@ Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch
 
 MVP complete. Full lint → fix → audit pipeline for raw text with 54 CAPCO rules (E001–E016, E020–E051, S001–S003, W002–W003, C001; W001 retired in T035c-14 per CAPCO-2016 §F). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
-**Not yet built**: `marque-extract` (Kreuzberg integration for 75+ formats), `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
+**Not yet built**: `marque-extract` is scaffolded (workspace member with `Extractor`, `ExtractedDocument`, `ExtractionOptions`, `MetadataReport` surface) but the Kreuzberg backend is stubbed — `crates/extract/src/extractor.rs` reads raw text only and `crates/extract/Cargo.toml` keeps `kreuzberg` commented out pending a licensing decision. Also outstanding: `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
 ## Active Technologies
 - Rust 1.85+ (edition 2024) — `rust-version = "1.85"` in workspace `Cargo.toml`; constitution Tech Stack pins the floor
@@ -252,7 +255,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 54 CAPCO ru
 - `quick-xml` — build-time ODNI XSD/Schematron parsing
 - `serde` + `serde_json` — build-time JSON codepath for per-term vocabulary data (runtime deserialization not required; data is emitted as `&'static` const tables by `build.rs`)
 - `phf` — compile-time replacement lookup (perfect hash)
-- `criterion` 0.5 — benchmarking (SC-001, SC-005)
+- `criterion` 0.8 — benchmarking (SC-001, SC-005)
 - `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
 - No new runtime crates introduced by Phase D's decoder — log-posterior scoring uses `f64` and Rust standard ops. Corpus-derived priors baked in as `&'static [T]` tables at build time.
 

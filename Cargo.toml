@@ -60,7 +60,7 @@ toml = "1.1.2"
 # HTTP / server
 axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["cors", "trace"] }
+tower-http = { version = "0.6.8", features = ["cors", "set-header", "trace"] }
 
 assert_cmd = "2.2.1"
 # CLI
@@ -128,8 +128,8 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # rustc would warn on every build because the feature is locally undeclared.
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
-  'cfg(coverage)',
-  'cfg(coverage_nightly)',
+  "cfg(coverage)",
+  "cfg(coverage_nightly)",
   'cfg(feature, values("corpus-override"))',
 ] }
 

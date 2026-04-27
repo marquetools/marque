@@ -7,6 +7,31 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.3.0 → 1.3.1
+
+Bump type: PATCH
+  - Technology Stack Constraints table → Token matching row clarified.
+    Prior wording "aho-corasick (native), daachorse (WASM)" implied
+    daachorse was already wired on the WASM target. It is not.
+    `Cargo.toml` declares `aho-corasick = "1.1.4"` for both targets and
+    `marque-wasm/Cargo.toml` does not depend on daachorse. The row now
+    reads "aho-corasick (native + WASM); daachorse reserved for future
+    WASM size optimization" — matching the parallel description already
+    present in `CLAUDE.md` line 251 ("constitution Tech Stack reserves
+    daachorse for the WASM target as a future binary-size optimization,
+    not yet wired"). The reservation language is preserved so a future
+    swap is sanctioned without committing to it now.
+
+Modified sections:
+  - Technology Stack Constraints → Token matching (Phase 2) row.
+
+No principles modified. No new principles. No removed principles. No
+templates affected.
+
+Detected via `/ctx` audit 2026-04-27. The drift was a wording lag, not
+a planned change to the Tech Stack — daachorse was always aspirational.
+
+==================
 Version change: 1.2.0 → 1.3.0
 
 Bump type: MINOR
@@ -533,7 +558,7 @@ require a constitution amendment with migration rationale.
 | Async runtime | Tokio | axum integration, ecosystem standard |
 | HTTP server | axum | Tower middleware compatibility |
 | Scanner (Phase 1) | memchr | SIMD-accelerated, zero-allocation |
-| Token matching (Phase 2) | aho-corasick (native), daachorse (WASM) | Compile-time automaton from CVE tokens |
+| Token matching (Phase 2) | aho-corasick (native + WASM); daachorse reserved for future WASM size optimization | Compile-time automaton from CVE tokens. WASM currently uses the same aho-corasick automaton as native; the reservation closes the door on importing a third matcher rather than committing the swap. |
 | Runtime replacement lookup | rapidhash (thread-utils) | Fastest available; existing dep |
 | Compile-time replacement lookup | phf | Perfect hash, zero collisions for static keys |
 | Schema parsing (build.rs) | quick-xml | CVE/XSD/Schematron at compile time |
@@ -654,4 +679,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.3.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-26
+**Version**: 1.3.1 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-27
