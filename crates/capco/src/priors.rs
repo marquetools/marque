@@ -186,15 +186,15 @@ mod tests {
         let p = STRICT_CONTEXT_PRIORS;
         assert!(
             p.confidential_floor > 0.0 && p.confidential_floor <= 1.0,
-            "confidential_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+            "confidential_floor is not a valid strict-context floor; must be in (0.0, 1.0]; 0.0 is rejected because it makes the strict-context rule a silent no-op"
         );
         assert!(
             p.secret_floor > 0.0 && p.secret_floor <= 1.0,
-            "secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+            "secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]; 0.0 is rejected because it makes the strict-context rule a silent no-op"
         );
         assert!(
             p.top_secret_floor > 0.0 && p.top_secret_floor <= 1.0,
-            "top_secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]"
+            "top_secret_floor is not a valid strict-context floor; must be in (0.0, 1.0]; 0.0 is rejected because it makes the strict-context rule a silent no-op"
         );
     }
 
