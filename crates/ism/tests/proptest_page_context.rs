@@ -130,7 +130,7 @@ proptest! {
             ctx.expected_dissem_controls().into_iter().collect();
 
         for portion in &portions {
-            for ctrl in portion.dissem_controls.iter().copied() {
+            for ctrl in portion.dissem_controls.iter() {
                 prop_assert!(
                     rolled.contains(&ctrl),
                     "dissem control {ctrl:?} in portion but missing from roll-up",
