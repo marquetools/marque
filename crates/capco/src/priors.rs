@@ -198,6 +198,63 @@ mod tests {
         );
     }
 
+    // The three tests below exercise the rejection predicate (`> 0.0 && <= 1.0`)
+    // on synthetic `StrictContextPriors` values so that both branches of the
+    // condition are reachable by the coverage instrumenter.  The test above only
+    // ever reads `STRICT_CONTEXT_PRIORS`, which contains known-valid values, so
+    // the "condition is false" branch would otherwise remain uncovered.
+
+    #[test]
+    fn strict_context_floor_rejects_zero() {
+        // 0.0 is explicitly excluded: a zero floor makes the strict-context
+        // rule algebraically identity (no contribution to the log-posterior).
+        let zero_floor = StrictContextPriors {
+            confidential_floor: 0.0,
+            secret_floor: 0.5,
+            top_secret_floor: 0.5,
+        };
+        assert!(
+            !(zero_floor.confidential_floor > 0.0 && zero_floor.confidential_floor <= 1.0),
+            "0.0 must not satisfy the valid strict-context floor predicate"
+        );
+    }
+
+    #[test]
+    fn strict_context_floor_rejects_above_one() {
+        // Values > 1.0 are not valid probabilities.
+        let above_one = StrictContextPriors {
+            confidential_floor: 0.5,
+            secret_floor: 1.5,
+            top_secret_floor: 0.5,
+        };
+        assert!(
+            !(above_one.secret_floor > 0.0 && above_one.secret_floor <= 1.0),
+            "1.5 must not satisfy the valid strict-context floor predicate"
+        );
+    }
+
+    #[test]
+    fn strict_context_floor_accepts_boundary_one() {
+        // 1.0 is included (closed upper bound): the predicate is `<= 1.0`.
+        let at_one = StrictContextPriors {
+            confidential_floor: 1.0,
+            secret_floor: 1.0,
+            top_secret_floor: 1.0,
+        };
+        assert!(
+            at_one.confidential_floor > 0.0 && at_one.confidential_floor <= 1.0,
+            "1.0 must satisfy the valid strict-context floor predicate (closed upper bound)"
+        );
+        assert!(
+            at_one.secret_floor > 0.0 && at_one.secret_floor <= 1.0,
+            "1.0 must satisfy the valid strict-context floor predicate (closed upper bound)"
+        );
+        assert!(
+            at_one.top_secret_floor > 0.0 && at_one.top_secret_floor <= 1.0,
+            "1.0 must satisfy the valid strict-context floor predicate (closed upper bound)"
+        );
+    }
+
     #[test]
     fn log_priors_are_finite_and_non_positive() {
         // log(probability) is always ≤ 0 and finite for well-formed
