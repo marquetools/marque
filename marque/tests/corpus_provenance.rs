@@ -123,7 +123,8 @@ fn sc002a_no_classifier_id_in_corpus_fixtures() {
     let max_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    let chunk_size = (files.len() / max_threads).max(1);
+    let thread_count = max_threads.min(files.len().max(1));
+    let chunk_size = files.len().div_ceil(thread_count);
 
     let mut violations: Vec<_> = std::thread::scope(|s| {
         let mut handles = Vec::new();
