@@ -30,16 +30,29 @@
 #   code = "MNFI"
 #   description = "Multi-National Forces Iraq (historical, 2003–2010)"
 #   # `members` omitted → recognition-only, opaque to expansion.
-#   # `REL TO MNFI ∩ REL TO USA, GBR` resolves to `{}` because
-#   # MNFI is not in the second portion's set; opaque atoms
-#   # survive intersection only when present in every portion.
+#   # Today's intersection (atom semantics):
+#   #     REL TO USA, MNFI ∩ REL TO USA, GBR  →  {USA}
+#   # USA appears in both portions and survives. MNFI is treated
+#   # as an atom (not present in portion 2), so it drops. GBR
+#   # also drops (not present in portion 1's atom-set).
+#   #
+#   # CAVEAT: this answer is correct ONLY if GBR was not a
+#   # member of MNFI. If GBR WAS a member, the correct
+#   # intersection is `{USA, GBR}` and today's atom-semantics
+#   # silently loses it. Diagnosing this membership-uncertain
+#   # case is tracked as issue #206 — until that lands,
+#   # extensions for historical / unknown-membership groups are
+#   # safe to register but the operator must verify the banner
+#   # roll-up against authoritative membership data.
 #
 #   [[code]]
 #   code = "MYORG"
 #   description = "Internal cooperation group"
 #   members = ["USA", "GBR", "AUS"]
-#   # `members` present → expansion-enabled. `REL TO MYORG`
-#   # composes against `REL TO USA, GBR` as `{USA, GBR}`.
+#   # `members` present → expansion-enabled. Intersection:
+#   #     REL TO USA, MYORG ∩ REL TO USA, GBR  →  {USA, GBR}
+#   # MYORG expands to {USA, GBR, AUS} on portion 1; intersect
+#   # with portion 2's {USA, GBR} = {USA, GBR}.
 #
 # Validation (enforced at build time; failures produce a clear
 # `build.rs` panic with the offending entry):
