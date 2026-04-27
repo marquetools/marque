@@ -11,8 +11,8 @@
 
 use marque_capco::lattice::{FgiSet, SarSet, SciSet};
 use marque_ism::{
-    FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlBare, SciControlSystem, SciMarking, Trigraph,
+    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
+    SciControlBare, SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use proptest::prelude::*;
@@ -122,9 +122,10 @@ static VALID_TRIGRAPHS: &[[u8; 3]] = &[
     *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA", *b"JPN",
 ];
 
-fn arb_trigraph() -> impl Strategy<Value = Trigraph> {
-    (0..VALID_TRIGRAPHS.len())
-        .prop_map(|i| Trigraph::try_new(VALID_TRIGRAPHS[i]).expect("static trigraphs are valid"))
+fn arb_trigraph() -> impl Strategy<Value = CountryCode> {
+    (0..VALID_TRIGRAPHS.len()).prop_map(|i| {
+        CountryCode::try_new(&VALID_TRIGRAPHS[i]).expect("static trigraphs are valid")
+    })
 }
 
 fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {

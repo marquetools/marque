@@ -213,21 +213,21 @@ fn country_rel_intersection() {
     let mut p1 = portion(Classification::Secret);
     p1.dissem_controls = vec![DissemControl::Rel].into();
     p1.rel_to = vec![
-        Trigraph::USA,
-        Trigraph::try_new(*b"AUS").unwrap(),
-        Trigraph::try_new(*b"CAN").unwrap(),
+        CountryCode::USA,
+        CountryCode::try_new(b"AUS").unwrap(),
+        CountryCode::try_new(b"CAN").unwrap(),
     ]
     .into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
     p2.dissem_controls = vec![DissemControl::Rel].into();
-    p2.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"AUS").unwrap()].into();
+    p2.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"AUS").unwrap()].into();
     ctx.add_portion(p2);
 
     let rel = ctx.expected_rel_to();
     assert_eq!(rel.len(), 2);
-    assert_eq!(rel[0], Trigraph::USA);
+    assert_eq!(rel[0], CountryCode::USA);
     assert_eq!(rel[1].as_str(), "AUS");
 }
 
@@ -238,7 +238,7 @@ fn country_noforn_supersedes_rel() {
 
     let mut p1 = portion(Classification::Secret);
     p1.dissem_controls = vec![DissemControl::Rel].into();
-    p1.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
@@ -260,7 +260,7 @@ fn fgi_concealed_supersedes_open() {
 
     let mut p1 = IsmAttributes::default();
     p1.fgi_marker = Some(FgiMarker {
-        countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+        countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
     });
     ctx.add_portion(p1);
 
@@ -281,13 +281,13 @@ fn fgi_open_union() {
 
     let mut p1 = IsmAttributes::default();
     p1.fgi_marker = Some(FgiMarker {
-        countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
     });
     ctx.add_portion(p1);
 
     let mut p2 = IsmAttributes::default();
     p2.fgi_marker = Some(FgiMarker {
-        countries: vec![Trigraph::try_new(*b"DEU").unwrap()].into(),
+        countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
     });
     ctx.add_portion(p2);
 

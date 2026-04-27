@@ -22,8 +22,8 @@
 
 use marque_capco::lattice::{FgiSet, SarSet, SciSet};
 use marque_ism::{
-    FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlBare, SciControlSystem, SciMarking, Trigraph,
+    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
+    SciControlBare, SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::BTreeSet;
@@ -241,8 +241,8 @@ fn sar_set_meet_idempotent() {
 // FgiSet helpers and laws
 // ---------------------------------------------------------------------------
 
-fn trigraph(s: &[u8; 3]) -> Trigraph {
-    Trigraph::try_new(*s).expect("valid trigraph")
+fn trigraph(s: &[u8; 3]) -> CountryCode {
+    CountryCode::try_new(s).expect("valid trigraph")
 }
 
 fn fgi_samples() -> Vec<FgiSet> {

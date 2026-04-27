@@ -347,10 +347,12 @@ impl Rule for PortionMarkInBannerRule {
 /// second pass.
 ///
 /// Scope boundaries:
-/// - Tetragraph alphabetization is deferred: `Trigraph` is 3-byte only
-///   (see `marque_ism::Trigraph` doc). When the broader `CountryCode` type
-///   lands, E002 should be extended to sort trigraphs before tetragraphs
-///   per p151.
+/// - Tetragraph alphabetization is deferred. `CountryCode` (issue
+///   #183 PR-A) now carries tetragraphs, but E002 still sorts the
+///   list as a flat alphabetical sequence rather than the §H.8 p151
+///   "trigraphs alpha, then tetragraphs alpha, USA first" form.
+///   Separate follow-up — the canonicalizer just needs to partition
+///   on `code.len() <= 3` before sorting.
 /// - "REL TO USA" alone (p151, a non-authorized marking with no
 ///   following country codes) is out of scope. E002 does not fire when
 ///   USA is present and first; a separate rule is needed for that case.
@@ -372,11 +374,11 @@ impl Rule for MissingUsaTrigraphRule {
             return vec![];
         }
 
-        let has_usa = attrs.rel_to.contains(&marque_ism::Trigraph::USA);
+        let has_usa = attrs.rel_to.contains(&marque_ism::CountryCode::USA);
         let usa_first = attrs
             .rel_to
             .first()
-            .is_some_and(|t| *t == marque_ism::Trigraph::USA);
+            .is_some_and(|t| *t == marque_ism::CountryCode::USA);
 
         if has_usa && usa_first {
             return vec![];
@@ -466,9 +468,10 @@ impl Rule for MissingUsaTrigraphRule {
         // delimiter-only. This consumes stale delimiters like the
         // trailing `,` in `REL TO GBR, AUS,` so the splice leaves a
         // clean list. We gate on delimiter-only to preserve any
-        // content we can't tokenize as a trigraph today (tetragraphs
-        // are 4-byte and don't fit `Trigraph`; deleting them would be
-        // wrong).
+        // content we can't recognize (tokens outside the CVE
+        // TRIGRAPHS list — `is_trigraph` returns false, so the parser
+        // never emits a `RelToTrigraph` span for them; deleting them
+        // would be wrong).
         let start = first.span.start;
         let mut end = last.span.end;
         let tail_offset = end - block.span.start;
@@ -490,9 +493,9 @@ impl Rule for MissingUsaTrigraphRule {
         // there). Producing the canonical form in a single pass is
         // required because E020 gates on `rel_to[0] == USA` and is
         // therefore silent whenever E002 fires.
-        let mut codes: Vec<marque_ism::Trigraph> = attrs.rel_to.to_vec();
+        let mut codes: Vec<marque_ism::CountryCode> = attrs.rel_to.to_vec();
         if !has_usa {
-            codes.push(marque_ism::Trigraph::USA);
+            codes.push(marque_ism::CountryCode::USA);
         }
         // E002 is REL TO only; pass `usa_first: true` per §H.8 p151.
         let fixed = canonicalize_trigraph_list(&codes, true).join(", ");
@@ -2020,7 +2023,7 @@ impl Rule for JointUsaFirstRule {
     }
 
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{MarkingType, Trigraph};
+        use marque_ism::{CountryCode, MarkingType};
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
         }
@@ -2032,12 +2035,12 @@ impl Rule for JointUsaFirstRule {
             // first position meaningfully.
             return vec![];
         }
-        if !j.countries.contains(&Trigraph::USA) {
+        if !j.countries.contains(&CountryCode::USA) {
             // JOINT without USA is anomalous per §H.3 p163 but
             // not S003's concern. Let other rules flag it.
             return vec![];
         }
-        if j.countries.first() == Some(&Trigraph::USA) {
+        if j.countries.first() == Some(&CountryCode::USA) {
             return vec![];
         }
 
@@ -2565,11 +2568,12 @@ impl Rule for NonIcInClassifiedBannerRule {
 ///   line 332 establishes the same trigraph-then-tetragraph alpha
 ///   rule for FGI, but extending E020 to cover it is a future
 ///   follow-up; no FGI-ordering test fixtures exist today.
-/// - **Tetragraph sorting** — `Trigraph` is a 3-byte type and cannot
-///   represent 4-byte codes, so `canonicalize_trigraph_list` treats
-///   every entry as a trigraph. When a broader `CountryCode` type
-///   lands, the helper should sort trigraphs before tetragraphs per
-///   the per-template passages above.
+/// - **Tetragraph partition sorting** — issue #183 PR-A widened
+///   `CountryCode` so 4-byte tetragraphs round-trip through
+///   `attrs.rel_to`, but `canonicalize_trigraph_list` still sorts the
+///   whole list flat-alphabetically rather than the §H.8 p151
+///   "trigraphs alpha, then tetragraphs alpha" partition. Follow-up:
+///   sort by `(code.len() > 3, code.as_str())`.
 ///
 /// # Interaction with E002
 ///
@@ -2610,7 +2614,7 @@ impl Rule for CountryCodeOrderingRule {
             && attrs
                 .rel_to
                 .first()
-                .is_some_and(|t| *t == marque_ism::Trigraph::USA)
+                .is_some_and(|t| *t == marque_ism::CountryCode::USA)
         {
             // Locate the `RelToBlock` for this list. A single first→last
             // `RelToTrigraph` splice across the whole marking would
@@ -2731,16 +2735,18 @@ impl Rule for CountryCodeOrderingRule {
 /// prevents the two rules from drifting if the ordering rule changes
 /// (tetragraph sorting, delimiter normalization, etc.).
 ///
-/// Tetragraph handling is deferred — `Trigraph` is 3-byte only today
-/// and cannot represent tetragraph codes. When a broader `CountryCode`
-/// type lands, this helper should be extended to sort trigraphs before
-/// tetragraphs per §H.3 p56 and §H.8 p151.
-fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph], usa_first: bool) -> Vec<&str> {
+/// Tetragraph partition handling is deferred — issue #183 PR-A
+/// widened `CountryCode` so 4-byte tetragraphs are now first-class
+/// entries in `attrs.rel_to`, but this helper still sorts the whole
+/// list flat-alphabetically rather than the §H.3 p56 / §H.8 p151
+/// "trigraphs alpha, then tetragraphs alpha" partition. Follow-up:
+/// sort by `(code.len() > 3, code.as_str())`.
+fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
     if usa_first {
-        let has_usa = codes.contains(&marque_ism::Trigraph::USA);
+        let has_usa = codes.contains(&marque_ism::CountryCode::USA);
         let mut sorted: Vec<&str> = codes
             .iter()
-            .filter(|t| **t != marque_ism::Trigraph::USA)
+            .filter(|t| **t != marque_ism::CountryCode::USA)
             .map(|t| t.as_str())
             .collect();
         sorted.sort_unstable();
@@ -2774,7 +2780,7 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::Trigraph], usa_first: bool) -
 /// authoritative passage verbatim (Constitution VIII).
 #[allow(clippy::too_many_arguments)]
 fn check_trigraph_ordering(
-    codes: &[marque_ism::Trigraph],
+    codes: &[marque_ism::CountryCode],
     list_name: &str,
     rule: RuleId,
     severity: Severity,
@@ -5235,22 +5241,50 @@ mod tests {
     }
 
     #[test]
-    fn e002_fix_span_stops_at_non_delimiter_tail() {
-        // When the block tail contains non-delimiter content (here the
-        // literal unknown token `FVEY`, which is a tetragraph marker
-        // that we cannot represent as a 3-byte `Trigraph` today), the
-        // fix span must NOT extend through it — otherwise the splice
-        // would silently delete the user's tetragraph. Lock this.
+    fn e002_fix_span_includes_recognized_tetragraph_tail() {
+        // Issue #183 PR-A: tetragraphs (FVEY, ACGU, NATO, …) are now
+        // first-class `CountryCode` values, recognized by
+        // `is_trigraph` and stored in `rel_to`. The E002 fix span
+        // (first→last `RelToTrigraph` token within the block) must
+        // therefore extend through FVEY in the tail — splicing
+        // `GBR, AUS` only would leave a stale `, FVEY` behind. Pre-
+        // PR-A this test asserted the inverse (FVEY was silently
+        // dropped at the parser, so the splice intentionally stopped
+        // at AUS); the inverse is now wrong.
         let src = "SECRET//REL TO GBR, AUS, FVEY";
         let diags = lint_banner(src);
         let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
         assert_eq!(e002.len(), 1);
         let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
-        // Span must stop at end-of-AUS, not swallow `, FVEY`.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "GBR, AUS, FVEY",
+            "tetragraph FVEY is now a recognized country code (issue #183) \
+             — the fix span must include it",
+        );
+    }
+
+    #[test]
+    fn e002_fix_span_stops_at_unrecognized_tail_token() {
+        // Companion to `e002_fix_span_includes_recognized_tetragraph_tail`
+        // — the defensive invariant that a non-recognized tail token
+        // is NOT swallowed by the splice still holds. Issue #183 PR-A
+        // widened recognition from trigraphs to all CVE country codes
+        // (incl. tetragraphs and the longer registered codes), but
+        // anything outside that vocabulary still fails the
+        // `is_trigraph` gate at the parser, never gets a
+        // `RelToTrigraph` token span, and so the fix span stops at
+        // the last recognized code. `XYZQ` here is a 4-char string
+        // outside the CVE TRIGRAPHS list.
+        let src = "SECRET//REL TO GBR, AUS, XYZQ";
+        let diags = lint_banner(src);
+        let e002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E002").collect();
+        assert_eq!(e002.len(), 1);
+        let fix = e002[0].fix.as_ref().expect("E002 must carry a fix");
         assert_eq!(
             fix.span.as_str(src.as_bytes()).unwrap(),
             "GBR, AUS",
-            "fix span must not swallow tetragraph content in the tail"
+            "unrecognized tail token must not be swallowed by the splice"
         );
     }
 

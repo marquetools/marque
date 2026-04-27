@@ -39,8 +39,8 @@
 //! `SciSet`.
 
 use marque_ism::{
-    FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlSystem, SciMarking, Trigraph,
+    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
+    SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::{BTreeMap, BTreeSet};
@@ -423,7 +423,7 @@ pub enum FgiSet {
     /// concealment.
     Present {
         concealed: bool,
-        countries: BTreeSet<Trigraph>,
+        countries: BTreeSet<CountryCode>,
     },
 }
 
@@ -526,7 +526,8 @@ impl Lattice for FgiSet {
                         countries: BTreeSet::new(),
                     }
                 } else {
-                    let countries: BTreeSet<Trigraph> = a_cs.intersection(b_cs).copied().collect();
+                    let countries: BTreeSet<CountryCode> =
+                        a_cs.intersection(b_cs).copied().collect();
                     if countries.is_empty() && !concealed {
                         // Both present but no common countries — the
                         // meet collapses to the empty FGI marker, but
@@ -783,7 +784,7 @@ mod tests {
         };
         let ack = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
@@ -805,14 +806,14 @@ mod tests {
     fn fgi_set_join_unions_acknowledged_countries() {
         let a = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
         };
         let b = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"DEU").unwrap()]
+            countries: [CountryCode::try_new(b"DEU").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
@@ -1134,7 +1135,7 @@ mod tests {
     #[test]
     fn fgi_set_from_marker_populated_countries_is_open() {
         let m = FgiMarker {
-            countries: vec![Trigraph::try_new(*b"GBR").unwrap()].into_boxed_slice(),
+            countries: vec![CountryCode::try_new(b"GBR").unwrap()].into_boxed_slice(),
         };
         let set = FgiSet::from_marker(Some(&m));
         match set {
@@ -1167,8 +1168,8 @@ mod tests {
     #[test]
     fn fgi_set_to_marker_open_round_trips_countries() {
         let mut countries = BTreeSet::new();
-        countries.insert(Trigraph::try_new(*b"GBR").unwrap());
-        countries.insert(Trigraph::try_new(*b"DEU").unwrap());
+        countries.insert(CountryCode::try_new(b"GBR").unwrap());
+        countries.insert(CountryCode::try_new(b"DEU").unwrap());
         let set = FgiSet::Present {
             concealed: false,
             countries,
@@ -1204,7 +1205,7 @@ mod tests {
     fn fgi_set_join_none_right_preserves_left() {
         let left = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
@@ -1216,7 +1217,7 @@ mod tests {
     fn fgi_set_join_none_left_preserves_right() {
         let right = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
@@ -1248,14 +1249,14 @@ mod tests {
     fn fgi_set_meet_disjoint_countries_collapses_to_none() {
         let a = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"GBR").unwrap()]
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
         };
         let b = FgiSet::Present {
             concealed: false,
-            countries: [Trigraph::try_new(*b"DEU").unwrap()]
+            countries: [CountryCode::try_new(b"DEU").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
@@ -1268,8 +1269,8 @@ mod tests {
         let a = FgiSet::Present {
             concealed: false,
             countries: [
-                Trigraph::try_new(*b"GBR").unwrap(),
-                Trigraph::try_new(*b"DEU").unwrap(),
+                CountryCode::try_new(b"GBR").unwrap(),
+                CountryCode::try_new(b"DEU").unwrap(),
             ]
             .iter()
             .copied()
@@ -1278,8 +1279,8 @@ mod tests {
         let b = FgiSet::Present {
             concealed: false,
             countries: [
-                Trigraph::try_new(*b"GBR").unwrap(),
-                Trigraph::try_new(*b"FRA").unwrap(),
+                CountryCode::try_new(b"GBR").unwrap(),
+                CountryCode::try_new(b"FRA").unwrap(),
             ]
             .iter()
             .copied()
@@ -1293,7 +1294,7 @@ mod tests {
             } => {
                 assert!(!concealed);
                 assert_eq!(countries.len(), 1);
-                assert!(countries.contains(&Trigraph::try_new(*b"GBR").unwrap()));
+                assert!(countries.contains(&CountryCode::try_new(b"GBR").unwrap()));
             }
             _ => panic!("expected Present"),
         }

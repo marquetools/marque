@@ -22,7 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{Classification, IsmAttributes, PageContext, Trigraph};
+use marque_ism::{Classification, CountryCode, IsmAttributes, PageContext};
 use marque_scheme::{
     AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
     Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
@@ -1054,7 +1054,7 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
                 .dissem_controls
                 .iter()
                 .any(|d| matches!(d, DissemControl::Nf)),
-            TOK_USA => attrs.rel_to.contains(&Trigraph::USA),
+            TOK_USA => attrs.rel_to.contains(&CountryCode::USA),
             TOK_JOINT => {
                 matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
             }
@@ -1699,8 +1699,8 @@ fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
         _ => return Vec::new(),
     };
-    let has_usa_in_rel_to = attrs.rel_to.contains(&Trigraph::USA);
-    let joint_includes_usa = joint.countries.contains(&Trigraph::USA);
+    let has_usa_in_rel_to = attrs.rel_to.contains(&CountryCode::USA);
+    let joint_includes_usa = joint.countries.contains(&CountryCode::USA);
     if has_usa_in_rel_to && joint_includes_usa {
         return Vec::new();
     }
@@ -1921,7 +1921,7 @@ impl CapcoScheme {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_ism::{DissemControl, IsmAttributes, MarkingClassification, Trigraph};
+    use marque_ism::{CountryCode, DissemControl, IsmAttributes, MarkingClassification};
 
     fn mk_attrs() -> IsmAttributes {
         let mut a = IsmAttributes::default();
@@ -1961,7 +1961,7 @@ mod tests {
     #[test]
     fn category_has_values_rel_to_populated() {
         let mut a = mk_attrs();
-        a.rel_to = vec![Trigraph::USA].into();
+        a.rel_to = vec![CountryCode::USA].into();
         let m = CapcoMarking::new(a);
         assert!(capco_category_has_values(&m, CAT_REL_TO));
     }
@@ -2016,7 +2016,7 @@ mod tests {
     #[test]
     fn category_clear_empties_rel_to() {
         let mut a = mk_attrs();
-        a.rel_to = vec![Trigraph::USA].into();
+        a.rel_to = vec![CountryCode::USA].into();
         let mut m = CapcoMarking::new(a);
         capco_category_clear(&mut m, CAT_REL_TO);
         assert!(m.0.rel_to.is_empty());
@@ -2034,7 +2034,7 @@ mod tests {
     #[test]
     fn category_clear_unhandled_is_noop() {
         let mut a = mk_attrs();
-        a.rel_to = vec![Trigraph::USA].into();
+        a.rel_to = vec![CountryCode::USA].into();
         let mut m = CapcoMarking::new(a);
         capco_category_clear(&mut m, CAT_SCI);
         // REL TO untouched — other-category clear was a no-op.
@@ -2046,7 +2046,7 @@ mod tests {
     #[test]
     fn category_replace_rel_to_copies_from_source() {
         let mut src_attrs = IsmAttributes::default();
-        src_attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+        src_attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
         let src = CapcoMarking::new(src_attrs);
 
         let mut dst = CapcoMarking::new(mk_attrs());
@@ -2102,7 +2102,7 @@ mod tests {
         let mut p1 = mk_attrs();
         p1.dissem_controls = vec![DissemControl::Nf].into();
         let mut p2 = mk_attrs();
-        p2.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+        p2.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
         let out = marque_scheme::MarkingScheme::project(
             &scheme,

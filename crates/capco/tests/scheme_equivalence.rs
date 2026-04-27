@@ -15,8 +15,8 @@
 
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_ism::{
-    Classification, DissemControl, IsmAttributes, JointClassification, MarkingClassification,
-    PageContext, SciControl, Trigraph,
+    Classification, CountryCode, DissemControl, IsmAttributes, JointClassification,
+    MarkingClassification, PageContext, SciControl,
 };
 use marque_scheme::MarkingScheme;
 
@@ -97,20 +97,20 @@ fn project_banner_rel_to_intersection_matches_pagecontext() {
     // Intersection = {USA, GBR}, USA first.
     let mut p1 = portion(Classification::Secret);
     p1.rel_to = vec![
-        Trigraph::USA,
-        Trigraph::try_new(*b"GBR").unwrap(),
-        Trigraph::try_new(*b"CAN").unwrap(),
+        CountryCode::USA,
+        CountryCode::try_new(b"GBR").unwrap(),
+        CountryCode::try_new(b"CAN").unwrap(),
     ]
     .into();
     let mut p2 = portion(Classification::Secret);
     p2.rel_to = vec![
-        Trigraph::USA,
-        Trigraph::try_new(*b"GBR").unwrap(),
-        Trigraph::try_new(*b"DEU").unwrap(),
+        CountryCode::USA,
+        CountryCode::try_new(b"GBR").unwrap(),
+        CountryCode::try_new(b"DEU").unwrap(),
     ]
     .into();
     let mut p3 = portion(Classification::Secret);
-    p3.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    p3.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
     let portions = vec![wrap(p1), wrap(p2), wrap(p3)];
 
@@ -125,7 +125,7 @@ fn project_banner_rel_to_intersection_matches_pagecontext() {
     assert_eq!(banner.0.rel_to.as_ref(), expected.as_slice());
     // And the specific shape: USA first, GBR second, nothing else.
     assert_eq!(expected.len(), 2);
-    assert_eq!(expected[0], Trigraph::USA);
+    assert_eq!(expected[0], CountryCode::USA);
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn project_banner_noforn_supersedes_rel_to() {
     // p2: NOFORN
     // Banner: REL TO is superseded; dissem contains NF.
     let mut p1 = portion(Classification::Secret);
-    p1.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     let mut p2 = portion(Classification::Secret);
     p2.dissem_controls = vec![DissemControl::Nf].into();
 
@@ -200,7 +200,7 @@ fn constraint_noforn_rel_to_conflict_fires() {
     // Build a marking that has BOTH NOFORN and a REL TO list.
     let mut attrs = portion(Classification::Secret);
     attrs.dissem_controls = vec![DissemControl::Nf].into();
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -480,9 +480,9 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::try_new(b"GBR").unwrap()].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -568,7 +568,7 @@ fn e015_does_not_fire_on_dual_classification() {
         us: Classification::Secret,
         foreign: Box::new(ForeignClassification::Joint(JointClassification {
             level: Classification::Secret,
-            countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+            countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
         })),
     });
     // No dissem_controls, no rel_to — would trigger E015 if Conflict
@@ -611,9 +611,9 @@ fn e036_fires_on_joint_with_bare_hcs() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     // Structural HCS marking (bare: no compartments).
     attrs.sci_markings = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Hcs),
@@ -639,9 +639,9 @@ fn e036_fires_on_joint_with_hcs_p() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     attrs.sci_controls = vec![SciControl::HcsP].into();
 
     let scheme = CapcoScheme::new();
@@ -659,9 +659,9 @@ fn e036_does_not_fire_on_joint_without_hcs() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     // SI is permitted with JOINT (§H.3 line 4140 says SCI "excluding
     // HCS" is allowed).
     attrs.sci_controls = vec![SciControl::Si].into();
@@ -725,9 +725,9 @@ fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -856,7 +856,7 @@ fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
     use marque_scheme::Scope;
 
     let mut p1 = portion(Classification::Secret);
-    p1.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     let mut p2 = portion(Classification::Secret);
     p2.dissem_controls = vec![DissemControl::Nf].into();
 
@@ -1050,7 +1050,7 @@ fn render_banner_with_joint_classification_falls_back_to_level() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
     let s = CapcoScheme::new();
     let out = s.render_banner(&wrap(attrs));
@@ -1097,7 +1097,7 @@ fn constraint_joint_without_usa_in_reltop_violates() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
     // Empty REL TO — this should violate JOINT⇒USA.
     let s = CapcoScheme::new();
@@ -1117,9 +1117,9 @@ fn constraint_joint_with_usa_everywhere_is_silent() {
     let mut attrs = IsmAttributes::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
-        countries: vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into(),
+        countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
     }));
-    attrs.rel_to = vec![Trigraph::USA, Trigraph::try_new(*b"GBR").unwrap()].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     let s = CapcoScheme::new();
     let v = s.validate(&CapcoMarking::new(attrs));
     assert!(

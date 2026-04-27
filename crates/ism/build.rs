@@ -538,7 +538,7 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             .join("CVEnumISMCATRelTo.xsd"),
     );
 
-    // Emit trigraph array (not an enum — too many values, and Trigraph is a [u8; 3] newtype).
+    // Emit trigraph array (not an enum — too many values, and CountryCode is a [u8; 3] newtype).
     //
     // M-3: sort and deduplicate into a BTreeSet before emission so
     // `is_trigraph` in token_set.rs can use `binary_search` over a

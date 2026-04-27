@@ -21,11 +21,10 @@
 
 use crate::error::CoreError;
 use marque_ism::attrs::{
-    AeaMarking, Classification, DeclassExemption, DissemControl, FgiClassification, FgiMarker,
-    ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
+    FgiMarker, ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
-    Trigraph,
 };
 use marque_ism::is_bare_cve_value;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
@@ -193,7 +192,7 @@ impl<'t> Parser<'t> {
         let mut aea: Vec<AeaMarking> = Vec::new();
         let mut dissem: Vec<DissemControl> = Vec::new();
         let mut non_ic: Vec<NonIcDissem> = Vec::new();
-        let mut rel_to: Vec<Trigraph> = Vec::new();
+        let mut rel_to: Vec<CountryCode> = Vec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
@@ -916,15 +915,19 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
     };
 
     // Remaining tokens are space-delimited country trigraphs.
+    //
+    // NOTE: JOINT classifications today drop non-3-byte tokens
+    // silently (tetragraphs like NATO never appear in real JOINT
+    // markings, but the parallel of issue #183's REL TO silent-drop
+    // is tracked as deferred scope for PR-B / a future issue).
     let country_str = rest[remaining_start..].trim();
     let mut countries = Vec::new();
     for token in country_str.split_whitespace() {
         if token.len() == 3 {
-            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
+            if let Some(t) = CountryCode::try_new(token.as_bytes()) {
                 countries.push(t);
             }
         }
-        // Skip non-trigraph tokens (tetragraphs like NATO handled later)
     }
 
     if countries.is_empty() {
@@ -972,7 +975,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
             continue;
         }
         if token.len() == 3 {
-            let t = Trigraph::try_new(token.as_bytes().try_into().ok()?)?;
+            let t = CountryCode::try_new(token.as_bytes())?;
             countries.push(t);
         } else {
             return None; // Not a trigraph or "FGI"
@@ -1001,7 +1004,7 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     let mut countries = Vec::new();
     for token in rest.split_whitespace() {
         if token.len() == 3 {
-            if let Some(t) = Trigraph::try_new(token.as_bytes().try_into().ok()?) {
+            if let Some(t) = CountryCode::try_new(token.as_bytes()) {
                 countries.push(t);
             }
         }
@@ -1075,7 +1078,7 @@ fn parse_rel_to_with_spans(
     block_offset: usize,
     tokens: &dyn TokenSet,
     token_spans: &mut Vec<TokenSpan>,
-) -> Vec<Trigraph> {
+) -> Vec<CountryCode> {
     // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
     // need the offset of the *trigraph list* within `block` so that each
     // trigraph's absolute span can be computed.
@@ -1088,7 +1091,7 @@ fn parse_rel_to_with_spans(
     };
     let after_rel = &block[prefix_skip..];
 
-    let mut out: Vec<Trigraph> = Vec::new();
+    let mut out: Vec<CountryCode> = Vec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
@@ -1107,18 +1110,22 @@ fn parse_rel_to_with_spans(
         if trimmed.is_empty() || !tokens.is_trigraph(trimmed) {
             continue;
         }
-        let b = trimmed.as_bytes();
-        if b.len() != 3 {
-            continue;
-        }
-        let Some(t) = Trigraph::try_new([b[0], b[1], b[2]]) else {
+        // Issue #183: drop the historical `b.len() != 3` gate that
+        // silently dropped tetragraphs (`FVEY`, `NATO`, `ACGU`, …)
+        // and the longer registered codes (`EU`, `AUSTRALIA_GROUP`)
+        // from `rel_to`. `is_trigraph` already covers the full CVE
+        // recognition surface (260 trigraphs + 58 tetragraphs +
+        // `EU` + `AUSTRALIA_GROUP`); `CountryCode::try_new` accepts
+        // 2..=16-byte codes in the CAPCO byte set, so any code that
+        // passed `is_trigraph` will also pass `try_new` here.
+        let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
             continue;
         };
         out.push(t);
         let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
-            span: Span::new(abs_start, abs_start + 3),
+            span: Span::new(abs_start, abs_start + trimmed.len()),
             text: trimmed.into(),
         });
     }
@@ -1586,6 +1593,95 @@ mod tests {
         assert_eq!(trigraphs[2].span.as_str(src).unwrap(), "AUS");
     }
 
+    // -----------------------------------------------------------------------
+    // Issue #183 PR-A — country-code widening: REL TO must preserve
+    // tetragraphs (FVEY, NATO, ACGU, …), `EU`, and `AUSTRALIA_GROUP`.
+    // Pre-PR-A, every non-3-byte token was silently dropped at the
+    // `b.len() != 3` gate in `parse_rel_to_with_spans`, so a marking
+    // like `(S//REL TO USA, FVEY, GBR)` arrived at the rule layer as
+    // `rel_to: [USA, GBR]` — FVEY gone with no diagnostic.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn rel_to_preserves_tetragraph_fvey() {
+        let parsed = parse_banner("SECRET//REL TO USA, FVEY, GBR");
+        let codes: Vec<&str> = parsed.attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            codes,
+            vec!["USA", "FVEY", "GBR"],
+            "FVEY tetragraph must land in rel_to (issue #183 silent-drop fix)"
+        );
+    }
+
+    #[test]
+    fn rel_to_preserves_opaque_tetragraph_nato() {
+        let parsed = parse_banner("SECRET//REL TO USA, NATO, GBR");
+        let codes: Vec<&str> = parsed.attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            codes,
+            vec!["USA", "NATO", "GBR"],
+            "NATO is in CVE TRIGRAPHS recognition set; rel_to must preserve it \
+             even though membership expansion is deferred to Phase F"
+        );
+    }
+
+    #[test]
+    fn rel_to_preserves_two_byte_eu() {
+        let parsed = parse_banner("SECRET//REL TO USA, EU");
+        let codes: Vec<&str> = parsed.attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            codes,
+            vec!["USA", "EU"],
+            "EU (2-byte CVE entry) must round-trip through the parser"
+        );
+    }
+
+    #[test]
+    fn rel_to_preserves_long_australia_group() {
+        let parsed = parse_banner("SECRET//REL TO USA, AUSTRALIA_GROUP");
+        let codes: Vec<&str> = parsed.attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            codes,
+            vec!["USA", "AUSTRALIA_GROUP"],
+            "AUSTRALIA_GROUP (15-byte CVE entry, contains underscore) \
+             must round-trip through the parser"
+        );
+    }
+
+    #[test]
+    fn rel_to_token_span_widens_to_actual_code_length() {
+        // Pre-PR-A the RelToTrigraph TokenSpan was hardcoded to 3
+        // bytes (`Span::new(abs_start, abs_start + 3)`). Widening
+        // matters because consumers — the E002 fix splice and
+        // diagnostic underlines — read `span.as_str()` to anchor
+        // their replacement / message at the exact source bytes.
+        let parsed = parse_banner("SECRET//REL TO USA, FVEY, AUSTRALIA_GROUP");
+        let trigraph_spans: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToTrigraph)
+            .collect();
+        let src = b"SECRET//REL TO USA, FVEY, AUSTRALIA_GROUP";
+        assert_eq!(trigraph_spans[0].span.as_str(src).unwrap(), "USA");
+        assert_eq!(trigraph_spans[1].span.as_str(src).unwrap(), "FVEY");
+        assert_eq!(
+            trigraph_spans[2].span.as_str(src).unwrap(),
+            "AUSTRALIA_GROUP"
+        );
+    }
+
+    #[test]
+    fn rel_to_drops_unrecognized_token_silently() {
+        // Defensive: tokens outside the CVE recognition set
+        // (`is_trigraph` is false) are still skipped — we widened
+        // recognition, not the gate. `XYZQ` is a 4-char string not
+        // in the CVE TRIGRAPHS list.
+        let parsed = parse_banner("SECRET//REL TO USA, XYZQ, GBR");
+        let codes: Vec<&str> = parsed.attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        assert_eq!(codes, vec!["USA", "GBR"]);
+    }
+
     #[test]
     fn token_spans_record_separators() {
         let parsed = parse_banner("SECRET//NF");
@@ -1673,7 +1769,7 @@ mod tests {
             Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
         );
         assert_eq!(parsed.attrs.rel_to.len(), 2);
-        assert_eq!(parsed.attrs.rel_to[0], Trigraph::USA);
+        assert_eq!(parsed.attrs.rel_to[0], CountryCode::USA);
     }
 
     #[test]
@@ -1683,7 +1779,7 @@ mod tests {
             Some(MarkingClassification::Joint(j)) => {
                 assert_eq!(j.level, Classification::Secret);
                 assert_eq!(j.countries.len(), 2);
-                assert_eq!(j.countries[0], Trigraph::USA);
+                assert_eq!(j.countries[0], CountryCode::USA);
                 assert_eq!(j.countries[1].as_str(), "GBR");
             }
             other => panic!("expected Joint, got: {other:?}"),
@@ -1746,17 +1842,19 @@ mod tests {
 
     #[test]
     fn fgi_non_uppercase_trigraph_rejected() {
-        // `Trigraph::try_new` requires every byte to be ASCII-uppercase
-        // (CAPCO invariant). A 3-byte token with a digit fails that
-        // check and trips the `Trigraph::try_new(...)?` rejection path
-        // in `parse_fgi_classification`.
-        let parsed = parse_banner("//G7B S//NF");
+        // `CountryCode::try_new` accepts ASCII uppercase letter,
+        // ASCII digit, or underscore (issue #183 widened the byte
+        // set to cover `AX2`/`AX3` and `AUSTRALIA_GROUP`). A 3-byte
+        // token containing a lowercase letter still fails that
+        // check and trips the `CountryCode::try_new(...)?` rejection
+        // path in `parse_fgi_classification`.
+        let parsed = parse_banner("//Gbr S//NF");
         assert!(
             !matches!(
                 parsed.attrs.classification,
                 Some(MarkingClassification::Fgi(_))
             ),
-            "G7B should not parse as a valid FGI classification: {:?}",
+            "Gbr should not parse as a valid FGI classification: {:?}",
             parsed.attrs.classification,
         );
     }

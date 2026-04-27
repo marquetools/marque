@@ -105,11 +105,20 @@ pub struct IsmAttributes {
     /// stripped.
     pub non_ic_dissem: Box<[NonIcDissem]>,
 
-    /// REL TO country trigraphs. USA must be present and first if non-empty.
+    /// REL TO country / country-group codes. USA must be present and
+    /// first when the marking targets a US release.
     ///
-    /// Structurally part of the dissem block (comma-delimited), but kept as
-    /// a typed field for E002 and REL TO validation rules.
-    pub rel_to: Box<[Trigraph]>,
+    /// Holds the full CAPCO country-code surface — trigraphs (`USA`,
+    /// `GBR`), tetragraphs / country-group codes (`FVEY`, `ACGU`,
+    /// `NATO`, `RSMA`, …), and the longer registered codes (`EU`,
+    /// `AUSTRALIA_GROUP`). Tetragraph membership expansion (FVEY →
+    /// {AUS, CAN, GBR, NZL, USA}) happens at banner-roll-up time in
+    /// [`PageContext::expected_rel_to`], not at parse time, so this
+    /// list preserves the source vocabulary as written.
+    ///
+    /// Structurally part of the dissem block (comma-delimited), but
+    /// kept as a typed field for E002 and REL TO validation rules.
+    pub rel_to: Box<[CountryCode]>,
 
     /// Declassification date from CAB (free text, e.g., "20331231").
     pub declassify_on: Option<Box<str>>,
@@ -463,7 +472,7 @@ impl Classification {
 pub struct FgiClassification {
     /// Originating countries (space-delimited in source).
     /// Empty for source-concealed FGI (`//FGI S//...`).
-    pub countries: Box<[Trigraph]>,
+    pub countries: Box<[CountryCode]>,
     /// Classification level (includes RESTRICTED).
     pub level: Classification,
 }
@@ -590,7 +599,7 @@ pub struct JointClassification {
     /// Classification level (US ladder, includes RESTRICTED).
     pub level: Classification,
     /// Co-owning countries (space-delimited in source). Must include USA.
-    pub countries: Box<[Trigraph]>,
+    pub countries: Box<[CountryCode]>,
 }
 
 // ---------------------------------------------------------------------------
@@ -862,7 +871,7 @@ impl std::fmt::Display for AeaMarking {
 pub struct FgiMarker {
     /// Countries (space-delimited in source).
     /// Empty for source-concealed FGI.
-    pub countries: Box<[Trigraph]>,
+    pub countries: Box<[CountryCode]>,
 }
 
 // ===========================================================================
@@ -1031,66 +1040,244 @@ impl std::fmt::Display for NonIcDissem {
 }
 
 // ===========================================================================
-// Trigraph
+// CountryCode
 // ===========================================================================
 
-/// A 3-character country trigraph (e.g., USA, GBR, AUS).
-/// Validated against CVE country code list at rule-check time.
+/// Maximum byte length of a CAPCO country code.
 ///
-/// The inner bytes are private; construction goes through [`Trigraph::try_new`]
-/// which enforces ASCII-uppercase invariants so that [`Trigraph::as_str`] can
-/// return a `&str` infallibly without panicking at runtime.
+/// The longest entry in `CVEnumISMCATRelTo.xsd` is `AUSTRALIA_GROUP`
+/// (15 bytes); 16 leaves one byte of headroom and keeps the struct on
+/// a clean alignment boundary.
+const COUNTRY_CODE_CAPACITY: usize = 16;
+
+/// A CAPCO country / country-group code, 2–16 ASCII bytes.
 ///
-/// # Limitations
+/// Covers every entry in the CVE country code list:
+/// - 1× 2-char (`EU`)
+/// - 280× 3-char trigraphs (`USA`, `GBR`, `AUS`, …)
+/// - 58× 4-char tetragraphs / country-group codes (`FVEY`, `ACGU`,
+///   `NATO`, `RSMA`, …)
+/// - 1× 15-char (`AUSTRALIA_GROUP`)
 ///
-/// CAPCO also uses tetragraphs (NATO, FVEY, ACGU) and longer org codes
-/// (AUSTRALIA_GROUP). These are present in the CVE TRIGRAPHS list but cannot
-/// be represented by this type's 3-byte constraint. A broader `CountryCode`
-/// type is planned for a future version.
+/// The inner bytes are private; construction goes through
+/// [`CountryCode::try_new`] which enforces the CAPCO byte-set invariant
+/// (ASCII uppercase letters, ASCII digits, underscore — covers `AX2`,
+/// `AX3`, `AUSTRALIA_GROUP`, and the standard alpha trigraphs/
+/// tetragraphs) so that [`CountryCode::as_str`] can return a `&str`
+/// infallibly without panicking at runtime.
+///
+/// `Copy` is preserved (24 bytes after padding) so the type composes
+/// in iterator chains and `BTreeSet`-based intersection without
+/// manual `.clone()` calls. The fixed-array form keeps `IsmAttributes::rel_to`
+/// (`Box<[CountryCode]>`) heap-free per entry on the parsing hot path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Trigraph([u8; 3]);
+pub struct CountryCode {
+    /// Code bytes, zero-padded after `len`. Derived `Ord` compares
+    /// lexicographically on the padded bytes; zero-padding makes
+    /// shorter codes with a shared prefix sort first, matching `&str`
+    /// ordering on ASCII.
+    bytes: [u8; COUNTRY_CODE_CAPACITY],
+    /// Active byte count, `2..=COUNTRY_CODE_CAPACITY`.
+    len: u8,
+}
 
-impl Trigraph {
-    /// The always-valid `USA` trigraph constant.
-    pub const USA: Self = Self(*b"USA");
+impl CountryCode {
+    /// The always-valid `USA` country code constant.
+    pub const USA: Self = Self::const_new(b"USA");
 
-    /// Attempt to construct a trigraph from 3 bytes.
-    ///
-    /// Returns `None` unless every byte is an ASCII uppercase letter
-    /// (`A`–`Z`), which is the invariant enforced by CAPCO for all valid
-    /// country/entity codes.
-    #[inline]
-    pub const fn try_new(bytes: [u8; 3]) -> Option<Self> {
+    /// `const`-context constructor used by the [`CountryCode::USA`]
+    /// constant. Panics at compile time on invalid input — callers in
+    /// runtime code MUST use [`CountryCode::try_new`].
+    const fn const_new(bytes: &[u8]) -> Self {
+        assert!(
+            bytes.len() >= 2 && bytes.len() <= COUNTRY_CODE_CAPACITY,
+            "CountryCode constant length out of range",
+        );
+        let mut padded = [0u8; COUNTRY_CODE_CAPACITY];
         let mut i = 0;
-        while i < 3 {
-            if !bytes[i].is_ascii_uppercase() {
-                return None;
-            }
+        while i < bytes.len() {
+            assert!(
+                Self::is_valid_byte(bytes[i]),
+                "CountryCode constant contains invalid byte",
+            );
+            padded[i] = bytes[i];
             i += 1;
         }
-        Some(Self(bytes))
+        Self {
+            bytes: padded,
+            len: bytes.len() as u8,
+        }
     }
 
-    /// Return the trigraph as a string slice.
+    /// Returns `true` if `b` is in the CAPCO country-code byte set:
+    /// ASCII uppercase letter, ASCII digit, or underscore. Digits cover
+    /// `AX2`/`AX3`; underscore covers `AUSTRALIA_GROUP`.
+    #[inline]
+    const fn is_valid_byte(b: u8) -> bool {
+        b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'
+    }
+
+    /// Attempt to construct a country code from a byte slice.
     ///
-    /// Infallible because construction via [`Trigraph::try_new`] (or the
-    /// [`Trigraph::USA`] constant) guarantees ASCII-uppercase bytes, which
-    /// are always valid UTF-8.
+    /// Returns `None` if `bytes`:
+    /// - is shorter than 2 bytes (`EU` is the shortest CVE entry) or
+    ///   longer than [`COUNTRY_CODE_CAPACITY`] bytes
+    /// - contains any byte outside the CAPCO country-code byte set
+    ///   (ASCII uppercase letter, ASCII digit, underscore)
+    ///
+    /// Membership in the CVE recognition set is a separate check —
+    /// see [`crate::CapcoTokenSet::is_trigraph`] (the trait method
+    /// covers any known country code, not only 3-char trigraphs).
+    #[inline]
+    pub const fn try_new(bytes: &[u8]) -> Option<Self> {
+        let len = bytes.len();
+        if len < 2 || len > COUNTRY_CODE_CAPACITY {
+            return None;
+        }
+        let mut padded = [0u8; COUNTRY_CODE_CAPACITY];
+        let mut i = 0;
+        while i < len {
+            if !Self::is_valid_byte(bytes[i]) {
+                return None;
+            }
+            padded[i] = bytes[i];
+            i += 1;
+        }
+        Some(Self {
+            bytes: padded,
+            len: len as u8,
+        })
+    }
+
+    /// Return the country code as a string slice.
+    ///
+    /// Infallible because construction via [`CountryCode::try_new`]
+    /// (or [`CountryCode::USA`]) guarantees every active byte is in the
+    /// CAPCO byte set, which is a subset of ASCII / valid UTF-8.
     #[inline]
     pub fn as_str(&self) -> &str {
-        // SAFETY: `Trigraph` can only be constructed via `try_new` or the
-        // `USA` constant, both of which require ASCII uppercase letters.
-        // ASCII is a subset of valid UTF-8.
+        // SAFETY: `CountryCode` can only be constructed via `try_new`
+        // or `const_new`, both of which require every active byte to
+        // be ASCII uppercase, ASCII digit, or underscore. ASCII is a
+        // subset of valid UTF-8.
         #[allow(unsafe_code)]
         unsafe {
-            std::str::from_utf8_unchecked(&self.0)
+            std::str::from_utf8_unchecked(self.as_bytes())
         }
+    }
+
+    /// Active byte slice (excludes the zero padding).
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+
+    /// Number of active bytes, `2..=COUNTRY_CODE_CAPACITY`.
+    #[inline]
+    pub const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// Always `false` — `CountryCode` invariants forbid empty codes.
+    /// Provided for clippy-`len_without_is_empty` compliance.
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        false
     }
 }
 
-impl std::fmt::Display for Trigraph {
+impl std::fmt::Display for CountryCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod country_code_tests {
+    use super::CountryCode;
+
+    #[test]
+    fn try_new_accepts_two_byte_eu() {
+        let eu = CountryCode::try_new(b"EU").unwrap();
+        assert_eq!(eu.as_str(), "EU");
+        assert_eq!(eu.len(), 2);
+    }
+
+    #[test]
+    fn try_new_accepts_three_byte_trigraph() {
+        let usa = CountryCode::try_new(b"USA").unwrap();
+        assert_eq!(usa, CountryCode::USA);
+        assert_eq!(usa.as_str(), "USA");
+    }
+
+    #[test]
+    fn try_new_accepts_four_byte_tetragraph() {
+        let fvey = CountryCode::try_new(b"FVEY").unwrap();
+        assert_eq!(fvey.as_str(), "FVEY");
+        assert_eq!(fvey.len(), 4);
+    }
+
+    #[test]
+    fn try_new_accepts_australia_group_with_underscore() {
+        let ag = CountryCode::try_new(b"AUSTRALIA_GROUP").unwrap();
+        assert_eq!(ag.as_str(), "AUSTRALIA_GROUP");
+        assert_eq!(ag.len(), 15);
+    }
+
+    #[test]
+    fn try_new_accepts_digits_in_ax2_ax3() {
+        assert_eq!(CountryCode::try_new(b"AX2").unwrap().as_str(), "AX2");
+        assert_eq!(CountryCode::try_new(b"AX3").unwrap().as_str(), "AX3");
+    }
+
+    #[test]
+    fn try_new_rejects_too_short() {
+        assert!(CountryCode::try_new(b"").is_none());
+        assert!(CountryCode::try_new(b"X").is_none());
+    }
+
+    #[test]
+    fn try_new_rejects_too_long() {
+        // 17 bytes — one over capacity.
+        assert!(CountryCode::try_new(b"ABCDEFGHIJKLMNOPQ").is_none());
+    }
+
+    #[test]
+    fn try_new_rejects_lowercase() {
+        assert!(CountryCode::try_new(b"usa").is_none());
+        assert!(CountryCode::try_new(b"Fvey").is_none());
+    }
+
+    #[test]
+    fn try_new_rejects_non_ascii() {
+        // 'É' is two UTF-8 bytes (0xC3 0x89); first byte fails the
+        // is_valid_byte check.
+        let bytes = "ÉU".as_bytes();
+        assert!(CountryCode::try_new(bytes).is_none());
+    }
+
+    #[test]
+    fn ord_matches_str_lex_for_mixed_lengths() {
+        let eu = CountryCode::try_new(b"EU").unwrap();
+        let aus = CountryCode::try_new(b"AUS").unwrap();
+        let usa = CountryCode::USA;
+        let usab = CountryCode::try_new(b"USAB").unwrap();
+        let mut all = [eu, aus, usa, usab];
+        all.sort();
+        assert_eq!(all[0].as_str(), "AUS");
+        assert_eq!(all[1].as_str(), "EU");
+        assert_eq!(all[2].as_str(), "USA");
+        assert_eq!(all[3].as_str(), "USAB");
+    }
+
+    #[test]
+    fn copy_semantics_preserved() {
+        let original = CountryCode::USA;
+        let copy = original;
+        // Both still usable — `Copy` not `Move`.
+        assert_eq!(original, copy);
+        assert_eq!(original.as_str(), copy.as_str());
     }
 }
 
@@ -1188,32 +1375,6 @@ impl SciCompartment {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-
-    #[test]
-    fn trigraph_usa_constant_is_valid() {
-        assert_eq!(Trigraph::USA.as_str(), "USA");
-    }
-
-    #[test]
-    fn trigraph_try_new_accepts_uppercase() {
-        let t = Trigraph::try_new(*b"GBR").unwrap();
-        assert_eq!(t.as_str(), "GBR");
-    }
-
-    #[test]
-    fn trigraph_try_new_rejects_lowercase() {
-        assert!(Trigraph::try_new(*b"usa").is_none());
-    }
-
-    #[test]
-    fn trigraph_try_new_rejects_digits() {
-        assert!(Trigraph::try_new(*b"US1").is_none());
-    }
-
-    #[test]
-    fn trigraph_try_new_rejects_high_bytes() {
-        assert!(Trigraph::try_new([0xFF, 0xFF, 0xFF]).is_none());
-    }
 
     #[test]
     fn classification_ord_is_restrictiveness() {

@@ -10,7 +10,7 @@
 //! REL-TO intersection subset, and empty-page sentinel.
 
 use marque_ism::{
-    Classification, DissemControl, IsmAttributes, MarkingClassification, PageContext, Trigraph,
+    Classification, CountryCode, DissemControl, IsmAttributes, MarkingClassification, PageContext,
 };
 use proptest::prelude::*;
 use proptest::sample::subsequence;
@@ -48,20 +48,20 @@ static VALID_TRIGRAPHS: &[[u8; 3]] = &[
     *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA",
 ];
 
-fn arb_rel_to() -> impl Strategy<Value = Vec<Trigraph>> {
+fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
     let all_trigraphs: Vec<[u8; 3]> = VALID_TRIGRAPHS.to_vec();
     let len = all_trigraphs.len();
     prop_oneof![
         // Empty (no REL TO constraint)
         Just(vec![]),
         // USA only
-        Just(vec![Trigraph::try_new(*b"USA").unwrap()]),
+        Just(vec![CountryCode::try_new(b"USA").unwrap()]),
         // USA + some partner nations
         subsequence(all_trigraphs, 1..=len).prop_map(|subset| {
             // USA must be first; ensure it's present and de-duplicated.
-            let mut trigraphs: Vec<Trigraph> = std::iter::once(*b"USA")
+            let mut trigraphs: Vec<CountryCode> = std::iter::once(*b"USA")
                 .chain(subset.into_iter().filter(|b| *b != *b"USA"))
-                .map(|b| Trigraph::try_new(b).unwrap())
+                .map(|b| CountryCode::try_new(&b).unwrap())
                 .collect();
             trigraphs.dedup_by_key(|t| t.as_str().to_owned());
             trigraphs
