@@ -44,6 +44,7 @@ Usage:
     python analyze.py --corpus /path/to/text/files/ --mode mangled \\
         --output tests/fixtures/mangled/
 """
+import contextlib
 
 import argparse
 import hashlib
@@ -167,15 +168,10 @@ def extract_body(raw: bytes) -> Optional[str]:
     if text[:200].count(":") >= 2 and any(
         h in text[:500] for h in ("From:", "Subject:", "Date:", "Message-ID:")
     ):
-        try:
+        with contextlib.suppress(Exception):
             msg = email.message_from_string(text, policy=email.policy.default)
-            body = msg.get_body(preferencelist=("plain",))
-            if body:
-                content = body.get_content()
-                if isinstance(content, str):
-                    return content
-        except Exception:
-            pass
+            if (body := msg and msg.get_body(preferencelist=("plain",))) and (content := body.get_content()) and isinstance(content, str):
+                return content
         # Fallback: strip headers manually
         header_end = text.find("\n\n")
         if header_end > 0:
