@@ -47,6 +47,7 @@ aho-corasick = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 xmloxide = { workspace = true }
 
 [build-dependencies]

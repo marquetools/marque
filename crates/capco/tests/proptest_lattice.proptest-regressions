@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 29b1874825893dda0d625fea4e21eca9045085f4eddf548c2151f6611b7e825f # shrinks to a = Present { concealed: false, countries: {Trigraph([85, 83, 65])} }, b = Present { concealed: true, countries: {} }

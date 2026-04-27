@@ -39,6 +39,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+proptest = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 # path-only (no version) so `cargo publish` strips these dev-deps from the
