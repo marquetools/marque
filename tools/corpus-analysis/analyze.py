@@ -688,9 +688,7 @@ HEURISTIC_FREQUENCY_SCHEMA_VERSION = "marque-heuristic-frequency-1"
 # this list at the same time.
 HEURISTIC_TRIGGERS_1CHAR = ("A", "W", "E", "Z", "V", "F", "X")
 HEURISTIC_TRIGGERS_2CHAR = tuple(
-    f"{first}{second}"
-    for first in "TRYHGF"
-    for second in "AWEZS"
+    f"{first}{second}" for first in "TRYHGF" for second in "AWEZS"
 )
 ALL_HEURISTIC_TRIGGERS = HEURISTIC_TRIGGERS_1CHAR + HEURISTIC_TRIGGERS_2CHAR
 
@@ -702,12 +700,30 @@ ALL_HEURISTIC_TRIGGERS = HEURISTIC_TRIGGERS_1CHAR + HEURISTIC_TRIGGERS_2CHAR
 MARKING_SHAPE_SIGNALS = (
     # Classifications (full forms only — short forms `S`, `C`, `U`,
     # `R`, `TS` would self-match against the trigger search).
-    "SECRET", "TOP SECRET", "CONFIDENTIAL", "UNCLASSIFIED", "RESTRICTED",
+    "SECRET",
+    "TOP SECRET",
+    "CONFIDENTIAL",
+    "UNCLASSIFIED",
+    "RESTRICTED",
     # Dissem long forms
-    "NOFORN", "ORCON", "PROPIN", "IMCON", "RELIDO", "RSEN", "EYESONLY",
-    "EXDIS", "NODIS", "LIMDIS", "FOUO", "FISA",
+    "NOFORN",
+    "ORCON",
+    "PROPIN",
+    "IMCON",
+    "RELIDO",
+    "RSEN",
+    "EYESONLY",
+    "EXDIS",
+    "NODIS",
+    "LIMDIS",
+    "FOUO",
+    "FISA",
     # SCI compound starters
-    "HCS-P", "HCS-O", "SI-G", "SI-EU", "SI-NK",
+    "HCS-P",
+    "HCS-O",
+    "SI-G",
+    "SI-EU",
+    "SI-NK",
     # Phrases
     "REL TO",
 )
@@ -779,7 +795,7 @@ def measure_heuristic_trigger_frequency(
         for m in signal_pat.finditer(text):
             signal_positions.append((m.start(), m.end()))
         for m in slash_pat.finditer(text):
-            prefix = text[max(0, m.start() - 6):m.start()].lower()
+            prefix = text[max(0, m.start() - 6) : m.start()].lower()
             if "http" in prefix or "ftp:" in prefix:
                 continue
             signal_positions.append((m.start(), m.end()))
@@ -888,13 +904,15 @@ SUPERSEDED_TOKEN_MAP = {
 #   CLASS//DISSEM
 #   CLASS//SCI//DISSEM
 # where CLASS is one of the known classification tokens.
-_MARKING_PORTION_RE = re.compile(
-    r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/\-]+)+)\)"
-)
+# NOTE: GitHub's security scanning flags these regexes as ReDoS risks.
+# They're safe in this context because the input corpus text is trusted,
+# we match it to an SHA-512 fingerprint, and this script is **not** used in production
+# It's a pre-compilation step that runs once on a known corpus, not a runtime path.
+_MARKING_PORTION_RE = re.compile(r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/-]+)+)\)")
 _MARKING_BANNER_RE = re.compile(
     r"(?:^|(?<=\s))"
     r"((?:UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP SECRET|RESTRICTED)"
-    r"(?://[A-Z][A-Z0-9 ,/\-]+)+)"
+    r"(?://[A-Z][A-Z0-9 ,/-]+)+)"
     r"(?=\s|$)",
     re.MULTILINE,
 )
@@ -925,7 +943,9 @@ def _apply_typo(canonical: str, rng: random.Random) -> Optional[str]:
     idx = rng.randrange(len(canonical))
     choice = rng.choice(("swap", "drop", "insert", "substitute"))
     if choice == "swap" and idx < len(canonical) - 1:
-        return canonical[:idx] + canonical[idx + 1] + canonical[idx] + canonical[idx + 2 :]
+        return (
+            canonical[:idx] + canonical[idx + 1] + canonical[idx] + canonical[idx + 2 :]
+        )
     if choice == "drop":
         return canonical[:idx] + canonical[idx + 1 :]
     if choice == "insert":
@@ -1306,7 +1326,9 @@ def main():
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(output_json)
-            print(f"Heuristic-frequency results written to {args.output}", file=sys.stderr)
+            print(
+                f"Heuristic-frequency results written to {args.output}", file=sys.stderr
+            )
         else:
             print(output_json)
         # Print a quick human-readable summary on stderr.

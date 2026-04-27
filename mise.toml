@@ -19,6 +19,9 @@ typos = "1.45.1"
 tombi = "0.9.2"
 rust = "nightly"
 yq = "4.52.5"
+pnpm = "10.33.0"
+node = "24.14.1"
+python = "3.13.12"
 
 [settings]
 auto_install = true
