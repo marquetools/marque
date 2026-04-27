@@ -34,8 +34,7 @@ fn arb_sci_control_bare() -> impl Strategy<Value = SciControlBare> {
 }
 
 fn arb_uppercase_id(min: usize, max: usize) -> impl Strategy<Value = String> {
-    proptest::string::string_regex(&format!("[A-Z0-9]{{{},{}}}", min, max))
-        .expect("valid regex")
+    proptest::string::string_regex(&format!("[A-Z0-9]{{{},{}}}", min, max)).expect("valid regex")
 }
 
 fn arb_sci_compartment() -> impl Strategy<Value = SciCompartment> {
@@ -119,13 +118,13 @@ fn arb_sar_set() -> impl Strategy<Value = SarSet> {
 // FgiSet strategy
 // ---------------------------------------------------------------------------
 
-static VALID_TRIGRAPHS: &[[u8; 3]] =
-    &[*b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA", *b"JPN"];
+static VALID_TRIGRAPHS: &[[u8; 3]] = &[
+    *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA", *b"JPN",
+];
 
 fn arb_trigraph() -> impl Strategy<Value = Trigraph> {
-    (0..VALID_TRIGRAPHS.len()).prop_map(|i| {
-        Trigraph::try_new(VALID_TRIGRAPHS[i]).expect("static trigraphs are valid")
-    })
+    (0..VALID_TRIGRAPHS.len())
+        .prop_map(|i| Trigraph::try_new(VALID_TRIGRAPHS[i]).expect("static trigraphs are valid"))
 }
 
 fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
@@ -185,6 +184,24 @@ proptest! {
     fn sci_meet_commutative(a in arb_sci_set(), b in arb_sci_set()) {
         prop_assert_eq!(a.meet(&b), b.meet(&a));
     }
+
+    #[test]
+    fn sci_meet_associative(a in arb_sci_set(), b in arb_sci_set(), c in arb_sci_set()) {
+        prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
+    }
+
+    // empty is the bottom element: meet with empty absorbs to empty.
+    #[test]
+    fn sci_meet_bottom_absorbs(a in arb_sci_set()) {
+        prop_assert_eq!(a.meet(&SciSet::empty()), SciSet::empty());
+    }
+
+    // Absorption: a ⊔ (a ⊓ b) = a  and  a ⊓ (a ⊔ b) = a.
+    #[test]
+    fn sci_absorption(a in arb_sci_set(), b in arb_sci_set()) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "join-over-meet absorption failed");
+        prop_assert_eq!(a.meet(&a.join(&b)), a, "meet-over-join absorption failed");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +239,24 @@ proptest! {
     #[test]
     fn sar_meet_commutative(a in arb_sar_set(), b in arb_sar_set()) {
         prop_assert_eq!(a.meet(&b), b.meet(&a));
+    }
+
+    #[test]
+    fn sar_meet_associative(a in arb_sar_set(), b in arb_sar_set(), c in arb_sar_set()) {
+        prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
+    }
+
+    // empty is the bottom element: meet with empty absorbs to empty.
+    #[test]
+    fn sar_meet_bottom_absorbs(a in arb_sar_set()) {
+        prop_assert_eq!(a.meet(&SarSet::empty()), SarSet::empty());
+    }
+
+    // Absorption: a ⊔ (a ⊓ b) = a  and  a ⊓ (a ⊔ b) = a.
+    #[test]
+    fn sar_absorption(a in arb_sar_set(), b in arb_sar_set()) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "join-over-meet absorption failed");
+        prop_assert_eq!(a.meet(&a.join(&b)), a, "meet-over-join absorption failed");
     }
 }
 
@@ -286,5 +321,26 @@ proptest! {
                 "meet un-concealed after concealed join: a={a:?}, b={b:?}",
             );
         }
+    }
+
+    #[test]
+    fn fgi_meet_associative(a in arb_fgi_set(), b in arb_fgi_set(), c in arb_fgi_set()) {
+        prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
+    }
+
+    // Join-over-meet absorption: a ⊔ (a ⊓ b) = a (holds unconditionally).
+    //
+    // Note: the symmetric meet-over-join direction (`a ⊓ (a ⊔ b) = a`) does NOT
+    // hold when `b` carries CAPCO's source-concealment flag, because join with a
+    // concealed element produces a concealed result, and the subsequent meet
+    // intersects country sets with the empty set, collapsing to `None`. This is
+    // an intentional deviation from standard lattice absorption, documented in
+    // the `FgiSet` impl and driven by CAPCO §3.3a concealment-supersession
+    // policy. The `fgi_concealment_monotone` test above verifies the policy
+    // holds; do not add `meet_over_join_absorption` or `top_is_meet_identity`
+    // tests for `FgiSet` — they will fail by design.
+    #[test]
+    fn fgi_join_over_meet_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a);
     }
 }

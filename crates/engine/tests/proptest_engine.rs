@@ -79,6 +79,20 @@ fn arb_source() -> impl Strategy<Value = String> {
             .prop_map(|(p1, p2, b)| format!("{p1} {p2}\n{b}")),
         // Plain portion only
         arb_portion().prop_map(|p| format!("{p}\n")),
+        // Multi-KB: banner + many portions to exercise multi-KB code paths
+        // (100–300 portions × ~15 bytes each ≈ 1.5–4.5 KB).
+        (
+            arb_banner(),
+            proptest::collection::vec(arb_portion(), 100..=300)
+        )
+            .prop_map(|(b, ps)| {
+                let mut s = b;
+                for p in &ps {
+                    s.push_str(p);
+                    s.push('\n');
+                }
+                s
+            }),
     ]
 }
 

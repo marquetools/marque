@@ -44,8 +44,9 @@ fn arb_dissem_subset() -> impl Strategy<Value = Vec<DissemControl>> {
     subsequence(stable, 0..=len).prop_map(|v| v)
 }
 
-static VALID_TRIGRAPHS: &[[u8; 3]] =
-    &[*b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA"];
+static VALID_TRIGRAPHS: &[[u8; 3]] = &[
+    *b"USA", *b"GBR", *b"CAN", *b"AUS", *b"NZL", *b"DEU", *b"FRA",
+];
 
 fn arb_rel_to() -> impl Strategy<Value = Vec<Trigraph>> {
     let all_trigraphs: Vec<[u8; 3]> = VALID_TRIGRAPHS.to_vec();
@@ -56,16 +57,15 @@ fn arb_rel_to() -> impl Strategy<Value = Vec<Trigraph>> {
         // USA only
         Just(vec![Trigraph::try_new(*b"USA").unwrap()]),
         // USA + some partner nations
-        subsequence(all_trigraphs, 1..=len)
-            .prop_map(|subset| {
-                // USA must be first; ensure it's present and de-duplicated.
-                let mut trigraphs: Vec<Trigraph> = std::iter::once(*b"USA")
-                    .chain(subset.into_iter().filter(|b| *b != *b"USA"))
-                    .map(|b| Trigraph::try_new(b).unwrap())
-                    .collect();
-                trigraphs.dedup_by_key(|t| t.as_str().to_owned());
-                trigraphs
-            }),
+        subsequence(all_trigraphs, 1..=len).prop_map(|subset| {
+            // USA must be first; ensure it's present and de-duplicated.
+            let mut trigraphs: Vec<Trigraph> = std::iter::once(*b"USA")
+                .chain(subset.into_iter().filter(|b| *b != *b"USA"))
+                .map(|b| Trigraph::try_new(b).unwrap())
+                .collect();
+            trigraphs.dedup_by_key(|t| t.as_str().to_owned());
+            trigraphs
+        }),
     ]
 }
 
@@ -97,7 +97,7 @@ fn arb_portions() -> impl Strategy<Value = Vec<IsmAttributes>> {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    // expected_classification() must be >= the max over portions.
+    // expected_classification() must equal the exact max over portions.
     #[test]
     fn classification_monotone(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -111,15 +111,12 @@ proptest! {
             .filter_map(|a| a.us_classification())
             .max();
 
-        match (rolled, portion_max) {
-            (Some(r), Some(m)) => {
-                prop_assert!(r >= m, "rolled {r:?} < portion max {m:?}");
-            }
-            (None, None) | (Some(_), None) => {}
-            (None, Some(m)) => {
-                prop_assert!(false, "expected_classification is None but portion max is {m:?}");
-            }
-        }
+        prop_assert_eq!(
+            rolled,
+            portion_max,
+            "expected_classification roll-up does not equal portion max for portions: {:?}",
+            portions,
+        );
     }
 
     // Every DissemControl on any portion must appear in expected_dissem_controls().
