@@ -91,21 +91,6 @@ jobs:
             echo "created=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate changelog
-        run: git cliff --output CHANGELOG.md
-
-      - name: Commit changelog and push
-        run: |
-          git add CHANGELOG.md
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update CHANGELOG.md for ${{ steps.tag.outputs.tag }}"
-          fi
-          if [ "${{ inputs.dry-run }}" = "false" ]; then
-            git push origin main --follow-tags
-          else
-            echo "Dry run — skipping push"
-          fi
-
       # Whitepaper §8.7 / gap register #13 — SLSA build provenance for
       # every non-dry-run release. `git archive` produces a
       # workspace-scoped source tarball from the tag. This archive is
@@ -140,19 +125,21 @@ jobs:
           echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
 
       # Issue #191 — SBOM generation in two formats:
-      #   1. SPDX (tag-value) via `reuse spdx` — free from existing REUSE
-      #      annotations; covers every file's license and copyright.
+      #   1. SPDX (tag-value) via `reuse spdx` — generated from existing
+      #      REUSE annotations; covers every file's license and copyright.
       #      NTIA minimum-elements compliant. `reuse` is already pinned in
       #      CI (`ci.yml` `reuse` job); the same version is installed here
-      #      to keep behaviour consistent.
+      #      to keep behavior consistent.
       #   2. CycloneDX (JSON + XML) via `cargo cyclonedx` — walks
       #      Cargo.lock and emits the full transitive dep graph with
       #      versions, licenses, and checksums. The format most SBOM
       #      consumers and vulnerability scanners (Grype, Trivy,
       #      Dependency-Track) expect for supply-chain analysis.
       #
-      # TODO(#191): SHA-pin `cargo-cyclonedx` per §8.3 once a stable
-      # release is confirmed by the maintainers.
+      # This step intentionally runs BEFORE `Generate changelog` so the
+      # working tree matches the tagged commit exactly. The changelog
+      # commit (CHANGELOG.md only) is post-tag and must not influence
+      # the SBOM content.
       - name: Generate SBOMs
         id: sbom
         if: inputs.dry-run == false
@@ -165,7 +152,7 @@ jobs:
             --add-license-concluded \
             --creator-organization "Knitli Inc."
           # CycloneDX — full transitive dependency graph from Cargo.lock
-          cargo install cargo-cyclonedx --locked
+          cargo install cargo-cyclonedx --version 0.5.7 --locked
           cargo cyclonedx --format json --workspace \
             --output-file "marque-${VERSION}.cyclonedx.json"
           cargo cyclonedx --format xml --workspace \
@@ -173,6 +160,21 @@ jobs:
           echo "spdx=marque-${VERSION}.spdx" >> "$GITHUB_OUTPUT"
           echo "cdx=marque-${VERSION}.cyclonedx.json" >> "$GITHUB_OUTPUT"
           echo "cdxml=marque-${VERSION}.cyclonedx.xml" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        run: git cliff --output CHANGELOG.md
+
+      - name: Commit changelog and push
+        run: |
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update CHANGELOG.md for ${{ steps.tag.outputs.tag }}"
+          fi
+          if [ "${{ inputs.dry-run }}" = "false" ]; then
+            git push origin main --follow-tags
+          else
+            echo "Dry run — skipping push"
+          fi
 
       - name: Attest source archive
         if: inputs.dry-run == false

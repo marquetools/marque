@@ -850,7 +850,7 @@ License 2.0, BSL, SSPL). Two CI gates enforce this:
 
 Release artifacts publish to crates.io via OIDC token exchange
 (`rust-lang/crates-io-auth-action`). Every non-dry-run release also
-produces a signed source archive and two SBOM files via
+produces a signed source archive and three SBOM files via
 `actions/attest-build-provenance`:
 
 1. `git archive` produces a workspace-scoped `marque-<version>.tar.gz`
@@ -899,9 +899,7 @@ an existing tag still completes the attestation + GitHub-release work.
 artifact records a fresh signature bound to the same subject digest.
 
 All actions in the release workflow are SHA-pinned per §8.3.
-`cargo-cyclonedx` is installed via `cargo install --locked` without a
-version pin pending confirmation of a stable release; see issue #191 for
-the SHA-pin follow-up.
+`cargo-cyclonedx` is pinned to `0.5.7` via `cargo install --version 0.5.7 --locked`.
 
 **Status**: `[LANDED]` for §§8.1–8.7 including SBOM generation (issue #191).
 (§8.5 landed via Constitution v1.2.0; §8.4 `reuse lint` and §8.7
