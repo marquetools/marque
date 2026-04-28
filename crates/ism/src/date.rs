@@ -52,7 +52,9 @@ use jiff::civil;
 
 /// A UTC offset suitable for `DateHourMin` and `DateTime` precision tiers.
 ///
-/// Stored as signed integer minutes from UTC in the range −1440..=+1440.
+/// Stored as signed integer minutes from UTC in the range −1439..=+1439
+/// (i.e. ±23:59). The maximum representable offset is ±23:59; offsets of
+/// ±24:00 or larger are rejected by [`UtcOffset::from_hhmm`].
 /// `None` in the parent type represents a *floating* (offset-naive) time.
 ///
 /// # Examples
@@ -78,15 +80,13 @@ impl UtcOffset {
     /// Construct from a sign and hours/minutes.
     ///
     /// `sign` must be `1` or `-1`. Returns `None` if components are out of
-    /// range (`hours > 23`, `minutes > 59`, or total magnitude > 1440).
+    /// range (`hours > 23`, `minutes > 59`). The maximum representable
+    /// offset magnitude is 23:59 (1439 minutes).
     pub fn from_hhmm(sign: i8, hours: u8, minutes: u8) -> Option<Self> {
         if !matches!(sign, 1 | -1) || hours > 23 || minutes > 59 {
             return None;
         }
         let total = (hours as i16 * 60 + minutes as i16) * sign as i16;
-        if total.abs() > 1440 {
-            return None;
-        }
         Some(Self { minutes: total })
     }
 
@@ -600,6 +600,11 @@ fn parse_ism_date(s: &str) -> Result<IsmDate, ParseIsmDateError> {
 /// Dispatch between `DateHourMin` and `DateTime` once the date portion has
 /// been identified.
 fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
+    // All ISM date strings are pure ASCII. Reject multi-byte UTF-8 up front
+    // so every subsequent fixed byte-offset slice is panic-safe.
+    if !s.is_ascii() {
+        return Err(ParseIsmDateError::new("date string contains non-ASCII characters"));
+    }
     let bytes = s.as_bytes();
 
     let y = parse_4digit_year(&bytes[0..4])?;
@@ -689,10 +694,19 @@ fn parse_offset(s: &str) -> Result<Option<UtcOffset>, ParseIsmDateError> {
         "" => Ok(None),
         "Z" => Ok(Some(UtcOffset::UTC)),
         _ if (s.starts_with('+') || s.starts_with('-')) && s.len() == 6 => {
+            let b = s.as_bytes();
+            // Require the `:` separator at index 3 explicitly so that inputs
+            // like `"+05-30"` (wrong separator) or `"+0530"` (missing one)
+            // are rejected rather than accidentally parsed.
+            if b[3] != b':' {
+                return Err(ParseIsmDateError::new(
+                    "UTC offset missing ':' separator (expected ±HH:MM)",
+                ));
+            }
             let sign: i8 = if s.starts_with('+') { 1 } else { -1 };
-            let oh = parse_2digits(s[1..3].as_bytes())
+            let oh = parse_2digits(&b[1..3])
                 .ok_or(ParseIsmDateError::new("invalid offset hour"))?;
-            let om = parse_2digits(s[4..6].as_bytes())
+            let om = parse_2digits(&b[4..6])
                 .ok_or(ParseIsmDateError::new("invalid offset minute"))?;
             UtcOffset::from_hhmm(sign, oh, om)
                 .ok_or(ParseIsmDateError::new("UTC offset out of range"))
@@ -1178,5 +1192,28 @@ mod tests {
     fn utc_offset_rejects_invalid() {
         assert!(UtcOffset::from_hhmm(1, 24, 0).is_none()); // hours > 23
         assert!(UtcOffset::from_hhmm(1, 0, 60).is_none()); // minutes > 59
+    }
+
+    #[test]
+    fn parse_offset_rejects_wrong_separator() {
+        // `+05-30` has `-` instead of `:` at index 3 — must be rejected.
+        let err = IsmDate::from_str("2003-04-15T10:30+05-30");
+        assert!(
+            err.is_err(),
+            "offset with wrong separator should be Err, got {err:?}"
+        );
+        // `+0530` (missing separator entirely) is 5 bytes, not 6 — also rejected.
+        let err2 = IsmDate::from_str("2003-04-15T10:30+0530");
+        assert!(
+            err2.is_err(),
+            "offset without separator should be Err, got {err2:?}"
+        );
+    }
+
+    #[test]
+    fn parse_datetime_rejects_non_ascii() {
+        // Multi-byte UTF-8 must not cause a panic in the byte-offset slicer.
+        let result = IsmDate::from_str("2003-04-15T10:30\u{00E9}");
+        assert!(result.is_err(), "non-ASCII should be Err, got {result:?}");
     }
 }

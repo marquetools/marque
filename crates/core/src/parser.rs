@@ -1144,15 +1144,24 @@ fn parse_rel_to_with_spans(
 // `parse_marking_string` above). The single hand-coded path is
 // `parse_classification`, which is documented inline.
 
-/// Returns `true` if `s` looks like an inline declassification date.
+/// Returns `true` if `s` looks like a syntactically and calendrically valid
+/// inline declassification date.
 ///
 /// CAPCO allows `YYYYMMDD` (8-digit) or `YYYY` (4-digit, meaning declassify
 /// at the start of that calendar year). Both forms are valid in a CAB but
 /// are a violation (E005) if they appear directly in a banner or portion
 /// marking string.
+///
+/// Only strings that round-trip through [`IsmDate::from_str`] successfully
+/// are accepted. This rejects impossible dates like `20301340` (month 13 /
+/// day 40) that look like dates but would silently set `declassify_on` to
+/// `None` and prevent E005 from firing.
 fn is_declass_date(s: &str) -> bool {
     let bytes = s.as_bytes();
-    matches!(bytes.len(), 4 | 8) && bytes.iter().all(u8::is_ascii_digit)
+    if !matches!(bytes.len(), 4 | 8) || !bytes.iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    IsmDate::from_str(s).is_ok()
 }
 
 /// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
@@ -1504,6 +1513,18 @@ mod tests {
     fn is_declass_date_rejects_wrong_length() {
         assert!(!is_declass_date("203012"));
         assert!(!is_declass_date("203012311"));
+    }
+
+    #[test]
+    fn is_declass_date_rejects_impossible_calendar_dates() {
+        // Month 13 is impossible.
+        assert!(!is_declass_date("20301340"));
+        // Day 0 is impossible.
+        assert!(!is_declass_date("20300100"));
+        // 2003-02-31 doesn't exist (February has at most 29 days).
+        assert!(!is_declass_date("20030231"));
+        // 2003-04-31 doesn't exist (April has 30 days).
+        assert!(!is_declass_date("20030431"));
     }
 
     // --- token spans ---

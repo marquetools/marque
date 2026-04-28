@@ -1259,9 +1259,10 @@ pub fn generate_cab_native(
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
             if found_declass_date.is_none() {
                 if let Some(date) = &parsed.attrs.declassify_on {
-                    // Emit in CAPCO YYYYMMDD / YYYY format (no hyphens) for
-                    // the CAB "Declassify On:" line.  Use the end-of-span
-                    // string so Year(2003) → "20031231" (most conservative).
+                    // `to_maxdate_str()` always returns 8-digit YYYYMMDD:
+                    // Year(y) → "{y}1231", YearMonth(y,m) → last day of month,
+                    // Date / DateHourMin / DateTime → YYYYMMDD of the date component.
+                    // This is the format expected on a CAB "Declassify On:" line.
                     found_declass_date = Some(date.to_maxdate_str().into());
                 }
             }

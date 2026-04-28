@@ -1531,6 +1531,21 @@ fn is_valid_extension_byte(b: u8) -> bool {
     b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'
 }
 
+/// Returns the number of days in the given month, correctly accounting for
+/// leap years. Used by [`validate_temporal_field`] without a jiff dep in
+/// the build script.
+fn build_days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            if leap { 29 } else { 28 }
+        }
+        _ => 0, // invalid month — caught before this is reached
+    }
+}
+
 /// Validate a temporal date string from `country_extensions.toml`.
 ///
 /// Accepted forms:
@@ -1558,7 +1573,7 @@ fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
                     (1..=12).contains(&month)
                 }
         }
-        // YYYY-MM-DD
+        // YYYY-MM-DD — validate full calendar correctness (incl. leap years)
         10 => {
             bytes[4] == b'-'
                 && bytes[7] == b'-'
@@ -1566,9 +1581,15 @@ fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
                 && bytes[5..7].iter().all(|b| b.is_ascii_digit())
                 && bytes[8..10].iter().all(|b| b.is_ascii_digit())
                 && {
+                    let y = (bytes[0] - b'0') as i32 * 1000
+                        + (bytes[1] - b'0') as i32 * 100
+                        + (bytes[2] - b'0') as i32 * 10
+                        + (bytes[3] - b'0') as i32;
                     let m = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
                     let d = (bytes[8] - b'0') * 10 + (bytes[9] - b'0');
-                    (1..=12).contains(&m) && (1..=31).contains(&d)
+                    (1..=12).contains(&m)
+                        && d >= 1
+                        && d <= build_days_in_month(y, m)
                 }
         }
         _ => false,
@@ -1577,8 +1598,60 @@ fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
         panic!(
             "{path}: country extension `code = {code:?}` has invalid \
              `{field}` value {s:?}. Expected ISO 8601 date: \
-             `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`."
+             `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` (calendar-correct)."
         );
+    }
+}
+
+/// Returns the *start-of-span* `(year, month, day)` for a validated ISO 8601
+/// date string (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`).
+///
+/// - `YYYY`       → (year, 1,  1)
+/// - `YYYY-MM`    → (year, mm, 1)
+/// - `YYYY-MM-DD` → (year, mm, dd)
+fn temporal_start_ymd(s: &str) -> (i32, u8, u8) {
+    let b = s.as_bytes();
+    let y = (b[0] - b'0') as i32 * 1000
+        + (b[1] - b'0') as i32 * 100
+        + (b[2] - b'0') as i32 * 10
+        + (b[3] - b'0') as i32;
+    match s.len() {
+        4 => (y, 1, 1),
+        7 => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            (y, m, 1)
+        }
+        _ => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            let d = (b[8] - b'0') * 10 + (b[9] - b'0');
+            (y, m, d)
+        }
+    }
+}
+
+/// Returns the *end-of-span* `(year, month, day)` for a validated ISO 8601
+/// date string (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`).
+///
+/// - `YYYY`       → (year, 12, 31)
+/// - `YYYY-MM`    → (year, mm, last day of month)
+/// - `YYYY-MM-DD` → (year, mm, dd)
+fn temporal_end_ymd(s: &str) -> (i32, u8, u8) {
+    let b = s.as_bytes();
+    let y = (b[0] - b'0') as i32 * 1000
+        + (b[1] - b'0') as i32 * 100
+        + (b[2] - b'0') as i32 * 10
+        + (b[3] - b'0') as i32;
+    match s.len() {
+        4 => (y, 12, 31),
+        7 => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            (y, m, build_days_in_month(y, m))
+        }
+        _ => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            let d = (b[8] - b'0') * 10 + (b[9] - b'0');
+            (y, m, d)
+        }
     }
 }
 
@@ -1754,11 +1827,17 @@ fn load_country_extensions(
         if let Some(ref at) = raw_active_to {
             validate_temporal_field(at, "active_to", &code, path);
         }
-        // active_to must not precede active_from (lex comparison valid for
-        // ISO 8601 prefix-normalised strings: YYYY ≤ YYYY-MM ≤ YYYY-MM-DD
-        // because shorter forms compare correctly on their common prefix).
+        // active_to must not precede active_from.
+        //
+        // Comparison uses span-aware logic: `active_from` uses its
+        // *start-of-span* (first day) and `active_to` uses its
+        // *end-of-span* (last day), so `active_to = "2003"` (meaning
+        // all of 2003, end = 2003-12-31) is not rejected when
+        // `active_from = "2003-04-01"` (start = 2003-04-01).
         if let (Some(af), Some(at)) = (&raw_active_from, &raw_active_to) {
-            if at.as_str() < af.as_str() {
+            let from_start = temporal_start_ymd(af);
+            let to_end = temporal_end_ymd(at);
+            if to_end < from_start {
                 panic!(
                     "{path}: country extension `code = {code:?}` has \
                      `active_to` ({at:?}) before `active_from` ({af:?}). \

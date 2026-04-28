@@ -30,6 +30,8 @@
 //! inspects the candidate set to decide whether to surface a
 //! recognition diagnostic, not to invent one.
 
+use std::sync::Arc;
+
 use crate::ambiguity::Parsed;
 use crate::scheme::MarkingScheme;
 
@@ -112,13 +114,17 @@ pub struct ParseContext {
     /// tetragraph membership active as of a particular date) use this as the
     /// evaluation anchor instead of the current wall-clock time.
     ///
-    /// Stored as an ISO 8601 date string so `marque-scheme` stays free of a
-    /// runtime dependency on `marque-ism`. Code in `marque-capco` or
-    /// `marque-engine` can parse it with `marque_ism::IsmDate::from_str`.
+    /// Stored as an ISO 8601 date string wrapped in `Arc<str>` so that
+    /// `ParseContext::clone()` in the recognizer hot path (e.g.
+    /// `StrictOrDecoderRecognizer` uses `..cx.clone()`) never allocates
+    /// even when `as_of` is `Some` — the `Arc` clone is a single atomic
+    /// increment. `marque-scheme` stays free of a runtime dependency on
+    /// `marque-ism`; callers in `marque-capco`/`marque-engine` can parse
+    /// it with `marque_ism::IsmDate::from_str`.
     ///
     /// Currently `None` everywhere — no behavior change until the
     /// membership-uncertain diagnostic (issue #206) is implemented.
-    pub as_of: Option<Box<str>>,
+    pub as_of: Option<Arc<str>>,
 }
 
 impl Default for ParseContext {
