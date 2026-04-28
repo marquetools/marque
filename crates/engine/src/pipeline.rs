@@ -13,6 +13,17 @@
 use marque_ism::MarkingCandidate;
 use marque_rules::Diagnostic;
 
+/// Error type for stream sources.
+#[derive(Debug, thiserror::Error)]
+pub enum SourceError {
+    /// Standard I/O errors from underlying readers.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    /// Other errors.
+    #[error("Source error: {0}")]
+    Other(String),
+}
+
 /// A chunk of source text with its byte offset in the original document.
 #[derive(Debug)]
 pub struct TextChunk {
@@ -22,9 +33,9 @@ pub struct TextChunk {
 
 /// A stream source — anything that produces `TextChunk`s.
 /// Implemented by: string buffer (WASM/server), file reader (CLI/batch), HTTP body.
-pub trait Source: Send {
-    // TODO: implement as futures::Stream<Item = Result<TextChunk, SourceError>>
-}
+pub trait Source: futures_core::Stream<Item = Result<TextChunk, SourceError>> + Send {}
+
+impl<T> Source for T where T: futures_core::Stream<Item = Result<TextChunk, SourceError>> + Send {}
 
 /// A stream sink — anything that consumes pipeline output.
 pub trait Sink: Send {
