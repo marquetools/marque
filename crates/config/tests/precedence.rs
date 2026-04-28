@@ -554,19 +554,19 @@ fn env_default_timezone_invalid_value_errors() {
 
 /// C-3d: a whitespace-only MARQUE_DEFAULT_TIMEZONE must be treated as not-set.
 #[test]
-fn env_default_timezone_empty_string_is_ignored() {
-    let dir = make_tmpdir("tz-env-empty");
+fn env_default_timezone_whitespace_only_is_ignored() {
+    let dir = make_tmpdir("tz-env-whitespace");
     fs::create_dir_all(dir.join(".git")).unwrap();
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "");
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "   ");
     let config = marque_config::load(&dir).expect("load should succeed");
 
-    // Empty string is treated as not-set → default remains UTC.
+    // Whitespace-only string is treated as not-set → default remains UTC.
     assert_eq!(
         config.capco.default_timezone,
         marque_ism::date::UtcOffset::UTC,
-        "empty MARQUE_DEFAULT_TIMEZONE should leave default_timezone as UTC"
+        "whitespace-only MARQUE_DEFAULT_TIMEZONE should leave default_timezone as UTC"
     );
     let _ = fs::remove_dir_all(&dir);
 }
