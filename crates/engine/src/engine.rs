@@ -1873,6 +1873,62 @@ mod tests {
     }
 
     #[test]
+    fn lint_post_pass_leaves_fix_severity_with_no_fix_payload_alone() {
+        // The post-pass guard order matters: even though `Fix`-severity
+        // diagnostics are the only ones eligible for the rewrite, a
+        // diagnostic that doesn't carry a `FixProposal` (rare in
+        // practice — `Fix`-severity rules normally always attach one
+        // — but representable in the type) must be skipped by the
+        // `let Some(fix) = d.fix.as_ref() else { continue }` arm and
+        // keep its `Fix` severity. This pins the behavior so a future
+        // refactor that hoists the threshold check above the fix-
+        // presence check (and might rewrite to Suggest unconditionally)
+        // is caught.
+        struct FixWithoutProposalRule;
+        impl Rule for FixWithoutProposalRule {
+            fn id(&self) -> RuleId {
+                RuleId::new("E997")
+            }
+            fn name(&self) -> &'static str {
+                "stub-fix-no-proposal"
+            }
+            fn default_severity(&self) -> Severity {
+                Severity::Fix
+            }
+            fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+                vec![Diagnostic::new(
+                    RuleId::new("E997"),
+                    Severity::Fix,
+                    Span::new(0, 6),
+                    "fix-severity diagnostic with no proposal",
+                    "TEST",
+                    None,
+                )]
+            }
+        }
+
+        let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(FixWithoutProposalRule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        let lint = engine.lint(TEST_SRC);
+        assert_eq!(lint.diagnostics.len(), 1);
+        assert_eq!(
+            lint.diagnostics[0].severity,
+            Severity::Fix,
+            "Fix-severity diagnostic with no fix payload must NOT be rewritten to Suggest",
+        );
+        assert!(lint.diagnostics[0].fix.is_none());
+    }
+
+    #[test]
     fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
         // Issue #235 / #186 PR-3: a rule that emits at Severity::Suggest
         // directly with confidence ≥ threshold must STILL be excluded

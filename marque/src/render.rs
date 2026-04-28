@@ -832,6 +832,51 @@ mod tests {
     }
 
     #[test]
+    fn render_human_suggest_severity_uses_bold_yellow_with_color_enabled() {
+        // The BoldYellow ANSI escape (`\x1b[33;1m`) for the "suggest"
+        // header is what visually distinguishes the suggest-don't-fix
+        // channel from Error/Warn (which use BoldRed). With color=false
+        // the styling collapses to plain text; with color=true the
+        // escape sequence MUST be present in the output.
+        let src = b"SECRET//REL TO USA, AUT, GBR\n";
+        let span = Span::new(20, 23);
+        let fix = FixProposal::new(
+            RuleId::new("S004"),
+            FixSource::BuiltinRule,
+            span,
+            "AUT".to_owned(),
+            "AUS".to_owned(),
+            marque_rules::Confidence::strict(0.5),
+            None,
+        );
+        let diag = Diagnostic::new(
+            RuleId::new("S004"),
+            Severity::Suggest,
+            span,
+            "did you mean \"AUS\"?",
+            "CAPCO-2016 §H.8 p150",
+            Some(fix),
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "rel.txt", src, &diag, true).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        // BoldYellow opening sequence must wrap the "suggest" header.
+        assert!(
+            rendered.contains("\x1b[33;1msuggest\x1b[0m"),
+            "Suggest header must use BoldYellow ANSI escape; got:\n{rendered}"
+        );
+        // BoldRed (used by Error/Warn headers) must NOT appear on the
+        // level header — but the caret line still uses BoldRed for
+        // visibility, so we only assert the level isn't styled red.
+        assert!(
+            !rendered.contains("\x1b[31;1msuggest"),
+            "Suggest header must not use BoldRed; got:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn render_human_suggest_with_no_fix_round_trips() {
         // Issue #206 spike: future rules (REL TO opaque-uncertain
         // reduction) will emit `Severity::Suggest` with `fix: None`

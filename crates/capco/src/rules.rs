@@ -2255,6 +2255,46 @@ fn s004_edit_distance(a: &str, b: &str) -> usize {
     prev[n]
 }
 
+/// Build an S004 diagnostic message for a given (rare, candidate)
+/// trigraph pair.
+///
+/// Extracted from the rule body so each of the four `(Option,
+/// Option)` country-name arms can be exercised directly in tests
+/// — building real `IsmAttributes` to drive every arm requires
+/// finding trigraph pairs that satisfy both the corpus-prior gap
+/// AND the partial COUNTRY_NAMES coverage, which is brittle. The
+/// helper lets us pin the formatting contract independently.
+///
+/// The output is content-ignorant per Constitution V: it only
+/// references the input trigraph tokens (vocabulary) and the
+/// canonical English country names (vocabulary), never any
+/// document-source bytes.
+fn s004_message(
+    trigraph: &str,
+    candidate: &str,
+    entry_name: Option<&str>,
+    candidate_name: Option<&str>,
+) -> String {
+    match (entry_name, candidate_name) {
+        (Some(en), Some(cn)) => format!(
+            "{trigraph:?} ({en}) is far less common in REL TO than \
+             {candidate:?} ({cn}); did you mean {candidate:?}?"
+        ),
+        (None, Some(cn)) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?} ({cn})?"
+        ),
+        (Some(en), None) => format!(
+            "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+        (None, None) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+    }
+}
+
 impl Rule for RelToTrigraphSuggestRule {
     fn id(&self) -> RuleId {
         RuleId::new("S004")
@@ -2345,26 +2385,12 @@ impl Rule for RelToTrigraphSuggestRule {
             // Compose a content-ignorant message. The trigraph,
             // candidate, and country names are vocabulary-derived;
             // none of the surrounding document text appears.
-            let entry_name = country_name(trigraph);
-            let candidate_name = country_name(candidate);
-            let message = match (entry_name, candidate_name) {
-                (Some(en), Some(cn)) => format!(
-                    "{trigraph:?} ({en}) is far less common in REL TO than \
-                     {candidate:?} ({cn}); did you mean {candidate:?}?"
-                ),
-                (None, Some(cn)) => format!(
-                    "{trigraph:?} is rare in REL TO blocks; did you mean \
-                     {candidate:?} ({cn})?"
-                ),
-                (Some(en), None) => format!(
-                    "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
-                     {candidate:?}?"
-                ),
-                (None, None) => format!(
-                    "{trigraph:?} is rare in REL TO blocks; did you mean \
-                     {candidate:?}?"
-                ),
-            };
+            let message = s004_message(
+                trigraph,
+                candidate,
+                country_name(trigraph),
+                country_name(candidate),
+            );
 
             let proposal = FixProposal::new(
                 self.id(),
@@ -7099,6 +7125,122 @@ mod tests {
             !msg.contains("SECRET") && !msg.contains("GBR"),
             "message must not splice document content: {msg}"
         );
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_tetragraph_entry() {
+        // `FVEY` is a 4-letter tetragraph, not a 3-letter trigraph;
+        // the rule's `trigraph.len() != 3` guard must skip it. This
+        // pins the no-tetragraph contract — S004 only operates on
+        // trigraphs because tetragraph priors and edit-distance
+        // semantics need their own calibration.
+        let diags = lint_banner("SECRET//REL TO USA, FVEY");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must skip tetragraph entries: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_edit_distance_handles_empty_inputs() {
+        // The two early-return paths in the DP: when either input
+        // is empty, the distance is the length of the other. Pin
+        // both so the helper stays correct as it picks up callers
+        // beyond S004.
+        assert_eq!(super::s004_edit_distance("", ""), 0);
+        assert_eq!(super::s004_edit_distance("", "AUS"), 3);
+        assert_eq!(super::s004_edit_distance("AUS", ""), 3);
+    }
+
+    #[test]
+    fn s004_edit_distance_pins_canonical_pairs() {
+        // The substitution / transposition path the rule actually
+        // walks for the canonical #186 ambiguous fixtures. Edit-
+        // distance ≤ 2 is the gate; ≥ 3 must be excluded.
+        assert_eq!(super::s004_edit_distance("AUS", "AUS"), 0);
+        assert_eq!(super::s004_edit_distance("AUT", "AUS"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("USB", "USA"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("ASU", "AUS"), 2); // transposition (2 substitutions)
+        assert_eq!(super::s004_edit_distance("AUS", "GBR"), 3); // beyond threshold
+    }
+
+    #[test]
+    fn s004_message_renders_all_country_name_arms() {
+        // The four `(entry_name, candidate_name)` arms each have a
+        // distinct phrasing because the surrounding parenthetical
+        // English name only renders when the trigraph is in the
+        // hand-curated COUNTRY_NAMES table. Driving every arm
+        // through real `IsmAttributes` requires manufactured
+        // priors — pinning the helper directly keeps the contract
+        // visible and stable.
+        //
+        // (Some, Some): canonical AUT → AUS form with both names.
+        let both = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        assert!(both.contains("Austria"));
+        assert!(both.contains("Australia"));
+        assert!(both.contains("far less common"));
+        assert!(both.contains("did you mean \"AUS\""));
+
+        // (None, Some): rare trigraph not in COUNTRY_NAMES.
+        let rare_unnamed = super::s004_message("XYZ", "AUS", None, Some("Australia"));
+        assert!(rare_unnamed.contains("\"XYZ\" is rare"));
+        assert!(rare_unnamed.contains("\"AUS\" (Australia)"));
+        // The "(EnglishName)" parenthetical only appears for the
+        // candidate, not for the unnamed trigraph itself.
+        assert!(!rare_unnamed.contains("\"XYZ\" ("));
+
+        // (Some, None): candidate not in COUNTRY_NAMES.
+        let candidate_unnamed = super::s004_message("AUT", "XYZ", Some("Austria"), None);
+        assert!(candidate_unnamed.contains("\"AUT\" (Austria)"));
+        assert!(candidate_unnamed.contains("did you mean \"XYZ\""));
+        // No trailing "(name)" for the unnamed candidate.
+        assert!(!candidate_unnamed.contains("\"XYZ\" ("));
+
+        // (None, None): neither in COUNTRY_NAMES.
+        let neither = super::s004_message("XYZ", "ABC", None, None);
+        assert!(neither.contains("\"XYZ\" is rare"));
+        assert!(neither.contains("did you mean \"ABC\""));
+        assert!(!neither.contains("("));
+    }
+
+    #[test]
+    fn s004_message_never_contains_document_content() {
+        // Constitution V audit-content-ignorance: the helper takes
+        // only vocabulary inputs — trigraph tokens and English
+        // country names — so even passing it adversarial inputs
+        // cannot leak document body text. The rule body is
+        // responsible for never SOURCING those inputs from the
+        // document; this test pins the helper's promise.
+        let msg = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        // Sanity: the helper output references only its inputs.
+        let allowed_tokens = ["AUT", "AUS", "Austria", "Australia"];
+        // Strip the structural words and check what's left is
+        // either whitespace, punctuation, or one of the inputs.
+        for word in msg.split_whitespace() {
+            let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if trimmed.is_empty() {
+                continue;
+            }
+            let in_allowed = allowed_tokens.contains(&trimmed);
+            let in_phrasing = matches!(
+                trimmed,
+                "is" | "far"
+                    | "less"
+                    | "common"
+                    | "in"
+                    | "REL"
+                    | "TO"
+                    | "than"
+                    | "did"
+                    | "you"
+                    | "mean"
+            );
+            assert!(
+                in_allowed || in_phrasing,
+                "unexpected token {trimmed:?} in S004 message: {msg}"
+            );
+        }
     }
 
     #[test]
