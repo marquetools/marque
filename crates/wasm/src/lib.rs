@@ -1259,7 +1259,10 @@ pub fn generate_cab_native(
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
             if found_declass_date.is_none() {
                 if let Some(date) = &parsed.attrs.declassify_on {
-                    found_declass_date = Some(date.to_string());
+                    // Emit in CAPCO YYYYMMDD / YYYY format (no hyphens) for
+                    // the CAB "Declassify On:" line.  Use the end-of-span
+                    // string so Year(2003) → "20031231" (most conservative).
+                    found_declass_date = Some(date.to_maxdate_str().into());
                 }
             }
             if found_declass_exemption.is_none() {

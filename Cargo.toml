@@ -109,6 +109,12 @@ wasm-bindgen = "0.2.118"
 # WASM caller hits the lint loop.
 web-time = "1.1.0"
 
+# Date-time arithmetic for IsmDate precision-tier modeling (issue #209).
+# `default-features = false` drops `tzdb-zoneinfo` and `tzdb-bundle-platform`
+# so the WASM target compiles without tzdb I/O; civil::Date / civil::DateTime /
+# tz::Offset are available under just `features = ["std"]`.
+jiff = { version = "0.2.24", default-features = false, features = ["std"] }
+
 # Observability
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

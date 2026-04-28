@@ -86,6 +86,21 @@
 #         rejected — an extension cannot expand to itself).
 #   - `members = []` is treated identically to omitting `members`
 #     (recognition-only, opaque).
+#   - `active_from` (optional): first date this code was active.
+#     Accepts ISO 8601 precision tiers: `"YYYY"`, `"YYYY-MM"`, or
+#     `"YYYY-MM-DD"`. Omit if the activation date is unknown or
+#     predates the scope of this release. Build-time validated;
+#     a malformed value causes a build error naming this `code`.
+#   - `active_to` (optional): last date this code was active,
+#     inclusive. Same formats as `active_from`. Omit if the code
+#     is still active. Must not precede `active_from` when both
+#     are present. Example (historical, deactivated 2010-12-31):
+#
+#   [[code]]
+#   code = "MNFI"
+#   description = "Multi-National Forces Iraq (historical, 2003–2010)"
+#   active_from = "2003"
+#   active_to   = "2010-12-31"
 #
 # Default: empty. An empty file (or one with no `[[code]]`
 # entries) produces a build byte-identical to a build with no

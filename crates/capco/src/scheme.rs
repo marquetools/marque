@@ -370,7 +370,7 @@ fn page_context_to_attrs(ctx: &PageContext) -> IsmAttributes {
     out.fgi_marker = ctx.expected_fgi_marker();
     out.dissem_controls = ctx.expected_dissem_controls().into_boxed_slice();
     out.rel_to = ctx.expected_rel_to().into_boxed_slice();
-    out.declassify_on = ctx.expected_declassify_on().map(Into::into);
+    out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
     let (non_ic, _needs_nf) = ctx.expected_non_ic_dissem();
     out.non_ic_dissem = non_ic.into_boxed_slice();

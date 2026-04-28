@@ -572,13 +572,25 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             } else {
                 "expansion-enabled"
             };
-            writeln!(
-                content,
+            let mut entry_line = format!(
                 "/// - `{}` ({kind}): {}",
                 ext.code,
                 ext.description.trim(),
-            )
-            .unwrap();
+            );
+            // Append temporal activity window when present (Phase 3 plumbing).
+            match (&ext.active_from, &ext.active_to) {
+                (Some(af), Some(at)) => {
+                    entry_line.push_str(&format!(" [active {af}–{at}]"));
+                }
+                (Some(af), None) => {
+                    entry_line.push_str(&format!(" [active from {af}]"));
+                }
+                (None, Some(at)) => {
+                    entry_line.push_str(&format!(" [active until {at}]"));
+                }
+                (None, None) => {}
+            }
+            writeln!(content, "{entry_line}").unwrap();
         }
         writeln!(content, "///").unwrap();
     }
@@ -1468,6 +1480,10 @@ struct CountryExtension {
     code: String,
     description: String,
     members: Vec<String>,
+    /// Build-time validated active_from date string (YYYY, YYYY-MM, or YYYY-MM-DD).
+    active_from: Option<String>,
+    /// Build-time validated active_to date string (YYYY, YYYY-MM, or YYYY-MM-DD).
+    active_to: Option<String>,
 }
 
 /// TOML wire types for the extensions file.
@@ -1492,6 +1508,18 @@ mod ext_toml {
         pub description: Option<String>,
         #[serde(default)]
         pub members: Option<Vec<String>>,
+        /// First date on which this code was active (ISO 8601: `YYYY`,
+        /// `YYYY-MM`, or `YYYY-MM-DD`). Optional; `None` means
+        /// "active from the beginning of the period covered by this
+        /// release." Build-time validated with [`validate_temporal_field`].
+        #[serde(default)]
+        pub active_from: Option<String>,
+        /// Last date on which this code was active, inclusive.
+        /// Optional; `None` means "still active." Same formats as
+        /// `active_from`. Must be `>= active_from` when both are present
+        /// (build-time validated).
+        #[serde(default)]
+        pub active_to: Option<String>,
     }
 }
 
@@ -1503,6 +1531,61 @@ fn is_valid_extension_byte(b: u8) -> bool {
     b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'
 }
 
+/// Validate a temporal date string from `country_extensions.toml`.
+///
+/// Accepted forms:
+/// - `YYYY` — `xsd:gYear` (e.g. `"2003"`)
+/// - `YYYY-MM` — `xsd:gYearMonth` (e.g. `"2003-04"`)
+/// - `YYYY-MM-DD` — `xsd:date` (e.g. `"2003-04-15"`)
+///
+/// Returns `Err(msg)` with a human-readable error string if the value
+/// does not match one of these forms or the calendar components are
+/// out of range. This is called from `load_country_extensions` which
+/// `panic!`s with the error and the offending `code` so the build
+/// error is unambiguous.
+fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
+    let bytes = s.as_bytes();
+    let ok = match bytes.len() {
+        // YYYY
+        4 => bytes.iter().all(|b| b.is_ascii_digit()),
+        // YYYY-MM
+        7 => {
+            bytes[4] == b'-'
+                && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                && bytes[5] <= b'1'
+                && (bytes[5] < b'1' || bytes[6] <= b'2') // month 01–12
+                && bytes[6] != b'0'
+                || {
+                    // Allow 01-12 by checking the numeric range.
+                    let month = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
+                    (1..=12).contains(&month)
+                }
+        }
+        // YYYY-MM-DD
+        10 => {
+            bytes[4] == b'-'
+                && bytes[7] == b'-'
+                && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+                && {
+                    let m = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
+                    let d = (bytes[8] - b'0') * 10 + (bytes[9] - b'0');
+                    (1..=12).contains(&m) && (1..=31).contains(&d)
+                }
+        }
+        _ => false,
+    };
+    if !ok {
+        panic!(
+            "{path}: country extension `code = {code:?}` has invalid \
+             `{field}` value {s:?}. Expected ISO 8601 date: \
+             `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`."
+        );
+    }
+}
+
 /// Read & validate `country_extensions.toml`. Returns extensions
 /// in declaration order (matters for forward-reference checks in
 /// `members`). Empty / missing file is a no-op (returns `[]`).
@@ -1512,6 +1595,9 @@ fn is_valid_extension_byte(b: u8) -> bool {
 /// - `code` not duplicating a CVE entry or earlier extension
 /// - each `members` entry must already be recognized (CVE or
 ///   earlier extension); forward references rejected
+/// - `active_from` and `active_to` (when present) must be valid ISO 8601
+///   date strings (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`); `active_to` must
+///   not sort before `active_from` when both are present
 ///
 /// Failures `panic!` from `build.rs`, which surfaces as a clear
 /// build error pointing at the offending entry.
@@ -1544,6 +1630,8 @@ fn load_country_extensions(
             code,
             description: raw_description,
             members: raw_members,
+            active_from: raw_active_from,
+            active_to: raw_active_to,
         } = entry;
 
         // Required-description check (issue #183 PR-B): the
@@ -1663,10 +1751,32 @@ fn load_country_extensions(
             }
         };
 
+        // Validate active_from and active_to temporal fields.
+        if let Some(ref af) = raw_active_from {
+            validate_temporal_field(af, "active_from", &code, path);
+        }
+        if let Some(ref at) = raw_active_to {
+            validate_temporal_field(at, "active_to", &code, path);
+        }
+        // active_to must not precede active_from (lex comparison valid for
+        // ISO 8601 prefix-normalised strings: YYYY ≤ YYYY-MM ≤ YYYY-MM-DD
+        // because shorter forms compare correctly on their common prefix).
+        if let (Some(af), Some(at)) = (&raw_active_from, &raw_active_to) {
+            if at.as_str() < af.as_str() {
+                panic!(
+                    "{path}: country extension `code = {code:?}` has \
+                     `active_to` ({at:?}) before `active_from` ({af:?}). \
+                     The activity window must be non-negative.",
+                );
+            }
+        }
+
         out.push(CountryExtension {
             code,
             description,
             members,
+            active_from: raw_active_from,
+            active_to: raw_active_to,
         });
     }
 

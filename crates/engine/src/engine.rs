@@ -469,6 +469,7 @@ impl Engine {
                 zone: None,
                 position: None,
                 classification_floor,
+                as_of: None,
             };
 
             // Route each candidate's bytes through the recognizer. Zero-

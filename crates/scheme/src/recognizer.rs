@@ -79,7 +79,7 @@ pub enum DocumentPosition {
 /// candidate set when `strict_evidence` is set and the input does not
 /// match the strict grammar — that's how strict-path latency stays
 /// linear.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseContext {
     /// When `true`, the recognizer must not emit probabilistic
     /// candidates — only parses that hit the strict grammar.
@@ -106,11 +106,24 @@ pub struct ParseContext {
     /// the current region (e.g., isolated single-region recognition,
     /// or the page has no strict-path portion seen yet).
     pub classification_floor: Option<u8>,
+    /// Reference date for temporal membership queries (Phase 3 plumbing).
+    ///
+    /// When set, rules that evaluate time-limited memberships (e.g.,
+    /// tetragraph membership active as of a particular date) use this as the
+    /// evaluation anchor instead of the current wall-clock time.
+    ///
+    /// Stored as an ISO 8601 date string so `marque-scheme` stays free of a
+    /// runtime dependency on `marque-ism`. Code in `marque-capco` or
+    /// `marque-engine` can parse it with `marque_ism::IsmDate::from_str`.
+    ///
+    /// Currently `None` everywhere — no behavior change until the
+    /// membership-uncertain diagnostic (issue #206) is implemented.
+    pub as_of: Option<Box<str>>,
 }
 
 impl Default for ParseContext {
     /// Default context: strict path, no zone / position evidence, no
-    /// strict classification floor.
+    /// strict classification floor, no temporal anchor.
     ///
     /// The strict path is the safe default — callers that know they
     /// want deep-scan decoding must opt in explicitly.
@@ -120,6 +133,7 @@ impl Default for ParseContext {
             zone: None,
             position: None,
             classification_floor: None,
+            as_of: None,
         }
     }
 }
