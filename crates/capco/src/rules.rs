@@ -2138,10 +2138,13 @@ impl Rule for JointUsaFirstRule {
 ///
 /// # Authority and scope
 ///
-/// Per CAPCO-2016 §H.8 p150, REL TO entries are CAPCO Register Annex
-/// B trigraph country codes. Every entry in `attrs.rel_to` has
-/// already passed the strict-grammar trigraph check; the rule does
-/// not invalidate any of them. The signal here is **statistical**:
+/// Per CAPCO-2016 §H.8 p150 (REL TO grammar: Authorized Banner Line
+/// Marking Title, Authorized Portion Mark) and §H.8 p151 (REL TO
+/// "[USA, LIST]" syntax — "Register, Annex B trigraph country
+/// codes"), REL TO entries are drawn from the CAPCO Register Annex
+/// B trigraph code list. Every entry in `attrs.rel_to` has already
+/// passed the strict-grammar trigraph check; the rule does not
+/// invalidate any of them. The signal here is **statistical**:
 /// `AUT` (Austria, ISO 3166-1 alpha-3) is a legitimate trigraph but
 /// appears two orders of magnitude less often in real REL TO blocks
 /// than `AUS` (Australia), and the two are 1 substitution apart.
@@ -2353,7 +2356,11 @@ impl Rule for RelToTrigraphSuggestRule {
                     "{trigraph:?} is rare in REL TO blocks; did you mean \
                      {candidate:?} ({cn})?"
                 ),
-                _ => format!(
+                (Some(en), None) => format!(
+                    "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
+                     {candidate:?}?"
+                ),
+                (None, None) => format!(
                     "{trigraph:?} is rare in REL TO blocks; did you mean \
                      {candidate:?}?"
                 ),
@@ -2373,7 +2380,7 @@ impl Rule for RelToTrigraphSuggestRule {
                 self.default_severity(),
                 span,
                 message,
-                "CAPCO-2016 §H.8 p150",
+                "CAPCO-2016 §H.8 p150–151",
                 Some(proposal),
             ));
         }
