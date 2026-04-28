@@ -45,7 +45,6 @@ use axum::{
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
-use form_urlencoded;
 use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
