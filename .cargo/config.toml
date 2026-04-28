@@ -2,6 +2,12 @@
 #
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+# Activate SIMD128 for the wasm32 target at the rustc level.
+#
+# `--enable-simd` in wasm-opt (configured in crates/wasm/Cargo.toml) is a
+# post-processing pass that can only optimize SIMD instructions already present
+# in the binary — it does not generate them. Without this flag, crates that
+# have WASM SIMD128 code paths (e.g., `memchr`) silently fall back to scalar.
 # rustflags for wasm32-unknown-unknown
 #
 # DEFAULT (single-threaded, web worker + cloud):
