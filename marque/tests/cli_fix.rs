@@ -28,11 +28,7 @@ fn fix_applies_high_confidence_and_emits_audit() {
     let tmp_path = tmp_dir.path().join("mixed_confidence.txt");
     std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
 
-    // Issue #235 / #186 PR-3: below-threshold proposals are now
-    // rewritten to `Severity::Suggest` (CI-silent → exit 0). E001
-    // applies cleanly; E003's sub-threshold fix surfaces as a
-    // suggest-channel diagnostic but doesn't fail CI.
-    let assert = marque().args(["fix"]).arg(&tmp_path).assert().code(0);
+    let assert = marque().args(["fix"]).arg(&tmp_path).assert().code(1); // E003 remains
 
     // File should be modified: NF → NOFORN
     let fixed = std::fs::read_to_string(&tmp_path).unwrap();
@@ -67,13 +63,11 @@ fn fix_dry_run_does_not_modify_file() {
     std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
     let original = std::fs::read_to_string(&tmp_path).unwrap();
 
-    // Issue #235 / #186 PR-3: below-threshold proposals surface as
-    // Suggest (exit 0) rather than blocking CI.
     let assert = marque()
         .args(["fix", "--dry-run"])
         .arg(&tmp_path)
         .assert()
-        .code(0);
+        .code(1); // E003 remains
 
     // File must be unchanged.
     let after = std::fs::read_to_string(&tmp_path).unwrap();
@@ -156,18 +150,11 @@ fn fix_exit_code_zero_when_all_fixed() {
 #[test]
 fn fix_exit_code_one_when_issues_remain() {
     // mixed_confidence has E003 (0.6) which stays as a suggestion.
-    //
-    // Issue #235 / #186 PR-3: that "suggestion" is now formally a
-    // `Severity::Suggest` diagnostic — emitted, visible, but
-    // CI-silent (exit 0). The exit-1 surface is reserved for
-    // hard-error severities. Test name kept for git history; the
-    // expected code dropped from 1 → 0 to match the new channel
-    // semantics.
     marque()
         .args(["fix"])
         .write_stdin("SECRET//NF\nSECRET//NOFORN//SI\n")
         .assert()
-        .code(0);
+        .code(1);
 }
 
 #[test]
@@ -275,18 +262,11 @@ fn fix_dry_run_stdin_produces_no_stdout() {
 fn fix_all_below_threshold_exits_one_no_audit() {
     // SECRET//NOFORN//SI triggers only E003 at confidence 0.6, below
     // the default 0.95 threshold. No fixes applied.
-    //
-    // Issue #235 / #186 PR-3: below-threshold proposals now surface
-    // as `Severity::Suggest` (CI-silent → exit 0). The original
-    // test name is retained for git history; the assertion was
-    // relaxed from 1 to 0 to track the new suggest-channel
-    // semantics. The "no audit records emitted" property still
-    // holds — Suggest never auto-applies, so no `AppliedFix`.
     let assert = marque()
         .args(["fix"])
         .write_stdin("SECRET//NOFORN//SI\n")
         .assert()
-        .code(0);
+        .code(1); // E003 remains as error
 
     // No fixes applied → no audit records.
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
