@@ -118,7 +118,15 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
 #[test]
 fn sc002a_no_classifier_id_in_corpus_fixtures() {
     let corpus_dir = workspace_root().join("tests").join("corpus");
+    assert!(
+        corpus_dir.exists() && corpus_dir.is_dir(),
+        "corpus directory must exist and be readable: {}",
+        corpus_dir.display()
+    );
     let files = walkdir(&corpus_dir);
+    if files.is_empty() {
+        return;
+    }
 
     let max_threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -322,8 +330,8 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
                 if block.is_empty() {
                     continue;
                 }
-                // Skip "REL TO ..." blocks — trigraph list varies
-                if block.starts_with("REL TO") || block.starts_with("REL ") {
+                // Skip releaseability blocks (e.g., "REL TO ...") — trigraph list varies.
+                if block.starts_with("REL ") {
                     continue;
                 }
                 // Skip SAR blocks — program identifiers are agency-assigned
