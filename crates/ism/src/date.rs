@@ -1101,6 +1101,59 @@ mod tests {
     }
 
     #[test]
+    fn date_end_cmp_greater_than_date_hour_min_same_day() {
+        // Date(y,m,d) end = (y,m,d, 23,59,59,999_999_999).
+        // DateHourMin { hour:22, minute:30 } end = (y,m,d, 22,30,59,999_999_999).
+        // The full day outlasts even a very late DateHourMin.
+        let day = IsmDate::Date(2003, 4, 15);
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 22,
+            minute: 30,
+            offset: None,
+        };
+        assert_eq!(day.end_cmp(&t), Ordering::Greater);
+    }
+
+    #[test]
+    fn date_hour_min_end_cmp_later_time_is_greater() {
+        let earlier = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 0,
+            offset: None,
+        };
+        let later = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        assert_eq!(later.end_cmp(&earlier), Ordering::Greater);
+        assert_eq!(earlier.end_cmp(&later), Ordering::Less);
+    }
+
+    #[test]
+    fn date_hour_min_end_cmp_equal_times_is_equal() {
+        let a = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        let b = a.clone();
+        assert_eq!(a.end_cmp(&b), Ordering::Equal);
+    }
+
+    #[test]
     fn to_maxdate_str_year() {
         assert_eq!(&*IsmDate::Year(2003).to_maxdate_str(), "20031231");
     }
