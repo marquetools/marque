@@ -16,6 +16,7 @@
 //! - `[capco] version` mismatches `marque_ism::SCHEMA_VERSION` (FR-011) → exit 65
 //! - `confidence_threshold` outside `[0.0, 1.0]` → exit 65
 
+use marque_ism::UtcOffset;
 use marque_rules::Severity;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -75,6 +76,10 @@ pub enum ConfigError {
     )]
     UnknownSeverity { rule: String, value: String },
 
+    /// Timezone offset string is not a recognized ISO 8601 UTC offset form.
+    #[error("invalid timezone offset {value:?} — expected \"Z\", \"+HH:MM\", or \"-HH:MM\"")]
+    InvalidTimezone { value: String },
+
     /// Corpus-override file did not parse as JSON, or violated the
     /// `deny_unknown_fields` contract on any wire-format struct.
     #[error("failed to parse corpus override {path}: {reason}")]
@@ -116,6 +121,7 @@ impl ConfigError {
             Self::ThresholdOutOfRange { .. } => EX_DATAERR,
             Self::InvalidEnvVar { .. } => EX_DATAERR,
             Self::UnknownSeverity { .. } => EX_DATAERR,
+            Self::InvalidTimezone { .. } => EX_DATAERR,
             Self::CorpusOverrideParse { .. } => EX_DATAERR,
             Self::CorpusOverrideSchemaMismatch { .. } => EX_DATAERR,
             Self::CorpusOverrideInvalidValue { .. } => EX_DATAERR,
@@ -189,12 +195,26 @@ pub struct RuleConfig {
 pub struct CapcoConfig {
     /// Pinned ISM schema version. Must match the compiled marque-ism version.
     pub version: String,
+
+    /// Default UTC offset applied to floating (offset-naive) `DateHourMin` and
+    /// `DateTime` values encountered during document processing.
+    ///
+    /// In national-security documents, times without an explicit offset are
+    /// conventionally Zulu (UTC). Set this to a different offset only when
+    /// processing documents from an organization that consistently marks times
+    /// with a local civil offset without recording it explicitly in the marking.
+    ///
+    /// Configurable via `[capco] default_timezone = "Z"` in `.marque.toml` or
+    /// the `MARQUE_DEFAULT_TIMEZONE` environment variable.
+    /// Accepted forms: `"Z"`, `"+HH:MM"`, `"-HH:MM"`. Defaults to UTC.
+    pub default_timezone: UtcOffset,
 }
 
 impl Default for CapcoConfig {
     fn default() -> Self {
         Self {
             version: marque_ism::generated::values::SCHEMA_VERSION.to_owned(),
+            default_timezone: UtcOffset::UTC,
         }
     }
 }
@@ -228,6 +248,8 @@ struct UserConfigFile {
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct CapcoConfigFile {
     version: Option<String>,
+    /// UTC offset string for floating times. Accepted: `"Z"`, `"+HH:MM"`, `"-HH:MM"`.
+    default_timezone: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +409,11 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
     if let Some(v) = file.capco.version {
         config.capco.version = v;
     }
+    if let Some(ref tz) = file.capco.default_timezone {
+        config.capco.default_timezone = tz
+            .parse::<UtcOffset>()
+            .map_err(|_| ConfigError::InvalidTimezone { value: tz.clone() })?;
+    }
     if let Some(threshold) = file.confidence_threshold {
         config.set_confidence_threshold(threshold)?;
     }
@@ -439,6 +466,18 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
         config.set_confidence_threshold(threshold)?;
     }
     // MARQUE_LOG is handled by the tracing subscriber, not by config loading.
+    // C-3: parse MARQUE_DEFAULT_TIMEZONE as an ISO 8601 UTC offset.
+    if let Ok(raw) = std::env::var("MARQUE_DEFAULT_TIMEZONE") {
+        if !raw.trim().is_empty() {
+            config.capco.default_timezone =
+                raw.parse::<UtcOffset>()
+                    .map_err(|_| ConfigError::InvalidEnvVar {
+                        var: "MARQUE_DEFAULT_TIMEZONE",
+                        raw: raw.clone(),
+                        reason: "expected \"Z\", \"+HH:MM\", or \"-HH:MM\"",
+                    })?;
+        }
+    }
     Ok(())
 }
 
@@ -745,5 +784,74 @@ classifier_id = "from-sub"
         assert!(matches!(err, ConfigError::ReadError { .. }));
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // ---------------------------------------------------------------------
+    // TZ-1: timezone config
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn capco_default_timezone_defaults_to_utc() {
+        let c = Config::default();
+        assert_eq!(c.capco.default_timezone, UtcOffset::UTC);
+    }
+
+    #[test]
+    fn merge_project_accepts_valid_timezone_offsets() {
+        for tz in ["Z", "+05:30", "-05:00", "+00:00", "+23:59"] {
+            let mut c = Config::default();
+            let mut file = ConfigFile::default();
+            file.capco.default_timezone = Some(tz.to_owned());
+            assert!(
+                merge_project_into(&mut c, file).is_ok(),
+                "should accept timezone {tz:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn merge_project_timezone_sets_correct_offset() {
+        let mut c = Config::default();
+        let mut file = ConfigFile::default();
+        file.capco.default_timezone = Some("+05:30".to_owned());
+        merge_project_into(&mut c, file).unwrap();
+        assert_eq!(
+            c.capco.default_timezone,
+            UtcOffset::from_hhmm(1, 5, 30).unwrap()
+        );
+    }
+
+    #[test]
+    fn merge_project_rejects_invalid_timezone() {
+        for bad in ["EST", "UTC", "utc", "+0530", "+05-30", "05:30"] {
+            let mut c = Config::default();
+            let mut file = ConfigFile::default();
+            file.capco.default_timezone = Some(bad.to_owned());
+            assert!(
+                matches!(
+                    merge_project_into(&mut c, file),
+                    Err(ConfigError::InvalidTimezone { .. })
+                ),
+                "should reject timezone {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn utc_offset_from_str_z_is_utc() {
+        // Exercising UtcOffset::from_str through the config-layer parse path.
+        assert_eq!("Z".parse::<UtcOffset>().unwrap(), UtcOffset::UTC);
+    }
+
+    #[test]
+    fn utc_offset_from_str_wrong_separator_is_err() {
+        // `+05-30` has `-` instead of `:` at index 3.
+        assert!("+05-30".parse::<UtcOffset>().is_err());
+    }
+
+    #[test]
+    fn utc_offset_from_str_out_of_range_is_err() {
+        // Hours > 23 must be rejected.
+        assert!("+24:00".parse::<UtcOffset>().is_err());
     }
 }
