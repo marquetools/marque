@@ -702,6 +702,47 @@ impl Engine {
             }
         }
 
+        // Suggest-don't-fix channel post-pass (issue #235 / #186 PR-3).
+        //
+        // Any diagnostic carrying a sub-threshold `FixProposal` is
+        // rewritten to `Severity::Suggest` so the proposal stays
+        // observable in lint output instead of being silently dropped
+        // at the fix-collection threshold gate. This unifies two
+        // emission paths into a single visible channel:
+        //
+        //   - Rules that explicitly emit at `Severity::Suggest`
+        //     (e.g., `S004 rel-to-trigraph-suggest`).
+        //   - Rules that emit at any other severity with a fix whose
+        //     `confidence.combined()` falls below the configured
+        //     threshold (decoder-sourced fixes that didn't quite clear
+        //     the bar are the canonical case).
+        //
+        // The fix stays attached because the renderer surfaces the
+        // candidate replacement; only the severity is changed.
+        // `Severity::Suggest` is below `Severity::Off` is impossible
+        // (Off < Suggest), but a rule whose configured severity is
+        // already `Off` was already filtered out above the rule loop,
+        // so this pass only operates on diagnostics that survived
+        // configuration. The constitutional V audit-content-ignorance
+        // invariant is preserved — no fields are modified except
+        // `severity`, which is metadata not document content.
+        //
+        // `Engine::fix_inner` re-applies the threshold gate on its own
+        // (and now also filters by `severity != Suggest`), so a
+        // diagnostic rewritten here will not be promoted to an
+        // `AppliedFix` even if a later threshold-override raises the
+        // floor.
+        let threshold = self.config.confidence_threshold();
+        for d in &mut diagnostics {
+            if d.severity == Severity::Suggest {
+                continue;
+            }
+            let Some(fix) = d.fix.as_ref() else { continue };
+            if fix.confidence.combined() < threshold {
+                d.severity = Severity::Suggest;
+            }
+        }
+
         LintResult {
             diagnostics,
             truncated: false,
@@ -862,9 +903,16 @@ impl Engine {
             return Err(EngineError::DeadlineExceeded { partial_lint: lint });
         }
 
+        // Suggest-don't-fix channel: `Severity::Suggest` is a hard
+        // exclusion from auto-apply by construction. The lint
+        // post-pass already rewrites below-threshold proposals to
+        // `Suggest`, but explicit `Suggest` rules (e.g., S004) can
+        // also emit fixes that clear the threshold yet must NOT be
+        // applied. This filter handles both cases uniformly.
         let mut fixes: Vec<_> = lint
             .diagnostics
             .iter()
+            .filter(|d| d.severity != Severity::Suggest)
             .filter_map(|d| d.fix.as_ref())
             .filter(|f| f.confidence.combined() >= threshold)
             .filter(|f| !f.span.is_empty())
@@ -1043,10 +1091,15 @@ impl Engine {
         threshold: f32,
         mode: FixMode,
     ) -> (Vec<u8>, Vec<AppliedFix>) {
+        // Mirror `fix_inner`'s suggest-channel exclusion: a C001
+        // diagnostic that the lint post-pass rewrote to
+        // `Severity::Suggest` (because its confidence fell below
+        // threshold) must not be auto-applied here either.
         let mut text_fixes: Vec<&FixProposal> = lint
             .diagnostics
             .iter()
             .filter(|d| d.rule.as_str() == "C001")
+            .filter(|d| d.severity != Severity::Suggest)
             .filter_map(|d| d.fix.as_ref())
             .filter(|f| f.source == FixSource::CorrectionsMap)
             .filter(|f| f.confidence.combined() >= threshold)

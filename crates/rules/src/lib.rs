@@ -67,30 +67,62 @@ impl std::fmt::Display for RuleId {
 ///
 /// # Ordering
 ///
-/// The derived `Ord` is `Off < Info < Warn < Error < Fix`. The ordering
-/// is exposed for consumers that want to compare severities (e.g.,
-/// "is this at least `Error`?") but the config loader does **not** use it
-/// as a merge operator today.
+/// The derived `Ord` is `Off < Suggest < Info < Warn < Error < Fix`.
+/// The ordering is exposed for consumers that want to compare
+/// severities (e.g., "is this at least `Error`?") but the config
+/// loader does **not** use it as a merge operator today. `Suggest`
+/// sits between `Off` and `Info` because it is the lightest
+/// firing-but-non-actionable channel — quieter than `Info` (which
+/// has no candidate replacement attached) and louder than `Off`
+/// (which is non-firing entirely).
 ///
 /// # Exit-code semantics
 ///
 /// `marque check` maps severities to exit codes as follows:
 ///
-/// | Severity counts present | Exit code              |
-/// |-------------------------|------------------------|
-/// | `Error` or `Fix`        | `1` (`EX_DIAG_ERROR`)  |
-/// | `Warn` only             | `2` (`EX_DIAG_WARN`)   |
-/// | `Info` only, or none    | `0` (`EX_OK`)          |
+/// | Severity counts present       | Exit code              |
+/// |-------------------------------|------------------------|
+/// | `Error` or `Fix`              | `1` (`EX_DIAG_ERROR`)  |
+/// | `Warn` only                   | `2` (`EX_DIAG_WARN`)   |
+/// | `Info` / `Suggest` only, none | `0` (`EX_OK`)          |
 ///
-/// So `Info` is the only severity whose diagnostics are emitted *and*
-/// keep the exit code at zero. `Warn` still fails CI via
-/// `EX_DIAG_WARN`. The tonal distinction between `Info` and `Warn`
-/// remains advisory: `Warn` means "this might be wrong"; `Info` means
-/// "FYI, probably intentional but worth surfacing". Rules like `E034
-/// sci-custom-control-info` (which reports unpublished SCI control
-/// systems — legitimate per CAPCO but rare) are natural `Info`
-/// candidates if an org wants the visibility without the warn-level
-/// exit-code impact.
+/// `Info` and `Suggest` are the only severities whose diagnostics are
+/// emitted *and* keep the exit code at zero. `Warn` still fails CI
+/// via `EX_DIAG_WARN`. The tonal distinction is advisory: `Warn`
+/// means "this might be wrong"; `Info` means "FYI, probably
+/// intentional but worth surfacing"; `Suggest` means "I have a
+/// candidate replacement but I'm not confident enough to auto-apply
+/// it — eyes on it." Rules like `E034 sci-custom-control-info`
+/// (which reports unpublished SCI control systems — legitimate per
+/// CAPCO but rare) are natural `Info` candidates; rules like `S004
+/// rel-to-trigraph-suggest` (which proposes a higher-prior trigraph
+/// alternative for an ambiguous REL TO entry) emit at `Suggest`.
+///
+/// # `Suggest` channel semantics
+///
+/// `Suggest` is the firing-but-non-applying channel: a diagnostic
+/// emitted at `Suggest` carries a candidate `FixProposal` that the
+/// engine will **never** auto-apply, regardless of `confidence`. The
+/// fix is informational — it tells the user what the rule would
+/// suggest if confidence were higher. Two paths produce
+/// `Suggest`-severity diagnostics:
+///
+/// 1. **Explicit emission**: a rule constructs the diagnostic with
+///    `Severity::Suggest` directly. `S004 rel-to-trigraph-suggest`
+///    is the first such rule.
+/// 2. **Engine rewrite**: any diagnostic whose attached `FixProposal`
+///    has `confidence.combined() < confidence_threshold` is rewritten
+///    to `Severity::Suggest` by the engine in `lint`. This subsumes
+///    the prior silent-drop behavior at threshold-gate time so
+///    below-threshold proposals stay observable.
+///
+/// In both cases, `Engine::fix` filters out `Suggest` diagnostics
+/// from auto-apply by construction. `Suggest` diagnostics with
+/// `fix: None` are also valid (informational suggestion with no
+/// candidate replacement — used by future rules like #206's
+/// REL TO opaque-uncertain reduction, where the rule has signal
+/// to surface but no specific replacement to propose); the
+/// renderer handles the missing-fix case cleanly.
 ///
 /// # Merge semantics (current: last-write-wins)
 ///
@@ -111,6 +143,21 @@ pub enum Severity {
     /// Rule is disabled entirely. FR-008: severity=off is unrepresentable on emitted diagnostics
     /// — a rule at `Off` never fires, so no `Diagnostic` is produced.
     Off,
+    /// Advisory channel — diagnostic carries a candidate fix that
+    /// will **not** auto-apply.
+    ///
+    /// Distinct from `Info` (FYI, no actionable replacement) and
+    /// from `Off` (non-firing). The fix-bearing diagnostic remains
+    /// visible in lint output but the engine excludes it from
+    /// auto-apply regardless of `confidence`. This is the
+    /// suggest-don't-fix channel: rules with low-confidence
+    /// candidate corrections (e.g., `S004 rel-to-trigraph-suggest`)
+    /// can surface "did you mean?" hints without committing to the
+    /// rewrite.
+    ///
+    /// `Suggest` keeps the CLI exit code at `0` (same as `Info`),
+    /// so it is CI-silent.
+    Suggest,
     /// Emit informational diagnostic; does not block `check`-mode exit
     /// code. Intended for "audit-visible but probably intentional"
     /// signals — cases where the marking may be correct but the user
@@ -134,6 +181,7 @@ impl Severity {
     pub fn parse_config(s: &str) -> Option<Self> {
         match s {
             "off" => Some(Self::Off),
+            "suggest" => Some(Self::Suggest),
             "info" => Some(Self::Info),
             "warn" => Some(Self::Warn),
             "error" => Some(Self::Error),
@@ -150,6 +198,7 @@ impl Severity {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Off => "off",
+            Self::Suggest => "suggest",
             Self::Info => "info",
             Self::Warn => "warn",
             Self::Error => "error",
@@ -590,6 +639,7 @@ mod tests {
     #[test]
     fn severity_parse_config_accepts_known_values() {
         assert_eq!(Severity::parse_config("off"), Some(Severity::Off));
+        assert_eq!(Severity::parse_config("suggest"), Some(Severity::Suggest));
         assert_eq!(Severity::parse_config("info"), Some(Severity::Info));
         assert_eq!(Severity::parse_config("warn"), Some(Severity::Warn));
         assert_eq!(Severity::parse_config("error"), Some(Severity::Error));
@@ -613,6 +663,7 @@ mod tests {
     fn severity_display_round_trips() {
         for s in [
             Severity::Off,
+            Severity::Suggest,
             Severity::Info,
             Severity::Warn,
             Severity::Error,
@@ -625,12 +676,33 @@ mod tests {
 
     #[test]
     fn severity_ord_off_is_lowest() {
-        // Off < Info < Warn < Error < Fix — see the doc comment on Severity
-        // for the intentional design rationale.
-        assert!(Severity::Off < Severity::Info);
+        // Off < Suggest < Info < Warn < Error < Fix — see the doc comment
+        // on Severity for the intentional design rationale.
+        assert!(Severity::Off < Severity::Suggest);
+        assert!(Severity::Suggest < Severity::Info);
         assert!(Severity::Info < Severity::Warn);
         assert!(Severity::Warn < Severity::Error);
         assert!(Severity::Error < Severity::Fix);
+    }
+
+    #[test]
+    fn severity_suggest_round_trips_through_config_string() {
+        // Issue #235 / #186 PR-3: the suggest-don't-fix channel must be
+        // a stable parse target. The config string "suggest" must round
+        // trip through both parse_config and as_str.
+        assert_eq!(Severity::parse_config("suggest"), Some(Severity::Suggest));
+        assert_eq!(Severity::Suggest.as_str(), "suggest");
+        assert_eq!(Severity::Suggest.to_string(), "suggest");
+    }
+
+    #[test]
+    fn severity_suggest_is_strictly_below_info_in_ord() {
+        // The renderer relies on Suggest sorting BELOW Info so that
+        // CI exit-code logic ("Info or none → exit 0") generalizes
+        // to ("Info-or-Suggest or none → exit 0") via the same
+        // strict-less-than comparison.
+        assert!(Severity::Suggest < Severity::Info);
+        assert!(Severity::Off < Severity::Suggest);
     }
 
     #[test]

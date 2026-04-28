@@ -111,7 +111,13 @@ pub fn render_human(
     };
 
     let level = level_str(diag.severity);
-    let level_styled = paint(color, AnsiStyle::BoldRed, level);
+    // Suggest gets a distinct color (BoldYellow) from Error/Warn (BoldRed)
+    // so the suggest-don't-fix channel reads as a hint, not a problem.
+    let level_style = match diag.severity {
+        marque_rules::Severity::Suggest => AnsiStyle::BoldYellow,
+        _ => AnsiStyle::BoldRed,
+    };
+    let level_styled = paint(color, level_style, level);
     let rule_styled = paint(color, AnsiStyle::Bold, &format!("[{}]", diag.rule));
 
     // ---- Header line ----
@@ -160,15 +166,24 @@ pub fn render_human(
             let caret_pad = " ".repeat(caret_pad_width);
             let carets = "^".repeat(caret_width);
             let carets_styled = paint(color, AnsiStyle::BoldRed, &carets);
+            // For Suggest-severity diagnostics, the "fix" is a
+            // candidate hint rather than a confirmed replacement;
+            // surface the wording difference so the reader doesn't
+            // think it will be auto-applied.
             let hint = diag
                 .fix
                 .as_ref()
-                .map(|f| {
-                    format!(
+                .map(|f| match diag.severity {
+                    marque_rules::Severity::Suggest => format!(
+                        " did you mean {:?}? (confidence {:.0}%)",
+                        f.replacement.as_ref(),
+                        f.confidence.combined() * 100.0
+                    ),
+                    _ => format!(
                         " replace with {:?} (confidence {:.0}%)",
                         f.replacement.as_ref(),
                         f.confidence.combined() * 100.0
-                    )
+                    ),
                 })
                 .unwrap_or_default();
             writeln!(out, "{gutter} {pipe} {caret_pad}{carets_styled}{hint}")?;
@@ -217,6 +232,7 @@ fn level_str(severity: marque_rules::Severity) -> &'static str {
         marque_rules::Severity::Error => "error",
         marque_rules::Severity::Warn => "warning",
         marque_rules::Severity::Info => "info",
+        marque_rules::Severity::Suggest => "suggest",
         marque_rules::Severity::Fix => "fix",
         marque_rules::Severity::Off => "off", // unreachable in practice
     }
@@ -228,6 +244,7 @@ fn level_str(severity: marque_rules::Severity) -> &'static str {
 #[derive(Debug, Clone, Copy)]
 enum AnsiStyle {
     BoldRed,
+    BoldYellow,
     BoldBlue,
     Bold,
 }
@@ -238,6 +255,7 @@ fn paint(color: bool, style: AnsiStyle, text: &str) -> String {
     }
     let (prefix, suffix) = match style {
         AnsiStyle::BoldRed => ("\x1b[31;1m", "\x1b[0m"),
+        AnsiStyle::BoldYellow => ("\x1b[33;1m", "\x1b[0m"),
         AnsiStyle::BoldBlue => ("\x1b[34;1m", "\x1b[0m"),
         AnsiStyle::Bold => ("\x1b[1m", "\x1b[0m"),
     };

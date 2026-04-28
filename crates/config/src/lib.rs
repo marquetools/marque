@@ -72,7 +72,7 @@ pub enum ConfigError {
     /// Rule severity string in config is not one of the recognized values.
     #[error(
         "rule {rule:?} has unrecognized severity {value:?} — expected one of \
-         \"off\", \"info\", \"warn\", \"error\", \"fix\""
+         \"off\", \"suggest\", \"info\", \"warn\", \"error\", \"fix\""
     )]
     UnknownSeverity { rule: String, value: String },
 
@@ -552,9 +552,25 @@ mod tests {
             ("E002", "warn"),
             ("E003", "error"),
             ("E004", "off"),
+            ("E005", "info"),
+            ("S004", "suggest"),
         ]);
         assert!(merge_project_into(&mut c, file).is_ok());
-        assert_eq!(c.rules.overrides.len(), 4);
+        assert_eq!(c.rules.overrides.len(), 6);
+    }
+
+    #[test]
+    fn merge_project_accepts_suggest_severity() {
+        // Issue #235 / #186 PR-3: the suggest-don't-fix channel must be
+        // a config-valid severity string. Validates the loader pipes
+        // through `Severity::parse_config("suggest")`.
+        let mut c = Config::default();
+        let file = config_file_with_rules(&[("S004", "suggest")]);
+        assert!(merge_project_into(&mut c, file).is_ok());
+        assert_eq!(
+            c.rules.overrides.get("S004").map(String::as_str),
+            Some("suggest")
+        );
     }
 
     #[test]
