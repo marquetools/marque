@@ -2775,18 +2775,17 @@ fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, FeatureEntry)
         alt.push_str(&rewritten_entry);
         alt.push_str(&text[header_end + first_entry_offset + first_entry.len()..]);
 
-        // Audit feature: USA is the dominant REL TO trigraph in the
-        // baked corpus prior, so a small `BaseRateCommonMarking`
-        // delta records the prior contribution. The decoder's
-        // `score_candidate` later sums `country_code_log_prior(USA)`
-        // — already an extreme positive — over the parsed `rel_to`
-        // slice, which is what carries the candidate to victory.
-        // The feature delta here just documents the audit
-        // provenance; the load-bearing scoring lives in
-        // `score_candidate`.
+        // Audit-only provenance. The load-bearing scoring lives in
+        // `score_candidate`, which sums `country_code_log_prior(USA)`
+        // — already an extreme positive in the baked corpus prior —
+        // over the parsed `rel_to` slice and is what carries the
+        // candidate to victory. The `BaseRateCommonMarking` entry
+        // here records the prior's contribution in the audit log
+        // without double-counting it in the decoder's score, mirror-
+        // ing PR-A's trigraph-prior treatment (delta = 0.0).
         let entry = FeatureEntry {
             id: FeatureId::BaseRateCommonMarking,
-            delta: -0.1,
+            delta: 0.0,
         };
         out.push((alt, entry));
 

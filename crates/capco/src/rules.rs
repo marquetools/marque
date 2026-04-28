@@ -495,20 +495,27 @@ impl Rule for MissingUsaTrigraphRule {
         let span = Span::new(start, end);
 
         // Build the fully canonical list (USA first, non-USA entries
-        // alphabetical per CAPCO-2016 §H.8 p151) via the shared
-        // helper used by E020. When USA is missing from input we add
-        // it before canonicalizing so the output always has USA first;
-        // the helper itself treats USA as "first if present" without
-        // injecting it (E020 must not synthesize countries that aren't
-        // there). Producing the canonical form in a single pass is
-        // required because E020 gates on `rel_to[0] == USA` and is
-        // therefore silent whenever E002 fires.
+        // alphabetical per CAPCO-2016 §H.8 p151, no duplicates) via
+        // the shared helper used by E020. When USA is missing from
+        // input we add it before canonicalizing so the output always
+        // has USA first; the helper itself treats USA as "first if
+        // present" without injecting it (E020 must not synthesize
+        // countries that aren't there). Producing the canonical form
+        // in a single pass is required because E020 gates on
+        // `rel_to[0] == USA` and is therefore silent whenever E002
+        // fires. Dedup before canonicalize so E002's fix output
+        // stays canonical when input also has duplicates — under the
+        // C-1 overlap guard E002 wins over E052 by FR-016 rule_id
+        // ordering, and a non-deduped E002 fix would leave the
+        // duplicates for E052 to re-flag on the next lint pass,
+        // breaking single-pass idempotency.
         let mut codes: Vec<marque_ism::CountryCode> = attrs.rel_to.to_vec();
         if !has_usa {
             codes.push(marque_ism::CountryCode::USA);
         }
         // E002 is REL TO only; pass `usa_first: true` per §H.8 p151.
-        let fixed = canonicalize_trigraph_list(&codes, true).join(", ");
+        let canonical_codes = dedup_country_codes(&codes);
+        let fixed = canonicalize_trigraph_list(&canonical_codes, true).join(", ");
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -2741,10 +2748,20 @@ impl Rule for CountryCodeOrderingRule {
 ///   USA is NOT elevated.
 ///
 /// Duplicates in the input are preserved as-is — this helper does
-/// not deduplicate. Callers that need deduplication (e.g.
-/// [`dedup_country_codes`] used by E052) compose dedup with this
-/// canonicalizer; the order-only check in E020 deliberately keeps
-/// duplicates so the diagnostic message reflects what the user wrote.
+/// not deduplicate. Callers that need a fully canonical list (USA-
+/// first + alphabetical + unique) compose [`dedup_country_codes`]
+/// before this canonicalizer:
+///
+/// ```text
+/// canonicalize_trigraph_list(&dedup_country_codes(codes), usa_first)
+/// ```
+///
+/// E002 (REL TO, fix path) and E020 (REL TO + JOINT, fix path) both
+/// use that composition so their fix replacements are byte-canonical
+/// and stay single-pass idempotent under the C-1 overlap guard
+/// against E052 (REL TO no-duplicates). E020's CHECK path still uses
+/// the sort-only result so the rule fires on misorder but NOT on
+/// dup-only input — that branch belongs to E052.
 ///
 /// The IC practice of rendering USA first in JOINT lists is widespread
 /// but is convention, not CAPCO rule. A style rule (S003
@@ -2753,8 +2770,10 @@ impl Rule for CountryCodeOrderingRule {
 ///
 /// This is the shared ordering rule for E002 (REL TO, fix path) and
 /// E020 (REL TO + JOINT, both check and fix paths). E052's
-/// no-duplicates fix path uses [`dedup_country_codes`] separately and
-/// does NOT canonicalize order — see that function's doc for why.
+/// no-duplicates fix path uses [`dedup_country_codes`] alone and
+/// does NOT canonicalize order — see that function's doc for why
+/// (E052 only fires on its own when the input is already canonical
+/// modulo a duplicate, so dedup-only output stays canonical).
 /// Extracting this helper prevents E002 and E020 from drifting if the
 /// ordering rule changes (tetragraph sorting, delimiter normalization,
 /// etc.) and gives a single source of truth for the USA-first +
@@ -2802,12 +2821,19 @@ pub(crate) fn canonicalize_trigraph_list(
 }
 
 /// Collapse duplicate country codes while preserving first-occurrence
-/// order. This is the source-of-truth used by E052 (no-duplicates fix
-/// path). It does NOT canonicalize — it only removes duplicates. The
-/// E052 fix message keeps the original ordering visible so the user
-/// can audit the dedup, and any USA-first-then-alphabetical
-/// canonicalization is left to E020 (which fires separately on the
-/// already-deduped list when both rules apply).
+/// order. Source-of-truth used by E052 (no-duplicates fix path) and
+/// composed with [`canonicalize_trigraph_list`] inside E002 and E020
+/// fix paths so their replacements are byte-canonical (USA-first +
+/// alphabetical + unique).
+///
+/// E052 itself uses dedup-only output: when E052 is the only rule
+/// firing, the input is already canonical modulo the duplicate
+/// (otherwise E020 would have fired too and won the C-1 overlap
+/// guard under FR-016 `rule_id ASC`), so dedup-only output stays
+/// canonical and the user sees their authored ordering preserved
+/// in the fix message. When E020 also fires on the same span, its
+/// canonical fix wins and E052 is dropped — the result is canonical
+/// in a single pass either way.
 ///
 /// **CAPCO authority**: §H.8 p151 specifies the REL TO list grammar
 /// as "After 'USA', list the required one or more trigraph country
@@ -2857,9 +2883,18 @@ pub(crate) fn dedup_country_codes(
 /// Deterministic dedup that preserves first-occurrence order via
 /// [`dedup_country_codes`]. Confidence is `1.0` because the fix is
 /// purely mechanical — collapsing identical entries — and never
-/// changes the meaning of the marking. Sorting / canonicalization is
-/// handled separately by E020 (which fires on the post-dedup list
-/// when both rules apply).
+/// changes the meaning of the marking. Sorting belongs to E020 and
+/// E002, both of which now compose dedup + canonicalize in their
+/// own fix paths so their replacements are byte-canonical (USA-
+/// first + alphabetical + unique). Under the C-1 overlap guard,
+/// when E020 (or E002) and E052 both fire on the same REL TO span,
+/// FR-016's `rule_id ASC` tiebreaker drops E052 and the surviving
+/// E020/E002 fix is already canonical — no second pass needed.
+/// E052's own fix path matters when E020 is silent (input is
+/// already in alphabetical order with USA first, but a code is
+/// duplicated): in that case dedup-only preserves the user's
+/// existing order, which is canonical because the input was
+/// already canonical modulo the duplicate.
 ///
 /// # Multi-block handling
 ///
@@ -3024,6 +3059,19 @@ fn check_trigraph_ordering(
         return None;
     }
 
+    // For the FIX replacement, compose dedup + canonicalize so the
+    // output is fully canonical (USA-first when applicable, alpha-
+    // ordered, unique). The CHECK above uses `sorted` (sort-only) so
+    // E020 fires on misorder but NOT on dup-only input — that case
+    // belongs to E052. Dedup-in-fix matters because E020 and E052
+    // emit overlapping fix proposals on misordered+duplicated REL
+    // TO spans; under FR-016's `rule_id ASC` tiebreaker E020 wins
+    // and its fix is what survives. If E020's fix preserved
+    // duplicates, the post-fix list would still trip E052 on re-
+    // lint, breaking single-pass idempotency.
+    let canonical_codes = dedup_country_codes(codes);
+    let canonical = canonicalize_trigraph_list(&canonical_codes, usa_first);
+
     // Compute the fix span. The kind differs by list type:
     // - REL TO: `RelToTrigraph` is one token per country, so first→last
     //   covers exactly the country-list region of the `RelToBlock`.
@@ -3058,12 +3106,12 @@ fn check_trigraph_ordering(
     // Separator for the list: REL TO uses ", "; JOINT uses " ".
     let sep = if list_name == "REL TO" { ", " } else { " " };
     let joined_actual = actual.join(sep);
-    let joined_sorted = sorted.join(sep);
+    let joined_canonical = canonical.join(sep);
 
     // Build span-matching `original` + `replacement`.
     let (original, replacement) = if list_name == "REL TO" {
         // REL TO span covers exactly the country list.
-        (joined_actual.clone(), joined_sorted.clone())
+        (joined_actual.clone(), joined_canonical.clone())
     } else {
         // JOINT span covers the full Classification token. Preserve
         // the `JOINT <level>` prefix by anchoring on the first
@@ -3086,7 +3134,7 @@ fn check_trigraph_ordering(
         let prefix = &classification_text[..prefix_end];
         (
             classification_text.to_owned(),
-            format!("{prefix}{joined_sorted}"),
+            format!("{prefix}{joined_canonical}"),
         )
     };
 
@@ -3097,12 +3145,12 @@ fn check_trigraph_ordering(
     let message = if usa_first {
         format!(
             "{list_name} country codes must be alphabetically ordered \
-             (USA first when present): [{joined_actual}] → [{joined_sorted}]"
+             (USA first when present): [{joined_actual}] → [{joined_canonical}]"
         )
     } else {
         format!(
             "{list_name} country codes must be alphabetically ordered: \
-             [{joined_actual}] → [{joined_sorted}]"
+             [{joined_actual}] → [{joined_canonical}]"
         )
     };
 
@@ -7915,6 +7963,96 @@ mod tests {
         assert!(
             block_replacements.contains(&"AUS, JPN"),
             "second block must dedup to AUS, JPN: {block_replacements:?}"
+        );
+    }
+
+    #[test]
+    fn e052_silent_when_rel_to_has_only_one_country() {
+        // Guard branch: `attrs.rel_to.len() < 2` early return. A
+        // single-country list cannot contain duplicates, so E052 must
+        // never fire here. Exercises the early-bail at the top of
+        // `RelToNoDuplicatesRule::check` that codecov flagged as
+        // uncovered after PR-B's first pass.
+        let src = "SECRET//REL TO USA";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E052"),
+            "E052 must not fire on a single-country REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e052_silent_per_block_when_only_some_blocks_have_duplicates() {
+        // Mixed-block guard: one block with duplicates, one block
+        // without. Only the duplicated block produces an E052
+        // diagnostic; the clean block's loop iteration must hit the
+        // `deduped.len() == block_codes.len()` skip path. This exercises
+        // the in-loop "no duplicates in this block" continue branch
+        // that codecov flagged as uncovered.
+        let src = "SECRET//REL TO USA, GBR, USA//NF//REL TO USA, AUS";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            1,
+            "E052 must fire once on the dup-bearing block only: {diags:?}"
+        );
+        assert_eq!(
+            e052[0].fix.as_ref().unwrap().replacement.as_ref(),
+            "USA, GBR",
+            "the firing block must dedup to USA, GBR"
+        );
+    }
+
+    #[test]
+    fn e020_fix_output_dedups_when_input_has_duplicates() {
+        // Issue #234 PR-B fixup (Copilot review): E020's fix path
+        // must produce canonical output (USA-first + alphabetical +
+        // unique) so that when E020 and E052 both fire on the same
+        // REL TO span, FR-016's `rule_id ASC` tiebreaker drops E052
+        // and the surviving E020 fix is single-pass idempotent. This
+        // unit test isolates E020's replacement string (since
+        // `lint_banner` returns rule-only diagnostics, no engine
+        // overlap-guard interaction).
+        //
+        // Input: misordered AND duplicated → both E020 and E052 fire.
+        // E020's `replacement` must be the fully canonical form, not
+        // the sorted-with-duplicates form that the pre-fixup code
+        // emitted.
+        let src = "SECRET//REL TO USA, GBR, AUS, GBR";
+        let diags = lint_banner(src);
+        let e020_fix = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E020")
+            .and_then(|d| d.fix.as_ref())
+            .expect("E020 must fire and carry a fix on misordered+duplicated REL TO");
+        assert_eq!(
+            e020_fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E020 fix must dedup before sorting (canonical form, no duplicates)"
+        );
+    }
+
+    #[test]
+    fn e002_fix_output_dedups_when_input_has_duplicates() {
+        // Issue #234 PR-B fixup (Copilot review): E002's fix path
+        // also composes dedup + canonicalize so its replacement stays
+        // single-pass idempotent against E052 on overlapping spans.
+        // Input: USA missing AND non-USA codes duplicated → E002
+        // fires (missing USA), E052 fires (GBR repeated). FR-016
+        // tiebreaker keeps E002 (lex), so E002's replacement must be
+        // canonical or re-lint would still fire E052.
+        let src = "SECRET//REL TO GBR, AUS, GBR";
+        let diags = lint_banner(src);
+        let e002_fix = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E002")
+            .and_then(|d| d.fix.as_ref())
+            .expect("E002 must fire and carry a fix when USA is missing from REL TO");
+        assert_eq!(
+            e002_fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 fix must dedup before sorting (canonical form, no duplicates)"
         );
     }
 
