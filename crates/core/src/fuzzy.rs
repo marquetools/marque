@@ -723,4 +723,114 @@ mod tests {
         assert!((correction_confidence(2, 8) - 0.55).abs() < eps); // 0.40 + 3*0.05 (capped)
         assert!((correction_confidence(2, 15) - 0.55).abs() < eps); // capped at 8
     }
+
+    // ----- correct_all / correct_all_with_floor -----
+
+    #[test]
+    fn correct_all_returns_empty_for_known_token() {
+        // Fast-path: token is already in vocab → no alternates.
+        let result = matcher().correct_all("SECRET");
+        assert!(
+            result.is_empty(),
+            "known token must return empty vec from correct_all, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn correct_all_returns_empty_for_short_token() {
+        // Tokens shorter than MIN_FUZZY_LEN → no alternates.
+        assert!(matcher().correct_all("S").is_empty());
+        assert!(matcher().correct_all("NF").is_empty());
+    }
+
+    #[test]
+    fn correct_all_returns_multiple_for_ambiguous_input() {
+        // `correct_all` differs from `correct`: it does NOT collapse tied
+        // candidates to None. Both BOOK and COOK are at distance 1 from NOOK,
+        // so `correct` returns None but `correct_all` returns both.
+        let vocab = &["BOOK", "COOK"];
+        let m = FuzzyVocabMatcher::new(vocab);
+        let result = m.correct_all("NOOK");
+        assert_eq!(
+            result.len(),
+            2,
+            "correct_all must return all tied candidates; got {result:?}"
+        );
+        let tokens: Vec<&str> = result.iter().map(|c| c.token).collect();
+        assert!(tokens.contains(&"BOOK"), "BOOK must be among alternates");
+        assert!(tokens.contains(&"COOK"), "COOK must be among alternates");
+    }
+
+    #[test]
+    fn correct_all_with_floor_filters_confidence() {
+        // A high floor should keep only distance-1 matches; a low floor also
+        // includes distance-2 matches. Use a vocab and token where both
+        // distance classes exist.
+        let vocab = &["NOFORN", "UNCLASSIFIED"];
+        let m = FuzzyVocabMatcher::new(vocab);
+
+        // "NOFORON" is distance 1 from "NOFORN". confidence_floor = MIN_USEFUL_CONFIDENCE
+        // keeps it; a floor of 0.80 would drop it (distance-1 on a 7-char token gives
+        // 0.55 + 2*0.05 = 0.65, below 0.80).
+        let with_default_floor = m.correct_all("NOFORON");
+        assert_eq!(
+            with_default_floor.len(),
+            1,
+            "default floor should keep the distance-1 match; got {with_default_floor:?}"
+        );
+        assert_eq!(with_default_floor[0].token, "NOFORN");
+
+        let with_high_floor = m.correct_all_with_floor("NOFORON", 0.80);
+        assert!(
+            with_high_floor.is_empty(),
+            "floor 0.80 must exclude NOFORON→NOFORN (confidence 0.65); got {with_high_floor:?}"
+        );
+    }
+
+    #[test]
+    fn correct_all_with_zero_floor_includes_distance2_on_short_token() {
+        // With floor=0.0, distance-2 corrections for 3-char inputs are included
+        // even though correction_confidence(2, 3) = 0.40 < MIN_USEFUL_CONFIDENCE.
+        // This is the REL TO trigraph expansion path from issue #233.
+        let vocab = &["AUS", "AUT"];
+        let m = FuzzyVocabMatcher::new(vocab);
+
+        // "ASU" is distance 2 from "AUS" (swap + sub). confidence = 0.40 (3-char, dist-2).
+        // Default floor (0.45) filters it out; zero floor includes it.
+        let default_floor = m.correct_all("ASU");
+        assert!(
+            default_floor.is_empty(),
+            "default floor must exclude distance-2 3-char correction; got {default_floor:?}"
+        );
+
+        let zero_floor = m.correct_all_with_floor("ASU", 0.0);
+        assert!(
+            !zero_floor.is_empty(),
+            "zero floor must include distance-2 3-char corrections; got {zero_floor:?}"
+        );
+        let tokens: Vec<&str> = zero_floor.iter().map(|c| c.token).collect();
+        assert!(
+            tokens.contains(&"AUS") || tokens.contains(&"AUT"),
+            "at least one of AUS/AUT must be a distance-2 candidate of ASU; got {zero_floor:?}"
+        );
+    }
+
+    #[test]
+    fn correct_all_result_is_sorted_by_distance_ascending() {
+        // The contract says output is ordered by ascending distance.
+        let vocab = &["NOFORN", "NORORN", "NONORN"];
+        let m = FuzzyVocabMatcher::new(vocab);
+        // "NOFORN" is distance 0 — but that's in vocab, so it's the token being corrected.
+        // Use "NOFRRN": distance 1 from NOFORN, distance 2 from NORORN/NONORN.
+        let result = m.correct_all("NOFRRN");
+        if result.len() > 1 {
+            for pair in result.windows(2) {
+                assert!(
+                    pair[0].distance <= pair[1].distance,
+                    "correct_all result not sorted by distance: {:?}",
+                    result
+                );
+            }
+        }
+    }
 }

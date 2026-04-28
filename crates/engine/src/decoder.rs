@@ -4218,6 +4218,111 @@ mod tests {
     }
 
     #[test]
+    fn score_candidate_includes_country_code_prior_for_rel_to() {
+        // Issue #233: `score_candidate` sums `country_code_log_prior` over
+        // the `rel_to` slice of the parsed marking. A marking with TWO REL TO
+        // entries must produce a strictly lower (more negative) prior than the
+        // same marking with ONE entry, because each country code contributes a
+        // negative log-prior term and GBR is a known high-frequency trigraph.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+
+        let one_candidate = MarkingCandidate {
+            span: Span::new(0, 18),
+            kind: MarkingType::Banner,
+        };
+        let one_parsed = parser
+            .parse(&one_candidate, b"SECRET//REL TO USA")
+            .expect("SECRET//REL TO USA must parse");
+        let one_marking = CapcoMarking::new(one_parsed.attrs);
+
+        let two_candidate = MarkingCandidate {
+            span: Span::new(0, 23),
+            kind: MarkingType::Banner,
+        };
+        let two_parsed = parser
+            .parse(&two_candidate, b"SECRET//REL TO USA, GBR")
+            .expect("SECRET//REL TO USA, GBR must parse");
+        let two_marking = CapcoMarking::new(two_parsed.attrs);
+
+        let no_features: Vec<FeatureEntry> = vec![];
+        let attempt_one = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+        let attempt_two = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA, GBR".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+
+        let (prior_one, _) = score_candidate(&attempt_one, &one_marking);
+        let (prior_two, _) = score_candidate(&attempt_two, &two_marking);
+
+        // GBR has a known negative log-prior, so adding it to the REL TO
+        // list must make the total prior strictly more negative.
+        assert!(
+            prior_two < prior_one,
+            "adding GBR to REL TO must lower (more negative) the prior via \
+             country_code_log_prior; prior_one={prior_one}, prior_two={prior_two}"
+        );
+    }
+
+    #[test]
+    fn score_candidate_deduplicates_rel_to_entries() {
+        // Issue #233 dedup guard: a duplicate REL TO entry (e.g. "USA, USA")
+        // must score identically to the deduplicated form ("USA") because
+        // `seen_rel_to_codes` prevents double-counting.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+
+        let dup_candidate = MarkingCandidate {
+            span: Span::new(0, 23),
+            kind: MarkingType::Banner,
+        };
+        // Parser may or may not produce two rel_to entries for "USA, USA" —
+        // the dedup guard must be robust either way: the prior must equal
+        // that of a single "USA" entry.
+        let dup_parsed = parser
+            .parse(&dup_candidate, b"SECRET//REL TO USA, USA")
+            .expect("SECRET//REL TO USA, USA must parse leniently");
+        let dup_marking = CapcoMarking::new(dup_parsed.attrs);
+
+        let once_candidate = MarkingCandidate {
+            span: Span::new(0, 18),
+            kind: MarkingType::Banner,
+        };
+        let once_parsed = parser
+            .parse(&once_candidate, b"SECRET//REL TO USA")
+            .expect("SECRET//REL TO USA must parse");
+        let once_marking = CapcoMarking::new(once_parsed.attrs);
+
+        let no_features: Vec<FeatureEntry> = vec![];
+        let attempt_dup = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA, USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+        let attempt_once = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+
+        let (prior_dup, _) = score_candidate(&attempt_dup, &dup_marking);
+        let (prior_once, _) = score_candidate(&attempt_once, &once_marking);
+
+        // Deduplication ensures the duplicate USA is only scored once, so
+        // both priors must be equal (same base tokens + same single USA prior).
+        assert!(
+            (prior_dup - prior_once).abs() < 1e-5,
+            "duplicate REL TO entry must not double-count the country-code prior; \
+             prior_dup={prior_dup}, prior_once={prior_once}"
+        );
+    }
+
+    #[test]
     fn feature_entry_to_evidence_uses_canonical_label_registry() {
         // Regression guard for PR #142 H2: the projection from
         // `FeatureEntry` onto `EvidenceFeature::label` MUST route
