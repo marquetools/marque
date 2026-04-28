@@ -179,7 +179,7 @@ impl SciSet {
 
     /// Compartments (as `(system-text, compartment-id)` pairs) present
     /// on both sides. Exposed for Phase-C constraint work.
-    pub fn common_compartments(&self, other: &Self) -> Vec<(String, String)> {
+    pub fn common_compartments<'a>(&'a self, other: &Self) -> Vec<(&'a str, &'a str)> {
         let mut out = Vec::new();
         for (sys, comps) in &self.systems {
             let Some(other_comps) = other.systems.get(sys) else {
@@ -187,7 +187,7 @@ impl SciSet {
             };
             for cid in comps.keys() {
                 if other_comps.contains_key(cid) {
-                    out.push((sys.text().to_owned(), cid.clone()));
+                    out.push((sys.text(), cid.as_str()));
                 }
             }
         }
@@ -690,7 +690,7 @@ mod tests {
             vec![("G", vec!["DEFG"])],
         )]);
         let common = a.common_compartments(&b);
-        assert_eq!(common, vec![("SI".to_owned(), "G".to_owned())]);
+        assert_eq!(common, vec![("SI", "G")]);
     }
 
     #[test]
