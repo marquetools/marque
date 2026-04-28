@@ -71,19 +71,19 @@
       "name": "misordered_blocks.txt",
       "category": "invalid",
       "input": "SECRET//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":18},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":18},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "misordered_blocks_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":24},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"CONFIDENTIAL//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":24},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"CONFIDENTIAL//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "misordered_blocks_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//NOFORN//TK\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":22},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"TOP SECRET//TK//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":22},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"TOP SECRET//TK//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph.txt",
@@ -107,7 +107,7 @@
       "name": "mixed_confidence.txt",
       "category": "invalid",
       "input": "SECRET//NF\nSECRET//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":\"banner contains portion mark \\\"NF\\\" for an IC dissem control; use banner abbreviation \\\"NOFORN\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"NOFORN\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E003\",\"severity\":\"suggest\",\"span\":{\"start\":11,\"end\":29},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":\"banner contains portion mark \\\"NF\\\" for an IC dissem control; use banner abbreviation \\\"NOFORN\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"NOFORN\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":11,\"end\":29},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "nodis_exdis_conflict.txt",
@@ -161,7 +161,7 @@
       "name": "sar_portion_full_form.txt",
       "category": "invalid",
       "input": "(TS//SPECIAL ACCESS REQUIRED-BP//NF)\n",
-      "expected_lint": "{\"rule\":\"E026\",\"severity\":\"suggest\",\"span\":{\"start\":5,\"end\":29},\"message\":\"portion marks must use the SAR- abbreviation, not the SPECIAL ACCESS REQUIRED- full form\",\"citation\":\"CAPCO-2016 §H.5 p101 (Authorized Portion Mark)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP\",\"confidence\":0.35,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E026\",\"severity\":\"warn\",\"span\":{\"start\":5,\"end\":29},\"message\":\"portion marks must use the SAR- abbreviation, not the SPECIAL ACCESS REQUIRED- full form\",\"citation\":\"CAPCO-2016 §H.5 p101 (Authorized Portion Mark)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP\",\"confidence\":0.35,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_unclassified.txt",
@@ -173,7 +173,7 @@
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"suggest\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62 line 1397, SI p74 line 1819, TK p85 line 2250) + §D.2 p28 (general banner/portion consistency). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62 line 1397, SI p74 line 1819, TK p85 line 2250) + §D.2 p28 (general banner/portion consistency). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",
@@ -185,7 +185,7 @@
       "name": "sci_compartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-NK-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"suggest\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_custom_control_info.txt",
@@ -197,13 +197,13 @@
       "name": "sci_subcompartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-G DEFG ABCD//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"suggest\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_system_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI/123//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E032\",\"severity\":\"suggest\",\"span\":{\"start\":12,\"end\":18},\"message\":\"SCI control systems within a block must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI control systems: ascending, numeric first, then alpha; cf. §A.6 p15)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"123/SI\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E034\",\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":\"unpublished SCI control system \\\"123\\\" present; verify agency allocation via ODNI/P&S registry\",\"citation\":\"CAPCO-2016 §A.6 p16; §H.4 p61\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E032\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":18},\"message\":\"SCI control systems within a block must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI control systems: ascending, numeric first, then alpha; cf. §A.6 p15)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"123/SI\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E034\",\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":\"unpublished SCI control system \\\"123\\\" present; verify agency allocation via ODNI/P&S registry\",\"citation\":\"CAPCO-2016 §A.6 p16; §H.4 p61\",\"fix\":null}\n"
     },
     {
       "name": "separator_count.txt",
