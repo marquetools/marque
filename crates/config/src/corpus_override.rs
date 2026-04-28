@@ -328,7 +328,7 @@ fn validate_log_prior(
 ///
 /// Phase 4 review M8 confirmed this policy.
 fn validate_floor(path: &Path, key: &'static str, value: f32) -> Result<(), ConfigError> {
-    if !(value.is_finite() && value > 0.0 && value <= 1.0) {
+    if !value.is_finite() || !(value > 0.0 && value <= 1.0) {
         return Err(ConfigError::CorpusOverrideInvalidValue {
             path: path.to_path_buf(),
             section: "strict_context_overrides",
