@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET/SI-G//ORCON",
+  "expected": "TOP SECRET//SI-G//ORCON",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

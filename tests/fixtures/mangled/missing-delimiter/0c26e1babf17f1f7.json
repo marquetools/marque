@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET ANB/SI/TK/XNB//NOFORN",
+  "expected": "TOP SECRET//ANB/SI/TK/XNB//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

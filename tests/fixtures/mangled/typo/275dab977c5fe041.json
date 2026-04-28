@@ -1,0 +1,6 @@
+{
+  "observed": "SECREU//TK//FGI//NOFORN",
+  "expected": "SECRET//TK//FGI//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET // ORCON-USGOV",
+  "expected": "SECRET//ORCON-USGOV",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

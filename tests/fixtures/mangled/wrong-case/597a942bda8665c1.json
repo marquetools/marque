@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Fgi//Noforn",
+  "expected": "SECRET//FGI//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

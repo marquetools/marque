@@ -1,0 +1,6 @@
+{
+  "observed": "Confidential//Hcs",
+  "expected": "CONFIDENTIAL//HCS",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

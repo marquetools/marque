@@ -1,0 +1,6 @@
+{
+  "observed": "secret//orcon-usgov",
+  "expected": "SECRET//ORCON-USGOV",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

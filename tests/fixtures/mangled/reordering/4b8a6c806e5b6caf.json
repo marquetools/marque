@@ -1,0 +1,6 @@
+{
+  "observed": "FORMERLY RESTRICTED DATA//NOFORN//SECRET",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

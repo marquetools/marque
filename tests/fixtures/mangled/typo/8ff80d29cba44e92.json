@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECSET//SI-ABC//NOFORN",
+  "expected": "TOP SECRET//SI-ABC//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

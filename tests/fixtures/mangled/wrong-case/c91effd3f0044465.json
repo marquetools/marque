@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Si//Rel To Usa, Fvey",
+  "expected": "SECRET//SI//REL TO USA, FVEY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

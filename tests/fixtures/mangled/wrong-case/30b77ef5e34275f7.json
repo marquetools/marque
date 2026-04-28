@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//sar-butter popcorn/soda",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN/SODA",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "DEA SENSITIVE//UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//DEA SENSITIVE",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

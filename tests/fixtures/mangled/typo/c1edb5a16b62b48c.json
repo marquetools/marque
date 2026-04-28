@@ -1,0 +1,6 @@
+{
+  "observed": "//NATO SECRET/Z/ATOMAL//ORCON",
+  "expected": "//NATO SECRET//ATOMAL//ORCON",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

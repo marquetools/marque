@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED //LAW ENFORCEMENT SENSITIVE",
+  "expected": "UNCLASSIFIED//LAW ENFORCEMENT SENSITIVE",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

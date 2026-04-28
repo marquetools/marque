@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215FGI ISAF NATO//REL TO USA, GBR",
+  "expected": "SECRET//FGI ISAF NATO//REL TO USA, GBR",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

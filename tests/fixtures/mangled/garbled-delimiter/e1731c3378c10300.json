@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET/ /REL TO USA, NZL",
+  "expected": "SECRET//REL TO USA, NZL",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "TOP ESCRET//FGI",
+  "expected": "TOP SECRET//FGI",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET // FGI GBR",
+  "expected": "TOP SECRET//FGI GBR",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

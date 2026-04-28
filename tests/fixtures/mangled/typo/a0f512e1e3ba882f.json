@@ -1,0 +1,6 @@
+{
+  "observed": "//JOIN TSECRET GBR USA//REL TO USA, FVEY",
+  "expected": "//JOINT SECRET GBR USA//REL TO USA, FVEY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

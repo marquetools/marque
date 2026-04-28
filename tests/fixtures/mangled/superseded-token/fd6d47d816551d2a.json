@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//COMINT-ABC//",
+  "expected": "TOP SECRET//SI-ABC//",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.82
+}

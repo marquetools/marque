@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//CONTRLLED IMAGERY",
+  "expected": "SECRET//CONTROLLED IMAGERY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

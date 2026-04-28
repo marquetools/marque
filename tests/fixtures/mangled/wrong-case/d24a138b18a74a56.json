@@ -1,0 +1,6 @@
+{
+  "observed": "Unclassified//Limited Distribution",
+  "expected": "UNCLASSIFIED//LIMITED DISTRIBUTION",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

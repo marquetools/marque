@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET// TFNI",
+  "expected": "SECRET//TFNI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

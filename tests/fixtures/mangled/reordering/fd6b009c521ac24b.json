@@ -1,0 +1,6 @@
+{
+  "observed": "//REL TO USA, CAN, DEU//DEU C",
+  "expected": "//DEU C//REL TO USA, CAN, DEU",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

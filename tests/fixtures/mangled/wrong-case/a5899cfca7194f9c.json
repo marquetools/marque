@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Fgi Deu Gbr//Rel To Usa, Deu, Gbr",
+  "expected": "TOP SECRET//FGI DEU GBR//REL TO USA, DEU, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

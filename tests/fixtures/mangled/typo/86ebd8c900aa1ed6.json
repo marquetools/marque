@@ -1,0 +1,6 @@
+{
+  "observed": "//AUS S//REL TO UWSA, AUS",
+  "expected": "//AUS S//REL TO USA, AUS",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

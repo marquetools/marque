@@ -1,0 +1,6 @@
+{
+  "observed": "//ns//atomal//oc",
+  "expected": "//NS//ATOMAL//OC",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.83
+}

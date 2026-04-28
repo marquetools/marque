@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET REL TO USA, DEU/RELIDO",
+  "expected": "SECRET//REL TO USA, DEU/RELIDO",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.81
+}

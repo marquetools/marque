@@ -1,0 +1,6 @@
+{
+  "observed": "JOINT S//REL//",
+  "expected": "//JOINT S//REL",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

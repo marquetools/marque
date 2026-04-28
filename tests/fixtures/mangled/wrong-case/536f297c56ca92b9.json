@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//rel to usa, egy, isr",
+  "expected": "TOP SECRET//REL TO USA, EGY, ISR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

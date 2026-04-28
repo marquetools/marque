@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET// SAR-BUTTER POPCORN/SODA",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN/SODA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

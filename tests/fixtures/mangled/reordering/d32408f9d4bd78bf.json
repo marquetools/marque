@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-XXX-YYY//SECRET",
+  "expected": "SECRET//SAR-XXX-YYY",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

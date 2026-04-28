@@ -1,0 +1,6 @@
+{
+  "observed": "ORCON-USGOV/NOFORN//TOP SECRET",
+  "expected": "TOP SECRET//ORCON-USGOV/NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "secret//noforn/fisa",
+  "expected": "SECRET//NOFORN/FISA",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

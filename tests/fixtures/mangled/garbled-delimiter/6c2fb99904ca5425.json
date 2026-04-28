@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215NATO SECRET//ATOMAL//ORCON",
+  "expected": "//NATO SECRET//ATOMAL//ORCON",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.83
+}

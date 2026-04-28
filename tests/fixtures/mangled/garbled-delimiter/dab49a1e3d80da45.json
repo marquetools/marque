@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET/ /FGI",
+  "expected": "TOP SECRET//FGI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

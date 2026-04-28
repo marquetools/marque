@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET// SAR-BP/SDA",
+  "expected": "TOP SECRET//SAR-BP/SDA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

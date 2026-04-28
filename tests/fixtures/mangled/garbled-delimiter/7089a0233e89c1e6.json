@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET // RSV-123-ABC//NOFORN",
+  "expected": "TOP SECRET//RSV-123-ABC//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

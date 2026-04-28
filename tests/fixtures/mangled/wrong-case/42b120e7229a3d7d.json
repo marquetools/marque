@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//tk//relido",
+  "expected": "TOP SECRET//TK//RELIDO",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

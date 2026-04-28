@@ -1,0 +1,6 @@
+{
+  "observed": "//Joint S Gbr Usa//Rel",
+  "expected": "//JOINT S GBR USA//REL",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

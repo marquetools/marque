@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//FGI CAN GBR//REL TO USA, CA, GBR",
+  "expected": "SECRET//FGI CAN GBR//REL TO USA, CAN, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

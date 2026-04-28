@@ -1,0 +1,6 @@
+{
+  "observed": "//Nis//Rel To Usa, Isaf, Nato",
+  "expected": "//NIS//REL TO USA, ISAF, NATO",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

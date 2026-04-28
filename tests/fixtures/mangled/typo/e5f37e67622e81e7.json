@@ -1,0 +1,6 @@
+{
+  "observed": "/J/OINT S CAN GBR USA//REL TO USA, FVEY",
+  "expected": "//JOINT S CAN GBR USA//REL TO USA, FVEY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

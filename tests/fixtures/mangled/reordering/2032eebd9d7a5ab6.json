@@ -1,0 +1,6 @@
+{
+  "observed": "CTS////REL TO USA, NATO//BOHEMIA",
+  "expected": "//CTS//BOHEMIA//REL TO USA, NATO",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

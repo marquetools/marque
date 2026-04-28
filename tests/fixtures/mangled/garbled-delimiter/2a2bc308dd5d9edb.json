@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215JOINT SECRET CAN GBR USA//REL TO USA, CAN, GBR",
+  "expected": "//JOINT SECRET CAN GBR USA//REL TO USA, CAN, GBR",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

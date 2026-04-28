@@ -1,0 +1,6 @@
+{
+  "observed": "unclassified//for official use only",
+  "expected": "UNCLASSIFIED//FOR OFFICIAL USE ONLY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

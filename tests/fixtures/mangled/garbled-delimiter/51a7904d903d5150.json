@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED\u2215\u2215DOD UCNI",
+  "expected": "UNCLASSIFIED//DOD UCNI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

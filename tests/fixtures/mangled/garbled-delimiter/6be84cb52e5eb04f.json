@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED // SBU/SSI",
+  "expected": "UNCLASSIFIED//SBU/SSI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SPECRET//RESTRICTED DATA//NOFORN",
+  "expected": "SECRET//RESTRICTED DATA//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

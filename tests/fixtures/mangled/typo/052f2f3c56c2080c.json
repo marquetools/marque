@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//RESTRIRCTED DATA-SIGMA 20//NOFORN",
+  "expected": "SECRET//RESTRICTED DATA-SIGMA 20//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

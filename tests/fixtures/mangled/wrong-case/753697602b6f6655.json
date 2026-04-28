@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Tk-Blfh//Noforn",
+  "expected": "TOP SECRET//TK-BLFH//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

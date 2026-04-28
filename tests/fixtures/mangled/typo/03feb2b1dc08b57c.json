@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//TFNI//REL TO USA, AGU",
+  "expected": "SECRET//TFNI//REL TO USA, ACGU",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

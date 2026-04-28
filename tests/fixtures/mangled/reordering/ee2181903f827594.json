@@ -1,0 +1,6 @@
+{
+  "observed": "//HCS-P//NF//NF\nS",
+  "expected": "//NF\nS//HCS-P//NF",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

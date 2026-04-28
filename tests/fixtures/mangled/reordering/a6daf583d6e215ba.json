@@ -1,0 +1,6 @@
+{
+  "observed": "REL TO USA, AUS////JOINT S AUS USA",
+  "expected": "//JOINT S AUS USA//REL TO USA, AUS",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "unclassified//sensitive but unclassified",
+  "expected": "UNCLASSIFIED//SENSITIVE BUT UNCLASSIFIED",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

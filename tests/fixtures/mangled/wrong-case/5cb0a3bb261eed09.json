@@ -1,0 +1,6 @@
+{
+  "observed": "secret//rd-cnwdi//rel to usa, gbr",
+  "expected": "SECRET//RD-CNWDI//REL TO USA, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

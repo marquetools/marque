@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET TFNI",
+  "expected": "SECRET//TFNI",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.81
+}

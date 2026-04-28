@@ -1,0 +1,6 @@
+{
+  "observed": "//JOINT SECRET CAN GBR USA//REL TO USA ,CAN, GBR",
+  "expected": "//JOINT SECRET CAN GBR USA//REL TO USA, CAN, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

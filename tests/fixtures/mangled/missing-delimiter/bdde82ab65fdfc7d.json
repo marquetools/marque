@@ -1,0 +1,6 @@
+{
+  "observed": " CTS//BOHEMIA",
+  "expected": "//CTS//BOHEMIA",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

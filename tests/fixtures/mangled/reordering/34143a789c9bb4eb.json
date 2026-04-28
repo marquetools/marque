@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-BP/SDA//TOP SECRET",
+  "expected": "TOP SECRET//SAR-BP/SDA",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

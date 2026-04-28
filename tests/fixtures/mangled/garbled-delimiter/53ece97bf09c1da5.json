@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED // FOR OFFICIAL USE ONLY",
+  "expected": "UNCLASSIFIED//FOR OFFICIAL USE ONLY",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

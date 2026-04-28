@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-ABC-DEF 123/SDA-121//NOFORN//SECRET",
+  "expected": "SECRET//SAR-ABC-DEF 123/SDA-121//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

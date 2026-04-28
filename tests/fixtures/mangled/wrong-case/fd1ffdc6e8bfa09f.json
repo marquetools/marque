@@ -1,0 +1,6 @@
+{
+  "observed": "secret//display only afg",
+  "expected": "SECRET//DISPLAY ONLY AFG",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

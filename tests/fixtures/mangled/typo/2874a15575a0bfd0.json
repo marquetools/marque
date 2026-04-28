@@ -1,0 +1,6 @@
+{
+  "observed": "//NS//ATOAML//OC",
+  "expected": "//NS//ATOMAL//OC",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

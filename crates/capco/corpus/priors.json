@@ -1,400 +1,400 @@
 {
   "schema_version": "marque-priors-2",
-  "generated_at": "2026-04-28T15:02:41.887939+00:00",
+  "generated_at": "2026-04-28T18:31:48.133499+00:00",
   "token_base_rates": {
     "U": {
-      "count": 2063,
-      "log_prior": -5.048056
+      "count": 5634,
+      "log_prior": -4.105079
     },
     "C": {
-      "count": 8237,
-      "log_prior": -3.663944
+      "count": 10042,
+      "log_prior": -3.527201
     },
     "S": {
-      "count": 4878,
-      "log_prior": -4.187762
+      "count": 7285,
+      "log_prior": -3.848122
     },
     "TS": {
-      "count": 1451,
-      "log_prior": -5.39976
+      "count": 1696,
+      "log_prior": -5.305215
     },
     "R": {
-      "count": 5797,
-      "log_prior": -4.015189
+      "count": 6480,
+      "log_prior": -3.965202
     },
     "UNCLASSIFIED": {
-      "count": 1,
-      "log_prior": -11.98731
+      "count": 810,
+      "log_prior": -6.043564
     },
     "CONFIDENTIAL": {
-      "count": 1950,
-      "log_prior": -5.10436
+      "count": 3603,
+      "log_prior": -4.552032
     },
     "SECRET": {
-      "count": 192,
-      "log_prior": -7.417767
+      "count": 1183,
+      "log_prior": -5.665178
     },
     "TOP SECRET": {
-      "count": 2,
-      "log_prior": -11.581845
+      "count": 4,
+      "log_prior": -11.132394
     },
     "RESTRICTED": {
-      "count": 67,
-      "log_prior": -8.46095
+      "count": 371,
+      "log_prior": -6.822938
     },
     "SI": {
-      "count": 497,
-      "log_prior": -6.469857
+      "count": 1341,
+      "log_prior": -5.539916
     },
     "TK": {
-      "count": 2399,
-      "log_prior": -4.897233
+      "count": 2612,
+      "log_prior": -4.873578
     },
     "G": {
-      "count": 626,
-      "log_prior": -6.239511
+      "count": 1097,
+      "log_prior": -5.740586
     },
     "HCS": {
       "count": 85,
-      "log_prior": -8.22611
+      "log_prior": -8.287485
     },
     "KLM": {
-      "count": 81,
-      "log_prior": -8.273738
+      "count": 106,
+      "log_prior": -8.069003
     },
     "RSV": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 2,
+      "log_prior": -11.64322
     },
     "BUR": {
-      "count": 17,
-      "log_prior": -9.790086
+      "count": 25,
+      "log_prior": -9.483735
     },
     "MVL": {
       "count": 4,
-      "log_prior": -11.071019
+      "log_prior": -11.132394
     },
     "SI-G": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "SI-EU": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "SI-NK": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "TK-BLFH": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "TK-IDIT": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "TK-KAND": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "HCS-O": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "HCS-P": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "HCS-X": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "KLM-R": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "BUR-BLG": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "BUR-DTP": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "BUR-WRG": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "NF": {
-      "count": 48,
-      "log_prior": -8.788637
+      "count": 333,
+      "log_prior": -6.930691
     },
     "NOFORN": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 409,
+      "log_prior": -6.725675
     },
     "REL": {
-      "count": 58,
-      "log_prior": -8.60292
+      "count": 66,
+      "log_prior": -8.537139
     },
     "REL TO": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "RELIDO": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "FOUO": {
-      "count": 2,
-      "log_prior": -11.581845
+      "count": 21,
+      "log_prior": -9.650789
     },
     "OC": {
-      "count": 1053,
-      "log_prior": -5.72011
+      "count": 1452,
+      "log_prior": -5.460446
     },
     "ORCON": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 22,
+      "log_prior": -9.606338
     },
     "IMC": {
-      "count": 164,
-      "log_prior": -7.574512
+      "count": 218,
+      "log_prior": -7.35276
     },
     "IMCON": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 1,
+      "log_prior": -12.048685
     },
     "PR": {
-      "count": 5557,
-      "log_prior": -4.057464
+      "count": 5778,
+      "log_prior": -4.079846
     },
     "PROPIN": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "RSEN": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "RS": {
-      "count": 1011,
-      "log_prior": -5.760773
+      "count": 1285,
+      "log_prior": -5.58254
     },
     "DSEN": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "FISA": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 2,
+      "log_prior": -11.64322
     },
     "RAWFISA": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "DISPLAYONLY": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "EYES": {
-      "count": 65,
-      "log_prior": -8.490803
+      "count": 71,
+      "log_prior": -8.465166
     },
     "EYES ONLY": {
       "count": 1,
-      "log_prior": -11.98731
+      "log_prior": -12.048685
     },
     "NOCON": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "AC": {
-      "count": 1097,
-      "log_prior": -5.679212
+      "count": 1629,
+      "log_prior": -5.345497
     },
     "AWP": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 45,
+      "log_prior": -8.91319
     },
     "DL_ONLY": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "FED_ONLY": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "FEDCON": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "OC-USGOV": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "WAIVED": {
       "count": 37,
-      "log_prior": -9.042871
+      "log_prior": -9.104246
     },
     "SAR": {
-      "count": 84,
-      "log_prior": -8.237806
+      "count": 103,
+      "log_prior": -8.097441
     },
     "25X1": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 521,
+      "log_prior": -6.484164
     },
     "25X2": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "25X3": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "25X4": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "25X5": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 2,
+      "log_prior": -11.64322
     },
     "25X6": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "25X7": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "25X8": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 1,
+      "log_prior": -12.048685
     },
     "25X9": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "50X1": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 95,
+      "log_prior": -8.177484
     },
     "50X1-HUM": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 2,
+      "log_prior": -11.64322
     },
     "50X2": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "50X2-WMD": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "AEA": {
-      "count": 49,
-      "log_prior": -8.768434
+      "count": 58,
+      "log_prior": -8.664294
     },
     "//": {
-      "count": 264966,
-      "log_prior": -0.193097
+      "count": 265574,
+      "log_prior": -0.252179
     },
     "USA": {
-      "count": 14471,
-      "log_prior": -3.100486
+      "count": 15488,
+      "log_prior": -3.093946
     },
     "GBR": {
-      "count": 4,
-      "log_prior": -11.071019
+      "count": 8,
+      "log_prior": -10.544607
     },
     "CAN": {
-      "count": 1758,
-      "log_prior": -5.207957
+      "count": 1845,
+      "log_prior": -5.221055
     },
     "AUS": {
-      "count": 399,
-      "log_prior": -6.688993
+      "count": 438,
+      "log_prior": -6.657332
     },
     "NZL": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "FVEY": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "NATO": {
-      "count": 195,
-      "log_prior": -7.402343
+      "count": 552,
+      "log_prior": -6.426474
     },
     "ACGU": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "DEU": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 1,
+      "log_prior": -12.048685
     },
     "FRA": {
-      "count": 417,
-      "log_prior": -6.644976
+      "count": 667,
+      "log_prior": -6.237544
     },
     "NOR": {
-      "count": 98,
-      "log_prior": -8.085337
+      "count": 118,
+      "log_prior": -7.962708
     },
     "NLD": {
-      "count": 9,
-      "log_prior": -10.377872
+      "count": 10,
+      "log_prior": -10.343937
     },
     "DNK": {
       "count": 0,
-      "log_prior": -12.680457
+      "log_prior": -12.741832
     },
     "ITA": {
-      "count": 70,
-      "log_prior": -8.417777
+      "count": 95,
+      "log_prior": -8.177484
     },
     "ESP": {
-      "count": 1311,
-      "log_prior": -5.501149
+      "count": 2264,
+      "log_prior": -5.016502
     },
     "JPN": {
       "count": 33,
-      "log_prior": -9.154097
+      "log_prior": -9.215471
     },
     "KOR": {
-      "count": 8,
-      "log_prior": -10.483233
+      "count": 28,
+      "log_prior": -9.374536
     },
     "ISR": {
-      "count": 0,
-      "log_prior": -12.680457
+      "count": 3,
+      "log_prior": -11.355537
     }
   },
   "template_base_rates": {
     "classification": {
-      "count": 24638,
-      "log_prior": -2.219063
+      "count": 37108,
+      "log_prior": -1.867596
     },
     "classification//dissem": {
-      "count": 201142,
-      "log_prior": -0.119378
+      "count": 202005,
+      "log_prior": -0.173158
     },
     "classification//sci-block//dissem": {
-      "count": 367,
-      "log_prior": -6.423066
+      "count": 459,
+      "log_prior": -6.257984
     },
     "classification//dissem//rel-to": {
-      "count": 275,
-      "log_prior": -6.710748
+      "count": 344,
+      "log_prior": -6.545666
     },
     "classification//sci-block": {
-      "count": 220,
-      "log_prior": -6.932986
+      "count": 275,
+      "log_prior": -6.76881
     }
   },
   "country_code_base_rates": {
@@ -504,5 +504,5 @@
     "secret_floor": 0.99,
     "top_secret_floor": 0.995
   },
-  "corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b"
+  "corpus_fingerprint": "sha512:d02dcd957579639d6384b4ef92742d26f3b6fdcb49ea6176679c19c915e45abf900a37323a229e9714cf3b25e574fbb95b6b9af3701c021124ec1e68f019d976"
 }

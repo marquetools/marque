@@ -1,0 +1,6 @@
+{
+  "observed": "secret//restricted data-sigma 20//noforn",
+  "expected": "SECRET//RESTRICTED DATA-SIGMA 20//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

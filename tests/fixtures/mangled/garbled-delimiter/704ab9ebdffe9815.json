@@ -1,0 +1,6 @@
+{
+  "observed": "/ /DEU TS//NF",
+  "expected": "//DEU TS//NF",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "//COSMIC TOP ESCRET//BOHEMIA",
+  "expected": "//COSMIC TOP SECRET//BOHEMIA",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "REL TO USA, DEU, GBR//TOP SECRET//FGI DEU GBR",
+  "expected": "TOP SECRET//FGI DEU GBR//REL TO USA, DEU, GBR",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

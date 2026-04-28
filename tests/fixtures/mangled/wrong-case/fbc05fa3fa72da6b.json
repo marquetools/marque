@@ -1,0 +1,6 @@
+{
+  "observed": "//fgi s//rel to usa, gbr",
+  "expected": "//FGI S//REL TO USA, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

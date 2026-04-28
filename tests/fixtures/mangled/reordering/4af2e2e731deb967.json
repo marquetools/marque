@@ -1,0 +1,6 @@
+{
+  "observed": "RESTRICTED DATA//SECRET",
+  "expected": "SECRET//RESTRICTED DATA",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

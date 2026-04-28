@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET / / DISPLAY ONLY AFG",
+  "expected": "SECRET//DISPLAY ONLY AFG",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SSI//NOFORN//UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//NOFORN//SSI",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

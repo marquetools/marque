@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED // SENSITIVE BUT UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//SENSITIVE BUT UNCLASSIFIED",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

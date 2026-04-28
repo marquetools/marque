@@ -1,0 +1,6 @@
+{
+  "observed": "ATOMAL//OC//NS//",
+  "expected": "//NS//ATOMAL//OC",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

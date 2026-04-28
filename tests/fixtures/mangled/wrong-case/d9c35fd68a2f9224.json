@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//tk//rsen",
+  "expected": "TOP SECRET//TK//RSEN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

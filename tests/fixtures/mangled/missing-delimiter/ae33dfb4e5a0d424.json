@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//TK RELIDO",
+  "expected": "TOP SECRET//TK//RELIDO",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

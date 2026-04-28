@@ -1,0 +1,6 @@
+{
+  "observed": "//CEAN S//REL TO USA, CAN, DEU",
+  "expected": "//CAN S//REL TO USA, CAN, DEU",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

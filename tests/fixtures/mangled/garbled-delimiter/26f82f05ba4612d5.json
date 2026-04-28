@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET// TK//FGI//NOFORN",
+  "expected": "SECRET//TK//FGI//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.83
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "CONFIDENTIAL // DISPLAY ONLY AFG, IRQ",
+  "expected": "CONFIDENTIAL//DISPLAY ONLY AFG, IRQ",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//si-abc-efg-g",
+  "expected": "TOP SECRET//SI-ABC-EFG-G",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

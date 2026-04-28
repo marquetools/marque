@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET/ /RD-CNWDI//NOFORN",
+  "expected": "TOP SECRET//RD-CNWDI//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

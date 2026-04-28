@@ -1,0 +1,6 @@
+{
+  "observed": "RELIDO//TK//SECRET",
+  "expected": "SECRET//TK//RELIDO",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}
