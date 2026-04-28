@@ -781,6 +781,127 @@ mod tests {
         assert!(!rendered.contains("replace with"));
     }
 
+    // --- Suggest-channel tests (issue #235 / #186 PR-3) ---
+
+    #[test]
+    fn render_human_suggest_severity_uses_did_you_mean_phrasing() {
+        // The Suggest channel must read as a hint, not a confirmed
+        // fix. The renderer swaps "replace with" for "did you mean"
+        // and changes the level color (BoldYellow vs BoldRed) so the
+        // user can tell at a glance the engine will not auto-apply.
+        let src = b"SECRET//REL TO USA, AUT, GBR\n";
+        let span = Span::new(20, 23);
+        let fix = FixProposal::new(
+            RuleId::new("S004"),
+            FixSource::BuiltinRule,
+            span,
+            "AUT".to_owned(),
+            "AUS".to_owned(),
+            marque_rules::Confidence::strict(0.5),
+            None,
+        );
+        let diag = Diagnostic::new(
+            RuleId::new("S004"),
+            Severity::Suggest,
+            span,
+            "\"AUT\" (Austria) is far less common in REL TO than \
+             \"AUS\" (Australia); did you mean \"AUS\"?",
+            "CAPCO-2016 §H.8 p150",
+            Some(fix),
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "rel.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        // Header carries the "suggest" level string, not "error" / "fix".
+        assert!(
+            rendered.contains("suggest[S004]"),
+            "header must read suggest[S004]; got:\n{rendered}"
+        );
+        // Caret hint uses "did you mean" phrasing (Suggest-specific) —
+        // not the imperative "replace with" used by Fix-severity rules.
+        assert!(
+            rendered.contains("did you mean \"AUS\""),
+            "Suggest hint must read \"did you mean ...\"; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("replace with"),
+            "Suggest must not use the imperative \"replace with\" form; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_human_suggest_with_no_fix_round_trips() {
+        // Issue #206 spike: future rules (REL TO opaque-uncertain
+        // reduction) will emit `Severity::Suggest` with `fix: None`
+        // — informational suggestion with no candidate replacement.
+        // The renderer must not panic on the missing fix and must
+        // still produce a clean diagnostic.
+        let src = b"SECRET//REL TO USA, FVEY\n";
+        let span = Span::new(20, 24);
+        let diag = Diagnostic::new(
+            RuleId::new("S999"),
+            Severity::Suggest,
+            span,
+            "REL TO list contains an opaque tetragraph; \
+             release decision may be ambiguous",
+            "TEST",
+            None,
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "rel.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        assert!(
+            rendered.contains("suggest[S999]"),
+            "Suggest with no fix still renders header at suggest level"
+        );
+        assert!(
+            !rendered.contains("did you mean"),
+            "no fix means no \"did you mean\" hint; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("replace with"),
+            "no fix means no replace-with hint; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn diagnostic_to_json_carries_suggest_severity_string() {
+        // NDJSON consumers depend on the canonical lowercase string
+        // form of `Severity`. Phase D's NDJSON contract is otherwise
+        // unchanged: a Suggest-severity diagnostic round-trips
+        // through `severity: "suggest"` with no schema bump.
+        let span = Span::new(0, 3);
+        let fix = FixProposal::new(
+            RuleId::new("S004"),
+            FixSource::BuiltinRule,
+            span,
+            "AUT",
+            "AUS",
+            marque_rules::Confidence::strict(0.5),
+            None,
+        );
+        let diag = Diagnostic::new(
+            RuleId::new("S004"),
+            Severity::Suggest,
+            span,
+            "did you mean \"AUS\"?",
+            "CAPCO-2016 §H.8 p150",
+            Some(fix),
+        );
+
+        let json = diagnostic_to_json(&diag);
+        assert_eq!(json.severity, "suggest");
+        assert_eq!(json.rule, "S004");
+        // Fix payload is preserved on the wire so a downstream
+        // consumer can render the candidate replacement themselves.
+        assert!(json.fix.is_some());
+        assert_eq!(json.fix.as_ref().unwrap().replacement, "AUS");
+    }
+
     // --- Audit record tests ---
 
     #[test]

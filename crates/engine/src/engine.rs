@@ -1831,6 +1831,105 @@ mod tests {
     }
 
     #[test]
+    fn lint_rewrites_below_threshold_fix_severity_to_suggest() {
+        // Issue #235 / #186 PR-3: the lint post-pass turns a Fix-severity
+        // diagnostic carrying a sub-threshold proposal into a Suggest-
+        // severity diagnostic, preserving the fix payload so the renderer
+        // can show "did you mean?" instead of silently dropping the
+        // candidate at the threshold gate.
+        let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.5)]);
+        let lint = engine.lint(TEST_SRC);
+        assert_eq!(lint.diagnostics.len(), 1);
+        assert_eq!(lint.diagnostics[0].severity, Severity::Suggest);
+        assert!(
+            lint.diagnostics[0].fix.is_some(),
+            "the candidate fix must stay attached so the renderer can surface it"
+        );
+        assert_eq!(lint.suggest_count(), 1);
+        // Confirm the engine still excludes Suggest from auto-apply.
+        let fix_result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(fix_result.applied.len(), 0);
+    }
+
+    #[test]
+    fn lint_does_not_rewrite_at_threshold_boundary() {
+        // A fix at exactly the threshold (0.95) must NOT be rewritten
+        // — it is auto-apply territory, not Suggest territory. This
+        // pins the boundary semantics: the rewrite predicate is
+        // strictly less-than, matching the engine's `>= threshold`
+        // application gate.
+        let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.95)]);
+        let lint = engine.lint(TEST_SRC);
+        assert_eq!(lint.diagnostics.len(), 1);
+        assert_eq!(lint.diagnostics[0].severity, Severity::Fix);
+    }
+
+    #[test]
+    fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
+        // Issue #235 / #186 PR-3: a rule that emits at Severity::Suggest
+        // directly with confidence ≥ threshold must STILL be excluded
+        // from auto-apply by construction. The Suggest channel is a
+        // hard "do not apply" signal regardless of the confidence
+        // axis. This is the explicit-Suggest invariant; the StubRule
+        // emits Fix-severity by default so we route through a custom
+        // rule that emits Suggest directly.
+        struct SuggestRule;
+        impl Rule for SuggestRule {
+            fn id(&self) -> RuleId {
+                RuleId::new("S999")
+            }
+            fn name(&self) -> &'static str {
+                "stub-suggest"
+            }
+            fn default_severity(&self) -> Severity {
+                Severity::Suggest
+            }
+            fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+                let proposal = FixProposal::new(
+                    RuleId::new("S999"),
+                    FixSource::BuiltinRule,
+                    Span::new(0, 6),
+                    "SECRET",
+                    "TOP SECRET",
+                    marque_rules::Confidence::strict(1.0),
+                    None,
+                );
+                vec![Diagnostic::new(
+                    RuleId::new("S999"),
+                    Severity::Suggest,
+                    Span::new(0, 6),
+                    "explicit suggest with high confidence",
+                    "TEST",
+                    Some(proposal),
+                )]
+            }
+        }
+
+        let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(SuggestRule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        let lint = engine.lint(TEST_SRC);
+        assert_eq!(lint.diagnostics.len(), 1);
+        // Severity stays Suggest (post-pass leaves explicit Suggest alone).
+        assert_eq!(lint.diagnostics[0].severity, Severity::Suggest);
+        // Even at confidence 1.0, a Suggest-severity fix must not auto-apply.
+        let fix_result = engine.fix(TEST_SRC, FixMode::Apply);
+        assert_eq!(
+            fix_result.applied.len(),
+            0,
+            "explicit Suggest-severity fix must not auto-apply regardless of confidence"
+        );
+    }
+
+    #[test]
     fn confidence_at_default_threshold_is_included() {
         // A fix at exactly 0.95 must be applied (inclusive threshold).
         let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.95)]);

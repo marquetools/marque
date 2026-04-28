@@ -7016,6 +7016,114 @@ mod tests {
         );
     }
 
+    // --- S004: rel-to-trigraph-suggest (issue #235 / #186 PR-3) ---
+    //
+    // S004 surfaces a `Severity::Suggest` diagnostic when a REL TO
+    // entry has a corpus-rare prior and a corpus-common 1- or 2-edit
+    // neighbor. The fix is informational; the engine never auto-
+    // applies a Suggest-severity diagnostic regardless of confidence.
+
+    #[test]
+    fn s004_fires_on_aut_suggesting_aus() {
+        // The canonical #186 ambiguous fixture: `AUT` (Austria) is a
+        // valid trigraph but rare in REL TO; `AUS` (Australia) is
+        // far more common. The corpus prior delta exceeds
+        // SUGGEST_LOG_MARGIN.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert_eq!(s004.len(), 1, "S004 must fire on AUT: {diags:?}");
+        assert_eq!(s004[0].severity, marque_rules::Severity::Suggest);
+        let fix = s004[0].fix.as_ref().expect("S004 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "AUS");
+        // Original is the rare entry, replacement is the common one.
+        assert_eq!(fix.original.as_ref(), "AUT");
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_pure_common_partner_list() {
+        // USA, AUS, GBR are all common partners. No suggest channel.
+        let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent on common-partner REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_does_not_fire_when_rel_to_is_empty() {
+        // Banner without REL TO is out of scope.
+        let diags = lint_banner("SECRET//NOFORN");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent without REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_message_uses_canonical_token_strings_only() {
+        // Constitution V audit-content-ignorance: the diagnostic
+        // message must reference only the trigraph (vocabulary) and
+        // English country names (vocabulary), never document text.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire");
+        let msg = s004.message.as_ref();
+        // Vocabulary-only references: trigraph, candidate, country name.
+        assert!(
+            msg.contains("\"AUT\""),
+            "message must reference the rare trigraph: {msg}"
+        );
+        assert!(
+            msg.contains("\"AUS\""),
+            "message must reference the candidate: {msg}"
+        );
+        assert!(
+            msg.contains("Austria") && msg.contains("Australia"),
+            "message must use canonical country names: {msg}"
+        );
+        // No surrounding banner content (e.g., "SECRET", "GBR") leaks
+        // into the message — those would be document text under the
+        // content-ignorance invariant.
+        assert!(
+            !msg.contains("SECRET") && !msg.contains("GBR"),
+            "message must not splice document content: {msg}"
+        );
+    }
+
+    #[test]
+    fn s004_fix_does_not_auto_apply_under_engine_fix_call() {
+        // Pin the suggest-don't-fix invariant end-to-end: even though
+        // S004 emits a `FixProposal`, running `Engine::fix` (the API
+        // that produces audit records) must NOT include the S004 fix
+        // in `applied`. The engine excludes Suggest-severity from
+        // auto-apply by construction.
+        use crate::scheme::CapcoScheme;
+        use marque_config::Config;
+        use marque_engine::{Engine, FixMode};
+        use marque_rules::RuleSet;
+
+        let config = Config::default();
+        let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(super::CapcoRuleSet::new())];
+        let engine = Engine::new(config, rule_sets, CapcoScheme::new())
+            .expect("default scheme has no rewrite cycles");
+
+        let result = engine.fix(b"SECRET//REL TO USA, AUT, GBR\n", FixMode::Apply);
+        // No S004-rule audit record may exist.
+        let s004_audits: Vec<_> = result
+            .applied
+            .iter()
+            .filter(|af| af.proposal.rule.as_str() == "S004")
+            .collect();
+        assert!(
+            s004_audits.is_empty(),
+            "S004 must never produce an AppliedFix; got: {s004_audits:?}"
+        );
+    }
+
     // --- E010: Bare HCS rule ---
 
     #[test]
