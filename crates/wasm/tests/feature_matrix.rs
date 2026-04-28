@@ -71,13 +71,18 @@ fn cargo_tree_features(features: &str) -> String {
 /// Returns `true` when `crate_name` appears as a standalone package in the
 /// tree output (word-boundary match: "crate_name vX.Y.Z" but not
 /// "crate_name-extra vX.Y.Z").
+///
+/// `cargo tree --format "{p}"` always produces "name version" lines, so the
+/// crate name is always followed by a space and a version string. We match
+/// only lines where a space immediately follows the crate name to avoid
+/// false positives from crates with a longer shared prefix.
 fn tree_has_crate(tree: &str, crate_name: &str) -> bool {
     tree.lines().any(|line| {
         let trimmed = line.trim();
         trimmed.starts_with(crate_name)
             && trimmed
                 .get(crate_name.len()..)
-                .is_some_and(|rest| rest.starts_with(' ') || rest.is_empty())
+                .is_some_and(|rest| rest.starts_with(' '))
     })
 }
 
