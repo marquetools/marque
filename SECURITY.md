@@ -94,7 +94,7 @@ The following are in scope for security reports:
 - Dependabot monitors Cargo, npm, and GitHub Actions dependencies
 - CodeQL runs on every PR and weekly for Rust, Python, and Actions
 - `Cargo.lock` is committed for reproducible builds
-- SBOM generation and publication in multiple formats is planned for future releases
+- SBOM generation and publication in multiple formats (SPDX via `reuse spdx`, CycloneDX JSON + XML via `cargo cyclonedx`) — all three SBOM files are attached and attested on every published (non-dry-run) release
 - `deny.toml` blocks non-crates.io registry sources and git dependencies
 - We have multiple other routine security scans and efforts to proactively identify vulnerabilities or weaknesses.
 - We actively seek to keep dependencies fresh and updated, and continually re-evaluate for better-maintained or more secure alternatives.

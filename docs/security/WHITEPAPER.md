@@ -13,7 +13,7 @@
 > Each section ends with its status and the task / FR / SC IDs it is tied to.
 > When a task lands or a design changes, this document is updated in the same PR.
 
-**Document version**: 0.14 · **Last amended**: 2026-04-26
+**Document version**: 0.16 · **Last amended**: 2026-04-27
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
 · **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
 
@@ -850,7 +850,8 @@ License 2.0, BSL, SSPL). Two CI gates enforce this:
 
 Release artifacts publish to crates.io via OIDC token exchange
 (`rust-lang/crates-io-auth-action`). Every non-dry-run release also
-produces a signed source archive via `actions/attest-build-provenance`:
+produces a signed source archive and three SBOM files via
+`actions/attest-build-provenance`:
 
 1. `git archive` produces a workspace-scoped `marque-<version>.tar.gz`
    from the release tag. This is **not** equivalent to any crates.io
@@ -859,16 +860,30 @@ produces a signed source archive via `actions/attest-build-provenance`:
    not match byte-for-byte. The GitHub-released archive is a
    separately verifiable workspace-state provenance artifact, not a
    mirror.
-2. `attest-build-provenance` signs the archive keylessly via Sigstore
-   using the GitHub OIDC token and records the attestation in
-   GitHub's transparency log.
-3. The archive is attached to a GitHub release; the release body
-   documents how to verify.
+2. `reuse spdx` generates a `marque-<version>.spdx` (SPDX tag-value
+   format) from the existing REUSE annotations that `reuse lint`
+   already enforces on every PR (§8.4). This SBOM covers every file's
+   license and copyright and is NTIA minimum-elements compliant.
+   The `reuse` version is pinned to the same `5.0.2` used by the `ci.yml`
+   `reuse` job so behavior is consistent across lint and generation.
+3. `cargo cyclonedx` generates `marque-<version>.cyclonedx.json` and
+   `marque-<version>.cyclonedx.xml` by walking `Cargo.lock` and emitting
+   the full transitive dependency graph with versions, licenses, and
+   checksums. CycloneDX is the format most SBOM consumers and
+   vulnerability scanners (Grype, Trivy, Dependency-Track) expect for
+   supply-chain analysis.
+4. `attest-build-provenance` signs the source archive and each SBOM file
+   keylessly via Sigstore using the GitHub OIDC token and records the
+   attestations in GitHub's transparency log.
+5. All four artifacts are attached to the GitHub release.
 
 Consumers verify with:
 
 ```
 gh attestation verify marque-<version>.tar.gz --owner marquetools
+gh attestation verify marque-<version>.spdx --owner marquetools
+gh attestation verify marque-<version>.cyclonedx.json --owner marquetools
+gh attestation verify marque-<version>.cyclonedx.xml --owner marquetools
 ```
 
 The release workflow holds `id-token: write` + `attestations: write`
@@ -877,18 +892,20 @@ attestation. Cosign is not installed — GitHub's Sigstore-backed
 attestation path is narrower and avoids adding a separate CLI
 to the release surface.
 
-The archive / attest / release steps gate on `dry-run == false` only
-(not on tag-creation freshness), so a re-triggered release run for an
-existing tag still completes the attestation + GitHub-release work.
+The archive / SBOM / attest / release steps gate on `dry-run == false`
+only (not on tag-creation freshness), so a re-triggered release run for
+an existing tag still completes the attestation + GitHub-release work.
 `softprops/action-gh-release` upserts; re-attesting an already-attested
-archive records a fresh signature bound to the same subject digest.
+artifact records a fresh signature bound to the same subject digest.
 
 All actions in the release workflow are SHA-pinned per §8.3.
+`cargo-cyclonedx` is pinned to `0.5.7` via `cargo install --version 0.5.7 --locked`.
 
-**Status**: `[LANDED]` for §§8.1–8.7. (§8.5 landed via Constitution
-v1.2.0; §8.4 `reuse lint` and §8.7 release-archive attestation landed
-alongside this whitepaper update. The narrower WASM-safe-subgraph CI
-gate remains a gap — see gap register 14.)
+**Status**: `[LANDED]` for §§8.1–8.7 including SBOM generation (issue #191).
+(§8.5 landed via Constitution v1.2.0; §8.4 `reuse lint` and §8.7
+release-archive attestation landed alongside the initial whitepaper; SBOM
+generation landed in v0.16. The narrower WASM-safe-subgraph CI gate
+remains a gap — see gap register 14.)
 
 ---
 
@@ -1578,5 +1595,6 @@ two-column card keyed to §3 of this paper and Constitution II–VIII.
 | 0.11 | 2026-04-25 | Documentation drift fix — Gap #9 (P1) closed retroactively. The strict-context floor was wired by Phase 4 PR #114 (commit `bc57bfc`, T045/T062/FR-011): `DecoderRecognizer::recognize` returns zero-candidate `Parsed::Ambiguous` when `cx.strict_evidence` is set, the engine drives `strict_evidence: !self.deep_scan` per-candidate, the FR-011 per-page classification floor accumulates from strict-path recognitions only, and four tests in `crates/engine/tests/decoder_recovery.rs` plus the inline `decoder_defers_to_strict_when_strict_evidence_is_set` test pin the behavior. §9.3 expanded with the wiring citations. Gap register row 9 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.12 | 2026-04-25 | Gap #5 (P1) closed — type-level seal for `AppliedFix::__engine_promote`. New `EnginePromotionToken` ZST in `marque-rules` carries a private `_seal: ()` field; brace construction from outside `marque-rules` is rejected by Rust's privacy rules. The token threads as the sixth argument of `__engine_promote`. Single bypass surface (`EnginePromotionToken::__engine_construct()`) is `#[doc(hidden)]` and engine-only by convention; production code mints it from exactly one place — the private `engine_promotion_token()` helper in `crates/engine/src/engine.rs` — feeding the three production promotion sites. Two test-fixture carve-outs (`crates/engine/tests/audit.rs`, `marque/src/render.rs::tests`) updated with inline carve-out comments. Acceptance: `compile_fail` doctest on `EnginePromotionToken` pins brace-construction rejection at the doctest's separate-crate compile; `crates/rules/tests/engine_promotion_seal.rs::documented_door_can_mint_token_from_outside_marque_rules` proves the documented door works. §6.2 rewritten. Gap register row 5 struck through. | Adam Poulemanos (with Claude Code) |
 | 0.13 | 2026-04-26 | Last P1 gap closed — gap #7, per-document timeout. Spec 005 landed in six PRs over four phases. Header date bumped 2026-04-25 → 2026-04-26 to match this entry; the 0.10 → 0.12 entries date-stamped 2026-04-25 are unchanged. **Phase 1** (PR #161): foundational types — `LintOptions { deadline: Option<Instant> }` and `FixOptions { deadline, threshold_override }` (both `#[non_exhaustive]`), `Engine::lint_with_options` / `fix_with_options`, `EngineError` runtime-error enum, back-compat shims preserved. Zero behavior change. **Phase 2** (PR #162): cooperative cancellation wired in `Engine` at three boundaries — pre-pass, per-candidate, per-fix-application — producing truncated `LintResult` for lint and `Err(EngineError::DeadlineExceeded { partial_lint })` for fix per Constitution V Principle V. `crates/engine/benches/deadline_overhead.rs` bench gated at 10 % (target 2 %; tightening blocked on host-clock variance). **Phase 3a** (PR #163): CLI `--deadline <humantime>` flag, `EX_TEMPFAIL` (75) on fix expiry, `EX_USAGE` (64) on `--deadline 0`, JSON-mode trailing-narration suppressed to keep the NDJSON pipe-clean, `--dry-run` re-lint reuses the same `FixOptions`. **Phase 3b** (PR #164): server `X-Marque-Deadline: <u64-ms>` header, `MARQUE_MAX_DEADLINE` env-var cap mirroring `resolve_body_limit`, per-endpoint default 30 s, header-validation-before-body-deserialization ordering invariant, duplicate-header rejection, `400` / `504` / `500`-on-config-overflow response codes, `Marque-Truncated` response header on truncated lint. **Phase 3c** (PR #165): WASM `WasmConfig.deadline_ms: Option<f64>` validated `is_finite() && >= 0.0`, Constitution III runtime-config-restriction analysis recorded in crate-level docs, `WasmConfigCacheKey` projection excludes `deadline_ms`, `with_engine` accepts `FnOnce -> Result<Config, String>` to avoid building `Config` on cache hit, SC-008 byte-identical NDJSON parity preserved at generous and zero deadlines. **Phase 3d** (PR #166): `BatchOptions` gains `#[non_exhaustive]` + `per_doc_deadline: Option<Duration>`, `BatchEngine::lint_many_with_options` / `fix_many_with_options`, `BatchError::DocumentDeadlineExceeded { partial_lint }` per-document with `is_deadline_exceeded()` predicate distinct from `is_panic()` / `is_shutdown()` / `is_cancelled()`. Per-doc `Instant::now() + d` stamping happens AFTER permit acquisition so concurrency-controller wait does not consume the budget; `checked_add` overflow maps to `deadline = now` (engine treats as expired) rather than silently disabling the operator-configured budget. Required infrastructure: `web-time` workspace dep + engine dep; `web_time::Instant` re-exported as `marque_engine::Instant` so the engine's per-candidate `Instant::now()` works on `wasm32-unknown-unknown` (where `std::time::Instant::now()` panics). §9.7 rewritten from `[NON-GOAL]` to `[LANDED]`; §10.1 (CLI), §10.2 (server), §10.3 (WASM) each updated with deadline-handling block; gap register row 7 struck through. | Adam Poulemanos (with Claude Code) |
+| 0.16 | 2026-04-27 | SBOM generation landed (issue #191). `release.yml` gains two new steps gated on `dry-run == false`: **Generate SBOMs** installs `reuse==5.0.2` (same pin as `ci.yml` `reuse` job) and runs `reuse spdx --add-license-concluded --creator-organization "Knitli Inc."` to produce `marque-<version>.spdx` (SPDX tag-value, NTIA compliant), then installs `cargo-cyclonedx` and runs it in JSON + XML modes to produce `marque-<version>.cyclonedx.json` and `marque-<version>.cyclonedx.xml` (full transitive dep graph from Cargo.lock); **Attest SBOMs** passes all three SBOM files to `actions/attest-build-provenance` (same action, same SHA-pin used by the existing archive attestation — no new permissions required). All four release artifacts (archive + three SBOMs) are attached to the GitHub release via `softprops/action-gh-release`; the release body documents all four `gh attestation verify` invocations. `SECURITY.md` updated: planned SBOM note → landed. `cargo-cyclonedx` SHA-pin deferred to issue #191 follow-up per §8.3. §8.7 rewritten. | Adam Poulemanos (with Claude Code) |
 | 0.15 | 2026-04-26 | Property-based testing layer added (`proptest` v1). Three new integration suites (41 tests): `crates/capco/tests/proptest_lattice.rs` (29 tests — full `Lattice` contract for `SciSet`/`SarSet` including meet associativity, bottom-absorbs-meet, and both absorption directions; `FgiSet` adds `BoundedLattice` laws, meet associativity, join-over-meet absorption, and concealment monotonicity — meet-over-join absorption and top-is-meet-identity intentionally omitted due to CAPCO §3.3a concealment-supersession deviation documented in the test file); `crates/engine/tests/proptest_engine.rs` (8 tests — never-panic, span bounds, fix idempotency, dry-run/apply parity, dry-run source-unchanged, threshold enforcement, confidence bounds; generator extended with a multi-KB variant producing 100–300-portion inputs ≈ 1.5–4.5 KB); `crates/ism/tests/proptest_page_context.rs` (4 tests — classification exact-equality roll-up, dissem-control union superset, REL TO intersection property). `proptest = { version = "1", default-features = false, features = ["std"] }` added to workspace dependencies; per-crate dev-dependency added for `marque-capco`, `marque-engine`, `marque-ism`. §14 updated. | Adam Poulemanos (with Claude Code) |
 | 0.14 | 2026-04-26 | Stale `[PARTIAL]` status notes flipped to `[LANDED]` after a doc-vs-state audit caught four section footers still claiming work-in-progress for items the gap register and Appendix C already record as resolved. **§3.4** (engine-promotion boundary): seal-by-convention claim updated to reflect the v0.12 `EnginePromotionToken` ZST landing (gap row 5 struck through). **§3.7** (authoritative source fidelity): "T089 is open" replaced with the PR #154 / commit `cdc0866` landing reference; FR-021 commit-time verification cited as the standing guard. **§11.4** (environment surface): `MARQUE_AUDIT_SCHEMA` wiring claim replaced with the v0.5 / PR #122 landing — env-var read in `crates/engine/build.rs`, accept-list `["marque-mvp-1", "marque-mvp-2"]`, `pub const AUDIT_SCHEMA_VERSION` consumed by CLI + WASM emitters. **§15** (citation integrity): same T089 update as §3.7 plus the FR-021 standing-guard framing. No code changes — pure doc-state reconciliation. The two genuinely-open `[PARTIAL]` notes (§3.3 WASM-safe-set drift compile-fail test absent; §10.2 server auth middleware un-wired) and the two `[PLANNED]` v0.2 cache notes (§6.8, §12.1) stand. | Adam Poulemanos (with Claude Code) |
