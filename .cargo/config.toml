@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+# Activate SIMD128 for the wasm32 target at the rustc level.
+#
+# `--enable-simd` in wasm-opt (configured in crates/wasm/Cargo.toml) is a
+# post-processing pass that can only optimize SIMD instructions already present
+# in the binary — it does not generate them. Without this flag, crates that
+# have WASM SIMD128 code paths (e.g., `memchr`) silently fall back to scalar.
+#
+# SIMD128 is part of WebAssembly 2.0 and has been universally supported since
+# Chrome 91, Firefox 89, Safari 16.4, Edge 91 (all 2022–2023). It is a safe
+# production baseline for any target audience in 2026.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]
