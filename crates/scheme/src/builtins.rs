@@ -34,7 +34,7 @@
 //! primitives.
 
 use crate::lattice::{BoundedLattice, Lattice};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 // ---------------------------------------------------------------------------
 // OrdMax / OrdMin — total-order lattices
@@ -366,10 +366,10 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
     fn apply_supersession(set: Vec<T>, supersession: &'static [(T, T)]) -> Vec<T> {
         // Precompute the drop set (superseded tokens whose superseding
         // peer is present). Avoids overlapping borrow from `retain`.
-        let mut drops: Vec<&T> = Vec::new();
+        let mut drops: BTreeSet<&T> = BTreeSet::new();
         for (superseding, superseded) in supersession.iter() {
             if set.iter().any(|u| u == superseding) {
-                drops.push(superseded);
+                drops.insert(superseded);
             }
         }
         set.into_iter().filter(|t| !drops.contains(&t)).collect()
@@ -470,7 +470,7 @@ impl<T: Ord + Clone> ModeSet<T> {
     pub fn mode(&self) -> Option<&T> {
         self.0
             .iter()
-            .max_by(|(ak, av), (bk, bv)| av.cmp(bv).then_with(|| bk.cmp(ak)))
+            .min_by(|(ak, av), (bk, bv)| bv.cmp(av).then_with(|| ak.cmp(bk)))
             .map(|(k, _)| k)
     }
 
