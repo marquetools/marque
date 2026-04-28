@@ -139,7 +139,7 @@ impl<'t> Parser<'t> {
                     attrs.declass_exemption = Some(exemption);
                 } else {
                     // Attempt to parse as a typed IsmDate (YYYY, YYYYMMDD,
-                    // YYYY-MM-DD, etc.). Unrecognised strings are silently
+                    // YYYY-MM-DD, etc.). Unrecognized strings are silently
                     // dropped rather than stored as raw text, since the field
                     // is now typed.
                     attrs.declassify_on = IsmDate::from_str(s).ok();

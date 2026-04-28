@@ -449,7 +449,16 @@ impl IsmDate {
                 offset,
             } => {
                 let utc_tb = offset.map_or(0_i16, |o| -o.minutes);
-                (*year, *month, *day, *hour, *minute, *second, *nanosecond, utc_tb)
+                (
+                    *year,
+                    *month,
+                    *day,
+                    *hour,
+                    *minute,
+                    *second,
+                    *nanosecond,
+                    utc_tb,
+                )
             }
         }
     }
@@ -1358,11 +1367,10 @@ mod tests {
 
     #[test]
     fn utc_offset_from_str_rejects_invalid() {
-        for bad in ["EST", "UTC", "utc", "+0530", "+05-30", "05:30", "", "+24:00"] {
-            assert!(
-                bad.parse::<UtcOffset>().is_err(),
-                "should reject {bad:?}"
-            );
+        for bad in [
+            "EST", "UTC", "utc", "+0530", "+05-30", "05:30", "", "+24:00",
+        ] {
+            assert!(bad.parse::<UtcOffset>().is_err(), "should reject {bad:?}");
         }
     }
 

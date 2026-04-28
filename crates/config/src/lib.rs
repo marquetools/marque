@@ -77,9 +77,7 @@ pub enum ConfigError {
     UnknownSeverity { rule: String, value: String },
 
     /// Timezone offset string is not a recognized ISO 8601 UTC offset form.
-    #[error(
-        "invalid timezone offset {value:?} — expected \"Z\", \"+HH:MM\", or \"-HH:MM\""
-    )]
+    #[error("invalid timezone offset {value:?} — expected \"Z\", \"+HH:MM\", or \"-HH:MM\"")]
     InvalidTimezone { value: String },
 
     /// Corpus-override file did not parse as JSON, or violated the
@@ -412,10 +410,9 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
         config.capco.version = v;
     }
     if let Some(ref tz) = file.capco.default_timezone {
-        config.capco.default_timezone =
-            tz.parse::<UtcOffset>().map_err(|_| ConfigError::InvalidTimezone {
-                value: tz.clone(),
-            })?;
+        config.capco.default_timezone = tz
+            .parse::<UtcOffset>()
+            .map_err(|_| ConfigError::InvalidTimezone { value: tz.clone() })?;
     }
     if let Some(threshold) = file.confidence_threshold {
         config.set_confidence_threshold(threshold)?;
@@ -473,11 +470,12 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     if let Ok(raw) = std::env::var("MARQUE_DEFAULT_TIMEZONE") {
         if !raw.trim().is_empty() {
             config.capco.default_timezone =
-                raw.parse::<UtcOffset>().map_err(|_| ConfigError::InvalidEnvVar {
-                    var: "MARQUE_DEFAULT_TIMEZONE",
-                    raw: raw.clone(),
-                    reason: "expected \"Z\", \"+HH:MM\", or \"-HH:MM\"",
-                })?;
+                raw.parse::<UtcOffset>()
+                    .map_err(|_| ConfigError::InvalidEnvVar {
+                        var: "MARQUE_DEFAULT_TIMEZONE",
+                        raw: raw.clone(),
+                        reason: "expected \"Z\", \"+HH:MM\", or \"-HH:MM\"",
+                    })?;
         }
     }
     Ok(())

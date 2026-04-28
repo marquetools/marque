@@ -457,7 +457,7 @@ impl PageContext {
     /// Comparison uses [`IsmDate::end_cmp`], which compares the *end of each
     /// date's span*. A `Year(2003)` value extends through December 31 and is
     /// therefore "later" than a `Date(2003, 6, 15)`. This is the correct
-    /// behaviour for the MaxDate lattice: a year-only declassification date
+    /// behavior for the MaxDate lattice: a year-only declassification date
     /// is the most conservative (widest) interpretation.
     pub fn expected_declassify_on(&self) -> Option<&IsmDate> {
         self.portions
