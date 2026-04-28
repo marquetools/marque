@@ -47,6 +47,7 @@ use crate::attrs::{
     IsmAttributes, MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking,
     SarProgram, SciCompartment, SciControl, SciControlSystem, SciMarking,
 };
+use crate::date::IsmDate;
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
 /// with numbered values first, followed by alphabetic values" at each hierarchical
@@ -445,36 +446,24 @@ impl PageContext {
     }
 
     /// The maximum (furthest-out) declassification date observed across all
-    /// portions, as an `YYYYMMDD` or `YYYY` string, or `None` if no portion
-    /// carries one.
+    /// portions, or `None` if no portion carries one.
     ///
     /// A banner or CAB that specifies an earlier date than this maximum is a
     /// violation — it would cause portions to be declassified before the most
     /// restrictive date allows.
     ///
-    /// # Encoding invariant (read before editing the comparator)
+    /// # Span-aware semantics
     ///
-    /// Lexicographic `String::cmp` is used here and is **semantically
-    /// correct** under the encoding documented in
-    /// `marque_core::parser::is_declass_date`:
-    /// - `YYYYMMDD` vs `YYYYMMDD` → raw ASCII order = chronological.
-    /// - `YYYY` means "declassify at the **start** of year YYYY" (Jan 1).
-    ///   When compared to a `YYYYMMDD` in the same year, `"YYYY"` is a
-    ///   proper prefix of `"YYYYMMDD"`, so the shorter string sorts first,
-    ///   which matches the semantic "Jan 1 ≤ any later date in that year."
-    /// - `YYYY` vs a `YYYYMMDD` in a different year is decided by the
-    ///   first four digits, which are already chronological.
-    ///
-    /// If the `YYYY` convention is ever redefined to mean "end of year"
-    /// (Dec 31), this comparator must switch to a parsing-based one: lex
-    /// order would silently return wrong answers for `"2030"` vs
-    /// `"20300101"`. `is_declass_date` in `marque-core` is the single
-    /// source of truth for the encoding.
-    pub fn expected_declassify_on(&self) -> Option<&str> {
+    /// Comparison uses [`IsmDate::end_cmp`], which compares the *end of each
+    /// date's span*. A `Year(2003)` value extends through December 31 and is
+    /// therefore "later" than a `Date(2003, 6, 15)`. This is the correct
+    /// behavior for the MaxDate lattice: a year-only declassification date
+    /// is the most conservative (widest) interpretation.
+    pub fn expected_declassify_on(&self) -> Option<&IsmDate> {
         self.portions
             .iter()
-            .filter_map(|a| a.declassify_on.as_deref())
-            .max_by(|a, b| a.cmp(b))
+            .filter_map(|a| a.declassify_on.as_ref())
+            .max_by(|a, b| a.end_cmp(b))
     }
 
     /// The last-observed declass exemption across all portions, or `None` if
@@ -943,6 +932,7 @@ fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
 mod tests {
     use super::*;
     use crate::attrs::{Classification, MarkingClassification};
+    use crate::date::IsmDate;
 
     fn attrs_with_classification(c: Classification) -> IsmAttributes {
         IsmAttributes {
@@ -1029,17 +1019,20 @@ mod tests {
     #[test]
     fn expected_declassify_on_max() {
         let a1 = IsmAttributes {
-            declassify_on: Some("20350101".into()),
+            declassify_on: Some(IsmDate::Date(2035, 1, 1)),
             ..Default::default()
         };
         let a2 = IsmAttributes {
-            declassify_on: Some("20481231".into()),
+            declassify_on: Some(IsmDate::Date(2048, 12, 31)),
             ..Default::default()
         };
         let mut ctx = PageContext::new();
         ctx.add_portion(a1);
         ctx.add_portion(a2);
-        assert_eq!(ctx.expected_declassify_on(), Some("20481231"));
+        assert_eq!(
+            ctx.expected_declassify_on(),
+            Some(&IsmDate::Date(2048, 12, 31))
+        );
     }
 
     // --- is_classified ---

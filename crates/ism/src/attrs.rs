@@ -31,6 +31,7 @@
 //! codewords, not a closed vocabulary. SAR is modeled structurally via
 //! [`SarMarking`] / [`SarProgram`] / [`SarCompartment`].
 
+use crate::date::IsmDate;
 use crate::generated::values;
 use crate::span::Span;
 
@@ -120,8 +121,19 @@ pub struct IsmAttributes {
     /// kept as a typed field for E002 and REL TO validation rules.
     pub rel_to: Box<[CountryCode]>,
 
-    /// Declassification date from CAB (free text, e.g., "20331231").
-    pub declassify_on: Option<Box<str>>,
+    /// Declassification date from CAB (ISM precision-tier union).
+    ///
+    /// Typed as [`IsmDate`] to preserve the precision tier from the original
+    /// source. In CAPCO text markings the parser accepts:
+    /// - `YYYY` (4-digit year → [`IsmDate::Year`])
+    /// - `YYYYMMDD` (8-digit no-hyphen → [`IsmDate::Date`])
+    /// - ISO 8601 with hyphens (`YYYY-MM-DD`, etc.) for XML-sourced markings.
+    ///
+    /// `Year(y)` represents the entire calendar year — its end-of-span is
+    /// December 31 of year `y`, which is later than any date in that year.
+    /// Use [`IsmDate::end_cmp`] when determining the most-conservative
+    /// (furthest-out) date across portions.
+    pub declassify_on: Option<IsmDate>,
 
     /// Free-text "Classified By" identifier from CAB.
     pub classified_by: Option<Box<str>>,

@@ -3195,7 +3195,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
     fn recognize(&self, bytes: &[u8], cx: &ParseContext) -> Parsed<CapcoMarking> {
         let strict_inner_cx = ParseContext {
             strict_evidence: true,
-            ..*cx
+            ..cx.clone()
         };
         let strict_result = self.strict.recognize(bytes, &strict_inner_cx);
 
@@ -3240,7 +3240,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         //       `attrs.classification = None`) — incomplete Unambiguous.
         let decoder_cx = ParseContext {
             strict_evidence: false,
-            ..*cx
+            ..cx.clone()
         };
         let decoder_result = self.decoder.recognize(bytes, &decoder_cx);
 
@@ -3279,6 +3279,7 @@ mod tests {
             zone: None,
             position: None,
             classification_floor: None,
+            as_of: None,
         }
     }
 
@@ -4369,6 +4370,7 @@ mod tests {
             zone: None,
             position: None,
             classification_floor: Some(Classification::Secret as u8),
+            as_of: None,
         };
         match rx.recognize(b"(U)", &cx) {
             Parsed::Ambiguous { candidates } => assert!(
@@ -4392,6 +4394,7 @@ mod tests {
             zone: None,
             position: None,
             classification_floor: Some(Classification::Confidential as u8),
+            as_of: None,
         };
         match rx.recognize(b"(S//NF)", &cx) {
             Parsed::Unambiguous(m) => {

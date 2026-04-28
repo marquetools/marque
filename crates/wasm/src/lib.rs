@@ -1259,7 +1259,11 @@ pub fn generate_cab_native(
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
             if found_declass_date.is_none() {
                 if let Some(date) = &parsed.attrs.declassify_on {
-                    found_declass_date = Some(date.to_string());
+                    // `to_maxdate_str()` always returns 8-digit YYYYMMDD:
+                    // Year(y) → "{y}1231", YearMonth(y,m) → last day of month,
+                    // Date / DateHourMin / DateTime → YYYYMMDD of the date component.
+                    // This is the format expected on a CAB "Declassify On:" line.
+                    found_declass_date = Some(date.to_maxdate_str().into());
                 }
             }
             if found_declass_exemption.is_none() {

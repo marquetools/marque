@@ -572,13 +572,22 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             } else {
                 "expansion-enabled"
             };
-            writeln!(
-                content,
-                "/// - `{}` ({kind}): {}",
-                ext.code,
-                ext.description.trim(),
-            )
-            .unwrap();
+            let mut entry_line =
+                format!("/// - `{}` ({kind}): {}", ext.code, ext.description.trim(),);
+            // Append temporal activity window when present (Phase 3 plumbing).
+            match (&ext.active_from, &ext.active_to) {
+                (Some(af), Some(at)) => {
+                    entry_line.push_str(&format!(" [active {af}–{at}]"));
+                }
+                (Some(af), None) => {
+                    entry_line.push_str(&format!(" [active from {af}]"));
+                }
+                (None, Some(at)) => {
+                    entry_line.push_str(&format!(" [active until {at}]"));
+                }
+                (None, None) => {}
+            }
+            writeln!(content, "{entry_line}").unwrap();
         }
         writeln!(content, "///").unwrap();
     }
@@ -1468,6 +1477,10 @@ struct CountryExtension {
     code: String,
     description: String,
     members: Vec<String>,
+    /// Build-time validated active_from date string (YYYY, YYYY-MM, or YYYY-MM-DD).
+    active_from: Option<String>,
+    /// Build-time validated active_to date string (YYYY, YYYY-MM, or YYYY-MM-DD).
+    active_to: Option<String>,
 }
 
 /// TOML wire types for the extensions file.
@@ -1492,6 +1505,18 @@ mod ext_toml {
         pub description: Option<String>,
         #[serde(default)]
         pub members: Option<Vec<String>>,
+        /// First date on which this code was active (ISO 8601: `YYYY`,
+        /// `YYYY-MM`, or `YYYY-MM-DD`). Optional; `None` means
+        /// "active from the beginning of the period covered by this
+        /// release." Build-time validated with [`validate_temporal_field`].
+        #[serde(default)]
+        pub active_from: Option<String>,
+        /// Last date on which this code was active, inclusive.
+        /// Optional; `None` means "still active." Same formats as
+        /// `active_from`. Must be `>= active_from` when both are present
+        /// (build-time validated).
+        #[serde(default)]
+        pub active_to: Option<String>,
     }
 }
 
@@ -1503,6 +1528,128 @@ fn is_valid_extension_byte(b: u8) -> bool {
     b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'
 }
 
+/// Returns the number of days in the given month, correctly accounting for
+/// leap years. Used by [`validate_temporal_field`] without a jiff dep in
+/// the build script.
+fn build_days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            if leap { 29 } else { 28 }
+        }
+        _ => 0, // invalid month — caught before this is reached
+    }
+}
+
+/// Validate a temporal date string from `country_extensions.toml`.
+///
+/// Accepted forms:
+/// - `YYYY` — `xsd:gYear` (e.g. `"2003"`)
+/// - `YYYY-MM` — `xsd:gYearMonth` (e.g. `"2003-04"`)
+/// - `YYYY-MM-DD` — `xsd:date` (e.g. `"2003-04-15"`)
+///
+/// Returns `Err(msg)` with a human-readable error string if the value
+/// does not match one of these forms or the calendar components are
+/// out of range. This is called from `load_country_extensions` which
+/// `panic!`s with the error and the offending `code` so the build
+/// error is unambiguous.
+fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
+    let bytes = s.as_bytes();
+    let ok = match bytes.len() {
+        // YYYY
+        4 => bytes.iter().all(|b| b.is_ascii_digit()),
+        // YYYY-MM
+        7 => {
+            bytes[4] == b'-'
+                && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                && {
+                    let month = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
+                    (1..=12).contains(&month)
+                }
+        }
+        // YYYY-MM-DD — validate full calendar correctness (incl. leap years)
+        10 => {
+            bytes[4] == b'-'
+                && bytes[7] == b'-'
+                && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+                && {
+                    let y = (bytes[0] - b'0') as i32 * 1000
+                        + (bytes[1] - b'0') as i32 * 100
+                        + (bytes[2] - b'0') as i32 * 10
+                        + (bytes[3] - b'0') as i32;
+                    let m = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
+                    let d = (bytes[8] - b'0') * 10 + (bytes[9] - b'0');
+                    (1..=12).contains(&m) && d >= 1 && d <= build_days_in_month(y, m)
+                }
+        }
+        _ => false,
+    };
+    if !ok {
+        panic!(
+            "{path}: country extension `code = {code:?}` has invalid \
+             `{field}` value {s:?}. Expected ISO 8601 date: \
+             `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` (calendar-correct)."
+        );
+    }
+}
+
+/// Returns the *start-of-span* `(year, month, day)` for a validated ISO 8601
+/// date string (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`).
+///
+/// - `YYYY`       → (year, 1,  1)
+/// - `YYYY-MM`    → (year, mm, 1)
+/// - `YYYY-MM-DD` → (year, mm, dd)
+fn temporal_start_ymd(s: &str) -> (i32, u8, u8) {
+    let b = s.as_bytes();
+    let y = (b[0] - b'0') as i32 * 1000
+        + (b[1] - b'0') as i32 * 100
+        + (b[2] - b'0') as i32 * 10
+        + (b[3] - b'0') as i32;
+    match s.len() {
+        4 => (y, 1, 1),
+        7 => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            (y, m, 1)
+        }
+        _ => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            let d = (b[8] - b'0') * 10 + (b[9] - b'0');
+            (y, m, d)
+        }
+    }
+}
+
+/// Returns the *end-of-span* `(year, month, day)` for a validated ISO 8601
+/// date string (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`).
+///
+/// - `YYYY`       → (year, 12, 31)
+/// - `YYYY-MM`    → (year, mm, last day of month)
+/// - `YYYY-MM-DD` → (year, mm, dd)
+fn temporal_end_ymd(s: &str) -> (i32, u8, u8) {
+    let b = s.as_bytes();
+    let y = (b[0] - b'0') as i32 * 1000
+        + (b[1] - b'0') as i32 * 100
+        + (b[2] - b'0') as i32 * 10
+        + (b[3] - b'0') as i32;
+    match s.len() {
+        4 => (y, 12, 31),
+        7 => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            (y, m, build_days_in_month(y, m))
+        }
+        _ => {
+            let m = (b[5] - b'0') * 10 + (b[6] - b'0');
+            let d = (b[8] - b'0') * 10 + (b[9] - b'0');
+            (y, m, d)
+        }
+    }
+}
+
 /// Read & validate `country_extensions.toml`. Returns extensions
 /// in declaration order (matters for forward-reference checks in
 /// `members`). Empty / missing file is a no-op (returns `[]`).
@@ -1512,6 +1659,9 @@ fn is_valid_extension_byte(b: u8) -> bool {
 /// - `code` not duplicating a CVE entry or earlier extension
 /// - each `members` entry must already be recognized (CVE or
 ///   earlier extension); forward references rejected
+/// - `active_from` and `active_to` (when present) must be valid ISO 8601
+///   date strings (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`); `active_to` must
+///   not sort before `active_from` when both are present
 ///
 /// Failures `panic!` from `build.rs`, which surfaces as a clear
 /// build error pointing at the offending entry.
@@ -1544,6 +1694,8 @@ fn load_country_extensions(
             code,
             description: raw_description,
             members: raw_members,
+            active_from: raw_active_from,
+            active_to: raw_active_to,
         } = entry;
 
         // Required-description check (issue #183 PR-B): the
@@ -1663,10 +1815,38 @@ fn load_country_extensions(
             }
         };
 
+        // Validate active_from and active_to temporal fields.
+        if let Some(ref af) = raw_active_from {
+            validate_temporal_field(af, "active_from", &code, path);
+        }
+        if let Some(ref at) = raw_active_to {
+            validate_temporal_field(at, "active_to", &code, path);
+        }
+        // active_to must not precede active_from.
+        //
+        // Comparison uses span-aware logic: `active_from` uses its
+        // *start-of-span* (first day) and `active_to` uses its
+        // *end-of-span* (last day), so `active_to = "2003"` (meaning
+        // all of 2003, end = 2003-12-31) is not rejected when
+        // `active_from = "2003-04-01"` (start = 2003-04-01).
+        if let (Some(af), Some(at)) = (&raw_active_from, &raw_active_to) {
+            let from_start = temporal_start_ymd(af);
+            let to_end = temporal_end_ymd(at);
+            if to_end < from_start {
+                panic!(
+                    "{path}: country extension `code = {code:?}` has \
+                     `active_to` ({at:?}) before `active_from` ({af:?}). \
+                     The activity window must be non-negative.",
+                );
+            }
+        }
+
         out.push(CountryExtension {
             code,
             description,
             members,
+            active_from: raw_active_from,
+            active_to: raw_active_to,
         });
     }
 
