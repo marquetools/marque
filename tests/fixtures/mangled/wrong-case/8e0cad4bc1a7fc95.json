@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Hcs//Noforn",
+  "expected": "TOP SECRET//HCS//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

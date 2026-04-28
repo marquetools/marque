@@ -1,0 +1,6 @@
+{
+  "observed": "secret//controlled imagery",
+  "expected": "SECRET//CONTROLLED IMAGERY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

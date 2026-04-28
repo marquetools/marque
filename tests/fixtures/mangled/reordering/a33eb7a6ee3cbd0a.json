@@ -1,0 +1,6 @@
+{
+  "observed": "SSI//SECRET//REL TO USA, ACGU",
+  "expected": "SECRET//REL TO USA, ACGU//SSI",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

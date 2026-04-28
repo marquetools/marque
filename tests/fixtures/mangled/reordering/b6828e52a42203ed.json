@@ -1,0 +1,6 @@
+{
+  "observed": "REL TO USA, CAN, GBR////GBR S",
+  "expected": "//GBR S//REL TO USA, CAN, GBR",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//TK-KAND ABCD NOFORN",
+  "expected": "TOP SECRET//TK-KAND ABCD//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

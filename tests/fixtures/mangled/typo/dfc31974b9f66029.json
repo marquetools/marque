@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRT//SAR-BP//NOFORN",
+  "expected": "TOP SECRET//SAR-BP//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

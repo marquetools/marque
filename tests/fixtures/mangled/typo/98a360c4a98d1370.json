@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//HCS-O//ORCON/NOFEORN",
+  "expected": "SECRET//HCS-O//ORCON/NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

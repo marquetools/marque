@@ -1,0 +1,6 @@
+{
+  "observed": "//CTS//OBHEMIA",
+  "expected": "//CTS//BOHEMIA",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

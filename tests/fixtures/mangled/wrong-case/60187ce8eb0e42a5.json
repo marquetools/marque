@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//fgi gbr",
+  "expected": "TOP SECRET//FGI GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

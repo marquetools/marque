@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Hcs-P/Lmn//Special Access Required-Butter Popcorn//Not Releasable To Foreign Nationals",
+  "expected": "TOP SECRET//HCS-P/LMN//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NOT RELEASABLE TO FOREIGN NATIONALS",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.83
+}

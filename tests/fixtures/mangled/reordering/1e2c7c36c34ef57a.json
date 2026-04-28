@@ -1,0 +1,6 @@
+{
+  "observed": "REL TO USA, EGY, ISR//TOP SECRET",
+  "expected": "TOP SECRET//REL TO USA, EGY, ISR",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//NOFORN NODIS",
+  "expected": "SECRET//NOFORN//NODIS",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "RSEN//TOP SECRET//TK",
+  "expected": "TOP SECRET//TK//RSEN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

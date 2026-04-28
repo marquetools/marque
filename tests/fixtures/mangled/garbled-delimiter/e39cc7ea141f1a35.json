@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215NIS//REL TO USA, ISAF, NATO",
+  "expected": "//NIS//REL TO USA, ISAF, NATO",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

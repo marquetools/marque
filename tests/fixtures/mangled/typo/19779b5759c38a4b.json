@@ -1,0 +1,6 @@
+{
+  "observed": "//GBR S//REL TO USA, GRB",
+  "expected": "//GBR S//REL TO USA, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

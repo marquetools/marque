@@ -1,0 +1,6 @@
+{
+  "observed": "//joint s gbr usa//rel to usa, fvey",
+  "expected": "//JOINT S GBR USA//REL TO USA, FVEY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

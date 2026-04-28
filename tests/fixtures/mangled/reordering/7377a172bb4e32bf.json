@@ -1,0 +1,6 @@
+{
+  "observed": "RSV-123-ABC//TOP SECRET",
+  "expected": "TOP SECRET//RSV-123-ABC",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

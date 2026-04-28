@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

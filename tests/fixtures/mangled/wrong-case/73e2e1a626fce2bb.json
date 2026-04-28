@@ -1,0 +1,6 @@
+{
+  "observed": "Unclassified//Law Enforcement Sensitive",
+  "expected": "UNCLASSIFIED//LAW ENFORCEMENT SENSITIVE",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

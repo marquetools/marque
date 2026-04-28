@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215JOINT S GBR USA//REL TO USA, FVEY",
+  "expected": "//JOINT S GBR USA//REL TO USA, FVEY",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

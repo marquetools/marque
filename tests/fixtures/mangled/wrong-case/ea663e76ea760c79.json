@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Si-G//Orcon/Noforn",
+  "expected": "TOP SECRET//SI-G//ORCON/NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "//DEU TS//NFP",
+  "expected": "//DEU TS//NF",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Aunpub/Si/Talent Keyhole/Xunpub//Noforn",
+  "expected": "TOP SECRET//AUNPUB/SI/TALENT KEYHOLE/XUNPUB//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

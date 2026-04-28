@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET //FRD",
+  "expected": "SECRET//FRD",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

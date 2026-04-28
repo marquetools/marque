@@ -1,0 +1,6 @@
+{
+  "observed": "HCS-P//SECRET//NOFORN",
+  "expected": "SECRET//HCS-P//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

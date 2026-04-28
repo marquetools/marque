@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED\u2215\u2215DEA SENSITIVE",
+  "expected": "UNCLASSIFIED//DEA SENSITIVE",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

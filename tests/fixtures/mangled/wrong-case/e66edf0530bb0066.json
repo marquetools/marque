@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Rd-Sigma 20",
+  "expected": "SECRET//RD-SIGMA 20",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

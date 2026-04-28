@@ -1,0 +1,6 @@
+{
+  "observed": "LIMITED DISTRIBUTION//UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//LIMITED DISTRIBUTION",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

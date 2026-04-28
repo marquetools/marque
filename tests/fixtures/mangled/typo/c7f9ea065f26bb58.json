@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//SARBUTTER POPCORN",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//FORMERLY RESTRICTED DATA-COMINTGMA 14//NOFORN",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.82
+}

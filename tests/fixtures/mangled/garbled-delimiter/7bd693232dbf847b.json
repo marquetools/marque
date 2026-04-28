@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215NF\nS//HCS-P//NF",
+  "expected": "//NF\nS//HCS-P//NF",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.83
+}

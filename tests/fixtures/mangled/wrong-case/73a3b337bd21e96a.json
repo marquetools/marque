@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Frd",
+  "expected": "SECRET//FRD",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

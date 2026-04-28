@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASCOMINTFIED//FOUO/NOFORN",
+  "expected": "UNCLASSIFIED//FOUO/NOFORN",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.81
+}

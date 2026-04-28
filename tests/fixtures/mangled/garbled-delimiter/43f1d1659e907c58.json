@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET// HCS-P JJJ XYZ//ORCON/NOFORN",
+  "expected": "TOP SECRET//HCS-P JJJ XYZ//ORCON/NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

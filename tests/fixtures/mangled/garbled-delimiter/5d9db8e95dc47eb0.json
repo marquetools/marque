@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET/ /SAR-XXX-YYY",
+  "expected": "SECRET//SAR-XXX-YYY",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

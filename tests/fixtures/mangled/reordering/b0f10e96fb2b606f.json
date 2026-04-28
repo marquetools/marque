@@ -1,0 +1,6 @@
+{
+  "observed": "FGI S//NF//",
+  "expected": "//FGI S//NF",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

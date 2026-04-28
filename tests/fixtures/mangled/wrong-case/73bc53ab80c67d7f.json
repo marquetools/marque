@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//usa/can/gbr eyes only",
+  "expected": "TOP SECRET//USA/CAN/GBR EYES ONLY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

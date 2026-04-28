@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Sar-Butter Popcorn-123/Candy Apple-Xyz Yyy//Noforn",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN-123/CANDY APPLE-XYZ YYY//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

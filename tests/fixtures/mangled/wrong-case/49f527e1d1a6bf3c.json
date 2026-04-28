@@ -1,0 +1,6 @@
+{
+  "observed": "//deu s//nf",
+  "expected": "//DEU S//NF",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

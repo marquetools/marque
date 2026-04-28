@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//REL TO USA, CAN, GBR//SI-EU",
+  "expected": "TOP SECRET//SI-EU//REL TO USA, CAN, GBR",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "secret//sar-xxx-yyy",
+  "expected": "SECRET//SAR-XXX-YYY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

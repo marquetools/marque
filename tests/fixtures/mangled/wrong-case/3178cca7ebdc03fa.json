@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Bohemia//Fgi Aus Can Deu Nato//Noforn",
+  "expected": "TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.83
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SEKCRET//RD-CNWDI",
+  "expected": "SECRET//RD-CNWDI",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

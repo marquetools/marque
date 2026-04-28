@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Fgi Can Gbr//Rel To Usa, Can, Gbr",
+  "expected": "SECRET//FGI CAN GBR//REL TO USA, CAN, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

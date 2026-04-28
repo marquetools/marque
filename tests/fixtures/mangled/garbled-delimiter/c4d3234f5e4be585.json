@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215DEU SECRET//REL TO USA, DEU",
+  "expected": "//DEU SECRET//REL TO USA, DEU",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

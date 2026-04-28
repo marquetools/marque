@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//FGI//NOFONR",
+  "expected": "SECRET//FGI//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

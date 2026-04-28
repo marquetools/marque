@@ -1,0 +1,6 @@
+{
+  "observed": "FGI//TOP SECRET",
+  "expected": "TOP SECRET//FGI",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

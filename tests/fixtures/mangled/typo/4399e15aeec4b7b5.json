@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//FJSA",
+  "expected": "TOP SECRET//FISA",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-BUTTER POPCORN-123/CANDY APPLE-XYZ YYY//NOFORN//TOP SECRET",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN-123/CANDY APPLE-XYZ YYY//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

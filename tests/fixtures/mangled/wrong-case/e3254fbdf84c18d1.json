@@ -1,0 +1,6 @@
+{
+  "observed": "//Joint S//Rel",
+  "expected": "//JOINT S//REL",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

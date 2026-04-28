@@ -1,0 +1,6 @@
+{
+  "observed": "Confidential//Display Only Afg, Irq",
+  "expected": "CONFIDENTIAL//DISPLAY ONLY AFG, IRQ",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

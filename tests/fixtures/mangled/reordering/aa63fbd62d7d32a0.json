@@ -1,0 +1,6 @@
+{
+  "observed": "RSV-ABC//SECRET",
+  "expected": "SECRET//RSV-ABC",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

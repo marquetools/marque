@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//fgi can deu//rel to usa, can, deu",
+  "expected": "TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215CTS//BOHEMIA//REL TO USA, NATO",
+  "expected": "//CTS//BOHEMIA//REL TO USA, NATO",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.83
+}

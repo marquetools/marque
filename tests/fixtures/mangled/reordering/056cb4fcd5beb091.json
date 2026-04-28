@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//NOFORN//RSV-123-ABC",
+  "expected": "TOP SECRET//RSV-123-ABC//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

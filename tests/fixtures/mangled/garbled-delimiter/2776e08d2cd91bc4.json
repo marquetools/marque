@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET // SAR-BUTTER POPCORN-123/CANDY APPLE-XYZ YYY//NOFORN",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN-123/CANDY APPLE-XYZ YYY//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

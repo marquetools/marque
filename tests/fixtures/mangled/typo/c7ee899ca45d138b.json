@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//DISPLA ONLY AFG",
+  "expected": "SECRET//DISPLAY ONLY AFG",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

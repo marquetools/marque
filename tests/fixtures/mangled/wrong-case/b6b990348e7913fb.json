@@ -1,0 +1,6 @@
+{
+  "observed": "//Can Deu S//Rel To Usa, Can, Deu",
+  "expected": "//CAN DEU S//REL TO USA, CAN, DEU",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

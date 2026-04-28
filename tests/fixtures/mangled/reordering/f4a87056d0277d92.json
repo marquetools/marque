@@ -1,0 +1,6 @@
+{
+  "observed": "SI-G ABCD EFGH-XYZ//TOP SECRET//ORCON/NOFORN",
+  "expected": "TOP SECRET//SI-G ABCD EFGH-XYZ//ORCON/NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

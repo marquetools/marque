@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215RD-CNWDI",
+  "expected": "SECRET//RD-CNWDI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

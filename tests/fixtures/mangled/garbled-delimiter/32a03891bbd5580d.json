@@ -1,0 +1,6 @@
+{
+  "observed": "CONFIDENTIAL // HCS",
+  "expected": "CONFIDENTIAL//HCS",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

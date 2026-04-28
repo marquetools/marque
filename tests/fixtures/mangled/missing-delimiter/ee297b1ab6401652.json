@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//RESTRICTED DATA NOFORN",
+  "expected": "SECRET//RESTRICTED DATA//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

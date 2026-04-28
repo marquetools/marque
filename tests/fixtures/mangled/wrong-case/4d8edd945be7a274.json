@@ -1,0 +1,6 @@
+{
+  "observed": "//cosmic top secret//bohemia",
+  "expected": "//COSMIC TOP SECRET//BOHEMIA",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

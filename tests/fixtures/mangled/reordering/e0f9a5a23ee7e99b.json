@@ -1,0 +1,6 @@
+{
+  "observed": "RD-CNWDI//NOFORN//TOP SECRET",
+  "expected": "TOP SECRET//RD-CNWDI//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

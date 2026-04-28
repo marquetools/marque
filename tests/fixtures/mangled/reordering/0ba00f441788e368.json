@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//REL TO USA, CAN, GBR//FGI CAN GBR",
+  "expected": "SECRET//FGI CAN GBR//REL TO USA, CAN, GBR",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

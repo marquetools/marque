@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//fgi can deu//noforn",
+  "expected": "TOP SECRET//FGI CAN DEU//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "NOFORN//AUNPUB/SI/TALENT KEYHOLE/XUNPUB//TOP SECRET",
+  "expected": "TOP SECRET//AUNPUB/SI/TALENT KEYHOLE/XUNPUB//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

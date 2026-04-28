@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215CAN GBR S",
+  "expected": "//CAN GBR S",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED// LES",
+  "expected": "UNCLASSIFIED//LES",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

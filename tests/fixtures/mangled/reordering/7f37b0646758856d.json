@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-BP-123/CA-XYZ YYY//NOFORN//TOP SECRET",
+  "expected": "TOP SECRET//SAR-BP-123/CA-XYZ YYY//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

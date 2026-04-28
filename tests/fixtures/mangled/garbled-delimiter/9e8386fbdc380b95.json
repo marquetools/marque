@@ -1,0 +1,6 @@
+{
+  "observed": "// NS//ATOMAL//OC",
+  "expected": "//NS//ATOMAL//OC",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.83
+}

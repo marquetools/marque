@@ -1,0 +1,6 @@
+{
+  "observed": "NOFORN//SECRET//FGI//TK",
+  "expected": "SECRET//TK//FGI//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "//CBN GBR S",
+  "expected": "//CAN GBR S",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "UOP SECRET//USA/CAN/GBR EYES ONLY",
+  "expected": "TOP SECRET//USA/CAN/GBR EYES ONLY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

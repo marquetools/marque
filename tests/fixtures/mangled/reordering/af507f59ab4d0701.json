@@ -1,0 +1,6 @@
+{
+  "observed": "FRD//SECRET",
+  "expected": "SECRET//FRD",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

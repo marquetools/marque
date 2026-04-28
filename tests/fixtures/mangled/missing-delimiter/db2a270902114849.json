@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET RD-CNWDI//NOFORN",
+  "expected": "SECRET//RD-CNWDI//NOFORN",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "ESCRET//REL TO USA, JPN",
+  "expected": "SECRET//REL TO USA, JPN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

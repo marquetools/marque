@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//RD-CNWDI//RFL TO USA, GBR",
+  "expected": "SECRET//RD-CNWDI//REL TO USA, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

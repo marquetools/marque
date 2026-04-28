@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET / / TK",
+  "expected": "SECRET//TK",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

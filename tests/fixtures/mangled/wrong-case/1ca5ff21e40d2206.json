@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Tk//Rsen/Rel To Usa, Acgu",
+  "expected": "TOP SECRET//TK//RSEN/REL TO USA, ACGU",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

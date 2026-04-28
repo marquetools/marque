@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//FRD-COMINTGMA 14",
+  "expected": "SECRET//FRD-SIGMA 14",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.81
+}

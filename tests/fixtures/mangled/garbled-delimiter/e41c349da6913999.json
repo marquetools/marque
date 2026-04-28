@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215FRD-SIGMA 14 18",
+  "expected": "SECRET//FRD-SIGMA 14 18",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

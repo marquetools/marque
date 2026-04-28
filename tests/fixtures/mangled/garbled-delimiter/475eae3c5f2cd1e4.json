@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215NOFORN/DEA SENSITIVE",
+  "expected": "SECRET//NOFORN/DEA SENSITIVE",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

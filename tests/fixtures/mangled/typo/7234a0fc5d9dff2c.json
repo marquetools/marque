@@ -1,0 +1,6 @@
+{
+  "observed": "//DEU C//REL TO USA, FCAN, DEU",
+  "expected": "//DEU C//REL TO USA, CAN, DEU",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

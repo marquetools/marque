@@ -1,0 +1,6 @@
+{
+  "observed": "//ATOMAL//NATO SECRET//ORCON",
+  "expected": "//NATO SECRET//ATOMAL//ORCON",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "/ /GBR S//NF",
+  "expected": "//GBR S//NF",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "//gbr s//rel to usa, can, gbr",
+  "expected": "//GBR S//REL TO USA, CAN, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

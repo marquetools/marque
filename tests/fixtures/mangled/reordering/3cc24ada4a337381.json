@@ -1,0 +1,6 @@
+{
+  "observed": "CONTROLLED IMAGERY//SECRET",
+  "expected": "SECRET//CONTROLLED IMAGERY",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}
