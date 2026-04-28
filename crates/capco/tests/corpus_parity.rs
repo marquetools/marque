@@ -93,20 +93,30 @@ fn rule_count_reflects_registration_changes() {
     //   E050 TK-BLFH TS-only
     //   E051 TK compartment NOFORN requirement (BLFH/IDIT/KAND)
     // Net: 44 + 10 = 54.
+    // Issue #234 PR-B (rel-to-no-duplicates):
+    //   E052 REL TO duplicate country codes (structural; pairs with
+    //        the decoder's USA-injection path on the same §H.8 p150–151
+    //        list-grammar surface)
+    // Net: 54 + 1 = 55.
+    //
+    // Issue #235 / #186 PR-3: added S004 (rel-to-trigraph-suggest),
+    // first consumer of the suggest-don't-fix channel. Net: 54 + 1 = 55.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        54,
+        56,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
          S003 (added joint-usa-first) + T035c-21 PR-B (added \
          E039, E040, E041) + T035d (added E042–E051 per-SCI-system \
-         constraints). Adjust this assertion only when rule \
-         registration actually changes."
+         constraints) + #234 PR-B (added E052 rel-to-no-duplicates) \
+         + #235 / #186 PR-3 (added S004 rel-to-trigraph-suggest). \
+         Adjust this assertion only when rule registration actually \
+         changes."
     );
 }
 

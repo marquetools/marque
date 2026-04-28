@@ -819,6 +819,26 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- REL TO USA-injection for short first entries (issue #234 PR-B).
+    //      Complementary to PR-A above: PR-A fuzzy-matches 3-char REL TO
+    //      entries; PR-B handles 1-2 char first entries that are below
+    //      `MIN_FUZZY_LEN`. The §H.8 p151 USA-first invariant gives us a
+    //      strong structural signal that fuzzy matching cannot exploit
+    //      on inputs that short — `SA → USA`, `S → USA`, etc. The
+    //      `BaseRateCommonMarking` audit delta keeps the audit schema
+    //      closed (no new `FeatureId` variant); see the doc on
+    //      `try_rel_to_usa_injection_candidates` for the rationale.
+    for (alt_text, prior_feature) in try_rel_to_usa_injection_candidates(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(prior_feature);
+        emit(
+            alt_text.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Position-aware classification heuristic (issue #133 PR 2).
     //      Runs LAST so the dedup-keep-first guard above lets a
     //      vocab-based attempt with the same canonical bytes win the
@@ -2597,6 +2617,176 @@ fn try_rel_to_fuzzy_trigraph_candidates(
                 out.push((alt, entry));
             }
         }
+
+        search_start = block_end;
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
+// REL TO USA-injection for short first entries (issue #234 PR-B)
+// ---------------------------------------------------------------------------
+
+/// Emit one canonical-byte alternate per REL TO block whose first
+/// entry is a 1- or 2-character ASCII-uppercase token AND USA is not
+/// otherwise present in the block. The alternate replaces that short
+/// first entry with `USA`.
+///
+/// **Why complement to PR-A.** Issue #233's
+/// [`try_rel_to_fuzzy_trigraph_candidates`] handles 3-char REL TO
+/// entries: an unknown trigraph-shaped token gets fuzzy-matched
+/// against the [`marque_ism::TRIGRAPHS`] vocabulary, and corpus-
+/// weighted log-priors break ties at score time. That path
+/// deliberately skips entries below `MIN_FUZZY_LEN = 3` (see the
+/// `if trimmed.len() != 3` guard in `try_rel_to_fuzzy_trigraph_candidates`)
+/// because `phf`-style fuzzy matching is unreliable on inputs that
+/// short — a 2-char input is edit-distance-1 from many distinct
+/// trigraphs and the mapper has no signal to break the tie.
+///
+/// For REL TO specifically, the §H.8 p150–151 grammar gives us a
+/// stronger signal that fuzzy-matching cannot exploit: **USA must
+/// always appear first**. So when we see a REL TO block whose first
+/// entry is a 1- or 2-character ASCII-uppercase token, the most
+/// likely intent — far above any other 3-char trigraph — is that
+/// the user typed USA and dropped one or two characters. The fixture
+/// at `tests/fixtures/mangled/typo/ad2bcfe3ac0b0765.json`
+/// (`REL TO SA, AUS, GBR` → `REL TO USA, AUS, GBR`) is the canonical
+/// case: `SA` is shape-incompatible with PR-A's 3-char floor, so
+/// without this complementary path the decoder produces zero
+/// candidates and the fixture fails recovery.
+///
+/// **CAPCO authority**: the USA-first invariant is CAPCO-2016 §H.8
+/// p151: "After 'USA', list the required one or more trigraph country
+/// codes in alphabetical order." E020 enforces that invariant at the
+/// rule layer (via the `marque-capco`-private `canonicalize_trigraph_list`
+/// helper). This decoder path operates one stage earlier — pre-strict-
+/// parse, on raw text — so it does NOT call the rule-layer helper; it
+/// emits a candidate text and lets the downstream pipeline (strict
+/// parse + E020) verify and re-canonicalize as needed.
+///
+/// **Scope and guards** (mirrors PR-A's design):
+///
+/// - Fires only when the first entry's trimmed length is 1 or 2 ASCII
+///   uppercase bytes (3-char entries belong to PR-A's domain).
+/// - Skips when USA is already present elsewhere in the block — that
+///   case isn't a USA-typo, it's an unrelated short prefix the user
+///   may have meant differently. The block stays as-is.
+/// - Skips when the block has fewer than two entries — a single
+///   short entry plus nothing else doesn't fit the §H.8 p151
+///   "USA + trigraph list" shape.
+/// - Emits the substitution transform only — full canonicalization
+///   (USA first, remaining trigraphs alphabetical, no duplicates) is
+///   downstream. If the original list's tail (other than the
+///   corrupted first entry) wasn't already alphabetical, E020 will
+///   fire on the post-decode text and produce its own fix; if the
+///   injection produced a duplicate (USA was already present in the
+///   block under a different shape), the `already_has_usa` guard
+///   above suppresses emit. Keeping the decoder text-level (no
+///   `marque-capco` imports) avoids re-entering the rule layer
+///   mid-recognition while preserving the single-source-of-truth
+///   property — the canonical ordering rule lives in `marque-capco`,
+///   and the decoder defers to whatever it produces post-parse.
+/// - Audit signal: each candidate carries
+///   [`FeatureId::BaseRateCommonMarking`] as provenance only, with
+///   zero delta. This records that USA is the dominant trigraph in
+///   the corpus prior without changing score or double-counting that
+///   prior in the posterior. Reusing `BaseRateCommonMarking` (vs
+///   introducing a new variant) keeps the audit schema closed —
+///   `MARQUE_AUDIT_SCHEMA` stays at `marque-mvp-2`.
+fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, FeatureEntry)> {
+    let mut out: Vec<(String, FeatureEntry)> = Vec::new();
+
+    let mut search_start = 0;
+    while let Some(rel_pos) = text[search_start..].find("REL TO ") {
+        let header_end = search_start + rel_pos + "REL TO ".len();
+        // Block ends at the EARLIEST of: `//` (next category), `\n`
+        // (banner/CAB candidates from `Scanner::scan_banners` arrive
+        // as full lines), or `)` (portion-form close). CAPCO §H.8 /
+        // §A authority: `//` is the category separator; `,` separates
+        // entries within the REL TO category itself. Mirrors the
+        // terminator priority in `try_rel_to_fuzzy_trigraph_candidates`
+        // and the corpus analyzer's `_extract_rel_to_trigraphs`.
+        let tail = &text[header_end..];
+        let block_len = ["//", "\n", ")"]
+            .iter()
+            .filter_map(|sep| tail.find(sep))
+            .min()
+            .unwrap_or(tail.len());
+        let block_end = header_end + block_len;
+        let block = &text[header_end..block_end];
+
+        // Walk entries with their byte offsets within the block.
+        // Pre-size from comma count + 1 — typical REL TO blocks have
+        // 2–6 entries, so this avoids reallocations on the common case.
+        let entries: Vec<(usize, &str)> = {
+            let mut v = Vec::with_capacity(block.bytes().filter(|&b| b == b',').count() + 1);
+            let mut cursor = 0usize;
+            for entry in block.split(',') {
+                v.push((cursor, entry));
+                cursor += entry.len() + 1; // +1 for the comma separator
+            }
+            v
+        };
+        if entries.len() < 2 {
+            // Single-entry block: doesn't match the §H.8 p151
+            // "USA + trigraph list" shape we're recovering.
+            search_start = block_end;
+            continue;
+        }
+
+        // First entry is the candidate USA-typo position. The
+        // structural guard is shape-only — len ∈ {1, 2}, all ASCII
+        // uppercase. 3-char entries fall through to PR-A. Length 0
+        // (e.g., a leading comma) is already filtered.
+        let (first_entry_offset, first_entry) = entries[0];
+        let trimmed = first_entry.trim();
+        let is_short =
+            (1..=2).contains(&trimmed.len()) && trimmed.bytes().all(|b| b.is_ascii_uppercase());
+        if !is_short {
+            search_start = block_end;
+            continue;
+        }
+
+        // Skip if USA is already present elsewhere in the block —
+        // a USA-injection candidate would create a duplicate, which
+        // E052 (issue #234 PR-B) would then need to dedup. Short-
+        // circuit here rather than emit-and-redup.
+        let already_has_usa = entries.iter().skip(1).any(|(_, e)| e.trim() == "USA");
+        if already_has_usa {
+            search_start = block_end;
+            continue;
+        }
+
+        // Build the substituted text. Preserve the entry's
+        // surrounding whitespace (lead/trail) so the splice
+        // round-trips through the strict parser the same way the
+        // original would have.
+        let lead_ws_len = first_entry.len() - first_entry.trim_start().len();
+        let trail_ws_len = first_entry.len() - first_entry.trim_end().len();
+        let mut rewritten_entry = String::with_capacity(first_entry.len() + 3);
+        rewritten_entry.push_str(&first_entry[..lead_ws_len]);
+        rewritten_entry.push_str("USA");
+        rewritten_entry.push_str(&first_entry[first_entry.len() - trail_ws_len..]);
+
+        let mut alt = String::with_capacity(text.len() + 3);
+        alt.push_str(&text[..header_end + first_entry_offset]);
+        alt.push_str(&rewritten_entry);
+        alt.push_str(&text[header_end + first_entry_offset + first_entry.len()..]);
+
+        // Audit-only provenance. The load-bearing scoring lives in
+        // `score_candidate`, which sums `country_code_log_prior(USA)`
+        // — already an extreme positive in the baked corpus prior —
+        // over the parsed `rel_to` slice and is what carries the
+        // candidate to victory. The `BaseRateCommonMarking` entry
+        // here records the prior's contribution in the audit log
+        // without double-counting it in the decoder's score, mirror-
+        // ing PR-A's trigraph-prior treatment (delta = 0.0).
+        let entry = FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: 0.0,
+        };
+        out.push((alt, entry));
 
         search_start = block_end;
     }

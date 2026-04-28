@@ -143,19 +143,19 @@
       "name": "sar_bad_program_order.txt",
       "category": "invalid",
       "input": "SECRET//SAR-CD/BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E028\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E028\",\"severity\":\"suggest\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_banner_missing_program.txt",
       "category": "invalid",
       "input": "(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"fix\",\"span\":{\"start\":30,\"end\":30},\"message\":\"banner SAR block is missing programs present in portions: CD\",\"citation\":\"CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion marks must always appear in the banner line; hierarchy depiction optional per §H.5 p101 + p99)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"suggest\",\"span\":{\"start\":30,\"end\":30},\"message\":\"banner SAR block is missing programs present in portions: CD\",\"citation\":\"CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion marks must always appear in the banner line; hierarchy depiction optional per §H.5 p101 + p99)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_indicator_repeat.txt",
       "category": "invalid",
       "input": "SECRET//SAR-BP//SAR-CD//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E030\",\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":22},\"message\":\"SAR category indicator must not be repeated; multiple programs use a single indicator with '/' separator\",\"citation\":\"CAPCO-2016 §H.5 p100 (SAP category indicator must not be repeated if multiple SAP programs are applicable)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E030\",\"severity\":\"suggest\",\"span\":{\"start\":14,\"end\":22},\"message\":\"SAR category indicator must not be repeated; multiple programs use a single indicator with '/' separator\",\"citation\":\"CAPCO-2016 §H.5 p100 (SAP category indicator must not be repeated if multiple SAP programs are applicable)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_portion_full_form.txt",

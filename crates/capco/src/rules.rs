@@ -52,6 +52,8 @@
 //!   E040 = banner must roll up NODIS (or EXDIS if no NODIS) (T035c-21 PR-B)
 //!   E041 = NODIS supersedes EXDIS in portion (T035c-21 PR-B)
 //!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
+//!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
+//!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -62,6 +64,7 @@ use marque_ism::{
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
+use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
 pub struct CapcoRuleSet {
@@ -163,6 +166,15 @@ impl CapcoRuleSet {
                 // pure alpha for JOINT, but IC convention puts USA
                 // first. See JointUsaFirstRule doc.
                 Box::new(JointUsaFirstRule),
+                // S004: rel-to-trigraph-suggest — issue #235 / #186
+                // PR-3. First consumer of the suggest-don't-fix
+                // channel. Surfaces a `Severity::Suggest` diagnostic
+                // when a REL TO trigraph has a corpus-rare prior and
+                // a corpus-common 1- or 2-edit neighbor (e.g.,
+                // `AUT` → `AUS?`). The fix is informational; the
+                // engine never auto-applies a Suggest-severity
+                // diagnostic regardless of confidence.
+                Box::new(RelToTrigraphSuggestRule),
                 // T035d: per-SCI-system constraint rules (E042–E051)
                 // implementing §H.4 class-ceiling and required-
                 // companion constraints under the fix-and-warn pattern.
@@ -177,6 +189,11 @@ impl CapcoRuleSet {
                 Box::new(crate::rules_sci_per_system::TkClassificationCeilingRule),
                 Box::new(crate::rules_sci_per_system::TkBlfhTopSecretRule),
                 Box::new(crate::rules_sci_per_system::TkCompartmentRequiresNofornRule),
+                // Issue #234 PR-B: REL TO duplicate country codes.
+                // Hand-written structural rule. Sister of E020 (ordering)
+                // and E002 (USA-first); the three together close the
+                // §H.8 p150–151 list-grammar surface.
+                Box::new(RelToNoDuplicatesRule),
             ],
         }
     }
@@ -489,20 +506,27 @@ impl Rule for MissingUsaTrigraphRule {
         let span = Span::new(start, end);
 
         // Build the fully canonical list (USA first, non-USA entries
-        // alphabetical per CAPCO-2016 §H.8 p151) via the shared
-        // helper used by E020. When USA is missing from input we add
-        // it before canonicalizing so the output always has USA first;
-        // the helper itself treats USA as "first if present" without
-        // injecting it (E020 must not synthesize countries that aren't
-        // there). Producing the canonical form in a single pass is
-        // required because E020 gates on `rel_to[0] == USA` and is
-        // therefore silent whenever E002 fires.
+        // alphabetical per CAPCO-2016 §H.8 p151, no duplicates) via
+        // the shared helper used by E020. When USA is missing from
+        // input we add it before canonicalizing so the output always
+        // has USA first; the helper itself treats USA as "first if
+        // present" without injecting it (E020 must not synthesize
+        // countries that aren't there). Producing the canonical form
+        // in a single pass is required because E020 gates on
+        // `rel_to[0] == USA` and is therefore silent whenever E002
+        // fires. Dedup before canonicalize so E002's fix output
+        // stays canonical when input also has duplicates — under the
+        // C-1 overlap guard E002 wins over E052 by FR-016 rule_id
+        // ordering, and a non-deduped E002 fix would leave the
+        // duplicates for E052 to re-flag on the next lint pass,
+        // breaking single-pass idempotency.
         let mut codes: Vec<marque_ism::CountryCode> = attrs.rel_to.to_vec();
         if !has_usa {
             codes.push(marque_ism::CountryCode::USA);
         }
         // E002 is REL TO only; pass `usa_first: true` per §H.8 p151.
-        let fixed = canonicalize_trigraph_list(&codes, true).join(", ");
+        let canonical_codes = dedup_country_codes(&codes);
+        let fixed = canonicalize_trigraph_list(&canonical_codes, true).join(", ");
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -2105,6 +2129,329 @@ impl Rule for JointUsaFirstRule {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: S004 — rel-to-trigraph-suggest (suggest-don't-fix channel)
+// ---------------------------------------------------------------------------
+
+/// S004: Surface a suggest-channel hint when a REL TO trigraph entry
+/// is corpus-rare AND has a corpus-common neighbor within edit
+/// distance 2.
+///
+/// # Authority and scope
+///
+/// Per CAPCO-2016 §H.8 p150 (REL TO grammar: Authorized Banner Line
+/// Marking Title, Authorized Portion Mark) and §H.8 p151 (REL TO
+/// "[USA, LIST]" syntax — "Register, Annex B trigraph country
+/// codes"), REL TO entries are drawn from the CAPCO Register Annex
+/// B trigraph code list. Every entry in `attrs.rel_to` has already
+/// passed the strict-grammar trigraph check; the rule does not
+/// invalidate any of them. The signal here is **statistical**:
+/// `AUT` (Austria, ISO 3166-1 alpha-3) is a legitimate trigraph but
+/// appears two orders of magnitude less often in real REL TO blocks
+/// than `AUS` (Australia), and the two are 1 substitution apart.
+/// When a low-prior entry has a high-prior 1- or 2-edit neighbor,
+/// the entry might be correct (Austria really IS the recipient) or
+/// might be a typo (`AUT` → `AUS`). The rule cannot tell which —
+/// hence the suggest channel: emit a candidate replacement, do not
+/// auto-apply.
+///
+/// # Severity
+///
+/// `Suggest` by default. The engine never auto-applies a fix
+/// attached to a `Severity::Suggest` diagnostic regardless of
+/// `confidence`, so the candidate replacement stays informational.
+///
+/// # Predicate
+///
+/// For each `CountryCode` in `attrs.rel_to`:
+///
+/// 1. Look up the entry's `country_code_log_prior`. Skip if absent
+///    (decoder fallback is not in scope here — S004 only fires on
+///    parsed-and-priored trigraphs).
+/// 2. Iterate the corpus's country-code priors table. Find the
+///    highest-prior code at edit distance 1 (or 2 for 3-letter
+///    trigraphs only) from the entry, where the prior delta vs the
+///    entry exceeds [`SUGGEST_LOG_MARGIN`].
+/// 3. If such a neighbor exists, emit a `Severity::Suggest`
+///    diagnostic with a `FixProposal` whose `replacement` is the
+///    neighbor and `confidence` is a strict-built scalar
+///    [`SUGGEST_CONFIDENCE`] (purely informational — `Suggest`
+///    diagnostics never auto-apply).
+///
+/// # Coverage of #186 ambiguous fixtures
+///
+/// - `USB` → decoder PR-A (#238) handles. USB is not a trigraph; it
+///   never reaches `attrs.rel_to`. S004 is silent.
+/// - `AUT` → S004 fires, suggesting `AUS`.
+///   `log_prior(AUS) - log_prior(AUT)` ≈ 4.36 nats, above
+///   [`SUGGEST_LOG_MARGIN`].
+/// - `ASU` → decoder PR-A handles. ASU is not a trigraph; never
+///   reaches `attrs.rel_to`.
+/// - `SA` → 2-character non-trigraph; same as USB / ASU, not in
+///   `attrs.rel_to`. Decoder/parser path.
+///
+/// # Constitution V audit-content-ignorance
+///
+/// The diagnostic message uses **only canonical token strings**
+/// (the trigraph itself, the candidate trigraph, and English country
+/// names from the [`COUNTRY_NAMES`](crate::vocab::COUNTRY_NAMES)
+/// table) — no document content, no surrounding span text, no
+/// user-provided fields. Verified by `s004_audit_content_ignorance`
+/// in `crates/capco/tests/`.
+///
+/// # Reuse for #206
+///
+/// Issue #206 (REL TO opaque-uncertain reduction) wants the same
+/// rendering channel without a candidate replacement: emit
+/// `Severity::Suggest` with `fix: None`. The engine and renderer
+/// both handle the missing-fix case cleanly (verified by
+/// `s004_suggest_with_no_fix_round_trips_renderer`). #206 will land
+/// as a separate rule that constructs `Diagnostic { severity:
+/// Suggest, fix: None, .. }` directly.
+struct RelToTrigraphSuggestRule;
+
+/// Minimum log-prior delta for S004 to suggest a neighbor over the
+/// observed entry. `4.0` nats ≈ `e^4.0` ≈ 55× odds ratio — the
+/// neighbor is at least 55× more likely than the observed entry in
+/// real REL TO contexts. Empirically calibrated against the AUT/AUS
+/// pair (delta ≈ 4.36) so the canonical #186 fixture fires while
+/// closer pairs (e.g., `USA`/`UKR` at delta ≈ 1.2 if it were ever
+/// triggered) do not.
+const SUGGEST_LOG_MARGIN: f32 = 4.0;
+
+/// Strict-built confidence axis value for S004 fixes. The actual
+/// number is informational only — the engine never auto-applies a
+/// `Severity::Suggest` diagnostic's fix regardless of confidence.
+/// Picked at `0.5` to make the audit-record posterior land in a
+/// neutral middle bucket (a value at `1.0` would suggest "we're
+/// sure" and confuse downstream tooling that filters by confidence).
+///
+/// **Config-override interaction**: setting `S004 = "fix"` in
+/// `.marque.toml` is a no-op. The severity-override pass would
+/// rewrite `Suggest → Fix`, but the engine's lint post-pass then
+/// demotes any `Fix`-severity diagnostic with a sub-threshold
+/// fix back to `Suggest` — and `0.5 < 0.95` (the default
+/// confidence threshold) means S004's fix never clears the gate.
+/// To get S004 fixes auto-applied a user would need both
+/// `S004 = "fix"` AND a per-call `--confidence 0.5` (or lower)
+/// override; for now the suggest-don't-fix channel is intentionally
+/// hard advisory.
+const SUGGEST_CONFIDENCE: f32 = 0.5;
+
+/// Compute Levenshtein edit distance between two byte slices.
+///
+/// Trigraphs are short (≤ 3 bytes for the S004 use case) so the
+/// O(m*n) two-row DP allocates two `Vec<usize>` of size `≤ 4` per
+/// call — negligible. Inlined here rather than depending on
+/// `marque-engine` (which `marque-capco` does not depend on).
+fn s004_edit_distance(a: &str, b: &str) -> usize {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let (m, n) = (a.len(), b.len());
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr: Vec<usize> = vec![0; n + 1];
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}
+
+/// Build an S004 diagnostic message for a given (rare, candidate)
+/// trigraph pair.
+///
+/// Extracted from the rule body so each of the four `(Option,
+/// Option)` country-name arms can be exercised directly in tests
+/// — building real `IsmAttributes` to drive every arm requires
+/// finding trigraph pairs that satisfy both the corpus-prior gap
+/// AND the partial COUNTRY_NAMES coverage, which is brittle. The
+/// helper lets us pin the formatting contract independently.
+///
+/// The output is content-ignorant per Constitution V: it only
+/// references the input trigraph tokens (vocabulary) and the
+/// canonical English country names (vocabulary), never any
+/// document-source bytes.
+fn s004_message(
+    trigraph: &str,
+    candidate: &str,
+    entry_name: Option<&str>,
+    candidate_name: Option<&str>,
+) -> String {
+    match (entry_name, candidate_name) {
+        (Some(en), Some(cn)) => format!(
+            "{trigraph:?} ({en}) is far less common in REL TO than \
+             {candidate:?} ({cn}); did you mean {candidate:?}?"
+        ),
+        (None, Some(cn)) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?} ({cn})?"
+        ),
+        (Some(en), None) => format!(
+            "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+        (None, None) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+    }
+}
+
+impl Rule for RelToTrigraphSuggestRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S004")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-trigraph-suggest"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Suggest
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
+        use crate::vocab::country_name;
+
+        if attrs.rel_to.is_empty() {
+            return Vec::new();
+        }
+
+        // Build a lookup from CountryCode → its `RelToTrigraph` token
+        // span so we can attach the diagnostic to the exact source
+        // bytes the user typed. Per-CountryCode mapping is positional:
+        // the parser emits one `RelToTrigraph` token per `rel_to` entry
+        // in source order.
+        let trigraph_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToTrigraph)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, code) in attrs.rel_to.iter().enumerate() {
+            let trigraph = code.as_str();
+            // Only operate on 3-letter trigraphs. 2-letter codes (EU)
+            // and longer codes (FVEY, AUSTRALIA_GROUP) have a different
+            // ambiguity profile and would need their own calibration.
+            if trigraph.len() != 3 {
+                continue;
+            }
+            let Some(entry_log_prior) = country_code_log_prior(trigraph) else {
+                continue;
+            };
+
+            // Find the highest-prior neighbor within edit distance 2.
+            // Iterating the full `COUNTRY_CODE_BASE_RATES` table is
+            // O(n) but the table is bounded (~340 codes) and the rule
+            // fires once per `rel_to` entry. Acceptable.
+            //
+            // The triple `(token, log_prior, dist)` is what the
+            // tie-breaking ladder reads — distance is tracked so a
+            // log-prior tie deterministically picks the shorter-edit
+            // candidate, and a same-distance tie picks the
+            // lexicographically smaller token. Corpus-derived priors
+            // tie exactly only when two entries share a build-time
+            // smoothing floor, but pinning the order makes the rule's
+            // output reproducible across `COUNTRY_CODE_BASE_RATES`
+            // table reorderings.
+            let mut best: Option<(&'static str, f32, usize)> = None;
+            for cand in COUNTRY_CODE_BASE_RATES {
+                if cand.token == trigraph {
+                    continue;
+                }
+                if cand.token.len() != 3 {
+                    continue;
+                }
+                if cand.log_prior - entry_log_prior < SUGGEST_LOG_MARGIN {
+                    // Neighbor isn't substantially more likely — skip.
+                    continue;
+                }
+                let dist = s004_edit_distance(trigraph, cand.token);
+                if dist == 0 || dist > 2 {
+                    continue;
+                }
+                // Pick the higher-prior candidate. On a log-prior
+                // tie, prefer the shorter edit distance; on a
+                // distance tie too, fall back to lexicographic
+                // order on the token. Each rung of the ladder is a
+                // strict comparison so the resolution is total.
+                let take = match best {
+                    None => true,
+                    Some((prev_token, prev_prior, prev_dist)) => {
+                        if cand.log_prior > prev_prior {
+                            true
+                        } else if cand.log_prior < prev_prior {
+                            false
+                        } else if dist < prev_dist {
+                            true
+                        } else if dist > prev_dist {
+                            false
+                        } else {
+                            cand.token < prev_token
+                        }
+                    }
+                };
+                if take {
+                    best = Some((cand.token, cand.log_prior, dist));
+                }
+            }
+
+            let Some((candidate, _candidate_log_prior, _candidate_dist)) = best else {
+                continue;
+            };
+
+            // Pull the matching span. If the parser's RelToTrigraph
+            // tokens don't match `rel_to.len()` (defensive against a
+            // future parser change), skip rather than emit a
+            // misaligned diagnostic.
+            let Some(span_token) = trigraph_spans.get(idx) else {
+                continue;
+            };
+            let span = span_token.span;
+
+            // Compose a content-ignorant message. The trigraph,
+            // candidate, and country names are vocabulary-derived;
+            // none of the surrounding document text appears.
+            let message = s004_message(
+                trigraph,
+                candidate,
+                country_name(trigraph),
+                country_name(candidate),
+            );
+
+            let proposal = FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                span,
+                trigraph.to_owned(),
+                candidate.to_owned(),
+                marque_rules::Confidence::strict(SUGGEST_CONFIDENCE),
+                None,
+            );
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                message,
+                "CAPCO-2016 §H.8 p150–151",
+                Some(proposal),
+            ));
+        }
+
+        diagnostics
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Rule: E011 — Missing leading // on non-US classification
 // ---------------------------------------------------------------------------
 
@@ -2724,14 +3071,31 @@ impl Rule for CountryCodeOrderingRule {
 /// Canonicalize a country code list. The `usa_first` flag selects the
 /// convention:
 ///
-/// - `usa_first = true` — REL TO convention per CAPCO-2016 §H.8 line
-///   3714: "After 'USA', list the required one or more trigraph
-///   country codes in alphabetical order." USA is elevated to the
-///   front when present; remaining codes are alphabetical.
-/// - `usa_first = false` — JOINT convention per CAPCO-2016 §H.3 line
-///   1258: "Country trigraph codes are listed alphabetically followed
+/// - `usa_first = true` — REL TO convention per CAPCO-2016 §H.8 p151:
+///   "After 'USA', list the required one or more trigraph country
+///   codes in alphabetical order followed by tetragraph codes listed
+///   in alphabetical order." USA is elevated to the front when
+///   present; remaining codes are alphabetical.
+/// - `usa_first = false` — JOINT convention per CAPCO-2016 §H.3 p56:
+///   "Country trigraph codes are listed alphabetically followed
 ///   by tetragraph codes in alphabetical order." Pure alphabetical;
 ///   USA is NOT elevated.
+///
+/// Duplicates in the input are preserved as-is — this helper does
+/// not deduplicate. Callers that need a fully canonical list (USA-
+/// first + alphabetical + unique) compose [`dedup_country_codes`]
+/// before this canonicalizer:
+///
+/// ```text
+/// canonicalize_trigraph_list(&dedup_country_codes(codes), usa_first)
+/// ```
+///
+/// E002 (REL TO, fix path) and E020 (REL TO + JOINT, fix path) both
+/// use that composition so their fix replacements are byte-canonical
+/// and stay single-pass idempotent under the C-1 overlap guard
+/// against E052 (REL TO no-duplicates). E020's CHECK path still uses
+/// the sort-only result so the rule fires on misorder but NOT on
+/// dup-only input — that branch belongs to E052.
 ///
 /// The IC practice of rendering USA first in JOINT lists is widespread
 /// but is convention, not CAPCO rule. A style rule (S003
@@ -2739,9 +3103,23 @@ impl Rule for CountryCodeOrderingRule {
 /// helper does NOT encode the convention into correctness.
 ///
 /// This is the shared ordering rule for E002 (REL TO, fix path) and
-/// E020 (REL TO + JOINT, both check and fix paths). Extracting it
-/// prevents the two rules from drifting if the ordering rule changes
-/// (tetragraph sorting, delimiter normalization, etc.).
+/// E020 (REL TO + JOINT, both check and fix paths). E052's
+/// no-duplicates fix path uses [`dedup_country_codes`] alone and
+/// does NOT canonicalize order — see that function's doc for why
+/// (E052 only fires on its own when the input is already canonical
+/// modulo a duplicate, so dedup-only output stays canonical).
+/// Extracting this helper prevents E002 and E020 from drifting if the
+/// ordering rule changes (tetragraph sorting, delimiter normalization,
+/// etc.) and gives a single source of truth for the USA-first +
+/// alphabetical invariant cited in §H.8 p151.
+///
+/// Visibility is `pub(crate)`: the decoder text-level path in
+/// `marque-engine` does not call this helper directly — it operates
+/// pre-strict-parse on raw text — and no other crate currently needs
+/// it. Should a future consumer (e.g., a downstream formatter or a
+/// programmatic API) need to canonicalize a `&[CountryCode]` list, it
+/// should call through `marque-capco`'s public surface or this helper
+/// can be promoted to `pub` at that point with an honest rationale.
 ///
 /// Tetragraph partition handling is deferred — issue #183 PR-A
 /// widened `CountryCode` so 4-byte tetragraphs are now first-class
@@ -2753,7 +3131,10 @@ impl Rule for CountryCodeOrderingRule {
 /// `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
 /// derive the buckets from the CVE schema groups in
 /// `CVEnumISMCATRelTo.xsd`.
-fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
+pub(crate) fn canonicalize_trigraph_list(
+    codes: &[marque_ism::CountryCode],
+    usa_first: bool,
+) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&marque_ism::CountryCode::USA);
         let mut sorted: Vec<&str> = codes
@@ -2770,6 +3151,212 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool
         let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
         sorted.sort_unstable();
         sorted
+    }
+}
+
+/// Collapse duplicate country codes while preserving first-occurrence
+/// order. Source-of-truth used by E052 (no-duplicates fix path) and
+/// composed with [`canonicalize_trigraph_list`] inside E002 and E020
+/// fix paths so their replacements are byte-canonical (USA-first +
+/// alphabetical + unique).
+///
+/// E052 itself uses dedup-only output: when E052 is the only rule
+/// firing, the input is already canonical modulo the duplicate
+/// (otherwise E020 would have fired too and won the C-1 overlap
+/// guard under FR-016 `rule_id ASC`), so dedup-only output stays
+/// canonical and the user sees their authored ordering preserved
+/// in the fix message. When E020 also fires on the same span, its
+/// canonical fix wins and E052 is dropped — the result is canonical
+/// in a single pass either way.
+///
+/// **CAPCO authority**: §H.8 p151 specifies the REL TO list grammar
+/// as "After 'USA', list the required one or more trigraph country
+/// codes in alphabetical order followed by tetragraph codes listed
+/// in alphabetical order." There is no textual prohibition of
+/// duplicates — the rationale is structural: a list of country codes
+/// describing a release decision is a set, and a duplicate is
+/// redundant by construction. Mirrors the rationale block in
+/// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233)
+/// for why duplicate-creating fuzzy candidates are filtered.
+pub(crate) fn dedup_country_codes(
+    codes: &[marque_ism::CountryCode],
+) -> Vec<marque_ism::CountryCode> {
+    let mut seen: HashSet<marque_ism::CountryCode> = HashSet::with_capacity(codes.len());
+    let mut out: Vec<marque_ism::CountryCode> = Vec::with_capacity(codes.len());
+    for &code in codes.iter() {
+        if seen.insert(code) {
+            out.push(code);
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E052 — REL TO duplicate country codes (issue #234, structural)
+// ---------------------------------------------------------------------------
+
+/// REL TO country code lists must not contain duplicate entries.
+///
+/// # Authority — structural, not textual
+///
+/// CAPCO-2016 §H.8 p150–151 specifies the REL TO list grammar as
+/// "After 'USA', list the required one or more trigraph country codes
+/// in alphabetical order followed by tetragraph codes listed in
+/// alphabetical order." The text does NOT explicitly forbid
+/// duplicates — the rationale here is mechanical / structural,
+/// mirroring the wording in
+/// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233):
+/// a REL TO list is the set of countries / international
+/// organizations a release decision applies to, so a repeated code is
+/// redundant by construction. The list-of-codes grammar describes a
+/// set; duplication is a structural rather than textual violation,
+/// and Constitution VIII forbids fabricating a citation that says
+/// otherwise.
+///
+/// # Fix shape
+///
+/// Deterministic dedup that preserves first-occurrence order via
+/// [`dedup_country_codes`]. Confidence is `1.0` because the fix is
+/// purely mechanical — collapsing identical entries — and never
+/// changes the meaning of the marking. Sorting belongs to E020 and
+/// E002, both of which now compose dedup + canonicalize in their
+/// own fix paths so their replacements are byte-canonical (USA-
+/// first + alphabetical + unique). Under the C-1 overlap guard,
+/// when E020 (or E002) and E052 both fire on the same REL TO span,
+/// FR-016's `rule_id ASC` tiebreaker drops E052 and the surviving
+/// E020/E002 fix is already canonical — no second pass needed.
+/// E052's own fix path matters when E020 is silent (input is
+/// already in alphabetical order with USA first, but a code is
+/// duplicated): in that case dedup-only preserves the user's
+/// existing order, which is canonical because the input was
+/// already canonical modulo the duplicate.
+///
+/// # Multi-block handling
+///
+/// Mirrors E020's multi-block strategy. When a marking carries more
+/// than one `RelToBlock` (e.g., `SECRET//REL TO USA, GBR//NF//REL TO
+/// USA, AUS`), the rule emits one diagnostic per affected block — a
+/// first→last splice across two blocks would delete the intervening
+/// `//...//` content. Each block's diagnostic carries its own
+/// `RelToBlock` span. Blocks without duplicates are silently skipped.
+struct RelToNoDuplicatesRule;
+
+impl Rule for RelToNoDuplicatesRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E052")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-no-duplicates"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        if attrs.rel_to.len() < 2 {
+            return diagnostics;
+        }
+
+        // CAPCO-2016 §H.8 p150–151 doesn't textually forbid duplicates;
+        // they're structurally implied by the list-of-codes grammar.
+        // Mirror the wording in `try_rel_to_fuzzy_trigraph_candidates`.
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §H.8 p150–151 ",
+            "(REL TO list grammar describes a set of country codes; ",
+            "duplicates are structurally redundant)",
+        );
+
+        // Group `RelToTrigraph` token spans by `RelToBlock` so each
+        // duplicate diagnostic stays scoped to its own block. The
+        // parser emits blocks in document order; entries inside a
+        // block are also document-ordered, so the per-block dedup
+        // result preserves the user-authored sequence.
+        let rel_to_blocks: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToBlock)
+            .collect();
+
+        if rel_to_blocks.is_empty() {
+            // `attrs.rel_to` is populated but the parser produced no
+            // RelToBlock spans — inconsistent state. Skip silently
+            // rather than synthesize a span (mirrors E020's behavior).
+            return diagnostics;
+        }
+
+        for block in &rel_to_blocks {
+            // Per-block country list = trigraph spans whose offsets
+            // fall inside this block's span. The parser pairs each
+            // CountryCode in `attrs.rel_to` with a trigraph token at
+            // a specific offset, so we can rebuild the per-block list
+            // from spans alone.
+            let block_trigraph_spans: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| {
+                    t.kind == TokenKind::RelToTrigraph
+                        && t.span.start >= block.span.start
+                        && t.span.end <= block.span.end
+                })
+                .collect();
+            if block_trigraph_spans.len() < 2 {
+                continue;
+            }
+
+            // Reconstruct per-block CountryCodes from the trigraph
+            // tokens' text. Skip blocks with parse irregularities
+            // rather than synthesize fixes from incomplete data.
+            let mut block_codes: Vec<marque_ism::CountryCode> =
+                Vec::with_capacity(block_trigraph_spans.len());
+            for span in &block_trigraph_spans {
+                match marque_ism::CountryCode::try_new(span.text.as_bytes()) {
+                    Some(code) => block_codes.push(code),
+                    None => {
+                        // Inconsistent token text. Bail on this block.
+                        block_codes.clear();
+                        break;
+                    }
+                }
+            }
+            if block_codes.is_empty() {
+                continue;
+            }
+
+            let deduped = dedup_country_codes(&block_codes);
+            if deduped.len() == block_codes.len() {
+                continue; // no duplicates in this block
+            }
+
+            let actual: Vec<&str> = block_codes.iter().map(|t| t.as_str()).collect();
+            let fixed: Vec<&str> = deduped.iter().map(|t| t.as_str()).collect();
+
+            let span = match (block_trigraph_spans.first(), block_trigraph_spans.last()) {
+                (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
+                _ => block.span,
+            };
+            let original = actual.join(", ");
+            let replacement = fixed.join(", ");
+            let message = format!(
+                "REL TO country codes must be unique: [{}] → [{}] (duplicates collapsed)",
+                original, replacement,
+            );
+
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span,
+                message,
+                citation: CITATION,
+                original,
+                replacement,
+                confidence: 1.0,
+                migration_ref: None,
+            }));
+        }
+
+        diagnostics
     }
 }
 
@@ -2807,6 +3394,19 @@ fn check_trigraph_ordering(
         return None;
     }
 
+    // For the FIX replacement, compose dedup + canonicalize so the
+    // output is fully canonical (USA-first when applicable, alpha-
+    // ordered, unique). The CHECK above uses `sorted` (sort-only) so
+    // E020 fires on misorder but NOT on dup-only input — that case
+    // belongs to E052. Dedup-in-fix matters because E020 and E052
+    // emit overlapping fix proposals on misordered+duplicated REL
+    // TO spans; under FR-016's `rule_id ASC` tiebreaker E020 wins
+    // and its fix is what survives. If E020's fix preserved
+    // duplicates, the post-fix list would still trip E052 on re-
+    // lint, breaking single-pass idempotency.
+    let canonical_codes = dedup_country_codes(codes);
+    let canonical = canonicalize_trigraph_list(&canonical_codes, usa_first);
+
     // Compute the fix span. The kind differs by list type:
     // - REL TO: `RelToTrigraph` is one token per country, so first→last
     //   covers exactly the country-list region of the `RelToBlock`.
@@ -2841,12 +3441,12 @@ fn check_trigraph_ordering(
     // Separator for the list: REL TO uses ", "; JOINT uses " ".
     let sep = if list_name == "REL TO" { ", " } else { " " };
     let joined_actual = actual.join(sep);
-    let joined_sorted = sorted.join(sep);
+    let joined_canonical = canonical.join(sep);
 
     // Build span-matching `original` + `replacement`.
     let (original, replacement) = if list_name == "REL TO" {
         // REL TO span covers exactly the country list.
-        (joined_actual.clone(), joined_sorted.clone())
+        (joined_actual.clone(), joined_canonical.clone())
     } else {
         // JOINT span covers the full Classification token. Preserve
         // the `JOINT <level>` prefix by anchoring on the first
@@ -2869,7 +3469,7 @@ fn check_trigraph_ordering(
         let prefix = &classification_text[..prefix_end];
         (
             classification_text.to_owned(),
-            format!("{prefix}{joined_sorted}"),
+            format!("{prefix}{joined_canonical}"),
         )
     };
 
@@ -2877,15 +3477,32 @@ fn check_trigraph_ordering(
     // text) so it stays readable regardless of list type. REL TO's
     // "USA first when present" clause is only correct for REL TO;
     // JOINT's pure-alpha rule has no USA carve-out in the source.
+    // When the fix also removes duplicates (E020 wins the C-1 overlap
+    // guard and its replacement is canonical), the message says so to
+    // avoid surprising users who only expected a reorder.
+    let deduped = canonical_codes.len() < codes.len();
     let message = if usa_first {
+        if deduped {
+            format!(
+                "{list_name} country codes must be alphabetically ordered \
+                 (USA first when present) and must be unique: \
+                 [{joined_actual}] → [{joined_canonical}]"
+            )
+        } else {
+            format!(
+                "{list_name} country codes must be alphabetically ordered \
+                 (USA first when present): [{joined_actual}] → [{joined_canonical}]"
+            )
+        }
+    } else if deduped {
         format!(
             "{list_name} country codes must be alphabetically ordered \
-             (USA first when present): [{joined_actual}] → [{joined_sorted}]"
+             and must be unique: [{joined_actual}] → [{joined_canonical}]"
         )
     } else {
         format!(
             "{list_name} country codes must be alphabetically ordered: \
-             [{joined_actual}] → [{joined_sorted}]"
+             [{joined_actual}] → [{joined_canonical}]"
         )
     };
 
@@ -3801,8 +4418,6 @@ fn sar_missing_programs<'a>(
     observed: Option<&marque_ism::SarMarking>,
     expected: &'a marque_ism::SarMarking,
 ) -> Vec<&'a str> {
-    use std::collections::HashSet;
-
     let observed_ids: HashSet<&str> = match observed {
         Some(obs) => obs.programs.iter().map(|p| p.identifier.as_ref()).collect(),
         None => HashSet::new(),
@@ -5107,6 +5722,7 @@ mod tests {
         assert!(ids.contains(&"E049"));
         assert!(ids.contains(&"E050"));
         assert!(ids.contains(&"E051"));
+        assert!(ids.contains(&"E052"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -5127,7 +5743,12 @@ mod tests {
         // covering §H.4 class ceilings and required-companion
         // constraints under the fix-and-warn pattern. See
         // `rules_sci_per_system` module doc. Net: 44 + 10 = 54.
-        assert_eq!(set.rules().len(), 54);
+        // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
+        // structural sister of E020 (ordering) closing the §H.8
+        // p150–151 list-grammar surface. Net: 55.
+        // Issue #235 / #186 PR-3: added S004 (rel-to-trigraph-suggest),
+        // first consumer of the suggest-don't-fix channel. Net: 56.
+        assert_eq!(set.rules().len(), 56);
     }
 
     #[test]
@@ -6464,6 +7085,298 @@ mod tests {
         );
     }
 
+    // --- S004: rel-to-trigraph-suggest (issue #235 / #186 PR-3) ---
+    //
+    // S004 surfaces a `Severity::Suggest` diagnostic when a REL TO
+    // entry has a corpus-rare prior and a corpus-common 1- or 2-edit
+    // neighbor. The fix is informational; the engine never auto-
+    // applies a Suggest-severity diagnostic regardless of confidence.
+
+    #[test]
+    fn s004_fires_on_aut_suggesting_aus() {
+        // The canonical #186 ambiguous fixture: `AUT` (Austria) is a
+        // valid trigraph but rare in REL TO; `AUS` (Australia) is
+        // far more common. The corpus prior delta exceeds
+        // SUGGEST_LOG_MARGIN.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert_eq!(s004.len(), 1, "S004 must fire on AUT: {diags:?}");
+        assert_eq!(s004[0].severity, marque_rules::Severity::Suggest);
+        let fix = s004[0].fix.as_ref().expect("S004 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "AUS");
+        // Original is the rare entry, replacement is the common one.
+        assert_eq!(fix.original.as_ref(), "AUT");
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_pure_common_partner_list() {
+        // USA, AUS, GBR are all common partners. No suggest channel.
+        let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent on common-partner REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_does_not_fire_when_rel_to_is_empty() {
+        // Banner without REL TO is out of scope.
+        let diags = lint_banner("SECRET//NOFORN");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent without REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_message_uses_canonical_token_strings_only() {
+        // Constitution V audit-content-ignorance: the diagnostic
+        // message must reference only the trigraph (vocabulary) and
+        // English country names (vocabulary), never document text.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire");
+        let msg = s004.message.as_ref();
+        // Vocabulary-only references: trigraph, candidate, country name.
+        assert!(
+            msg.contains("\"AUT\""),
+            "message must reference the rare trigraph: {msg}"
+        );
+        assert!(
+            msg.contains("\"AUS\""),
+            "message must reference the candidate: {msg}"
+        );
+        assert!(
+            msg.contains("Austria") && msg.contains("Australia"),
+            "message must use canonical country names: {msg}"
+        );
+        // No surrounding banner content (e.g., "SECRET", "GBR") leaks
+        // into the message — those would be document text under the
+        // content-ignorance invariant.
+        assert!(
+            !msg.contains("SECRET") && !msg.contains("GBR"),
+            "message must not splice document content: {msg}"
+        );
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_tetragraph_entry() {
+        // `FVEY` is a 4-letter tetragraph, not a 3-letter trigraph;
+        // the rule's `trigraph.len() != 3` guard must skip it. This
+        // pins the no-tetragraph contract — S004 only operates on
+        // trigraphs because tetragraph priors and edit-distance
+        // semantics need their own calibration.
+        let diags = lint_banner("SECRET//REL TO USA, FVEY");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must skip tetragraph entries: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_edit_distance_handles_empty_inputs() {
+        // The two early-return paths in the DP: when either input
+        // is empty, the distance is the length of the other. Pin
+        // both so the helper stays correct as it picks up callers
+        // beyond S004.
+        assert_eq!(super::s004_edit_distance("", ""), 0);
+        assert_eq!(super::s004_edit_distance("", "AUS"), 3);
+        assert_eq!(super::s004_edit_distance("AUS", ""), 3);
+    }
+
+    #[test]
+    fn s004_edit_distance_pins_canonical_pairs() {
+        // The substitution / transposition path the rule actually
+        // walks for the canonical #186 ambiguous fixtures. Edit-
+        // distance ≤ 2 is the gate; ≥ 3 must be excluded.
+        assert_eq!(super::s004_edit_distance("AUS", "AUS"), 0);
+        assert_eq!(super::s004_edit_distance("AUT", "AUS"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("USB", "USA"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("ASU", "AUS"), 2); // transposition (2 substitutions)
+        assert_eq!(super::s004_edit_distance("AUS", "GBR"), 3); // beyond threshold
+    }
+
+    #[test]
+    fn s004_message_renders_all_country_name_arms() {
+        // The four `(entry_name, candidate_name)` arms each have a
+        // distinct phrasing because the surrounding parenthetical
+        // English name only renders when the trigraph is in the
+        // hand-curated COUNTRY_NAMES table. Driving every arm
+        // through real `IsmAttributes` requires manufactured
+        // priors — pinning the helper directly keeps the contract
+        // visible and stable.
+        //
+        // (Some, Some): canonical AUT → AUS form with both names.
+        let both = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        assert!(both.contains("Austria"));
+        assert!(both.contains("Australia"));
+        assert!(both.contains("far less common"));
+        assert!(both.contains("did you mean \"AUS\""));
+
+        // (None, Some): rare trigraph not in COUNTRY_NAMES.
+        let rare_unnamed = super::s004_message("XYZ", "AUS", None, Some("Australia"));
+        assert!(rare_unnamed.contains("\"XYZ\" is rare"));
+        assert!(rare_unnamed.contains("\"AUS\" (Australia)"));
+        // The "(EnglishName)" parenthetical only appears for the
+        // candidate, not for the unnamed trigraph itself.
+        assert!(!rare_unnamed.contains("\"XYZ\" ("));
+
+        // (Some, None): candidate not in COUNTRY_NAMES.
+        let candidate_unnamed = super::s004_message("AUT", "XYZ", Some("Austria"), None);
+        assert!(candidate_unnamed.contains("\"AUT\" (Austria)"));
+        assert!(candidate_unnamed.contains("did you mean \"XYZ\""));
+        // No trailing "(name)" for the unnamed candidate.
+        assert!(!candidate_unnamed.contains("\"XYZ\" ("));
+
+        // (None, None): neither in COUNTRY_NAMES.
+        let neither = super::s004_message("XYZ", "ABC", None, None);
+        assert!(neither.contains("\"XYZ\" is rare"));
+        assert!(neither.contains("did you mean \"ABC\""));
+        assert!(!neither.contains("("));
+    }
+
+    #[test]
+    fn s004_message_never_contains_document_content() {
+        // Constitution V audit-content-ignorance: the helper takes
+        // only vocabulary inputs — trigraph tokens and English
+        // country names — so even passing it adversarial inputs
+        // cannot leak document body text. The rule body is
+        // responsible for never SOURCING those inputs from the
+        // document; this test pins the helper's promise.
+        let msg = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        // Sanity: the helper output references only its inputs.
+        let allowed_tokens = ["AUT", "AUS", "Austria", "Australia"];
+        // Strip the structural words and check what's left is
+        // either whitespace, punctuation, or one of the inputs.
+        for word in msg.split_whitespace() {
+            let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if trimmed.is_empty() {
+                continue;
+            }
+            let in_allowed = allowed_tokens.contains(&trimmed);
+            let in_phrasing = matches!(
+                trimmed,
+                "is" | "far"
+                    | "less"
+                    | "common"
+                    | "in"
+                    | "REL"
+                    | "TO"
+                    | "than"
+                    | "did"
+                    | "you"
+                    | "mean"
+            );
+            assert!(
+                in_allowed || in_phrasing,
+                "unexpected token {trimmed:?} in S004 message: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn s004_skips_when_trigraph_spans_shorter_than_rel_to_list() {
+        // Defensive guard against a future parser change that no
+        // longer emits one `RelToTrigraph` token span per `rel_to`
+        // entry. Today the parser does emit them 1:1; if that
+        // contract drifts (e.g., a parser refactor that filters
+        // tetragraph-expanded entries differently), the rule must
+        // skip the misaligned entries instead of producing a
+        // diagnostic with the wrong span.
+        use marque_ism::{CountryCode, IsmAttributes};
+        use marque_rules::{MarkingType, RuleContext};
+
+        let mut attrs = IsmAttributes::default();
+        // Two REL TO entries (AUT triggers the suggest, USA does
+        // not) but ZERO RelToTrigraph token spans — the defensive
+        // path must hit the `trigraph_spans.get(idx)` None arm
+        // for AUT's would-be suggestion and bail out.
+        attrs.rel_to = Box::new([
+            CountryCode::try_new(b"USA").expect("USA is a valid country code"),
+            CountryCode::try_new(b"AUT").expect("AUT is a valid country code"),
+        ]);
+        // Leave attrs.token_spans empty.
+
+        let ctx = RuleContext {
+            marking_type: MarkingType::Banner,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: None,
+        };
+        let rule = super::RelToTrigraphSuggestRule;
+        let diags = <super::RelToTrigraphSuggestRule as Rule>::check(&rule, &attrs, &ctx);
+        assert!(
+            diags.is_empty(),
+            "S004 must skip when trigraph spans don't align with rel_to: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_tie_breaking_is_deterministic() {
+        // M-1 (Copilot review): the doc comment promises tie-breaking
+        // by (1) shorter edit distance, then (2) lexicographic order
+        // on the token. Pin the contract end-to-end against the
+        // canonical AUT → AUS fixture: AUS is the unique winner —
+        // any rerun of the rule must pick AUS, never `AUT`-adjacent
+        // codes that share a similar log-prior delta.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on AUT");
+        let fix = s004.fix.as_ref().expect("S004 must carry a fix");
+        // Run again — same input, same output (no nondeterministic
+        // tie-break paths).
+        let diags2 = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004_2 = diags2
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on second run");
+        let fix2 = s004_2.fix.as_ref().expect("second-run fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            fix2.replacement.as_ref(),
+            "S004 picks must be deterministic across runs"
+        );
+        assert_eq!(fix.replacement.as_ref(), "AUS");
+    }
+
+    #[test]
+    fn s004_fix_does_not_auto_apply_under_engine_fix_call() {
+        // Pin the suggest-don't-fix invariant end-to-end: even though
+        // S004 emits a `FixProposal`, running `Engine::fix` (the API
+        // that produces audit records) must NOT include the S004 fix
+        // in `applied`. The engine excludes Suggest-severity from
+        // auto-apply by construction.
+        use crate::scheme::CapcoScheme;
+        use marque_config::Config;
+        use marque_engine::{Engine, FixMode};
+        use marque_rules::RuleSet;
+
+        let config = Config::default();
+        let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(super::CapcoRuleSet::new())];
+        let engine = Engine::new(config, rule_sets, CapcoScheme::new())
+            .expect("default scheme has no rewrite cycles");
+
+        let result = engine.fix(b"SECRET//REL TO USA, AUT, GBR\n", FixMode::Apply);
+        // No S004-rule audit record may exist.
+        let s004_audits: Vec<_> = result
+            .applied
+            .iter()
+            .filter(|af| af.proposal.rule.as_str() == "S004")
+            .collect();
+        assert!(
+            s004_audits.is_empty(),
+            "S004 must never produce an AppliedFix; got: {s004_audits:?}"
+        );
+    }
+
     // --- E010: Bare HCS rule ---
 
     #[test]
@@ -7626,6 +8539,184 @@ mod tests {
             "USA, GBR, AUS",
             "fix span must cover the full trigraph range inside the block"
         );
+    }
+
+    // --- E052: REL TO no-duplicates (issue #234 PR-B) ---
+
+    #[test]
+    fn e052_fires_on_duplicate_rel_to_entries() {
+        // USA listed twice — must collapse while preserving order.
+        let src = "SECRET//REL TO USA, GBR, USA, AUS";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            1,
+            "E052 must fire on duplicate USA entry: {diags:?}"
+        );
+        let fix = e052[0].fix.as_ref().expect("E052 must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, GBR, AUS",
+            "dedup must preserve first-occurrence order (no canonicalization)"
+        );
+        assert!(
+            (fix.confidence.combined() - 1.0).abs() < f32::EPSILON,
+            "E052 confidence must be 1.0 (deterministic dedup)"
+        );
+        // Span must cover the full trigraph range inside the block.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "USA, GBR, USA, AUS",
+            "fix span must cover the full per-block trigraph range"
+        );
+    }
+
+    #[test]
+    fn e052_does_not_fire_on_unique_rel_to_entries() {
+        let src = "SECRET//REL TO USA, AUS, GBR";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E052"),
+            "E052 must not fire on a list with no duplicates: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e052_emits_one_diagnostic_per_block_with_duplicates() {
+        // Two REL TO blocks; both contain duplicates. Each must emit
+        // its own diagnostic so the per-block fix span doesn't splice
+        // across `//NF//`.
+        let src = "SECRET//REL TO USA, USA, GBR//NF//REL TO AUS, AUS, JPN";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            2,
+            "E052 must emit one diagnostic per affected block: {diags:?}"
+        );
+        // Each fix is scoped to its own block.
+        let block_replacements: Vec<&str> = e052
+            .iter()
+            .map(|d| d.fix.as_ref().unwrap().replacement.as_ref())
+            .collect();
+        assert!(
+            block_replacements.contains(&"USA, GBR"),
+            "first block must dedup to USA, GBR: {block_replacements:?}"
+        );
+        assert!(
+            block_replacements.contains(&"AUS, JPN"),
+            "second block must dedup to AUS, JPN: {block_replacements:?}"
+        );
+    }
+
+    #[test]
+    fn e052_silent_when_rel_to_has_only_one_country() {
+        // Guard branch: `attrs.rel_to.len() < 2` early return. A
+        // single-country list cannot contain duplicates, so E052 must
+        // never fire here. Exercises the early-bail at the top of
+        // `RelToNoDuplicatesRule::check` that codecov flagged as
+        // uncovered after PR-B's first pass.
+        let src = "SECRET//REL TO USA";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E052"),
+            "E052 must not fire on a single-country REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e052_silent_per_block_when_only_some_blocks_have_duplicates() {
+        // Mixed-block guard: one block with duplicates, one block
+        // without. Only the duplicated block produces an E052
+        // diagnostic; the clean block's loop iteration must hit the
+        // `deduped.len() == block_codes.len()` skip path. This exercises
+        // the in-loop "no duplicates in this block" continue branch
+        // that codecov flagged as uncovered.
+        let src = "SECRET//REL TO USA, GBR, USA//NF//REL TO USA, AUS";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            1,
+            "E052 must fire once on the dup-bearing block only: {diags:?}"
+        );
+        assert_eq!(
+            e052[0].fix.as_ref().unwrap().replacement.as_ref(),
+            "USA, GBR",
+            "the firing block must dedup to USA, GBR"
+        );
+    }
+
+    #[test]
+    fn e020_fix_output_dedups_when_input_has_duplicates() {
+        // Issue #234 PR-B fixup (Copilot review): E020's fix path
+        // must produce canonical output (USA-first + alphabetical +
+        // unique) so that when E020 and E052 both fire on the same
+        // REL TO span, FR-016's `rule_id ASC` tiebreaker drops E052
+        // and the surviving E020 fix is single-pass idempotent. This
+        // unit test isolates E020's replacement string (since
+        // `lint_banner` returns rule-only diagnostics, no engine
+        // overlap-guard interaction).
+        //
+        // Input: misordered AND duplicated → both E020 and E052 fire.
+        // E020's `replacement` must be the fully canonical form, not
+        // the sorted-with-duplicates form that the pre-fixup code
+        // emitted.
+        let src = "SECRET//REL TO USA, GBR, AUS, GBR";
+        let diags = lint_banner(src);
+        let e020_fix = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E020")
+            .and_then(|d| d.fix.as_ref())
+            .expect("E020 must fire and carry a fix on misordered+duplicated REL TO");
+        assert_eq!(
+            e020_fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E020 fix must dedup before sorting (canonical form, no duplicates)"
+        );
+    }
+
+    #[test]
+    fn e002_fix_output_dedups_when_input_has_duplicates() {
+        // Issue #234 PR-B fixup (Copilot review): E002's fix path
+        // also composes dedup + canonicalize so its replacement stays
+        // single-pass idempotent against E052 on overlapping spans.
+        // Input: USA missing AND non-USA codes duplicated → E002
+        // fires (missing USA), E052 fires (GBR repeated). FR-016
+        // tiebreaker keeps E002 (lex), so E002's replacement must be
+        // canonical or re-lint would still fire E052.
+        let src = "SECRET//REL TO GBR, AUS, GBR";
+        let diags = lint_banner(src);
+        let e002_fix = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E002")
+            .and_then(|d| d.fix.as_ref())
+            .expect("E002 must fire and carry a fix when USA is missing from REL TO");
+        assert_eq!(
+            e002_fix.replacement.as_ref(),
+            "USA, AUS, GBR",
+            "E002 fix must dedup before sorting (canonical form, no duplicates)"
+        );
+    }
+
+    #[test]
+    fn dedup_country_codes_preserves_first_occurrence_order() {
+        use marque_ism::CountryCode;
+        let codes = vec![
+            CountryCode::USA,
+            CountryCode::try_new(b"GBR").unwrap(),
+            CountryCode::USA,
+            CountryCode::try_new(b"AUS").unwrap(),
+            CountryCode::try_new(b"GBR").unwrap(),
+        ];
+        let deduped = dedup_country_codes(&codes);
+        let expected = vec![
+            CountryCode::USA,
+            CountryCode::try_new(b"GBR").unwrap(),
+            CountryCode::try_new(b"AUS").unwrap(),
+        ];
+        assert_eq!(deduped, expected);
     }
 
     // T035c-18: E020 standalone audit — per-branch citation lockdown

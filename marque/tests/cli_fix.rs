@@ -281,6 +281,32 @@ fn fix_all_below_threshold_exits_one_no_audit() {
     assert_eq!(stdout.as_ref(), "SECRET//NOFORN//SI\n");
 }
 
+// --- Suggest-only narration (issue #235 / #186 PR-3, M-3) ---
+//
+// Suggest-channel diagnostics are advisory; they don't "require manual
+// review", they offer optional alternatives. A document whose only
+// outstanding diagnostics are Suggest-severity must NOT trigger the
+// "N issue(s) require manual review" narration on stderr.
+
+#[test]
+fn fix_suggest_only_input_emits_no_manual_review_narration() {
+    // S004 (rel-to-trigraph-suggest) fires on `AUT` (Austria) with a
+    // suggestion of `AUS` (Australia). No other rule fires on this
+    // banner — the only outstanding diagnostic is Suggest-severity.
+    let assert = marque()
+        .args(["fix"])
+        .write_stdin("SECRET//REL TO USA, AUT, GBR\n")
+        .assert()
+        .success(); // Suggest is CI-silent → exit 0
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        !stderr.contains("require manual review"),
+        "Suggest-only diagnostics must not trigger manual-review narration, \
+         got stderr: {stderr}"
+    );
+}
+
 // --- L3: --write-stdout with file path ---
 
 #[test]
