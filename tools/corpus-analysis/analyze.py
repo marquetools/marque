@@ -1647,7 +1647,7 @@ def _resolve_canonical_source(corpus_path: Path) -> Path:
 
 
 def generate_mangled_fixtures(
-    corpus_path: Path,
+    corpus_paths: list[Path],
     output_dir: Path,
     min_cases: int,
     max_docs: Optional[int],
@@ -1660,12 +1660,13 @@ def generate_mangled_fixtures(
     if the total case count falls below ``min_cases`` after exhausting the
     corpus, since the SC-004 gate depends on ≥200 cases.
 
-    ``corpus_path`` is resolved through ``_resolve_canonical_source`` so
-    a mixed-validity test corpus (``tests/corpus/`` with ``valid/`` +
-    ``invalid/`` + ``prose/``) transparently narrows to ``valid/``. Pass
-    a homogeneous corpus directly if you want a different behavior.
+    Each path in ``corpus_paths`` is resolved through
+    ``_resolve_canonical_source`` so a mixed-validity test corpus
+    (``tests/corpus/`` with ``valid/`` + ``invalid/`` + ``prose/``)
+    transparently narrows to ``valid/``. Pass homogeneous corpora directly
+    (e.g. Enron maildir, CREST docs) for full-tree scanning.
     """
-    corpus_path = _resolve_canonical_source(corpus_path)
+    resolved = [_resolve_canonical_source(p) for p in corpus_paths]
     rng = random.Random(seed)
     # One directory per class, created eagerly so downstream checks
     # that inspect directory existence find what they expect. Clear
@@ -1685,7 +1686,7 @@ def generate_mangled_fixtures(
     # inflated weight. We want coverage, not volume.
     canonicals: set[str] = set()
     scanned_docs = 0
-    for _doc_id, text in iter_corpus_texts(corpus_path, max_docs):
+    for _doc_id, text in iter_corpus_texts_multi(resolved, max_docs):
         scanned_docs += 1
         canonicals.update(extract_candidate_markings(text))
         # Stop scanning once we have enough distinct canonicals that
@@ -1695,7 +1696,8 @@ def generate_mangled_fixtures(
 
     if not canonicals:
         raise RuntimeError(
-            f"No canonical-looking markings found in corpus {corpus_path}. "
+            f"No canonical-looking markings found in corpus paths: "
+            f"{[str(p) for p in resolved]}. "
             f"Expected at least some `(CLASS//DISSEM)` or `CLASS//DISSEM` "
             f"shapes. Check the corpus contents."
         )
@@ -2081,8 +2083,7 @@ def main():
         )
         return
 
-    # mangled mode — single-corpus semantics; uses first resolved path
-    corpus_path = corpus_paths[0]
+    # mangled mode — multi-corpus aware; scans all resolved paths for canonicals
     if not args.output:
         print(
             "Error: --mode mangled requires --output <dir>",
@@ -2093,7 +2094,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
         summary = generate_mangled_fixtures(
-            corpus_path=corpus_path,
+            corpus_paths=corpus_paths,
             output_dir=output_dir,
             min_cases=args.min_cases,
             max_docs=args.max_docs,
