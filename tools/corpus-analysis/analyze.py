@@ -1494,11 +1494,62 @@ SUPERSEDED_TOKEN_MAP = {
 # They're safe in this context because the input corpus text is trusted,
 # we match it to an SHA-512 fingerprint, and this script is **not** used in production
 # It's a pre-compilation step that runs once on a known corpus, not a runtime path.
-_MARKING_PORTION_RE = re.compile(r"\(([A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/-]+)+)\)")
+_MARKING_PORTION_RE = re.compile(
+    r"\("
+    r"("
+    # Non-US/JOINT portion marks start with // inside the parens:
+    #   (//NS//ATOMAL//OC)  (//CTS-B//NOFORN)  (//JOINT S CAN GBR//REL)
+    r"(?://[A-Z][A-Z0-9 ,/-]+(?://[A-Z][A-Z0-9 ,/-]+)*)"
+    r"|"
+    # US portion marks: 1–3 capital letters then at least one //CATEGORY:
+    #   (S//NF)  (TS//SI//NOFORN)
+    r"(?:[A-Z]{1,3}(?://[A-Z][A-Z0-9 ,/-]+)+)"
+    r")"
+    r"\)"
+)
 _MARKING_BANNER_RE = re.compile(
     r"(?:^|(?<=\s))"
-    r"((?:UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP SECRET|RESTRICTED)"
-    r"(?://[A-Z][A-Z0-9 ,/-]+)+)"
+    r"("
+    # Non-US/JOINT banners lead with // (no US classification prefix).
+    # Three sub-families:
+    #
+    # 1. NATO full and abbreviated classification levels:
+    #    //COSMIC TOP SECRET//BOHEMIA   //NATO SECRET//ATOMAL//ORCON
+    #    //CTS//BOHEMIA  //NS//ATOMAL//OC  //NIS//REL TO USA, ISAF, NATO
+    #
+    # 2. JOINT classification (full and abbreviated levels + country list):
+    #    //JOINT SECRET CAN GBR USA//REL TO USA, CAN, GBR
+    #    //JOINT S GBR USA//REL TO USA, FVEY
+    #
+    # 3. FGI country/org code + level abbreviation:
+    #    //AUS S//REL TO USA, AUS   //DEU C//REL TO USA, CAN, DEU
+    #    //FGI S//NF                //FGI TS
+    r"(?://"
+    r"(?:"
+    # NATO full classification levels (with optional SAP suffix)
+    r"COSMIC TOP SECRET(?:-(?:BOHEMIA|BALK)|\s+ATOMAL)?"
+    r"|NATO\s+(?:UNCLASSIFIED|RESTRICTED|CONFIDENTIAL(?:\s+ATOMAL)?|SECRET(?:\s+ATOMAL)?)"
+    # NATO abbreviated classification tokens
+    r"|CTSA?"           # CTS / CTSA (CTS+ATOMAL)
+    r"|CTS-(?:B|BALK)"  # CTS-B (BOHEMIA), CTS-BALK
+    r"|NS(?:AT)?"       # NS / NSAT (NATO SECRET / NATO SECRET ATOMAL)
+    r"|NCA?"            # NC / NCA (NATO CONFIDENTIAL / +ATOMAL)
+    r"|NR"              # NATO RESTRICTED
+    r"|NU"              # NATO UNCLASSIFIED
+    r"|NIS"             # NATO Intelligence Support
+    # JOINT classification (full or abbreviated level, then optional country list)
+    r"|JOINT\s+(?:TOP SECRET|SECRET|CONFIDENTIAL|UNCLASSIFIED|TS|S|C|U)(?:\s+[A-Z]{2,4})*"
+    # FGI: one or more trigraph/tetragraph country codes + level abbreviation
+    #   //AUS S  //CAN DEU S  //FGI TS  (FGI acts as a country-group tetragraph here)
+    r"|(?:[A-Z]{2,4}\s+)+(?:TOP SECRET|SECRET|CONFIDENTIAL|TS|S|C)"
+    r")"
+    r"(?://[A-Z][A-Z0-9 ,/-]+)*"  # optional additional //CATEGORY blocks
+    r")"
+    r"|"
+    # US banners: classification level first, then at least one //CATEGORY:
+    #   SECRET//NOFORN  TOP SECRET//SI//REL TO USA, GBR
+    r"(?:(?:UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP SECRET|RESTRICTED)(?://[A-Z][A-Z0-9 ,/-]+)+)"
+    r")"
     r"(?=\s|$)",
     re.MULTILINE,
 )
