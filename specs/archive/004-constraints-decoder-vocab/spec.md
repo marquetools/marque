@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-constraints-decoder-vocab`
 **Created**: 2026-04-20
-**Status**: archived — Phases C, D, and E all shipped. Phase C (declarative constraints + topological page-rewrite scheduler) landed via #69 and the rewrite series; Phase D (probabilistic recognition + audit v2) landed via PRs #111, #112, #114, #122, #127, #131, #135; Phase E (vocabulary surface + `Codec<S>` + `Vocabulary<S>` impl + Phase-E readiness stub) landed via PRs #141 → #146. See CLAUDE.md "Recent Changes" → "Phase 5", "Phase 4". Kept for historical context.
+**Status**: archived — Phases C, D, and E all shipped. Phase C (declarative constraints + topological page-rewrite scheduler) landed via #69 and the rewrite series; Phase D (probabilistic recognition + audit v2) landed via PRs #111, #112, #114, #122, #127, #131, #135; Phase E (vocabulary surface + `Codec<S>` + `Vocabulary<S>` impl + Phase-E readiness stub) landed via PRs #141 → #146. Naming map for cross-reference: spec phases C/D/E align to CLAUDE.md "Recent Changes" as C ≈ "Phase 4" and D/E ≈ "Phase 5". Kept for historical context.
 **Input**: User description: "'docs/plans/2026-04-19-recursive-lattice-and-decoder.md' phases C, D, and E"
 
 ---
@@ -42,7 +42,7 @@ A contributor adding a new CAPCO-adjacent constraint, or authoring a new grammar
 
 ### User Story 2 - Compliance staff can clean up historical corpora without manual re-marking (Priority: P2)
 
-A compliance team holds a backlog of historical documents whose markings are inconsistently formatted — OCR'd scans, hand-typed banners with ordering errors, superseded token names, missing delimiters. Today marque flags each as an error and stops. With the probabilistic recognizer, the team runs a batch reconciliation pass and marque auto-fixes markings it is highly confident about, surfacing only the genuinely ambiguous ones for human review. Every auto-fix carries an auditable posterior score and feature trace so a reviewer can spot-check a sample and decide whether to accept the remediation batch.
+A compliance team holds a backlog of historical documents whose markings are inconsistently formatted — OCR-scanned documents, hand-typed banners with ordering errors, superseded token names, missing delimiters. Today marque flags each as an error and stops. With the probabilistic recognizer, the team runs a batch reconciliation pass and marque auto-fixes markings it is highly confident about, surfacing only the genuinely ambiguous ones for human review. Every auto-fix carries an auditable posterior score and feature trace so a reviewer can spot-check a sample and decide whether to accept the remediation batch.
 
 **Why this priority**: The backlog-reconciliation workload is the revenue-relevant commercial use case after authoring lint. Without the probabilistic recognizer, marque's answer to mangled historical input is "your problem, not mine." With it, marque becomes the tool that actually processes the accumulated corpus, not just the next document typed.
 
