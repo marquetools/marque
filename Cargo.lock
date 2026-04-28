@@ -966,6 +966,7 @@ dependencies = [
  "aho-corasick",
  "criterion",
  "futures",
+ "futures-core",
  "humantime",
  "insta",
  "marque-capco",
