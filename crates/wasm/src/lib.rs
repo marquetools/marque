@@ -93,6 +93,40 @@ compile_error!(
      unreachable in the WASM artifact."
 );
 
+// T-atomics guard: `multi-threading` and `talc_debug` both activate TalcLock with
+// spinning_top::RawSpinlock, which requires the WebAssembly atomics proposal
+// (`-C target-feature=+atomics`). Building without that flag produces a binary
+// that may panic or miscompile at runtime on any runtime that doesn't expose
+// SharedArrayBuffer. Catch this at compile time instead.
+//
+// To build a threaded WASM binary, add to .cargo/config.toml:
+//
+//   [target.wasm32-unknown-unknown]
+//   rustflags = [
+//     "-C", "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+//   ]
+//
+// Note: +bulk-memory and +mutable-globals are also required by wasm-bindgen
+// for the SharedArrayBuffer/threading model. The serving page MUST send:
+//   Cross-Origin-Opener-Policy: same-origin
+//   Cross-Origin-Embedder-Policy: require-corp
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "multi-threading", feature = "talc_debug"),
+    not(target_feature = "atomics"),
+))]
+compile_error!(
+    "The `multi-threading` and `talc_debug` features require WebAssembly atomics \
+     (`-C target-feature=+atomics`), which is not enabled in the current build. \
+     Add to .cargo/config.toml under [target.wasm32-unknown-unknown]:\n\
+     \n\
+     rustflags = [\"-C\", \
+     \"target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals\"]\n\
+     \n\
+     Note: the serving page must also send COOP/COEP headers for SharedArrayBuffer \
+     access. See crates/wasm/src/lib.rs for details."
+);
+
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
