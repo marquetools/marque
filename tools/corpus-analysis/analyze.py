@@ -2075,8 +2075,8 @@ def main():
             priors = derive_priors(results, tokens_by_category)
             # Fingerprint all corpus directories together for the priors record.
             combined_fp = _corpus_fingerprint(corpus_paths[0]) if len(corpus_paths) == 1 else (
-                "combined:"
-                + hashlib.sha256(
+                "sha512:"
+                + hashlib.sha512(
                     "\n".join(_corpus_fingerprint(p) for p in corpus_paths).encode()
                 ).hexdigest()
             )
@@ -2101,8 +2101,8 @@ def main():
         # The corpus_fingerprint (SHA-512 over file metadata, content-
         # ignorant per Constitution V) is the reproducible identifier.
         combined_fp = _corpus_fingerprint(corpus_paths[0]) if len(corpus_paths) == 1 else (
-            "combined:"
-            + hashlib.sha256(
+            "sha512:"
+            + hashlib.sha512(
                 "\n".join(_corpus_fingerprint(p) for p in corpus_paths).encode()
             ).hexdigest()
         )

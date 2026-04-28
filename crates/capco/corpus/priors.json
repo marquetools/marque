@@ -504,5 +504,5 @@
     "secret_floor": 0.99,
     "top_secret_floor": 0.995
   },
-  "corpus_fingerprint": "combined:3456964e6cd1b858fec7359a8529137f87b84c6fd4b33b39f9c289cb901368fc"
+  "corpus_fingerprint": "sha512:d02dcd957579639d6384b4ef92742d26f3b6fdcb49ea6176679c19c915e45abf900a37323a229e9714cf3b25e574fbb95b6b9af3701c021124ec1e68f019d976"
 }
