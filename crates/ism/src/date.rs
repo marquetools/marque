@@ -377,8 +377,11 @@ impl IsmDate {
     /// - `DateHourMin` end = (y, m, d, H, M, 59, 999_999_999)
     /// - `DateTime` end = the precise instant
     ///
-    /// UTC offsets are **not** normalized; comparison is on the civil
-    /// end-of-span components.
+    /// When civil end-of-span components are equal, the value with the more
+    /// negative UTC offset (i.e. further behind UTC, representing a later UTC
+    /// instant) is considered Greater. For example, `2003-04-15T10:30-05:00`
+    /// (= 15:30 UTC) compares Greater than `2003-04-15T10:30Z` (= 10:30 UTC).
+    /// Floating (offset-naive) values treat offset as zero for tie-breaking.
     pub fn end_cmp(&self, other: &IsmDate) -> Ordering {
         let a = self.end_components();
         let b = other.end_components();
@@ -397,7 +400,7 @@ impl IsmDate {
     /// - `Date(y, m, d)` → `"{y:04}{m:02}{d:02}"`
     /// - `DateHourMin / DateTime` → the date component only
     pub fn to_maxdate_str(&self) -> Box<str> {
-        let (y, m, d, _, _, _, _) = self.end_components();
+        let (y, m, d, _, _, _, _, _) = self.end_components();
         format!("{:04}{:02}{:02}", y, m, d).into_boxed_str()
     }
 
@@ -405,27 +408,36 @@ impl IsmDate {
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    /// End-of-span tuple `(year, month, day, hour, minute, second, nanosecond)`.
+    /// End-of-span tuple `(year, month, day, hour, minute, second, nanosecond, utc_tie_break)`.
     ///
     /// Unspecified components are filled with their maximum values so that
     /// `end_cmp` correctly orders coarser dates AFTER finer ones that fall
     /// within the same span.
-    fn end_components(&self) -> (i32, u8, u8, u8, u8, u8, u32) {
+    ///
+    /// The last element (`utc_tie_break`) is `-offset.minutes` (negated).
+    /// When all civil components are equal, a more negative UTC offset means
+    /// a later UTC instant; negating makes "later UTC" → larger value → Greater.
+    /// Floating (offset-naive) values use 0 as the tie-breaker.
+    fn end_components(&self) -> (i32, u8, u8, u8, u8, u8, u32, i16) {
         match self {
-            IsmDate::Year(y) => (*y, 12, 31, 23, 59, 59, 999_999_999),
+            IsmDate::Year(y) => (*y, 12, 31, 23, 59, 59, 999_999_999, 0),
             IsmDate::YearMonth(y, m) => {
                 let d = days_in_month(*y, *m);
-                (*y, *m, d, 23, 59, 59, 999_999_999)
+                (*y, *m, d, 23, 59, 59, 999_999_999, 0)
             }
-            IsmDate::Date(y, m, d) => (*y, *m, *d, 23, 59, 59, 999_999_999),
+            IsmDate::Date(y, m, d) => (*y, *m, *d, 23, 59, 59, 999_999_999, 0),
             IsmDate::DateHourMin {
                 year,
                 month,
                 day,
                 hour,
                 minute,
-                ..
-            } => (*year, *month, *day, *hour, *minute, 59, 999_999_999),
+                offset,
+            } => {
+                // Negate offset.minutes: a more-negative offset = later UTC instant = Greater.
+                let utc_tb = offset.map_or(0_i16, |o| -o.minutes);
+                (*year, *month, *day, *hour, *minute, 59, 999_999_999, utc_tb)
+            }
             IsmDate::DateTime {
                 year,
                 month,
@@ -434,8 +446,11 @@ impl IsmDate {
                 minute,
                 second,
                 nanosecond,
-                ..
-            } => (*year, *month, *day, *hour, *minute, *second, *nanosecond),
+                offset,
+            } => {
+                let utc_tb = offset.map_or(0_i16, |o| -o.minutes);
+                (*year, *month, *day, *hour, *minute, *second, *nanosecond, utc_tb)
+            }
         }
     }
 }
@@ -527,6 +542,43 @@ impl FromStr for IsmDate {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         parse_ism_date(s)
+    }
+}
+
+impl FromStr for UtcOffset {
+    type Err = ParseIsmDateError;
+
+    /// Parse a standalone ISO 8601 UTC offset string.
+    ///
+    /// Accepted forms:
+    /// - `"Z"` → UTC (zero offset)
+    /// - `"+HH:MM"` → positive offset (e.g. `"+05:30"`)
+    /// - `"-HH:MM"` → negative offset (e.g. `"-05:00"`)
+    ///
+    /// Returns `Err` for any other form (e.g. `"EST"`, `"UTC"`, `"+0530"`).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Z" => Ok(UtcOffset::UTC),
+            _ if (s.starts_with('+') || s.starts_with('-')) && s.len() == 6 => {
+                let b = s.as_bytes();
+                // Require `:` separator at index 3 — rejects `+05-30` and `+0530`.
+                if b[3] != b':' {
+                    return Err(ParseIsmDateError::new(
+                        "UTC offset missing ':' separator (expected ±HH:MM)",
+                    ));
+                }
+                let sign: i8 = if s.starts_with('+') { 1 } else { -1 };
+                let oh =
+                    parse_2digits(&b[1..3]).ok_or(ParseIsmDateError::new("invalid offset hour"))?;
+                let om = parse_2digits(&b[4..6])
+                    .ok_or(ParseIsmDateError::new("invalid offset minute"))?;
+                UtcOffset::from_hhmm(sign, oh, om)
+                    .ok_or(ParseIsmDateError::new("UTC offset out of range"))
+            }
+            _ => Err(ParseIsmDateError::new(
+                "unrecognized UTC offset (expected Z or ±HH:MM)",
+            )),
+        }
     }
 }
 
@@ -1154,6 +1206,54 @@ mod tests {
     }
 
     #[test]
+    fn date_hour_min_end_cmp_same_civil_negative_offset_is_greater() {
+        // 10:30-05:00 = 15:30 UTC > 10:30Z = 10:30 UTC
+        let utc = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: Some(UtcOffset::UTC),
+        };
+        let eastern = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: Some(UtcOffset::from_hhmm(-1, 5, 0).unwrap()), // -05:00
+        };
+        // Eastern is later in UTC, so it should be Greater.
+        assert_eq!(eastern.end_cmp(&utc), Ordering::Greater);
+        assert_eq!(utc.end_cmp(&eastern), Ordering::Less);
+    }
+
+    #[test]
+    fn date_hour_min_end_cmp_same_civil_positive_offset_is_less() {
+        // 10:30+05:30 = 05:00 UTC < 10:30Z = 10:30 UTC
+        let utc = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: Some(UtcOffset::UTC),
+        };
+        let india = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: Some(UtcOffset::from_hhmm(1, 5, 30).unwrap()), // +05:30
+        };
+        // India is earlier in UTC, so it should be Less.
+        assert_eq!(india.end_cmp(&utc), Ordering::Less);
+        assert_eq!(utc.end_cmp(&india), Ordering::Greater);
+    }
+
+    #[test]
     fn to_maxdate_str_year() {
         assert_eq!(&*IsmDate::Year(2003).to_maxdate_str(), "20031231");
     }
@@ -1224,6 +1324,46 @@ mod tests {
     fn utc_offset_rejects_invalid() {
         assert!(UtcOffset::from_hhmm(1, 24, 0).is_none()); // hours > 23
         assert!(UtcOffset::from_hhmm(1, 0, 60).is_none()); // minutes > 59
+    }
+
+    #[test]
+    fn utc_offset_from_str_z_is_utc() {
+        assert_eq!("Z".parse::<UtcOffset>().unwrap(), UtcOffset::UTC);
+    }
+
+    #[test]
+    fn utc_offset_from_str_positive() {
+        let o = "+05:30".parse::<UtcOffset>().unwrap();
+        assert_eq!(o, UtcOffset::from_hhmm(1, 5, 30).unwrap());
+    }
+
+    #[test]
+    fn utc_offset_from_str_negative() {
+        let o = "-05:00".parse::<UtcOffset>().unwrap();
+        assert_eq!(o, UtcOffset::from_hhmm(-1, 5, 0).unwrap());
+    }
+
+    #[test]
+    fn utc_offset_from_str_round_trip() {
+        // "+00:00" canonicalizes to "Z" so it is excluded from this round-trip.
+        for s in ["Z", "+05:30", "-05:00", "+23:59", "-23:59"] {
+            let parsed: UtcOffset = s.parse().unwrap();
+            assert_eq!(parsed.to_string(), s, "round-trip failed for {s:?}");
+        }
+        // Both "+00:00" and "Z" parse to UTC; canonical display is "Z".
+        let zero: UtcOffset = "+00:00".parse().unwrap();
+        assert_eq!(zero, UtcOffset::UTC);
+        assert_eq!(zero.to_string(), "Z");
+    }
+
+    #[test]
+    fn utc_offset_from_str_rejects_invalid() {
+        for bad in ["EST", "UTC", "utc", "+0530", "+05-30", "05:30", "", "+24:00"] {
+            assert!(
+                bad.parse::<UtcOffset>().is_err(),
+                "should reject {bad:?}"
+            );
+        }
     }
 
     #[test]

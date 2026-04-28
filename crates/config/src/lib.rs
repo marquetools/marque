@@ -413,7 +413,7 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
     }
     if let Some(ref tz) = file.capco.default_timezone {
         config.capco.default_timezone =
-            parse_timezone_offset(tz).map_err(|_| ConfigError::InvalidTimezone {
+            tz.parse::<UtcOffset>().map_err(|_| ConfigError::InvalidTimezone {
                 value: tz.clone(),
             })?;
     }
@@ -473,7 +473,7 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     if let Ok(raw) = std::env::var("MARQUE_DEFAULT_TIMEZONE") {
         if !raw.trim().is_empty() {
             config.capco.default_timezone =
-                parse_timezone_offset(&raw).map_err(|_| ConfigError::InvalidEnvVar {
+                raw.parse::<UtcOffset>().map_err(|_| ConfigError::InvalidEnvVar {
                     var: "MARQUE_DEFAULT_TIMEZONE",
                     raw: raw.clone(),
                     reason: "expected \"Z\", \"+HH:MM\", or \"-HH:MM\"",
@@ -481,42 +481,6 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
         }
     }
     Ok(())
-}
-
-/// Parse an ISO 8601 UTC offset string into a [`UtcOffset`].
-///
-/// Accepted forms:
-/// - `"Z"` → UTC (zero offset)
-/// - `"+HH:MM"` → positive offset (e.g. `"+05:30"`)
-/// - `"-HH:MM"` → negative offset (e.g. `"-05:00"`)
-///
-/// Returns `Err(())` for any other input (e.g. `"EST"`, `"UTC"`, `"+0530"`).
-fn parse_timezone_offset(s: &str) -> Result<UtcOffset, ()> {
-    if s == "Z" {
-        return Ok(UtcOffset::UTC);
-    }
-    if (s.starts_with('+') || s.starts_with('-')) && s.len() == 6 {
-        let b = s.as_bytes();
-        // Require `:` separator at index 3 (mirrors `parse_offset` in marque-ism).
-        if b[3] != b':' {
-            return Err(());
-        }
-        let sign: i8 = if s.starts_with('+') { 1 } else { -1 };
-        let oh = offset_digit_pair(&b[1..3]).ok_or(())?;
-        let om = offset_digit_pair(&b[4..6]).ok_or(())?;
-        return UtcOffset::from_hhmm(sign, oh, om).ok_or(());
-    }
-    Err(())
-}
-
-/// Parse exactly 2 ASCII decimal bytes as `u8`; returns `None` on failure.
-#[inline]
-fn offset_digit_pair(b: &[u8]) -> Option<u8> {
-    if b.len() == 2 && b[0].is_ascii_digit() && b[1].is_ascii_digit() {
-        Some((b[0] - b'0') * 10 + (b[1] - b'0'))
-    } else {
-        None
-    }
 }
 
 /// T023: validate schema version matches compiled marque-ism (FR-011).
@@ -876,19 +840,20 @@ classifier_id = "from-sub"
     }
 
     #[test]
-    fn parse_timezone_offset_z_is_utc() {
-        assert_eq!(parse_timezone_offset("Z"), Ok(UtcOffset::UTC));
+    fn utc_offset_from_str_z_is_utc() {
+        // Exercising UtcOffset::from_str through the config-layer parse path.
+        assert_eq!("Z".parse::<UtcOffset>().unwrap(), UtcOffset::UTC);
     }
 
     #[test]
-    fn parse_timezone_offset_wrong_separator_is_err() {
+    fn utc_offset_from_str_wrong_separator_is_err() {
         // `+05-30` has `-` instead of `:` at index 3.
-        assert!(parse_timezone_offset("+05-30").is_err());
+        assert!("+05-30".parse::<UtcOffset>().is_err());
     }
 
     #[test]
-    fn parse_timezone_offset_out_of_range_is_err() {
+    fn utc_offset_from_str_out_of_range_is_err() {
         // Hours > 23 must be rejected.
-        assert!(parse_timezone_offset("+24:00").is_err());
+        assert!("+24:00".parse::<UtcOffset>().is_err());
     }
 }
