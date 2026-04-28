@@ -12,5 +12,16 @@
 # SIMD128 is part of WebAssembly 2.0 and has been universally supported since
 # Chrome 91, Firefox 89, Safari 16.4, Edge 91 (all 2022–2023). It is a safe
 # production baseline for any target audience in 2026.
+#
+# Compatibility testing note:
+# Artifacts built for `wasm32-unknown-unknown` with this workspace config will
+# require SIMD support at runtime and may fail validation on older or embedded
+# WebAssembly runtimes. To test a compatibility build without SIMD, override
+# the target features for the build invocation, for example:
+#
+#   RUSTFLAGS="-C target-feature=-simd128" cargo build --target wasm32-unknown-unknown
+#
+# or otherwise use a separate build profile/config that does not enable
+# `+simd128`.
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]

@@ -67,8 +67,9 @@
 )]
 // Allocator statics, clock impls, and wasm-bindgen exports are gated on
 // `target_arch = "wasm32"` and appear dead to the native host compiler and
-// rust-analyzer. They are live on the actual build target.
-#![allow(dead_code)]
+// rust-analyzer. They are live on the actual build target, so only relax
+// `dead_code` during non-wasm host analysis.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 // T067 / T3 enforcement (Constitution III + FR-013 + whitepaper §10.3 +
