@@ -410,20 +410,27 @@ def analyze_cooccurrence(
 # Match a ``REL TO`` header followed by comma- or whitespace-separated
 # entries until the block terminator. CAPCO §H.8 says ``//`` is the
 # authoritative end-of-category separator (project memory:
-# `project_capco_separator_conventions`); the parser also stops at
+# `project_capco_separator_conventions`); the analyzer also stops at
 # end-of-line or end-of-portion ``)`` so the regex doesn't run away on
-# malformed inputs. The body group is non-greedy and width-capped to
-# keep pathological inputs from blowing up the regex backtracker.
+# malformed inputs (post-processed in `_extract_rel_to_trigraphs`,
+# not in the regex itself). The body group is greedy with a hard
+# width cap of 200 chars to keep pathological inputs from blowing up
+# the regex backtracker; the post-processing cut at ``//``/``\n``/``)``
+# narrows the captured text to the actual REL TO body.
 _REL_TO_BLOCK_RE = re.compile(
     r"REL\s+TO\s+([A-Z][A-Z0-9_,\s]{0,200})",
     re.IGNORECASE,
 )
-# A trigraph in a REL TO body is 2-4 ASCII uppercase / digit / underscore
-# chars (matches ``CountryCode`` invariants in
-# ``crates/ism/src/attrs.rs``: ``EU`` is the shortest, longer forms like
-# ``AUSTRALIA_GROUP`` are accepted but rare). Kept narrow because a
-# corpus-level analyzer that admits 5+ char tokens absorbs prose words
-# (``"USA, ALSO,"`` would lift ``ALSO`` into the prior).
+# Country codes inside a REL TO body land in this regex's matched set
+# at lengths 2-4 ASCII uppercase / digit / underscore — covering 2-char
+# (``EU``), 3-char trigraphs, and 4-char tetragraphs (``FVEY``, ``ACGU``,
+# ``NATO``). Longer ``CountryCode`` forms (e.g. ``AUSTRALIA_GROUP`` at
+# 15 chars) exist in the schema but are deliberately excluded here:
+# admitting 5+ char tokens absorbs prose words (``"USA, ALSO,"`` would
+# lift ``ALSO`` into the prior) and the longer codes appear too rarely
+# in real REL TO blocks to justify the false-positive risk. Adjust the
+# upper bound (and re-validate the prose-absorption risk) if a future
+# corpus shows meaningful frequency for the long codes.
 _REL_TO_TRIGRAPH_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9_]{1,3}\b")
 
 
@@ -482,9 +489,11 @@ def run_analysis(
     # #233: baked into ``country_code_base_rates`` so the Phase-D
     # decoder can disambiguate fuzzy candidates (e.g., USA vs UZB,
     # AUS vs ASM) by corpus frequency rather than edit distance alone.
-    # The counter key space includes 2-char codes (``EU``), 3-char
-    # trigraphs, 4-char tetragraphs (``FVEY``, ``ACGU``, ``NATO``),
-    # and group codes — whatever the upstream walker collects.
+    # The counter key space is whatever ``_REL_TO_TRIGRAPH_TOKEN_RE``
+    # collects: 2-char codes (``EU``), 3-char trigraphs, and 4-char
+    # tetragraphs (``FVEY``, ``ACGU``, ``NATO``). Longer ``CountryCode``
+    # forms (``AUSTRALIA_GROUP`` etc.) are deliberately excluded — see
+    # the regex comment for the prose-absorption rationale.
     rel_to_trigraph_hits = Counter()
 
     print("Analyzing corpus...", file=sys.stderr)

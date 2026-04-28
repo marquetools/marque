@@ -785,14 +785,20 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     //
     //      Each alternate carries an `EditDistance1` /
     //      `EditDistance2` feature so the audit trail records the
-    //      fuzzy work, plus a `BaseRateCommonMarking` feature
-    //      acknowledging the trigraph-prior contribution. No new
-    //      `FeatureId` variant — adding one would bump the audit
-    //      schema. Reusing `BaseRateCommonMarking` is the right
-    //      choice because the variant's existing doc reads as "the
-    //      candidate's base rate in the target corpus dominates the
-    //      posterior", which is precisely what the trigraph-prior
-    //      contribution does.
+    //      fuzzy work, plus a zero-delta `BaseRateCommonMarking`
+    //      feature whose role is purely audit-trail provenance —
+    //      "country-code priors were consulted on this candidate".
+    //      The actual scoring weight comes from `score_candidate`
+    //      summing `country_code_log_prior` over `attempt.rel_to`;
+    //      adding a non-zero delta here would double-count. The
+    //      other structural-cleanup paths in this file use `-0.3`
+    //      because they have no parallel score-time prior to back
+    //      them up; the trigraph path does, so the audit feature
+    //      is informational only. No new `FeatureId` variant —
+    //      adding one would bump the audit schema. Reusing
+    //      `BaseRateCommonMarking` matches the variant's existing
+    //      doc ("the candidate's base rate in the target corpus
+    //      dominates the posterior").
     let trigraph_matcher = FuzzyVocabMatcher::new(marque_ism::TRIGRAPHS);
     for (alt_text, edit_feature) in
         try_rel_to_fuzzy_trigraph_candidates(&fuzzy_corrected, &trigraph_matcher)
@@ -801,10 +807,10 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         features.extend(fuzzy_features.iter().copied());
         features.push(edit_feature);
         // Trigraph-prior acknowledgement (see comment above for the
-        // FeatureId reuse rationale).
+        // FeatureId reuse rationale + zero-delta justification).
         features.push(FeatureEntry {
             id: FeatureId::BaseRateCommonMarking,
-            delta: -0.1,
+            delta: 0.0,
         });
         emit(
             alt_text.into_bytes(),
@@ -2439,13 +2445,21 @@ fn try_rel_to_fuzzy_trigraph_candidates(
     let mut search_start = 0;
     while let Some(rel_pos) = text[search_start..].find("REL TO ") {
         let header_end = search_start + rel_pos + "REL TO ".len();
-        // Block ends at the next `//` (next category) or end of text.
-        // CAPCO §H.8 / §A authority: `//` is the category separator;
-        // `,` separates entries within the REL TO category itself.
-        let block_end = text[header_end..]
-            .find("//")
-            .map(|p| header_end + p)
-            .unwrap_or(text.len());
+        // Block ends at the EARLIEST of: `//` (next category), `\n`
+        // (banner/CAB candidates from `Scanner::scan_banners` arrive
+        // as full lines, so a REL TO line can have trailing prose
+        // beyond the marking), or `)` (portion-form close). CAPCO
+        // §H.8 / §A authority: `//` is the category separator; `,`
+        // separates entries within the REL TO category itself.
+        // Mirrors the corpus analyzer's terminator priority in
+        // `tools/corpus-analysis/analyze.py` (`_extract_rel_to_trigraphs`).
+        let tail = &text[header_end..];
+        let block_len = ["//", "\n", ")"]
+            .iter()
+            .filter_map(|sep| tail.find(sep))
+            .min()
+            .unwrap_or(tail.len());
+        let block_end = header_end + block_len;
         let block = &text[header_end..block_end];
 
         // Walk the comma-separated entries with their byte offsets.
