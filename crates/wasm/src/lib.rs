@@ -61,10 +61,14 @@
 #![cfg_attr(
     not(all(
         target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
+        any(feature = "multi-threading", feature = "talc_debug")
     )),
     forbid(unsafe_code)
 )]
+// Allocator statics, clock impls, and wasm-bindgen exports are gated on
+// `target_arch = "wasm32"` and appear dead to the native host compiler and
+// rust-analyzer. They are live on the actual build target.
+#![allow(dead_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 // T067 / T3 enforcement (Constitution III + FR-013 + whitepaper §10.3 +
@@ -96,34 +100,48 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-#[cfg(all(target_arch = "wasm32", feature = "simd128"))]
-mod simd128_placeholder {}
+// Single-threaded allocator: WasmDynamicTalc grows WASM memory via memory.grow and
+// carries no spinlock overhead. Active when `talc_alloc` is set without
+// `multi-threading` or `talc_debug`.
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    feature = "talc_alloc",
+    not(feature = "multi-threading"),
+    not(feature = "talc_debug"),
+))]
+#[global_allocator]
+static ALLOCATOR: talc::wasm::WasmDynamicTalc = talc::wasm::new_wasm_dynamic_allocator();
+
+// Multi-threaded / debug allocator: TalcLock with a static seed heap. Active when
+// `multi-threading` (SharedArrayBuffer builds) or `talc_debug` is set. When both
+// `talc_alloc` and `multi-threading` are active (e.g., via `cloud_talc`), this
+// declaration wins because `ALLOCATOR` above is gated on `not(feature = "multi-threading")`.
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 // Extra headroom beyond Talc's minimum first heap size so typical WASM lint/fix
-// workloads do not immediately trigger heap growth. Tune this alongside expected
+// workloads do not immediately trigger heap growth. Tune alongside expected
 // input sizes and allocator behavior.
 const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
 
 #[cfg_attr(
     all(
         target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
+        any(feature = "multi-threading", feature = "talc_debug"),
     ),
     global_allocator
 )]
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(
     // SAFETY: `INITIAL_HEAP` is a private static buffer used only to seed the
