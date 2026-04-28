@@ -33,7 +33,9 @@ pub struct TextChunk {
 
 /// A stream source — anything that produces `TextChunk`s.
 /// Implemented by: string buffer (WASM/server), file reader (CLI/batch), HTTP body.
-pub trait Source: futures::Stream<Item = Result<TextChunk, SourceError>> + Send {}
+pub trait Source: futures_core::Stream<Item = Result<TextChunk, SourceError>> + Send {}
+
+impl<T> Source for T where T: futures_core::Stream<Item = Result<TextChunk, SourceError>> + Send {}
 
 /// A stream sink — anything that consumes pipeline output.
 pub trait Sink: Send {

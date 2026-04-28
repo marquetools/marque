@@ -31,6 +31,7 @@ pub use engine::{Engine, FixMode, InvalidThreshold};
 pub use errors::{EngineConstructionError, EngineError};
 pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
+pub use pipeline::{Sink, Source, SourceError, TextChunk};
 pub use recognizer::StrictRecognizer;
 
 /// Re-export of [`web_time::Instant`].
