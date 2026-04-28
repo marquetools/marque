@@ -208,9 +208,8 @@ fn classify_deadline_cap_var(var: Result<String, std::env::VarError>) -> Result<
             if parsed < MIN_DEADLINE_MS {
                 return Err(format!(
                     "MARQUE_MAX_DEADLINE={parsed} is below the \
-                     {MIN_DEADLINE_MS}-ms floor; a deadline below the \
-                     floor would trip the deadline check on entry for \
-                     every request"
+                     {MIN_DEADLINE_MS}-ms floor; a zero budget would \
+                     trip the deadline check on entry for every request"
                 ));
             }
             if parsed > MAX_DEADLINE_CAP_MS {

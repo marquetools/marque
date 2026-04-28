@@ -45,6 +45,11 @@ use marque_ism::{
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::{BTreeMap, BTreeSet};
 
+// Helper to work around NLL polonius conflict when checking and inserting into maps
+fn get_mut_is_none<K: Ord, V>(map: &mut BTreeMap<K, V>, key: &K) -> bool {
+    map.get_mut(key).is_none()
+}
+
 // ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
 // ---------------------------------------------------------------------------
@@ -179,7 +184,7 @@ impl SciSet {
 
     /// Compartments (as `(system-text, compartment-id)` pairs) present
     /// on both sides. Exposed for Phase-C constraint work.
-    pub fn common_compartments<'a>(&'a self, other: &Self) -> Vec<(&'a str, &'a str)> {
+    pub fn common_compartments(&self, other: &Self) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (sys, comps) in &self.systems {
             let Some(other_comps) = other.systems.get(sys) else {
@@ -187,7 +192,7 @@ impl SciSet {
             };
             for cid in comps.keys() {
                 if other_comps.contains_key(cid) {
-                    out.push((sys.text(), cid.as_str()));
+                    out.push((sys.text().to_owned(), cid.clone()));
                 }
             }
         }
@@ -207,13 +212,10 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            if out.systems.get_mut(sys).is_none() {
+            if get_mut_is_none(&mut out.systems, sys) {
                 out.systems.insert(sys.clone(), BTreeMap::new());
             }
-            let out_comps = out
-                .systems
-                .get_mut(sys)
-                .expect("sys key always present after conditional insert");
+            let out_comps = out.systems.get_mut(sys).expect("just inserted or already present");
             for (cid, subs) in comp_map {
                 if let Some(out_subs) = out_comps.get_mut(cid) {
                     out_subs.extend(subs.iter().cloned());
@@ -372,13 +374,10 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            if out.programs.get_mut(pid).is_none() {
+            if get_mut_is_none(&mut out.programs, pid) {
                 out.programs.insert(pid.clone(), BTreeMap::new());
             }
-            let out_comps = out
-                .programs
-                .get_mut(pid)
-                .expect("pid key always present after conditional insert");
+            let out_comps = out.programs.get_mut(pid).expect("just inserted or already present");
             for (cid, subs) in comp_map {
                 if let Some(out_subs) = out_comps.get_mut(cid) {
                     out_subs.extend(subs.iter().cloned());
@@ -708,7 +707,7 @@ mod tests {
             vec![("G", vec!["DEFG"])],
         )]);
         let common = a.common_compartments(&b);
-        assert_eq!(common, vec![("SI", "G")]);
+        assert_eq!(common, vec![("SI".to_owned(), "G".to_owned())]);
     }
 
     #[test]
