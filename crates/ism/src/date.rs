@@ -1396,4 +1396,894 @@ mod tests {
         let result = IsmDate::from_str("2003-04-15T10:30\u{00E9}");
         assert!(result.is_err(), "non-ASCII should be Err, got {result:?}");
     }
+
+    // -----------------------------------------------------------------------
+    // UtcOffset additional coverage
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn utc_offset_from_hhmm_invalid_sign_zero() {
+        assert!(
+            UtcOffset::from_hhmm(0, 5, 0).is_none(),
+            "sign=0 must be rejected"
+        );
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_invalid_sign_two() {
+        assert!(
+            UtcOffset::from_hhmm(2, 5, 0).is_none(),
+            "sign=2 must be rejected"
+        );
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_invalid_sign_minus_two() {
+        assert!(
+            UtcOffset::from_hhmm(-2, 5, 0).is_none(),
+            "sign=-2 must be rejected"
+        );
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_max_valid_boundary() {
+        // ±23:59 is the maximum representable offset (1439 minutes).
+        let pos = UtcOffset::from_hhmm(1, 23, 59).unwrap();
+        assert_eq!(pos.minutes, 23 * 60 + 59);
+        let neg = UtcOffset::from_hhmm(-1, 23, 59).unwrap();
+        assert_eq!(neg.minutes, -(23 * 60 + 59));
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_rejects_hours_24() {
+        assert!(
+            UtcOffset::from_hhmm(1, 24, 0).is_none(),
+            "hours=24 must be rejected"
+        );
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_rejects_minutes_60() {
+        assert!(
+            UtcOffset::from_hhmm(1, 0, 60).is_none(),
+            "minutes=60 must be rejected"
+        );
+    }
+
+    #[test]
+    fn utc_offset_to_seconds_utc_is_zero() {
+        assert_eq!(UtcOffset::UTC.to_seconds(), 0);
+    }
+
+    #[test]
+    fn utc_offset_to_seconds_positive() {
+        // +05:30 = 330 minutes = 19800 seconds
+        let o = UtcOffset::from_hhmm(1, 5, 30).unwrap();
+        assert_eq!(o.to_seconds(), 5 * 3600 + 30 * 60);
+    }
+
+    #[test]
+    fn utc_offset_to_seconds_negative() {
+        // -05:00 = -300 minutes = -18000 seconds
+        let o = UtcOffset::from_hhmm(-1, 5, 0).unwrap();
+        assert_eq!(o.to_seconds(), -5 * 3600);
+    }
+
+    #[test]
+    fn utc_offset_from_hhmm_zero_positive_sign() {
+        // Both sign=1 and sign=-1 produce UTC for 0 hours / 0 minutes.
+        let pos = UtcOffset::from_hhmm(1, 0, 0).unwrap();
+        let neg = UtcOffset::from_hhmm(-1, 0, 0).unwrap();
+        assert_eq!(pos, UtcOffset::UTC);
+        assert_eq!(neg, UtcOffset::UTC);
+    }
+
+    // -----------------------------------------------------------------------
+    // IsmDate component accessors
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn year_accessor_all_variants() {
+        assert_eq!(IsmDate::Year(2003).year(), 2003);
+        assert_eq!(IsmDate::YearMonth(2003, 4).year(), 2003);
+        assert_eq!(IsmDate::Date(2003, 4, 15).year(), 2003);
+        assert_eq!(
+            IsmDate::DateHourMin {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                offset: None,
+            }
+            .year(),
+            2003
+        );
+        assert_eq!(
+            IsmDate::DateTime {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                second: 0,
+                nanosecond: 0,
+                offset: None,
+            }
+            .year(),
+            2003
+        );
+    }
+
+    #[test]
+    fn month_accessor_all_variants() {
+        assert_eq!(IsmDate::Year(2003).month(), None);
+        assert_eq!(IsmDate::YearMonth(2003, 4).month(), Some(4));
+        assert_eq!(IsmDate::Date(2003, 4, 15).month(), Some(4));
+        assert_eq!(
+            IsmDate::DateHourMin {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                offset: None,
+            }
+            .month(),
+            Some(4)
+        );
+        assert_eq!(
+            IsmDate::DateTime {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                second: 0,
+                nanosecond: 0,
+                offset: None,
+            }
+            .month(),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn day_accessor_all_variants() {
+        assert_eq!(IsmDate::Year(2003).day(), None);
+        assert_eq!(IsmDate::YearMonth(2003, 4).day(), None);
+        assert_eq!(IsmDate::Date(2003, 4, 15).day(), Some(15));
+        assert_eq!(
+            IsmDate::DateHourMin {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                offset: None,
+            }
+            .day(),
+            Some(15)
+        );
+        assert_eq!(
+            IsmDate::DateTime {
+                year: 2003,
+                month: 4,
+                day: 15,
+                hour: 10,
+                minute: 30,
+                second: 0,
+                nanosecond: 0,
+                offset: None,
+            }
+            .day(),
+            Some(15)
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // IsmDate::contains — DateHourMin and DateTime cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn date_hour_min_contains_itself() {
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: Some(UtcOffset::UTC),
+        };
+        assert!(t.contains(&t.clone()));
+    }
+
+    #[test]
+    fn date_hour_min_does_not_contain_coarser() {
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        assert!(!t.contains(&IsmDate::Year(2003)));
+        assert!(!t.contains(&IsmDate::YearMonth(2003, 4)));
+        assert!(!t.contains(&IsmDate::Date(2003, 4, 15)));
+    }
+
+    #[test]
+    fn date_hour_min_contains_datetime_same_minute() {
+        let dhm = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        // DateTime within the same HH:MM must be contained.
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert!(dhm.contains(&dt));
+    }
+
+    #[test]
+    fn date_hour_min_does_not_contain_datetime_different_minute() {
+        let dhm = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 31,
+            second: 0,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert!(!dhm.contains(&dt));
+    }
+
+    #[test]
+    fn date_hour_min_does_not_contain_datetime_different_offset() {
+        // Offsets are compared in their represented form (no UTC normalization).
+        let dhm = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: Some(UtcOffset::UTC),
+        };
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 0,
+            nanosecond: 0,
+            offset: Some(UtcOffset::from_hhmm(-1, 5, 0).unwrap()),
+        };
+        assert!(!dhm.contains(&dt));
+    }
+
+    #[test]
+    fn datetime_contains_itself() {
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 45,
+            nanosecond: 123_456_789,
+            offset: Some(UtcOffset::UTC),
+        };
+        assert!(dt.contains(&dt.clone()));
+    }
+
+    #[test]
+    fn datetime_does_not_contain_coarser() {
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert!(!dt.contains(&IsmDate::Year(2003)));
+        assert!(!dt.contains(&IsmDate::YearMonth(2003, 4)));
+        assert!(!dt.contains(&IsmDate::Date(2003, 4, 15)));
+    }
+
+    #[test]
+    fn datetime_does_not_contain_datehourmin() {
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        let dhm = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        assert!(!dt.contains(&dhm));
+    }
+
+    #[test]
+    fn year_contains_datehourmin_same_year() {
+        let y = IsmDate::Year(2003);
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 6,
+            day: 15,
+            hour: 10,
+            minute: 0,
+            offset: None,
+        };
+        assert!(y.contains(&t));
+    }
+
+    #[test]
+    fn year_contains_datetime_same_year() {
+        let y = IsmDate::Year(2003);
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 12,
+            day: 31,
+            hour: 23,
+            minute: 59,
+            second: 59,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert!(y.contains(&dt));
+    }
+
+    #[test]
+    fn year_does_not_contain_datehourmin_different_year() {
+        let y = IsmDate::Year(2003);
+        let t = IsmDate::DateHourMin {
+            year: 2004,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            offset: None,
+        };
+        assert!(!y.contains(&t));
+    }
+
+    #[test]
+    fn year_month_contains_datehourmin_same_month() {
+        let ym = IsmDate::YearMonth(2003, 4);
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 0,
+            offset: None,
+        };
+        assert!(ym.contains(&t));
+    }
+
+    #[test]
+    fn year_month_does_not_contain_datehourmin_different_month() {
+        let ym = IsmDate::YearMonth(2003, 4);
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 5,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            offset: None,
+        };
+        assert!(!ym.contains(&t));
+    }
+
+    #[test]
+    fn date_contains_datetime_same_day() {
+        let d = IsmDate::Date(2003, 4, 15);
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 23,
+            minute: 59,
+            second: 59,
+            nanosecond: 999_999_999,
+            offset: None,
+        };
+        assert!(d.contains(&dt));
+    }
+
+    #[test]
+    fn date_does_not_contain_datetime_different_day() {
+        let d = IsmDate::Date(2003, 4, 15);
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 16,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert!(!d.contains(&dt));
+    }
+
+    // -----------------------------------------------------------------------
+    // IsmDate::end_cmp — additional cross-tier and same-tier cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn year_end_cmp_same_year_is_equal() {
+        assert_eq!(
+            IsmDate::Year(2003).end_cmp(&IsmDate::Year(2003)),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn year_end_cmp_different_years() {
+        assert_eq!(
+            IsmDate::Year(2004).end_cmp(&IsmDate::Year(2003)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            IsmDate::Year(2003).end_cmp(&IsmDate::Year(2004)),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn year_month_end_cmp_same_month_is_equal() {
+        assert_eq!(
+            IsmDate::YearMonth(2003, 4).end_cmp(&IsmDate::YearMonth(2003, 4)),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn year_month_end_cmp_different_months_same_year() {
+        // April ends Apr 30; May ends May 31 → May > April.
+        assert_eq!(
+            IsmDate::YearMonth(2003, 5).end_cmp(&IsmDate::YearMonth(2003, 4)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            IsmDate::YearMonth(2003, 4).end_cmp(&IsmDate::YearMonth(2003, 5)),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn date_end_cmp_same_date_is_equal() {
+        assert_eq!(
+            IsmDate::Date(2003, 4, 15).end_cmp(&IsmDate::Date(2003, 4, 15)),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn date_end_cmp_later_date_is_greater() {
+        assert_eq!(
+            IsmDate::Date(2003, 4, 16).end_cmp(&IsmDate::Date(2003, 4, 15)),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn datetime_end_cmp_same_instant_is_equal() {
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert_eq!(dt.end_cmp(&dt.clone()), Ordering::Equal);
+    }
+
+    #[test]
+    fn datetime_end_cmp_later_second_is_greater() {
+        let earlier = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            second: 44,
+            nanosecond: 0,
+            offset: None,
+        };
+        let later = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        assert_eq!(later.end_cmp(&earlier), Ordering::Greater);
+        assert_eq!(earlier.end_cmp(&later), Ordering::Less);
+    }
+
+    #[test]
+    fn datetime_end_cmp_nanosecond_tiebreak() {
+        let a = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: None,
+        };
+        let b = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            second: 45,
+            nanosecond: 1,
+            offset: None,
+        };
+        assert_eq!(b.end_cmp(&a), Ordering::Greater);
+    }
+
+    #[test]
+    fn date_hour_min_floating_is_treated_as_offset_zero() {
+        // Floating DateHourMin uses offset=0 for tie-breaking; same civil time
+        // as UTC means they compare Equal.
+        let floating = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: None,
+        };
+        let utc = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 10,
+            minute: 30,
+            offset: Some(UtcOffset::UTC),
+        };
+        // utc_tie_break is -offset.minutes; for UTC that's 0; for floating that's
+        // also 0. So they compare Equal on the tie-break.
+        assert_eq!(floating.end_cmp(&utc), Ordering::Equal);
+    }
+
+    #[test]
+    fn year_end_cmp_vs_year_month_same_year() {
+        // Year(2003) ends Dec 31 23:59:59; YearMonth(2003, 6) ends Jun 30 23:59:59.
+        assert_eq!(
+            IsmDate::Year(2003).end_cmp(&IsmDate::YearMonth(2003, 6)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            IsmDate::YearMonth(2003, 12).end_cmp(&IsmDate::Year(2003)),
+            Ordering::Equal // Dec 31 == Dec 31
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // to_maxdate_str — DateHourMin and DateTime cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn to_maxdate_str_date_hour_min() {
+        // DateHourMin uses the date component only.
+        let t = IsmDate::DateHourMin {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            offset: None,
+        };
+        assert_eq!(&*t.to_maxdate_str(), "20030415");
+    }
+
+    #[test]
+    fn to_maxdate_str_datetime() {
+        let dt = IsmDate::DateTime {
+            year: 2003,
+            month: 4,
+            day: 15,
+            hour: 14,
+            minute: 30,
+            second: 45,
+            nanosecond: 0,
+            offset: Some(UtcOffset::UTC),
+        };
+        assert_eq!(&*dt.to_maxdate_str(), "20030415");
+    }
+
+    #[test]
+    fn to_maxdate_str_all_months_days_in_month() {
+        // Verify days_in_month for all 12 months in a non-leap year (2003).
+        let expected = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        for (i, &days) in expected.iter().enumerate() {
+            let month = (i + 1) as u8;
+            let ym = IsmDate::YearMonth(2003, month);
+            let s = ym.to_maxdate_str();
+            let day_part: u8 = s[6..].parse().unwrap();
+            assert_eq!(
+                day_part, days,
+                "2003-{month:02} should end on day {days}, got {day_part}"
+            );
+        }
+    }
+
+    #[test]
+    fn to_maxdate_str_february_leap_year() {
+        // 2000 is a leap year: February has 29 days.
+        assert_eq!(&*IsmDate::YearMonth(2000, 2).to_maxdate_str(), "20000229");
+        // 1900 is NOT a leap year (divisible by 100 but not 400).
+        assert_eq!(&*IsmDate::YearMonth(1900, 2).to_maxdate_str(), "19000228");
+    }
+
+    // -----------------------------------------------------------------------
+    // ApproxIsmDate Display
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn approx_ism_date_display_without_qualifier() {
+        let a = ApproxIsmDate {
+            date: IsmDate::Year(2003),
+            qualifier: None,
+        };
+        assert_eq!(a.to_string(), "2003");
+    }
+
+    #[test]
+    fn approx_ism_date_display_with_qualifier() {
+        let a = ApproxIsmDate {
+            date: IsmDate::Year(1995),
+            qualifier: Some(ApproxQualifier::Circa),
+        };
+        assert_eq!(a.to_string(), "circa 1995");
+    }
+
+    #[test]
+    fn approx_ism_date_display_all_qualifiers() {
+        let pairs = [
+            (ApproxQualifier::FirstQtr, "1st qtr 2003"),
+            (ApproxQualifier::SecondQtr, "2nd qtr 2003"),
+            (ApproxQualifier::ThirdQtr, "3rd qtr 2003"),
+            (ApproxQualifier::FourthQtr, "4th qtr 2003"),
+            (ApproxQualifier::Circa, "circa 2003"),
+            (ApproxQualifier::Early, "early 2003"),
+            (ApproxQualifier::Mid, "mid 2003"),
+            (ApproxQualifier::Late, "late 2003"),
+        ];
+        for (qualifier, expected) in pairs {
+            let a = ApproxIsmDate {
+                date: IsmDate::Year(2003),
+                qualifier: Some(qualifier),
+            };
+            assert_eq!(a.to_string(), expected, "qualifier={qualifier:?}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ParseIsmDateError and ParseApproxQualifierError Display
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_ism_date_error_display() {
+        let err = IsmDate::from_str("not-a-date").unwrap_err();
+        let s = err.to_string();
+        assert!(
+            s.contains("invalid ISM date"),
+            "error display should mention 'invalid ISM date', got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn parse_approx_qualifier_error_display() {
+        let err = ApproxQualifier::from_str("bogus").unwrap_err();
+        let s = err.to_string();
+        assert!(
+            s.contains("invalid approx qualifier"),
+            "error display should mention 'invalid approx qualifier', got: {s:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Parsing edge cases not covered above
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn rejects_short_strings() {
+        for s in ["", "2", "20", "200", "20030"] {
+            assert!(
+                IsmDate::from_str(s).is_err(),
+                "should reject short string {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_nine_char_string() {
+        // 9 chars doesn't match any pattern.
+        assert!(IsmDate::from_str("200304150").is_err());
+    }
+
+    #[test]
+    fn rejects_day_zero_in_date() {
+        assert!(IsmDate::from_str("2003-04-00").is_err());
+    }
+
+    #[test]
+    fn rejects_day_32_in_date() {
+        assert!(IsmDate::from_str("2003-01-32").is_err());
+    }
+
+    #[test]
+    fn rejects_yyyymmdd_month_13() {
+        assert!(IsmDate::from_str("20031301").is_err());
+    }
+
+    #[test]
+    fn rejects_yyyymmdd_day_00() {
+        assert!(IsmDate::from_str("20030400").is_err());
+    }
+
+    #[test]
+    fn rejects_datehourmin_hour_out_of_range() {
+        assert!(IsmDate::from_str("2003-04-15T24:00").is_err());
+        assert!(IsmDate::from_str("2003-04-15T25:00Z").is_err());
+    }
+
+    #[test]
+    fn rejects_datehourmin_minute_out_of_range() {
+        assert!(IsmDate::from_str("2003-04-15T10:60").is_err());
+        assert!(IsmDate::from_str("2003-04-15T10:99Z").is_err());
+    }
+
+    #[test]
+    fn rejects_datetime_second_out_of_range() {
+        assert!(IsmDate::from_str("2003-04-15T10:30:60Z").is_err());
+        assert!(IsmDate::from_str("2003-04-15T10:30:99").is_err());
+    }
+
+    #[test]
+    fn rejects_fractional_seconds_empty() {
+        // A period with no digits after it is invalid.
+        assert!(IsmDate::from_str("2003-04-15T10:30:00.Z").is_err());
+        assert!(IsmDate::from_str("2003-04-15T10:30:00.").is_err());
+    }
+
+    #[test]
+    fn rejects_fractional_seconds_too_many_digits() {
+        // More than 9 fractional digits must be rejected.
+        assert!(IsmDate::from_str("2003-04-15T10:30:00.1234567890Z").is_err());
+    }
+
+    #[test]
+    fn accepts_fractional_seconds_9_digits() {
+        // Exactly 9 digits (nanosecond precision) must be accepted.
+        assert!(IsmDate::from_str("2003-04-15T10:30:00.123456789Z").is_ok());
+    }
+
+    #[test]
+    fn rejects_bad_offset_in_datetime() {
+        assert!(IsmDate::from_str("2003-04-15T10:30:00+99:99").is_err());
+        assert!(IsmDate::from_str("2003-04-15T10:30:00+24:00").is_err());
+    }
+
+    #[test]
+    fn rejects_bad_offset_in_datehourmin() {
+        assert!(IsmDate::from_str("2003-04-15T10:30+99:99").is_err());
+        assert!(IsmDate::from_str("2003-04-15T10:30+24:00").is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_suffix_after_datehourmin() {
+        // Anything after HH:MM that is not empty, Z, or ±HH:MM is invalid.
+        assert!(IsmDate::from_str("2003-04-15T10:30:garbage").is_err());
+    }
+
+    #[test]
+    fn rejects_year_with_non_digit_separator() {
+        // 7-char string where bytes[4] != b'-' falls to the catch-all error.
+        assert!(IsmDate::from_str("2003X04").is_err());
+    }
+
+    #[test]
+    fn rejects_date_with_wrong_separator() {
+        assert!(IsmDate::from_str("2003/04/15").is_err());
+    }
+
+    #[test]
+    fn round_trip_datetime_with_nanos() {
+        // 9-digit fractional seconds round-trips.
+        assert!(round_trip("2003-04-15T14:30:00.123456789Z"));
+    }
+
+    #[test]
+    fn round_trip_datetime_with_negative_offset() {
+        assert!(round_trip("2003-04-15T14:30:00-05:00"));
+    }
+
+    #[test]
+    fn round_trip_date_hour_min_negative_offset() {
+        assert!(round_trip("2003-04-15T14:30-07:00"));
+    }
+
+    #[test]
+    fn round_trip_year_month_january() {
+        assert!(round_trip("2003-01"));
+    }
+
+    #[test]
+    fn round_trip_year_month_december() {
+        assert!(round_trip("2003-12"));
+    }
+
+    #[test]
+    fn capco_yyyymmdd_rejects_invalid_calendar_date() {
+        // YYYYMMDD with month 13 must not silently succeed.
+        assert!(IsmDate::from_str("20031301").is_err());
+        // YYYYMMDD with day 0 must fail.
+        assert!(IsmDate::from_str("20030400").is_err());
+        // Non-leap February 29.
+        assert!(IsmDate::from_str("20030229").is_err());
+    }
+
+    #[test]
+    fn utc_offset_from_str_all_canonical_forms() {
+        // Positive offset round-trips correctly.
+        let o: UtcOffset = "+12:00".parse().unwrap();
+        assert_eq!(o.minutes, 720);
+        assert_eq!(o.to_string(), "+12:00");
+
+        // Negative offset round-trips correctly.
+        let o: UtcOffset = "-12:00".parse().unwrap();
+        assert_eq!(o.minutes, -720);
+        assert_eq!(o.to_string(), "-12:00");
+    }
 }
