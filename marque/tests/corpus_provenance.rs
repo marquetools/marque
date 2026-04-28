@@ -118,6 +118,11 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
 #[test]
 fn sc002a_no_classifier_id_in_corpus_fixtures() {
     let corpus_dir = workspace_root().join("tests").join("corpus");
+    assert!(
+        corpus_dir.exists() && corpus_dir.is_dir(),
+        "corpus directory must exist and be readable: {}",
+        corpus_dir.display()
+    );
     let files = walkdir(&corpus_dir);
     if files.is_empty() {
         return;
