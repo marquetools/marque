@@ -170,8 +170,12 @@ def extract_body(raw: bytes) -> Optional[str]:
     ):
         with contextlib.suppress(Exception):
             msg = email.message_from_string(text, policy=email.policy.default)
-            if (body := msg and msg.get_body(preferencelist=("plain",))) and (content := body.get_content()) and isinstance(content, str):
-                return content
+            if msg:
+                body = msg.get_body(preferencelist=("plain",))
+                if body:
+                    content = body.get_content()
+                    if isinstance(content, str):
+                        return content
         # Fallback: strip headers manually
         header_end = text.find("\n\n")
         if header_end > 0:
@@ -791,8 +795,8 @@ def measure_heuristic_trigger_frequency(
         for m in signal_pat.finditer(text):
             signal_positions.append((m.start(), m.end()))
         for m in slash_pat.finditer(text):
-            prefix = text[max(0, m.start() - 6) : m.start()].lower()
-            if "http" in prefix or "ftp:" in prefix:
+            prefix = text[max(0, m.start() - 8) : m.start()].lower()
+            if "http:" in prefix or "https:" in prefix or "ftp:" in prefix:
                 continue
             signal_positions.append((m.start(), m.end()))
         signal_positions.sort()
@@ -820,7 +824,7 @@ def measure_heuristic_trigger_frequency(
     for t in ALL_HEURISTIC_TRIGGERS:
         if len(t) == 2:
             rule_target = "TS"
-        elif t in "AWEZX":
+        elif t in ("A", "W", "E", "Z", "X"):
             rule_target = "S"
         else:
             rule_target = "C"

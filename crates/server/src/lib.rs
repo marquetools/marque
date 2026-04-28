@@ -45,6 +45,7 @@ use axum::{
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
+use form_urlencoded;
 use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
@@ -208,8 +209,9 @@ fn classify_deadline_cap_var(var: Result<String, std::env::VarError>) -> Result<
             if parsed < MIN_DEADLINE_MS {
                 return Err(format!(
                     "MARQUE_MAX_DEADLINE={parsed} is below the \
-                     {MIN_DEADLINE_MS}-ms floor; a zero budget would \
-                     trip the deadline check on entry for every request"
+                     {MIN_DEADLINE_MS}-ms floor; a deadline below the \
+                     floor would trip the deadline check on entry for \
+                     every request"
                 ));
             }
             if parsed > MAX_DEADLINE_CAP_MS {
@@ -446,16 +448,16 @@ pub(crate) fn reject_if_corpus_override(
         );
         return Err(StatusCode::BAD_REQUEST);
     }
-    if let Some(q) = uri.query()
-        && query_carries_corpus_override(q)
-    {
-        tracing::warn!(
-            target: "marque_server::t3",
-            endpoint,
-            channel = "query",
-            "rejected corpus_override in query string"
-        );
-        return Err(StatusCode::BAD_REQUEST);
+    if let Some(q) = uri.query() {
+        if query_carries_corpus_override(q) {
+            tracing::warn!(
+                target: "marque_server::t3",
+                endpoint,
+                channel = "query",
+                "rejected corpus_override in query string"
+            );
+            return Err(StatusCode::BAD_REQUEST);
+        }
     }
     Ok(())
 }
