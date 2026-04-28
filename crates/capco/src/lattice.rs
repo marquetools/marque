@@ -207,9 +207,15 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            let out_comps = out.systems.entry(sys.clone()).or_default();
+            let out_comps = match out.systems.get_mut(sys) {
+                Some(c) => c,
+                None => out.systems.entry(sys.clone()).or_default(),
+            };
             for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
+                let out_subs = match out_comps.get_mut(cid) {
+                    Some(s) => s,
+                    None => out_comps.entry(cid.clone()).or_default(),
+                };
                 out_subs.extend(subs.iter().cloned());
             }
         }
