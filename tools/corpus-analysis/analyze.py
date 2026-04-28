@@ -1,4 +1,8 @@
 #!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["requests==2.33.1"]
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 #
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
@@ -48,6 +52,7 @@ import contextlib
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
@@ -56,12 +61,14 @@ import re
 import string
 import sys
 import tarfile
+import time
 import email
 import email.policy
+import zipfile as _zipfile  # stdlib zipfile; named to avoid shadowing locals
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 # ---------------------------------------------------------------------------
 # Corpus loading
@@ -70,6 +77,57 @@ from typing import Optional
 ENRON_URL = "https://www.cs.cmu.edu/~enron/enron_mail_20150507.tar.gz"
 ENRON_CACHE_DIR = Path(__file__).parent / ".cache"
 ENRON_EXTRACT_DIR = ENRON_CACHE_DIR / "enron_mail"
+
+# Congressional Record (via GovInfo.gov public bulk data — no API key required)
+# Each daily package is ~30 MB compressed ZIP containing HTM + PDF files.
+# Only the HTM files (~470 KB/day) are extracted; PDFs are discarded.
+CREC_GOVINFO_BASE = "https://www.govinfo.gov/content/pkg"
+CREC_CACHE_DIR_NAME = "congressional_record"
+
+# GAO Reports (via GovInfo.gov public sitemaps — no API key required)
+# Each report is fetched as a single ~66 KB HTML file.
+# Sitemaps are available for report years 1989–2008; later years not indexed.
+GAO_SITEMAP_BASE = "https://www.govinfo.gov/sitemap"
+GAO_CACHE_DIR_NAME = "gao_reports"
+
+# Polite delay between successive GovInfo HTTP requests.
+_GOVINFO_DELAY_S = 0.3
+
+# CIA CREST documents via Internet Archive (no API key required).
+# Documents are indexed under identifier:CIA-RDP* with OCR'd text available
+# as {identifier}_djvu.txt (DjVu text layer) or {identifier}.txt.
+# The IA Advanced Search JSON API is at https://archive.org/advancedsearch.php.
+CREST_IA_SEARCH_URL = "https://archive.org/advancedsearch.php"
+CREST_IA_DOWNLOAD_BASE = "https://archive.org/download"
+CREST_CACHE_DIR_NAME = "crest_documents"
+_IA_DELAY_S = 0.5  # Internet Archive is a nonprofit; be generous with delays
+
+
+# ---------------------------------------------------------------------------
+# HTML text extraction (GovInfo HTML wraps content in <pre> tags)
+# ---------------------------------------------------------------------------
+
+
+def strip_html(html_text: str) -> str:
+    """
+    Extract plain text from GovInfo HTML.
+
+    Both CREC and GAO reports from GovInfo wrap their full text inside a
+    ``<pre>`` block.  This function pulls that content out and strips any
+    inline tags (the only one present in practice is ``<a href>``) so that
+    downstream analysis sees clean ASCII prose.
+
+    Falls back to a generic "strip all tags" pass for HTML that does not
+    follow the ``<pre>`` pattern.
+    """
+    pre_match = re.search(r"<pre[^>]*>(.*?)</pre>", html_text, re.DOTALL | re.IGNORECASE)
+    if pre_match:
+        inner = pre_match.group(1)
+        # Strip inline tags (e.g. <a href="…">link</a> → link)
+        return re.sub(r"<[^>]+>", " ", inner)
+    # Generic fallback
+    text = re.sub(r"<[^>]+>", " ", html_text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def download_enron() -> Path:
@@ -124,6 +182,324 @@ def download_enron() -> Path:
     return ENRON_EXTRACT_DIR
 
 
+def _generate_weekdays(year: int) -> list[date]:
+    """Return all Mon–Fri dates in *year* in calendar order."""
+    start = date(year, 1, 1)
+    end = date(year, 12, 31)
+    result: list[date] = []
+    current = start
+    while current <= end:
+        if current.weekday() < 5:  # 0=Mon … 4=Fri
+            result.append(current)
+        current += timedelta(days=1)
+    return result
+
+
+def download_congressional_record(
+    year: int = 2023,
+    max_packages: int = 20,
+    cache_dir: Path = ENRON_CACHE_DIR,
+) -> Path:
+    """
+    Download Congressional Record daily packages from GovInfo.gov and extract
+    their HTML content to *cache_dir/congressional_record/{year}/*.
+
+    Each session day is available as a single ZIP at
+    ``https://www.govinfo.gov/content/pkg/CREC-{YYYY-MM-DD}.zip``
+    (~30 MB compressed, mostly PDF).  Only the ``.htm`` files (~470 KB/day)
+    are extracted; PDFs are discarded.  Non-session weekdays (recesses,
+    holidays) return HTTP 404 and are silently skipped.
+
+    Args:
+        year: Calendar year to download (default 2023).
+        max_packages: Maximum number of session-day packages to download.
+            Each is ~30 MB compressed; 20 packages ≈ 600 MB download budget.
+        cache_dir: Root cache directory (shared with Enron cache).
+
+    Returns:
+        Path to the directory containing the extracted ``.txt`` files.
+    """
+    out_dir = cache_dir / CREC_CACHE_DIR_NAME / str(year)
+    if out_dir.exists() and any(out_dir.rglob("*.txt")):
+        print(
+            f"Using cached Congressional Record ({year}) at {out_dir}",
+            file=sys.stderr,
+        )
+        return out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    import requests
+
+    weekdays = _generate_weekdays(year)
+    downloaded = 0
+
+    print(
+        f"Downloading Congressional Record ({year}, up to {max_packages} session days)…",
+        file=sys.stderr,
+    )
+    for session_date in weekdays:
+        if downloaded >= max_packages:
+            break
+        date_str = session_date.strftime("%Y-%m-%d")
+        pkg_id = f"CREC-{date_str}"
+        url = f"{CREC_GOVINFO_BASE}/{pkg_id}.zip"
+        try:
+            resp = requests.get(url, timeout=90)
+            if resp.status_code == 404:
+                continue  # not a session day
+            resp.raise_for_status()
+        except Exception as exc:
+            print(f"  Warning: {pkg_id}: {exc}", file=sys.stderr)
+            continue
+
+        try:
+            with _zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                saved = 0
+                for name in zf.namelist():
+                    if not name.endswith(".htm"):
+                        continue  # skip large PDFs and XML metadata
+                    raw = zf.read(name)
+                    text = strip_html(raw.decode("utf-8", errors="replace"))
+                    if not text or len(text.strip()) < 100:
+                        continue
+                    # Flatten ZIP member path to a safe filename
+                    out_name = name.replace("/", "_").replace(".htm", ".txt")
+                    (out_dir / out_name).write_text(text, encoding="utf-8")
+                    saved += 1
+        except _zipfile.BadZipFile:
+            print(f"  Warning: {pkg_id}: corrupt ZIP, skipping", file=sys.stderr)
+            continue
+
+        downloaded += 1
+        print(
+            f"  {pkg_id}: {saved} sections extracted ({downloaded}/{max_packages})",
+            file=sys.stderr,
+        )
+        time.sleep(_GOVINFO_DELAY_S)
+
+    print(
+        f"Congressional Record: {downloaded} session days → {out_dir}",
+        file=sys.stderr,
+    )
+    return out_dir
+
+
+def _gao_package_ids_from_sitemap(year: int) -> list[str]:
+    """
+    Return GovInfo package IDs for GAO reports indexed in *year*'s sitemap.
+
+    Sitemaps exist for report years 1989–2008.  Later years return HTTP 404
+    and produce an empty list.
+    """
+    import requests
+
+    url = f"{GAO_SITEMAP_BASE}/GAOREPORTS_{year}_sitemap.xml"
+    try:
+        resp = requests.get(url, timeout=30)
+        if resp.status_code != 200:
+            return []
+        # Each <loc> looks like:
+        #   https://www.govinfo.gov/app/details/GAOREPORTS-GAO-08-613T
+        return re.findall(r"/details/(GAOREPORTS-[^<\s]+)", resp.text)
+    except Exception as exc:
+        print(f"  Warning: GAO sitemap {year}: {exc}", file=sys.stderr)
+        return []
+
+
+def download_gao_reports(
+    years: Optional[list[int]] = None,
+    max_reports: int = 500,
+    cache_dir: Path = ENRON_CACHE_DIR,
+) -> Path:
+    """
+    Download GAO report HTML from GovInfo.gov and cache to
+    *cache_dir/gao_reports/*.
+
+    Each report is fetched as a single HTML file (~66 KB) directly from
+    ``https://www.govinfo.gov/content/pkg/{pkg_id}/html/{pkg_id}.htm``
+    — no ZIP download needed.  Package IDs are discovered via GovInfo
+    XML sitemaps (available for report years 1989–2008).
+
+    Args:
+        years: Report years to pull sitemaps from.
+            Default: [2004, 2005, 2006, 2007, 2008].
+        max_reports: Maximum number of reports to download (default 500,
+            ≈ 33 MB total).
+        cache_dir: Root cache directory.
+
+    Returns:
+        Path to the directory containing the downloaded ``.txt`` files.
+    """
+    if years is None:
+        years = [2004, 2005, 2006, 2007, 2008]
+    out_dir = cache_dir / GAO_CACHE_DIR_NAME
+
+    existing = list(out_dir.glob("*.txt")) if out_dir.exists() else []
+    if len(existing) >= max_reports:
+        print(
+            f"Using cached GAO reports ({len(existing)} reports) at {out_dir}",
+            file=sys.stderr,
+        )
+        return out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    import requests
+
+    # Collect package IDs from sitemaps across requested years
+    package_ids: list[str] = []
+    for year in years:
+        ids = _gao_package_ids_from_sitemap(year)
+        package_ids.extend(ids)
+        print(f"  GAO sitemap {year}: {len(ids)} reports found", file=sys.stderr)
+
+    already_have = {p.stem for p in existing}
+    to_fetch = [p for p in package_ids if p not in already_have]
+    to_fetch = to_fetch[: max(0, max_reports - len(existing))]
+
+    print(
+        f"Downloading GAO reports ({len(to_fetch)} to fetch,"
+        f" {len(existing)} already cached)…",
+        file=sys.stderr,
+    )
+    downloaded = len(existing)
+    for pkg_id in to_fetch:
+        url = f"{CREC_GOVINFO_BASE}/{pkg_id}/html/{pkg_id}.htm"
+        try:
+            resp = requests.get(url, timeout=30)
+            if resp.status_code != 200:
+                continue
+        except Exception as exc:
+            print(f"  Warning: {pkg_id}: {exc}", file=sys.stderr)
+            continue
+
+        text = strip_html(resp.text)
+        if text and len(text.strip()) > 100:
+            (out_dir / f"{pkg_id}.txt").write_text(text, encoding="utf-8")
+            downloaded += 1
+            if downloaded % 100 == 0:
+                print(f"  GAO: {downloaded} reports downloaded", file=sys.stderr)
+        time.sleep(_GOVINFO_DELAY_S)
+
+    print(f"GAO reports: {downloaded} total → {out_dir}", file=sys.stderr)
+    return out_dir
+
+
+def _ia_crest_identifiers(max_results: int = 600) -> list[str]:
+    """
+    Return Internet Archive identifiers for CIA CREST documents.
+
+    Searches the IA Advanced Search API for ``identifier:CIA-RDP*`` items with
+    ``mediatype:texts``.  The CIA-RDP prefix is the canonical CREST identifier
+    pattern — every document in the 25-year program archive uses it.
+
+    Returns at most *max_results* identifiers; the API caps a single page at
+    10 000 rows, so we request ``min(max_results, 500)`` per call (practical
+    limit for fast response and politeness).
+    """
+    import requests
+
+    params = {
+        "q": "identifier:CIA-RDP* AND mediatype:texts",
+        "fl[]": "identifier",
+        "output": "json",
+        "rows": min(max_results, 500),
+        "page": 1,
+        "sort[]": "downloads desc",  # prefer well-accessed documents first
+    }
+    try:
+        resp = requests.get(CREST_IA_SEARCH_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        docs = resp.json().get("response", {}).get("docs", [])
+        return [d["identifier"] for d in docs if "identifier" in d]
+    except Exception as exc:
+        print(f"  Warning: IA CREST search failed: {exc}", file=sys.stderr)
+        return []
+
+
+def download_crest_corpus(
+    max_documents: int = 200,
+    cache_dir: Path = ENRON_CACHE_DIR,
+) -> Path:
+    """
+    Download CIA CREST documents from Internet Archive and cache to
+    *cache_dir/crest_documents/*.
+
+    Each CREST document is fetched as a plain-text OCR file.  The IA stores
+    DjVu text layers (full-page OCR) at ``{id}_djvu.txt`` and sometimes a
+    separate ``.txt`` file.  Both are tried in order; documents where neither
+    is available or the text is too short (< 200 characters) are skipped.
+
+    The CIA CREST documents are declassified records that retain their
+    original classification banners and portion marks, making them ideal
+    source material for ``--mode mangled`` fixture generation.
+
+    Args:
+        max_documents: Maximum number of documents to cache (default 200).
+            200 documents ≈ 5–10 MB of text, sufficient to exceed the
+            SC-004 gate of 200 mangled cases.
+        cache_dir: Root cache directory.
+
+    Returns:
+        Path to the directory containing the downloaded ``.txt`` files.
+    """
+    out_dir = cache_dir / CREST_CACHE_DIR_NAME
+    existing = list(out_dir.glob("*.txt")) if out_dir.exists() else []
+    if len(existing) >= max_documents:
+        print(
+            f"Using cached CREST corpus ({len(existing)} docs) at {out_dir}",
+            file=sys.stderr,
+        )
+        return out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    import requests
+
+    # Fetch more candidates than needed — many IA items won't have text files.
+    identifiers = _ia_crest_identifiers(max_results=max_documents * 4)
+    already_have = {p.stem for p in existing}
+    to_fetch = [i for i in identifiers if i not in already_have]
+
+    print(
+        f"Downloading CIA CREST documents from Internet Archive"
+        f" ({len(to_fetch)} candidates for {max_documents} target)…",
+        file=sys.stderr,
+    )
+    downloaded = len(existing)
+
+    for identifier in to_fetch:
+        if downloaded >= max_documents:
+            break
+
+        fetched = False
+        for suffix in ("_djvu.txt", ".txt"):
+            url = f"{CREST_IA_DOWNLOAD_BASE}/{identifier}/{identifier}{suffix}"
+            try:
+                resp = requests.get(url, timeout=30)
+                if resp.status_code != 200:
+                    continue
+                text = resp.text.strip()
+                if len(text) < 200:
+                    continue  # OCR failure or empty document
+                dest = out_dir / f"{identifier}.txt"
+                dest.write_text(text, encoding="utf-8", errors="replace")
+                downloaded += 1
+                if downloaded % 50 == 0:
+                    print(
+                        f"  CREST: {downloaded}/{max_documents} documents downloaded",
+                        file=sys.stderr,
+                    )
+                fetched = True
+                break
+            except Exception as exc:
+                print(f"  Warning: {identifier}{suffix}: {exc}", file=sys.stderr)
+
+        if fetched:
+            time.sleep(_IA_DELAY_S)
+
+    print(f"CREST corpus: {downloaded} documents → {out_dir}", file=sys.stderr)
+    return out_dir
+
+
 def iter_corpus_texts(corpus_path: Path, max_docs: Optional[int] = None):
     """
     Yield (doc_id, text) tuples from a corpus directory.
@@ -152,17 +528,46 @@ def iter_corpus_texts(corpus_path: Path, max_docs: Optional[int] = None):
         print(f"Warning: no documents found in {corpus_path}", file=sys.stderr)
 
 
+def iter_corpus_texts_multi(
+    corpus_paths: list[Path],
+    max_docs: Optional[int] = None,
+) -> Generator:
+    """
+    Yield ``(doc_id, text)`` pairs from multiple corpus directories in order.
+
+    Applies *max_docs* as a global cap across all sources combined, not
+    per-source, so a small *max_docs* will be drawn entirely from the first
+    source.  Pass ``None`` (default) to iterate all documents in all sources.
+    """
+    count = 0
+    for corpus_path in corpus_paths:
+        for doc_id, text in iter_corpus_texts(corpus_path):
+            yield doc_id, text
+            count += 1
+            if max_docs and count >= max_docs:
+                return
+
+
 def extract_body(raw: bytes) -> Optional[str]:
     """
     Extract the text body from raw file bytes.
 
-    If it looks like an RFC 2822 email, parse it and extract the text/plain
-    body. Otherwise treat the whole thing as plain text.
+    Handles three formats:
+    - GovInfo HTML (CREC, GAO): text wrapped in ``<pre>`` tags — stripped via
+      ``strip_html()``.
+    - RFC 2822 email (Enron maildir format): text/plain body extracted.
+    - Plain text: returned as-is.
     """
     try:
         text = raw.decode("utf-8", errors="replace")
     except Exception:
         return None
+
+    # HTML detection: GovInfo pages start with <html or <!DOCTYPE
+    raw_prefix = raw[:200].lower()
+    if b"<html" in raw_prefix or b"<!doctype" in raw_prefix:
+        stripped = strip_html(text)
+        return stripped if stripped and len(stripped.strip()) > 20 else None
 
     # Quick heuristic: if it has email-like headers, parse as email
     if text[:200].count(":") >= 2 and any(
@@ -472,11 +877,11 @@ def _extract_rel_to_trigraphs(text: str):
 
 
 def run_analysis(
-    corpus_path: Path,
+    corpus_paths: list[Path],
     tokens_by_category: dict,
     max_docs: Optional[int] = None,
 ) -> dict:
-    """Run the full analysis over a corpus. Returns the frequency table."""
+    """Run the full analysis over one or more corpora. Returns the frequency table."""
     token_list = all_tokens_flat(tokens_by_category)
     token_set = set(token_list)
 
@@ -503,7 +908,7 @@ def run_analysis(
 
     print("Analyzing corpus...", file=sys.stderr)
 
-    for doc_id, text in iter_corpus_texts(corpus_path, max_docs):
+    for doc_id, text in iter_corpus_texts_multi(corpus_paths, max_docs):
         total_docs += 1
 
         if total_docs % 10000 == 0:
@@ -919,7 +1324,7 @@ MARKING_CONTEXT_WINDOW = 30
 
 
 def measure_heuristic_trigger_frequency(
-    corpus_path: Path,
+    corpus_paths: list[Path],
     max_docs: Optional[int] = None,
 ) -> dict:
     """
@@ -970,7 +1375,7 @@ def measure_heuristic_trigger_frequency(
     marking_context = Counter()
 
     docs_processed = 0
-    for _doc_id, text in iter_corpus_texts(corpus_path, max_docs=max_docs):
+    for _doc_id, text in iter_corpus_texts_multi(corpus_paths, max_docs=max_docs):
         # Find positions of marking signals (and `//` not in URLs).
         signal_positions: list[tuple[int, int]] = []
         for m in signal_pat.finditer(text):
@@ -1404,23 +1809,119 @@ def main():
         default=Path(__file__).parent / "tokens" / "capco.json",
         help="Path to token vocabulary JSON (default: tokens/capco.json)",
     )
-    parser.add_argument(
+
+    # ---- corpus source arguments ----
+    corpus_group = parser.add_argument_group(
+        "corpus sources",
+        "Specify a custom corpus path or one or more named sources to auto-download.\n"
+        "--corpus takes precedence over --corpus-source.",
+    )
+    corpus_group.add_argument(
         "--corpus",
         type=Path,
         default=None,
-        help="Path to corpus directory of text files. Default: download Enron.",
+        help=(
+            "Path to a corpus directory of text files.  "
+            "Accepts Enron maildir trees, GovInfo extracted directories, "
+            "or any directory of plain-text files.  "
+            "Overrides --corpus-source."
+        ),
     )
-    parser.add_argument(
+    corpus_group.add_argument(
         "--corpus-url",
         type=str,
         default=None,
         help="URL to download a corpus tar.gz (instead of Enron default).",
     )
+    corpus_group.add_argument(
+        "--corpus-source",
+        choices=("enron", "congressional-record", "gao", "crest", "all"),
+        action="append",
+        dest="corpus_sources",
+        metavar="SOURCE",
+        help=(
+            "Named corpus to auto-download and include in the analysis. "
+            "May be specified multiple times to combine sources. "
+            "Choices: enron, congressional-record, gao, crest, all. "
+            "Default when neither --corpus nor --corpus-source is given: enron. "
+            "crest: CIA CREST declassified documents from Internet Archive — "
+            "recommended for --mode mangled (real classification marking artifacts)."
+        ),
+    )
+
+    # ---- Congressional Record options ----
+    crec_group = parser.add_argument_group(
+        "Congressional Record options (--corpus-source congressional-record)"
+    )
+    crec_group.add_argument(
+        "--crec-year",
+        type=int,
+        default=2023,
+        metavar="YEAR",
+        help="Calendar year of Congressional Record to download (default: 2023).",
+    )
+    crec_group.add_argument(
+        "--crec-max-packages",
+        type=int,
+        default=20,
+        metavar="N",
+        help=(
+            "Maximum number of session-day packages to download. "
+            "Each package is ~30 MB compressed (HTM content is ~470 KB/day). "
+            "Default: 20 (≈ 600 MB download budget)."
+        ),
+    )
+
+    # ---- GAO report options ----
+    gao_group = parser.add_argument_group(
+        "GAO report options (--corpus-source gao)"
+    )
+    gao_group.add_argument(
+        "--gao-years",
+        type=str,
+        default="2004,2005,2006,2007,2008",
+        metavar="YEARS",
+        help=(
+            "Comma-separated report years to pull from GovInfo sitemaps. "
+            "Sitemaps are available for 1989–2008. "
+            "Default: 2004,2005,2006,2007,2008."
+        ),
+    )
+    gao_group.add_argument(
+        "--gao-max-reports",
+        type=int,
+        default=500,
+        metavar="N",
+        help=(
+            "Maximum number of GAO reports to download. "
+            "Each report is ~66 KB HTML; 500 reports ≈ 33 MB total. "
+            "Default: 500."
+        ),
+    )
+
+    # ---- CREST options ----
+    crest_group = parser.add_argument_group(
+        "CIA CREST options (--corpus-source crest)"
+    )
+    crest_group.add_argument(
+        "--crest-max-docs",
+        type=int,
+        default=200,
+        metavar="N",
+        help=(
+            "Maximum number of CIA CREST documents to download from Internet "
+            "Archive. Each document is a DjVu OCR text file (~25 KB average). "
+            "200 documents ≈ 5 MB total; sufficient to exceed the SC-004 gate "
+            "of 200 mangled cases. Default: 200."
+        ),
+    )
+
+    # ---- common options ----
     parser.add_argument(
         "--max-docs",
         type=int,
         default=None,
-        help="Limit analysis to N documents (for quick test runs).",
+        help="Limit analysis to N documents total (for quick test runs).",
     )
     parser.add_argument(
         "--output",
@@ -1460,28 +1961,73 @@ def main():
         file=sys.stderr,
     )
 
-    # Resolve corpus
-    if args.corpus:
-        corpus_path = args.corpus
-    else:
-        corpus_path = download_enron()
+    # ---------------------------------------------------------------------------
+    # Resolve corpus paths
+    # ---------------------------------------------------------------------------
+    # Priority: --corpus (explicit path) > --corpus-source (named download) > Enron default.
+    # --corpus-source may be repeated; "all" expands to all three named sources.
+    # Mangled mode uses only the first resolved path (single-source semantics).
+    corpus_paths: list[Path] = []
 
-    if not corpus_path.exists():
-        print(f"Error: corpus path {corpus_path} does not exist", file=sys.stderr)
+    if args.corpus:
+        corpus_paths = [args.corpus]
+    elif args.corpus_sources:
+        gao_years_parsed = [int(y.strip()) for y in args.gao_years.split(",") if y.strip()]
+        sources: set[str] = set()
+        for s in args.corpus_sources:
+            if s == "all":
+                sources.update({"enron", "congressional-record", "gao", "crest"})
+            else:
+                sources.add(s)
+        if "enron" in sources:
+            corpus_paths.append(download_enron())
+        if "congressional-record" in sources:
+            corpus_paths.append(
+                download_congressional_record(
+                    year=args.crec_year,
+                    max_packages=args.crec_max_packages,
+                )
+            )
+        if "gao" in sources:
+            corpus_paths.append(
+                download_gao_reports(
+                    years=gao_years_parsed,
+                    max_reports=args.gao_max_reports,
+                )
+            )
+        if "crest" in sources:
+            corpus_paths.append(
+                download_crest_corpus(
+                    max_documents=args.crest_max_docs,
+                )
+            )
+    else:
+        corpus_paths = [download_enron()]
+
+    missing = [p for p in corpus_paths if not p.exists()]
+    if missing:
+        print(f"Error: corpus paths do not exist: {missing}", file=sys.stderr)
         sys.exit(1)
 
     if args.mode in ("baseline", "priors"):
-        results = run_analysis(corpus_path, tokens_by_category, args.max_docs)
+        results = run_analysis(corpus_paths, tokens_by_category, args.max_docs)
         results["metadata"] = {
             "vocabulary_file": str(args.tokens),
-            "corpus_path": str(corpus_path),
+            "corpus_paths": [str(p) for p in corpus_paths],
             "token_count": len(flat_tokens),
             "category_count": len(tokens_by_category),
         }
 
         if args.mode == "priors":
             priors = derive_priors(results, tokens_by_category)
-            priors["corpus_fingerprint"] = _corpus_fingerprint(corpus_path)
+            # Fingerprint all corpus directories together for the priors record.
+            combined_fp = _corpus_fingerprint(corpus_paths[0]) if len(corpus_paths) == 1 else (
+                "combined:"
+                + hashlib.sha256(
+                    "\n".join(_corpus_fingerprint(p) for p in corpus_paths).encode()
+                ).hexdigest()
+            )
+            priors["corpus_fingerprint"] = combined_fp
             payload = priors
         else:
             payload = results
@@ -1496,13 +2042,18 @@ def main():
         return
 
     if args.mode == "heuristic-frequency":
-        results = measure_heuristic_trigger_frequency(corpus_path, args.max_docs)
-        # Intentionally omit `corpus_path` from committed output —
-        # absolute developer-environment paths leak machine-specific
-        # detail and churn diffs across machines. The
-        # `corpus_fingerprint` (SHA-512 over file metadata, content-
+        results = measure_heuristic_trigger_frequency(corpus_paths, args.max_docs)
+        # Intentionally omit corpus paths from committed output —
+        # absolute paths leak machine-specific detail across machines.
+        # The corpus_fingerprint (SHA-512 over file metadata, content-
         # ignorant per Constitution V) is the reproducible identifier.
-        results["corpus_fingerprint"] = _corpus_fingerprint(corpus_path)
+        combined_fp = _corpus_fingerprint(corpus_paths[0]) if len(corpus_paths) == 1 else (
+            "combined:"
+            + hashlib.sha256(
+                "\n".join(_corpus_fingerprint(p) for p in corpus_paths).encode()
+            ).hexdigest()
+        )
+        results["corpus_fingerprint"] = combined_fp
         output_json = json.dumps(results, indent=2)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -1530,7 +2081,8 @@ def main():
         )
         return
 
-    # mangled mode
+    # mangled mode — single-corpus semantics; uses first resolved path
+    corpus_path = corpus_paths[0]
     if not args.output:
         print(
             "Error: --mode mangled requires --output <dir>",
