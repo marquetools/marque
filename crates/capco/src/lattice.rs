@@ -207,16 +207,19 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            if !out.systems.contains_key(sys) {
+            if out.systems.get_mut(sys).is_none() {
                 out.systems.insert(sys.clone(), BTreeMap::new());
             }
-            let out_comps = out.systems.get_mut(sys).unwrap();
+            let out_comps = out
+                .systems
+                .get_mut(sys)
+                .expect("sys key always present after conditional insert");
             for (cid, subs) in comp_map {
-                if !out_comps.contains_key(cid) {
-                    out_comps.insert(cid.clone(), BTreeSet::new());
+                if let Some(out_subs) = out_comps.get_mut(cid) {
+                    out_subs.extend(subs.iter().cloned());
+                } else {
+                    out_comps.insert(cid.clone(), subs.clone());
                 }
-                let out_subs = out_comps.get_mut(cid).unwrap();
-                out_subs.extend(subs.iter().cloned());
             }
         }
         out
@@ -369,16 +372,19 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            if !out.programs.contains_key(pid) {
+            if out.programs.get_mut(pid).is_none() {
                 out.programs.insert(pid.clone(), BTreeMap::new());
             }
-            let out_comps = out.programs.get_mut(pid).unwrap();
+            let out_comps = out
+                .programs
+                .get_mut(pid)
+                .expect("pid key always present after conditional insert");
             for (cid, subs) in comp_map {
-                if !out_comps.contains_key(cid) {
-                    out_comps.insert(cid.clone(), BTreeSet::new());
+                if let Some(out_subs) = out_comps.get_mut(cid) {
+                    out_subs.extend(subs.iter().cloned());
+                } else {
+                    out_comps.insert(cid.clone(), subs.clone());
                 }
-                let out_subs = out_comps.get_mut(cid).unwrap();
-                out_subs.extend(subs.iter().cloned());
             }
         }
         out
