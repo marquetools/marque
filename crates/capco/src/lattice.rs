@@ -114,14 +114,25 @@ impl SciSet {
         let mut out = Self::empty();
         for m in markings {
             let key = SystemKey::from_system(&m.system);
-            let comp_map = out.systems.entry(key).or_default();
+            if !out.systems.contains_key(&key) {
+                out.systems
+                    .insert(key.clone(), std::collections::BTreeMap::new());
+            }
+            let comp_map = out.systems.get_mut(&key).unwrap();
             if m.compartments.is_empty() {
                 // Bare system — ensure the entry exists so a subsequent
                 // rollup preserves the bare form.
                 continue;
             }
             for comp in m.compartments.iter() {
-                let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
+                let comp_id = comp.identifier.as_ref();
+                if !comp_map.contains_key(comp_id) {
+                    comp_map.insert(
+                        comp.identifier.to_string(),
+                        std::collections::BTreeSet::new(),
+                    );
+                }
+                let sub_set = comp_map.get_mut(comp_id).unwrap();
                 sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
@@ -207,9 +218,16 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            let out_comps = out.systems.entry(sys.clone()).or_default();
+            if !out.systems.contains_key(sys) {
+                out.systems
+                    .insert(sys.clone(), std::collections::BTreeMap::new());
+            }
+            let out_comps = out.systems.get_mut(sys).unwrap();
             for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
+                if !out_comps.contains_key(cid) {
+                    out_comps.insert(cid.clone(), std::collections::BTreeSet::new());
+                }
+                let out_subs = out_comps.get_mut(cid).unwrap();
                 out_subs.extend(subs.iter().cloned());
             }
         }
@@ -295,9 +313,23 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            let comps = out.programs.entry(prog.identifier.to_string()).or_default();
+            let prog_id = prog.identifier.as_ref();
+            if !out.programs.contains_key(prog_id) {
+                out.programs.insert(
+                    prog.identifier.to_string(),
+                    std::collections::BTreeMap::new(),
+                );
+            }
+            let comps = out.programs.get_mut(prog_id).unwrap();
             for comp in prog.compartments.iter() {
-                let subs = comps.entry(comp.identifier.to_string()).or_default();
+                let comp_id = comp.identifier.as_ref();
+                if !comps.contains_key(comp_id) {
+                    comps.insert(
+                        comp.identifier.to_string(),
+                        std::collections::BTreeSet::new(),
+                    );
+                }
+                let subs = comps.get_mut(comp_id).unwrap();
                 subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
@@ -363,9 +395,16 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            let out_comps = out.programs.entry(pid.clone()).or_default();
+            if !out.programs.contains_key(pid) {
+                out.programs
+                    .insert(pid.clone(), std::collections::BTreeMap::new());
+            }
+            let out_comps = out.programs.get_mut(pid).unwrap();
             for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
+                if !out_comps.contains_key(cid) {
+                    out_comps.insert(cid.clone(), std::collections::BTreeSet::new());
+                }
+                let out_subs = out_comps.get_mut(cid).unwrap();
                 out_subs.extend(subs.iter().cloned());
             }
         }
