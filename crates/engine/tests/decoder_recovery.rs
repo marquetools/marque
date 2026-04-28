@@ -1169,6 +1169,75 @@ fn rel_to_structural_repair_does_not_corrupt_aut_austria() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #233: corpus-weighted trigraph priors for REL TO recovery
+// ---------------------------------------------------------------------------
+//
+// Phase 4 PR-1 baked per-token log-priors but explicitly deferred REL TO
+// trigraphs (see prior comment block above and CLAUDE.md "Phase 4 PR-1").
+// Issue #233 adds a parallel ``COUNTRY_CODE_BASE_RATES`` table so the decoder
+// can break fuzzy ties between popular trigraphs (USA, GBR, AUS, FVEY)
+// and rare lookalikes (UZB, ASM, AUT-as-Austria) by log-prior delta
+// rather than edit distance alone. The decoder's existing
+// ``UNAMBIGUOUS_LOG_MARGIN`` (~1.6 nats ≈ 5× odds ratio) realizes the
+// "only correct if there's nothing else it can be" rule once the prior
+// gap is wide enough.
+
+#[test]
+fn typo_usb_resolves_to_usa_via_trigraph_priors() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/ba3fed4ec87384d3.json`
+    // (`SECRET//REL TO USB, AUS, GBR`). USB is not a country trigraph;
+    // both USA (1 substitution: B→A) and UZB (1 substitution: S→Z) are
+    // edit-distance-1 candidates. Without trigraph priors the decoder
+    // cannot break the tie. With ``COUNTRY_CODE_BASE_RATES`` USA's
+    // log-prior dominates UZB's by ~7 nats — far above the
+    // ``UNAMBIGUOUS_LOG_MARGIN``.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USB, AUS, GBR", &deep_cx())
+    else {
+        panic!("`USB → USA` recovery must produce an unambiguous decode (issue #233)");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    let trigraphs: Vec<&str> = marking.0.rel_to.iter().map(|c| c.as_str()).collect();
+    assert!(
+        trigraphs.contains(&"USA"),
+        "USB must be corrected to USA; got rel_to={:?}",
+        trigraphs,
+    );
+    assert!(
+        !trigraphs.contains(&"UZB"),
+        "USB must NOT be corrected to UZB (corpus-weighted prior loses); got rel_to={:?}",
+        trigraphs,
+    );
+}
+
+#[test]
+fn typo_asu_resolves_to_aus_via_trigraph_priors() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/401856cea23a70f4.json`
+    // (`SECRET//REL TO USA, ASU, GBR`). ASU is not a country trigraph;
+    // ASM (American Samoa) is edit-distance-1 (substitute U→M), AUS
+    // is edit-distance-2 (transpose S/U). Pure fuzzy picks ASM. With
+    // trigraph priors AUS's log-prior dominates ASM's by ~7 nats and
+    // overwhelms the 1-edit advantage.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, ASU, GBR", &deep_cx())
+    else {
+        panic!("`ASU → AUS` recovery must produce an unambiguous decode (issue #233)");
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    let trigraphs: Vec<&str> = marking.0.rel_to.iter().map(|c| c.as_str()).collect();
+    assert!(
+        trigraphs.contains(&"AUS"),
+        "ASU must be corrected to AUS; got rel_to={:?}",
+        trigraphs,
+    );
+    assert!(
+        !trigraphs.contains(&"ASM"),
+        "ASU must NOT be corrected to ASM (corpus-weighted prior loses); got rel_to={:?}",
+        trigraphs,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //

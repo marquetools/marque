@@ -1113,7 +1113,34 @@ fn parse_rel_to_with_spans(
 
         let trim_lead = entry.len() - entry.trim_start().len();
         let trimmed = entry.trim();
-        if trimmed.is_empty() || !tokens.is_trigraph(trimmed) {
+        if trimmed.is_empty() {
+            continue;
+        }
+        let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
+        if !tokens.is_trigraph(trimmed) {
+            // Issue #233: emit an Unknown span for unrecognized
+            // entries inside a REL TO block instead of silently
+            // dropping them. The decoder's
+            // ``DecoderRecognizer::recognize`` step 3a rejects any
+            // candidate whose strict parse leaves Unknown spans,
+            // which is what makes the fuzzy-trigraph expansion
+            // (``try_rel_to_fuzzy_trigraph_candidates``) win the
+            // score contest: the original "drop USB" candidate now
+            // carries an Unknown span and is filtered out, leaving
+            // the corpus-weighted log-prior to break ties between
+            // the surviving fuzzy alternates (USA, UZB, …).
+            //
+            // Strict-path callers still see a clean ``rel_to`` slice
+            // — the Unknown span is metadata for the decoder filter,
+            // not a parser failure. Existing rules that walk
+            // ``token_spans`` already handle ``TokenKind::Unknown``
+            // (see E030 sar-indicator-repeat for the analogous
+            // pattern at line ~263).
+            token_spans.push(TokenSpan {
+                kind: TokenKind::Unknown,
+                span: Span::new(abs_start, abs_start + trimmed.len()),
+                text: trimmed.into(),
+            });
             continue;
         }
         // Issue #183: drop the historical `b.len() != 3` gate that
@@ -1129,7 +1156,6 @@ fn parse_rel_to_with_spans(
             continue;
         };
         out.push(t);
-        let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
             span: Span::new(abs_start, abs_start + trimmed.len()),

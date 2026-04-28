@@ -756,6 +756,69 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- REL TO trigraph fuzzy-priors expansion (issue #233).
+    //      The standard fuzzy path in `fuzzy_correct_tokens` operates
+    //      against `correction_vocab()`, which deliberately excludes
+    //      country trigraphs (see the comment on `ALL_CVE_TOKENS` in
+    //      `crates/ism/build.rs` and the design rationale in
+    //      `EXTENDED_CORRECTION_VOCAB`). Trigraphs live in a separate
+    //      `TRIGRAPHS` slice reached via `is_trigraph`. So an unknown
+    //      3-char REL TO entry like `USB` doesn't get any fuzzy
+    //      correction — the standard fuzzy walk has nothing to match
+    //      against. The strict REL TO parser previously dropped
+    //      unknown entries silently; issue #233 makes
+    //      `parse_rel_to_with_spans` emit `TokenKind::Unknown` instead
+    //      so the dispatcher's step 3a rejects the "drop USB"
+    //      candidate.
+    //
+    //      With unknown entries no longer silently absorbed, the
+    //      candidate set must include real trigraph alternates for
+    //      the dispatcher to choose between. This block walks each
+    //      `REL TO ` block, finds 3-char entries that aren't valid
+    //      trigraphs, and emits one canonical-byte alternate per
+    //      candidate from a fuzzy match against the TRIGRAPHS
+    //      slice. The structural strict parse +
+    //      `score_candidate` (which sums `country_code_log_prior`
+    //      over the parsed `rel_to` slice) then picks the right
+    //      winner: USA dominates UZB by ~7 nats, far above
+    //      `UNAMBIGUOUS_LOG_MARGIN`.
+    //
+    //      Each alternate carries an `EditDistance1` /
+    //      `EditDistance2` feature so the audit trail records the
+    //      fuzzy work, plus a zero-delta `BaseRateCommonMarking`
+    //      feature whose role is purely audit-trail provenance —
+    //      "country-code priors were consulted on this candidate".
+    //      The actual scoring weight comes from `score_candidate`
+    //      summing `country_code_log_prior` over `attempt.rel_to`;
+    //      adding a non-zero delta here would double-count. The
+    //      other structural-cleanup paths in this file use `-0.3`
+    //      because they have no parallel score-time prior to back
+    //      them up; the trigraph path does, so the audit feature
+    //      is informational only. No new `FeatureId` variant —
+    //      adding one would bump the audit schema. Reusing
+    //      `BaseRateCommonMarking` matches the variant's existing
+    //      doc ("the candidate's base rate in the target corpus
+    //      dominates the posterior").
+    let trigraph_matcher = FuzzyVocabMatcher::new(marque_ism::TRIGRAPHS);
+    for (alt_text, edit_feature) in
+        try_rel_to_fuzzy_trigraph_candidates(&fuzzy_corrected, &trigraph_matcher)
+    {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(edit_feature);
+        // Trigraph-prior acknowledgement (see comment above for the
+        // FeatureId reuse rationale + zero-delta justification).
+        features.push(FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: 0.0,
+        });
+        emit(
+            alt_text.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Position-aware classification heuristic (issue #133 PR 2).
     //      Runs LAST so the dedup-keep-first guard above lets a
     //      vocab-based attempt with the same canonical bytes win the
@@ -960,18 +1023,30 @@ fn fuzzy_correct_tokens(
         // vocab-scan cost on exactly the unknown-token hot path.
         if let Some(correction) = matcher.correct(token) {
             out.push_str(correction.token);
+            // `FeatureId` is part of the audit-schema contract (see
+            // `crates/rules/src/confidence.rs` and the
+            // `MARQUE_AUDIT_SCHEMA` pin); a wildcard `_` arm on it
+            // would silently absorb future-variant additions. Pair
+            // each (id, delta) directly off `correction.distance` so
+            // both arms are total over the only two outcomes the
+            // outer guard permits (`distance > 0`, `distance <=
+            // MAX_EDIT_DISTANCE = 2`).
             let feature = match correction.distance {
-                0 => None, // shouldn't happen — `correct` returns None on exact match
-                1 => Some(FeatureId::EditDistance1),
-                _ => Some(FeatureId::EditDistance2),
+                // `correct` returns `None` for exact matches, so
+                // `distance == 0` cannot reach here; `MAX_EDIT_DISTANCE
+                // == 2` upstream caps `distance <= 2`.
+                0 => None,
+                1 => Some(FeatureEntry {
+                    id: FeatureId::EditDistance1,
+                    delta: -0.5,
+                }),
+                _ => Some(FeatureEntry {
+                    id: FeatureId::EditDistance2,
+                    delta: -1.2,
+                }),
             };
-            if let Some(id) = feature {
-                let delta = match id {
-                    FeatureId::EditDistance1 => -0.5,
-                    FeatureId::EditDistance2 => -1.2,
-                    _ => 0.0,
-                };
-                features.push(FeatureEntry { id, delta });
+            if let Some(entry) = feature {
+                features.push(entry);
             }
             continue;
         }
@@ -2312,6 +2387,224 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 }
 
 // ---------------------------------------------------------------------------
+// REL TO trigraph fuzzy expansion (issue #233)
+// ---------------------------------------------------------------------------
+
+/// Emit one canonical-byte alternate per fuzzy candidate for each
+/// unknown 3-char REL TO entry.
+///
+/// The standard fuzzy path in [`fuzzy_correct_tokens`] operates against
+/// the [`CapcoTokenSet::correction_vocab`] slice, which deliberately
+/// excludes country trigraphs (the design comment on `ALL_CVE_TOKENS`
+/// in `crates/ism/build.rs` calls this out — country codes live
+/// exclusively in [`marque_ism::TRIGRAPHS`] and are reached through
+/// [`CapcoTokenSet::is_trigraph`]). So a typo'd 3-char REL TO entry
+/// like `USB` gets no correction from the standard pass — there's
+/// nothing in the vocab to match it against. The strict parser then
+/// emits a `TokenKind::Unknown` for the entry (issue #233 change in
+/// `parse_rel_to_with_spans`), and the dispatcher's step 3a rejects
+/// the "drop USB" candidate.
+///
+/// With the original candidate filtered out, this function provides
+/// the alternates the dispatcher chooses between: it walks each
+/// `REL TO ` block in `text`, finds 3-char comma-separated entries
+/// that aren't already valid trigraphs, asks the trigraph-vocab
+/// matcher for all candidates within the edit-distance bound, and
+/// emits one alternate text per candidate (with the substitution
+/// applied in-place).
+///
+/// Each emitted alternate carries an `EditDistance1` /
+/// `EditDistance2` feature (paired with the candidate's distance) so
+/// the audit trail records the fuzzy work. The caller pushes a
+/// `BaseRateCommonMarking` feature acknowledging the trigraph-prior
+/// contribution. The decoder's `score_candidate` later sums the
+/// trigraph-prior contribution over the parsed `rel_to` slice; the
+/// popular-vs-rare log-prior delta (e.g., `log_prior(USA) -
+/// log_prior(UZB)` ≈ +7 nats) decides which alternate wins the
+/// `UNAMBIGUOUS_LOG_MARGIN` (~1.6 nat) contest.
+///
+/// **Scope**: trigraph-shaped (3-char ASCII uppercase) entries only.
+/// Two-letter entries (`EU`) are below `MIN_FUZZY_LEN`; longer
+/// multi-char entries (`AUSTRALIA_GROUP`) have low fuzzy-tie risk
+/// because their lengths rarely collide. Only fires when the entry
+/// token is NOT already a valid trigraph — so `AUT`, `UZB`, `ASM`
+/// in legitimate use pass through unchanged.
+///
+/// **CAPCO authority**: REL TO syntax is defined in CAPCO-2016 §H.8.
+/// The trigraph dictionary itself comes from the ODNI CVE schema in
+/// `CVEnumISMCATRelTo.xsd`, baked into [`CapcoTokenSet::is_trigraph`]
+/// and into the [`marque_ism::TRIGRAPHS`] slice this function fuzzy-
+/// matches against.
+fn try_rel_to_fuzzy_trigraph_candidates(
+    text: &str,
+    trigraph_matcher: &FuzzyVocabMatcher<'_>,
+) -> Vec<(String, FeatureEntry)> {
+    let token_set = CapcoTokenSet;
+    let mut out: Vec<(String, FeatureEntry)> = Vec::new();
+
+    let mut search_start = 0;
+    while let Some(rel_pos) = text[search_start..].find("REL TO ") {
+        let header_end = search_start + rel_pos + "REL TO ".len();
+        // Block ends at the EARLIEST of: `//` (next category), `\n`
+        // (banner/CAB candidates from `Scanner::scan_banners` arrive
+        // as full lines, so a REL TO line can have trailing prose
+        // beyond the marking), or `)` (portion-form close). CAPCO
+        // §H.8 / §A authority: `//` is the category separator; `,`
+        // separates entries within the REL TO category itself.
+        // Mirrors the corpus analyzer's terminator priority in
+        // `tools/corpus-analysis/analyze.py` (`_extract_rel_to_trigraphs`).
+        let tail = &text[header_end..];
+        let block_len = ["//", "\n", ")"]
+            .iter()
+            .filter_map(|sep| tail.find(sep))
+            .min()
+            .unwrap_or(tail.len());
+        let block_end = header_end + block_len;
+        let block = &text[header_end..block_end];
+
+        // Walk the comma-separated entries with their byte offsets.
+        let mut cursor = 0usize;
+        for entry in block.split(',') {
+            let entry_start = cursor;
+            let entry_end = cursor + entry.len();
+            cursor = entry_end + 1; // skip the comma
+
+            let trimmed = entry.trim();
+            // Only 3-char ASCII-uppercase trigraph-shaped entries —
+            // see fn doc for the scope rationale.
+            if trimmed.len() != 3 || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
+                continue;
+            }
+            // Skip already-valid trigraphs (the matcher's binary
+            // search would also short-circuit on a vocab hit, but
+            // keeping the explicit check means a token like `AUT`
+            // appearing legitimately never gets multi-cast as
+            // USA/AUS/etc.).
+            if token_set.is_trigraph(trimmed) {
+                continue;
+            }
+
+            // Bypass the standard `MIN_USEFUL_CONFIDENCE` floor:
+            // for a 3-char input, distance-2 corrections sit at
+            // confidence 0.40, below the default 0.45 cutoff that
+            // protects the standalone fuzzy path. Issue #233's score-
+            // time tiebreak (corpus-weighted trigraph priors +
+            // `UNAMBIGUOUS_LOG_MARGIN`) supplies the safety the
+            // confidence-floor was substituting for; without lowering
+            // it here, a typo like `ASU → AUS` (plain Levenshtein
+            // distance 2) never reaches the scorer.
+            let mut candidates = trigraph_matcher.correct_all_with_floor(trimmed, 0.0);
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // Drop candidates that would duplicate a trigraph already
+            // present elsewhere in this REL TO block. CAPCO-2016 §H.8
+            // does not state "no duplicates" as an explicit textual
+            // prohibition — the REL TO grammar (§A.6 / §H.8 p131-150)
+            // describes a list of country codes ordered USA-first then
+            // ascending alphabetic, which structurally implies a set of
+            // distinct codes but does not forbid repetition in so many
+            // words. The reason we drop duplicates here is mechanical,
+            // not citational: the bag-of-tokens scorer happens to
+            // *reward* duplicates (each instance adds its log-prior
+            // again), so without this filter an ambiguous typo
+            // adjacent to a popular trigraph could collapse to
+            // "REL TO USA, USA, GBR" because USA's log-prior
+            // contribution is additive. Emitting a duplicate-creating
+            // candidate would therefore be structurally redundant and
+            // cause the scorer to erroneously favor it. The block's
+            // other entries are computed by re-walking
+            // `block.split(',')` and taking the trigraph form of any
+            // 3-char ASCII-uppercase entry that's in the CVE
+            // recognition set.
+            let other_trigraphs: Vec<&str> = block
+                .split(',')
+                .map(str::trim)
+                .filter(|e| {
+                    e.len() == 3
+                        && e.bytes().all(|b| b.is_ascii_uppercase())
+                        && *e != trimmed
+                        && token_set.is_trigraph(e)
+                })
+                .collect();
+            candidates.retain(|c| !other_trigraphs.contains(&c.token));
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // Rank candidates by (distance, then country-code
+            // log-prior). The plain Levenshtein hits for a 3-char
+            // input often produce 20+ distance-2 candidates (every
+            // other 3-char trigraph that shares one letter). Without
+            // a prior-rank pre-filter, the K=16 attempt cap upstream
+            // gets exhausted by low-prior alternates and the
+            // high-prior ones get dropped. Sorting by (distance asc,
+            // log-prior desc) keeps the most plausible candidates
+            // first; we cap at TRIGRAPH_FUZZY_TOP_K per ambiguous
+            // entry to bound the candidate-set growth.
+            //
+            // The cap value (4) is sized so a single ambiguous entry
+            // doesn't crowd out the other decoder paths
+            // (`fuzzy_corrected`, reorder, delimiter-insert, etc.):
+            // 4 alternates ≤ K_MAX_CANDIDATES (8) leaves room for
+            // the standard candidates the dispatcher also needs.
+            const TRIGRAPH_FUZZY_TOP_K: usize = 4;
+            candidates.sort_by(|a, b| {
+                a.distance.cmp(&b.distance).then_with(|| {
+                    let pa = marque_capco::priors::country_code_log_prior(a.token)
+                        .unwrap_or(f32::NEG_INFINITY);
+                    let pb = marque_capco::priors::country_code_log_prior(b.token)
+                        .unwrap_or(f32::NEG_INFINITY);
+                    pb.total_cmp(&pa)
+                })
+            });
+            candidates.truncate(TRIGRAPH_FUZZY_TOP_K);
+
+            for cand in &candidates {
+                // Reconstruct the full `text` with the entry replaced.
+                // The 3-char trimmed sub-slice within the entry
+                // preserves any surrounding whitespace.
+                let lead_ws_len = entry.len() - entry.trim_start().len();
+                let trail_ws_len = entry.len() - entry.trim_end().len();
+                let mut rewritten_entry = String::with_capacity(entry.len());
+                rewritten_entry.push_str(&entry[..lead_ws_len]);
+                rewritten_entry.push_str(cand.token);
+                rewritten_entry.push_str(&entry[entry.len() - trail_ws_len..]);
+
+                let mut alt = String::with_capacity(text.len());
+                alt.push_str(&text[..header_end + entry_start]);
+                alt.push_str(&rewritten_entry);
+                alt.push_str(&text[header_end + entry_end..]);
+
+                // `FeatureId` is a closed audit-schema enum (see
+                // `crates/rules/src/confidence.rs` and `MARQUE_AUDIT_SCHEMA`);
+                // pair each (id, delta) directly off `cand.distance`
+                // so the match is total over the only two outcomes
+                // `cand.distance` can take here. The standalone fuzzy
+                // matcher caps results at `MAX_EDIT_DISTANCE = 2`.
+                let entry = if cand.distance <= 1 {
+                    FeatureEntry {
+                        id: FeatureId::EditDistance1,
+                        delta: -0.5,
+                    }
+                } else {
+                    FeatureEntry {
+                        id: FeatureId::EditDistance2,
+                        delta: -1.2,
+                    }
+                };
+                out.push((alt, entry));
+            }
+        }
+
+        search_start = block_end;
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
 // SCI delimiter recovery (issue #198 — #133 PR 10)
 // ---------------------------------------------------------------------------
 
@@ -2938,11 +3231,18 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// Returns `(prior, posterior)` where:
 ///
 /// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
-///   marking's canonical tokens. This is the prior alone — nothing
-///   else — and is what [`Candidate::prior_log_odds`] is documented
-///   to carry (see `crates/scheme/src/ambiguity.rs`). Tokens missing
-///   from the baked table contribute [`MISSING_TOKEN_LOG_PRIOR`]
-///   (a below-observed-floor penalty) rather than `0.0`.
+///   marking's canonical tokens **plus** Σ
+///   [`marque_capco::priors::country_code_log_prior`] over the
+///   marking's `rel_to` country codes (issue #233). This is the prior
+///   alone — nothing else — and is what
+///   [`Candidate::prior_log_odds`] is documented to carry (see
+///   `crates/scheme/src/ambiguity.rs`). Tokens or country codes
+///   missing from the baked tables contribute
+///   [`MISSING_TOKEN_LOG_PRIOR`] (a below-observed-floor penalty)
+///   rather than `0.0`. The country-code contribution is what lets
+///   the decoder break fuzzy-correction ties between common (USA,
+///   GBR, AUS) and rare-lookalike (USB-not-a-country, UZB, ASM, AUT)
+///   trigraphs in REL TO blocks.
 /// - `posterior` = `prior + Σ attempt.features[i].delta + structural
 ///   penalties`. This is the quantity the decoder sorts and thresholds
 ///   on. The only structural penalty today is
@@ -2970,6 +3270,32 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     let tokens = canonical_tokens_for(marking);
     for token in tokens {
         prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+    }
+
+    // Country-code prior contribution (issue #233). REL TO country
+    // codes are not part of the `canonical_tokens_for` set because
+    // `CountryCode::as_str()` returns a borrowed `&str` rather than
+    // `&'static str`, and because the per-token corpus coverage for
+    // country codes used to be sparse. Issue #233 adds a parallel
+    // `COUNTRY_CODE_BASE_RATES` table (issue #186 sub-feature 1) so
+    // the decoder can break fuzzy ties between popular codes (USA,
+    // GBR, AUS, FVEY, …) and rare lookalikes (UZB, ASM,
+    // AUT-as-Austria) by log-prior delta rather than edit distance
+    // alone. Look up each observed REL TO code at score-time —
+    // shape-agnostic, so the loop handles 2-char (`EU`), 3-char, and
+    // 4-char tetragraphs uniformly. Duplicate REL TO entries do not
+    // provide additional evidence, so score each distinct country
+    // code at most once. Unknown entries fall to
+    // MISSING_TOKEN_LOG_PRIOR — the same penalty the non-country-code
+    // path uses for unrecognized tokens, which is the correct
+    // behavior for a candidate that resolved to a non-CVE country
+    // string.
+    let mut seen_rel_to_codes = BTreeSet::new();
+    for country in marking.0.rel_to.iter() {
+        if seen_rel_to_codes.insert(country.as_str()) {
+            prior += marque_capco::priors::country_code_log_prior(country.as_str())
+                .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+        }
     }
 
     // Posterior: prior plus feature deltas plus structural penalties.
@@ -3091,14 +3417,16 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 ///   AEA-bearing candidates across the board.
 /// - `fgi_marker` — category token `"FGI"` when an FGI marker is set.
 ///
-/// Deliberately NOT included in scoring:
+/// Deliberately NOT included here:
 ///
 /// - `sar_markings` — SAR program identifiers are agency-assigned
 ///   codewords (open set, not in the baked priors).
-/// - `rel_to` country codes — `CountryCode::as_str()` returns a
-///   `&str` tied to `&self`, not `&'static str`. Plumbing a
-///   static-string helper is left as future work; the priors
-///   corpus coverage for country codes is sparse anyway.
+/// - `rel_to` country codes — scored separately in
+///   [`score_candidate`] via
+///   [`marque_capco::priors::country_code_log_prior`] (issue #233).
+///   `CountryCode::as_str()` returns a `&str` tied to `&self`, not
+///   `&'static str`, so the country-code contribution is summed at
+///   score-time rather than collected here.
 /// - CAB fields (`classified_by`, `derived_from`, `declassify_on`) —
 ///   free-form text, not CVE-enumerable.
 ///
@@ -3887,6 +4215,111 @@ mod tests {
         fn from(id: FeatureId) -> Self {
             Self { id, delta: -0.4 }
         }
+    }
+
+    #[test]
+    fn score_candidate_includes_country_code_prior_for_rel_to() {
+        // Issue #233: `score_candidate` sums `country_code_log_prior` over
+        // the `rel_to` slice of the parsed marking. A marking with TWO REL TO
+        // entries must produce a strictly lower (more negative) prior than the
+        // same marking with ONE entry, because each country code contributes a
+        // negative log-prior term and GBR is a known high-frequency trigraph.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+
+        let one_candidate = MarkingCandidate {
+            span: Span::new(0, 18),
+            kind: MarkingType::Banner,
+        };
+        let one_parsed = parser
+            .parse(&one_candidate, b"SECRET//REL TO USA")
+            .expect("SECRET//REL TO USA must parse");
+        let one_marking = CapcoMarking::new(one_parsed.attrs);
+
+        let two_candidate = MarkingCandidate {
+            span: Span::new(0, 23),
+            kind: MarkingType::Banner,
+        };
+        let two_parsed = parser
+            .parse(&two_candidate, b"SECRET//REL TO USA, GBR")
+            .expect("SECRET//REL TO USA, GBR must parse");
+        let two_marking = CapcoMarking::new(two_parsed.attrs);
+
+        let no_features: Vec<FeatureEntry> = vec![];
+        let attempt_one = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+        let attempt_two = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA, GBR".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+
+        let (prior_one, _) = score_candidate(&attempt_one, &one_marking);
+        let (prior_two, _) = score_candidate(&attempt_two, &two_marking);
+
+        // GBR has a known negative log-prior, so adding it to the REL TO
+        // list must make the total prior strictly more negative.
+        assert!(
+            prior_two < prior_one,
+            "adding GBR to REL TO must lower (more negative) the prior via \
+             country_code_log_prior; prior_one={prior_one}, prior_two={prior_two}"
+        );
+    }
+
+    #[test]
+    fn score_candidate_deduplicates_rel_to_entries() {
+        // Issue #233 dedup guard: a duplicate REL TO entry (e.g. "USA, USA")
+        // must score identically to the deduplicated form ("USA") because
+        // `seen_rel_to_codes` prevents double-counting.
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+
+        let dup_candidate = MarkingCandidate {
+            span: Span::new(0, 23),
+            kind: MarkingType::Banner,
+        };
+        // Parser may or may not produce two rel_to entries for "USA, USA" —
+        // the dedup guard must be robust either way: the prior must equal
+        // that of a single "USA" entry.
+        let dup_parsed = parser
+            .parse(&dup_candidate, b"SECRET//REL TO USA, USA")
+            .expect("SECRET//REL TO USA, USA must parse leniently");
+        let dup_marking = CapcoMarking::new(dup_parsed.attrs);
+
+        let once_candidate = MarkingCandidate {
+            span: Span::new(0, 18),
+            kind: MarkingType::Banner,
+        };
+        let once_parsed = parser
+            .parse(&once_candidate, b"SECRET//REL TO USA")
+            .expect("SECRET//REL TO USA must parse");
+        let once_marking = CapcoMarking::new(once_parsed.attrs);
+
+        let no_features: Vec<FeatureEntry> = vec![];
+        let attempt_dup = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA, USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+        let attempt_once = CanonicalAttempt {
+            bytes: b"SECRET//REL TO USA".to_vec(),
+            features: no_features.clone(),
+            fix_source: marque_rules::FixSource::DecoderPosterior,
+        };
+
+        let (prior_dup, _) = score_candidate(&attempt_dup, &dup_marking);
+        let (prior_once, _) = score_candidate(&attempt_once, &once_marking);
+
+        // Deduplication ensures the duplicate USA is only scored once, so
+        // both priors must be equal (same base tokens + same single USA prior).
+        assert!(
+            (prior_dup - prior_once).abs() < 1e-5,
+            "duplicate REL TO entry must not double-count the country-code prior; \
+             prior_dup={prior_dup}, prior_once={prior_once}"
+        );
     }
 
     #[test]

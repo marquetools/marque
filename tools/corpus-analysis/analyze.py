@@ -404,6 +404,69 @@ def analyze_cooccurrence(
 
 
 # ---------------------------------------------------------------------------
+# REL TO trigraph extraction (issue #233)
+# ---------------------------------------------------------------------------
+
+# Match a standalone ``REL TO`` header followed by comma- or
+# whitespace-separated entries until the block terminator. CAPCO §H.8
+# says ``//`` is the authoritative end-of-category separator (project
+# memory: `project_capco_separator_conventions`); the analyzer also
+# stops at end-of-line or end-of-portion ``)`` so the regex doesn't run
+# away on malformed inputs (post-processed in
+# `_extract_rel_to_trigraphs`, not in the regex itself). The body group
+# is greedy with a hard width cap of 200 chars to keep pathological
+# inputs from blowing up the regex backtracker; the post-processing cut
+# at ``//``/``\n``/``)`` narrows the captured text to the actual REL TO
+# body. The leading word boundary prevents matching ``REL TO`` inside
+# larger words such as ``SQUIRREL TO``.
+_REL_TO_BLOCK_RE = re.compile(
+    r"\bREL\s+TO\s+([A-Z][A-Z0-9_,\s]{0,200})",
+    re.IGNORECASE,
+)
+# Country codes inside a REL TO body land in this regex's matched set
+# at lengths 2-4 ASCII uppercase / digit / underscore — covering 2-char
+# (``EU``), 3-char trigraphs, and 4-char tetragraphs (``FVEY``, ``ACGU``,
+# ``NATO``). Longer ``CountryCode`` forms (e.g. ``AUSTRALIA_GROUP`` at
+# 15 chars) exist in the schema but are deliberately excluded here:
+# admitting 5+ char tokens absorbs prose words (``"USA, ALSO,"`` would
+# lift ``ALSO`` into the prior) and the longer codes appear too rarely
+# in real REL TO blocks to justify the false-positive risk. Adjust the
+# upper bound (and re-validate the prose-absorption risk) if a future
+# corpus shows meaningful frequency for the long codes.
+_REL_TO_TRIGRAPH_TOKEN_RE = re.compile(
+    r"\b[A-Z][A-Z0-9_]{1,3}\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_rel_to_trigraphs(text: str):
+    """
+    Yield trigraph tokens found in ``REL TO`` blocks within ``text``.
+
+    Conservative: only emits tokens that match the CAPCO-permissible
+    country-code byte set (uppercase ASCII / digit / underscore, length
+    2-4) and that appear in the body of a ``REL TO …`` header. Stops at
+    ``//`` because CAPCO §H.8 marks that as the category terminator;
+    stops at end-of-line / ``)`` to avoid bleeding into prose. Yields
+    every occurrence (does not deduplicate per document) so the
+    Counter receives true frequency.
+    """
+    for header_match in _REL_TO_BLOCK_RE.finditer(text):
+        body = header_match.group(1)
+        # Cut at the first block terminator. Keeping the cuts in
+        # priority order: ``//`` (category boundary), then newline, then
+        # ``)`` (portion-form close). Whichever appears earliest wins.
+        cut = len(body)
+        for term in ("//", "\n", ")"):
+            idx = body.find(term)
+            if 0 <= idx < cut:
+                cut = idx
+        body = body[:cut]
+        for m in _REL_TO_TRIGRAPH_TOKEN_RE.finditer(body):
+            yield m.group(0).upper()
+
+
+# ---------------------------------------------------------------------------
 # Main analysis loop
 # ---------------------------------------------------------------------------
 
@@ -427,12 +490,16 @@ def run_analysis(
     total_line_start_caps = Counter()
     total_inside_parens = Counter()
     total_cooccurrence = Counter()
-
-    # // stats
-    docs_with_dslash = 0
-    total_dslash = 0
-    dslash_in_url = 0
-    dslash_not_url = 0
+    # Per-country-code occurrence counts within REL TO blocks. Issue
+    # #233: baked into ``country_code_base_rates`` so the Phase-D
+    # decoder can disambiguate fuzzy candidates (e.g., USA vs UZB,
+    # AUS vs ASM) by corpus frequency rather than edit distance alone.
+    # The counter key space is whatever ``_REL_TO_TRIGRAPH_TOKEN_RE``
+    # collects: 2-char codes (``EU``), 3-char trigraphs, and 4-char
+    # tetragraphs (``FVEY``, ``ACGU``, ``NATO``). Longer ``CountryCode``
+    # forms (``AUSTRALIA_GROUP`` etc.) are deliberately excluded — see
+    # the regex comment for the prose-absorption rationale.
+    rel_to_trigraph_hits = Counter()
 
     print("Analyzing corpus...", file=sys.stderr)
 
@@ -476,6 +543,15 @@ def run_analysis(
                     dslash_in_url += 1
                 else:
                     dslash_not_url += 1
+
+        # REL TO country-code counts (issue #233). Walks each REL TO
+        # block and tallies the comma-separated tokens. The decoder's
+        # `country_code_base_rates` table consumes these counts so
+        # common codes (USA, GBR, AUS, FVEY, …) outweigh rare ones
+        # (UZB, ASM, AUT) when fuzzy candidates collide on edit
+        # distance alone.
+        for trigraph in _extract_rel_to_trigraphs(text):
+            rel_to_trigraph_hits[trigraph] += 1
 
     print(f"Done. {total_docs} documents, {total_words} words.", file=sys.stderr)
 
@@ -527,6 +603,11 @@ def run_analysis(
         "tokens": token_results,
         "token_categories": token_to_category,
         "cooccurrence_pairs": top_cooccurrences,
+        # Issue #233: per-trigraph hit counts inside REL TO blocks.
+        # Sorted by token name for stable output across runs (the priors
+        # baker re-sorts anyway, but a deterministic intermediate keeps
+        # the analyzer's JSON diff-clean under VCS).
+        "rel_to_trigraph_hits": dict(sorted(rel_to_trigraph_hits.items())),
     }
 
     return output
@@ -536,7 +617,83 @@ def run_analysis(
 # Phase D: corpus-derived priors output
 # ---------------------------------------------------------------------------
 
-PRIORS_SCHEMA_VERSION = "marque-priors-1"
+PRIORS_SCHEMA_VERSION = "marque-priors-2"
+
+# REL TO trigraph baseline counts, in REL TO blocks per million such
+# blocks. The Phase-D decoder uses these to break fuzzy ties between
+# high-frequency trigraphs (USA, GBR, AUS, …) and low-frequency
+# lookalikes (ASM, UZB, AUT-as-Austria) — see issue #233 (extracted
+# from #186 sub-feature 1).
+#
+# **Why a baseline rather than corpus-only counts.** The Enron corpus
+# is the engine's negative corpus (how often SECRET / NOFORN / REL TO
+# show up in unclassified English prose) and contains effectively
+# zero genuine REL TO blocks. Counting REL TO occurrences in Enron
+# would give every trigraph a 0 hit count, collapse the Laplace
+# smoothing to a single shared log-prior, and defeat the entire
+# point of a frequency table. Authoritative IC publication
+# frequency data is not openly redistributable in machine-readable
+# form, so this baseline encodes the order-of-magnitude ratios the
+# issue calls out (USA » FVEY partners » other NATO » rare ISO
+# trigraphs). The exact counts are heuristic; what matters is the
+# log-prior delta between popular and rare entries, which the decoder
+# uses as a tiebreaker against edit-distance differences.
+#
+# When a corpus is observed to contain real REL TO blocks (a future
+# corpus swap, a controlled-distribution dataset), the observed
+# counts add on top of these baselines via ``Counter`` addition in
+# ``derive_priors`` so genuine evidence ratchets the priors up
+# without losing the fuzzy-disambiguation guarantees.
+#
+# Citation: CAPCO-2016 §H.8 (REL TO syntax and FVEY-priority listing)
+# governs which trigraphs the rule itself blesses. The numeric ratios
+# below are not citations from that document — they are the priors
+# baker's statement of "USA appears at orders-of-magnitude higher
+# rate than UZB in real markings", which CAPCO does not codify.
+_REL_TO_COUNTRY_CODE_BASELINE = {
+    # FVEY core: by far the most-frequent REL TO entries in real IC
+    # markings (CAPCO §H.8 mandates US-first ordering).
+    "USA": 10000,
+    "GBR": 4000,
+    "CAN": 4000,
+    "AUS": 4000,
+    "NZL": 3500,
+    # FVEY collective tetragraph (CAPCO §H.8 p169-170). The
+    # tetragraph form is rarer than spelling out each member, but
+    # high enough above the noise floor that it must score above
+    # arbitrary-token edit distance.
+    "FVEY": 1500,
+    "ACGU": 800,
+    # NATO and the EU group — common in multinational programs.
+    "NATO": 1200,
+    "EU": 800,
+    # Tier-1 NATO partners frequently named in REL TO blocks.
+    "DEU": 600,
+    "FRA": 600,
+    "NLD": 500,
+    "NOR": 500,
+    "DNK": 400,
+    "ITA": 400,
+    "ESP": 300,
+    "BEL": 300,
+    "POL": 300,
+    "TUR": 250,
+    # Indo-Pacific and Middle East partners.
+    "JPN": 700,
+    "KOR": 600,
+    "ISR": 500,
+    # Lookalikes that ARE legitimate ISO trigraphs and would otherwise
+    # not appear in the table at all. Without these the decoder treats
+    # them as ``MISSING_TOKEN_LOG_PRIOR`` (= -12.0), which is more
+    # punitive than the Laplace-smoothed log-prior of a rare entry.
+    # Putting them in at low counts gives the decoder a finite,
+    # well-below-FVEY log-prior so fuzzy USB→USA wins on prior delta
+    # while genuine AUT (Austria) in a hand-typed marking still scores
+    # as "rare-but-known" rather than "unknown token".
+    "AUT": 50,  # Austria — fuzzy lookalike of AUS
+    "UZB": 5,   # Uzbekistan — fuzzy lookalike of USA
+    "ASM": 1,   # American Samoa — fuzzy lookalike of AUS
+}
 
 
 def _corpus_fingerprint(corpus_path: Path) -> str:
@@ -644,11 +801,39 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
         "top_secret_floor": 0.995,
     }
 
+    # Country-code base rates (issue #233). Counts come from REL TO
+    # blocks observed in the corpus, summed with the baseline ratios
+    # in ``_REL_TO_COUNTRY_CODE_BASELINE`` so the decoder always has a
+    # finite log-prior for FVEY partners and known fuzzy lookalikes.
+    # The emitted table covers all CAPCO country-code shapes — 2-char
+    # codes (``EU``), 3-char trigraphs, 4-char tetragraphs (``FVEY``,
+    # ``ACGU``, ``NATO``), and group codes — even though the legacy
+    # baseline name still says "trigraph". Smoothing follows the same
+    # Laplace formula as the token table so the two are directly
+    # comparable inside the decoder's ``score_candidate``:
+    # ``log_prior(USA) - log_prior(UZB)`` swamps a single
+    # edit-distance-1 advantage when USA's hit count exceeds UZB's by
+    # orders of magnitude.
+    raw_country_code_hits = analysis.get("rel_to_trigraph_hits", {}) or {}
+    country_code_counts = Counter(_REL_TO_COUNTRY_CODE_BASELINE)
+    country_code_counts.update(raw_country_code_hits)
+    total_country_code_hits = sum(country_code_counts.values())
+    country_code_vocab_size = max(1, len(country_code_counts))
+    country_code_denom = float(total_country_code_hits + country_code_vocab_size)
+    country_code_base_rates = {}
+    for tok, hits in country_code_counts.items():
+        log_prior = math.log(float(hits + 1) / country_code_denom)
+        country_code_base_rates[tok] = {
+            "count": int(hits),
+            "log_prior": round(log_prior, 6),
+        }
+
     return {
         "schema_version": PRIORS_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "token_base_rates": token_base_rates,
         "template_base_rates": template_base_rates,
+        "country_code_base_rates": country_code_base_rates,
         "strict_context_priors": strict_context_priors,
     }
 

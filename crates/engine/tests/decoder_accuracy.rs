@@ -119,18 +119,9 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-26, after issue #133 PR 9 landed
-/// REL TO structural repair as preprocessing — header
-/// transposition (`REL OT` → `REL TO`), header token-boundary
-/// (`RELT O` → `REL TO`), entry token-boundary (`A US` → `AUS`
-/// inside an entry), and entry comma misplacement (`AU,S GBR` →
-/// `AUS, GBR`). All four are structural patches gated by literal-
-/// shape matching (patterns 1, 2) or by the trigraph dictionary
-/// (`is_trigraph` for patterns 3, 4) — no fuzzy guessing. The
-/// riskier per-trigraph fuzzy cluster (`USB → USA`, `AUT → AUS`,
-/// `ASU → AUS`) is deferred to issue #186 because it requires
-/// corpus-weighted priors plus block-level CAPCO §H.8 invariants
-/// to disambiguate safely:
+/// Current measured rate (2026-04-28, after issue #233 landed
+/// corpus-weighted REL TO trigraph priors plus the candidate
+/// expansion that gets ambiguous fuzzy trigraphs to the scorer):
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
@@ -138,9 +129,20 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 94       | 130   |  72.3%  |
+/// | Typo              | 96       | 130   |  73.8%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **223**  | **260** | **85.8%** |
+/// | **Aggregate**     | **225**  | **260** | **86.5%** |
+///
+/// Movement from prior pin (issue #133 PR 9, 2026-04-26):
+/// `Typo` 72.3% → 73.8% (+2 fixtures: `USB → USA` and `ASU → AUS`,
+/// the per-trigraph fuzzy cluster the PR-9 comment block flagged as
+/// deferred to #186 / #233). Aggregate 85.8% → 86.5% (+0.7pp).
+///
+/// Issue #133 PR 9 landed the literal-shape REL TO structural
+/// repair patterns (`REL OT`/`RELT O`/`A US`/`AU,S `); issue #233
+/// landed the riskier per-trigraph fuzzy cluster (`USB`, `ASU`)
+/// behind corpus-weighted log-priors and the new
+/// `try_rel_to_fuzzy_trigraph_candidates` candidate expander.
 ///
 /// Pinned at the SC-004 target (0.85). Now that the decoder
 /// clears 85% (PR 9 lifted it to 85.8%), the regression floor and
@@ -177,11 +179,11 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.69` (~3 percentage points below the
-///   current 94/130 = 72.3% rate after PR 9). Wide-enough margin
-///   to absorb one or two fixtures dropping; a sustained drop
-///   trips the gate. Ratchet up as subsequent #133 PRs land REL
-///   TO trigraph fuzzy (issue #186), SCI compartment fuzzy, and
+/// - **`Typo`** pinned at `0.70` (~3 percentage points below the
+///   current 96/130 = 73.8% rate after issue #233 landed REL TO
+///   trigraph fuzzy priors). Wide-enough margin to absorb one or
+///   two fixtures dropping; a sustained drop trips the gate.
+///   Ratchet up as subsequent PRs land SCI compartment fuzzy and
 ///   the SAR / program-nickname recovery work blocked on #180.
 /// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
 ///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
@@ -191,21 +193,22 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 ///   losing to the absorbing parse. Any future fixture that
 ///   regresses fails the gate.
 ///
-/// Last ratcheted (2026-04-26, issue #133 PR 9) to the rates
-/// observed after REL TO structural repair landed as preprocessing
-/// in `generate_candidate_bytes`. One class moved: `Typo` (69.2%
-/// → 72.3%, +4 fixtures); the aggregate moved (84.2% → 85.8%) —
-/// crossing the SC-004 ≥85% target. The +4 came from the four
-/// REL TO structural patterns: header transposition (`REL OT` →
-/// `REL TO`), header token-boundary (`RELT O` → `REL TO`), entry
-/// token-boundary (`A US` → `AUS`), and entry comma misplacement
-/// (`AU,S GBR` → `AUS, GBR`).
+/// Last ratcheted (2026-04-28, issue #233) to the rates observed
+/// after REL TO trigraph fuzzy priors landed:
+/// `try_rel_to_fuzzy_trigraph_candidates` emits one canonical-byte
+/// alternate per fuzzy trigraph candidate inside REL TO blocks;
+/// `score_candidate` sums `country_code_log_prior` over each
+/// candidate's `rel_to` slice; the corpus-weighted log-prior delta
+/// (e.g., `log_prior(USA) - log_prior(UZB)` ≈ +7 nats) breaks ties
+/// at score time. One class moved: `Typo` (72.3% → 73.8%, +2
+/// fixtures: `USB → USA` and `ASU → AUS`); the aggregate moved
+/// (85.8% → 86.5%, +2 fixtures).
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
     ("MissingDelimiter", 1.00),
     ("Reordering", 1.00),
     ("SupersededToken", 0.50),
-    ("Typo", 0.69),
+    ("Typo", 0.70),
     ("WrongCase", 1.00),
 ];
 
