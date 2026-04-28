@@ -265,9 +265,9 @@ impl IsmDate {
     /// # Timezone handling
     ///
     /// Offsets are compared in their *represented* form, not after UTC
-    /// normalisation. `DateHourMin { hour: 14, offset: UTC }` and
+    /// normalization. `DateHourMin { hour: 14, offset: UTC }` and
     /// `DateHourMin { hour: 9, offset: -05:00 }` are the same civil instant
-    /// but `contains` does not normalise across offsets.
+    /// but `contains` does not normalize across offsets.
     pub fn contains(&self, point: &IsmDate) -> bool {
         // Year must always match.
         if self.year() != point.year() {
@@ -311,13 +311,7 @@ impl IsmDate {
                         minute,
                         offset,
                         ..
-                    } => {
-                        month == sm
-                            && day == sd
-                            && hour == sh
-                            && minute == smin
-                            && offset == soff
-                    }
+                    } => month == sm && day == sd && hour == sh && minute == smin && offset == soff,
                     IsmDate::DateTime {
                         month,
                         day,
@@ -325,13 +319,7 @@ impl IsmDate {
                         minute,
                         offset,
                         ..
-                    } => {
-                        month == sm
-                            && day == sd
-                            && hour == sh
-                            && minute == smin
-                            && offset == soff
-                    }
+                    } => month == sm && day == sd && hour == sh && minute == smin && offset == soff,
                     _ => false,
                 }
             }
@@ -389,7 +377,7 @@ impl IsmDate {
     /// - `DateHourMin` end = (y, m, d, H, M, 59, 999_999_999)
     /// - `DateTime` end = the precise instant
     ///
-    /// UTC offsets are **not** normalised; comparison is on the civil
+    /// UTC offsets are **not** normalized; comparison is on the civil
     /// end-of-span components.
     pub fn end_cmp(&self, other: &IsmDate) -> Ordering {
         let a = self.end_components();
@@ -561,8 +549,8 @@ fn parse_ism_date(s: &str) -> Result<IsmDate, ParseIsmDateError> {
             let y = parse_4digit_year(&bytes[0..4])?;
             let m = parse_2digits(&bytes[4..6])
                 .ok_or(ParseIsmDateError::new("invalid month digits"))?;
-            let d = parse_2digits(&bytes[6..8])
-                .ok_or(ParseIsmDateError::new("invalid day digits"))?;
+            let d =
+                parse_2digits(&bytes[6..8]).ok_or(ParseIsmDateError::new("invalid day digits"))?;
             validate_date(y, m, d)?;
             Ok(IsmDate::Date(y, m, d))
         }
@@ -579,8 +567,8 @@ fn parse_ism_date(s: &str) -> Result<IsmDate, ParseIsmDateError> {
             let y = parse_4digit_year(&bytes[0..4])?;
             let m = parse_2digits(&bytes[5..7])
                 .ok_or(ParseIsmDateError::new("invalid month digits"))?;
-            let d = parse_2digits(&bytes[8..10])
-                .ok_or(ParseIsmDateError::new("invalid day digits"))?;
+            let d =
+                parse_2digits(&bytes[8..10]).ok_or(ParseIsmDateError::new("invalid day digits"))?;
             validate_date(y, m, d)?;
             Ok(IsmDate::Date(y, m, d))
         }
@@ -593,7 +581,7 @@ fn parse_ism_date(s: &str) -> Result<IsmDate, ParseIsmDateError> {
         {
             parse_datetime_or_hourmind(s)
         }
-        _ => Err(ParseIsmDateError::new("unrecognised date format")),
+        _ => Err(ParseIsmDateError::new("unrecognized date format")),
     }
 }
 
@@ -603,21 +591,20 @@ fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
     // All ISM date strings are pure ASCII. Reject multi-byte UTF-8 up front
     // so every subsequent fixed byte-offset slice is panic-safe.
     if !s.is_ascii() {
-        return Err(ParseIsmDateError::new("date string contains non-ASCII characters"));
+        return Err(ParseIsmDateError::new(
+            "date string contains non-ASCII characters",
+        ));
     }
     let bytes = s.as_bytes();
 
     let y = parse_4digit_year(&bytes[0..4])?;
-    let m = parse_2digits(&bytes[5..7])
-        .ok_or(ParseIsmDateError::new("invalid month digits"))?;
-    let d = parse_2digits(&bytes[8..10])
-        .ok_or(ParseIsmDateError::new("invalid day digits"))?;
+    let m = parse_2digits(&bytes[5..7]).ok_or(ParseIsmDateError::new("invalid month digits"))?;
+    let d = parse_2digits(&bytes[8..10]).ok_or(ParseIsmDateError::new("invalid day digits"))?;
     validate_date(y, m, d)?;
 
-    let h = parse_2digits(&bytes[11..13])
-        .ok_or(ParseIsmDateError::new("invalid hour digits"))?;
-    let min = parse_2digits(&bytes[14..16])
-        .ok_or(ParseIsmDateError::new("invalid minute digits"))?;
+    let h = parse_2digits(&bytes[11..13]).ok_or(ParseIsmDateError::new("invalid hour digits"))?;
+    let min =
+        parse_2digits(&bytes[14..16]).ok_or(ParseIsmDateError::new("invalid minute digits"))?;
     if h > 23 {
         return Err(ParseIsmDateError::new("hour out of range"));
     }
@@ -629,8 +616,7 @@ fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
 
     // dateHourMinType: pattern ends here (no `:SS` part), followed by
     // optional offset or end-of-string.
-    if rest.is_empty() || rest.starts_with('Z') || rest.starts_with('+') || rest.starts_with('-')
-    {
+    if rest.is_empty() || rest.starts_with('Z') || rest.starts_with('+') || rest.starts_with('-') {
         let offset = parse_offset(rest)?;
         return Ok(IsmDate::DateHourMin {
             year: y,
@@ -646,7 +632,7 @@ fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
     if !rest.starts_with(':') || rest.len() < 3 {
         return Err(ParseIsmDateError::new("expected ':SS' in dateTime"));
     }
-    let sec_bytes = rest[1..3].as_bytes();
+    let sec_bytes = &rest.as_bytes()[1..3];
     let sec = parse_2digits(sec_bytes).ok_or(ParseIsmDateError::new("invalid second digits"))?;
     if sec > 59 {
         return Err(ParseIsmDateError::new("second out of range"));
@@ -655,18 +641,14 @@ fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
     let after_sec = &rest[3..];
 
     // Optional fractional seconds: ".ddd..."
-    let (nanosecond, after_frac) = if after_sec.starts_with('.') {
-        let frac_str = &after_sec[1..];
+    let (nanosecond, after_frac) = if let Some(frac_str) = after_sec.strip_prefix('.') {
         // Collect consecutive digit characters.
-        let digit_end = frac_str
-            .bytes()
-            .take_while(|b| b.is_ascii_digit())
-            .count();
+        let digit_end = frac_str.bytes().take_while(|b| b.is_ascii_digit()).count();
         if digit_end == 0 {
             return Err(ParseIsmDateError::new("empty fractional seconds"));
         }
         let frac_digits = &frac_str[..digit_end];
-        // Normalise to 9 digits (nanosecond precision).
+        // Normalize to 9 digits (nanosecond precision).
         let ns = parse_frac_as_nanoseconds(frac_digits)?;
         (ns, &frac_str[digit_end..])
     } else {
@@ -704,15 +686,15 @@ fn parse_offset(s: &str) -> Result<Option<UtcOffset>, ParseIsmDateError> {
                 ));
             }
             let sign: i8 = if s.starts_with('+') { 1 } else { -1 };
-            let oh = parse_2digits(&b[1..3])
-                .ok_or(ParseIsmDateError::new("invalid offset hour"))?;
-            let om = parse_2digits(&b[4..6])
-                .ok_or(ParseIsmDateError::new("invalid offset minute"))?;
+            let oh =
+                parse_2digits(&b[1..3]).ok_or(ParseIsmDateError::new("invalid offset hour"))?;
+            let om =
+                parse_2digits(&b[4..6]).ok_or(ParseIsmDateError::new("invalid offset minute"))?;
             UtcOffset::from_hhmm(sign, oh, om)
                 .ok_or(ParseIsmDateError::new("UTC offset out of range"))
                 .map(Some)
         }
-        _ => Err(ParseIsmDateError::new("unrecognised timezone suffix")),
+        _ => Err(ParseIsmDateError::new("unrecognized timezone suffix")),
     }
 }
 
@@ -1140,10 +1122,7 @@ mod tests {
 
     #[test]
     fn to_maxdate_str_date() {
-        assert_eq!(
-            &*IsmDate::Date(2003, 4, 15).to_maxdate_str(),
-            "20030415"
-        );
+        assert_eq!(&*IsmDate::Date(2003, 4, 15).to_maxdate_str(), "20030415");
     }
 
     // -----------------------------------------------------------------------

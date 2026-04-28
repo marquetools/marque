@@ -572,11 +572,8 @@ fn generate_values(out: &Path, schema_dir: &Path) {
             } else {
                 "expansion-enabled"
             };
-            let mut entry_line = format!(
-                "/// - `{}` ({kind}): {}",
-                ext.code,
-                ext.description.trim(),
-            );
+            let mut entry_line =
+                format!("/// - `{}` ({kind}): {}", ext.code, ext.description.trim(),);
             // Append temporal activity window when present (Phase 3 plumbing).
             match (&ext.active_from, &ext.active_to) {
                 (Some(af), Some(at)) => {
@@ -1587,9 +1584,7 @@ fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
                         + (bytes[3] - b'0') as i32;
                     let m = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
                     let d = (bytes[8] - b'0') * 10 + (bytes[9] - b'0');
-                    (1..=12).contains(&m)
-                        && d >= 1
-                        && d <= build_days_in_month(y, m)
+                    (1..=12).contains(&m) && d >= 1 && d <= build_days_in_month(y, m)
                 }
         }
         _ => false,
