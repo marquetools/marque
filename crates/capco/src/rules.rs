@@ -2224,6 +2224,17 @@ const SUGGEST_LOG_MARGIN: f32 = 4.0;
 /// Picked at `0.5` to make the audit-record posterior land in a
 /// neutral middle bucket (a value at `1.0` would suggest "we're
 /// sure" and confuse downstream tooling that filters by confidence).
+///
+/// **Config-override interaction**: setting `S004 = "fix"` in
+/// `.marque.toml` is a no-op. The severity-override pass would
+/// rewrite `Suggest → Fix`, but the engine's lint post-pass then
+/// demotes any `Fix`-severity diagnostic with a sub-threshold
+/// fix back to `Suggest` — and `0.5 < 0.95` (the default
+/// confidence threshold) means S004's fix never clears the gate.
+/// To get S004 fixes auto-applied a user would need both
+/// `S004 = "fix"` AND a per-call `--confidence 0.5` (or lower)
+/// override; for now the suggest-don't-fix channel is intentionally
+/// hard advisory.
 const SUGGEST_CONFIDENCE: f32 = 0.5;
 
 /// Compute Levenshtein edit distance between two byte slices.
@@ -2342,7 +2353,17 @@ impl Rule for RelToTrigraphSuggestRule {
             // Iterating the full `COUNTRY_CODE_BASE_RATES` table is
             // O(n) but the table is bounded (~340 codes) and the rule
             // fires once per `rel_to` entry. Acceptable.
-            let mut best: Option<(&'static str, f32)> = None;
+            //
+            // The triple `(token, log_prior, dist)` is what the
+            // tie-breaking ladder reads — distance is tracked so a
+            // log-prior tie deterministically picks the shorter-edit
+            // candidate, and a same-distance tie picks the
+            // lexicographically smaller token. Corpus-derived priors
+            // tie exactly only when two entries share a build-time
+            // smoothing floor, but pinning the order makes the rule's
+            // output reproducible across `COUNTRY_CODE_BASE_RATES`
+            // table reorderings.
+            let mut best: Option<(&'static str, f32, usize)> = None;
             for cand in COUNTRY_CODE_BASE_RATES {
                 if cand.token == trigraph {
                     continue;
@@ -2358,18 +2379,33 @@ impl Rule for RelToTrigraphSuggestRule {
                 if dist == 0 || dist > 2 {
                     continue;
                 }
-                // Keep the higher-prior candidate; tie-break by
-                // shorter edit distance, then lexicographically.
+                // Pick the higher-prior candidate. On a log-prior
+                // tie, prefer the shorter edit distance; on a
+                // distance tie too, fall back to lexicographic
+                // order on the token. Each rung of the ladder is a
+                // strict comparison so the resolution is total.
                 let take = match best {
                     None => true,
-                    Some((_, prev_prior)) => cand.log_prior > prev_prior,
+                    Some((prev_token, prev_prior, prev_dist)) => {
+                        if cand.log_prior > prev_prior {
+                            true
+                        } else if cand.log_prior < prev_prior {
+                            false
+                        } else if dist < prev_dist {
+                            true
+                        } else if dist > prev_dist {
+                            false
+                        } else {
+                            cand.token < prev_token
+                        }
+                    }
                 };
                 if take {
-                    best = Some((cand.token, cand.log_prior));
+                    best = Some((cand.token, cand.log_prior, dist));
                 }
             }
 
-            let Some((candidate, _candidate_log_prior)) = best else {
+            let Some((candidate, _candidate_log_prior, _candidate_dist)) = best else {
                 continue;
             };
 
@@ -7241,6 +7277,74 @@ mod tests {
                 "unexpected token {trimmed:?} in S004 message: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn s004_skips_when_trigraph_spans_shorter_than_rel_to_list() {
+        // Defensive guard against a future parser change that no
+        // longer emits one `RelToTrigraph` token span per `rel_to`
+        // entry. Today the parser does emit them 1:1; if that
+        // contract drifts (e.g., a parser refactor that filters
+        // tetragraph-expanded entries differently), the rule must
+        // skip the misaligned entries instead of producing a
+        // diagnostic with the wrong span.
+        use marque_ism::{CountryCode, IsmAttributes};
+        use marque_rules::{MarkingType, RuleContext};
+
+        let mut attrs = IsmAttributes::default();
+        // Two REL TO entries (AUT triggers the suggest, USA does
+        // not) but ZERO RelToTrigraph token spans — the defensive
+        // path must hit the `trigraph_spans.get(idx)` None arm
+        // for AUT's would-be suggestion and bail out.
+        attrs.rel_to = Box::new([
+            CountryCode::try_new(b"USA").expect("USA is a valid country code"),
+            CountryCode::try_new(b"AUT").expect("AUT is a valid country code"),
+        ]);
+        // Leave attrs.token_spans empty.
+
+        let ctx = RuleContext {
+            marking_type: MarkingType::Banner,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: None,
+        };
+        let rule = super::RelToTrigraphSuggestRule;
+        let diags = <super::RelToTrigraphSuggestRule as Rule>::check(&rule, &attrs, &ctx);
+        assert!(
+            diags.is_empty(),
+            "S004 must skip when trigraph spans don't align with rel_to: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_tie_breaking_is_deterministic() {
+        // M-1 (Copilot review): the doc comment promises tie-breaking
+        // by (1) shorter edit distance, then (2) lexicographic order
+        // on the token. Pin the contract end-to-end against the
+        // canonical AUT → AUS fixture: AUS is the unique winner —
+        // any rerun of the rule must pick AUS, never `AUT`-adjacent
+        // codes that share a similar log-prior delta.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on AUT");
+        let fix = s004.fix.as_ref().expect("S004 must carry a fix");
+        // Run again — same input, same output (no nondeterministic
+        // tie-break paths).
+        let diags2 = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004_2 = diags2
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on second run");
+        let fix2 = s004_2.fix.as_ref().expect("second-run fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            fix2.replacement.as_ref(),
+            "S004 picks must be deterministic across runs"
+        );
+        assert_eq!(fix.replacement.as_ref(), "AUS");
     }
 
     #[test]
