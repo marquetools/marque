@@ -398,7 +398,7 @@ impl IsmDate {
     }
 
     /// Returns the end-of-span as a sortable `YYYYMMDD` string for use as a
-    /// [`crate::MaxDate`][marque-scheme `MaxDate`] key.
+    /// MaxDate lattice key.
     ///
     /// The string is always 8 ASCII digits. Lex order on these strings is
     /// chronological, so `MaxDate`'s lex join produces the correct

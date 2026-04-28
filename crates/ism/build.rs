@@ -1553,11 +1553,7 @@ fn validate_temporal_field(s: &str, field: &str, code: &str, path: &str) {
             bytes[4] == b'-'
                 && bytes[0..4].iter().all(|b| b.is_ascii_digit())
                 && bytes[5..7].iter().all(|b| b.is_ascii_digit())
-                && bytes[5] <= b'1'
-                && (bytes[5] < b'1' || bytes[6] <= b'2') // month 01–12
-                && bytes[6] != b'0'
-                || {
-                    // Allow 01-12 by checking the numeric range.
+                && {
                     let month = (bytes[5] - b'0') * 10 + (bytes[6] - b'0');
                     (1..=12).contains(&month)
                 }
