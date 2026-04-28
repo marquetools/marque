@@ -2848,8 +2848,7 @@ pub(crate) fn canonicalize_trigraph_list(
 pub(crate) fn dedup_country_codes(
     codes: &[marque_ism::CountryCode],
 ) -> Vec<marque_ism::CountryCode> {
-    let mut seen: HashSet<marque_ism::CountryCode> =
-        HashSet::with_capacity(codes.len());
+    let mut seen: HashSet<marque_ism::CountryCode> = HashSet::with_capacity(codes.len());
     let mut out: Vec<marque_ism::CountryCode> = Vec::with_capacity(codes.len());
     for &code in codes.iter() {
         if seen.insert(code) {
