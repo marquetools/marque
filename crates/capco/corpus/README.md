@@ -60,7 +60,7 @@ or the decoder's scoring shape changes.
     "classification//dissem":                { "count":  8000, "log_prior": -2.00 },
     "classification//sci-block//dissem":     { "count":   400, "log_prior": -4.10 }
   },
-  "trigraph_base_rates": {
+  "country_code_base_rates": {
     "USA": { "count": 10000, "log_prior": -1.28 },
     "GBR": { "count":  4000, "log_prior": -2.19 },
     "UZB": { "count":     5, "log_prior": -8.69 }
@@ -78,7 +78,7 @@ Field contract (what `build.rs` expects):
 - `schema_version` — opaque string; bumped when the shape changes.
   `build.rs` refuses an unknown version rather than silently parsing a
   mismatched shape. The current version is `marque-priors-2` (issue
-  #233 added `trigraph_base_rates`).
+  #233 added `country_code_base_rates`).
 - `corpus_fingerprint` — SHA-512 fingerprint of the corpus input that
   produced this file, encoded as `sha512:<hex>`. Computed over file
   metadata only (relative path, size, mtime) — never over file
@@ -96,14 +96,18 @@ Field contract (what `build.rs` expects):
 - `template_base_rates` — one entry per grammar template shape the
   generator observed. Keys are template identifiers matching the
   `GrammarTemplate` surface the decoder consumes (T059).
-- `trigraph_base_rates` — one entry per country trigraph the priors
-  pipeline counted in REL TO blocks. Same shape as `token_base_rates`:
-  `{count, log_prior}`. The decoder consumes this so REL TO fuzzy
-  candidates are weighted by real-world frequency rather than
-  collapsing to `MISSING_TOKEN_LOG_PRIOR` for everything. The current
-  baseline encodes order-of-magnitude FVEY-vs-rare ratios because the
-  Enron corpus contains effectively zero genuine REL TO blocks; see
-  `_REL_TO_TRIGRAPH_BASELINE` in
+- `country_code_base_rates` — one entry per CAPCO country code the
+  priors pipeline counted in REL TO blocks. Same shape as
+  `token_base_rates`: `{count, log_prior}`. The table covers every
+  CAPCO country-code shape — 2-char codes (e.g., `EU`), 3-char
+  trigraphs (`USA`, `GBR`, `AUS`, …), 4-char tetragraphs (`FVEY`,
+  `ACGU`, `NATO`, …), and group codes — not just trigraphs. The
+  decoder consumes this so REL TO fuzzy candidates are weighted by
+  real-world frequency rather than collapsing to
+  `MISSING_TOKEN_LOG_PRIOR` for everything. The current baseline
+  encodes order-of-magnitude FVEY-vs-rare ratios because the Enron
+  corpus contains effectively zero genuine REL TO blocks; see
+  `_REL_TO_COUNTRY_CODE_BASELINE` in
   `tools/corpus-analysis/analyze.py` for the rationale and citation
   to CAPCO-2016 §H.8.
 - `strict_context_priors` — scalar floors used by FR-011. Each floor is

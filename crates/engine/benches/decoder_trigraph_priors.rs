@@ -17,7 +17,7 @@
 //!    finds USB is not a valid trigraph, asks the trigraph fuzzy
 //!    matcher for all candidates within `MAX_EDIT_DISTANCE`, and
 //!    emits one canonical-byte alternate per candidate.
-//! 4. `score_candidate` sums `trigraph_log_prior` over each
+//! 4. `score_candidate` sums `country_code_log_prior` over each
 //!    candidate's `rel_to` slice; the popular-vs-rare delta breaks
 //!    the tie.
 //!

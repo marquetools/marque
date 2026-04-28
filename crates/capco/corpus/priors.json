@@ -397,7 +397,7 @@
       "log_prior": -6.932986
     }
   },
-  "trigraph_base_rates": {
+  "country_code_base_rates": {
     "USA": {
       "count": 10000,
       "log_prior": -1.276128

@@ -231,6 +231,14 @@ impl<'v> FuzzyVocabMatcher<'v> {
     /// Like [`Self::correct_all`] but with a caller-controlled
     /// confidence floor.
     ///
+    /// `confidence_floor` MUST lie in `[0.0, 1.0]` — `correction_confidence`
+    /// returns values in that range, so a negative floor would silently
+    /// disable filtering (the comparison `confidence >= negative_floor`
+    /// is always true) and a floor `> 1.0` would silently drop every
+    /// match. A debug build panics on a misuse instead of producing a
+    /// release binary that returns counterintuitive empty / unfiltered
+    /// results.
+    ///
     /// The default floor (`MIN_USEFUL_CONFIDENCE` = 0.45) excludes
     /// distance-2 corrections of 3-char inputs, which is the right
     /// safety policy for the standard fuzzy path because those
@@ -250,6 +258,10 @@ impl<'v> FuzzyVocabMatcher<'v> {
         token: &str,
         confidence_floor: f32,
     ) -> Vec<FuzzyCorrection> {
+        debug_assert!(
+            (0.0..=1.0).contains(&confidence_floor),
+            "confidence_floor must be in [0.0, 1.0], got {confidence_floor}"
+        );
         if self.vocab.binary_search(&token).is_ok() {
             return Vec::new();
         }

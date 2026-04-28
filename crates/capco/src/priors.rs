@@ -121,9 +121,17 @@ pub fn template_log_prior(name: &str) -> Option<f32> {
         .map(|i| TEMPLATE_BASE_RATES[i].log_prior)
 }
 
-/// Look up a country trigraph's log-prior (issue #233).
+/// Look up a country code's log-prior (issue #233).
 ///
-/// Returns `None` for trigraphs the priors generator did not surface
+/// The backing [`COUNTRY_CODE_BASE_RATES`] table covers every CAPCO
+/// country-code shape — 2-char codes (e.g., `EU`), 3-char trigraphs
+/// (`USA`, `GBR`, `AUS`, …), 4-char tetragraphs (`FVEY`, `ACGU`,
+/// `NATO`, …), and group codes (e.g., `AUSTRALIA_GROUP` if surfaced
+/// by the corpus pipeline). The lookup is shape-agnostic: callers
+/// pass the canonical token form and binary-search returns whatever
+/// is in the table.
+///
+/// Returns `None` for codes the priors generator did not surface
 /// (rare ISO codes outside the FVEY / NATO / Indo-Pacific baseline) —
 /// decoder code falls back to [`MISSING_TOKEN_LOG_PRIOR`] in that
 /// case, which is more punitive than a Laplace-smoothed zero count
@@ -132,11 +140,11 @@ pub fn template_log_prior(name: &str) -> Option<f32> {
 /// The decoder calls this once per token in a candidate's `rel_to`
 /// list, so the same sort-invariant-backed binary search as
 /// [`token_log_prior`] applies.
-pub fn trigraph_log_prior(token: &str) -> Option<f32> {
-    TRIGRAPH_BASE_RATES
+pub fn country_code_log_prior(token: &str) -> Option<f32> {
+    COUNTRY_CODE_BASE_RATES
         .binary_search_by_key(&token, |t| t.token)
         .ok()
-        .map(|i| TRIGRAPH_BASE_RATES[i].log_prior)
+        .map(|i| COUNTRY_CODE_BASE_RATES[i].log_prior)
 }
 
 #[cfg(test)]
@@ -173,8 +181,8 @@ mod tests {
             "template base rates must be populated"
         );
         assert!(
-            !TRIGRAPH_BASE_RATES.is_empty(),
-            "trigraph base rates must be populated (issue #233)"
+            !COUNTRY_CODE_BASE_RATES.is_empty(),
+            "country-code base rates must be populated (issue #233)"
         );
     }
 
@@ -196,10 +204,10 @@ mod tests {
                 pair[1].name,
             );
         }
-        for pair in TRIGRAPH_BASE_RATES.windows(2) {
+        for pair in COUNTRY_CODE_BASE_RATES.windows(2) {
             assert!(
                 pair[0].token <= pair[1].token,
-                "trigraph table not sorted: {:?} before {:?}",
+                "country-code table not sorted: {:?} before {:?}",
                 pair[0].token,
                 pair[1].token,
             );
@@ -305,10 +313,10 @@ mod tests {
                 t.log_prior,
             );
         }
-        for t in TRIGRAPH_BASE_RATES {
+        for t in COUNTRY_CODE_BASE_RATES {
             assert!(
                 t.log_prior.is_finite() && t.log_prior <= 0.0,
-                "trigraph {:?} has invalid log_prior {}",
+                "country code {:?} has invalid log_prior {}",
                 t.token,
                 t.log_prior,
             );
@@ -336,17 +344,20 @@ mod tests {
     }
 
     #[test]
-    fn trigraph_log_prior_lookup_works() {
-        let first = TRIGRAPH_BASE_RATES
+    fn country_code_log_prior_lookup_works() {
+        let first = COUNTRY_CODE_BASE_RATES
             .first()
             .expect("table must be non-empty per tables_are_non_empty");
-        let lookup = trigraph_log_prior(first.token);
+        let lookup = country_code_log_prior(first.token);
         assert_eq!(lookup, Some(first.log_prior));
-        assert_eq!(trigraph_log_prior("this-trigraph-does-not-exist"), None);
+        assert_eq!(
+            country_code_log_prior("this-country-code-does-not-exist"),
+            None
+        );
     }
 
     #[test]
-    fn high_frequency_trigraphs_outweigh_lookalikes() {
+    fn high_frequency_country_codes_outweigh_lookalikes() {
         // Issue #233 acceptance: USA must outscore UZB (and AUS must
         // outscore ASM) by enough to swamp the decoder's
         // ``UNAMBIGUOUS_LOG_MARGIN = 1.6`` (~5× odds ratio). Otherwise
@@ -354,10 +365,10 @@ mod tests {
         // legitimate edit-distance-2 candidate purely on edit cost.
         const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
-        let usa = trigraph_log_prior("USA").expect("USA must be in trigraph table");
-        let uzb = trigraph_log_prior("UZB").expect("UZB must be in trigraph table");
-        let aus = trigraph_log_prior("AUS").expect("AUS must be in trigraph table");
-        let asm = trigraph_log_prior("ASM").expect("ASM must be in trigraph table");
+        let usa = country_code_log_prior("USA").expect("USA must be in country-code table");
+        let uzb = country_code_log_prior("UZB").expect("UZB must be in country-code table");
+        let aus = country_code_log_prior("AUS").expect("AUS must be in country-code table");
+        let asm = country_code_log_prior("ASM").expect("ASM must be in country-code table");
 
         let usa_uzb = usa - uzb;
         let aus_asm = aus - asm;

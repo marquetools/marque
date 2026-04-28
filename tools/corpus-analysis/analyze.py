@@ -478,10 +478,13 @@ def run_analysis(
     total_line_start_caps = Counter()
     total_inside_parens = Counter()
     total_cooccurrence = Counter()
-    # Per-trigraph occurrence counts within REL TO blocks. Issue #233:
-    # baked into ``trigraph_base_rates`` so the Phase-D decoder can
-    # disambiguate fuzzy candidates (e.g., USA vs UZB, AUS vs ASM) by
-    # corpus frequency rather than edit distance alone.
+    # Per-country-code occurrence counts within REL TO blocks. Issue
+    # #233: baked into ``country_code_base_rates`` so the Phase-D
+    # decoder can disambiguate fuzzy candidates (e.g., USA vs UZB,
+    # AUS vs ASM) by corpus frequency rather than edit distance alone.
+    # The counter key space includes 2-char codes (``EU``), 3-char
+    # trigraphs, 4-char tetragraphs (``FVEY``, ``ACGU``, ``NATO``),
+    # and group codes — whatever the upstream walker collects.
     rel_to_trigraph_hits = Counter()
 
     print("Analyzing corpus...", file=sys.stderr)
@@ -527,11 +530,12 @@ def run_analysis(
                 else:
                     dslash_not_url += 1
 
-        # REL TO trigraph counts (issue #233). Walks each REL TO block
-        # and tallies the comma-separated 3-letter tokens. The decoder's
-        # `trigraph_base_rates` table consumes these counts so common
-        # trigraphs (USA, GBR, AUS, …) outweigh rare ones (UZB, ASM,
-        # AUT) when fuzzy candidates collide on edit distance alone.
+        # REL TO country-code counts (issue #233). Walks each REL TO
+        # block and tallies the comma-separated tokens. The decoder's
+        # `country_code_base_rates` table consumes these counts so
+        # common codes (USA, GBR, AUS, FVEY, …) outweigh rare ones
+        # (UZB, ASM, AUT) when fuzzy candidates collide on edit
+        # distance alone.
         for trigraph in _extract_rel_to_trigraphs(text):
             rel_to_trigraph_hits[trigraph] += 1
 
@@ -632,7 +636,7 @@ PRIORS_SCHEMA_VERSION = "marque-priors-2"
 # below are not citations from that document — they are the priors
 # baker's statement of "USA appears at orders-of-magnitude higher
 # rate than UZB in real markings", which CAPCO does not codify.
-_REL_TO_TRIGRAPH_BASELINE = {
+_REL_TO_COUNTRY_CODE_BASELINE = {
     # FVEY core: by far the most-frequent REL TO entries in real IC
     # markings (CAPCO §H.8 mandates US-first ordering).
     "USA": 10000,
@@ -783,25 +787,29 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
         "top_secret_floor": 0.995,
     }
 
-    # Trigraph base rates (issue #233). Counts come from REL TO
+    # Country-code base rates (issue #233). Counts come from REL TO
     # blocks observed in the corpus, summed with the baseline ratios
-    # in ``_REL_TO_TRIGRAPH_BASELINE`` so the decoder always has a
+    # in ``_REL_TO_COUNTRY_CODE_BASELINE`` so the decoder always has a
     # finite log-prior for FVEY partners and known fuzzy lookalikes.
-    # Smoothing follows the same Laplace formula as the token table
-    # so the two are directly comparable inside the decoder's
-    # ``score_candidate``: ``log_prior(USA) - log_prior(UZB)`` swamps
-    # a single edit-distance-1 advantage when USA's hit count exceeds
-    # UZB's by orders of magnitude.
-    raw_trigraph_hits = analysis.get("rel_to_trigraph_hits", {}) or {}
-    trigraph_counts = Counter(_REL_TO_TRIGRAPH_BASELINE)
-    trigraph_counts.update(raw_trigraph_hits)
-    total_trigraph_hits = sum(trigraph_counts.values())
-    trigraph_vocab_size = max(1, len(trigraph_counts))
-    trigraph_denom = float(total_trigraph_hits + trigraph_vocab_size)
-    trigraph_base_rates = {}
-    for tok, hits in trigraph_counts.items():
-        log_prior = math.log(float(hits + 1) / trigraph_denom)
-        trigraph_base_rates[tok] = {
+    # The emitted table covers all CAPCO country-code shapes — 2-char
+    # codes (``EU``), 3-char trigraphs, 4-char tetragraphs (``FVEY``,
+    # ``ACGU``, ``NATO``), and group codes — even though the legacy
+    # baseline name still says "trigraph". Smoothing follows the same
+    # Laplace formula as the token table so the two are directly
+    # comparable inside the decoder's ``score_candidate``:
+    # ``log_prior(USA) - log_prior(UZB)`` swamps a single
+    # edit-distance-1 advantage when USA's hit count exceeds UZB's by
+    # orders of magnitude.
+    raw_country_code_hits = analysis.get("rel_to_trigraph_hits", {}) or {}
+    country_code_counts = Counter(_REL_TO_COUNTRY_CODE_BASELINE)
+    country_code_counts.update(raw_country_code_hits)
+    total_country_code_hits = sum(country_code_counts.values())
+    country_code_vocab_size = max(1, len(country_code_counts))
+    country_code_denom = float(total_country_code_hits + country_code_vocab_size)
+    country_code_base_rates = {}
+    for tok, hits in country_code_counts.items():
+        log_prior = math.log(float(hits + 1) / country_code_denom)
+        country_code_base_rates[tok] = {
             "count": int(hits),
             "log_prior": round(log_prior, 6),
         }
@@ -811,7 +819,7 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "token_base_rates": token_base_rates,
         "template_base_rates": template_base_rates,
-        "trigraph_base_rates": trigraph_base_rates,
+        "country_code_base_rates": country_code_base_rates,
         "strict_context_priors": strict_context_priors,
     }
 

@@ -1173,7 +1173,7 @@ fn rel_to_structural_repair_does_not_corrupt_aut_austria() {
 //
 // Phase 4 PR-1 baked per-token log-priors but explicitly deferred REL TO
 // trigraphs (see prior comment block above and CLAUDE.md "Phase 4 PR-1").
-// Issue #233 adds a parallel ``TRIGRAPH_BASE_RATES`` table so the decoder
+// Issue #233 adds a parallel ``COUNTRY_CODE_BASE_RATES`` table so the decoder
 // can break fuzzy ties between popular trigraphs (USA, GBR, AUS, FVEY)
 // and rare lookalikes (UZB, ASM, AUT-as-Austria) by log-prior delta
 // rather than edit distance alone. The decoder's existing
@@ -1187,7 +1187,7 @@ fn typo_usb_resolves_to_usa_via_trigraph_priors() {
     // (`SECRET//REL TO USB, AUS, GBR`). USB is not a country trigraph;
     // both USA (1 substitution: B→A) and UZB (1 substitution: S→Z) are
     // edit-distance-1 candidates. Without trigraph priors the decoder
-    // cannot break the tie. With ``TRIGRAPH_BASE_RATES`` USA's
+    // cannot break the tie. With ``COUNTRY_CODE_BASE_RATES`` USA's
     // log-prior dominates UZB's by ~7 nats — far above the
     // ``UNAMBIGUOUS_LOG_MARGIN``.
     let rx = DecoderRecognizer::new();

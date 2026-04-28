@@ -197,7 +197,7 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 /// after REL TO trigraph fuzzy priors landed:
 /// `try_rel_to_fuzzy_trigraph_candidates` emits one canonical-byte
 /// alternate per fuzzy trigraph candidate inside REL TO blocks;
-/// `score_candidate` sums `trigraph_log_prior` over each
+/// `score_candidate` sums `country_code_log_prior` over each
 /// candidate's `rel_to` slice; the corpus-weighted log-prior delta
 /// (e.g., `log_prior(USA) - log_prior(UZB)` ≈ +7 nats) breaks ties
 /// at score time. One class moved: `Typo` (72.3% → 73.8%, +2
