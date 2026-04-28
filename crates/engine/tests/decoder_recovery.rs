@@ -1238,6 +1238,57 @@ fn typo_asu_resolves_to_aus_via_trigraph_priors() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #234 PR-B: REL TO USA-injection for short first entries
+// ---------------------------------------------------------------------------
+//
+// `try_rel_to_fuzzy_trigraph_candidates` (PR-A, issue #233) handles
+// 3-char REL TO entry typos by fuzzy-matching against the trigraph
+// vocabulary. PR-B closes the complementary case: the FIRST entry of a
+// REL TO block, which §H.8 p151 requires to be USA, sometimes appears
+// as a 1- or 2-character token below `MIN_FUZZY_LEN = 3`. Without this
+// path the decoder produces zero candidates because the strict
+// parser drops the unknown short entry and PR-A's 3-char filter
+// excludes it from fuzzy matching.
+
+#[test]
+fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
+    // Pinned fixture: `tests/fixtures/mangled/typo/ad2bcfe3ac0b0765.json`
+    // (`SECRET//REL TO SA, AUS, GBR` → `SECRET//REL TO USA, AUS, GBR`).
+    // `SA` is 2 chars — below `MIN_FUZZY_LEN = 3`, so PR-A's fuzzy
+    // path skips it. The §H.8 p151 USA-first invariant gives PR-B
+    // the structural signal: the first entry of a REL TO block is
+    // canonically USA, so a short first entry is most plausibly a
+    // truncated USA. The injection candidate replaces `SA` with
+    // `USA`; corpus-weighted log-priors (PR-A's scoring contribution)
+    // carry it past the no-recovery baseline at score time.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO SA, AUS, GBR", &deep_cx())
+    else {
+        panic!(
+            "`SA → USA` recovery must produce an unambiguous decode \
+             (issue #234 PR-B fixture ad2bcfe3ac0b0765)"
+        );
+    };
+    assert_eq!(effective_level(&marking), Some(Classification::Secret));
+    let trigraphs: Vec<&str> = marking.0.rel_to.iter().map(|c| c.as_str()).collect();
+    assert!(
+        trigraphs.contains(&"USA"),
+        "first entry must be corrected to USA; got rel_to={:?}",
+        trigraphs,
+    );
+    assert!(
+        trigraphs.contains(&"AUS"),
+        "AUS must survive the recovery; got rel_to={:?}",
+        trigraphs,
+    );
+    assert!(
+        trigraphs.contains(&"GBR"),
+        "GBR must survive the recovery; got rel_to={:?}",
+        trigraphs,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Issue #133 PR 2: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //
