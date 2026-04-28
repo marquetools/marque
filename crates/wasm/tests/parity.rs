@@ -167,8 +167,8 @@ fn wasm_fix_clean_input_is_unchanged() {
 #[wasm_bindgen_test]
 fn wasm_fix_applies_correction() {
     // E001: abbreviated dissem control. fix should canonicalize NF → NOFORN.
-    let result = marque_wasm::fix_native("SECRET//NF\n", 0.0, None)
-        .expect("fix_native must succeed");
+    let result =
+        marque_wasm::fix_native("SECRET//NF\n", 0.0, None).expect("fix_native must succeed");
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("fix_native must return valid JSON");
     let fixed = parsed["fixed_text"].as_str().unwrap();
@@ -215,7 +215,11 @@ fn wasm_lint_batch_two_entries() {
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("lint_batch_native must return valid JSON");
     let arr = parsed.as_array().unwrap();
-    assert_eq!(arr.len(), 2, "must return one result per entry under wasm32");
+    assert_eq!(
+        arr.len(),
+        2,
+        "must return one result per entry under wasm32"
+    );
     assert_eq!(arr[0]["id"], "inv");
     assert_eq!(arr[1]["id"], "ok");
     assert!(
@@ -251,8 +255,7 @@ fn wasm_lint_batch_parity_with_single_lint() {
     let batch: Vec<serde_json::Value> = serde_json::from_str(&batch_json).unwrap();
 
     for (i, (id, text)) in texts.iter().enumerate() {
-        let single_ndjson =
-            marque_wasm::lint_native(text, None).expect("lint_native must succeed");
+        let single_ndjson = marque_wasm::lint_native(text, None).expect("lint_native must succeed");
         let single_diags: Vec<serde_json::Value> = single_ndjson
             .lines()
             .filter(|l| !l.is_empty())
