@@ -1,0 +1,6 @@
+{
+  "observed": "//fgi s//nf",
+  "expected": "//FGI S//NF",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

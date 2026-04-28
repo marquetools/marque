@@ -1,0 +1,6 @@
+{
+  "observed": "USA/CAN/GBR EYES ONLY//SECRET",
+  "expected": "SECRET//USA/CAN/GBR EYES ONLY",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

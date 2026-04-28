@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET / / HCS-P//NOFORN",
+  "expected": "SECRET//HCS-P//NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

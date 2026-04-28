@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//RD-CNWD/I/NOFORN",
+  "expected": "TOP SECRET//RD-CNWDI//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET USA/CAN/GBR EYES ONLY",
+  "expected": "SECRET//USA/CAN/GBR EYES ONLY",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.81
+}

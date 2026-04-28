@@ -1,0 +1,6 @@
+{
+  "observed": "FGI CAN DEU//TOP SECRET//NOFORN",
+  "expected": "TOP SECRET//FGI CAN DEU//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

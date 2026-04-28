@@ -1,0 +1,6 @@
+{
+  "observed": "TK-BLFH//NOFORN//TOP SECRET",
+  "expected": "TOP SECRET//TK-BLFH//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

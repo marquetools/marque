@@ -1,0 +1,6 @@
+{
+  "observed": "//CAN S//REL TO USA,B AUS, CAN, GBR",
+  "expected": "//CAN S//REL TO USA, AUS, CAN, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

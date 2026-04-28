@@ -1,0 +1,6 @@
+{
+  "observed": "Top Secret//Si-Gamma/Talent Keyhole//Risk Sensitive/Originator Controlled/Noforn",
+  "expected": "TOP SECRET//SI-GAMMA/TALENT KEYHOLE//RISK SENSITIVE/ORIGINATOR CONTROLLED/NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET\u2215\u2215HCS-O//ORCON/NOFORN",
+  "expected": "SECRET//HCS-O//ORCON/NOFORN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

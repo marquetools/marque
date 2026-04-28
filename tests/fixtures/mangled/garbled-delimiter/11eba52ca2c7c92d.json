@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET // REL TO USA, ACGU//SSI",
+  "expected": "SECRET//REL TO USA, ACGU//SSI",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

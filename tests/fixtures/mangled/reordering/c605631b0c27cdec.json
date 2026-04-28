@@ -1,0 +1,6 @@
+{
+  "observed": "FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN//SECRET",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA-SIGMA 14//NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

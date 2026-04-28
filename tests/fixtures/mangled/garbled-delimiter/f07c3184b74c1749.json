@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET/ /SI//REL TO USA, FVEY",
+  "expected": "SECRET//SI//REL TO USA, FVEY",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": " FGI S//REL TO USA, ACGU",
+  "expected": "//FGI S//REL TO USA, ACGU",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

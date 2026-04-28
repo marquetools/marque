@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET //DISPLAY ONLY IRQ",
+  "expected": "SECRET//DISPLAY ONLY IRQ",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

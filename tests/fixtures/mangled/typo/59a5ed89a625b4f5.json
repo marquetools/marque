@@ -1,0 +1,6 @@
+{
+  "observed": "SCRET//RSV-ABC",
+  "expected": "SECRET//RSV-ABC",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

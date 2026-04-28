@@ -1,0 +1,6 @@
+{
+  "observed": "//aus s//rel to usa, aus",
+  "expected": "//AUS S//REL TO USA, AUS",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

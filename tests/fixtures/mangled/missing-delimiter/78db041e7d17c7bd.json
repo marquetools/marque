@@ -1,0 +1,6 @@
+{
+  "observed": "//JOINT S GBR USA REL",
+  "expected": "//JOINT S GBR USA//REL",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

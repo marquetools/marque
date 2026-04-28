@@ -1,0 +1,6 @@
+{
+  "observed": "SAR-BUTTER POPCORN/SODA//TOP SECRET",
+  "expected": "TOP SECRET//SAR-BUTTER POPCORN/SODA",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

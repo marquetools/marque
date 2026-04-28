@@ -1,0 +1,6 @@
+{
+  "observed": "SFCRET//SAR-XXX-YYY",
+  "expected": "SECRET//SAR-XXX-YYY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "Unclassified//Dod Ucni",
+  "expected": "UNCLASSIFIED//DOD UCNI",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

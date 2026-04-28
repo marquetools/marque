@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//NOFLORN//NODIS",
+  "expected": "SECRET//NOFORN//NODIS",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

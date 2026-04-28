@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//imcon/noforn",
+  "expected": "TOP SECRET//IMCON/NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

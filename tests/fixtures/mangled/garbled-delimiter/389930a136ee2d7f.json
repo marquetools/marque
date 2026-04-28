@@ -1,0 +1,6 @@
+{
+  "observed": " //GBR S//REL TO USA, CAN, GBR",
+  "expected": "//GBR S//REL TO USA, CAN, GBR",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

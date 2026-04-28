@@ -1,0 +1,6 @@
+{
+  "observed": "//joint s aus usa//rel to usa, aus",
+  "expected": "//JOINT S AUS USA//REL TO USA, AUS",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

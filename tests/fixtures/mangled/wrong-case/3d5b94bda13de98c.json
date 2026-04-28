@@ -1,0 +1,6 @@
+{
+  "observed": "top secret//si-eu//rel to usa, can, gbr",
+  "expected": "TOP SECRET//SI-EU//REL TO USA, CAN, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

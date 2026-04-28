@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET //TK//RSEN",
+  "expected": "TOP SECRET//TK//RSEN",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

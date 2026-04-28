@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED//DOE UCNIE",
+  "expected": "UNCLASSIFIED//DOE UCNI",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

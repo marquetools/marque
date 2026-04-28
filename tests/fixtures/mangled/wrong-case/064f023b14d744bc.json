@@ -1,0 +1,6 @@
+{
+  "observed": "secret//formerly restricted data//noforn",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

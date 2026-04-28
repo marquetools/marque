@@ -1,0 +1,6 @@
+{
+  "observed": "unclassified//fouo/noforn",
+  "expected": "UNCLASSIFIED//FOUO/NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

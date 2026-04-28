@@ -1,0 +1,6 @@
+{
+  "observed": "//JOINT SECRET GBR USA//FGI NAL//REL TO USA, GBR",
+  "expected": "//JOINT SECRET GBR USA//FGI NZL//REL TO USA, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

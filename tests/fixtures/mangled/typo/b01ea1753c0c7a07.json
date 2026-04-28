@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SDECRET//RSV-123-ABC",
+  "expected": "TOP SECRET//RSV-123-ABC",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

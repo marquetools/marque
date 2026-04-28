@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SERET//TK-IDIT//NOFORN",
+  "expected": "TOP SECRET//TK-IDIT//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

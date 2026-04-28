@@ -1,0 +1,6 @@
+{
+  "observed": "SECSET//RD-SIGMA 18 20",
+  "expected": "SECRET//RD-SIGMA 18 20",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

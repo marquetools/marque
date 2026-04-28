@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Tfni//Noforn",
+  "expected": "SECRET//TFNI//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

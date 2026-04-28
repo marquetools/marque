@@ -1,0 +1,6 @@
+{
+  "observed": "//FGI RTS",
+  "expected": "//FGI TS",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

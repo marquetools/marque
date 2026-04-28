@@ -1,0 +1,6 @@
+{
+  "observed": "DISPLAY ONLY IRQ//SECRET",
+  "expected": "SECRET//DISPLAY ONLY IRQ",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

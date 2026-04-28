@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET/ /NOFORN/FISA",
+  "expected": "SECRET//NOFORN/FISA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215CAN S//REL TO USA, AUS, CAN, GBR",
+  "expected": "//CAN S//REL TO USA, AUS, CAN, GBR",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

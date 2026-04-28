@@ -1,0 +1,6 @@
+{
+  "observed": "TK//SECRET",
+  "expected": "SECRET//TK",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

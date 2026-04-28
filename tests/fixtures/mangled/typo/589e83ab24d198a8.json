@@ -1,0 +1,6 @@
+{
+  "observed": "SECERT//NOFORN/DEA SENSITIVE",
+  "expected": "SECRET//NOFORN/DEA SENSITIVE",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

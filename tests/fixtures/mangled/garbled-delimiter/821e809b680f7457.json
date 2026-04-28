@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED //NOFORN//SBU",
+  "expected": "UNCLASSIFIED//NOFORN//SBU",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

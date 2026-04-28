@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET FRD-SIGMA 14 18//REL TO USA, ACGU",
+  "expected": "SECRET//FRD-SIGMA 14 18//REL TO USA, ACGU",
+  "mangling_class": "MissingDelimiter",
+  "source_confidence": 0.82
+}

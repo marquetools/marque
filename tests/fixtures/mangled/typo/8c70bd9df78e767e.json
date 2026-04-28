@@ -1,0 +1,6 @@
+{
+  "observed": "ECRET//REL TO USA, NZL",
+  "expected": "SECRET//REL TO USA, NZL",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

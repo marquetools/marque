@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//ANB/SI/TK/XNB/N/OFORN",
+  "expected": "TOP SECRET//ANB/SI/TK/XNB//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

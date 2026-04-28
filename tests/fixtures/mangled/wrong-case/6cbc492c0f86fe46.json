@@ -1,0 +1,6 @@
+{
+  "observed": "secret//rsv-abc",
+  "expected": "SECRET//RSV-ABC",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

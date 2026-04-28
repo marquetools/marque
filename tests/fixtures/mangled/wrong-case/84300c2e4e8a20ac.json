@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Frd-Sigma 14",
+  "expected": "SECRET//FRD-SIGMA 14",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

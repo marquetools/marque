@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//REL TO USA, SFVEY",
+  "expected": "SECRET//REL TO USA, FVEY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

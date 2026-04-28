@@ -1,0 +1,6 @@
+{
+  "observed": "/ /JOINT S AUS USA//REL TO USA, AUS",
+  "expected": "//JOINT S AUS USA//REL TO USA, AUS",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

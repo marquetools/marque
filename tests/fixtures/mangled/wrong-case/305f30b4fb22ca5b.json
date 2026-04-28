@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Tfni//Rel To Usa, Acgu",
+  "expected": "SECRET//TFNI//REL TO USA, ACGU",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

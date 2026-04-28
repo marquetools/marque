@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASSIFIED//NOFOJRN//SBU",
+  "expected": "UNCLASSIFIED//NOFORN//SBU",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

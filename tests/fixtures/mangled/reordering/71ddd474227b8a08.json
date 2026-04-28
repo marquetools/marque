@@ -1,0 +1,6 @@
+{
+  "observed": "SI-ABC////TOP SECRET",
+  "expected": "TOP SECRET//SI-ABC//",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.82
+}

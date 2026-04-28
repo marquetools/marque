@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET// CONTROLLED IMAGERY",
+  "expected": "SECRET//CONTROLLED IMAGERY",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.81
+}

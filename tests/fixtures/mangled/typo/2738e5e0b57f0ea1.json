@@ -1,0 +1,6 @@
+{
+  "observed": "//FGNI S//REL TO USA, GBR",
+  "expected": "//FGI S//REL TO USA, GBR",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Display Only Irq",
+  "expected": "SECRET//DISPLAY ONLY IRQ",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

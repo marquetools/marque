@@ -1,0 +1,6 @@
+{
+  "observed": " //CAN S//REL TO USA, CAN, DEU",
+  "expected": "//CAN S//REL TO USA, CAN, DEU",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

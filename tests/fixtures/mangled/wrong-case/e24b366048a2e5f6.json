@@ -1,0 +1,6 @@
+{
+  "observed": "Secret//Noforn/Dea Sensitive",
+  "expected": "SECRET//NOFORN/DEA SENSITIVE",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

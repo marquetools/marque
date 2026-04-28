@@ -1,0 +1,6 @@
+{
+  "observed": "//nf\nts//tk-idit abcd//nf",
+  "expected": "//NF\nTS//TK-IDIT ABCD//NF",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.83
+}

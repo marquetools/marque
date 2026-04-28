@@ -1,0 +1,6 @@
+{
+  "observed": "//NF\nTT//TK-IDIT ABCD//NF",
+  "expected": "//NF\nTS//TK-IDIT ABCD//NF",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

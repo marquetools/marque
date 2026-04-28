@@ -1,0 +1,6 @@
+{
+  "observed": "UOP SECRET//TK-BLFH ABCD//NOFORN",
+  "expected": "TOP SECRET//TK-BLFH ABCD//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

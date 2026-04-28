@@ -1,0 +1,6 @@
+{
+  "observed": "//JOINT S GBR USA//FGI NZL//REL TO USA, FEVY",
+  "expected": "//JOINT S GBR USA//FGI NZL//REL TO USA, FVEY",
+  "mangling_class": "Typo",
+  "source_confidence": 0.83
+}

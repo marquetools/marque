@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//FOMERLY RESTRICTED DATA//NOFORN",
+  "expected": "SECRET//FORMERLY RESTRICTED DATA//NOFORN",
+  "mangling_class": "Typo",
+  "source_confidence": 0.82
+}

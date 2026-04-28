@@ -1,0 +1,6 @@
+{
+  "observed": "Unclassified//Dea Sensitive",
+  "expected": "UNCLASSIFIED//DEA SENSITIVE",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

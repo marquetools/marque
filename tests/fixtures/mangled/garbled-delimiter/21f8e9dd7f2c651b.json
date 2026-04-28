@@ -1,0 +1,6 @@
+{
+  "observed": "\u2215\u2215COSMIC TOP SECRET//BOHEMIA",
+  "expected": "//COSMIC TOP SECRET//BOHEMIA",
+  "mangling_class": "GarbledDelimiter",
+  "source_confidence": 0.82
+}

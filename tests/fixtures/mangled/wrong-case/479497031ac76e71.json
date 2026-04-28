@@ -1,0 +1,6 @@
+{
+  "observed": "unclassified//ssi",
+  "expected": "UNCLASSIFIED//SSI",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.81
+}

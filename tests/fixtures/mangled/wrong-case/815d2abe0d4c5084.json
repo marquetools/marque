@@ -1,0 +1,6 @@
+{
+  "observed": "secret//fgi isaf nato//rel to usa, gbr",
+  "expected": "SECRET//FGI ISAF NATO//REL TO USA, GBR",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

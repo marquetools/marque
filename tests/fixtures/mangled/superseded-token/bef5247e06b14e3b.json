@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//NOFORN/DEA SENCOMINTTIVE",
+  "expected": "SECRET//NOFORN/DEA SENSITIVE",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.81
+}

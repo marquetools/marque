@@ -1,0 +1,6 @@
+{
+  "observed": "UNCLASCOMINTFIED//LAW ENFORCEMENT SENSITIVE NOFORN",
+  "expected": "UNCLASSIFIED//LAW ENFORCEMENT SENSITIVE NOFORN",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.81
+}

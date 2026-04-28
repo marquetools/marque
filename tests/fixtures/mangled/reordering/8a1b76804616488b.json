@@ -1,0 +1,6 @@
+{
+  "observed": "REL TO USA, FVEY////FGI NZL//JOINT S GBR USA",
+  "expected": "//JOINT S GBR USA//FGI NZL//REL TO USA, FVEY",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.83
+}

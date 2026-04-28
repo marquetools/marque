@@ -1,0 +1,6 @@
+{
+  "observed": "//cts//bohemia",
+  "expected": "//CTS//BOHEMIA",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

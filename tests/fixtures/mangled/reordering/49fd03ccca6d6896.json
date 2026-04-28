@@ -1,0 +1,6 @@
+{
+  "observed": "DOE UCNI//UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//DOE UCNI",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

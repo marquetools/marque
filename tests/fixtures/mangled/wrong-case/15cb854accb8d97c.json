@@ -1,0 +1,6 @@
+{
+  "observed": "//Joint Secret Gbr Usa//Rel To Usa, Fvey",
+  "expected": "//JOINT SECRET GBR USA//REL TO USA, FVEY",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}

@@ -1,0 +1,6 @@
+{
+  "observed": "LES NOFORN//UNCLASSIFIED",
+  "expected": "UNCLASSIFIED//LES NOFORN",
+  "mangling_class": "Reordering",
+  "source_confidence": 0.81
+}

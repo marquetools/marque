@@ -1,0 +1,6 @@
+{
+  "observed": "SECRET//RESTIRCTED DATA",
+  "expected": "SECRET//RESTRICTED DATA",
+  "mangling_class": "Typo",
+  "source_confidence": 0.81
+}

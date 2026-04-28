@@ -1,0 +1,6 @@
+{
+  "observed": "TOP SECRET//COMINT-G//ORCON",
+  "expected": "TOP SECRET//SI-G//ORCON",
+  "mangling_class": "SupersededToken",
+  "source_confidence": 0.82
+}

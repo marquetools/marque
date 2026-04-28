@@ -1,0 +1,6 @@
+{
+  "observed": "secret//rd-cnwdi//noforn",
+  "expected": "SECRET//RD-CNWDI//NOFORN",
+  "mangling_class": "WrongCase",
+  "source_confidence": 0.82
+}
