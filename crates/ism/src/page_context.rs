@@ -180,19 +180,18 @@ impl PageContext {
         for attrs in &self.portions {
             for marking in attrs.sci_markings.iter() {
                 let key = SystemKey::from_system(&marking.system);
-                if !acc.contains_key(&key) {
-                    acc.insert(key.clone(), std::collections::BTreeMap::new());
-                }
-                let comp_map = acc.get_mut(&key).unwrap();
+                let comp_map = acc.entry(key).or_default();
                 for comp in marking.compartments.iter() {
                     let comp_id = comp.identifier.as_ref();
-                    if !comp_map.contains_key(comp_id) {
+                    let sub_set = if let Some(sub_set) = comp_map.get_mut(comp_id) {
+                        sub_set
+                    } else {
                         comp_map.insert(
                             comp.identifier.to_string(),
                             std::collections::BTreeSet::new(),
                         );
-                    }
-                    let sub_set = comp_map.get_mut(comp_id).unwrap();
+                        comp_map.get_mut(comp_id).unwrap()
+                    };
                     sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
                 }
             }
@@ -258,22 +257,26 @@ impl PageContext {
             };
             for prog in sar.programs.iter() {
                 let prog_id = prog.identifier.as_ref();
-                if !programs.contains_key(prog_id) {
+                let comps = if let Some(comps) = programs.get_mut(prog_id) {
+                    comps
+                } else {
                     programs.insert(
                         prog.identifier.to_string(),
                         std::collections::BTreeMap::new(),
                     );
-                }
-                let comps = programs.get_mut(prog_id).unwrap();
+                    programs.get_mut(prog_id).unwrap()
+                };
                 for comp in prog.compartments.iter() {
                     let comp_id = comp.identifier.as_ref();
-                    if !comps.contains_key(comp_id) {
+                    let subs = if let Some(subs) = comps.get_mut(comp_id) {
+                        subs
+                    } else {
                         comps.insert(
                             comp.identifier.to_string(),
                             std::collections::BTreeSet::new(),
                         );
-                    }
-                    let subs = comps.get_mut(comp_id).unwrap();
+                        comps.get_mut(comp_id).unwrap()
+                    };
                     subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
                 }
             }
