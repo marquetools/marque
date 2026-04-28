@@ -3283,14 +3283,19 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     // AUT-as-Austria) by log-prior delta rather than edit distance
     // alone. Look up each observed REL TO code at score-time —
     // shape-agnostic, so the loop handles 2-char (`EU`), 3-char, and
-    // 4-char tetragraphs uniformly. Unknown entries fall to
+    // 4-char tetragraphs uniformly. Duplicate REL TO entries do not
+    // provide additional evidence, so score each distinct country
+    // code at most once. Unknown entries fall to
     // MISSING_TOKEN_LOG_PRIOR — the same penalty the non-country-code
     // path uses for unrecognized tokens, which is the correct
     // behavior for a candidate that resolved to a non-CVE country
     // string.
+    let mut seen_rel_to_codes = BTreeSet::new();
     for country in marking.0.rel_to.iter() {
-        prior += marque_capco::priors::country_code_log_prior(country.as_str())
-            .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+        if seen_rel_to_codes.insert(country.as_str()) {
+            prior += marque_capco::priors::country_code_log_prior(country.as_str())
+                .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+        }
     }
 
     // Posterior: prior plus feature deltas plus structural penalties.

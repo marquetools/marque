@@ -407,18 +407,20 @@ def analyze_cooccurrence(
 # REL TO trigraph extraction (issue #233)
 # ---------------------------------------------------------------------------
 
-# Match a ``REL TO`` header followed by comma- or whitespace-separated
-# entries until the block terminator. CAPCO §H.8 says ``//`` is the
-# authoritative end-of-category separator (project memory:
-# `project_capco_separator_conventions`); the analyzer also stops at
-# end-of-line or end-of-portion ``)`` so the regex doesn't run away on
-# malformed inputs (post-processed in `_extract_rel_to_trigraphs`,
-# not in the regex itself). The body group is greedy with a hard
-# width cap of 200 chars to keep pathological inputs from blowing up
-# the regex backtracker; the post-processing cut at ``//``/``\n``/``)``
-# narrows the captured text to the actual REL TO body.
+# Match a standalone ``REL TO`` header followed by comma- or
+# whitespace-separated entries until the block terminator. CAPCO §H.8
+# says ``//`` is the authoritative end-of-category separator (project
+# memory: `project_capco_separator_conventions`); the analyzer also
+# stops at end-of-line or end-of-portion ``)`` so the regex doesn't run
+# away on malformed inputs (post-processed in
+# `_extract_rel_to_trigraphs`, not in the regex itself). The body group
+# is greedy with a hard width cap of 200 chars to keep pathological
+# inputs from blowing up the regex backtracker; the post-processing cut
+# at ``//``/``\n``/``)`` narrows the captured text to the actual REL TO
+# body. The leading word boundary prevents matching ``REL TO`` inside
+# larger words such as ``SQUIRREL TO``.
 _REL_TO_BLOCK_RE = re.compile(
-    r"REL\s+TO\s+([A-Z][A-Z0-9_,\s]{0,200})",
+    r"\bREL\s+TO\s+([A-Z][A-Z0-9_,\s]{0,200})",
     re.IGNORECASE,
 )
 # Country codes inside a REL TO body land in this regex's matched set
@@ -431,7 +433,10 @@ _REL_TO_BLOCK_RE = re.compile(
 # in real REL TO blocks to justify the false-positive risk. Adjust the
 # upper bound (and re-validate the prose-absorption risk) if a future
 # corpus shows meaningful frequency for the long codes.
-_REL_TO_TRIGRAPH_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9_]{1,3}\b")
+_REL_TO_TRIGRAPH_TOKEN_RE = re.compile(
+    r"\b[A-Z][A-Z0-9_]{1,3}\b",
+    re.IGNORECASE,
+)
 
 
 def _extract_rel_to_trigraphs(text: str):
