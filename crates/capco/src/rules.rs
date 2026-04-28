@@ -5677,7 +5677,9 @@ mod tests {
         // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
         // structural sister of E020 (ordering) closing the §H.8
         // p150–151 list-grammar surface. Net: 55.
-        assert_eq!(set.rules().len(), 55);
+        // Issue #235 / #186 PR-3: added S004 (rel-to-trigraph-suggest),
+        // first consumer of the suggest-don't-fix channel. Net: 56.
+        assert_eq!(set.rules().len(), 56);
     }
 
     #[test]
