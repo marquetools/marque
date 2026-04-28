@@ -16,6 +16,7 @@
 //! **WASM-safe**: no I/O, no format dependencies, no platform-specific code.
 
 pub mod attrs;
+pub mod date;
 pub mod generated;
 pub mod marking_forms;
 pub mod page_context;
@@ -30,6 +31,7 @@ pub use attrs::{
     SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl, SciControlBare,
     SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
+pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use generated::values::{
     SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, is_bare_cve_value, lookup_tetragraph_members,
 };

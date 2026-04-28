@@ -49,6 +49,7 @@ workspace = true
 
 [dependencies]
 aho-corasick = { workspace = true }
+jiff = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

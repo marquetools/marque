@@ -26,9 +26,11 @@ use marque_ism::attrs::{
     NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
+use marque_ism::date::IsmDate;
 use marque_ism::is_bare_cve_value;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
+use std::str::FromStr;
 
 /// Parse result for a single candidate.
 #[derive(Debug)]
@@ -136,7 +138,11 @@ impl<'t> Parser<'t> {
                 if let Some(exemption) = DeclassExemption::parse(s) {
                     attrs.declass_exemption = Some(exemption);
                 } else {
-                    attrs.declassify_on = Some(s.into());
+                    // Attempt to parse as a typed IsmDate (YYYY, YYYYMMDD,
+                    // YYYY-MM-DD, etc.). Unrecognized strings are silently
+                    // dropped rather than stored as raw text, since the field
+                    // is now typed.
+                    attrs.declassify_on = IsmDate::from_str(s).ok();
                 }
             }
         }
@@ -373,7 +379,7 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if is_declass_date(trimmed) {
-                attrs.declassify_on = Some(trimmed.into());
+                attrs.declassify_on = IsmDate::from_str(trimmed).ok();
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassDate,
                     span,
@@ -1164,15 +1170,24 @@ fn parse_rel_to_with_spans(
 // `parse_marking_string` above). The single hand-coded path is
 // `parse_classification`, which is documented inline.
 
-/// Returns `true` if `s` looks like an inline declassification date.
+/// Returns `true` if `s` looks like a syntactically and calendrically valid
+/// inline declassification date.
 ///
 /// CAPCO allows `YYYYMMDD` (8-digit) or `YYYY` (4-digit, meaning declassify
 /// at the start of that calendar year). Both forms are valid in a CAB but
 /// are a violation (E005) if they appear directly in a banner or portion
 /// marking string.
+///
+/// Only strings that round-trip through [`IsmDate::from_str`] successfully
+/// are accepted. This rejects impossible dates like `20301340` (month 13 /
+/// day 40) that look like dates but would silently set `declassify_on` to
+/// `None` and prevent E005 from firing.
 fn is_declass_date(s: &str) -> bool {
     let bytes = s.as_bytes();
-    matches!(bytes.len(), 4 | 8) && bytes.iter().all(u8::is_ascii_digit)
+    if !matches!(bytes.len(), 4 | 8) || !bytes.iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    IsmDate::from_str(s).is_ok()
 }
 
 /// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
@@ -1478,8 +1493,8 @@ mod tests {
     fn banner_with_declass_date_populates_attrs() {
         let parsed = parse_banner("SECRET//20301231//NOFORN");
         assert_eq!(
-            parsed.attrs.declassify_on.as_deref(),
-            Some("20301231"),
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Date(2030, 12, 31)),
             "declassify_on should be populated when YYYYMMDD appears in banner"
         );
     }
@@ -1487,7 +1502,10 @@ mod tests {
     #[test]
     fn banner_with_four_digit_year_populates_attrs() {
         let parsed = parse_banner("SECRET//2035");
-        assert_eq!(parsed.attrs.declassify_on.as_deref(), Some("2035"));
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Year(2035))
+        );
     }
 
     // --- normal banner (no declass tokens) ---
@@ -1521,6 +1539,18 @@ mod tests {
     fn is_declass_date_rejects_wrong_length() {
         assert!(!is_declass_date("203012"));
         assert!(!is_declass_date("203012311"));
+    }
+
+    #[test]
+    fn is_declass_date_rejects_impossible_calendar_dates() {
+        // Month 13 is impossible.
+        assert!(!is_declass_date("20301340"));
+        // Day 0 is impossible.
+        assert!(!is_declass_date("20300100"));
+        // 2003-02-31 doesn't exist (February has at most 29 days).
+        assert!(!is_declass_date("20030231"));
+        // 2003-04-31 doesn't exist (April has 30 days).
+        assert!(!is_declass_date("20030431"));
     }
 
     // --- token spans ---

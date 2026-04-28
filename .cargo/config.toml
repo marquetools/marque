@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+# rustflags for wasm32-unknown-unknown
+#
+# DEFAULT (single-threaded, web worker + cloud):
+#   +simd128 — SIMD128 is part of WebAssembly 2.0 and universally supported
+#   since Chrome 91 / Firefox 89 / Safari 16.4 / Edge 91 (2022–2023).
+#
+# SIMD128 is part of WebAssembly 2.0 and has been universally supported since
+# Chrome 91, Firefox 89, Safari 16.4, Edge 91 (all 2022–2023). It is a safe
+# production baseline for any target audience in 2026.
+#
+# Compatibility testing note:
+# Artifacts built for `wasm32-unknown-unknown` with this workspace config will
+# require SIMD support at runtime and may fail validation on older or embedded
+# WebAssembly runtimes. To test a compatibility build without SIMD, override
+# the target features for the build invocation, for example:
+#
+#   RUSTFLAGS="-C target-feature=-simd128" cargo build --target wasm32-unknown-unknown
+#
+# or otherwise use a separate build profile/config that does not enable
+# `+simd128`.
+#
+# Note: `--enable-simd` in wasm-opt (crates/wasm/Cargo.toml) is a post-processing
+# pass that can only optimize SIMD instructions already present in the binary;
+# it cannot generate them. Without +simd128 here, `memchr` and other
+# SIMD-aware crates silently fall back to scalar on the wasm32 target.
+#
+# FOR THREADED BUILDS (`multi-threading` or `talc_debug` features):
+#   Replace the line below with the full set:
+#
+#   rustflags = [
+#     "-C", "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+#   ]
+#
+#   +atomics         — required by spinning_top::RawSpinlock (TalcLock).
+#   +bulk-memory     — required by wasm-bindgen's threading support.
+#   +mutable-globals — required by wasm-bindgen's threading support.
+#
+#   The serving page must also send:
+#     Cross-Origin-Opener-Policy: same-origin
+#     Cross-Origin-Embedder-Policy: require-corp
+#
+#   A compile_error! in crates/wasm/src/lib.rs catches a threaded-feature
+#   build that omits +atomics, so the failure is at compile time, not runtime.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

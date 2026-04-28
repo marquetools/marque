@@ -127,7 +127,11 @@ wasm-bindgen-test = "=0.3.68"
 # responsibility in WASM context; core operates on pre-extracted text.
 
 [features]
-# NOTE: This is mostly pre-wiring for future features; we don't currently have any SIMD128-specific code paths (heavy SIMD optimizations in main codebase), nor have we added multi-threading support yet; but this allows us to enable those features in the future without breaking changes, and also allows users to opt into SIMD128 support for cloud environments where it's available.
+# SIMD128 is enabled via the rustc target-feature flag in .cargo/config.toml rather than
+# a Cargo feature — wasm-opt's `--enable-simd` is a post-processing pass that can only
+# optimize SIMD instructions already present in the binary; it cannot generate them.
+# The .cargo/config.toml entry sets `-C target-feature=+simd128` for wasm32-unknown-unknown,
+# which activates SIMD code paths in memchr and other SIMD-aware crates at compile time.
 #
 # Phase-C–E boundary: the `corpus-override` feature MUST NOT be declared
 # here, and `marque-engine` above is pinned to `default-features = false`,
@@ -139,18 +143,30 @@ wasm-bindgen-test = "=0.3.68"
 # drift this invariant silently (Constitution III + FR-013 + T3).
 default = ["web"]
 
-talc_alloc = ["dep:spinning_top", "dep:talc"]
+# Single-threaded allocator: WasmDynamicTalc grows via memory.grow, no spinlock overhead.
+# Correct for browser web workers and single-threaded cloud deployments.
+# When both talc_alloc and multi-threading are active, TalcLock takes precedence
+# (see the cfg conditions in src/lib.rs).
+talc_alloc = ["dep:talc"]
 
-cloud = ["simd128"]
-cloud_talc = ["cloud", "talc_alloc"]
+# Multi-threaded allocator: TalcLock with spinning_top. Requires SharedArrayBuffer
+# (COOP + COEP response headers on the serving page) and the atomics target feature.
+multi-threading = ["dep:spinning_top", "dep:talc"]
+
+# Browser web worker target — panic hook + single-threaded WasmDynamicTalc.
+web = ["console_error_panic_hook", "talc_alloc"]
+
+# Cloud deployment profile — single-threaded WasmDynamicTalc, no panic hook.
+cloud = ["talc_alloc"]
+
+# Cloud + multi-threading: TalcLock for SharedArrayBuffer-capable cloud runtimes.
+cloud_talc = ["cloud", "multi-threading"]
+
 console_error_panic_hook = ["dep:console_error_panic_hook"]
-multi-threading = []
-simd128 = []
-# Features for browser and web worker targets; which provides support for SIMD, multi-threading, and other WASM features as available in modern browsers.
-# Recommend using talc_alloc also for better performance, but optional for folks skittish about adding spinning_top and talc as dependencies.
-web = ["console_error_panic_hook", "multi-threading", "simd128"]
 
-# For debugging and optimization, talc offers a counters feature with metrics on heap allocations and deallocations
+# Debug allocator with heap counters (allocation/deallocation metrics via talc/counters).
+# Uses TalcLock so counter access is safe from any thread; most useful in a browser
+# devtools session. Enables console_error_panic_hook for readable panic messages.
 talc_debug = ["console_error_panic_hook", "dep:spinning_top", "dep:talc", "talc/counters"]
 
 [lints]

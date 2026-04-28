@@ -141,3 +141,218 @@ fn wasm_lint_empty_input_produces_empty_ndjson() {
         "empty input should produce no diagnostics under wasm32"
     );
 }
+
+// ---------------------------------------------------------------------------
+// fix_native on wasm32
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen_test]
+fn wasm_fix_clean_input_is_unchanged() {
+    let result = marque_wasm::fix_native("SECRET//NOFORN\n", 0.5, None)
+        .expect("fix_native must succeed on clean input");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("fix_native must return valid JSON");
+    assert_eq!(
+        parsed["fixed_text"].as_str().unwrap(),
+        "SECRET//NOFORN\n",
+        "clean input must be unchanged after fix under wasm32"
+    );
+    assert_eq!(
+        parsed["applied"].as_array().unwrap().len(),
+        0,
+        "clean input must produce no applied fixes under wasm32"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_fix_applies_correction() {
+    // E001: abbreviated dissem control. fix should canonicalize NF → NOFORN.
+    let result =
+        marque_wasm::fix_native("SECRET//NF\n", 0.0, None).expect("fix_native must succeed");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("fix_native must return valid JSON");
+    let fixed = parsed["fixed_text"].as_str().unwrap();
+    assert!(
+        fixed.contains("NOFORN"),
+        "fix under wasm32 should expand NF → NOFORN, got: {fixed}"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_fix_invalid_threshold_returns_error() {
+    let result = marque_wasm::fix_native("SECRET//NF\n", -1.0, None);
+    assert!(
+        result.is_err(),
+        "fix_native must reject negative threshold under wasm32"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// lint_batch_native on wasm32
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen_test]
+fn wasm_lint_batch_empty_array() {
+    let result = marque_wasm::lint_batch_native("[]", None)
+        .expect("lint_batch_native must succeed on empty array");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("lint_batch_native must return valid JSON");
+    assert_eq!(
+        parsed.as_array().unwrap().len(),
+        0,
+        "empty batch must produce empty results under wasm32"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_lint_batch_two_entries() {
+    let entries = r#"[
+        {"id": "inv", "text": "SECRET//NF\n"},
+        {"id": "ok",  "text": "SECRET//NOFORN\n"}
+    ]"#;
+    let result =
+        marque_wasm::lint_batch_native(entries, None).expect("lint_batch_native must succeed");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("lint_batch_native must return valid JSON");
+    let arr = parsed.as_array().unwrap();
+    assert_eq!(
+        arr.len(),
+        2,
+        "must return one result per entry under wasm32"
+    );
+    assert_eq!(arr[0]["id"], "inv");
+    assert_eq!(arr[1]["id"], "ok");
+    assert!(
+        !arr[0]["diagnostics"].as_array().unwrap().is_empty(),
+        "SECRET//NF must produce diagnostics under wasm32"
+    );
+    assert!(
+        arr[1]["diagnostics"].as_array().unwrap().is_empty(),
+        "SECRET//NOFORN must be clean under wasm32"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_lint_batch_parity_with_single_lint() {
+    // Batch result for each entry must match what lint_native returns for the
+    // same input individually — validates the batch path doesn't diverge on wasm32.
+    let texts = [
+        ("a", "SECRET//NF\n"),
+        ("b", "TOP SECRET//SI//NF\n"),
+        ("c", "SECRET//NOFORN\n"),
+    ];
+
+    let entries_json = {
+        let items: Vec<serde_json::Value> = texts
+            .iter()
+            .map(|(id, text)| serde_json::json!({"id": id, "text": text}))
+            .collect();
+        serde_json::to_string(&items).unwrap()
+    };
+
+    let batch_json = marque_wasm::lint_batch_native(&entries_json, None)
+        .expect("lint_batch_native must succeed");
+    let batch: Vec<serde_json::Value> = serde_json::from_str(&batch_json).unwrap();
+
+    for (i, (id, text)) in texts.iter().enumerate() {
+        let single_ndjson = marque_wasm::lint_native(text, None).expect("lint_native must succeed");
+        let single_diags: Vec<serde_json::Value> = single_ndjson
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let batch_diags: Vec<serde_json::Value> =
+            batch[i]["diagnostics"].as_array().unwrap().to_vec();
+        assert_eq!(
+            batch[i]["id"], *id,
+            "batch entry {i} id mismatch under wasm32"
+        );
+        assert_eq!(
+            single_diags, batch_diags,
+            "batch diagnostics for {id} must match single lint under wasm32"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// compute_banner_native on wasm32
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen_test]
+fn wasm_compute_banner_rollup() {
+    let text = "(S//NF) Portion 1\n(TS//SI//NF) Portion 2";
+    let banner = marque_wasm::compute_banner_native(text)
+        .expect("compute_banner_native must succeed under wasm32");
+    assert_eq!(
+        banner, "TOP SECRET//SI//NOFORN",
+        "banner roll-up must match expected value under wasm32"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_compute_banner_unclassified() {
+    // PageContext::max() of UNCLASSIFIED is UNCLASSIFIED — not empty.
+    // Empty CAB and empty banner are different operations; generate_cab returns
+    // empty for U-only, but compute_banner returns the rolled-up level.
+    let text = "(U) Unclassified only";
+    let banner = marque_wasm::compute_banner_native(text)
+        .expect("compute_banner_native must succeed on unclassified input");
+    assert_eq!(
+        banner, "UNCLASSIFIED",
+        "unclassified-only input must produce UNCLASSIFIED banner under wasm32"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// generate_cab_native on wasm32
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen_test]
+fn wasm_generate_cab_basic() {
+    let text = "(S//NF) This is secret.\n(TS//SI//REL TO USA, GBR) Top secret.";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab_native must succeed under wasm32");
+    assert!(
+        cab.contains("Classified By:"),
+        "CAB must contain 'Classified By:' under wasm32, got: {cab}"
+    );
+    assert!(
+        cab.contains("Declassify On:"),
+        "CAB must contain 'Declassify On:' under wasm32, got: {cab}"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_generate_cab_unclassified_empty() {
+    let text = "(U) Unclassified portion";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab_native must succeed on unclassified input");
+    assert_eq!(
+        cab, "",
+        "unclassified-only input must produce empty CAB under wasm32"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Config passthrough on wasm32
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen_test]
+fn wasm_lint_corrections_config_passthrough() {
+    let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
+    let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
+        .expect("lint_native must accept corrections config under wasm32");
+    assert!(
+        result.contains("\"rule\":\"C001\""),
+        "corrections config must trigger C001 under wasm32, got: {result}"
+    );
+}
+
+#[wasm_bindgen_test]
+fn wasm_lint_invalid_config_returns_error() {
+    let result = marque_wasm::lint_native("SECRET//NF\n", Some("not json".to_owned()));
+    assert!(
+        result.is_err(),
+        "invalid config JSON must return error under wasm32"
+    );
+}

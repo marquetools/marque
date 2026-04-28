@@ -364,6 +364,7 @@ fn deep_cx() -> ParseContext {
         zone: None,
         position: None,
         classification_floor: None,
+        as_of: None,
     }
 }
 
