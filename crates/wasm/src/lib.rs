@@ -1492,7 +1492,7 @@ mod tests {
     #[test]
     fn build_cache_key_is_some_for_classifier_id() {
         let cfg = WasmConfig {
-            classifier_id: Some("ANALYST-7".to_owned()),
+            classifier_id: Some("TEST-WASM-42".to_owned()),
             ..default_wasm_config()
         };
         assert!(
@@ -1564,13 +1564,13 @@ mod tests {
     #[test]
     fn build_cache_key_differs_for_different_classifier_ids() {
         let k1 = build_cache_key(&WasmConfig {
-            classifier_id: Some("ANALYST-1".to_owned()),
+            classifier_id: Some("TEST-WASM-42".to_owned()),
             ..default_wasm_config()
         })
         .unwrap();
 
         let k2 = build_cache_key(&WasmConfig {
-            classifier_id: Some("ANALYST-2".to_owned()),
+            classifier_id: Some("TEST-CLASSIFIER-42".to_owned()),
             ..default_wasm_config()
         })
         .unwrap();
