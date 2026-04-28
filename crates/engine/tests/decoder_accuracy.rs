@@ -119,9 +119,9 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-28, after issue #233 landed
-/// corpus-weighted REL TO trigraph priors plus the candidate
-/// expansion that gets ambiguous fuzzy trigraphs to the scorer):
+/// Current measured rate (2026-04-28, after issue #234 PR-B landed
+/// REL TO USA-injection for short first entries, complementing
+/// PR-A's 3-char fuzzy trigraph priors):
 ///
 /// | Class             | Resolved | Total | Rate    |
 /// |-------------------|----------|-------|---------|
@@ -129,20 +129,24 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | MissingDelimiter  | 17       | 17    | 100.0%  |
 /// | Reordering        | 41       | 41    | 100.0%  |
 /// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 96       | 130   |  73.8%  |
+/// | Typo              | 97       | 130   |  74.6%  |
 /// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **225**  | **260** | **86.5%** |
+/// | **Aggregate**     | **226**  | **260** | **86.9%** |
 ///
-/// Movement from prior pin (issue #133 PR 9, 2026-04-26):
-/// `Typo` 72.3% → 73.8% (+2 fixtures: `USB → USA` and `ASU → AUS`,
-/// the per-trigraph fuzzy cluster the PR-9 comment block flagged as
-/// deferred to #186 / #233). Aggregate 85.8% → 86.5% (+0.7pp).
+/// Movement from prior pin (issue #233, 2026-04-28):
+/// `Typo` 73.8% → 74.6% (+1 fixture: `SA → USA` via the new
+/// USA-injection path covering 1-2 char first entries below
+/// PR-A's `MIN_FUZZY_LEN = 3` threshold). Aggregate
+/// 86.5% → 86.9% (+0.4pp).
 ///
 /// Issue #133 PR 9 landed the literal-shape REL TO structural
 /// repair patterns (`REL OT`/`RELT O`/`A US`/`AU,S `); issue #233
 /// landed the riskier per-trigraph fuzzy cluster (`USB`, `ASU`)
 /// behind corpus-weighted log-priors and the new
 /// `try_rel_to_fuzzy_trigraph_candidates` candidate expander.
+/// Issue #234 PR-B added the §H.8 p151 USA-first invariant as a
+/// complementary structural recovery for short first entries
+/// (`SA`, `S`) that fall below the fuzzy matcher's length floor.
 ///
 /// Pinned at the SC-004 target (0.85). Now that the decoder
 /// clears 85% (PR 9 lifted it to 85.8%), the regression floor and
@@ -179,12 +183,13 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 ///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
 ///   floor catches a regression to 1/3 or 0/3 while tolerating the
 ///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.70` (~3 percentage points below the
-///   current 96/130 = 73.8% rate after issue #233 landed REL TO
-///   trigraph fuzzy priors). Wide-enough margin to absorb one or
-///   two fixtures dropping; a sustained drop trips the gate.
-///   Ratchet up as subsequent PRs land SCI compartment fuzzy and
-///   the SAR / program-nickname recovery work blocked on #180.
+/// - **`Typo`** pinned at `0.70` (~5 percentage points below the
+///   current 97/130 = 74.6% rate after issue #234 PR-B landed REL
+///   TO USA-injection for short first entries). Wide-enough margin
+///   to absorb one or two fixtures dropping; a sustained drop trips
+///   the gate. Ratchet up as subsequent PRs land SCI compartment
+///   fuzzy and the SAR / program-nickname recovery work blocked on
+///   #180.
 /// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
 ///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
 ///   helper already produced canonical bytes for every fixture, and
@@ -193,16 +198,15 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 ///   losing to the absorbing parse. Any future fixture that
 ///   regresses fails the gate.
 ///
-/// Last ratcheted (2026-04-28, issue #233) to the rates observed
-/// after REL TO trigraph fuzzy priors landed:
-/// `try_rel_to_fuzzy_trigraph_candidates` emits one canonical-byte
-/// alternate per fuzzy trigraph candidate inside REL TO blocks;
-/// `score_candidate` sums `country_code_log_prior` over each
-/// candidate's `rel_to` slice; the corpus-weighted log-prior delta
-/// (e.g., `log_prior(USA) - log_prior(UZB)` ≈ +7 nats) breaks ties
-/// at score time. One class moved: `Typo` (72.3% → 73.8%, +2
-/// fixtures: `USB → USA` and `ASU → AUS`); the aggregate moved
-/// (85.8% → 86.5%, +2 fixtures).
+/// Last ratcheted (2026-04-28, issue #234 PR-B) after the REL TO
+/// USA-injection path landed: `try_rel_to_usa_injection_candidates`
+/// emits a candidate replacing a 1-2 char first entry of a REL TO
+/// block with `USA`, anchored on the §H.8 p151 USA-first invariant.
+/// One class moved: `Typo` (73.8% → 74.6%, +1 fixture:
+/// `SA → USA`); the aggregate moved (86.5% → 86.9%, +1 fixture).
+/// The per-class `Typo` floor stays at `0.70` (no ratchet) because
+/// the PR-B gain is small enough that the existing margin still
+/// absorbs noise without gold-plating.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 1.00),
     ("MissingDelimiter", 1.00),

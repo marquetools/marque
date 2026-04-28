@@ -27,6 +27,10 @@ name = "deadline_overhead"
 harness = false
 name = "decoder_trigraph_priors"
 
+[[bench]]
+harness = false
+name = "decoder_10kb_rel_to_invariant"
+
 [lints]
 workspace = true
 

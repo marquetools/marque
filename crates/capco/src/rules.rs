@@ -52,6 +52,7 @@
 //!   E040 = banner must roll up NODIS (or EXDIS if no NODIS) (T035c-21 PR-B)
 //!   E041 = NODIS supersedes EXDIS in portion (T035c-21 PR-B)
 //!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
+//!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -177,6 +178,11 @@ impl CapcoRuleSet {
                 Box::new(crate::rules_sci_per_system::TkClassificationCeilingRule),
                 Box::new(crate::rules_sci_per_system::TkBlfhTopSecretRule),
                 Box::new(crate::rules_sci_per_system::TkCompartmentRequiresNofornRule),
+                // Issue #234 PR-B: REL TO duplicate country codes.
+                // Hand-written structural rule. Sister of E020 (ordering)
+                // and E002 (USA-first); the three together close the
+                // §H.8 p150–151 list-grammar surface.
+                Box::new(RelToNoDuplicatesRule),
             ],
         }
     }
@@ -2724,24 +2730,36 @@ impl Rule for CountryCodeOrderingRule {
 /// Canonicalize a country code list. The `usa_first` flag selects the
 /// convention:
 ///
-/// - `usa_first = true` — REL TO convention per CAPCO-2016 §H.8 line
-///   3714: "After 'USA', list the required one or more trigraph
-///   country codes in alphabetical order." USA is elevated to the
-///   front when present; remaining codes are alphabetical.
-/// - `usa_first = false` — JOINT convention per CAPCO-2016 §H.3 line
-///   1258: "Country trigraph codes are listed alphabetically followed
+/// - `usa_first = true` — REL TO convention per CAPCO-2016 §H.8 p151:
+///   "After 'USA', list the required one or more trigraph country
+///   codes in alphabetical order followed by tetragraph codes listed
+///   in alphabetical order." USA is elevated to the front when
+///   present; remaining codes are alphabetical.
+/// - `usa_first = false` — JOINT convention per CAPCO-2016 §H.3 p56:
+///   "Country trigraph codes are listed alphabetically followed
 ///   by tetragraph codes in alphabetical order." Pure alphabetical;
 ///   USA is NOT elevated.
+///
+/// Duplicates in the input are preserved as-is — this helper does
+/// not deduplicate. Callers that need deduplication (e.g.
+/// [`dedup_country_codes`] used by E052) compose dedup with this
+/// canonicalizer; the order-only check in E020 deliberately keeps
+/// duplicates so the diagnostic message reflects what the user wrote.
 ///
 /// The IC practice of rendering USA first in JOINT lists is widespread
 /// but is convention, not CAPCO rule. A style rule (S003
 /// `joint-usa-first`) to flag deviations is a planned follow-up; this
 /// helper does NOT encode the convention into correctness.
 ///
-/// This is the shared ordering rule for E002 (REL TO, fix path) and
-/// E020 (REL TO + JOINT, both check and fix paths). Extracting it
-/// prevents the two rules from drifting if the ordering rule changes
-/// (tetragraph sorting, delimiter normalization, etc.).
+/// This is the shared ordering rule for E002 (REL TO, fix path), E020
+/// (REL TO + JOINT, both check and fix paths), and E052 (REL TO
+/// no-duplicates fix path). It is also re-exported so the decoder
+/// (`marque-engine`) can validate that any candidate it emits — e.g.
+/// USA-injection (issue #234) — would not violate canonical ordering.
+/// Extracting and exposing it prevents the consumers from drifting if
+/// the ordering rule changes (tetragraph sorting, delimiter
+/// normalization, etc.) and gives a single source of truth for the
+/// USA-first + alphabetical invariant cited in §H.8 p151.
 ///
 /// Tetragraph partition handling is deferred — issue #183 PR-A
 /// widened `CountryCode` so 4-byte tetragraphs are now first-class
@@ -2753,7 +2771,7 @@ impl Rule for CountryCodeOrderingRule {
 /// `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
 /// derive the buckets from the CVE schema groups in
 /// `CVEnumISMCATRelTo.xsd`.
-fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
+pub fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&marque_ism::CountryCode::USA);
         let mut sorted: Vec<&str> = codes
@@ -2770,6 +2788,196 @@ fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool
         let mut sorted: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
         sorted.sort_unstable();
         sorted
+    }
+}
+
+/// Collapse duplicate country codes while preserving first-occurrence
+/// order. This is the source-of-truth used by E052 (no-duplicates fix
+/// path). It does NOT canonicalize — it only removes duplicates. The
+/// E052 fix message keeps the original ordering visible so the user
+/// can audit the dedup, and any USA-first-then-alphabetical
+/// canonicalization is left to E020 (which fires separately on the
+/// already-deduped list when both rules apply).
+///
+/// **CAPCO authority**: §H.8 p151 specifies the REL TO list grammar
+/// as "After 'USA', list the required one or more trigraph country
+/// codes in alphabetical order followed by tetragraph codes listed
+/// in alphabetical order." There is no textual prohibition of
+/// duplicates — the rationale is structural: a list of country codes
+/// describing a release decision is a set, and a duplicate is
+/// redundant by construction. Mirrors the rationale block in
+/// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233)
+/// for why duplicate-creating fuzzy candidates are filtered.
+pub(crate) fn dedup_country_codes(
+    codes: &[marque_ism::CountryCode],
+) -> Vec<marque_ism::CountryCode> {
+    let mut seen: Vec<marque_ism::CountryCode> = Vec::with_capacity(codes.len());
+    for &code in codes.iter() {
+        if !seen.contains(&code) {
+            seen.push(code);
+        }
+    }
+    seen
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E052 — REL TO duplicate country codes (issue #234, structural)
+// ---------------------------------------------------------------------------
+
+/// REL TO country code lists must not contain duplicate entries.
+///
+/// # Authority — structural, not textual
+///
+/// CAPCO-2016 §H.8 p150–151 specifies the REL TO list grammar as
+/// "After 'USA', list the required one or more trigraph country codes
+/// in alphabetical order followed by tetragraph codes listed in
+/// alphabetical order." The text does NOT explicitly forbid
+/// duplicates — the rationale here is mechanical / structural,
+/// mirroring the wording in
+/// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233):
+/// a REL TO list is the set of countries / international
+/// organizations a release decision applies to, so a repeated code is
+/// redundant by construction. The list-of-codes grammar describes a
+/// set; duplication is a structural rather than textual violation,
+/// and Constitution VIII forbids fabricating a citation that says
+/// otherwise.
+///
+/// # Fix shape
+///
+/// Deterministic dedup that preserves first-occurrence order via
+/// [`dedup_country_codes`]. Confidence is `1.0` because the fix is
+/// purely mechanical — collapsing identical entries — and never
+/// changes the meaning of the marking. Sorting / canonicalization is
+/// handled separately by E020 (which fires on the post-dedup list
+/// when both rules apply).
+///
+/// # Multi-block handling
+///
+/// Mirrors E020's multi-block strategy. When a marking carries more
+/// than one `RelToBlock` (e.g., `SECRET//REL TO USA, GBR//NF//REL TO
+/// USA, AUS`), the rule emits one diagnostic per affected block — a
+/// first→last splice across two blocks would delete the intervening
+/// `//...//` content. Each block's diagnostic carries its own
+/// `RelToBlock` span. Blocks without duplicates are silently skipped.
+struct RelToNoDuplicatesRule;
+
+impl Rule for RelToNoDuplicatesRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E052")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-no-duplicates"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Fix
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        if attrs.rel_to.len() < 2 {
+            return diagnostics;
+        }
+
+        // CAPCO-2016 §H.8 p150–151 doesn't textually forbid duplicates;
+        // they're structurally implied by the list-of-codes grammar.
+        // Mirror the wording in `try_rel_to_fuzzy_trigraph_candidates`.
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §H.8 p150–151 ",
+            "(REL TO list grammar describes a set of country codes; ",
+            "duplicates are structurally redundant)",
+        );
+
+        // Group `RelToTrigraph` token spans by `RelToBlock` so each
+        // duplicate diagnostic stays scoped to its own block. The
+        // parser emits blocks in document order; entries inside a
+        // block are also document-ordered, so the per-block dedup
+        // result preserves the user-authored sequence.
+        let rel_to_blocks: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToBlock)
+            .collect();
+
+        if rel_to_blocks.is_empty() {
+            // `attrs.rel_to` is populated but the parser produced no
+            // RelToBlock spans — inconsistent state. Skip silently
+            // rather than synthesize a span (mirrors E020's behavior).
+            return diagnostics;
+        }
+
+        for block in &rel_to_blocks {
+            // Per-block country list = trigraph spans whose offsets
+            // fall inside this block's span. The parser pairs each
+            // CountryCode in `attrs.rel_to` with a trigraph token at
+            // a specific offset, so we can rebuild the per-block list
+            // from spans alone.
+            let block_trigraph_spans: Vec<&TokenSpan> = attrs
+                .token_spans
+                .iter()
+                .filter(|t| {
+                    t.kind == TokenKind::RelToTrigraph
+                        && t.span.start >= block.span.start
+                        && t.span.end <= block.span.end
+                })
+                .collect();
+            if block_trigraph_spans.len() < 2 {
+                continue;
+            }
+
+            // Reconstruct per-block CountryCodes from the trigraph
+            // tokens' text. Skip blocks with parse irregularities
+            // rather than synthesize fixes from incomplete data.
+            let mut block_codes: Vec<marque_ism::CountryCode> =
+                Vec::with_capacity(block_trigraph_spans.len());
+            for span in &block_trigraph_spans {
+                match marque_ism::CountryCode::try_new(span.text.as_bytes()) {
+                    Some(code) => block_codes.push(code),
+                    None => {
+                        // Inconsistent token text. Bail on this block.
+                        block_codes.clear();
+                        break;
+                    }
+                }
+            }
+            if block_codes.is_empty() {
+                continue;
+            }
+
+            let deduped = dedup_country_codes(&block_codes);
+            if deduped.len() == block_codes.len() {
+                continue; // no duplicates in this block
+            }
+
+            let actual: Vec<&str> = block_codes.iter().map(|t| t.as_str()).collect();
+            let fixed: Vec<&str> = deduped.iter().map(|t| t.as_str()).collect();
+
+            let span = match (block_trigraph_spans.first(), block_trigraph_spans.last()) {
+                (Some(first), Some(last)) => Span::new(first.span.start, last.span.end),
+                _ => block.span,
+            };
+            let original = actual.join(", ");
+            let replacement = fixed.join(", ");
+            let message = format!(
+                "REL TO country codes must be unique: [{}] → [{}] (duplicates collapsed)",
+                actual.join(", "),
+                fixed.join(", "),
+            );
+
+            diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                rule: self.id(),
+                severity: self.default_severity(),
+                source: FixSource::BuiltinRule,
+                span,
+                message,
+                citation: CITATION,
+                original,
+                replacement,
+                confidence: 1.0,
+                migration_ref: None,
+            }));
+        }
+
+        diagnostics
     }
 }
 
@@ -5107,6 +5315,7 @@ mod tests {
         assert!(ids.contains(&"E049"));
         assert!(ids.contains(&"E050"));
         assert!(ids.contains(&"E051"));
+        assert!(ids.contains(&"E052"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
         // T035c-1b: added S001 (prefer-banner-abbreviation). Net: 38.
@@ -5127,7 +5336,10 @@ mod tests {
         // covering §H.4 class ceilings and required-companion
         // constraints under the fix-and-warn pattern. See
         // `rules_sci_per_system` module doc. Net: 44 + 10 = 54.
-        assert_eq!(set.rules().len(), 54);
+        // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
+        // structural sister of E020 (ordering) closing the §H.8
+        // p150–151 list-grammar surface. Net: 55.
+        assert_eq!(set.rules().len(), 55);
     }
 
     #[test]
@@ -7626,6 +7838,94 @@ mod tests {
             "USA, GBR, AUS",
             "fix span must cover the full trigraph range inside the block"
         );
+    }
+
+    // --- E052: REL TO no-duplicates (issue #234 PR-B) ---
+
+    #[test]
+    fn e052_fires_on_duplicate_rel_to_entries() {
+        // USA listed twice — must collapse while preserving order.
+        let src = "SECRET//REL TO USA, GBR, USA, AUS";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            1,
+            "E052 must fire on duplicate USA entry: {diags:?}"
+        );
+        let fix = e052[0].fix.as_ref().expect("E052 must carry a fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "USA, GBR, AUS",
+            "dedup must preserve first-occurrence order (no canonicalization)"
+        );
+        assert!(
+            (fix.confidence.combined() - 1.0).abs() < f32::EPSILON,
+            "E052 confidence must be 1.0 (deterministic dedup)"
+        );
+        // Span must cover the full trigraph range inside the block.
+        assert_eq!(
+            fix.span.as_str(src.as_bytes()).unwrap(),
+            "USA, GBR, USA, AUS",
+            "fix span must cover the full per-block trigraph range"
+        );
+    }
+
+    #[test]
+    fn e052_does_not_fire_on_unique_rel_to_entries() {
+        let src = "SECRET//REL TO USA, AUS, GBR";
+        let diags = lint_banner(src);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E052"),
+            "E052 must not fire on a list with no duplicates: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e052_emits_one_diagnostic_per_block_with_duplicates() {
+        // Two REL TO blocks; both contain duplicates. Each must emit
+        // its own diagnostic so the per-block fix span doesn't splice
+        // across `//NF//`.
+        let src = "SECRET//REL TO USA, USA, GBR//NF//REL TO AUS, AUS, JPN";
+        let diags = lint_banner(src);
+        let e052: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E052").collect();
+        assert_eq!(
+            e052.len(),
+            2,
+            "E052 must emit one diagnostic per affected block: {diags:?}"
+        );
+        // Each fix is scoped to its own block.
+        let block_replacements: Vec<&str> = e052
+            .iter()
+            .map(|d| d.fix.as_ref().unwrap().replacement.as_ref())
+            .collect();
+        assert!(
+            block_replacements.contains(&"USA, GBR"),
+            "first block must dedup to USA, GBR: {block_replacements:?}"
+        );
+        assert!(
+            block_replacements.contains(&"AUS, JPN"),
+            "second block must dedup to AUS, JPN: {block_replacements:?}"
+        );
+    }
+
+    #[test]
+    fn dedup_country_codes_preserves_first_occurrence_order() {
+        use marque_ism::CountryCode;
+        let codes = vec![
+            CountryCode::USA,
+            CountryCode::try_new(b"GBR").unwrap(),
+            CountryCode::USA,
+            CountryCode::try_new(b"AUS").unwrap(),
+            CountryCode::try_new(b"GBR").unwrap(),
+        ];
+        let deduped = dedup_country_codes(&codes);
+        let expected = vec![
+            CountryCode::USA,
+            CountryCode::try_new(b"GBR").unwrap(),
+            CountryCode::try_new(b"AUS").unwrap(),
+        ];
+        assert_eq!(deduped, expected);
     }
 
     // T035c-18: E020 standalone audit — per-branch citation lockdown
