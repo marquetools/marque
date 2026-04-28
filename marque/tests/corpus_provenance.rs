@@ -74,6 +74,9 @@ fn sc002a_every_corpus_file_matches_registered_pattern() {
     assert!(corpus_dir.exists(), "tests/corpus/ directory must exist");
 
     let files = walkdir(&corpus_dir);
+    if files.is_empty() {
+        return;
+    }
     let mut violations = Vec::new();
 
     for file in &files {
@@ -119,6 +122,9 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
 fn sc002a_no_classifier_id_in_corpus_fixtures() {
     let corpus_dir = workspace_root().join("tests").join("corpus");
     let files = walkdir(&corpus_dir);
+    if files.is_empty() {
+        return;
+    }
 
     let max_threads = std::thread::available_parallelism()
         .map(|n| n.get())
