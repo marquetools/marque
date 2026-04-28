@@ -1365,6 +1365,251 @@ pub fn generate_cab_native(
 /// current calendar year from a UNIX timestamp.
 const SECONDS_PER_JULIAN_YEAR: u64 = 31_557_600;
 
+#[cfg(test)]
+mod tests {
+    use super::{WasmConfig, build_cache_key, current_year, parse_deadline_ms};
+    use std::time::Duration;
+
+    // -----------------------------------------------------------------------
+    // parse_deadline_ms
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_deadline_ms_none_yields_none() {
+        assert_eq!(parse_deadline_ms(None).unwrap(), None);
+    }
+
+    #[test]
+    fn parse_deadline_ms_zero_yields_zero_duration() {
+        assert_eq!(parse_deadline_ms(Some(0.0)).unwrap(), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn parse_deadline_ms_positive_rounds_down() {
+        // 1.7 ms → truncated to 1 ms (f64 as u64 truncates toward zero).
+        assert_eq!(
+            parse_deadline_ms(Some(1.7)).unwrap(),
+            Some(Duration::from_millis(1))
+        );
+    }
+
+    #[test]
+    fn parse_deadline_ms_negative_returns_error() {
+        let err = parse_deadline_ms(Some(-1.0)).unwrap_err();
+        assert!(
+            err.contains("non-negative"),
+            "error must mention non-negative constraint, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_deadline_ms_nan_returns_error() {
+        let err = parse_deadline_ms(Some(f64::NAN)).unwrap_err();
+        assert!(
+            !err.is_empty(),
+            "NaN deadline must produce a non-empty error"
+        );
+    }
+
+    #[test]
+    fn parse_deadline_ms_positive_infinity_returns_error() {
+        let err = parse_deadline_ms(Some(f64::INFINITY)).unwrap_err();
+        assert!(
+            !err.is_empty(),
+            "+Inf deadline must produce a non-empty error"
+        );
+    }
+
+    #[test]
+    fn parse_deadline_ms_negative_infinity_returns_error() {
+        let err = parse_deadline_ms(Some(f64::NEG_INFINITY)).unwrap_err();
+        assert!(
+            !err.is_empty(),
+            "-Inf deadline must produce a non-empty error"
+        );
+    }
+
+    #[test]
+    fn parse_deadline_ms_large_value_saturates_without_panic() {
+        // A very large finite f64 saturates to u64::MAX; checked_add in
+        // stamp_deadline handles the overflow. The important thing here is
+        // that parse_deadline_ms itself does not panic.
+        let result = parse_deadline_ms(Some(f64::MAX));
+        assert!(result.is_ok(), "very large deadline must not panic");
+    }
+
+    // -----------------------------------------------------------------------
+    // build_cache_key
+    // -----------------------------------------------------------------------
+
+    fn default_wasm_config() -> WasmConfig {
+        WasmConfig {
+            classifier_id: None,
+            confidence_threshold: None,
+            corrections: None,
+            deadline_ms: None,
+        }
+    }
+
+    #[test]
+    fn build_cache_key_is_none_for_default_config() {
+        let cfg = default_wasm_config();
+        assert_eq!(
+            build_cache_key(&cfg).unwrap(),
+            None,
+            "default config must produce None cache key (uses the default engine slot)"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_none_for_empty_corrections() {
+        let cfg = WasmConfig {
+            corrections: Some(Default::default()),
+            ..default_wasm_config()
+        };
+        assert_eq!(
+            build_cache_key(&cfg).unwrap(),
+            None,
+            "empty corrections map must produce None cache key (same slot as default)"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_none_for_deadline_only() {
+        // deadline_ms is intentionally excluded from the cache key — a caller
+        // varying the per-call budget must not cause an engine rebuild.
+        let cfg = WasmConfig {
+            deadline_ms: Some(5000.0),
+            ..default_wasm_config()
+        };
+        assert_eq!(
+            build_cache_key(&cfg).unwrap(),
+            None,
+            "deadline_ms alone must NOT produce a distinct cache key"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_some_for_classifier_id() {
+        let cfg = WasmConfig {
+            classifier_id: Some("TEST-WASM-42".to_owned()),
+            ..default_wasm_config()
+        };
+        assert!(
+            build_cache_key(&cfg).unwrap().is_some(),
+            "classifier_id must produce a non-None cache key"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_some_for_confidence_threshold() {
+        let cfg = WasmConfig {
+            confidence_threshold: Some(0.75),
+            ..default_wasm_config()
+        };
+        assert!(
+            build_cache_key(&cfg).unwrap().is_some(),
+            "confidence_threshold must produce a non-None cache key"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_some_for_nonempty_corrections() {
+        let cfg = WasmConfig {
+            corrections: Some(
+                [("NF".to_owned(), "NOFORN".to_owned())]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..default_wasm_config()
+        };
+        assert!(
+            build_cache_key(&cfg).unwrap().is_some(),
+            "non-empty corrections map must produce a non-None cache key"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_is_stable_for_equal_corrections() {
+        // Two configs with the same corrections content must produce the same
+        // cache-key string regardless of HashMap insertion order.
+        use std::collections::HashMap;
+        let mut m1: HashMap<String, String> = HashMap::new();
+        m1.insert("NF".to_owned(), "NOFORN".to_owned());
+        m1.insert("SI".to_owned(), "SPECIAL INTELLIGENCE".to_owned());
+
+        let mut m2: HashMap<String, String> = HashMap::new();
+        m2.insert("SI".to_owned(), "SPECIAL INTELLIGENCE".to_owned());
+        m2.insert("NF".to_owned(), "NOFORN".to_owned());
+
+        let k1 = build_cache_key(&WasmConfig {
+            corrections: Some(m1),
+            ..default_wasm_config()
+        })
+        .unwrap();
+
+        let k2 = build_cache_key(&WasmConfig {
+            corrections: Some(m2),
+            ..default_wasm_config()
+        })
+        .unwrap();
+
+        assert_eq!(
+            k1, k2,
+            "byte-equal corrections content must produce identical cache keys \
+             regardless of HashMap iteration order (BTreeMap projection)"
+        );
+    }
+
+    #[test]
+    fn build_cache_key_differs_for_different_classifier_ids() {
+        let k1 = build_cache_key(&WasmConfig {
+            classifier_id: Some("TEST-WASM-42".to_owned()),
+            ..default_wasm_config()
+        })
+        .unwrap();
+
+        let k2 = build_cache_key(&WasmConfig {
+            classifier_id: Some("TEST-CLASSIFIER-42".to_owned()),
+            ..default_wasm_config()
+        })
+        .unwrap();
+
+        assert_ne!(
+            k1, k2,
+            "different classifier_ids must produce different cache keys"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // current_year and SECONDS_PER_JULIAN_YEAR
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn seconds_per_julian_year_constant_is_correct() {
+        // 365.25 days × 24 h × 3600 s = 31,557,600 s
+        let expected = (365.25_f64 * 24.0 * 3600.0) as u64;
+        assert_eq!(
+            super::SECONDS_PER_JULIAN_YEAR,
+            expected,
+            "SECONDS_PER_JULIAN_YEAR must equal 365.25 × 24 × 3600"
+        );
+    }
+
+    #[test]
+    fn current_year_is_plausible() {
+        let year = current_year();
+        assert!(
+            year >= 2026,
+            "current_year must be ≥ 2026 (codebase inception year), got {year}"
+        );
+        assert!(
+            year <= 2100,
+            "current_year must be ≤ 2100 (sanity upper bound), got {year}"
+        );
+    }
+}
+
 /// Generate a Classification Authority Block (CAB) text block.
 ///
 /// Returns formatted multi-line text suitable for display in the CAB section
