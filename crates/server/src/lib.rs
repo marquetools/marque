@@ -448,16 +448,16 @@ pub(crate) fn reject_if_corpus_override(
         );
         return Err(StatusCode::BAD_REQUEST);
     }
-    if let Some(q) = uri.query() {
-        if query_carries_corpus_override(q) {
-            tracing::warn!(
-                target: "marque_server::t3",
-                endpoint,
-                channel = "query",
-                "rejected corpus_override in query string"
-            );
-            return Err(StatusCode::BAD_REQUEST);
-        }
+    if let Some(q) = uri.query()
+        && query_carries_corpus_override(q)
+    {
+        tracing::warn!(
+            target: "marque_server::t3",
+            endpoint,
+            channel = "query",
+            "rejected corpus_override in query string"
+        );
+        return Err(StatusCode::BAD_REQUEST);
     }
     Ok(())
 }
