@@ -2447,6 +2447,153 @@ mod tests {
         assert_eq!(m.compartments[0].sub_compartments[0].as_ref(), "WEIRD");
         assert_eq!(m.compartments[0].sub_compartments[1].as_ref(), "FOO");
     }
+
+    // -----------------------------------------------------------------------
+    // CAB date parsing (parse_cab Declassify On: path)
+    // -----------------------------------------------------------------------
+
+    fn parse_cab_text(text: &str) -> ParsedMarking {
+        let source = text.as_bytes();
+        let tokens = CapcoTokenSet;
+        let parser = Parser::new(&tokens);
+        let candidate = make_candidate(source, MarkingType::Cab, 0);
+        parser
+            .parse(&candidate, source)
+            .expect("CAB parse should succeed")
+    }
+
+    #[test]
+    fn cab_declassify_on_yyyymmdd_populates_declassify_on() {
+        let text = "Classified By: Jane Doe\nDeclassify On: 20301231";
+        let parsed = parse_cab_text(text);
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Date(2030, 12, 31)),
+            "YYYYMMDD in CAB should set declassify_on to Date"
+        );
+        assert!(parsed.attrs.declass_exemption.is_none());
+    }
+
+    #[test]
+    fn cab_declassify_on_yyyy_populates_declassify_on() {
+        let text = "Declassify On: 2035";
+        let parsed = parse_cab_text(text);
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Year(2035)),
+            "YYYY in CAB should set declassify_on to Year"
+        );
+    }
+
+    #[test]
+    fn cab_declassify_on_iso_date_populates_declassify_on() {
+        // ISO hyphenated YYYY-MM-DD form is valid for the CAB "Declassify On:" line.
+        let text = "Declassify On: 2030-12-31";
+        let parsed = parse_cab_text(text);
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Date(2030, 12, 31)),
+            "YYYY-MM-DD in CAB should set declassify_on to Date"
+        );
+    }
+
+    #[test]
+    fn cab_declassify_on_exemption_sets_exemption_not_date() {
+        // A declassification exemption code must not be stored in declassify_on.
+        let text = "Declassify On: 50X1-HUM";
+        let parsed = parse_cab_text(text);
+        assert!(
+            parsed.attrs.declassify_on.is_none(),
+            "exemption code must not set declassify_on"
+        );
+        assert!(
+            parsed.attrs.declass_exemption.is_some(),
+            "exemption code must set declass_exemption"
+        );
+    }
+
+    #[test]
+    fn cab_declassify_on_invalid_date_silently_ignored() {
+        // Unrecognized strings are silently dropped — no panic, declassify_on stays None.
+        let text = "Declassify On: UNRECOGNIZED";
+        let parsed = parse_cab_text(text);
+        assert!(
+            parsed.attrs.declassify_on.is_none(),
+            "unrecognized Declassify On value should leave declassify_on as None"
+        );
+        assert!(parsed.attrs.declass_exemption.is_none());
+    }
+
+    #[test]
+    fn cab_classified_by_and_derived_from_populated() {
+        let text = "Classified By: Jane Doe\nDerived From: SCG-2024\nDeclassify On: 20301231";
+        let parsed = parse_cab_text(text);
+        assert_eq!(
+            parsed.attrs.classified_by.as_deref(),
+            Some("Jane Doe"),
+            "classified_by should be populated"
+        );
+        assert_eq!(
+            parsed.attrs.derived_from.as_deref(),
+            Some("SCG-2024"),
+            "derived_from should be populated"
+        );
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Date(2030, 12, 31))
+        );
+    }
+
+    #[test]
+    fn cab_without_declassify_on_leaves_both_none() {
+        let text = "Classified By: Jane Doe\nDerived From: SCG-2024";
+        let parsed = parse_cab_text(text);
+        assert!(parsed.attrs.declassify_on.is_none());
+        assert!(parsed.attrs.declass_exemption.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Portion declass date (is_declass_date path in parse_marking_string)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn portion_with_yyyymmdd_sets_declassify_on() {
+        // A portion that (erroneously) contains an inline declass date; the
+        // parser must populate declassify_on so E005 can fire.
+        let parsed = parse_portion("(SECRET//20301231//NOFORN)");
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Date(2030, 12, 31)),
+            "YYYYMMDD in portion should set declassify_on"
+        );
+    }
+
+    #[test]
+    fn portion_with_yyyy_sets_declassify_on() {
+        let parsed = parse_portion("(SECRET//2035)");
+        assert_eq!(
+            parsed.attrs.declassify_on,
+            Some(marque_ism::IsmDate::Year(2035)),
+            "YYYY in portion should set declassify_on"
+        );
+    }
+
+    #[test]
+    fn is_declass_date_rejects_leap_day_non_leap_year() {
+        // 2003 is not a leap year; Feb 29 is impossible.
+        assert!(!is_declass_date("20030229"));
+    }
+
+    #[test]
+    fn is_declass_date_accepts_leap_day_in_leap_year() {
+        assert!(is_declass_date("20040229")); // 2004 is a leap year
+        assert!(is_declass_date("20000229")); // 2000 is a leap year
+    }
+
+    #[test]
+    fn is_declass_date_rejects_day_zero() {
+        assert!(!is_declass_date("20030100")); // day 0 is impossible
+    }
 }
 
 #[cfg(test)]

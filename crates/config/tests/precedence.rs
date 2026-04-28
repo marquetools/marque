@@ -487,3 +487,170 @@ classifier_id = "LOCAL-42"
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+// -----------------------------------------------------------------------
+// C-3: MARQUE_DEFAULT_TIMEZONE env-var path (IsmDate / PR #229)
+// -----------------------------------------------------------------------
+
+/// C-3a: a valid ISO 8601 UTC offset in MARQUE_DEFAULT_TIMEZONE is applied.
+#[test]
+fn env_default_timezone_sets_offset() {
+    let dir = make_tmpdir("tz-env-set");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "+05:30");
+    let config = marque_config::load(&dir).expect("load should succeed");
+
+    let expected = marque_ism::date::UtcOffset::from_hhmm(1, 5, 30).unwrap();
+    assert_eq!(
+        config.capco.default_timezone, expected,
+        "MARQUE_DEFAULT_TIMEZONE=+05:30 should set default_timezone to +05:30"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3b: MARQUE_DEFAULT_TIMEZONE=Z sets UTC.
+#[test]
+fn env_default_timezone_z_is_utc() {
+    let dir = make_tmpdir("tz-env-z");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "Z");
+    let config = marque_config::load(&dir).expect("load should succeed");
+
+    assert_eq!(
+        config.capco.default_timezone,
+        marque_ism::date::UtcOffset::UTC,
+        "MARQUE_DEFAULT_TIMEZONE=Z should set default_timezone to UTC"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3c: an invalid MARQUE_DEFAULT_TIMEZONE value must return InvalidEnvVar.
+#[test]
+fn env_default_timezone_invalid_value_errors() {
+    let dir = make_tmpdir("tz-env-bad");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "EST");
+    let err = marque_config::load(&dir).unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            ConfigError::InvalidEnvVar {
+                var: "MARQUE_DEFAULT_TIMEZONE",
+                ..
+            }
+        ),
+        "invalid timezone env var should produce InvalidEnvVar, got: {err:?}"
+    );
+    assert_eq!(err.exit_code(), 65, "exit code must be 65 (EX_DATAERR)");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3d: a whitespace-only MARQUE_DEFAULT_TIMEZONE must be treated as not-set.
+#[test]
+fn env_default_timezone_empty_string_is_ignored() {
+    let dir = make_tmpdir("tz-env-empty");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "");
+    let config = marque_config::load(&dir).expect("load should succeed");
+
+    // Empty string is treated as not-set → default remains UTC.
+    assert_eq!(
+        config.capco.default_timezone,
+        marque_ism::date::UtcOffset::UTC,
+        "empty MARQUE_DEFAULT_TIMEZONE should leave default_timezone as UTC"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3e: MARQUE_DEFAULT_TIMEZONE overrides a project-file value.
+#[test]
+fn env_default_timezone_overrides_project_file() {
+    let dir = make_tmpdir("tz-env-override");
+    fs::write(
+        dir.join(".marque.toml"),
+        format!(
+            r#"
+[capco]
+version = "{SCHEMA_VERSION}"
+default_timezone = "-05:00"
+"#
+        ),
+    )
+    .unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "+09:00");
+    let config = marque_config::load(&dir).expect("load should succeed");
+
+    let expected = marque_ism::date::UtcOffset::from_hhmm(1, 9, 0).unwrap();
+    assert_eq!(
+        config.capco.default_timezone, expected,
+        "env var +09:00 should override project-file -05:00"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3f: project-file default_timezone is applied when no env var is set.
+#[test]
+fn project_file_default_timezone_is_applied() {
+    let dir = make_tmpdir("tz-project-file");
+    fs::write(
+        dir.join(".marque.toml"),
+        format!(
+            r#"
+[capco]
+version = "{SCHEMA_VERSION}"
+default_timezone = "+05:30"
+"#
+        ),
+    )
+    .unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    // Ensure env var is absent.
+    let _tz = EnvGuard::set("MARQUE_DEFAULT_TIMEZONE", "");
+    let config = marque_config::load(&dir).expect("load should succeed");
+
+    let expected = marque_ism::date::UtcOffset::from_hhmm(1, 5, 30).unwrap();
+    assert_eq!(
+        config.capco.default_timezone, expected,
+        "project-file default_timezone=+05:30 should be applied"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// C-3g: invalid default_timezone in project config file produces InvalidTimezone.
+#[test]
+fn project_file_invalid_timezone_errors() {
+    let dir = make_tmpdir("tz-project-bad");
+    fs::write(
+        dir.join(".marque.toml"),
+        format!(
+            r#"
+[capco]
+version = "{SCHEMA_VERSION}"
+default_timezone = "PST"
+"#
+        ),
+    )
+    .unwrap();
+
+    let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let err = marque_config::load(&dir).unwrap_err();
+
+    assert!(
+        matches!(err, ConfigError::InvalidTimezone { .. }),
+        "invalid project-file timezone should produce InvalidTimezone, got: {err:?}"
+    );
+    assert_eq!(err.exit_code(), 65);
+    let _ = fs::remove_dir_all(&dir);
+}
