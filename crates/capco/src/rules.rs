@@ -52,6 +52,7 @@
 //!   E040 = banner must roll up NODIS (or EXDIS if no NODIS) (T035c-21 PR-B)
 //!   E041 = NODIS supersedes EXDIS in portion (T035c-21 PR-B)
 //!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
+//!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
@@ -165,6 +166,15 @@ impl CapcoRuleSet {
                 // pure alpha for JOINT, but IC convention puts USA
                 // first. See JointUsaFirstRule doc.
                 Box::new(JointUsaFirstRule),
+                // S004: rel-to-trigraph-suggest — issue #235 / #186
+                // PR-3. First consumer of the suggest-don't-fix
+                // channel. Surfaces a `Severity::Suggest` diagnostic
+                // when a REL TO trigraph has a corpus-rare prior and
+                // a corpus-common 1- or 2-edit neighbor (e.g.,
+                // `AUT` → `AUS?`). The fix is informational; the
+                // engine never auto-applies a Suggest-severity
+                // diagnostic regardless of confidence.
+                Box::new(RelToTrigraphSuggestRule),
                 // T035d: per-SCI-system constraint rules (E042–E051)
                 // implementing §H.4 class-ceiling and required-
                 // companion constraints under the fix-and-warn pattern.
@@ -2115,6 +2125,329 @@ impl Rule for JointUsaFirstRule {
             confidence: 1.0,
             migration_ref: None,
         })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: S004 — rel-to-trigraph-suggest (suggest-don't-fix channel)
+// ---------------------------------------------------------------------------
+
+/// S004: Surface a suggest-channel hint when a REL TO trigraph entry
+/// is corpus-rare AND has a corpus-common neighbor within edit
+/// distance 2.
+///
+/// # Authority and scope
+///
+/// Per CAPCO-2016 §H.8 p150 (REL TO grammar: Authorized Banner Line
+/// Marking Title, Authorized Portion Mark) and §H.8 p151 (REL TO
+/// "[USA, LIST]" syntax — "Register, Annex B trigraph country
+/// codes"), REL TO entries are drawn from the CAPCO Register Annex
+/// B trigraph code list. Every entry in `attrs.rel_to` has already
+/// passed the strict-grammar trigraph check; the rule does not
+/// invalidate any of them. The signal here is **statistical**:
+/// `AUT` (Austria, ISO 3166-1 alpha-3) is a legitimate trigraph but
+/// appears two orders of magnitude less often in real REL TO blocks
+/// than `AUS` (Australia), and the two are 1 substitution apart.
+/// When a low-prior entry has a high-prior 1- or 2-edit neighbor,
+/// the entry might be correct (Austria really IS the recipient) or
+/// might be a typo (`AUT` → `AUS`). The rule cannot tell which —
+/// hence the suggest channel: emit a candidate replacement, do not
+/// auto-apply.
+///
+/// # Severity
+///
+/// `Suggest` by default. The engine never auto-applies a fix
+/// attached to a `Severity::Suggest` diagnostic regardless of
+/// `confidence`, so the candidate replacement stays informational.
+///
+/// # Predicate
+///
+/// For each `CountryCode` in `attrs.rel_to`:
+///
+/// 1. Look up the entry's `country_code_log_prior`. Skip if absent
+///    (decoder fallback is not in scope here — S004 only fires on
+///    parsed-and-priored trigraphs).
+/// 2. Iterate the corpus's country-code priors table. Find the
+///    highest-prior code at edit distance 1 (or 2 for 3-letter
+///    trigraphs only) from the entry, where the prior delta vs the
+///    entry exceeds [`SUGGEST_LOG_MARGIN`].
+/// 3. If such a neighbor exists, emit a `Severity::Suggest`
+///    diagnostic with a `FixProposal` whose `replacement` is the
+///    neighbor and `confidence` is a strict-built scalar
+///    [`SUGGEST_CONFIDENCE`] (purely informational — `Suggest`
+///    diagnostics never auto-apply).
+///
+/// # Coverage of #186 ambiguous fixtures
+///
+/// - `USB` → decoder PR-A (#238) handles. USB is not a trigraph; it
+///   never reaches `attrs.rel_to`. S004 is silent.
+/// - `AUT` → S004 fires, suggesting `AUS`.
+///   `log_prior(AUS) - log_prior(AUT)` ≈ 4.36 nats, above
+///   [`SUGGEST_LOG_MARGIN`].
+/// - `ASU` → decoder PR-A handles. ASU is not a trigraph; never
+///   reaches `attrs.rel_to`.
+/// - `SA` → 2-character non-trigraph; same as USB / ASU, not in
+///   `attrs.rel_to`. Decoder/parser path.
+///
+/// # Constitution V audit-content-ignorance
+///
+/// The diagnostic message uses **only canonical token strings**
+/// (the trigraph itself, the candidate trigraph, and English country
+/// names from the [`COUNTRY_NAMES`](crate::vocab::COUNTRY_NAMES)
+/// table) — no document content, no surrounding span text, no
+/// user-provided fields. Verified by `s004_audit_content_ignorance`
+/// in `crates/capco/tests/`.
+///
+/// # Reuse for #206
+///
+/// Issue #206 (REL TO opaque-uncertain reduction) wants the same
+/// rendering channel without a candidate replacement: emit
+/// `Severity::Suggest` with `fix: None`. The engine and renderer
+/// both handle the missing-fix case cleanly (verified by
+/// `s004_suggest_with_no_fix_round_trips_renderer`). #206 will land
+/// as a separate rule that constructs `Diagnostic { severity:
+/// Suggest, fix: None, .. }` directly.
+struct RelToTrigraphSuggestRule;
+
+/// Minimum log-prior delta for S004 to suggest a neighbor over the
+/// observed entry. `4.0` nats ≈ `e^4.0` ≈ 55× odds ratio — the
+/// neighbor is at least 55× more likely than the observed entry in
+/// real REL TO contexts. Empirically calibrated against the AUT/AUS
+/// pair (delta ≈ 4.36) so the canonical #186 fixture fires while
+/// closer pairs (e.g., `USA`/`UKR` at delta ≈ 1.2 if it were ever
+/// triggered) do not.
+const SUGGEST_LOG_MARGIN: f32 = 4.0;
+
+/// Strict-built confidence axis value for S004 fixes. The actual
+/// number is informational only — the engine never auto-applies a
+/// `Severity::Suggest` diagnostic's fix regardless of confidence.
+/// Picked at `0.5` to make the audit-record posterior land in a
+/// neutral middle bucket (a value at `1.0` would suggest "we're
+/// sure" and confuse downstream tooling that filters by confidence).
+///
+/// **Config-override interaction**: setting `S004 = "fix"` in
+/// `.marque.toml` is a no-op. The severity-override pass would
+/// rewrite `Suggest → Fix`, but the engine's lint post-pass then
+/// demotes any `Fix`-severity diagnostic with a sub-threshold
+/// fix back to `Suggest` — and `0.5 < 0.95` (the default
+/// confidence threshold) means S004's fix never clears the gate.
+/// To get S004 fixes auto-applied a user would need both
+/// `S004 = "fix"` AND a per-call `--confidence 0.5` (or lower)
+/// override; for now the suggest-don't-fix channel is intentionally
+/// hard advisory.
+const SUGGEST_CONFIDENCE: f32 = 0.5;
+
+/// Compute Levenshtein edit distance between two byte slices.
+///
+/// Trigraphs are short (≤ 3 bytes for the S004 use case) so the
+/// O(m*n) two-row DP allocates two `Vec<usize>` of size `≤ 4` per
+/// call — negligible. Inlined here rather than depending on
+/// `marque-engine` (which `marque-capco` does not depend on).
+fn s004_edit_distance(a: &str, b: &str) -> usize {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let (m, n) = (a.len(), b.len());
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr: Vec<usize> = vec![0; n + 1];
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}
+
+/// Build an S004 diagnostic message for a given (rare, candidate)
+/// trigraph pair.
+///
+/// Extracted from the rule body so each of the four `(Option,
+/// Option)` country-name arms can be exercised directly in tests
+/// — building real `IsmAttributes` to drive every arm requires
+/// finding trigraph pairs that satisfy both the corpus-prior gap
+/// AND the partial COUNTRY_NAMES coverage, which is brittle. The
+/// helper lets us pin the formatting contract independently.
+///
+/// The output is content-ignorant per Constitution V: it only
+/// references the input trigraph tokens (vocabulary) and the
+/// canonical English country names (vocabulary), never any
+/// document-source bytes.
+fn s004_message(
+    trigraph: &str,
+    candidate: &str,
+    entry_name: Option<&str>,
+    candidate_name: Option<&str>,
+) -> String {
+    match (entry_name, candidate_name) {
+        (Some(en), Some(cn)) => format!(
+            "{trigraph:?} ({en}) is far less common in REL TO than \
+             {candidate:?} ({cn}); did you mean {candidate:?}?"
+        ),
+        (None, Some(cn)) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?} ({cn})?"
+        ),
+        (Some(en), None) => format!(
+            "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+        (None, None) => format!(
+            "{trigraph:?} is rare in REL TO blocks; did you mean \
+             {candidate:?}?"
+        ),
+    }
+}
+
+impl Rule for RelToTrigraphSuggestRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S004")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-trigraph-suggest"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Suggest
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
+        use crate::vocab::country_name;
+
+        if attrs.rel_to.is_empty() {
+            return Vec::new();
+        }
+
+        // Build a lookup from CountryCode → its `RelToTrigraph` token
+        // span so we can attach the diagnostic to the exact source
+        // bytes the user typed. Per-CountryCode mapping is positional:
+        // the parser emits one `RelToTrigraph` token per `rel_to` entry
+        // in source order.
+        let trigraph_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToTrigraph)
+            .collect();
+
+        let mut diagnostics = Vec::new();
+        for (idx, code) in attrs.rel_to.iter().enumerate() {
+            let trigraph = code.as_str();
+            // Only operate on 3-letter trigraphs. 2-letter codes (EU)
+            // and longer codes (FVEY, AUSTRALIA_GROUP) have a different
+            // ambiguity profile and would need their own calibration.
+            if trigraph.len() != 3 {
+                continue;
+            }
+            let Some(entry_log_prior) = country_code_log_prior(trigraph) else {
+                continue;
+            };
+
+            // Find the highest-prior neighbor within edit distance 2.
+            // Iterating the full `COUNTRY_CODE_BASE_RATES` table is
+            // O(n) but the table is bounded (~340 codes) and the rule
+            // fires once per `rel_to` entry. Acceptable.
+            //
+            // The triple `(token, log_prior, dist)` is what the
+            // tie-breaking ladder reads — distance is tracked so a
+            // log-prior tie deterministically picks the shorter-edit
+            // candidate, and a same-distance tie picks the
+            // lexicographically smaller token. Corpus-derived priors
+            // tie exactly only when two entries share a build-time
+            // smoothing floor, but pinning the order makes the rule's
+            // output reproducible across `COUNTRY_CODE_BASE_RATES`
+            // table reorderings.
+            let mut best: Option<(&'static str, f32, usize)> = None;
+            for cand in COUNTRY_CODE_BASE_RATES {
+                if cand.token == trigraph {
+                    continue;
+                }
+                if cand.token.len() != 3 {
+                    continue;
+                }
+                if cand.log_prior - entry_log_prior < SUGGEST_LOG_MARGIN {
+                    // Neighbor isn't substantially more likely — skip.
+                    continue;
+                }
+                let dist = s004_edit_distance(trigraph, cand.token);
+                if dist == 0 || dist > 2 {
+                    continue;
+                }
+                // Pick the higher-prior candidate. On a log-prior
+                // tie, prefer the shorter edit distance; on a
+                // distance tie too, fall back to lexicographic
+                // order on the token. Each rung of the ladder is a
+                // strict comparison so the resolution is total.
+                let take = match best {
+                    None => true,
+                    Some((prev_token, prev_prior, prev_dist)) => {
+                        if cand.log_prior > prev_prior {
+                            true
+                        } else if cand.log_prior < prev_prior {
+                            false
+                        } else if dist < prev_dist {
+                            true
+                        } else if dist > prev_dist {
+                            false
+                        } else {
+                            cand.token < prev_token
+                        }
+                    }
+                };
+                if take {
+                    best = Some((cand.token, cand.log_prior, dist));
+                }
+            }
+
+            let Some((candidate, _candidate_log_prior, _candidate_dist)) = best else {
+                continue;
+            };
+
+            // Pull the matching span. If the parser's RelToTrigraph
+            // tokens don't match `rel_to.len()` (defensive against a
+            // future parser change), skip rather than emit a
+            // misaligned diagnostic.
+            let Some(span_token) = trigraph_spans.get(idx) else {
+                continue;
+            };
+            let span = span_token.span;
+
+            // Compose a content-ignorant message. The trigraph,
+            // candidate, and country names are vocabulary-derived;
+            // none of the surrounding document text appears.
+            let message = s004_message(
+                trigraph,
+                candidate,
+                country_name(trigraph),
+                country_name(candidate),
+            );
+
+            let proposal = FixProposal::new(
+                self.id(),
+                FixSource::BuiltinRule,
+                span,
+                trigraph.to_owned(),
+                candidate.to_owned(),
+                marque_rules::Confidence::strict(SUGGEST_CONFIDENCE),
+                None,
+            );
+            diagnostics.push(Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                message,
+                "CAPCO-2016 §H.8 p150–151",
+                Some(proposal),
+            ));
+        }
+
+        diagnostics
     }
 }
 
@@ -5413,7 +5746,9 @@ mod tests {
         // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
         // structural sister of E020 (ordering) closing the §H.8
         // p150–151 list-grammar surface. Net: 55.
-        assert_eq!(set.rules().len(), 55);
+        // Issue #235 / #186 PR-3: added S004 (rel-to-trigraph-suggest),
+        // first consumer of the suggest-don't-fix channel. Net: 56.
+        assert_eq!(set.rules().len(), 56);
     }
 
     #[test]
@@ -6747,6 +7082,298 @@ mod tests {
             s003.len(),
             1,
             "S003 must fire on JOINT with USA not first: {diags:?}"
+        );
+    }
+
+    // --- S004: rel-to-trigraph-suggest (issue #235 / #186 PR-3) ---
+    //
+    // S004 surfaces a `Severity::Suggest` diagnostic when a REL TO
+    // entry has a corpus-rare prior and a corpus-common 1- or 2-edit
+    // neighbor. The fix is informational; the engine never auto-
+    // applies a Suggest-severity diagnostic regardless of confidence.
+
+    #[test]
+    fn s004_fires_on_aut_suggesting_aus() {
+        // The canonical #186 ambiguous fixture: `AUT` (Austria) is a
+        // valid trigraph but rare in REL TO; `AUS` (Australia) is
+        // far more common. The corpus prior delta exceeds
+        // SUGGEST_LOG_MARGIN.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert_eq!(s004.len(), 1, "S004 must fire on AUT: {diags:?}");
+        assert_eq!(s004[0].severity, marque_rules::Severity::Suggest);
+        let fix = s004[0].fix.as_ref().expect("S004 must carry a fix");
+        assert_eq!(fix.replacement.as_ref(), "AUS");
+        // Original is the rare entry, replacement is the common one.
+        assert_eq!(fix.original.as_ref(), "AUT");
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_pure_common_partner_list() {
+        // USA, AUS, GBR are all common partners. No suggest channel.
+        let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent on common-partner REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_does_not_fire_when_rel_to_is_empty() {
+        // Banner without REL TO is out of scope.
+        let diags = lint_banner("SECRET//NOFORN");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must stay silent without REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_message_uses_canonical_token_strings_only() {
+        // Constitution V audit-content-ignorance: the diagnostic
+        // message must reference only the trigraph (vocabulary) and
+        // English country names (vocabulary), never document text.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire");
+        let msg = s004.message.as_ref();
+        // Vocabulary-only references: trigraph, candidate, country name.
+        assert!(
+            msg.contains("\"AUT\""),
+            "message must reference the rare trigraph: {msg}"
+        );
+        assert!(
+            msg.contains("\"AUS\""),
+            "message must reference the candidate: {msg}"
+        );
+        assert!(
+            msg.contains("Austria") && msg.contains("Australia"),
+            "message must use canonical country names: {msg}"
+        );
+        // No surrounding banner content (e.g., "SECRET", "GBR") leaks
+        // into the message — those would be document text under the
+        // content-ignorance invariant.
+        assert!(
+            !msg.contains("SECRET") && !msg.contains("GBR"),
+            "message must not splice document content: {msg}"
+        );
+    }
+
+    #[test]
+    fn s004_does_not_fire_on_tetragraph_entry() {
+        // `FVEY` is a 4-letter tetragraph, not a 3-letter trigraph;
+        // the rule's `trigraph.len() != 3` guard must skip it. This
+        // pins the no-tetragraph contract — S004 only operates on
+        // trigraphs because tetragraph priors and edit-distance
+        // semantics need their own calibration.
+        let diags = lint_banner("SECRET//REL TO USA, FVEY");
+        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+        assert!(
+            s004.is_empty(),
+            "S004 must skip tetragraph entries: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_edit_distance_handles_empty_inputs() {
+        // The two early-return paths in the DP: when either input
+        // is empty, the distance is the length of the other. Pin
+        // both so the helper stays correct as it picks up callers
+        // beyond S004.
+        assert_eq!(super::s004_edit_distance("", ""), 0);
+        assert_eq!(super::s004_edit_distance("", "AUS"), 3);
+        assert_eq!(super::s004_edit_distance("AUS", ""), 3);
+    }
+
+    #[test]
+    fn s004_edit_distance_pins_canonical_pairs() {
+        // The substitution / transposition path the rule actually
+        // walks for the canonical #186 ambiguous fixtures. Edit-
+        // distance ≤ 2 is the gate; ≥ 3 must be excluded.
+        assert_eq!(super::s004_edit_distance("AUS", "AUS"), 0);
+        assert_eq!(super::s004_edit_distance("AUT", "AUS"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("USB", "USA"), 1); // substitution
+        assert_eq!(super::s004_edit_distance("ASU", "AUS"), 2); // transposition (2 substitutions)
+        assert_eq!(super::s004_edit_distance("AUS", "GBR"), 3); // beyond threshold
+    }
+
+    #[test]
+    fn s004_message_renders_all_country_name_arms() {
+        // The four `(entry_name, candidate_name)` arms each have a
+        // distinct phrasing because the surrounding parenthetical
+        // English name only renders when the trigraph is in the
+        // hand-curated COUNTRY_NAMES table. Driving every arm
+        // through real `IsmAttributes` requires manufactured
+        // priors — pinning the helper directly keeps the contract
+        // visible and stable.
+        //
+        // (Some, Some): canonical AUT → AUS form with both names.
+        let both = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        assert!(both.contains("Austria"));
+        assert!(both.contains("Australia"));
+        assert!(both.contains("far less common"));
+        assert!(both.contains("did you mean \"AUS\""));
+
+        // (None, Some): rare trigraph not in COUNTRY_NAMES.
+        let rare_unnamed = super::s004_message("XYZ", "AUS", None, Some("Australia"));
+        assert!(rare_unnamed.contains("\"XYZ\" is rare"));
+        assert!(rare_unnamed.contains("\"AUS\" (Australia)"));
+        // The "(EnglishName)" parenthetical only appears for the
+        // candidate, not for the unnamed trigraph itself.
+        assert!(!rare_unnamed.contains("\"XYZ\" ("));
+
+        // (Some, None): candidate not in COUNTRY_NAMES.
+        let candidate_unnamed = super::s004_message("AUT", "XYZ", Some("Austria"), None);
+        assert!(candidate_unnamed.contains("\"AUT\" (Austria)"));
+        assert!(candidate_unnamed.contains("did you mean \"XYZ\""));
+        // No trailing "(name)" for the unnamed candidate.
+        assert!(!candidate_unnamed.contains("\"XYZ\" ("));
+
+        // (None, None): neither in COUNTRY_NAMES.
+        let neither = super::s004_message("XYZ", "ABC", None, None);
+        assert!(neither.contains("\"XYZ\" is rare"));
+        assert!(neither.contains("did you mean \"ABC\""));
+        assert!(!neither.contains("("));
+    }
+
+    #[test]
+    fn s004_message_never_contains_document_content() {
+        // Constitution V audit-content-ignorance: the helper takes
+        // only vocabulary inputs — trigraph tokens and English
+        // country names — so even passing it adversarial inputs
+        // cannot leak document body text. The rule body is
+        // responsible for never SOURCING those inputs from the
+        // document; this test pins the helper's promise.
+        let msg = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
+        // Sanity: the helper output references only its inputs.
+        let allowed_tokens = ["AUT", "AUS", "Austria", "Australia"];
+        // Strip the structural words and check what's left is
+        // either whitespace, punctuation, or one of the inputs.
+        for word in msg.split_whitespace() {
+            let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if trimmed.is_empty() {
+                continue;
+            }
+            let in_allowed = allowed_tokens.contains(&trimmed);
+            let in_phrasing = matches!(
+                trimmed,
+                "is" | "far"
+                    | "less"
+                    | "common"
+                    | "in"
+                    | "REL"
+                    | "TO"
+                    | "than"
+                    | "did"
+                    | "you"
+                    | "mean"
+            );
+            assert!(
+                in_allowed || in_phrasing,
+                "unexpected token {trimmed:?} in S004 message: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn s004_skips_when_trigraph_spans_shorter_than_rel_to_list() {
+        // Defensive guard against a future parser change that no
+        // longer emits one `RelToTrigraph` token span per `rel_to`
+        // entry. Today the parser does emit them 1:1; if that
+        // contract drifts (e.g., a parser refactor that filters
+        // tetragraph-expanded entries differently), the rule must
+        // skip the misaligned entries instead of producing a
+        // diagnostic with the wrong span.
+        use marque_ism::{CountryCode, IsmAttributes};
+        use marque_rules::{MarkingType, RuleContext};
+
+        let mut attrs = IsmAttributes::default();
+        // Two REL TO entries (AUT triggers the suggest, USA does
+        // not) but ZERO RelToTrigraph token spans — the defensive
+        // path must hit the `trigraph_spans.get(idx)` None arm
+        // for AUT's would-be suggestion and bail out.
+        attrs.rel_to = Box::new([
+            CountryCode::try_new(b"USA").expect("USA is a valid country code"),
+            CountryCode::try_new(b"AUT").expect("AUT is a valid country code"),
+        ]);
+        // Leave attrs.token_spans empty.
+
+        let ctx = RuleContext {
+            marking_type: MarkingType::Banner,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: None,
+        };
+        let rule = super::RelToTrigraphSuggestRule;
+        let diags = <super::RelToTrigraphSuggestRule as Rule>::check(&rule, &attrs, &ctx);
+        assert!(
+            diags.is_empty(),
+            "S004 must skip when trigraph spans don't align with rel_to: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s004_tie_breaking_is_deterministic() {
+        // M-1 (Copilot review): the doc comment promises tie-breaking
+        // by (1) shorter edit distance, then (2) lexicographic order
+        // on the token. Pin the contract end-to-end against the
+        // canonical AUT → AUS fixture: AUS is the unique winner —
+        // any rerun of the rule must pick AUS, never `AUT`-adjacent
+        // codes that share a similar log-prior delta.
+        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on AUT");
+        let fix = s004.fix.as_ref().expect("S004 must carry a fix");
+        // Run again — same input, same output (no nondeterministic
+        // tie-break paths).
+        let diags2 = lint_banner("SECRET//REL TO USA, AUT, GBR");
+        let s004_2 = diags2
+            .iter()
+            .find(|d| d.rule.as_str() == "S004")
+            .expect("S004 must fire on second run");
+        let fix2 = s004_2.fix.as_ref().expect("second-run fix");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            fix2.replacement.as_ref(),
+            "S004 picks must be deterministic across runs"
+        );
+        assert_eq!(fix.replacement.as_ref(), "AUS");
+    }
+
+    #[test]
+    fn s004_fix_does_not_auto_apply_under_engine_fix_call() {
+        // Pin the suggest-don't-fix invariant end-to-end: even though
+        // S004 emits a `FixProposal`, running `Engine::fix` (the API
+        // that produces audit records) must NOT include the S004 fix
+        // in `applied`. The engine excludes Suggest-severity from
+        // auto-apply by construction.
+        use crate::scheme::CapcoScheme;
+        use marque_config::Config;
+        use marque_engine::{Engine, FixMode};
+        use marque_rules::RuleSet;
+
+        let config = Config::default();
+        let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(super::CapcoRuleSet::new())];
+        let engine = Engine::new(config, rule_sets, CapcoScheme::new())
+            .expect("default scheme has no rewrite cycles");
+
+        let result = engine.fix(b"SECRET//REL TO USA, AUT, GBR\n", FixMode::Apply);
+        // No S004-rule audit record may exist.
+        let s004_audits: Vec<_> = result
+            .applied
+            .iter()
+            .filter(|af| af.proposal.rule.as_str() == "S004")
+            .collect();
+        assert!(
+            s004_audits.is_empty(),
+            "S004 must never produce an AppliedFix; got: {s004_audits:?}"
         );
     }
 

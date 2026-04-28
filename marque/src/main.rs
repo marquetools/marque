@@ -940,11 +940,21 @@ fn run_fix(
             exit_code = EX_DIAG_WARN;
         }
 
-        if !common.quiet && !result.remaining_diagnostics.is_empty() {
-            eprintln!(
-                "{label}: {} issue(s) require manual review",
-                result.remaining_diagnostics.len()
-            );
+        // Suggest-channel diagnostics are advisory — they don't
+        // "require manual review", they offer optional alternatives.
+        // Filter them out of the narration count so a Suggest-only
+        // document produces no "require manual review" line. The
+        // suggestions themselves still appear in the diagnostic
+        // stream above; this only affects the summary tally.
+        if !common.quiet {
+            let review_count = result
+                .remaining_diagnostics
+                .iter()
+                .filter(|d| d.severity != marque_rules::Severity::Suggest)
+                .count();
+            if review_count > 0 {
+                eprintln!("{label}: {review_count} issue(s) require manual review");
+            }
         }
     }
     exit_code

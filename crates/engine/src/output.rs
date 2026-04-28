@@ -104,6 +104,18 @@ impl LintResult {
             .count()
     }
 
+    /// Number of diagnostics at `Severity::Suggest` — the
+    /// suggest-don't-fix channel. Visible in lint output but the
+    /// engine never auto-applies the attached fix (issue #235 / #186
+    /// PR-3). Like `Info`, contributes to neither exit-code gate.
+    pub fn suggest_count(&self) -> usize {
+        use marque_rules::Severity;
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Suggest)
+            .count()
+    }
+
     /// Number of diagnostics that are configured at `Severity::Fix` AND
     /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
     /// with `fix: None` is not counted, since it cannot produce an

@@ -72,6 +72,57 @@ pub fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
     marque_ism::lookup_tetragraph_members(code)
 }
 
+/// Human-readable names for a small set of CAPCO country trigraphs.
+///
+/// **Scope is intentionally narrow**: covers only the trigraphs S004
+/// (`rel-to-trigraph-suggest`, issue #235 / #186 PR-3) and likely
+/// follow-on suggest-channel rules need to render in diagnostic
+/// messages — partner trigraphs commonly seen in REL TO blocks plus
+/// every trigraph that appears in the four #186 ambiguous fixtures
+/// (USB → USA?, AUT → AUS?, ASU → AUS?, SA → USA?). This is **not** a
+/// vendored ISO 3166 dataset; expanding the table to the full
+/// CVE_ISMCAT trigraph set is a future build-time codegen step
+/// (the names live in `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/`
+/// XSD annotations) — when that lands, this hand table should be
+/// retired in favor of the generated form.
+///
+/// Sources:
+/// - `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd`
+///   for trigraph→country-name pairs (the authoritative schema annotates
+///   each entry with its `xs:annotation/xs:documentation`).
+/// - ISO 3166-1 alpha-3 spec for the codes themselves.
+///
+/// The table MUST stay sorted by trigraph (binary-search-backed
+/// `country_name`); the unit test `country_names_sorted` enforces
+/// this. Adding a row requires keeping the alphabetical order.
+pub(crate) const COUNTRY_NAMES: &[(&str, &str)] = &[
+    ("ASM", "American Samoa"),
+    ("AUS", "Australia"),
+    ("AUT", "Austria"),
+    ("CAN", "Canada"),
+    ("DEU", "Germany"),
+    ("FRA", "France"),
+    ("GBR", "United Kingdom"),
+    ("JPN", "Japan"),
+    ("KOR", "Republic of Korea"),
+    ("NZL", "New Zealand"),
+    ("USA", "United States"),
+    ("UZB", "Uzbekistan"),
+];
+
+/// Look up a country trigraph's English name from [`COUNTRY_NAMES`].
+///
+/// Returns `None` for trigraphs not present in the small hand-curated
+/// table — callers (S004) fall back to a generic message form
+/// ("`{trigraph}` may be a typo; did you mean `{candidate}`?") in
+/// that case.
+pub(crate) fn country_name(trigraph: &str) -> Option<&'static str> {
+    COUNTRY_NAMES
+        .binary_search_by_key(&trigraph, |&(t, _)| t)
+        .ok()
+        .map(|i| COUNTRY_NAMES[i].1)
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -127,5 +178,38 @@ mod tests {
     #[test]
     fn expand_tetragraph_unknown() {
         assert!(expand_tetragraph("XYZW").is_none());
+    }
+
+    #[test]
+    fn country_names_sorted() {
+        // Binary search in `country_name` requires the table to be
+        // sorted by trigraph. Adding a new row out of order would
+        // produce silent lookup failures rather than a build error,
+        // so this test acts as the regression guard.
+        for pair in COUNTRY_NAMES.windows(2) {
+            assert!(
+                pair[0].0 < pair[1].0,
+                "COUNTRY_NAMES not sorted: {} before {}",
+                pair[0].0,
+                pair[1].0,
+            );
+        }
+    }
+
+    #[test]
+    fn country_name_lookup_works_for_known_codes() {
+        // The four #186 ambiguous fixtures' relevant trigraphs must
+        // resolve to readable English names so S004 messages stay
+        // informative.
+        assert_eq!(country_name("USA"), Some("United States"));
+        assert_eq!(country_name("AUS"), Some("Australia"));
+        assert_eq!(country_name("AUT"), Some("Austria"));
+        assert_eq!(country_name("ASM"), Some("American Samoa"));
+        assert_eq!(country_name("UZB"), Some("Uzbekistan"));
+    }
+
+    #[test]
+    fn country_name_returns_none_for_unknown() {
+        assert!(country_name("XYZ").is_none());
     }
 }
