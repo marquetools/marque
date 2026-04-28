@@ -70,7 +70,7 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 ///
 /// `build.rs` already rejects any `schema_version` mismatch on the
 /// producer side (see `crates/capco/build.rs:73-82` — it accepts only
-/// the single `marque-priors-1` value today). This const block is the
+/// the single `marque-priors-2` value today). This const block is the
 /// consumer-side counterpart kept as an explicit source pin and
 /// defense-in-depth check that the generated `SCHEMA_VERSION` still
 /// matches the version this crate is wired to consume — the value
@@ -81,14 +81,14 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 /// schema version has to update this pin in the same edit.
 const _: () = {
     let actual = SCHEMA_VERSION.as_bytes();
-    let expected = b"marque-priors-1";
+    let expected = b"marque-priors-2";
     if actual.len() != expected.len() {
-        panic!("SCHEMA_VERSION length does not match \"marque-priors-1\"");
+        panic!("SCHEMA_VERSION length does not match \"marque-priors-2\"");
     }
     let mut i = 0;
     while i < actual.len() {
         if actual[i] != expected[i] {
-            panic!("SCHEMA_VERSION does not equal \"marque-priors-1\"");
+            panic!("SCHEMA_VERSION does not equal \"marque-priors-2\"");
         }
         i += 1;
     }
@@ -121,6 +121,24 @@ pub fn template_log_prior(name: &str) -> Option<f32> {
         .map(|i| TEMPLATE_BASE_RATES[i].log_prior)
 }
 
+/// Look up a country trigraph's log-prior (issue #233).
+///
+/// Returns `None` for trigraphs the priors generator did not surface
+/// (rare ISO codes outside the FVEY / NATO / Indo-Pacific baseline) —
+/// decoder code falls back to [`MISSING_TOKEN_LOG_PRIOR`] in that
+/// case, which is more punitive than a Laplace-smoothed zero count
+/// and is the right behavior for unknown candidates.
+///
+/// The decoder calls this once per token in a candidate's `rel_to`
+/// list, so the same sort-invariant-backed binary search as
+/// [`token_log_prior`] applies.
+pub fn trigraph_log_prior(token: &str) -> Option<f32> {
+    TRIGRAPH_BASE_RATES
+        .binary_search_by_key(&token, |t| t.token)
+        .ok()
+        .map(|i| TRIGRAPH_BASE_RATES[i].log_prior)
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -133,7 +151,7 @@ mod tests {
         // serves as a redundant tripwire that surfaces the problem in
         // test reports too (a build failure can be missed by a CI lane
         // that doesn't compile this crate; the test suite always does).
-        assert_eq!(SCHEMA_VERSION, "marque-priors-1");
+        assert_eq!(SCHEMA_VERSION, "marque-priors-2");
     }
 
     #[test]
@@ -154,6 +172,10 @@ mod tests {
             !TEMPLATE_BASE_RATES.is_empty(),
             "template base rates must be populated"
         );
+        assert!(
+            !TRIGRAPH_BASE_RATES.is_empty(),
+            "trigraph base rates must be populated (issue #233)"
+        );
     }
 
     #[test]
@@ -172,6 +194,14 @@ mod tests {
                 "template table not sorted: {:?} before {:?}",
                 pair[0].name,
                 pair[1].name,
+            );
+        }
+        for pair in TRIGRAPH_BASE_RATES.windows(2) {
+            assert!(
+                pair[0].token <= pair[1].token,
+                "trigraph table not sorted: {:?} before {:?}",
+                pair[0].token,
+                pair[1].token,
             );
         }
     }
@@ -275,6 +305,14 @@ mod tests {
                 t.log_prior,
             );
         }
+        for t in TRIGRAPH_BASE_RATES {
+            assert!(
+                t.log_prior.is_finite() && t.log_prior <= 0.0,
+                "trigraph {:?} has invalid log_prior {}",
+                t.token,
+                t.log_prior,
+            );
+        }
     }
 
     #[test]
@@ -295,5 +333,42 @@ mod tests {
         let lookup = template_log_prior(first.name);
         assert_eq!(lookup, Some(first.log_prior));
         assert_eq!(template_log_prior("this-template-does-not-exist"), None);
+    }
+
+    #[test]
+    fn trigraph_log_prior_lookup_works() {
+        let first = TRIGRAPH_BASE_RATES
+            .first()
+            .expect("table must be non-empty per tables_are_non_empty");
+        let lookup = trigraph_log_prior(first.token);
+        assert_eq!(lookup, Some(first.log_prior));
+        assert_eq!(trigraph_log_prior("this-trigraph-does-not-exist"), None);
+    }
+
+    #[test]
+    fn high_frequency_trigraphs_outweigh_lookalikes() {
+        // Issue #233 acceptance: USA must outscore UZB (and AUS must
+        // outscore ASM) by enough to swamp the decoder's
+        // ``UNAMBIGUOUS_LOG_MARGIN = 1.6`` (~5× odds ratio). Otherwise
+        // a fuzzy edit-distance-1 candidate could win against a
+        // legitimate edit-distance-2 candidate purely on edit cost.
+        const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
+
+        let usa = trigraph_log_prior("USA").expect("USA must be in trigraph table");
+        let uzb = trigraph_log_prior("UZB").expect("UZB must be in trigraph table");
+        let aus = trigraph_log_prior("AUS").expect("AUS must be in trigraph table");
+        let asm = trigraph_log_prior("ASM").expect("ASM must be in trigraph table");
+
+        let usa_uzb = usa - uzb;
+        let aus_asm = aus - asm;
+
+        assert!(
+            usa_uzb > UNAMBIGUOUS_LOG_MARGIN,
+            "log_prior(USA) - log_prior(UZB) = {usa_uzb} must exceed UNAMBIGUOUS_LOG_MARGIN = {UNAMBIGUOUS_LOG_MARGIN} so fuzzy USB→USA wins"
+        );
+        assert!(
+            aus_asm > UNAMBIGUOUS_LOG_MARGIN,
+            "log_prior(AUS) - log_prior(ASM) = {aus_asm} must exceed UNAMBIGUOUS_LOG_MARGIN = {UNAMBIGUOUS_LOG_MARGIN} so AUS wins despite ASM's edit-distance advantage"
+        );
     }
 }

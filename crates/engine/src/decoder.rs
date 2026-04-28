@@ -756,6 +756,63 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- REL TO trigraph fuzzy-priors expansion (issue #233).
+    //      The standard fuzzy path in `fuzzy_correct_tokens` operates
+    //      against `correction_vocab()`, which deliberately excludes
+    //      country trigraphs (see the comment on `ALL_CVE_TOKENS` in
+    //      `crates/ism/build.rs` and the design rationale in
+    //      `EXTENDED_CORRECTION_VOCAB`). Trigraphs live in a separate
+    //      `TRIGRAPHS` slice reached via `is_trigraph`. So an unknown
+    //      3-char REL TO entry like `USB` doesn't get any fuzzy
+    //      correction — the standard fuzzy walk has nothing to match
+    //      against. The strict REL TO parser previously dropped
+    //      unknown entries silently; issue #233 makes
+    //      `parse_rel_to_with_spans` emit `TokenKind::Unknown` instead
+    //      so the dispatcher's step 3a rejects the "drop USB"
+    //      candidate.
+    //
+    //      With unknown entries no longer silently absorbed, the
+    //      candidate set must include real trigraph alternates for
+    //      the dispatcher to choose between. This block walks each
+    //      `REL TO ` block, finds 3-char entries that aren't valid
+    //      trigraphs, and emits one canonical-byte alternate per
+    //      candidate from a fuzzy match against the TRIGRAPHS
+    //      slice. The structural strict parse +
+    //      `score_candidate` (which sums `trigraph_log_prior` over
+    //      the parsed `rel_to` slice) then picks the right winner:
+    //      USA dominates UZB by ~7 nats, far above
+    //      `UNAMBIGUOUS_LOG_MARGIN`.
+    //
+    //      Each alternate carries an `EditDistance1` /
+    //      `EditDistance2` feature so the audit trail records the
+    //      fuzzy work, plus a `BaseRateCommonMarking` feature
+    //      acknowledging the trigraph-prior contribution. No new
+    //      `FeatureId` variant — adding one would bump the audit
+    //      schema. Reusing `BaseRateCommonMarking` is the right
+    //      choice because the variant's existing doc reads as "the
+    //      candidate's base rate in the target corpus dominates the
+    //      posterior", which is precisely what the trigraph-prior
+    //      contribution does.
+    let trigraph_matcher = FuzzyVocabMatcher::new(marque_ism::TRIGRAPHS);
+    for (alt_text, edit_feature) in
+        try_rel_to_fuzzy_trigraph_candidates(&fuzzy_corrected, &trigraph_matcher)
+    {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(edit_feature);
+        // Trigraph-prior acknowledgement (see comment above for the
+        // FeatureId reuse rationale).
+        features.push(FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: -0.1,
+        });
+        emit(
+            alt_text.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Position-aware classification heuristic (issue #133 PR 2).
     //      Runs LAST so the dedup-keep-first guard above lets a
     //      vocab-based attempt with the same canonical bytes win the
@@ -2312,6 +2369,200 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 }
 
 // ---------------------------------------------------------------------------
+// REL TO trigraph fuzzy expansion (issue #233)
+// ---------------------------------------------------------------------------
+
+/// Emit one canonical-byte alternate per fuzzy candidate for each
+/// unknown 3-char REL TO entry.
+///
+/// The standard fuzzy path in [`fuzzy_correct_tokens`] operates against
+/// the [`CapcoTokenSet::correction_vocab`] slice, which deliberately
+/// excludes country trigraphs (the design comment on `ALL_CVE_TOKENS`
+/// in `crates/ism/build.rs` calls this out — country codes live
+/// exclusively in [`marque_ism::TRIGRAPHS`] and are reached through
+/// [`CapcoTokenSet::is_trigraph`]). So a typo'd 3-char REL TO entry
+/// like `USB` gets no correction from the standard pass — there's
+/// nothing in the vocab to match it against. The strict parser then
+/// emits a `TokenKind::Unknown` for the entry (issue #233 change in
+/// `parse_rel_to_with_spans`), and the dispatcher's step 3a rejects
+/// the "drop USB" candidate.
+///
+/// With the original candidate filtered out, this function provides
+/// the alternates the dispatcher chooses between: it walks each
+/// `REL TO ` block in `text`, finds 3-char comma-separated entries
+/// that aren't already valid trigraphs, asks the trigraph-vocab
+/// matcher for all candidates within the edit-distance bound, and
+/// emits one alternate text per candidate (with the substitution
+/// applied in-place).
+///
+/// Each emitted alternate carries an `EditDistance1` /
+/// `EditDistance2` feature (paired with the candidate's distance) so
+/// the audit trail records the fuzzy work. The caller pushes a
+/// `BaseRateCommonMarking` feature acknowledging the trigraph-prior
+/// contribution. The decoder's `score_candidate` later sums the
+/// trigraph-prior contribution over the parsed `rel_to` slice; the
+/// popular-vs-rare log-prior delta (e.g., `log_prior(USA) -
+/// log_prior(UZB)` ≈ +7 nats) decides which alternate wins the
+/// `UNAMBIGUOUS_LOG_MARGIN` (~1.6 nat) contest.
+///
+/// **Scope**: trigraph-shaped (3-char ASCII uppercase) entries only.
+/// Two-letter entries (`EU`) are below `MIN_FUZZY_LEN`; longer
+/// multi-char entries (`AUSTRALIA_GROUP`) have low fuzzy-tie risk
+/// because their lengths rarely collide. Only fires when the entry
+/// token is NOT already a valid trigraph — so `AUT`, `UZB`, `ASM`
+/// in legitimate use pass through unchanged.
+///
+/// **CAPCO authority**: REL TO syntax is defined in CAPCO-2016 §H.8.
+/// The trigraph dictionary itself comes from the ODNI CVE schema in
+/// `CVEnumISMCATRelTo.xsd`, baked into [`CapcoTokenSet::is_trigraph`]
+/// and into the [`marque_ism::TRIGRAPHS`] slice this function fuzzy-
+/// matches against.
+fn try_rel_to_fuzzy_trigraph_candidates(
+    text: &str,
+    trigraph_matcher: &FuzzyVocabMatcher<'_>,
+) -> Vec<(String, FeatureEntry)> {
+    let token_set = CapcoTokenSet;
+    let mut out: Vec<(String, FeatureEntry)> = Vec::new();
+
+    let mut search_start = 0;
+    while let Some(rel_pos) = text[search_start..].find("REL TO ") {
+        let header_end = search_start + rel_pos + "REL TO ".len();
+        // Block ends at the next `//` (next category) or end of text.
+        // CAPCO §H.8 / §A authority: `//` is the category separator;
+        // `,` separates entries within the REL TO category itself.
+        let block_end = text[header_end..]
+            .find("//")
+            .map(|p| header_end + p)
+            .unwrap_or(text.len());
+        let block = &text[header_end..block_end];
+
+        // Walk the comma-separated entries with their byte offsets.
+        let mut cursor = 0usize;
+        for entry in block.split(',') {
+            let entry_start = cursor;
+            let entry_end = cursor + entry.len();
+            cursor = entry_end + 1; // skip the comma
+
+            let trimmed = entry.trim();
+            // Only 3-char ASCII-uppercase trigraph-shaped entries —
+            // see fn doc for the scope rationale.
+            if trimmed.len() != 3 || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
+                continue;
+            }
+            // Skip already-valid trigraphs (the matcher's binary
+            // search would also short-circuit on a vocab hit, but
+            // keeping the explicit check means a token like `AUT`
+            // appearing legitimately never gets multi-cast as
+            // USA/AUS/etc.).
+            if token_set.is_trigraph(trimmed) {
+                continue;
+            }
+
+            // Bypass the standard `MIN_USEFUL_CONFIDENCE` floor:
+            // for a 3-char input, distance-2 corrections sit at
+            // confidence 0.40, below the default 0.45 cutoff that
+            // protects the standalone fuzzy path. Issue #233's score-
+            // time tiebreak (corpus-weighted trigraph priors +
+            // `UNAMBIGUOUS_LOG_MARGIN`) supplies the safety the
+            // confidence-floor was substituting for; without lowering
+            // it here, a typo like `ASU → AUS` (plain Levenshtein
+            // distance 2) never reaches the scorer.
+            let mut candidates = trigraph_matcher.correct_all_with_floor(trimmed, 0.0);
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // Drop candidates that would duplicate a trigraph already
+            // present elsewhere in this REL TO block. CAPCO §H.8
+            // forbids duplicate entries, and the bag-of-tokens scorer
+            // happens to *reward* duplicates (each instance adds its
+            // log-prior again). Without this filter, an ambiguous typo
+            // adjacent to a popular trigraph could collapse to "REL TO
+            // USA, USA, GBR" because USA's log-prior contribution is
+            // additive. The block's other entries are computed by
+            // re-walking `block.split(',')` and taking the trigraph
+            // form of any 3-char ASCII-uppercase entry that's in the
+            // CVE recognition set.
+            let other_trigraphs: Vec<&str> = block
+                .split(',')
+                .map(str::trim)
+                .filter(|e| {
+                    e.len() == 3
+                        && e.bytes().all(|b| b.is_ascii_uppercase())
+                        && *e != trimmed
+                        && token_set.is_trigraph(e)
+                })
+                .collect();
+            candidates.retain(|c| !other_trigraphs.contains(&c.token));
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // Rank candidates by (distance, then trigraph log-prior).
+            // The plain Levenshtein hits for a 3-char input often
+            // produce 20+ distance-2 candidates (every other 3-char
+            // trigraph that shares one letter). Without a prior-rank
+            // pre-filter, the K=16 attempt cap upstream gets
+            // exhausted by low-prior alternates and the high-prior
+            // ones get dropped. Sorting by (distance asc, log-prior
+            // desc) keeps the most plausible candidates first; we
+            // cap at TRIGRAPH_FUZZY_TOP_K per ambiguous entry to
+            // bound the candidate-set growth.
+            //
+            // The cap value (4) is sized so a single ambiguous entry
+            // doesn't crowd out the other decoder paths
+            // (`fuzzy_corrected`, reorder, delimiter-insert, etc.):
+            // 4 alternates ≤ K_MAX_CANDIDATES (8) leaves room for
+            // the standard candidates the dispatcher also needs.
+            const TRIGRAPH_FUZZY_TOP_K: usize = 4;
+            candidates.sort_by(|a, b| {
+                a.distance.cmp(&b.distance).then_with(|| {
+                    let pa = marque_capco::priors::trigraph_log_prior(a.token)
+                        .unwrap_or(f32::NEG_INFINITY);
+                    let pb = marque_capco::priors::trigraph_log_prior(b.token)
+                        .unwrap_or(f32::NEG_INFINITY);
+                    pb.total_cmp(&pa)
+                })
+            });
+            candidates.truncate(TRIGRAPH_FUZZY_TOP_K);
+
+            for cand in &candidates {
+                // Reconstruct the full `text` with the entry replaced.
+                // The 3-char trimmed sub-slice within the entry
+                // preserves any surrounding whitespace.
+                let lead_ws_len = entry.len() - entry.trim_start().len();
+                let trail_ws_len = entry.len() - entry.trim_end().len();
+                let mut rewritten_entry = String::with_capacity(entry.len());
+                rewritten_entry.push_str(&entry[..lead_ws_len]);
+                rewritten_entry.push_str(cand.token);
+                rewritten_entry.push_str(&entry[entry.len() - trail_ws_len..]);
+
+                let mut alt = String::with_capacity(text.len());
+                alt.push_str(&text[..header_end + entry_start]);
+                alt.push_str(&rewritten_entry);
+                alt.push_str(&text[header_end + entry_end..]);
+
+                let id = if cand.distance <= 1 {
+                    FeatureId::EditDistance1
+                } else {
+                    FeatureId::EditDistance2
+                };
+                let delta = match id {
+                    FeatureId::EditDistance1 => -0.5,
+                    FeatureId::EditDistance2 => -1.2,
+                    _ => 0.0,
+                };
+                out.push((alt, FeatureEntry { id, delta }));
+            }
+        }
+
+        search_start = block_end;
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
 // SCI delimiter recovery (issue #198 — #133 PR 10)
 // ---------------------------------------------------------------------------
 
@@ -2938,11 +3189,17 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// Returns `(prior, posterior)` where:
 ///
 /// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
-///   marking's canonical tokens. This is the prior alone — nothing
-///   else — and is what [`Candidate::prior_log_odds`] is documented
-///   to carry (see `crates/scheme/src/ambiguity.rs`). Tokens missing
-///   from the baked table contribute [`MISSING_TOKEN_LOG_PRIOR`]
-///   (a below-observed-floor penalty) rather than `0.0`.
+///   marking's canonical tokens **plus** Σ
+///   [`marque_capco::priors::trigraph_log_prior`] over the marking's
+///   `rel_to` country codes (issue #233). This is the prior alone —
+///   nothing else — and is what [`Candidate::prior_log_odds`] is
+///   documented to carry (see `crates/scheme/src/ambiguity.rs`).
+///   Tokens or trigraphs missing from the baked tables contribute
+///   [`MISSING_TOKEN_LOG_PRIOR`] (a below-observed-floor penalty)
+///   rather than `0.0`. The trigraph contribution is what lets the
+///   decoder break fuzzy-correction ties between common (USA, GBR,
+///   AUS) and rare-lookalike (USB-not-a-country, UZB, ASM, AUT)
+///   trigraphs in REL TO blocks.
 /// - `posterior` = `prior + Σ attempt.features[i].delta + structural
 ///   penalties`. This is the quantity the decoder sorts and thresholds
 ///   on. The only structural penalty today is
@@ -2970,6 +3227,25 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     let tokens = canonical_tokens_for(marking);
     for token in tokens {
         prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+    }
+
+    // Trigraph prior contribution (issue #233). REL TO country codes
+    // are not part of the `canonical_tokens_for` set because
+    // `CountryCode::as_str()` returns a borrowed `&str` rather than
+    // `&'static str`, and because the per-token corpus coverage for
+    // country codes used to be sparse. Issue #233 adds a parallel
+    // `TRIGRAPH_BASE_RATES` table (issue #186 sub-feature 1) so the
+    // decoder can break fuzzy ties between popular trigraphs (USA,
+    // GBR, AUS, …) and rare lookalikes (UZB, ASM, AUT-as-Austria) by
+    // log-prior delta rather than edit distance alone. Look up each
+    // observed REL TO trigraph at score-time. Unknown entries fall to
+    // MISSING_TOKEN_LOG_PRIOR — the same penalty the non-trigraph
+    // path uses for unrecognized tokens, which is the correct
+    // behavior for a candidate that resolved to a non-CVE country
+    // string.
+    for country in marking.0.rel_to.iter() {
+        prior += marque_capco::priors::trigraph_log_prior(country.as_str())
+            .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
     }
 
     // Posterior: prior plus feature deltas plus structural penalties.
@@ -3091,14 +3367,16 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 ///   AEA-bearing candidates across the board.
 /// - `fgi_marker` — category token `"FGI"` when an FGI marker is set.
 ///
-/// Deliberately NOT included in scoring:
+/// Deliberately NOT included here:
 ///
 /// - `sar_markings` — SAR program identifiers are agency-assigned
 ///   codewords (open set, not in the baked priors).
-/// - `rel_to` country codes — `CountryCode::as_str()` returns a
-///   `&str` tied to `&self`, not `&'static str`. Plumbing a
-///   static-string helper is left as future work; the priors
-///   corpus coverage for country codes is sparse anyway.
+/// - `rel_to` country codes — scored separately in
+///   [`score_candidate`] via
+///   [`marque_capco::priors::trigraph_log_prior`] (issue #233).
+///   `CountryCode::as_str()` returns a `&str` tied to `&self`, not
+///   `&'static str`, so the trigraph contribution is summed at
+///   score-time rather than collected here.
 /// - CAB fields (`classified_by`, `derived_from`, `declassify_on`) —
 ///   free-form text, not CVE-enumerable.
 ///

@@ -1,6 +1,6 @@
 {
-  "schema_version": "marque-priors-1",
-  "generated_at": "2026-04-24T01:35:12.918453+00:00",
+  "schema_version": "marque-priors-2",
+  "generated_at": "2026-04-28T15:02:41.887939+00:00",
   "token_base_rates": {
     "U": {
       "count": 2063,
@@ -395,6 +395,108 @@
     "classification//sci-block": {
       "count": 220,
       "log_prior": -6.932986
+    }
+  },
+  "trigraph_base_rates": {
+    "USA": {
+      "count": 10000,
+      "log_prior": -1.276128
+    },
+    "GBR": {
+      "count": 4000,
+      "log_prior": -2.192269
+    },
+    "CAN": {
+      "count": 4000,
+      "log_prior": -2.192269
+    },
+    "AUS": {
+      "count": 4000,
+      "log_prior": -2.192269
+    },
+    "NZL": {
+      "count": 3500,
+      "log_prior": -2.325765
+    },
+    "FVEY": {
+      "count": 1500,
+      "log_prior": -3.172682
+    },
+    "ACGU": {
+      "count": 800,
+      "log_prior": -3.800708
+    },
+    "NATO": {
+      "count": 1200,
+      "log_prior": -3.395659
+    },
+    "EU": {
+      "count": 800,
+      "log_prior": -3.800708
+    },
+    "DEU": {
+      "count": 600,
+      "log_prior": -4.087974
+    },
+    "FRA": {
+      "count": 600,
+      "log_prior": -4.087974
+    },
+    "NLD": {
+      "count": 500,
+      "log_prior": -4.269963
+    },
+    "NOR": {
+      "count": 500,
+      "log_prior": -4.269963
+    },
+    "DNK": {
+      "count": 400,
+      "log_prior": -4.492607
+    },
+    "ITA": {
+      "count": 400,
+      "log_prior": -4.492607
+    },
+    "ESP": {
+      "count": 300,
+      "log_prior": -4.779458
+    },
+    "BEL": {
+      "count": 300,
+      "log_prior": -4.779458
+    },
+    "POL": {
+      "count": 300,
+      "log_prior": -4.779458
+    },
+    "TUR": {
+      "count": 250,
+      "log_prior": -4.961116
+    },
+    "JPN": {
+      "count": 700,
+      "log_prior": -3.934061
+    },
+    "KOR": {
+      "count": 600,
+      "log_prior": -4.087974
+    },
+    "ISR": {
+      "count": 500,
+      "log_prior": -4.269963
+    },
+    "AUT": {
+      "count": 50,
+      "log_prior": -6.554743
+    },
+    "UZB": {
+      "count": 5,
+      "log_prior": -8.694809
+    },
+    "ASM": {
+      "count": 1,
+      "log_prior": -9.793422
     }
   },
   "strict_context_priors": {

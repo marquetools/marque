@@ -47,7 +47,7 @@
       "name": "corrections_map_typo_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//ORCON//REL TO USA, GBER\n",
-      "expected_lint": ""
+      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":33,\"end\":37},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
     },
     {
       "name": "declass_in_banner.txt",

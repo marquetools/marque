@@ -23,6 +23,10 @@ name = "linear_scaling"
 harness = false
 name = "deadline_overhead"
 
+[[bench]]
+harness = false
+name = "decoder_trigraph_priors"
+
 [lints]
 workspace = true
 

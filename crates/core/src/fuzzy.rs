@@ -205,6 +205,91 @@ impl<'v> FuzzyVocabMatcher<'v> {
             confidence,
         })
     }
+
+    /// Return every vocabulary entry within
+    /// [`MAX_EDIT_DISTANCE`] of `token`, paired with its distance.
+    ///
+    /// Behaves like [`Self::correct`] but does NOT collapse ambiguous
+    /// matches to `None`. The decoder uses this when the caller needs
+    /// to score multiple candidates against a downstream prior — for
+    /// REL TO trigraph fuzzy recovery, the corpus-weighted log-prior
+    /// breaks ties that the matcher itself cannot (issue #233).
+    /// Fast-paths the same as [`Self::correct`]:
+    ///
+    /// - `token` is already in vocab → returns an empty vec.
+    /// - `token.len() < MIN_FUZZY_LEN` → returns an empty vec.
+    ///
+    /// Output is ordered by ascending distance, then by the
+    /// vocabulary's lexicographic order (because the iteration walks
+    /// the sorted vocab slice). Capped by [`MAX_EDIT_DISTANCE`] so a
+    /// single call cannot run away on a tiny vocab; the priors-bake
+    /// vocabulary stays well bounded in practice.
+    pub fn correct_all(&self, token: &str) -> Vec<FuzzyCorrection> {
+        self.correct_all_with_floor(token, MIN_USEFUL_CONFIDENCE)
+    }
+
+    /// Like [`Self::correct_all`] but with a caller-controlled
+    /// confidence floor.
+    ///
+    /// The default floor (`MIN_USEFUL_CONFIDENCE` = 0.45) excludes
+    /// distance-2 corrections of 3-char inputs, which is the right
+    /// safety policy for the standard fuzzy path because those
+    /// corrections are too speculative without surrounding context.
+    /// The decoder's REL TO trigraph expansion (issue #233) supplies
+    /// surrounding context — the candidate goes through the strict
+    /// REL TO parser, the resulting marking has a corpus-weighted
+    /// trigraph prior, and the decoder's `UNAMBIGUOUS_LOG_MARGIN`
+    /// breaks ties at score time. Lowering the floor for that
+    /// specific call site is what lets a typo like `ASU → AUS`
+    /// (distance 2 in plain Levenshtein) reach the scorer.
+    ///
+    /// Callers passing a floor of `0.0` get every match within
+    /// [`MAX_EDIT_DISTANCE`].
+    pub fn correct_all_with_floor(
+        &self,
+        token: &str,
+        confidence_floor: f32,
+    ) -> Vec<FuzzyCorrection> {
+        if self.vocab.binary_search(&token).is_ok() {
+            return Vec::new();
+        }
+
+        let token_len = token.len();
+        if token_len < MIN_FUZZY_LEN {
+            return Vec::new();
+        }
+
+        let scratch_len = token_len + 1;
+        let mut prev = vec![0u8; scratch_len];
+        let mut curr = vec![0u8; scratch_len];
+
+        let mut hits: Vec<FuzzyCorrection> = Vec::new();
+        for &candidate in self.vocab {
+            let cand_len = candidate.len();
+            let len_diff = token_len.abs_diff(cand_len);
+            if len_diff > MAX_EDIT_DISTANCE as usize {
+                continue;
+            }
+            let d = levenshtein_with_scratch(token, candidate, &mut prev, &mut curr);
+            if d > MAX_EDIT_DISTANCE {
+                continue;
+            }
+            let confidence = correction_confidence(d, token_len);
+            if confidence < confidence_floor {
+                continue;
+            }
+            hits.push(FuzzyCorrection {
+                token: candidate,
+                distance: d,
+                confidence,
+            });
+        }
+        // Sort ascending by distance; preserve vocab order within a
+        // distance band (vocab is already sorted, so the secondary
+        // ordering falls out of the iteration without a re-sort).
+        hits.sort_by_key(|h| h.distance);
+        hits
+    }
 }
 
 // ---------------------------------------------------------------------------
