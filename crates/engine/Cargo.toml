@@ -29,6 +29,7 @@ workspace = true
 [dependencies]
 aho-corasick = { workspace = true }
 futures = { workspace = true, optional = true }
+futures-core = { workspace = true }
 marque-capco = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
