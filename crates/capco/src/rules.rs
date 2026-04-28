@@ -2751,15 +2751,22 @@ impl Rule for CountryCodeOrderingRule {
 /// `joint-usa-first`) to flag deviations is a planned follow-up; this
 /// helper does NOT encode the convention into correctness.
 ///
-/// This is the shared ordering rule for E002 (REL TO, fix path), E020
-/// (REL TO + JOINT, both check and fix paths), and E052 (REL TO
-/// no-duplicates fix path). It is also re-exported so the decoder
-/// (`marque-engine`) can validate that any candidate it emits — e.g.
-/// USA-injection (issue #234) — would not violate canonical ordering.
-/// Extracting and exposing it prevents the consumers from drifting if
-/// the ordering rule changes (tetragraph sorting, delimiter
-/// normalization, etc.) and gives a single source of truth for the
-/// USA-first + alphabetical invariant cited in §H.8 p151.
+/// This is the shared ordering rule for E002 (REL TO, fix path) and
+/// E020 (REL TO + JOINT, both check and fix paths). E052's
+/// no-duplicates fix path uses [`dedup_country_codes`] separately and
+/// does NOT canonicalize order — see that function's doc for why.
+/// Extracting this helper prevents E002 and E020 from drifting if the
+/// ordering rule changes (tetragraph sorting, delimiter normalization,
+/// etc.) and gives a single source of truth for the USA-first +
+/// alphabetical invariant cited in §H.8 p151.
+///
+/// Visibility is `pub(crate)`: the decoder text-level path in
+/// `marque-engine` does not call this helper directly — it operates
+/// pre-strict-parse on raw text — and no other crate currently needs
+/// it. Should a future consumer (e.g., a downstream formatter or a
+/// programmatic API) need to canonicalize a `&[CountryCode]` list, it
+/// should call through `marque-capco`'s public surface or this helper
+/// can be promoted to `pub` at that point with an honest rationale.
 ///
 /// Tetragraph partition handling is deferred — issue #183 PR-A
 /// widened `CountryCode` so 4-byte tetragraphs are now first-class
@@ -2771,7 +2778,10 @@ impl Rule for CountryCodeOrderingRule {
 /// `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
 /// derive the buckets from the CVE schema groups in
 /// `CVEnumISMCATRelTo.xsd`.
-pub fn canonicalize_trigraph_list(codes: &[marque_ism::CountryCode], usa_first: bool) -> Vec<&str> {
+pub(crate) fn canonicalize_trigraph_list(
+    codes: &[marque_ism::CountryCode],
+    usa_first: bool,
+) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&marque_ism::CountryCode::USA);
         let mut sorted: Vec<&str> = codes
@@ -2959,8 +2969,7 @@ impl Rule for RelToNoDuplicatesRule {
             let replacement = fixed.join(", ");
             let message = format!(
                 "REL TO country codes must be unique: [{}] → [{}] (duplicates collapsed)",
-                actual.join(", "),
-                fixed.join(", "),
+                original, replacement,
             );
 
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {

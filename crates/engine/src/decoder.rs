@@ -2658,11 +2658,12 @@ fn try_rel_to_fuzzy_trigraph_candidates(
 ///
 /// **CAPCO authority**: the USA-first invariant is CAPCO-2016 §H.8
 /// p151: "After 'USA', list the required one or more trigraph country
-/// codes in alphabetical order." That same passage backs the new
-/// E020 / E002 source-of-truth canonicalization in
-/// [`marque_capco::rules::canonicalize_trigraph_list`]. The
-/// decoder side and the rule side share the canonicalizer rather
-/// than re-spelling the rule, per the issue #234 PR-B brief.
+/// codes in alphabetical order." E020 enforces that invariant at the
+/// rule layer (via the `marque-capco`-private `canonicalize_trigraph_list`
+/// helper). This decoder path operates one stage earlier — pre-strict-
+/// parse, on raw text — so it does NOT call the rule-layer helper; it
+/// emits a candidate text and lets the downstream pipeline (strict
+/// parse + E020) verify and re-canonicalize as needed.
 ///
 /// **Scope and guards** (mirrors PR-A's design):
 ///
@@ -2681,11 +2682,11 @@ fn try_rel_to_fuzzy_trigraph_candidates(
 ///   fire on the post-decode text and produce its own fix; if the
 ///   injection produced a duplicate (USA was already present in the
 ///   block under a different shape), the `already_has_usa` guard
-///   above suppresses emit. The single source of truth for that
-///   USA-first + alphabetical invariant lives in
-///   [`marque_capco::rules::canonicalize_trigraph_list`], which both
-///   E020 and E002 consume — keeping the decoder text-level (no
-///   imports) avoids re-entering the rule layer mid-recognition.
+///   above suppresses emit. Keeping the decoder text-level (no
+///   `marque-capco` imports) avoids re-entering the rule layer
+///   mid-recognition while preserving the single-source-of-truth
+///   property — the canonical ordering rule lives in `marque-capco`,
+///   and the decoder defers to whatever it produces post-parse.
 /// - Audit signal: each candidate carries
 ///   [`FeatureId::BaseRateCommonMarking`] with a small positive
 ///   delta to acknowledge that USA is the dominant trigraph in the
@@ -2700,18 +2701,27 @@ fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, FeatureEntry)
     let mut search_start = 0;
     while let Some(rel_pos) = text[search_start..].find("REL TO ") {
         let header_end = search_start + rel_pos + "REL TO ".len();
-        // Block ends at the next `//` (next category) or end of text.
-        // CAPCO §H.8 / §A authority: `//` is the category separator;
-        // `,` separates entries within the REL TO category itself.
-        let block_end = text[header_end..]
-            .find("//")
-            .map(|p| header_end + p)
-            .unwrap_or(text.len());
+        // Block ends at the EARLIEST of: `//` (next category), `\n`
+        // (banner/CAB candidates from `Scanner::scan_banners` arrive
+        // as full lines), or `)` (portion-form close). CAPCO §H.8 /
+        // §A authority: `//` is the category separator; `,` separates
+        // entries within the REL TO category itself. Mirrors the
+        // terminator priority in `try_rel_to_fuzzy_trigraph_candidates`
+        // and the corpus analyzer's `_extract_rel_to_trigraphs`.
+        let tail = &text[header_end..];
+        let block_len = ["//", "\n", ")"]
+            .iter()
+            .filter_map(|sep| tail.find(sep))
+            .min()
+            .unwrap_or(tail.len());
+        let block_end = header_end + block_len;
         let block = &text[header_end..block_end];
 
         // Walk entries with their byte offsets within the block.
+        // Pre-size from comma count + 1 — typical REL TO blocks have
+        // 2–6 entries, so this avoids reallocations on the common case.
         let entries: Vec<(usize, &str)> = {
-            let mut v = Vec::new();
+            let mut v = Vec::with_capacity(block.bytes().filter(|&b| b == b',').count() + 1);
             let mut cursor = 0usize;
             for entry in block.split(',') {
                 v.push((cursor, entry));
