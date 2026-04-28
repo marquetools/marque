@@ -2688,13 +2688,12 @@ fn try_rel_to_fuzzy_trigraph_candidates(
 ///   property — the canonical ordering rule lives in `marque-capco`,
 ///   and the decoder defers to whatever it produces post-parse.
 /// - Audit signal: each candidate carries
-///   [`FeatureId::BaseRateCommonMarking`] with a small positive
-///   delta to acknowledge that USA is the dominant trigraph in the
-///   corpus prior. Reusing `BaseRateCommonMarking` (vs introducing a
-///   new variant) keeps the audit schema closed — `MARQUE_AUDIT_SCHEMA`
-///   stays at `marque-mvp-2`. The variant's existing doc reads as
-///   "the candidate's base rate in the target corpus dominates the
-///   posterior", which is exactly what USA-injection asserts.
+///   [`FeatureId::BaseRateCommonMarking`] as provenance only, with
+///   zero delta. This records that USA is the dominant trigraph in
+///   the corpus prior without changing score or double-counting that
+///   prior in the posterior. Reusing `BaseRateCommonMarking` (vs
+///   introducing a new variant) keeps the audit schema closed —
+///   `MARQUE_AUDIT_SCHEMA` stays at `marque-mvp-2`.
 fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, FeatureEntry)> {
     let mut out: Vec<(String, FeatureEntry)> = Vec::new();
 

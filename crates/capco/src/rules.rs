@@ -63,6 +63,7 @@ use marque_ism::{
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
+use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
 pub struct CapcoRuleSet {
@@ -2847,13 +2848,15 @@ pub(crate) fn canonicalize_trigraph_list(
 pub(crate) fn dedup_country_codes(
     codes: &[marque_ism::CountryCode],
 ) -> Vec<marque_ism::CountryCode> {
-    let mut seen: Vec<marque_ism::CountryCode> = Vec::with_capacity(codes.len());
+    let mut seen: HashSet<marque_ism::CountryCode> =
+        HashSet::with_capacity(codes.len());
+    let mut out: Vec<marque_ism::CountryCode> = Vec::with_capacity(codes.len());
     for &code in codes.iter() {
-        if !seen.contains(&code) {
-            seen.push(code);
+        if seen.insert(code) {
+            out.push(code);
         }
     }
-    seen
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -3142,10 +3145,27 @@ fn check_trigraph_ordering(
     // text) so it stays readable regardless of list type. REL TO's
     // "USA first when present" clause is only correct for REL TO;
     // JOINT's pure-alpha rule has no USA carve-out in the source.
+    // When the fix also removes duplicates (E020 wins the C-1 overlap
+    // guard and its replacement is canonical), the message says so to
+    // avoid surprising users who only expected a reorder.
+    let deduped = canonical_codes.len() < codes.len();
     let message = if usa_first {
+        if deduped {
+            format!(
+                "{list_name} country codes must be alphabetically ordered \
+                 (USA first when present) and must be unique: \
+                 [{joined_actual}] → [{joined_canonical}]"
+            )
+        } else {
+            format!(
+                "{list_name} country codes must be alphabetically ordered \
+                 (USA first when present): [{joined_actual}] → [{joined_canonical}]"
+            )
+        }
+    } else if deduped {
         format!(
             "{list_name} country codes must be alphabetically ordered \
-             (USA first when present): [{joined_actual}] → [{joined_canonical}]"
+             and must be unique: [{joined_actual}] → [{joined_canonical}]"
         )
     } else {
         format!(
@@ -4066,8 +4086,6 @@ fn sar_missing_programs<'a>(
     observed: Option<&marque_ism::SarMarking>,
     expected: &'a marque_ism::SarMarking,
 ) -> Vec<&'a str> {
-    use std::collections::HashSet;
-
     let observed_ids: HashSet<&str> = match observed {
         Some(obs) => obs.programs.iter().map(|p| p.identifier.as_ref()).collect(),
         None => HashSet::new(),
