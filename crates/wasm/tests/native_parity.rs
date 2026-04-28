@@ -489,3 +489,285 @@ fn test_compute_banner_basic() {
     let banner = marque_wasm::compute_banner_native(text).expect("compute_banner failed");
     assert_eq!(banner, "TOP SECRET//SI//NOFORN");
 }
+
+#[test]
+fn compute_banner_empty_input_returns_unclassified() {
+    let banner = marque_wasm::compute_banner_native("").expect("compute_banner on empty input");
+    assert_eq!(
+        banner, "UNCLASSIFIED",
+        "empty input must produce UNCLASSIFIED banner"
+    );
+}
+
+#[test]
+fn compute_banner_prose_only_no_portions_returns_unclassified() {
+    // No portion markings in the input — scanner finds no candidates.
+    let banner =
+        marque_wasm::compute_banner_native("This document has no classification markings at all.")
+            .expect("compute_banner on prose");
+    assert_eq!(
+        banner, "UNCLASSIFIED",
+        "prose with no portion markings must produce UNCLASSIFIED banner"
+    );
+}
+
+#[test]
+fn compute_banner_single_secret_portion() {
+    let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
+        .expect("compute_banner single S");
+    assert_eq!(
+        banner, "SECRET",
+        "single SECRET portion must produce SECRET banner"
+    );
+}
+
+#[test]
+fn compute_banner_single_unclassified_portion() {
+    let banner = marque_wasm::compute_banner_native("(U) Unclassified paragraph.")
+        .expect("compute_banner single U");
+    assert_eq!(
+        banner, "UNCLASSIFIED",
+        "single UNCLASSIFIED portion must produce UNCLASSIFIED banner"
+    );
+}
+
+#[test]
+fn compute_banner_ts_beats_secret_max_wins() {
+    // Classification max: TOP SECRET takes precedence over SECRET.
+    let text = "(S) Lower classification.\n(TS) Higher classification.";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner TS>S");
+    assert_eq!(
+        banner, "TOP SECRET",
+        "TOP SECRET must dominate SECRET in banner roll-up"
+    );
+}
+
+#[test]
+fn compute_banner_with_sci_control() {
+    // SCI control from a TOP SECRET portion must appear in the rolled-up banner.
+    let text = "(TS//SI) SCI portion.";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner with SCI");
+    assert!(
+        banner.contains("SI"),
+        "banner must include SCI control, got: {banner}"
+    );
+    assert!(
+        banner.starts_with("TOP SECRET"),
+        "banner must start with TOP SECRET, got: {banner}"
+    );
+}
+
+#[test]
+fn compute_banner_with_noforn_dissem_control() {
+    // NOFORN dissem control must propagate to the rolled-up banner.
+    let text = "(S//NF) NOFORN portion.";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner with NOFORN");
+    assert!(
+        banner.contains("NOFORN"),
+        "banner must contain NOFORN dissem control, got: {banner}"
+    );
+}
+
+#[test]
+fn compute_banner_with_rel_to() {
+    // REL TO dissem control must survive banner roll-up.
+    let text = "(S//REL TO USA, GBR) REL portion.";
+    let banner = marque_wasm::compute_banner_native(text).expect("compute_banner with REL TO");
+    assert!(
+        banner.contains("REL TO"),
+        "banner must contain REL TO, got: {banner}"
+    );
+    assert!(
+        banner.contains("USA"),
+        "banner must include USA in REL TO, got: {banner}"
+    );
+    assert!(
+        banner.contains("GBR"),
+        "banner must include GBR in REL TO, got: {banner}"
+    );
+}
+
+#[test]
+fn compute_banner_mixed_classified_and_unclassified_portions() {
+    // Unclassified portions must not drag the banner below the highest
+    // classified level.
+    let text =
+        "(U) Public info.\n(C) Confidential portion.\n(U) More public info.\n(S) Secret item.";
+    let banner =
+        marque_wasm::compute_banner_native(text).expect("compute_banner mixed classification");
+    assert_eq!(
+        banner, "SECRET",
+        "maximum classification across all portions must be reflected in the banner"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// generate_cab — additional edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn generate_cab_custom_classified_by() {
+    let text = "(S//NF) Portion 1";
+    let cab = marque_wasm::generate_cab_native(text, Some("Original Classifier".to_owned()), None)
+        .expect("generate_cab with custom classified_by");
+    assert!(
+        cab.contains("Classified By: Original Classifier"),
+        "custom classified_by must appear in CAB, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_custom_derived_from() {
+    let text = "(S//NF) Portion 1";
+    let cab =
+        marque_wasm::generate_cab_native(text, None, Some("Project ATLAS Guidelines".to_owned()))
+            .expect("generate_cab with custom derived_from");
+    assert!(
+        cab.contains("Derived From: Project ATLAS Guidelines"),
+        "custom derived_from must appear in CAB, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_default_declass_is_25_years_from_current_year() {
+    // When no declassification date or exemption is present, the CAB must
+    // default to 25 years from the current year per EO 13526 §1.5(a).
+    // We cannot predict the exact year in tests, so we verify the format
+    // and that the year is approximately now + 25.
+    let text = "(S//NF) Portion without explicit declass date.";
+    let cab =
+        marque_wasm::generate_cab_native(text, None, None).expect("generate_cab default declass");
+
+    let declass_line = cab
+        .lines()
+        .find(|l| l.starts_with("Declassify On:"))
+        .expect("CAB must contain a Declassify On line");
+
+    let declass_value = declass_line.trim_start_matches("Declassify On:").trim();
+
+    // Must be 8 digits in YYYYMMDD format.
+    assert_eq!(
+        declass_value.len(),
+        8,
+        "default declass date must be 8 digits (YYYYMMDD), got: {declass_value}"
+    );
+    assert!(
+        declass_value.chars().all(|c| c.is_ascii_digit()),
+        "default declass date must be all digits, got: {declass_value}"
+    );
+
+    // Must end with "1231" (December 31).
+    assert!(
+        declass_value.ends_with("1231"),
+        "default declass must end in 1231 (December 31), got: {declass_value}"
+    );
+
+    // Year must be in the plausible range (≥ 2026 + 25 = 2051).
+    let year: u32 = declass_value[..4]
+        .parse()
+        .expect("first 4 digits must be a valid year");
+    assert!(
+        year >= 2051,
+        "default declass year must be ≥ 2051 (current year + 25), got: {year}"
+    );
+}
+
+#[test]
+fn generate_cab_secret_classification_produces_cab() {
+    // Not just TS — a SECRET document also requires a CAB.
+    let text = "(S) A SECRET portion.";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab SECRET classification");
+    assert!(
+        !cab.is_empty(),
+        "SECRET document must produce a non-empty CAB"
+    );
+    assert!(
+        cab.contains("Classified By:"),
+        "SECRET CAB must contain Classified By: field, got: {cab}"
+    );
+    assert!(
+        cab.contains("Declassify On:"),
+        "SECRET CAB must contain Declassify On: field, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_confidential_classification_produces_cab() {
+    let text = "(C) A CONFIDENTIAL portion.";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab CONFIDENTIAL classification");
+    assert!(
+        !cab.is_empty(),
+        "CONFIDENTIAL document must produce a non-empty CAB"
+    );
+}
+
+#[test]
+fn generate_cab_with_declass_exemption_in_portion() {
+    // A portion that carries a declassification exemption (25X1) must surface
+    // the exemption code on the CAB "Declassify On:" line instead of a date.
+    let text = "(S//25X1//NF) Exempt portion.";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab with declass exemption");
+
+    // The CAB must include the exemption code, not a date.
+    assert!(
+        cab.contains("25X1"),
+        "declass exemption must appear on the Declassify On line, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_year_only_declass_expands_to_yyyymmdd() {
+    // A year-only declass date (e.g., "2040") must be expanded to December 31
+    // of that year (YYYYMMDD = "20401231") via IsmDate::to_maxdate_str().
+    let text = "(S//NF//2040) Portion with year-only declass.";
+    let cab =
+        marque_wasm::generate_cab_native(text, None, None).expect("generate_cab year-only declass");
+
+    assert!(
+        cab.contains("Declassify On: 20401231"),
+        "year-only declass '2040' must expand to '20401231' on the CAB, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_first_declass_date_wins_across_portions() {
+    // When multiple portions carry different declass dates, the first date
+    // encountered in document order is used (first-wins logic in generate_cab_native).
+    let text =
+        "(S//NF//20300101) Early portion.\n(TS//SI//20501231) Later portion with different date.";
+    let cab = marque_wasm::generate_cab_native(text, None, None)
+        .expect("generate_cab first declass date wins");
+
+    assert!(
+        cab.contains("20300101"),
+        "first declass date in document order must win, got: {cab}"
+    );
+    assert!(
+        !cab.contains("20501231"),
+        "second declass date must not override the first, got: {cab}"
+    );
+}
+
+#[test]
+fn generate_cab_both_custom_fields() {
+    // Verify that both classified_by and derived_from can be overridden simultaneously.
+    let text = "(S) A classified portion.";
+    let cab = marque_wasm::generate_cab_native(
+        text,
+        Some("Agency XYZ".to_owned()),
+        Some("NSS 2024 Guidance".to_owned()),
+    )
+    .expect("generate_cab both custom fields");
+
+    assert!(
+        cab.contains("Classified By: Agency XYZ"),
+        "custom classified_by must appear, got: {cab}"
+    );
+    assert!(
+        cab.contains("Derived From: NSS 2024 Guidance"),
+        "custom derived_from must appear, got: {cab}"
+    );
+}
