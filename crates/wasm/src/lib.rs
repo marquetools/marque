@@ -1431,10 +1431,10 @@ mod tests {
 
     #[test]
     fn parse_deadline_ms_large_value_saturates_without_panic() {
-        // A very large f64 saturates to u64::MAX; checked_add in stamp_deadline
-        // handles the overflow. The important thing here is that parse_deadline_ms
-        // itself does not panic.
-        let result = parse_deadline_ms(Some(1e18));
+        // A very large finite f64 saturates to u64::MAX; checked_add in
+        // stamp_deadline handles the overflow. The important thing here is
+        // that parse_deadline_ms itself does not panic.
+        let result = parse_deadline_ms(Some(f64::MAX));
         assert!(result.is_ok(), "very large deadline must not panic");
     }
 
