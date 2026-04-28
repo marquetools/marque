@@ -61,10 +61,15 @@
 #![cfg_attr(
     not(all(
         target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
+        any(feature = "multi-threading", feature = "talc_debug")
     )),
     forbid(unsafe_code)
 )]
+// Allocator statics, clock impls, and wasm-bindgen exports are gated on
+// `target_arch = "wasm32"` and appear dead to the native host compiler and
+// rust-analyzer. They are live on the actual build target, so only relax
+// `dead_code` during non-wasm host analysis.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 // T067 / T3 enforcement (Constitution III + FR-013 + whitepaper §10.3 +
@@ -88,6 +93,40 @@ compile_error!(
      unreachable in the WASM artifact."
 );
 
+// T-atomics guard: `multi-threading` and `talc_debug` both activate TalcLock with
+// spinning_top::RawSpinlock, which requires the WebAssembly atomics proposal
+// (`-C target-feature=+atomics`). Building without that flag produces a binary
+// that may panic or miscompile at runtime on any runtime that doesn't expose
+// SharedArrayBuffer. Catch this at compile time instead.
+//
+// To build a threaded WASM binary, add to .cargo/config.toml:
+//
+//   [target.wasm32-unknown-unknown]
+//   rustflags = [
+//     "-C", "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+//   ]
+//
+// Note: +bulk-memory and +mutable-globals are also required by wasm-bindgen
+// for the SharedArrayBuffer/threading model. The serving page MUST send:
+//   Cross-Origin-Opener-Policy: same-origin
+//   Cross-Origin-Embedder-Policy: require-corp
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "multi-threading", feature = "talc_debug"),
+    not(target_feature = "atomics"),
+))]
+compile_error!(
+    "The `multi-threading` and `talc_debug` features require WebAssembly atomics \
+     (`-C target-feature=+atomics`), which is not enabled in the current build. \
+     Add to .cargo/config.toml under [target.wasm32-unknown-unknown]:\n\
+     \n\
+     rustflags = [\"-C\", \
+     \"target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals\"]\n\
+     \n\
+     Note: the serving page must also send COOP/COEP headers for SharedArrayBuffer \
+     access. See crates/wasm/src/lib.rs for details."
+);
+
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
@@ -96,34 +135,48 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-#[cfg(all(target_arch = "wasm32", feature = "simd128"))]
-mod simd128_placeholder {}
+// Single-threaded allocator: WasmDynamicTalc grows WASM memory via memory.grow and
+// carries no spinlock overhead. Active when `talc_alloc` is set without
+// `multi-threading` or `talc_debug`.
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    feature = "talc_alloc",
+    not(feature = "multi-threading"),
+    not(feature = "talc_debug"),
+))]
+#[global_allocator]
+static ALLOCATOR: talc::wasm::WasmDynamicTalc = talc::wasm::new_wasm_dynamic_allocator();
+
+// Multi-threaded / debug allocator: TalcLock with a static seed heap. Active when
+// `multi-threading` (SharedArrayBuffer builds) or `talc_debug` is set. When both
+// `talc_alloc` and `multi-threading` are active (e.g., via `cloud_talc`), this
+// declaration wins because `ALLOCATOR` above is gated on `not(feature = "multi-threading")`.
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 use talc::{source::Claim, *};
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 // Extra headroom beyond Talc's minimum first heap size so typical WASM lint/fix
-// workloads do not immediately trigger heap growth. Tune this alongside expected
+// workloads do not immediately trigger heap growth. Tune alongside expected
 // input sizes and allocator behavior.
 const INITIAL_HEAP_EXTRA_BYTES: usize = 100_000;
 
 #[cfg_attr(
     all(
         target_arch = "wasm32",
-        any(feature = "talc_alloc", feature = "talc_debug")
+        any(feature = "multi-threading", feature = "talc_debug"),
     ),
     global_allocator
 )]
 #[cfg(all(
     target_arch = "wasm32",
-    any(feature = "talc_alloc", feature = "talc_debug")
+    any(feature = "multi-threading", feature = "talc_debug"),
 ))]
 static TALC: TalcLock<spinning_top::RawSpinlock, Claim> = TalcLock::new(
     // SAFETY: `INITIAL_HEAP` is a private static buffer used only to seed the
