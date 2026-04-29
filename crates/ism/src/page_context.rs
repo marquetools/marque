@@ -132,6 +132,30 @@ impl PageContext {
         self.portions.is_empty()
     }
 
+    /// Borrow the raw accumulated portion attributes, in document order.
+    ///
+    /// Most banner-validation rules want one of the rolled-up
+    /// `expected_*` accessors (defined later in this `impl`:
+    /// [`Self::expected_classification`],
+    /// [`Self::expected_dissem_controls`], [`Self::expected_rel_to`],
+    /// etc.) — those collapse the per-portion information through a
+    /// category-specific lattice (max for classification, union for
+    /// SCI, intersection for REL TO, …). A handful of rules —
+    /// currently only S005 (`rel-to-opaque-uncertain-reduction`,
+    /// issue #206) — need the pre-rollup view because the diagnostic
+    /// depends on **which** portion contributed which code, not on
+    /// the rolled-up answer. S005 specifically asks "which uncertain
+    /// codes appeared in some-but-not-every portion?", which the
+    /// intersection-collapsed [`Self::expected_rel_to`] cannot answer.
+    ///
+    /// New rules SHOULD prefer the `expected_*` accessors. Reach for
+    /// `portions()` only when per-portion membership genuinely matters;
+    /// every additional caller is one more place that has to keep up
+    /// with the lattice / aggregation contracts the helpers encode.
+    pub fn portions(&self) -> &[IsmAttributes] {
+        &self.portions
+    }
+
     // -----------------------------------------------------------------------
     // Derived banner characteristics
     // -----------------------------------------------------------------------

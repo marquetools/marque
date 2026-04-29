@@ -54,6 +54,8 @@
 //!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
+//!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
+//!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use marque_ism::generated::migrations::find_migration;
@@ -194,6 +196,26 @@ impl CapcoRuleSet {
                 // and E002 (USA-first); the three together close the
                 // §H.8 p150–151 list-grammar surface.
                 Box::new(RelToNoDuplicatesRule),
+                // Issue #206 — REL TO membership-uncertain reduction
+                // (silent-loss diagnostic for opaque or deprecated
+                // tetragraphs that drop from atom-semantics
+                // intersection while other codes might have been
+                // preserved through hypothetical membership). Two
+                // registered rules sharing one analysis helper:
+                //   S005 — Suggest, fires when banner is missing a
+                //          code atom-semantics says should survive,
+                //          OR banner has no REL TO at all.
+                //   S006 — Info, fires when banner is consistent
+                //          with atom-semantics (`expected ⊆
+                //          banner`); audit-only signal.
+                // Two rules instead of one because the engine
+                // overwrites emitted severity with the rule's
+                // configured severity (engine.rs `// Apply
+                // configured severity override`); a single rule
+                // can't stably emit at two different severities. See
+                // the S005/S006 module-header comment for details.
+                Box::new(RelToOpaqueUncertainReductionSuggestRule),
+                Box::new(RelToOpaqueUncertainReductionInfoRule),
             ],
         }
     }
@@ -3360,6 +3382,491 @@ impl Rule for RelToNoDuplicatesRule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rules: S005 + S006 — REL TO membership-uncertain reduction (issue #206)
+// ---------------------------------------------------------------------------
+//
+// Conceptually one diagnostic with a context-dependent severity (Info
+// when the banner is consistent with atom-semantics; Suggest when not),
+// per plan §3.1. Implementation-wise two registered rules because
+// `marque_engine::Engine::lint` overwrites every emitted diagnostic's
+// severity with the rule's configured/default severity (engine.rs
+// `// Apply configured severity override`); a single rule cannot
+// stably emit at two different severities. Both rules share
+// `analyze_uncertain_reduction` and split only on which branch they
+// keep.
+//
+// Naming:
+//   S005 `rel-to-opaque-uncertain-reduction` — Suggest. Active
+//        validation (banner has no REL TO) or banner REL TO drops
+//        a code atom-semantics says should survive.
+//   S006 `rel-to-opaque-uncertain-reduction-info` — Info. Banner
+//        REL TO is consistent with atom-semantics
+//        (`expected ⊆ banner`). The producer plausibly drew on
+//        membership data we don't have; surface the uncertainty
+//        without flagging.
+//
+// Both rules share:
+//   - the trigger condition (uncertain code dropped + non-empty
+//     other-codes set)
+//   - the diagnostic message body (state text from
+//     `marque_ism::lookup_tetragraph_provenance`, atom intersection,
+//     membership-hypothesis candidates)
+//   - the `fix: None` shape (ambiguity not resolvable from in-tree
+//     data)
+//   - audit-content-ignorance per Constitution V (canonical tokens
+//     plus verbatim ODNI taxonomy `<Description>` text only)
+
+/// S005 (Suggest): REL TO membership-uncertain reduction — primary
+/// branch. Fires when an `is_decomposable == None` tetragraph drops
+/// out of the page-level atom-semantics intersection AND either
+///
+/// - the banner has no REL TO list (active-validation context — we'd
+///   be computing the marking from scratch), or
+/// - the banner's REL TO list (post tetragraph expansion) is missing
+///   a code atom-semantics says should survive (`expected ⊄ banner`).
+///
+/// See the module-level S005/S006 header for the rationale on the
+/// two-rule split. Severity: `Suggest` (engine-overridable).
+///
+/// # Authority
+///
+/// CAPCO-2016 §H.8 (REL TO list grammar) + ODNI ISMCAT
+/// V[`marque_ism::ISMCAT_TETRA_VERSION`] Tetragraph Taxonomy. Atom-
+/// semantics is the lowest-risk default (drop the code), but when
+/// the code is uncertain the default is not authoritatively grounded
+/// — the dropped code might genuinely include the atoms the
+/// intersection just lost. The "consistent" comparison runs in
+/// post-expansion atom space, matching the rollup XSL's
+/// `util:expandDecomposableTetras` semantics
+/// (`Schematron/ISM_XML-ROLLUP-phase.xsl`, plan §8 Q3).
+///
+/// # Fix
+///
+/// **None.** The rule cannot resolve the ambiguity from in-tree
+/// data. Even at Info severity (S006), a fix proposal would not
+/// auto-apply (engine excludes `Severity::Suggest` regardless of
+/// confidence), so a no-fix diagnostic is the cleaner shape.
+struct RelToOpaqueUncertainReductionSuggestRule;
+
+/// S006 (Info): REL TO membership-uncertain reduction — companion
+/// branch covering the banner-consistent case. Fires under the same
+/// trigger as S005 (uncertain code dropped + non-empty other-codes
+/// set), but only when the banner's REL TO list (post tetragraph
+/// expansion) is consistent with atom-semantics (`expected ⊆
+/// banner_atomic`). The producer plausibly drew on membership data
+/// we don't have; surface the uncertainty for audit visibility
+/// without raising it to Suggest.
+///
+/// Severity: `Info` (engine-overridable). The banner-consistent
+/// case has high false-positive cost if surfaced as Suggest — the
+/// operator's marking is correct under the safe default — so plan
+/// §3.1 distinguishes it as audit-only signal.
+///
+/// See the S005 doc above for authority and the module-level
+/// S005/S006 header for why the split is two registered rules.
+struct RelToOpaqueUncertainReductionInfoRule;
+
+/// Format the `{state}` text for an S005 diagnostic. Pulls from the
+/// build-time-generated [`marque_ism::TetragraphProvenance`] table so
+/// the description text stays stable across taxonomy revisions and
+/// the `is_decomposable` runtime API stays single-purpose.
+///
+/// The match arms cover the four `is_decomposable == None` shapes
+/// the V2022-NOV taxonomy actually produces, plus the
+/// taxonomy-absent case. A hypothetical future revision that maps
+/// some code to `Some(_)` won't reach this function (the rule's
+/// outer guard filters on `is_decomposable == None`); the defensive
+/// fallback exists so a future taxonomy revision that introduces a
+/// new `(decomposable, membership_shape)` pair still produces a
+/// readable diagnostic instead of panicking.
+fn s005_state_text(code: &str) -> String {
+    use marque_ism::{ISMCAT_TETRA_VERSION, lookup_tetragraph_provenance};
+    match lookup_tetragraph_provenance(code) {
+        None => "absent (org-fork extension or unknown code)".to_owned(),
+        Some(p) => match (p.decomposable, p.membership_shape) {
+            ("NA", "Suppressed") => format!(
+                "deprecated, membership suppressed \
+                 (NA-Suppressed in V{ISMCAT_TETRA_VERSION})"
+            ),
+            ("NA", "Description") => {
+                let desc = p.description.unwrap_or("(no description text)").trim();
+                format!(
+                    "deprecated, refer to original classification authority \
+                     per ODNI: \"{desc}\""
+                )
+            }
+            ("NA", shape) if shape.starts_with("Members") => {
+                // Members(recursive) — BHTF in V2022-NOV.
+                "deprecated, recursive membership (out of scope for v1)".to_owned()
+            }
+            (decomp, shape) => format!(
+                "ISMCAT V{ISMCAT_TETRA_VERSION} taxonomy: \
+                 decomposable={decomp:?}, membership_shape={shape:?}"
+            ),
+        },
+    }
+}
+
+/// Expand a slice of `CountryCode` entries into a flat set of
+/// atomic country-code strings. Decomposable tetragraphs (FVEY,
+/// ACGU, NATO, …) expand to their constituent trigraphs;
+/// opaque atoms (EU, KFOR, MNFI, …) pass through unchanged.
+///
+/// Lifetime: the returned set borrows from the input slice for
+/// passthrough atoms and from `'static` storage for tetragraph
+/// expansions. Both narrow into `&'a str` cleanly.
+fn s005_expand_atomic(rel_to: &[marque_ism::CountryCode]) -> std::collections::BTreeSet<&str> {
+    use crate::vocab::expand_tetragraph;
+    let mut set = std::collections::BTreeSet::new();
+    for code in rel_to.iter() {
+        let s = code.as_str();
+        if let Some(members) = expand_tetragraph(s) {
+            for &m in members {
+                set.insert(m);
+            }
+        } else {
+            set.insert(s);
+        }
+    }
+    set
+}
+
+/// Render an atomic country-code set as a `, `-joined string with
+/// `USA` first (per CAPCO §H.8) and the rest alphabetical.
+fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
+    let mut codes: Vec<&str> = set.iter().copied().collect();
+    if let Some(pos) = codes.iter().position(|s| *s == "USA") {
+        if pos != 0 {
+            let usa = codes.remove(pos);
+            codes.insert(0, usa);
+        }
+    }
+    codes.join(", ")
+}
+
+/// Which severity branch a candidate diagnostic belongs to. The
+/// branch is determined per-page (banner state is page-wide, not
+/// per-uncertain-code) and is identical for every diagnostic emitted
+/// from a single `analyze_uncertain_reduction` call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum S005Branch {
+    /// Active validation (banner has no REL TO) OR banner is
+    /// inconsistent (`expected ⊄ banner_atomic`). S005 fires.
+    Suggest,
+    /// Banner is consistent with atom-semantics
+    /// (`expected ⊆ banner_atomic`). S006 fires.
+    Info,
+}
+
+/// One candidate diagnostic produced by the shared analysis. Both
+/// S005 and S006 build their final `Diagnostic` from these, filtering
+/// by branch.
+struct S005Candidate {
+    branch: S005Branch,
+    span: Span,
+    message: String,
+}
+
+/// Run the full S005/S006 trigger analysis and return the candidate
+/// diagnostics tagged with the severity branch they belong to. Both
+/// rule wrappers call this; each wrapper filters by branch.
+///
+/// The analysis runs once per banner/CAB candidate per registered
+/// rule (so twice total under the current registration). The cost is
+/// bounded by the number of portions with non-empty REL TO and the
+/// number of uncertain codes across them — a handful of operations
+/// over BTreeSets in practice. Sharing the helper keeps S005 and
+/// S006 from drifting on the trigger condition or the message body.
+fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<S005Candidate> {
+    use marque_ism::{MarkingType, is_decomposable};
+
+    if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+        return Vec::new();
+    }
+
+    let Some(page) = ctx.page_context.as_ref() else {
+        return Vec::new();
+    };
+
+    // Plan §3.2 requires "at least two portions carrying a
+    // non-empty REL TO list." Anything less and there's no
+    // intersection to compute.
+    let portions_with_rel_to: Vec<&IsmAttributes> = page
+        .portions()
+        .iter()
+        .filter(|p| !p.rel_to.is_empty())
+        .collect();
+    if portions_with_rel_to.len() < 2 {
+        return Vec::new();
+    }
+
+    // NOFORN supersedes REL TO at the page level (CAPCO-2016
+    // §H.8 + §H.9 — NOFORN/REL TO mutual exclusion). When any
+    // portion carries NOFORN, or when the non-IC SBU-NF/LES-NF
+    // split forces NF injection at banner roll-up,
+    // `PageContext::expected_rel_to` returns empty *because the
+    // marking is superseded*, not because the atom intersection
+    // is empty. Firing S005/S006 in that case produces a
+    // misleading "intersection produced REL TO (empty)"
+    // diagnostic — the operator's actual problem is "you have
+    // NOFORN AND REL TO portions on the same page", which is a
+    // different rule's territory. Bail so S005/S006 only run
+    // when REL TO is semantically in play. Mirrors the
+    // supersession checks `PageContext::expected_rel_to` runs
+    // internally; we duplicate them here because the rule needs
+    // to distinguish "empty due to supersession" from "empty
+    // due to genuinely-disjoint portion REL TO lists" (the
+    // latter is a legitimate S005/S006 trigger). (Caught by
+    // Copilot review on PR #249.)
+    let any_portion_noforn = page.portions().iter().any(|p| {
+        p.dissem_controls
+            .iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_portion_noforn {
+        return Vec::new();
+    }
+    let (_expected_non_ic, needs_nf_from_split) = page.expected_non_ic_dissem();
+    if needs_nf_from_split {
+        return Vec::new();
+    }
+
+    // The atom-semantics intersection. `PageContext::expected_rel_to`
+    // already does tetragraph expansion before intersection and
+    // returns the result USA-first then alphabetical (per CAPCO
+    // §H.8). We project to a string set for set-algebra.
+    let expected = page.expected_rel_to();
+    let expected_set: std::collections::BTreeSet<&str> =
+        expected.iter().map(|c| c.as_str()).collect();
+
+    // Banner's REL TO, if present. `attrs.rel_to.is_empty()`
+    // distinguishes "banner doesn't carry an REL TO at all" (active
+    // validation context — Suggest) from "banner has an REL TO list"
+    // (consistency check decides Info vs Suggest). Expansion runs in
+    // atom space, matching the rollup XSL's
+    // `util:expandDecomposableTetras` semantics
+    // (Schematron/ISM_XML-ROLLUP-phase.xsl, plan §8 Q3).
+    let banner_atomic: Option<std::collections::BTreeSet<&str>> = if attrs.rel_to.is_empty() {
+        None
+    } else {
+        Some(s005_expand_atomic(&attrs.rel_to))
+    };
+
+    // Branch is page-wide (banner state, not per-uncertain-code).
+    // The "consistent" comparison is `expected ⊆ banner_atomic` —
+    // the banner may legitimately carry MORE codes than
+    // atom-semantics produced (operator drew on external membership
+    // data), but it must not drop a code atom-semantics says should
+    // survive.
+    let branch = match &banner_atomic {
+        None => S005Branch::Suggest,
+        Some(b) if expected_set.is_subset(b) => S005Branch::Info,
+        Some(_) => S005Branch::Suggest,
+    };
+
+    // Collect uncertain codes (deduped, sorted) across all portions.
+    //
+    // Trigraph filter: ISMCAT is — as the name says — a *tetragraph*
+    // taxonomy. ISO 3166-1 alpha-3 trigraphs (USA, GBR, AUS, …)
+    // aren't listed, so `is_decomposable(trigraph)` returns `None`
+    // for the same reason `is_decomposable("XYZW")` does. Trigraphs
+    // are atomic by ISO convention, not uncertain — skip them. The
+    // shipped CVEnumISMCATRelTo recognition surface holds 280
+    // length-3 trigraphs, 1 length-2 code (EU;
+    // `is_decomposable=Some(false)` so already filtered by the
+    // `is_none()` check), 58 length-4 tetragraphs, and 1 length-15
+    // special code (AUSTRALIA_GROUP; `is_decomposable=Some(true)`).
+    // The `len != 3` plus `is_none()` gates together select exactly
+    // the codes the rule cares about: NA-deprecated tetragraphs and
+    // taxonomy-absent (org-fork extension) tetragraphs.
+    let mut uncertain_codes: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for portion in &portions_with_rel_to {
+        for code in portion.rel_to.iter() {
+            let s = code.as_str();
+            if s.len() == 3 {
+                continue;
+            }
+            if is_decomposable(s).is_none() {
+                uncertain_codes.insert(s.to_owned());
+            }
+        }
+    }
+    if uncertain_codes.is_empty() {
+        return Vec::new();
+    }
+
+    // Pick the diagnostic span: prefer the banner's RelToBlock if
+    // present, fall back to the first banner token. Pointing at the
+    // RelToBlock makes the diagnostic land where the operator can
+    // act on it; the first-token fallback covers the
+    // banner-without-REL TO active-validation case. Banner has at
+    // least one token (the candidate parsed successfully) so the
+    // `Span::new(0, 0)` fallback is purely defensive.
+    let span = attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::RelToBlock)
+        .or_else(|| attrs.token_spans.first())
+        .map(|t| t.span)
+        .unwrap_or(Span::new(0, 0));
+
+    let mut candidates = Vec::new();
+    for x in &uncertain_codes {
+        // Per X: portions that don't contain X. Since X is opaque
+        // (atom-semantics treats it as an atom), X survives
+        // intersection iff X is in every portion's rel_to.
+        // Conversely, X drops iff there is at least one portion
+        // without X. That set of portions-without-X is what bounds
+        // the "other codes" candidate set below.
+        let portions_without_x: Vec<&IsmAttributes> = portions_with_rel_to
+            .iter()
+            .copied()
+            .filter(|p| !p.rel_to.iter().any(|c| c.as_str() == x.as_str()))
+            .collect();
+        if portions_without_x.is_empty() {
+            // X in every portion ⇒ X survives atom-semantics; nothing
+            // to surface for this X.
+            continue;
+        }
+
+        // "Other codes" = atoms that appear in EVERY portion-without-X
+        // but didn't survive intersection AND aren't X itself.
+        //
+        // Why "every portion-without-X" (intersection across them)
+        // rather than "any portion": for an atom Y to survive
+        // atom-semantics intersection IF X's hypothetical membership
+        // included Y, Y must be in every portion's expansion. The
+        // X-containing portions get Y "for free" via the hypothesis
+        // (Y ∈ M(X)); the portions without X must have Y in their
+        // own rel_to atoms. So the candidate set is exactly atoms
+        // present in every portion-without-X.
+        //
+        // Why "not in expected": those already survived; nothing for
+        // X's hypothetical membership to add.
+        //
+        // Why "≠ X": X is the uncertain code we're hypothesizing
+        // about, not a candidate to be added by its own membership.
+        //
+        // Note: an atom Y that appears alongside X in the same
+        // portion is irrelevant here — Y is already explicitly
+        // listed in that portion, so X's hypothetical membership
+        // doesn't change Y's intersection survival in any direction.
+        // (Caught by Copilot review on PR #249: a previous version
+        // used `union(all portions) − expected − {X}`, which
+        // included same-portion atoms and produced false-positive
+        // diagnostics when those atoms were missing from another
+        // portion.)
+        let mut atoms_in_every_without_x = s005_expand_atomic(&portions_without_x[0].rel_to);
+        for p in &portions_without_x[1..] {
+            let exp = s005_expand_atomic(&p.rel_to);
+            atoms_in_every_without_x = atoms_in_every_without_x
+                .intersection(&exp)
+                .copied()
+                .collect();
+        }
+        let other_codes: std::collections::BTreeSet<&str> = atoms_in_every_without_x
+            .iter()
+            .copied()
+            .filter(|s| !expected_set.contains(s) && *s != x.as_str())
+            .collect();
+        if other_codes.is_empty() {
+            continue;
+        }
+
+        let state = s005_state_text(x);
+        let expected_str = if expected_set.is_empty() {
+            "(empty — atom intersection produced no shared codes)".to_owned()
+        } else {
+            s005_render_set(&expected_set)
+        };
+        let other_str = s005_render_set(&other_codes);
+
+        let message = format!(
+            "REL TO code `{x}` has uncertain membership ({state}). \
+             Atom-semantics intersection produced REL TO {expected_str}, \
+             but `{x}`'s hypothetical membership may include {other_str} \
+             from other portions. Resolution: (a) add `{x}` membership \
+             to country_extensions.toml with an authoritative source \
+             citation, or (b) revise the marking to use codes with \
+             known membership."
+        );
+
+        candidates.push(S005Candidate {
+            branch,
+            span,
+            message,
+        });
+    }
+    candidates
+}
+
+/// Citation shared by S005 and S006. Stays static (not formatted with
+/// `ISMCAT_TETRA_VERSION`) because `Diagnostic::citation` is
+/// `&'static str`. The version reference is in the state text inside
+/// the message body, which is dynamically formatted via
+/// `s005_state_text`.
+const S005_CITATION: &str =
+    "CAPCO-2016 §H.8 + ODNI ISMCAT Tetragraph Taxonomy (see ISMCAT_TETRA_VERSION)";
+
+impl Rule for RelToOpaqueUncertainReductionSuggestRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S005")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-opaque-uncertain-reduction"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Suggest
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        analyze_uncertain_reduction(attrs, ctx)
+            .into_iter()
+            .filter(|c| c.branch == S005Branch::Suggest)
+            .map(|c| {
+                Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    c.span,
+                    c.message,
+                    S005_CITATION,
+                    None,
+                )
+            })
+            .collect()
+    }
+}
+
+impl Rule for RelToOpaqueUncertainReductionInfoRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S006")
+    }
+    fn name(&self) -> &'static str {
+        "rel-to-opaque-uncertain-reduction-info"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Info
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        analyze_uncertain_reduction(attrs, ctx)
+            .into_iter()
+            .filter(|c| c.branch == S005Branch::Info)
+            .map(|c| {
+                Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    c.span,
+                    c.message,
+                    S005_CITATION,
+                    None,
+                )
+            })
+            .collect()
+    }
+}
+
 /// Check that a country code list is in the expected order.
 ///
 /// `usa_first` selects the canonicalization convention — see
@@ -5748,7 +6255,16 @@ mod tests {
         // p150–151 list-grammar surface. Net: 55.
         // Issue #235 / #186 PR-3: added S004 (rel-to-trigraph-suggest),
         // first consumer of the suggest-don't-fix channel. Net: 56.
-        assert_eq!(set.rules().len(), 56);
+        // Issue #206: added S005 (rel-to-opaque-uncertain-reduction —
+        // Suggest branch) AND S006 (same trigger, Info branch). Two
+        // registered rules because the engine overwrites emitted
+        // severity with the rule's configured severity, so a single
+        // rule cannot stably emit at two severities (see the
+        // S005/S006 module-header comment in this file). Net: 58.
+        assert!(ids.contains(&"S004"));
+        assert!(ids.contains(&"S005"));
+        assert!(ids.contains(&"S006"));
+        assert_eq!(set.rules().len(), 58);
     }
 
     #[test]
@@ -7374,6 +7890,658 @@ mod tests {
         assert!(
             s004_audits.is_empty(),
             "S004 must never produce an AppliedFix; got: {s004_audits:?}"
+        );
+    }
+
+    // --- S005: REL TO opaque-uncertain reduction (issue #206) ---
+    //
+    // Test fixtures use NA-deprecated tetragraphs from the V2022-NOV
+    // taxonomy (RSMA, EUDA, BHTF) rather than the org-fork extension
+    // example (`MNFI`) the plan §3.5 cites. Reason: org-fork
+    // extensions live in `country_extensions.toml`, which ships
+    // empty by default — a fixture using `MNFI` would require
+    // populating extensions just for the test, polluting the
+    // build-time data. NA-deprecated codes are in the CVE recognition
+    // surface so the parser keeps them in `attrs.rel_to`, AND
+    // `is_decomposable` returns `None` for them, which is exactly
+    // the trigger condition S005 cares about. Both categories
+    // produce identical runtime semantics; only the `{state}` text
+    // in the diagnostic differs (covered by `s005_state_text_for_*`).
+
+    #[test]
+    fn s005_suggests_when_uncertain_drops_and_banner_has_no_rel_to() {
+        // Two portions; RSMA appears in only one. Atom-semantics
+        // intersection is {USA, GBR}; RSMA dropped. Banner has no
+        // REL TO at all (NOFORN supersedes) — active validation
+        // context per plan §3.1 → Suggest.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S005").collect();
+        assert_eq!(s005.len(), 1, "S005 must fire once on RSMA: {diags:?}");
+        assert_eq!(
+            s005[0].severity,
+            marque_rules::Severity::Suggest,
+            "banner has no REL TO ⇒ active validation ⇒ Suggest, got {:?}",
+            s005[0].severity,
+        );
+        assert!(s005[0].fix.is_none(), "S005 emits no fix");
+        assert!(
+            s005[0].message.contains("RSMA"),
+            "S005 message must name the uncertain code: {:?}",
+            s005[0].message
+        );
+        assert!(
+            s005[0].message.contains("AUS"),
+            "S005 message must list 'other codes' that AUS could have entered \
+             through RSMA's hypothetical membership: {:?}",
+            s005[0].message
+        );
+    }
+
+    #[test]
+    fn s006_info_when_banner_equals_atom_intersection() {
+        // Banner carries exactly the atom-semantics intersection.
+        // expected = {USA, GBR}; banner_atomic = {USA, GBR}.
+        // expected ⊆ banner ⇒ Info branch ⇒ S006 (not S005). S005
+        // stays silent on this fixture; the engine-level severity
+        // override flattening means S005 cannot also emit at Info.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let s005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S005").collect();
+        let s006: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S006").collect();
+        assert!(
+            s005.is_empty(),
+            "S005 must NOT fire when banner is consistent (S006 covers Info): {s005:?}"
+        );
+        assert_eq!(s006.len(), 1, "S006 must fire once: {diags:?}");
+        assert_eq!(
+            s006[0].severity,
+            marque_rules::Severity::Info,
+            "expected ⊆ banner ⇒ Info, got {:?}",
+            s006[0].severity,
+        );
+        assert!(s006[0].fix.is_none(), "S006 emits no fix");
+    }
+
+    #[test]
+    fn s006_info_when_banner_is_proper_superset_of_atom_intersection() {
+        // Banner extends atom-semantics with FRA. The plan's
+        // consistency check is `expected ⊆ banner`, not equality —
+        // the operator may legitimately have membership data we
+        // don't (Constitution VIII forbids invention of facts). FRA
+        // pulled from outside is honored as Info (S006), not S005.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//REL TO USA, FRA, GBR";
+        let diags = lint_banner(source);
+        let s005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S005").collect();
+        let s006: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S006").collect();
+        assert!(s005.is_empty(), "S005 must NOT fire: {s005:?}");
+        assert_eq!(s006.len(), 1, "S006 must fire: {diags:?}");
+        assert_eq!(
+            s006[0].severity,
+            marque_rules::Severity::Info,
+            "banner ⊇ expected (extras allowed) ⇒ Info"
+        );
+    }
+
+    #[test]
+    fn s005_suggests_when_banner_drops_a_code_atom_semantics_preserves() {
+        // Banner is missing GBR which atom-semantics says must
+        // survive. expected = {USA, GBR}; banner_atomic = {USA}.
+        // expected ⊄ banner ⇒ Suggest — the safe default isn't met.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//REL TO USA";
+        let diags = lint_banner(source);
+        let s005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S005").collect();
+        assert_eq!(s005.len(), 1, "S005 must fire: {diags:?}");
+        assert_eq!(
+            s005[0].severity,
+            marque_rules::Severity::Suggest,
+            "banner drops GBR ⇒ inconsistent ⇒ Suggest"
+        );
+    }
+
+    /// Helper: count diagnostics for either rule of the
+    /// S005/S006 pair (they share the trigger condition; only one
+    /// of the two emits per banner candidate).
+    fn count_s005_or_s006(diags: &[Diagnostic]) -> usize {
+        diags
+            .iter()
+            .filter(|d| matches!(d.rule.as_str(), "S005" | "S006"))
+            .count()
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_uncertain_code_in_every_portion() {
+        // RSMA in BOTH portions ⇒ survives atom-semantics
+        // intersection. The atom result reflects RSMA's presence;
+        // neither S005 nor S006 has anything to surface.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA, RSMA)\n\
+                      SECRET//REL TO USA";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when uncertain code survives intersection: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_for_atom_by_authority_kfor() {
+        // KFOR is `decomposable=No` — atom by authority.
+        // `is_decomposable("KFOR") == Some(false)`, so the rule's
+        // `is_none()` filter excludes it. Atom-semantics is the
+        // correct answer: the code IS the recipient.
+        let source = "(S//REL TO USA, GBR, KFOR)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire on KFOR (decomposable=No): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_for_atom_by_authority_eu() {
+        // EU is the 2-letter atom-by-authority special case. Same
+        // logic as KFOR — `is_decomposable("EU") == Some(false)`,
+        // filtered by the `is_none()` gate.
+        let source = "(S//REL TO USA, GBR, EU)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire on EU (decomposable=No): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_for_decomposable_known_fvey() {
+        // FVEY is `decomposable=Yes` — atom-semantics expands to
+        // {AUS, CAN, GBR, NZL, USA} before intersection. Both
+        // portions get the same expanded set; intersection is
+        // precise; no uncertainty to surface.
+        let source = "(S//REL TO USA, FVEY)\n\
+                      (S//REL TO USA, FVEY)\n\
+                      SECRET//REL TO USA, FVEY";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire on FVEY (decomposable=Yes): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_for_single_rel_to_portion() {
+        // Only one portion has a non-empty REL TO list. No
+        // intersection to compute; rule bails out at the
+        // `portions_with_rel_to.len() < 2` guard.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//FOUO)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire with fewer than 2 REL TO portions: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_only_trigraphs_appear() {
+        // Pure trigraph portions. The trigraph filter (`s.len() ==
+        // 3`) excludes every code; uncertain_codes is empty;
+        // diagnostic suppressed. ISO 3166-1 alpha-3 codes are atomic
+        // by convention, not uncertain.
+        let source = "(S//REL TO USA, GBR)\n\
+                      (S//REL TO USA, AUS)\n\
+                      SECRET//REL TO USA";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire on pure-trigraph fixtures \
+             (trigraph filter): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_other_codes_set_is_empty() {
+        // RSMA dropped, but every surviving atom IS in expected.
+        // `other_codes` is empty — there's nothing the operator
+        // might have intended to release to through RSMA's
+        // hypothetical membership. Suppress.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA)\n\
+                      SECRET//REL TO USA";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must suppress when no 'other codes' to surface: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_non_ic_split_injects_nf() {
+        // The non-IC SBU-NF/LES-NF split forces NF injection at
+        // banner roll-up in classified documents (CAPCO-2016
+        // §H.9). When that split fires,
+        // `PageContext::expected_rel_to` returns empty even though
+        // no portion carries `DissemControl::Nf` directly — REL TO
+        // is superseded at the page level. Pin the second NOFORN
+        // bail in `analyze_uncertain_reduction` (the
+        // `needs_nf_from_split` branch).
+        //
+        // Fixture: portion 1 has SBU-NF (the split trigger);
+        // portions 2 and 3 have classified REL TO with an uncertain
+        // code (RSMA). Without the bail, the rule would compute
+        // `portions_with_rel_to.len() == 2`, `expected_set = {}`
+        // (NF-injection supersession), and fire a misleading
+        // "intersection produced REL TO (empty…)" diagnostic.
+        let source = "(S//SBU-NF)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN//SBU";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must bail when non-IC SBU-NF split forces NF \
+             injection at banner roll-up: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_a_portion_carries_noforn() {
+        // Regression for Copilot review on PR #249: NOFORN supersedes
+        // REL TO at the page level. `PageContext::expected_rel_to`
+        // returns empty because the marking is superseded, not
+        // because the atom intersection is empty — firing S005 in
+        // that case produces a misleading "intersection produced
+        // REL TO (empty…)" diagnostic. Pin the bail.
+        //
+        // Fixture: portion 1 has NOFORN, portions 2+3 have REL TO
+        // with an uncertain code (RSMA). Pre-fix, the rule would
+        // have computed `portions_with_rel_to.len() == 2`,
+        // `expected_set = {}` (NOFORN supersession), and fired
+        // S005 with empty-intersection wording. Post-fix, the
+        // NOFORN check bails before any of that runs.
+        let source = "(S//NF)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when any portion carries NOFORN \
+             (REL TO is superseded at the page level): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_other_codes_only_appear_alongside_x() {
+        // Regression for Copilot review on PR #249: the previous
+        // `union − expected − {X}` definition included atoms that
+        // appeared only in the same portion as X. Such atoms can't
+        // be hypothetically pulled in via X's membership — they're
+        // already explicitly listed in the X-containing portion, so
+        // their intersection survival depends on whether they also
+        // appear in the OTHER portions, not on X's membership.
+        //
+        // Here GBR appears only alongside RSMA (in portion 1).
+        // Portion 2 has only USA. atom-semantics intersection =
+        // {USA}. RSMA dropped, but no atom in portions-without-X
+        // (= {USA} only) is missing from expected. The rule must
+        // stay silent. The pre-fix implementation would have
+        // computed `other_codes = {USA, GBR, RSMA} − {USA} − {RSMA}
+        // = {GBR}` and fired a false-positive Info diagnostic.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA)\n\
+                      SECRET//REL TO USA";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when 'other codes' only appear \
+             alongside X (post-Copilot-review fix): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_quotes_verbatim_taxonomy_description_for_na_description_codes() {
+        // EUDA is `decomposable=NA` with `<Membership><Description>`
+        // in V2022-NOV. The taxonomy carries verbatim ODNI text
+        // ("As of 15 March 2016, disclosure request should be
+        // referred to the original classification authority...").
+        // Plan §3.3 requires that text to surface verbatim in the
+        // diagnostic — Constitution V audit-content-ignorance is
+        // satisfied because the text is ODNI taxonomy data, not
+        // user-document content.
+        let source = "(S//REL TO USA, GBR, EUDA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .unwrap_or_else(|| panic!("S005 must fire on EUDA: {diags:?}"));
+        assert!(
+            s005.message.contains("disclosure request"),
+            "S005 must quote verbatim Description text for NA-Description codes; got: {:?}",
+            s005.message
+        );
+        assert!(
+            s005.message.contains("original classification authority"),
+            "S005 must include the OCA-deferral phrase ODNI published: {:?}",
+            s005.message
+        );
+    }
+
+    #[test]
+    fn s005_state_text_for_na_suppressed_code() {
+        let text = super::s005_state_text("RSMA");
+        assert!(
+            text.contains("deprecated") && text.contains("suppressed"),
+            "RSMA is NA-Suppressed; state text must say so: {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_for_na_description_code() {
+        let text = super::s005_state_text("EUDA");
+        assert!(
+            text.contains("deprecated"),
+            "EUDA is NA; state text must mark it deprecated: {text:?}"
+        );
+        assert!(
+            text.contains("original classification authority"),
+            "EUDA Description text must reach state output: {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_for_recursive_code() {
+        let text = super::s005_state_text("BHTF");
+        assert!(
+            text.contains("recursive") || text.contains("out of scope"),
+            "BHTF is NA-Members(recursive): {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_for_unknown_code() {
+        // Code absent from V2022-NOV taxonomy entirely — represents
+        // org-fork extensions or genuinely unknown codes.
+        let text = super::s005_state_text("XYZW");
+        assert!(
+            text.contains("absent"),
+            "unknown-code state text must mention absence: {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_decomposable_yes_hits_defensive_fallback() {
+        // FVEY is `decomposable="Yes"` / `membership_shape="Members"`
+        // in V2022-NOV. The rule's outer `is_decomposable == None`
+        // guard means the state-text helper is never called with
+        // FVEY in production (S005's loop filters such codes out
+        // before formatting), but the function is callable
+        // directly and its catch-all arm `(decomp, shape) =>
+        // format!(…)` is the defensive fallback if a future
+        // taxonomy revision introduces a `(non-NA, *)` reachable
+        // shape. Pin the fallback's format so the contract is
+        // documented behavior.
+        let text = super::s005_state_text("FVEY");
+        assert!(
+            text.contains("decomposable=\"Yes\""),
+            "fallback must surface decomposable verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Members\""),
+            "fallback must surface membership_shape verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("ISMCAT V"),
+            "fallback includes the ISMCAT_TETRA_VERSION preamble: {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_decomposable_no_hits_defensive_fallback() {
+        // EU is `decomposable="No"` (atom by authority) in V2022-NOV.
+        // Same defensive-fallback contract as the Yes case.
+        let text = super::s005_state_text("EU");
+        assert!(
+            text.contains("decomposable=\"No\""),
+            "fallback for No: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Suppressed\""),
+            "fallback for No (Suppressed shape): {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_handles_empty_atom_intersection() {
+        // Disjoint REL TO portions ⇒ atom-semantics intersection
+        // is empty (no shared codes), but the rule should still
+        // surface the silent-loss case if uncertain codes drop and
+        // there are other-portion atoms that would have been
+        // pulled in by hypothetical membership. Pins the
+        // empty-set arm of `expected_str` rendering
+        // (`"(empty — atom intersection produced no shared codes)"`).
+        //
+        // Fixture is intentionally malformed (REL TO without USA
+        // per §H.8) — that's the only way to land an empty atom
+        // intersection in well-formed input. E002
+        // (missing-USA-trigraph) will also fire on both portions;
+        // its diagnostic is independent of S005's.
+        let source = "(S//REL TO GBR, RSMA)\n\
+                      (S//REL TO AUS)\n\
+                      SECRET//NF";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .unwrap_or_else(|| {
+                panic!("S005 must fire on empty-intersection RSMA fixture: {diags:?}")
+            });
+        assert!(
+            s005.message.contains("(empty"),
+            "expected empty-intersection wording in S005 message: {:?}",
+            s005.message
+        );
+    }
+
+    #[test]
+    fn s005_multi_portion_uses_intersection_across_portions_without_x() {
+        // Three portions: portion 1 carries X=RSMA; portions 2 and
+        // 3 don't. `atoms_in_every_without_x` is the intersection of
+        // p2's expansion = {USA, GBR} and p3's expansion = {USA, GBR}
+        // = {USA, GBR}. After subtracting expected={USA} and {RSMA},
+        // `other_codes = {GBR}` — non-empty, S005 fires. This
+        // exercises the `for p in &portions_without_x[1..]` loop
+        // body that the two-portion fixtures don't reach.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA, GBR)\n\
+                      (S//REL TO USA, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .unwrap_or_else(|| panic!("S005 must fire on 3-portion RSMA fixture: {diags:?}"));
+        assert!(
+            s005.message.contains("GBR"),
+            "S005 must surface GBR (intersect({{USA, GBR}}, {{USA, GBR}}) \
+             − {{USA}} − {{RSMA}} = {{GBR}}): {:?}",
+            s005.message
+        );
+        assert!(
+            !s005.message.contains("RSMA, GBR") && !s005.message.contains("AUS"),
+            "the two non-X portions are identical; only GBR should \
+             reach other_codes: {:?}",
+            s005.message
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_portions_without_x_have_disjoint_atoms() {
+        // Three portions: p1 has X=RSMA, p2 has GBR but not AUS,
+        // p3 has AUS but not GBR. atoms_in_every_without_x =
+        // intersect({USA, GBR}, {USA, AUS}) = {USA}. After
+        // subtracting expected={USA} and {RSMA}, other_codes = {}.
+        // The rule must stay silent — even hypothetically including
+        // GBR or AUS in RSMA's membership wouldn't make either
+        // survive intersection (the OTHER non-X portion lacks them).
+        // This pins the intersection-vs-union semantics: a union
+        // implementation would have produced other_codes={GBR, AUS}
+        // and fired a false positive.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA, GBR)\n\
+                      (S//REL TO USA, AUS)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when portions-without-X have \
+             disjoint atoms outside expected (intersection wipes \
+             them): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_rule_trait_getters() {
+        // Cover the `id` / `name` / `default_severity` accessors that
+        // the inline-test harness's direct `rule.check()` calls
+        // bypass. Engine-level tests exercise these too, but pinning
+        // the contract here keeps the regression closer to the
+        // implementation.
+        let rule = super::RelToOpaqueUncertainReductionSuggestRule;
+        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S005");
+        assert_eq!(
+            <_ as Rule>::name(&rule),
+            "rel-to-opaque-uncertain-reduction"
+        );
+        assert_eq!(
+            <_ as Rule>::default_severity(&rule),
+            marque_rules::Severity::Suggest
+        );
+    }
+
+    #[test]
+    fn s006_rule_trait_getters() {
+        let rule = super::RelToOpaqueUncertainReductionInfoRule;
+        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S006");
+        assert_eq!(
+            <_ as Rule>::name(&rule),
+            "rel-to-opaque-uncertain-reduction-info"
+        );
+        assert_eq!(
+            <_ as Rule>::default_severity(&rule),
+            marque_rules::Severity::Info
+        );
+    }
+
+    #[test]
+    fn s005_helpers_render_set_promotes_usa_and_alphabetizes_rest() {
+        // `s005_render_set` produces the comma-separated string
+        // S005/S006 messages embed for `expected_str` and
+        // `other_str`. USA goes first; the rest alpha. Pin the
+        // contract directly because the integration tests only
+        // observe it through the diagnostic message wording.
+        use std::collections::BTreeSet;
+        let set: BTreeSet<&str> = ["GBR", "AUS", "USA", "FRA"].into_iter().collect();
+        let rendered = super::s005_render_set(&set);
+        assert_eq!(rendered, "USA, AUS, FRA, GBR");
+
+        // No USA — pure alphabetical (BTreeSet already sorts the
+        // input, so the join order matches insertion order).
+        let no_usa: BTreeSet<&str> = ["GBR", "AUS", "FRA"].into_iter().collect();
+        assert_eq!(super::s005_render_set(&no_usa), "AUS, FRA, GBR");
+
+        // Empty set → empty string. The rule guards against this
+        // path via the `expected_set.is_empty()` branch but pinning
+        // the helper's behavior keeps the contract honest.
+        let empty: BTreeSet<&str> = BTreeSet::new();
+        assert_eq!(super::s005_render_set(&empty), "");
+    }
+
+    #[test]
+    fn s005_helpers_expand_atomic_round_trips_through_tetragraph() {
+        // `s005_expand_atomic` is the rule's view of "what trigraphs
+        // does this REL TO list cover after tetragraph expansion?"
+        // FVEY decomposes; opaque codes (RSMA, KFOR) and trigraphs
+        // pass through unchanged. Direct unit test because the
+        // integration tests don't observe the function's output
+        // shape, only the downstream diagnostic.
+        use marque_ism::CountryCode;
+        use std::collections::BTreeSet;
+
+        let rel_to: Vec<CountryCode> = ["USA", "FVEY"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded = super::s005_expand_atomic(&rel_to);
+        let expected: BTreeSet<&str> = ["USA", "AUS", "CAN", "GBR", "NZL"].into_iter().collect();
+        assert_eq!(
+            expanded, expected,
+            "FVEY must expand to its 5 trigraph members + USA passthrough"
+        );
+
+        // Opaque tetragraph (RSMA NA-Suppressed) and trigraphs pass
+        // through.
+        let opaque: Vec<CountryCode> = ["USA", "RSMA"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded_opaque = super::s005_expand_atomic(&opaque);
+        let expected_opaque: BTreeSet<&str> = ["USA", "RSMA"].into_iter().collect();
+        assert_eq!(expanded_opaque, expected_opaque);
+    }
+
+    #[test]
+    fn s005_audit_content_ignorance_no_user_content_in_message() {
+        // Constitution V: the diagnostic message must reference only
+        // canonical token strings (the tetragraph, the trigraphs in
+        // expected/other_codes, and verbatim taxonomy data) — never
+        // surrounding source bytes. Pin the contract by feeding a
+        // fixture whose surrounding text would be obviously visible
+        // if leaked. Banner has no REL TO so this is the active-
+        // validation Suggest case ⇒ S005 fires (not S006).
+        let source = "Document subject: \"Operation Confidential\"\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| matches!(d.rule.as_str(), "S005" | "S006"))
+            .expect("S005 or S006 must fire on RSMA fixture");
+        assert!(
+            !s005.message.contains("Operation Confidential"),
+            "S005/S006 message must not leak surrounding document text: {:?}",
+            s005.message
+        );
+        assert!(
+            !s005.message.contains("Document subject"),
+            "S005/S006 message must not leak surrounding document text: {:?}",
+            s005.message
         );
     }
 
