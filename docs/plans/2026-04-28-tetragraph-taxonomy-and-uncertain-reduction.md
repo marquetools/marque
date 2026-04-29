@@ -7,24 +7,30 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Date:** 2026-04-28
 **Status:** draft — pending review
-**Revision:** rev2 (2026-04-28) — corrected against the actual ISMCAT
-Convenience-Light V2022-NOV package after download. Schema is
-three-state (`Yes` / `No` / `NA`), not four; `NA` means *deprecated*
-(per XSD docstring), not "membership unknown"; `<Membership>` is an
-`xs:choice` of `Country/Organization | Description | MembershipSupressed`
-(note ODNI's misspelling); 18 of 18 `NA` entries carry the optional
-`deprecated="YYYY-MM-DD"` attribute.
-**rev3 (2026-04-28)** — recursion is a non-issue. The denormalized
-file is pre-flattened by ODNI: GMIF → 30 NATO trigraphs inline. Only
-BHTF (NA-deprecated) carries an `<Organization>` ref in the
-denormalized form, and `NA → None` already covers it. Both
-`TetragraphTaxonomy.xml` (canonical hierarchical) and
-`TetragraphTaxonomyDenormalized.xml` are vendored at
-`crates/ism/schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/`; build.rs parses
-only the denormalized form. No recursion code or follow-on issue
-needed — replaced with a defensive `cargo:warning=…` if a future
-revision introduces unexpected `<Organization>` refs in the
-denormalized file.
+**Revision:** rev3 (2026-04-28).
+
+**Revision history:**
+- **rev1 (2026-04-28)** — initial draft based on ultraplan output.
+- **rev2 (2026-04-28)** — corrected against the actual ISMCAT
+  Convenience-Light V2022-NOV package after download. Schema is
+  three-state (`Yes` / `No` / `NA`), not four; `NA` means *deprecated*
+  (per XSD docstring), not "membership unknown"; `<Membership>` is an
+  `xs:choice` of `Country/Organization | Description | MembershipSupressed`
+  (note ODNI's misspelling); 18 of 18 `NA` entries carry the optional
+  `deprecated="YYYY-MM-DD"` attribute.
+- **rev3 (2026-04-28)** — recursion is a non-issue. The denormalized
+  file is pre-flattened by ODNI: GMIF → 30 NATO trigraphs inline.
+  Only BHTF (NA-deprecated) carries an `<Organization>` ref in the
+  denormalized form, and `NA → None` already covers it. Both
+  `TetragraphTaxonomy.xml` (canonical hierarchical) and
+  `TetragraphTaxonomyDenormalized.xml` are vendored at
+  `crates/ism/schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/`; build.rs
+  parses only the denormalized form. No recursion code or follow-on
+  issue needed — replaced with a defensive `cargo:warning=…` if a
+  future revision introduces unexpected `<Organization>` refs in the
+  denormalized file. PR review (Copilot, 2026-04-29) caught residual
+  rev1 wording in §1, §2.3, and §2.8 that contradicted rev2's
+  three-state schema; corrected in this revision.
 **Related issues:** #208 (prerequisite), #206 (follow-on), #183 (parent),
 #205 (PR-B that introduced `BUILTIN_TETRAGRAPH_MEMBERS`)
 **Authoritative sources:**
@@ -54,14 +60,25 @@ kinds of code:
 1. **Decomposable, members known** (FVEY, ACGU, TEYE, NATO,
    AUSTRALIA_GROUP, NSG, …). `decomposable = "Yes"` in the taxonomy;
    `<Membership>` lists trigraph (and occasionally tetragraph) members.
-2. **Atom by authority** (EU, GCCH, KFOR, RSMA, ISAF, …).
-   `decomposable = "No"`. Atom semantics is the *correct* answer; the
-   code IS the recipient.
-3. **Decomposable, members unknown** (`decomposable = "Maybe"`, or codes
-   absent from the taxonomy entirely — i.e. org-fork extensions, the
-   hypothetical MCFI / MNFI cases). The reduction is uncomputable from
-   data we have; atom semantics happens to be correct only by
-   coincidence.
+2. **Atom by authority** (EU, GCCH, KFOR, …). `decomposable = "No"`.
+   Atom semantics is the *correct* answer; the code IS the recipient.
+3. **Reduction unknown from available taxonomy data.** Two distinct
+   sub-cases that share the same runtime mapping (`is_decomposable →
+   None`) but differ in provenance:
+   - **Deprecated, membership not published** (RSMA, ISAF, MCFI,
+     CFOD, …). `decomposable = "NA"` with `deprecated="YYYY-MM-DD"`
+     in the taxonomy; `<Membership>` is suppressed (or carries an
+     OCA-deferral `<Description>`, or recurses into another
+     tetragraph). Reduction is not computable from the vendored
+     data.
+   - **Absent from the taxonomy** — org-fork extensions and any
+     other code outside ODNI's V2022-NOV publication. Not an ISMCAT
+     state at all; the operator's local data is the only source.
+
+   In both sub-cases the atom-semantics result happens to be correct
+   only by coincidence — the operator can't tell from the marking
+   alone whether reduction would have removed or preserved a code in
+   the intersection.
 
 #208 surfaces this trichotomy at build time. #206 surfaces it at lint
 time when an unknown / uncertain code drops out of REL TO intersection
@@ -337,11 +354,16 @@ reviewer / auditor use against the in-repo data only.
    verifiable membership data outside ODNI's taxonomy. Out of scope here.
 
 5. Add `emit_tax_provenance(out: &mut String, &[TaxEntry])` emitting a
-   parallel `TETRAGRAPH_PROVENANCE` static table with the full four-state
-   `decomposable` attribute, deprecated flag, and last-verified date.
-   Keeps the audit-traceability that the three-state runtime API
-   collapses. Not exposed publicly yet; reserved for the
-   `DecisionRecord` work in the 2026-04-20 roadmap.
+   parallel `TETRAGRAPH_PROVENANCE` static table with the original
+   three-state `decomposable` value (`Yes` / `No` / `NA`), the
+   `<Membership>` shape variant (Members / Description / Suppressed /
+   Recursive), the `deprecated` date if present, and the
+   `dateLastVerified` date. Keeps the audit-traceability that the
+   binary `is_decomposable` runtime API collapses (`Yes-with-members`
+   and a hypothetical future `NA-with-members` would both map to
+   `Some(true)`, but a reviewer can still see which of the two it
+   was). Not exposed publicly yet; reserved for the `DecisionRecord`
+   work in the 2026-04-20 roadmap.
 
 6. Call `verify_ismcat_tetra_version()` from `main()`; call
    `emit_is_decomposable` and `emit_tax_provenance` from
@@ -426,15 +448,21 @@ pub use generated::values::{
 
 Add tests covering all three trichotomy branches:
 
-- **Decomposable, known**: FVEY, ACGU, TEYE, NATO →
-  `is_decomposable == Some(true)`, `lookup_tetragraph_members`
+- **Decomposable, known** (`decomposable="Yes"`): FVEY, ACGU, TEYE,
+  NATO → `is_decomposable == Some(true)`, `lookup_tetragraph_members`
   returns `Some(non-empty)`.
-- **Atom by authority**: EU, GCCH, KFOR, RSMA, ISAF, MCFI →
+- **Atom by authority** (`decomposable="No"`): EU, GCCH, KFOR →
   `is_decomposable == Some(false)`, `lookup_tetragraph_members ==
   None`.
-- **Unknown / org extension**: a synthetic 4-letter code present in no
-  taxonomy and no extension (e.g. `"XYZW"`) → `is_decomposable ==
-  None`, `lookup_tetragraph_members == None`.
+- **NA-deprecated** (`decomposable="NA"` with `deprecated="…"`):
+  RSMA, ISAF, MCFI → `is_decomposable == None`,
+  `lookup_tetragraph_members == None`. Cover all three NA membership
+  shapes in fixtures: suppressed (RSMA / ISAF / MCFI), Description /
+  OCA-deferral (EUDA), recursive (BHTF).
+- **Unknown / absent from taxonomy**: a synthetic 4-letter code in
+  neither the taxonomy nor `country_extensions.toml` (e.g.
+  `"XYZW"`) → `is_decomposable == None`,
+  `lookup_tetragraph_members == None`.
 - **Round-trip** §D Table 3 rule 23 example:
   `expected_rel_to([REL TO USA, FVEY], [REL TO USA, GBR]) →
   {USA, GBR}` — the silent-loss case from #183.
