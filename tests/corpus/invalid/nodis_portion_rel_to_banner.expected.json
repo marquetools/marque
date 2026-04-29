@@ -1,6 +1,7 @@
 {
   "diagnostics": [
+    {"rule": "E053", "span": {"start": 20, "end": 26}},
     {"rule": "E039", "span": {"start": 28, "end": 43}}
   ],
-  "_note": "E039 nodis-exdis-clears-banner-rel-to: portion carries NODIS; banner carries REL TO. Per §H.9 p174 line 4301 (and p172 line 4241 for EXDIS), REL TO is not authorized in the banner when any portion has NODIS or EXDIS. E039 points at the banner's RelToBlock token (spans `REL TO USA, GBR`). No fix — removing REL TO is multi-span and requires human judgment on the replacement."
+  "_note": "E053 noforn-rel-to-conflict: banner carries both NOFORN and REL TO (§H.8 p145). E039 nodis-exdis-clears-banner-rel-to: portion carries NODIS; banner carries REL TO. Per §H.9 p174 line 4301, REL TO is not authorized in the banner when any portion has NODIS or EXDIS. E039 points at the banner's RelToBlock token (spans `REL TO USA, GBR`). No fix — removing REL TO is multi-span and requires human judgment on the replacement."
 }

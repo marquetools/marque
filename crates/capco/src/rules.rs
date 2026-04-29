@@ -54,6 +54,7 @@
 //!   S003 = JOINT country list should lead with USA (style, follow-up from #97)
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
+//!   E053 = NOFORN conflicts with REL TO (§H.8 p145, declarative wrapper)
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -85,8 +86,8 @@ impl CapcoRuleSet {
             DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCnwdiConstraintRule,
             DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
             DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
-            DeclarativeNonUsMissingDissemRule, DeclarativeRdPrecedenceRule,
-            DeclarativeUcniClassificationRule,
+            DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
+            DeclarativeRdPrecedenceRule, DeclarativeUcniClassificationRule,
         };
         Self {
             rules: vec![
@@ -216,6 +217,12 @@ impl CapcoRuleSet {
                 // the S005/S006 module-header comment for details.
                 Box::new(RelToOpaqueUncertainReductionSuggestRule),
                 Box::new(RelToOpaqueUncertainReductionInfoRule),
+                // Issue #256: NOFORN + REL TO mutual exclusion at
+                // marking level. §H.8 p145 says NOFORN "Cannot be
+                // used with REL TO." Declarative wrapper over the
+                // `capco/noforn-conflicts-rel-to` constraint already
+                // declared in `CapcoScheme::constraints()`.
+                Box::new(DeclarativeNofornRelToConflictRule),
             ],
         }
     }
@@ -6264,7 +6271,11 @@ mod tests {
         assert!(ids.contains(&"S004"));
         assert!(ids.contains(&"S005"));
         assert!(ids.contains(&"S006"));
-        assert_eq!(set.rules().len(), 58);
+        // Issue #256: added E053 (noforn-rel-to-conflict), declarative
+        // wrapper over the `capco/noforn-conflicts-rel-to` constraint
+        // in CapcoScheme. §H.8 p145. Net: 59.
+        assert!(ids.contains(&"E053"));
+        assert_eq!(set.rules().len(), 59);
     }
 
     #[test]
@@ -9813,6 +9824,52 @@ mod tests {
             e052[0].fix.as_ref().unwrap().replacement.as_ref(),
             "USA, GBR",
             "the firing block must dedup to USA, GBR"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // E053 — NOFORN conflicts with REL TO (§H.8 p145)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn e053_fires_when_noforn_and_rel_to_coexist_in_banner() {
+        // §H.8 p145: NOFORN "Cannot be used with REL TO."
+        let diags = lint_banner("SECRET//REL TO USA, GBR//NOFORN");
+        let e053: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E053").collect();
+        assert_eq!(
+            e053.len(),
+            1,
+            "E053 must fire once when NOFORN and REL TO coexist: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e053_fires_on_portion_with_nf_and_rel_to() {
+        // Portion-mark form: `NF` is the portion abbreviation for NOFORN.
+        let diags = lint_portion("(S//REL TO USA, GBR/NF)");
+        let e053: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E053").collect();
+        assert_eq!(
+            e053.len(),
+            1,
+            "E053 must fire on portion with NF and REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e053_silent_when_only_noforn_no_rel_to() {
+        let diags = lint_banner("SECRET//NOFORN");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E053"),
+            "E053 must not fire when REL TO is absent: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e053_silent_when_only_rel_to_no_noforn() {
+        let diags = lint_banner("SECRET//REL TO USA, GBR");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E053"),
+            "E053 must not fire when NOFORN is absent: {diags:?}"
         );
     }
 

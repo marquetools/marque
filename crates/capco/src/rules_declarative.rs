@@ -835,3 +835,53 @@ impl Rule for DeclarativeDosDissemNofornRule {
         )]
     }
 }
+
+// ---------------------------------------------------------------------------
+// E053 — NOFORN conflicts with REL TO (§H.8 p145)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeNofornRelToConflictRule;
+
+impl Rule for DeclarativeNofornRelToConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E053")
+    }
+    fn name(&self) -> &'static str {
+        "noforn-rel-to-conflict"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "capco/noforn-conflicts-rel-to").is_empty() {
+            return vec![];
+        }
+
+        // Point to NOFORN, the disallowing control: §H.8 p145 says NOFORN
+        // "Cannot be used with REL TO." The REL TO block is also present,
+        // but NOFORN is the asserting token that makes REL TO invalid.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "NOFORN")
+            .or_else(|| {
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "NF")
+            })
+            .map(|t| t.span)
+            .unwrap_or_else(|| first_span_of(attrs, TokenKind::RelToBlock));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "NOFORN cannot be used with REL TO (§H.8 p145); \
+             remove one or the other",
+            "CAPCO-2016 §H.8 p145",
+            None,
+        )]
+    }
+}
