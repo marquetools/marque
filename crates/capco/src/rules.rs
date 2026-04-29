@@ -3579,7 +3579,7 @@ struct S005Candidate {
 /// over BTreeSets in practice. Sharing the helper keeps S005 and
 /// S006 from drifting on the trigger condition or the message body.
 fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<S005Candidate> {
-    use marque_ism::{ISMCAT_TETRA_VERSION, MarkingType, is_decomposable};
+    use marque_ism::{MarkingType, is_decomposable};
 
     if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
         return Vec::new();
@@ -3710,8 +3710,6 @@ fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<
         .or_else(|| attrs.token_spans.first())
         .map(|t| t.span)
         .unwrap_or(Span::new(0, 0));
-
-    let _ism_version = ISMCAT_TETRA_VERSION; // referenced via state_text
 
     let mut candidates = Vec::new();
     for x in &uncertain_codes {
@@ -8137,6 +8135,36 @@ mod tests {
     }
 
     #[test]
+    fn s005_does_not_fire_when_non_ic_split_injects_nf() {
+        // The non-IC SBU-NF/LES-NF split forces NF injection at
+        // banner roll-up in classified documents (CAPCO-2016
+        // §H.9). When that split fires,
+        // `PageContext::expected_rel_to` returns empty even though
+        // no portion carries `DissemControl::Nf` directly — REL TO
+        // is superseded at the page level. Pin the second NOFORN
+        // bail in `analyze_uncertain_reduction` (the
+        // `needs_nf_from_split` branch).
+        //
+        // Fixture: portion 1 has SBU-NF (the split trigger);
+        // portions 2 and 3 have classified REL TO with an uncertain
+        // code (RSMA). Without the bail, the rule would compute
+        // `portions_with_rel_to.len() == 2`, `expected_set = {}`
+        // (NF-injection supersession), and fire a misleading
+        // "intersection produced REL TO (empty…)" diagnostic.
+        let source = "(S//SBU-NF)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN//SBU";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must bail when non-IC SBU-NF split forces NF \
+             injection at banner roll-up: {diags:?}"
+        );
+    }
+
+    #[test]
     fn s005_does_not_fire_when_a_portion_carries_noforn() {
         // Regression for Copilot review on PR #249: NOFORN supersedes
         // REL TO at the page level. `PageContext::expected_rel_to`
@@ -8263,6 +8291,228 @@ mod tests {
             text.contains("absent"),
             "unknown-code state text must mention absence: {text:?}"
         );
+    }
+
+    #[test]
+    fn s005_state_text_decomposable_yes_hits_defensive_fallback() {
+        // FVEY is `decomposable="Yes"` / `membership_shape="Members"`
+        // in V2022-NOV. The rule's outer `is_decomposable == None`
+        // guard means the state-text helper is never called with
+        // FVEY in production (S005's loop filters such codes out
+        // before formatting), but the function is callable
+        // directly and its catch-all arm `(decomp, shape) =>
+        // format!(…)` is the defensive fallback if a future
+        // taxonomy revision introduces a `(non-NA, *)` reachable
+        // shape. Pin the fallback's format so the contract is
+        // documented behavior.
+        let text = super::s005_state_text("FVEY");
+        assert!(
+            text.contains("decomposable=\"Yes\""),
+            "fallback must surface decomposable verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Members\""),
+            "fallback must surface membership_shape verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("ISMCAT V"),
+            "fallback includes the ISMCAT_TETRA_VERSION preamble: {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_state_text_decomposable_no_hits_defensive_fallback() {
+        // EU is `decomposable="No"` (atom by authority) in V2022-NOV.
+        // Same defensive-fallback contract as the Yes case.
+        let text = super::s005_state_text("EU");
+        assert!(
+            text.contains("decomposable=\"No\""),
+            "fallback for No: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Suppressed\""),
+            "fallback for No (Suppressed shape): {text:?}"
+        );
+    }
+
+    #[test]
+    fn s005_handles_empty_atom_intersection() {
+        // Disjoint REL TO portions ⇒ atom-semantics intersection
+        // is empty (no shared codes), but the rule should still
+        // surface the silent-loss case if uncertain codes drop and
+        // there are other-portion atoms that would have been
+        // pulled in by hypothetical membership. Pins the
+        // empty-set arm of `expected_str` rendering
+        // (`"(empty — atom intersection produced no shared codes)"`).
+        //
+        // Fixture is intentionally malformed (REL TO without USA
+        // per §H.8) — that's the only way to land an empty atom
+        // intersection in well-formed input. E002
+        // (missing-USA-trigraph) will also fire on both portions;
+        // its diagnostic is independent of S005's.
+        let source = "(S//REL TO GBR, RSMA)\n\
+                      (S//REL TO AUS)\n\
+                      SECRET//NF";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .unwrap_or_else(|| {
+                panic!("S005 must fire on empty-intersection RSMA fixture: {diags:?}")
+            });
+        assert!(
+            s005.message.contains("(empty"),
+            "expected empty-intersection wording in S005 message: {:?}",
+            s005.message
+        );
+    }
+
+    #[test]
+    fn s005_multi_portion_uses_intersection_across_portions_without_x() {
+        // Three portions: portion 1 carries X=RSMA; portions 2 and
+        // 3 don't. `atoms_in_every_without_x` is the intersection of
+        // p2's expansion = {USA, GBR} and p3's expansion = {USA, GBR}
+        // = {USA, GBR}. After subtracting expected={USA} and {RSMA},
+        // `other_codes = {GBR}` — non-empty, S005 fires. This
+        // exercises the `for p in &portions_without_x[1..]` loop
+        // body that the two-portion fixtures don't reach.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA, GBR)\n\
+                      (S//REL TO USA, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .unwrap_or_else(|| panic!("S005 must fire on 3-portion RSMA fixture: {diags:?}"));
+        assert!(
+            s005.message.contains("GBR"),
+            "S005 must surface GBR (intersect({{USA, GBR}}, {{USA, GBR}}) \
+             − {{USA}} − {{RSMA}} = {{GBR}}): {:?}",
+            s005.message
+        );
+        assert!(
+            !s005.message.contains("RSMA, GBR") && !s005.message.contains("AUS"),
+            "the two non-X portions are identical; only GBR should \
+             reach other_codes: {:?}",
+            s005.message
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_portions_without_x_have_disjoint_atoms() {
+        // Three portions: p1 has X=RSMA, p2 has GBR but not AUS,
+        // p3 has AUS but not GBR. atoms_in_every_without_x =
+        // intersect({USA, GBR}, {USA, AUS}) = {USA}. After
+        // subtracting expected={USA} and {RSMA}, other_codes = {}.
+        // The rule must stay silent — even hypothetically including
+        // GBR or AUS in RSMA's membership wouldn't make either
+        // survive intersection (the OTHER non-X portion lacks them).
+        // This pins the intersection-vs-union semantics: a union
+        // implementation would have produced other_codes={GBR, AUS}
+        // and fired a false positive.
+        let source = "(S//REL TO USA, RSMA)\n\
+                      (S//REL TO USA, GBR)\n\
+                      (S//REL TO USA, AUS)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when portions-without-X have \
+             disjoint atoms outside expected (intersection wipes \
+             them): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_rule_trait_getters() {
+        // Cover the `id` / `name` / `default_severity` accessors that
+        // the inline-test harness's direct `rule.check()` calls
+        // bypass. Engine-level tests exercise these too, but pinning
+        // the contract here keeps the regression closer to the
+        // implementation.
+        let rule = super::RelToOpaqueUncertainReductionSuggestRule;
+        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S005");
+        assert_eq!(
+            <_ as Rule>::name(&rule),
+            "rel-to-opaque-uncertain-reduction"
+        );
+        assert_eq!(
+            <_ as Rule>::default_severity(&rule),
+            marque_rules::Severity::Suggest
+        );
+    }
+
+    #[test]
+    fn s006_rule_trait_getters() {
+        let rule = super::RelToOpaqueUncertainReductionInfoRule;
+        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S006");
+        assert_eq!(
+            <_ as Rule>::name(&rule),
+            "rel-to-opaque-uncertain-reduction-info"
+        );
+        assert_eq!(
+            <_ as Rule>::default_severity(&rule),
+            marque_rules::Severity::Info
+        );
+    }
+
+    #[test]
+    fn s005_helpers_render_set_promotes_usa_and_alphabetizes_rest() {
+        // `s005_render_set` produces the comma-separated string
+        // S005/S006 messages embed for `expected_str` and
+        // `other_str`. USA goes first; the rest alpha. Pin the
+        // contract directly because the integration tests only
+        // observe it through the diagnostic message wording.
+        use std::collections::BTreeSet;
+        let set: BTreeSet<&str> = ["GBR", "AUS", "USA", "FRA"].into_iter().collect();
+        let rendered = super::s005_render_set(&set);
+        assert_eq!(rendered, "USA, AUS, FRA, GBR");
+
+        // No USA — pure alphabetical (BTreeSet already sorts the
+        // input, so the join order matches insertion order).
+        let no_usa: BTreeSet<&str> = ["GBR", "AUS", "FRA"].into_iter().collect();
+        assert_eq!(super::s005_render_set(&no_usa), "AUS, FRA, GBR");
+
+        // Empty set → empty string. The rule guards against this
+        // path via the `expected_set.is_empty()` branch but pinning
+        // the helper's behavior keeps the contract honest.
+        let empty: BTreeSet<&str> = BTreeSet::new();
+        assert_eq!(super::s005_render_set(&empty), "");
+    }
+
+    #[test]
+    fn s005_helpers_expand_atomic_round_trips_through_tetragraph() {
+        // `s005_expand_atomic` is the rule's view of "what trigraphs
+        // does this REL TO list cover after tetragraph expansion?"
+        // FVEY decomposes; opaque codes (RSMA, KFOR) and trigraphs
+        // pass through unchanged. Direct unit test because the
+        // integration tests don't observe the function's output
+        // shape, only the downstream diagnostic.
+        use marque_ism::CountryCode;
+        use std::collections::BTreeSet;
+
+        let rel_to: Vec<CountryCode> = ["USA", "FVEY"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded = super::s005_expand_atomic(&rel_to);
+        let expected: BTreeSet<&str> = ["USA", "AUS", "CAN", "GBR", "NZL"].into_iter().collect();
+        assert_eq!(
+            expanded, expected,
+            "FVEY must expand to its 5 trigraph members + USA passthrough"
+        );
+
+        // Opaque tetragraph (RSMA NA-Suppressed) and trigraphs pass
+        // through.
+        let opaque: Vec<CountryCode> = ["USA", "RSMA"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded_opaque = super::s005_expand_atomic(&opaque);
+        let expected_opaque: BTreeSet<&str> = ["USA", "RSMA"].into_iter().collect();
+        assert_eq!(expanded_opaque, expected_opaque);
     }
 
     #[test]
