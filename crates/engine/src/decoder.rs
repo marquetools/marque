@@ -3236,7 +3236,7 @@ fn classify_segment(seg: &str) -> SegmentClass {
     // "RESTRICTED" appears in CLASSIFICATIONS. The bare token
     // "RESTRICTED" IS valid as NATO classification; "RESTRICTED DATA"
     // and longer AEA forms are not. CAPCO-2016 §H.6 p113.
-    if first_token == "RESTRICTED" && seg.len() > "RESTRICTED".len() {
+    if first_token == "RESTRICTED" && seg.split_whitespace().nth(1).is_some() {
         return SegmentClass::Other;
     }
     if CLASSIFICATIONS.contains(&first_token) {
@@ -5301,6 +5301,58 @@ mod tests {
         assert_eq!(classify_segment("SI"), SegmentClass::Other);
         assert_eq!(classify_segment("SI-G"), SegmentClass::Other);
         assert_eq!(classify_segment("TK"), SegmentClass::Other);
+    }
+
+    #[test]
+    fn classify_segment_non_ic_dissem_tokens() {
+        // §H.9 abbreviations and long-title forms must classify as Dissem so
+        // try_canonical_reorder places them after SCI, not in Other.
+        // Regression guard for PR #256.
+        for tok in &[
+            "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI", "LIMDIS", "EXDIS", "NODIS",
+        ] {
+            assert_eq!(
+                classify_segment(tok),
+                SegmentClass::Dissem,
+                "classify_segment({tok:?}) should be Dissem"
+            );
+        }
+        // Multi-word long-title forms.
+        assert_eq!(
+            classify_segment("LIMITED DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("EXCLUSIVE DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(classify_segment("NO DISTRIBUTION"), SegmentClass::Dissem);
+        assert_eq!(
+            classify_segment("LAW ENFORCEMENT SENSITIVE"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE BUT UNCLASSIFIED"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE SECURITY INFORMATION"),
+            SegmentClass::Dissem
+        );
+    }
+
+    #[test]
+    fn classify_segment_restricted_data_is_not_classification() {
+        // "RESTRICTED DATA" (AEA, §H.6) must not be mistaken for the NATO
+        // RESTRICTED classification even though "RESTRICTED" is in CLASSIFICATIONS.
+        // Bare "RESTRICTED" (NATO classification) must still be Classification.
+        // Regression guard for PR #256.
+        assert_eq!(classify_segment("RESTRICTED DATA"), SegmentClass::Other);
+        assert_eq!(
+            classify_segment("RESTRICTED DATA-CNWDI"),
+            SegmentClass::Other
+        );
+        assert_eq!(classify_segment("RESTRICTED"), SegmentClass::Classification);
     }
 
     #[test]

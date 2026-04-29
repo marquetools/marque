@@ -239,10 +239,13 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
 /// - Parser (`parse_dissem_full_form`): accepts banner-form input and maps to CVE code
 ///
 /// Returns `None` if the input is not a known banner form, or if it is a
-/// same-form entry (`banner == portion`, e.g., `NOFORN` is already both banner
-/// and portion for `NF`→`NOFORN` but `NOFORN` itself needs no substitution).
-/// Same-form entries (`LES`, `SBU`, `FOUO`, etc.) return `None` here; the
-/// parser's `parse_dissem_full_form` path handles them directly.
+/// same-form entry (`banner == portion`, e.g., `LES`, `SBU`, `FOUO`) because
+/// there is no distinct portion abbreviation to substitute.
+/// Note: `NOFORN` is **not** a same-form entry — in [`MARKING_FORMS`] it maps
+/// banner `NOFORN` → portion `NF`, so this function returns `Some("NF")` for it.
+/// Same-form entries return `None` here; during parsing, long-title inputs are
+/// resolved via `title_to_portion`, while abbreviation inputs are already
+/// handled by `DissemControl::parse`.
 pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
@@ -363,6 +366,27 @@ mod tests {
         // Passing a banner form to portion_to_banner should not match.
         assert_eq!(portion_to_banner("NOFORN"), None);
         assert_eq!(portion_to_banner("ORCON"), None);
+    }
+
+    #[test]
+    fn same_form_entries_return_none_from_conversion_helpers() {
+        // Same-form entries (banner == portion) must return None from both
+        // helpers so E001/E009 never fire a no-op substitution fix for them.
+        // Regression guard for PR #256.
+        for &same_form in &[
+            "FOUO", "RELIDO", "FISA", "SBU", "LES", "SSI", "TK", "RD", "FRD", "TFNI", "CNWDI",
+        ] {
+            assert_eq!(
+                banner_to_portion(same_form),
+                None,
+                "banner_to_portion({same_form:?}) should be None for same-form entry"
+            );
+            assert_eq!(
+                portion_to_banner(same_form),
+                None,
+                "portion_to_banner({same_form:?}) should be None for same-form entry"
+            );
+        }
     }
 
     #[test]

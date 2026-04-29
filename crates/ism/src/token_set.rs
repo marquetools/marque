@@ -474,4 +474,22 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn correction_vocab_contains_aea_sci_structural_keywords() {
+        // PR #256: AEA/SCI long-title structural keywords added so the fuzzy
+        // matcher can recover OCR typos in "FORMERLY RESTRICTED DATA" (FRD,
+        // §H.6) and "TALENT KEYHOLE" (TK, §H.4 p71). `NUCLEAR` is
+        // intentionally excluded — see `AEA_SCI_STRUCTURAL_KEYWORDS` doc
+        // comment.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &["FORMERLY", "KEYHOLE", "TALENT"] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab MUST contain {expected:?} — \
+                 AEA/SCI structural keyword per CAPCO-2016 §H.6 / §H.4 p71 \
+                 (PR #256)"
+            );
+        }
+    }
 }
