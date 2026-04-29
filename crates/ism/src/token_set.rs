@@ -71,6 +71,26 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// PR-8 integration tests in `decoder_recovery.rs`.
 const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
 
+/// NATO classification structural keywords not present in `ALL_CVE_TOKENS`.
+///
+/// NATO-specific classification words appear in multi-word forms that the
+/// strict parser recognises: `COSMIC TOP SECRET`, `COSMIC TOP SECRET-BOHEMIA`,
+/// `COSMIC TOP SECRET-BALK`, `COSMIC TOP SECRET ATOMAL`. Like `TOP` above,
+/// the decoder's whitespace tokenizer splits these multi-word forms so each
+/// word arrives individually at the fuzzy matcher. Without these entries in
+/// the correction vocab, OCR/transcription typos (`COSMID`, `BOHFMIA`,
+/// `ATOAML`, `BBLE`) produce `TokenKind::Unknown` spans and the decoder
+/// discards the candidate.
+///
+/// Round-trip safety: the strict parser in `marque-core` recognises each
+/// multi-word NATO form and maps it to the corresponding
+/// `MarkingClassification::NonUs(NatoClassification::*)` variant, so a
+/// fuzzy-corrected `COSMIC` / `BOHEMIA` / `ATOMAL` / `BALK` token lands
+/// on the correct classification after strict parsing.
+///
+/// Authority: CAPCO-2016 §H.7 p147–148 (NATO classification markings).
+const NATO_CLASSIFICATION_KEYWORDS: &[&str] = &["ATOMAL", "BALK", "BOHEMIA", "COSMIC"];
+
 /// SAR structural keywords (CAPCO-2016 §H.5 p100, "SAR-" indicator and
 /// "SPECIAL ACCESS REQUIRED-" full form), included in the fuzzy
 /// correction vocabulary so OCR/transcription typos in the indicator
@@ -102,8 +122,9 @@ const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
 const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
-/// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`], sorted and
-/// deduplicated.
+/// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
+/// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`],
+/// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
 /// (`NF`, `OC`, `PR`, `XD`, `ND`) and a handful of single-form tokens
@@ -145,6 +166,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     }
     v.extend_from_slice(SAR_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
     v.sort();
     v.dedup();
     v

@@ -161,7 +161,7 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// SC-004 (≥85%) is not met on the 4,746-fixture corpus.
 /// `resolution_rate_at_0_85` is `#[ignore]`d until vocabulary gaps
 /// are addressed. See that test's comment for re-enable criteria.
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.60;
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.62;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -169,41 +169,40 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.60;
 /// "Reordering 100%→60% offset by Typo 20%→40%" hole that the
 /// aggregate gate cannot detect.
 ///
-/// Floor policy by class (pinned 2026-04-29, 4,746-fixture corpus):
+/// Floor policy by class (ratcheted 2026-04-29, 4,746-fixture corpus):
 ///
 /// - **`GarbledDelimiter`** pinned at `0.79` (2pp below measured
-///   81.8%). Many new garbled-delimiter fixtures involve NATO/FGI
-///   markings with vocabulary gaps; the floor absorbs noise while
+///   81.8%). Many garbled-delimiter fixtures involve NATO/FGI markings
+///   with remaining vocabulary gaps; floor absorbs noise while
 ///   catching real regressions.
-/// - **`MissingDelimiter`** pinned at `0.58` (3pp below measured
-///   61.2%). The 286-fixture set includes non-US markings where the
-///   `try_insert_delimiter` pass can't recover because vocabulary
-///   tokens are unknown. Ratchet up as vocabulary gaps close.
-/// - **`Reordering`** pinned at `0.71` (2pp below measured 73.2%).
-///   The remaining 26.8% are BOHEMIA/ATOMAL/NIS codeword fixtures
-///   (zero-candidate due to Unknown-token filter) and multi-`//`
-///   non-US markings that need parser changes.
-/// - **`SupersededToken`** pinned at `0.09` (above 4/46 = 8.7%).
-///   46 fixtures from the CAPCO-2016 manual include NATO superseded
-///   tokens whose replacements aren't in the current vocabulary;
-///   5/46 (10.9%) pass. Any drop to 4/46 trips the gate.
-/// - **`Typo`** pinned at `0.47` (2.5pp below measured 49.5%).
-///   The 2,447-fixture set includes extensive non-US typo variants;
-///   ratchet as vocabulary coverage improves.
-/// - **`WrongCase`** pinned at `0.79` (2.5pp below measured 81.4%).
-///   Wrong-case non-US markings where vocabulary is missing fall
-///   through; the margin absorbs noise without gold-plating.
+/// - **`MissingDelimiter`** pinned at `0.58` (2pp below measured
+///   59.8%). Non-US markings with unknown vocabulary tokens can't be
+///   recovered by `try_insert_delimiter`. Ratchet as gaps close.
+/// - **`Reordering`** pinned at `0.70` (1pp below measured 70.7%).
+///   Remaining failures are CTS/BOHEMIA/NIS zero-candidate cases and
+///   multi-`//` non-US markings that need parser changes.
+/// - **`SupersededToken`** ratcheted to `0.81` (2pp below measured
+///   82.6%): compound/embedded COMINT substitution (issue #246) fixed
+///   in `fuzzy_correct_tokens` — COMINT-G → SI-G, UNCLASCOMINTFIED
+///   → UNCLASSIFIED, FRD-COMINTGMA → FRD-SIGMA, etc. 38/46 now pass.
+///   Prior floor `0.09` (5/46) is retired.
+/// - **`Typo`** ratcheted to `0.50` (1pp below measured 51.3%).
+///   NATO classification vocab (COSMIC, BOHEMIA, ATOMAL, BALK) added
+///   to the correction dictionary; tetragraph PR-A expanded to 4-char
+///   entries (FVEY/ISAF typos). Issue #246.
+/// - **`WrongCase`** pinned at `0.79` (2pp below measured 81.4%).
+///   Wrong-case non-US markings with missing vocabulary fall through;
+///   margin absorbs noise without gold-plating.
 ///
-/// Last ratcheted (2026-04-29, PR #243 corpus expansion + non-US
-/// decoder improvements): all floors reset against the 4,746-fixture
-/// measured rates. Prior pin (2026-04-28, 260 fixtures) is
-/// superseded.
+/// Last ratcheted (2026-04-29, issue #246 vocab fixes): SupersededToken
+/// 0.09→0.81, Typo 0.47→0.50, MissingDelimiter 0.58 (no change).
+/// Prior pin (2026-04-29, PR #243) superseded for those two classes.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 0.79),
     ("MissingDelimiter", 0.58),
     ("Reordering", 0.70),
-    ("SupersededToken", 0.09),
-    ("Typo", 0.47),
+    ("SupersededToken", 0.81),
+    ("Typo", 0.50),
     ("WrongCase", 0.79),
 ];
 
@@ -535,26 +534,24 @@ fn run_sweep() -> AccuracyReport {
 /// SC-004 literal target gate. The decoder must resolve ≥85% of
 /// fixtures at recognition ≥0.85.
 ///
-/// **Currently `#[ignore]`d** (re-ignored 2026-04-29): PR #243
-/// expanded the fixture corpus from 260 US-only fixtures to 4,746
-/// fixtures sourced from the CAPCO-2016 manual, which includes
-/// NATO/FGI/JOINT markings with vocabulary gaps (BOHEMIA, ATOMAL,
-/// NIS, FVEY, etc.) that produce zero-candidate results regardless
-/// of decoder improvements. Decoder accuracy on the expanded corpus
-/// is 62.0% with the non-US reordering fixes; SC-004 requires 85%.
+/// **Currently `#[ignore]`d**: issue #246 vocab fixes (COSMIC/BOHEMIA/
+/// ATOMAL/BALK correction vocab, compound COMINT substitution,
+/// tetragraph PR-A expansion) raised accuracy from 62.0% → 63.2%,
+/// but SC-004 requires 85%. Remaining gaps:
 ///
-/// Re-enable when the following are addressed:
-///   - NATO codeword vocabulary (issue #246): BOHEMIA, ATOMAL, NIS
-///   - Coalition shorthands (issue #246): FVEY, ISAF
+///   - NIS / CTS reordering (zero-candidate): CTS and BOHEMIA in
+///     reordering context produce zero candidates because the
+///     `classify_segment` heuristic doesn't know `CTS` = classification.
 ///   - Non-standard REL TO slash notation (issue #247)
 ///   - SAR program-nickname typos (issue #180)
+///   - Broader non-US/JOINT marking recovery
 ///
 /// The complementary `resolution_rate_does_not_regress` gate is
 /// always-on and catches any real accuracy regression against the
-/// 4,746-fixture measured baseline (60% floor).
+/// 4,746-fixture measured baseline (62% floor).
 #[test]
-#[ignore = "SC-004 not met on 4,746-fixture corpus (62.0%) — \
-            vocabulary gaps (BOHEMIA/ATOMAL/NIS etc.) tracked in #246; \
+#[ignore = "SC-004 not met on 4,746-fixture corpus (63.2%) — \
+            remaining gaps tracked in #246, #247, #180; \
             re-enable when those close"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();

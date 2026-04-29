@@ -1035,13 +1035,33 @@ fn fuzzy_correct_tokens(
         let (token, tail) = rest.split_at(token_len);
         rest = tail;
 
-        // Case 1: superseded token.
+        // Case 1: exact superseded token (e.g., standalone `COMINT` → `SI`).
         if let Some(replacement) = SUPERSEDED_TOKEN_MAP
             .iter()
             .find(|&&(from, _)| from == token)
             .map(|&(_, to)| to)
         {
             out.push_str(replacement);
+            features.push(FeatureEntry {
+                id: FeatureId::SupersededToken,
+                delta: -0.2,
+            });
+            continue;
+        }
+
+        // Case 1b: embedded superseded token — the deprecated keyword
+        // appears as a substring within a longer token. Handles compound
+        // prefixes (`COMINT-G` → `SI-G`), embedded substitutions
+        // (`UNCLASCOMINTFIED` → `UNCLASSIFIED`, `FRD-COMINTGMA 14` →
+        // `FRD-SIGMA 14`, `SENCOMINTTIVE` → `SENSITIVE`). The token !=
+        // from guard ensures the exact-match case above is the only path
+        // for bare superseded tokens. CAPCO-2016 §H.4 p74.
+        let embedded_replacement = SUPERSEDED_TOKEN_MAP
+            .iter()
+            .find(|&&(from, _)| token != from && token.contains(from))
+            .map(|&(from, to)| token.replace(from, to));
+        if let Some(replaced) = embedded_replacement {
+            out.push_str(&replaced);
             features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: -0.2,
@@ -2431,7 +2451,7 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 // ---------------------------------------------------------------------------
 
 /// Emit one canonical-byte alternate per fuzzy candidate for each
-/// unknown 3-char REL TO entry.
+/// unknown 3- or 4-char REL TO entry.
 ///
 /// The standard fuzzy path in [`fuzzy_correct_tokens`] operates against
 /// the [`CapcoTokenSet::correction_vocab`] slice, which deliberately
@@ -2447,11 +2467,11 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 ///
 /// With the original candidate filtered out, this function provides
 /// the alternates the dispatcher chooses between: it walks each
-/// `REL TO ` block in `text`, finds 3-char comma-separated entries
-/// that aren't already valid trigraphs, asks the trigraph-vocab
-/// matcher for all candidates within the edit-distance bound, and
-/// emits one alternate text per candidate (with the substitution
-/// applied in-place).
+/// `REL TO ` block in `text`, finds 3- or 4-char comma-separated
+/// entries that aren't already valid trigraphs/tetragraphs, asks the
+/// trigraph-vocab matcher for all candidates within the edit-distance
+/// bound, and emits one alternate text per candidate (with the
+/// substitution applied in-place).
 ///
 /// Each emitted alternate carries an `EditDistance1` /
 /// `EditDistance2` feature (paired with the candidate's distance) so
@@ -2463,18 +2483,21 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 /// log_prior(UZB)` ≈ +7 nats) decides which alternate wins the
 /// `UNAMBIGUOUS_LOG_MARGIN` (~1.6 nat) contest.
 ///
-/// **Scope**: trigraph-shaped (3-char ASCII uppercase) entries only.
-/// Two-letter entries (`EU`) are below `MIN_FUZZY_LEN`; longer
-/// multi-char entries (`AUSTRALIA_GROUP`) have low fuzzy-tie risk
-/// because their lengths rarely collide. Only fires when the entry
-/// token is NOT already a valid trigraph — so `AUT`, `UZB`, `ASM`
-/// in legitimate use pass through unchanged.
+/// **Scope**: 3-char (trigraph) and 4-char (tetragraph) ASCII
+/// uppercase entries only. Two-letter entries (`EU`) are below
+/// `MIN_FUZZY_LEN`; longer multi-char entries (`AUSTRALIA_GROUP`)
+/// have low fuzzy-tie risk because their lengths rarely collide.
+/// Only fires when the entry token is NOT already a valid
+/// trigraph/tetragraph — so `AUT`, `UZB`, `FVEY`, `ACGU`, `ISAF`
+/// in legitimate use pass through unchanged. 4-char scope added to
+/// recover coalition-shorthand typos (`FVYE` → `FVEY`,
+/// `SGAF` → `ISAF`); issue #246.
 ///
 /// **CAPCO authority**: REL TO syntax is defined in CAPCO-2016 §H.8.
-/// The trigraph dictionary itself comes from the ODNI CVE schema in
-/// `CVEnumISMCATRelTo.xsd`, baked into [`CapcoTokenSet::is_trigraph`]
-/// and into the [`marque_ism::TRIGRAPHS`] slice this function fuzzy-
-/// matches against.
+/// The trigraph/tetragraph dictionary itself comes from the ODNI CVE
+/// schema in `CVEnumISMCATRelTo.xsd`, baked into
+/// [`CapcoTokenSet::is_trigraph`] and into the
+/// [`marque_ism::TRIGRAPHS`] slice this function fuzzy-matches against.
 fn try_rel_to_fuzzy_trigraph_candidates(
     text: &str,
     trigraph_matcher: &FuzzyVocabMatcher<'_>,
@@ -2510,16 +2533,16 @@ fn try_rel_to_fuzzy_trigraph_candidates(
             cursor = entry_end + 1; // skip the comma
 
             let trimmed = entry.trim();
-            // Only 3-char ASCII-uppercase trigraph-shaped entries —
-            // see fn doc for the scope rationale.
-            if trimmed.len() != 3 || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
+            // 3-char (trigraph) or 4-char (tetragraph) ASCII-uppercase
+            // entries only — see fn doc for scope rationale.
+            let tlen = trimmed.len();
+            if (tlen != 3 && tlen != 4) || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
                 continue;
             }
-            // Skip already-valid trigraphs (the matcher's binary
-            // search would also short-circuit on a vocab hit, but
-            // keeping the explicit check means a token like `AUT`
-            // appearing legitimately never gets multi-cast as
-            // USA/AUS/etc.).
+            // Skip already-valid trigraphs/tetragraphs (the matcher's
+            // binary search would also short-circuit on a vocab hit, but
+            // keeping the explicit check means a token like `FVEY`
+            // appearing legitimately never gets multi-cast).
             if token_set.is_trigraph(trimmed) {
                 continue;
             }
@@ -2562,7 +2585,8 @@ fn try_rel_to_fuzzy_trigraph_candidates(
                 .split(',')
                 .map(str::trim)
                 .filter(|e| {
-                    e.len() == 3
+                    let elen = e.len();
+                    (elen == 3 || elen == 4)
                         && e.bytes().all(|b| b.is_ascii_uppercase())
                         && *e != trimmed
                         && token_set.is_trigraph(e)
