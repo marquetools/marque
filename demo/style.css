@@ -2,92 +2,175 @@
  * SPDX-FileCopyrightText: 2026 Knitli Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Marque Interactive Demo — palette and typography pulled from the canonical
+ * design system at docs-site/src/styles/tokens.css. Brand language: the (M)
+ * of "(M)arque" is itself a CAPCO portion mark. Charcoal #2f3732 / gold
+ * #cda824 / mint #f1f7ed / smart blue #4464ad. Classification-banner colors
+ * (green/navy/red/orange/yellow) are kept functional per IC convention.
  */
 
-/* Marque Interactive Demo — Office Document Style */
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 :root {
+  /* Brand primitives (excerpt from docs-site/src/styles/tokens.css) */
+  --charcoal-50:  #f4f6f4;
+  --charcoal-100: #e8edea;
+  --charcoal-200: #cfd8d1;
+  --charcoal-300: #a9baac;
+  --charcoal-400: #7d9480;
+  --charcoal-500: #5c7260;
+  --charcoal-600: #475a4a;
+  --charcoal-700: #3a4a3c;
+  --charcoal-800: #2f3732;
+  --charcoal-900: #1f2720;
+  --charcoal-950: #131a14;
+
+  --gold-50:  #fdf8e8;
+  --gold-100: #faefca;
+  --gold-200: #f4db91;
+  --gold-300: #ecc34e;
+  --gold-400: #e2aa27;
+  --gold-500: #cda824;
+  --gold-600: #b08d1a;
+
+  --mint-50:  #f1f7ed;
+  --mint-100: #e4f0dd;
+  --mint-200: #c8e0ba;
+  --mint-400: #74b161;
+  --mint-500: #559543;
+
+  --blue-50:  #eef2fb;
+  --blue-300: #7e98da;
+  --blue-500: #4464ad;
+  --blue-600: #3651a0;
+
+  /* Semantic tokens — light */
+  --color-bg:             var(--mint-50);
+  --color-surface:        #ffffff;
+  --color-surface-raised: var(--charcoal-50);
+  --color-text-primary:   var(--charcoal-800);
+  --color-text-secondary: var(--charcoal-600);
+  --color-text-muted:     var(--charcoal-500);
+  --color-text-subtle:    var(--charcoal-400);
+  --color-text-inverse:   var(--mint-50);
+  --color-text-on-accent: var(--charcoal-900);
+  --color-border:         var(--charcoal-200);
+  --color-border-strong:  var(--charcoal-300);
+  --color-accent:         var(--gold-500);
+  --color-interactive:    var(--blue-500);
+
+  /* Classification banner palette — IC convention (functional, not brand) */
   --banner-unclassified: #007a33;
   --banner-confidential: #003087;
-  --banner-secret: #c8102e;
-  --banner-ts: #ff6600;
-  --banner-ts-sci: #d4a000;
-  --font-body: Georgia, 'Times New Roman', serif;
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --banner-secret:       #c8102e;
+  --banner-ts:           #ff6600;
+  --banner-ts-sci:       #d4a000;
+  --banner-empty:        var(--charcoal-400);
+
+  /* Diagnostic severity */
+  --color-sev-error:        #c0392b;
+  --color-sev-warn:         var(--gold-600);
+
+  /* Type stacks */
+  --font-body: 'Charter', 'Georgia', 'Times New Roman', serif;
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto,
+               'Helvetica Neue', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas,
+               'Liberation Mono', monospace;
+
+  /* Geometry */
   --doc-width: 760px;
-  --page-bg: #e8e8e8;
+  --nav-height: 56px;
+
+  /* Motion */
+  --duration-fast:  100ms;
+  --duration-base:  200ms;
+  --duration-slow:  300ms;
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Shadows (charcoal-tinted) */
+  --shadow-md: 0 4px 6px -1px rgba(47, 55, 50, 0.08),
+               0 2px 4px -2px rgba(47, 55, 50, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(47, 55, 50, 0.10),
+               0 4px 6px -4px rgba(47, 55, 50, 0.05);
+  --shadow-doc: 0 1px 2px 0 rgba(47, 55, 50, 0.06),
+                0 8px 24px -4px rgba(47, 55, 50, 0.10);
 }
 
 body {
   margin: 0;
   padding: 0;
-  background: var(--page-bg);
+  background: var(--color-bg);
   font-family: var(--font-ui);
-  color: #222;
+  color: var(--color-text-primary);
   min-height: 100vh;
 }
 
-/* Nav */
+/* ─── Nav ───────────────────────────────────────────────────────────── */
+
 nav {
-  background: #1a1a2e;
-  color: #fff;
+  background: var(--charcoal-900);
+  color: var(--color-text-inverse);
   padding: 0 24px;
-  height: 52px;
+  height: var(--nav-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow-md);
+  border-bottom: 1px solid var(--charcoal-800);
 }
 
 nav .logo {
-  font-family: var(--font-ui);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #fff;
+  display: flex;
+  align-items: center;
   text-decoration: none;
+  height: 100%;
 }
 
-nav .logo span {
-  color: #ffd700;
+nav .logo img {
+  height: 32px;
+  width: auto;
+  display: block;
 }
 
 nav .nav-hint {
-  font-size: 13px;
-  color: rgba(255,255,255,0.6);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--charcoal-300);
+  letter-spacing: 0.02em;
 }
 
-/* Page layout */
+/* ─── Page layout ───────────────────────────────────────────────────── */
+
 .page-wrapper {
   max-width: 900px;
   margin: 32px auto;
   padding: 0 16px 64px;
 }
 
-/* Document card */
+/* ─── Document card ─────────────────────────────────────────────────── */
+
 .document {
-  background: #fff;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
-  border: 1px solid #ccc;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-doc);
+  border: 1px solid var(--color-border);
   margin-bottom: 0;
 }
 
-/* Classification banner */
+/* Classification banner — kept saturated per IC convention */
 .banner {
   padding: 8px 24px;
   text-align: center;
   font-family: var(--font-body);
   font-size: 15px;
-  font-weight: bold;
+  font-weight: 700;
   letter-spacing: 0.04em;
-  transition: background-color 0.35s ease, color 0.2s ease;
+  transition: background-color var(--duration-slow) var(--ease-out-expo),
+              color var(--duration-base) var(--ease-out-expo);
   min-height: 36px;
   display: flex;
   align-items: center;
@@ -97,19 +180,19 @@ nav .nav-hint {
 
 .banner.level-unclassified { background: var(--banner-unclassified); color: #fff; }
 .banner.level-confidential { background: var(--banner-confidential); color: #fff; }
-.banner.level-secret       { background: var(--banner-secret); color: #fff; }
-.banner.level-ts           { background: var(--banner-ts); color: #fff; }
-.banner.level-ts-sci       { background: var(--banner-ts-sci); color: #000; }
-.banner.level-empty        { background: #999; color: #fff; }
+.banner.level-secret       { background: var(--banner-secret);       color: #fff; }
+.banner.level-ts           { background: var(--banner-ts);            color: #fff; }
+.banner.level-ts-sci       { background: var(--banner-ts-sci);        color: #000; }
+.banner.level-empty        { background: var(--banner-empty);         color: #fff; }
 
-/* Document header area */
+/* Memo header */
 .doc-header {
-  padding: 24px 40px 12px;
-  border-bottom: 1px solid #ddd;
+  padding: 28px 48px 14px;
+  border-bottom: 1px solid var(--color-border);
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.7;
-  color: #333;
+  color: var(--color-text-secondary);
 }
 
 .doc-header table {
@@ -123,124 +206,95 @@ nav .nav-hint {
 }
 
 .doc-header td:first-child {
-  font-weight: bold;
-  width: 100px;
+  font-weight: 700;
+  width: 110px;
   white-space: nowrap;
+  color: var(--color-text-primary);
+  letter-spacing: 0.02em;
 }
 
 .doc-divider {
   border: none;
-  border-top: 1px solid #aaa;
+  border-top: 1px solid var(--color-border-strong);
   margin: 12px 0 0;
 }
 
 /* Editor area */
 .doc-body {
-  padding: 20px 40px 20px;
-  min-height: 240px;
+  padding: 24px 48px;
+  min-height: 280px;
 }
 
-/* CodeMirror theming */
 .cm-editor {
   font-family: var(--font-body) !important;
   font-size: 14px !important;
   line-height: 1.85 !important;
 }
 
-.cm-editor .cm-content {
-  padding: 0 !important;
-}
+.cm-editor .cm-content   { padding: 0 !important; caret-color: var(--color-text-primary); }
+.cm-editor.cm-focused    { outline: none !important; }
+.cm-editor .cm-line      { padding: 0 !important; }
 
-.cm-editor.cm-focused {
-  outline: none !important;
-}
-
-.cm-editor .cm-line {
-  padding: 0 !important;
-}
-
-/* Squiggly underlines for diagnostics */
+/* Squiggly underlines */
 .marque-error {
-  text-decoration: underline wavy #d32f2f;
+  text-decoration: underline wavy var(--color-sev-error);
   text-underline-offset: 3px;
   cursor: help;
 }
 
 .marque-warn {
-  text-decoration: underline wavy #f57c00;
+  text-decoration: underline wavy var(--color-sev-warn);
   text-underline-offset: 3px;
   cursor: help;
 }
 
 /* Tooltip */
 .cm-tooltip {
-  background: #1a1a2e !important;
-  color: #fff !important;
-  border: none !important;
+  background: var(--charcoal-900) !important;
+  color: var(--color-text-inverse) !important;
+  border: 1px solid var(--charcoal-700) !important;
   border-radius: 6px !important;
   font-size: 12px !important;
   font-family: var(--font-ui) !important;
   padding: 0 !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  max-width: 320px !important;
+  box-shadow: var(--shadow-lg) !important;
+  max-width: 340px !important;
 }
 
 .marque-tooltip {
   padding: 10px 14px;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .marque-tooltip .tip-rule {
-  font-family: 'Courier New', monospace;
-  color: #ffd700;
+  font-family: var(--font-mono);
+  color: var(--gold-300);
   font-size: 11px;
-  font-weight: bold;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   margin-bottom: 4px;
 }
 
-.marque-tooltip .tip-message {
-  color: #eee;
-}
+.marque-tooltip .tip-message  { color: var(--charcoal-100); }
+.marque-tooltip .tip-citation { margin-top: 6px; color: var(--charcoal-400); font-size: 11px; }
 
-.marque-tooltip .tip-citation {
-  margin-top: 6px;
-  color: rgba(255,255,255,0.5);
-  font-size: 11px;
-}
+/* ─── Audit Stream ──────────────────────────────────────────────────── */
 
-/* ─── Audit Stream ──────────────────────────────────────────────────────────── */
-
-/*
- * The audit stream sits directly below the document card and blends into the
- * page background — no card border, no panel chrome. It reads as a quiet
- * trail of corrections building up beneath the document as you type.
- */
-.audit-stream {
-  padding: 28px 0 0;
-  min-height: 80px;
-}
+.audit-stream { padding: 28px 0 0; min-height: 80px; }
 
 .audit-empty {
   font-size: 12px;
-  color: #bbb;
+  color: var(--color-text-subtle);
   font-style: italic;
   text-align: center;
   padding: 20px 0;
   font-family: var(--font-ui);
 }
 
-/* Each audit entry fades and slides in from above */
 @keyframes auditIn {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .audit-entry {
@@ -249,83 +303,93 @@ nav .nav-hint {
   gap: 10px;
   padding: 5px 4px;
   margin-bottom: 2px;
-  animation: auditIn 0.25s ease forwards;
+  animation: auditIn 0.25s var(--ease-out-expo) forwards;
   max-width: var(--doc-width);
   margin-left: auto;
   margin-right: auto;
 }
 
-/* Subtle left rule — barely visible against background */
 .audit-entry::before {
   content: '';
   display: block;
   width: 2px;
   height: 14px;
-  background: rgba(0,0,0,0.12);
+  background: var(--color-border-strong);
   border-radius: 1px;
   flex-shrink: 0;
   align-self: center;
 }
 
 .audit-time {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #bbb;
+  color: var(--color-text-subtle);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 
 .audit-rule {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #8fa8d0;
+  color: var(--gold-600);
   white-space: nowrap;
   flex-shrink: 0;
   letter-spacing: 0.03em;
+  font-weight: 600;
 }
 
 .audit-arrow {
   font-size: 12px;
-  color: #bbb;
+  color: var(--color-text-subtle);
   flex-shrink: 0;
 }
 
 .audit-original {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: #c0392b;
+  color: var(--color-sev-error);
   text-decoration: line-through;
   text-decoration-color: rgba(192, 57, 43, 0.5);
   white-space: nowrap;
 }
 
 .audit-replacement {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: #27ae60;
+  color: var(--mint-500);
   white-space: nowrap;
+  font-weight: 600;
 }
 
 .audit-source {
   font-size: 11px;
-  color: #ccc;
+  color: var(--color-text-subtle);
   white-space: nowrap;
   flex-shrink: 0;
+  font-family: var(--font-mono);
 }
 
 .audit-confidence {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #ccc;
+  color: var(--color-text-subtle);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* Separator between groups of corrections from the same keystroke */
 .audit-separator {
   max-width: var(--doc-width);
   margin: 4px auto;
   border: none;
-  border-top: 1px solid rgba(0,0,0,0.06);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ─── Placeholder hint ──────────────────────────────────────────────── */
+
+.cm-placeholder {
+  color: var(--color-text-subtle) !important;
+  font-style: italic;
+  font-family: var(--font-body) !important;
+  pointer-events: none;
 }

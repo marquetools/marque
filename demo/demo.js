@@ -3,29 +3,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Marque Interactive Demo
+ * Marque Interactive Demo (worker-backed)
  *
- * Loads the Marque WASM module and wires up the classified-memo editor:
- * - Real-time banner rollup from portion markings (compute_banner)
- * - Correct-as-you-type via fix() at threshold 0.0 — applies targeted CodeMirror
- *   changes (one per applied fix) rather than a full-document replacement, so
- *   the cursor never jumps.
- * - Squiggly underlines via CodeMirror 6 Decoration API
- * - Hover tooltips showing rule ID, message, CAPCO citation
- * - Inline audit stream: each fix produces a stylized entry prepended below the
- *   document, blending into the page background.
+ * Architecture:
+ *   - The Marque WASM engine runs in a Web Worker (worker.js). The main
+ *     thread never blocks on lint/fix/banner — typing latency stays at
+ *     frame rate even on large inputs.
+ *   - On debounce, the editor posts {type:'fix', seq, text, threshold,
+ *     config} to the worker. The worker returns {fixedText, banner,
+ *     applied[], remaining[]}.
+ *   - Stale results are dropped via sequence numbers — only the most
+ *     recent request's reply updates the editor.
  *
- * WASM path: served at /wasm/ by the dev server (bin/serve.js routes that prefix
- * to crates/wasm/pkg/ in the monorepo, or to the bundled wasm/ dir when
- * running from an npm-installed package).
+ * Surface:
+ *   - Real-time banner roll-up from portion markings (computed against
+ *     the post-fix text the engine returns).
+ *   - Correct-as-you-type via fix() — applies each fix as a CodeMirror
+ *     change at its byte offset, so the cursor never jumps.
+ *   - Squiggly underlines for remaining diagnostics, with hover
+ *     tooltips that show rule ID + message + CAPCO citation.
+ *   - Inline audit stream — each fix produces a styled entry below the
+ *     document, blending into the page background.
+ *   - Faded placeholder + idle autoplay: an empty editor invites the
+ *     user to type, and after ~6s of inactivity an autoplay sequence
+ *     demonstrates the engine end-to-end. Any input pauses autoplay
+ *     immediately.
  */
-
-import initWasm, { configure, lint, fix, compute_banner }
-  from '/wasm/marque_wasm.js';
 
 import {
   EditorView,
   Decoration,
+  ViewPlugin,
   hoverTooltip,
   StateEffect,
   StateField,
@@ -33,42 +41,62 @@ import {
 } from './vendor.js';
 
 // ---------------------------------------------------------------------------
-// WASM engine configuration
+// Engine configuration (passed through to the worker)
 // ---------------------------------------------------------------------------
 
-/**
- * Corrections map: common typos and misspellings of classification terms.
- * The engine's pre-scanner AhoCorasick automaton detects these in raw text
- * and emits C001 diagnostics before the scanner/parser even runs, enabling
- * the two-pass fix pipeline to correct typos AND apply downstream rules
- * (e.g., SERCET → SECRET → S in a portion).
- */
 const DEMO_CONFIG = JSON.stringify({
   corrections: {
-    'SERCET':        'SECRET',
-    'SECERT':        'SECRET',
-    'SECRECT':       'SECRET',
-    'SCERET':        'SECRET',
-    'SECRTE':        'SECRET',
-    'CONFIDETIAL':   'CONFIDENTIAL',
-    'CONFIENTIAL':   'CONFIDENTIAL',
-    'CONFIDENTAL':   'CONFIDENTIAL',
-    'UNCALSSIFIED':  'UNCLASSIFIED',
-    'UNCLASSFIED':   'UNCLASSIFIED',
-    'UNCLASSIFED':   'UNCLASSIFIED',
-    'NOFON':         'NOFORN',
-    'NOFRON':        'NOFORN',
+    'SERCET':       'SECRET',
+    'SECERT':       'SECRET',
+    'SECRECT':      'SECRET',
+    'SCERET':       'SECRET',
+    'SECRTE':       'SECRET',
+    'CONFIDETIAL':  'CONFIDENTIAL',
+    'CONFIENTIAL':  'CONFIDENTIAL',
+    'CONFIDENTAL':  'CONFIDENTIAL',
+    'UNCALSSIFIED': 'UNCLASSIFIED',
+    'UNCLASSFIED':  'UNCLASSIFIED',
+    'UNCLASSIFED':  'UNCLASSIFIED',
+    'NOFON':        'NOFORN',
+    'NOFRON':       'NOFORN',
   },
 });
 
+const FIX_THRESHOLD = 0.0;        // Tier 2 will surface this as a slider.
+const DEBOUNCE_MS   = 80;
+const AUTOPLAY_IDLE_MS = 6_000;
+const AUTOPLAY_CHAR_MS = 70;
+const PLACEHOLDER_TEXT =
+  'Try typing — for example: This is a (sercet//noforn) test memo.';
+
+// Autoplay script: a short representative passage that exercises typo
+// correction (SERCET → SECRET → S), portion abbreviation, and banner
+// roll-up. Newlines are part of the script.
+const AUTOPLAY_SCRIPT =
+  'This memo summarizes the program review.\n\n' +
+  '(SERCET//NOFORN) Initial findings indicate the system is operating ' +
+  'within nominal parameters.\n\n' +
+  '(C) Status reports will continue on a weekly cadence.\n';
+
 // ---------------------------------------------------------------------------
-// Pre-loaded document body
+// Worker boot
 // ---------------------------------------------------------------------------
 
-const INITIAL_BODY = ``;
+const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+let workerReady = false;
+const workerReadyPromise = new Promise(resolve => {
+  worker.addEventListener('message', function onReady(ev) {
+    if (ev.data && ev.data.type === 'ready') {
+      workerReady = true;
+      worker.removeEventListener('message', onReady);
+      resolve();
+    }
+  });
+});
+worker.postMessage({ type: 'configure', config: DEMO_CONFIG });
 
 // ---------------------------------------------------------------------------
-// CodeMirror decoration effects and state field
+// CodeMirror state plumbing — diagnostics and placeholder
 // ---------------------------------------------------------------------------
 
 const setDiagnosticsEffect = StateEffect.define();
@@ -78,23 +106,53 @@ const diagnosticsField = StateField.define({
   update(decorations, tr) {
     decorations = decorations.map(tr.changes);
     for (const e of tr.effects) {
-      if (e.is(setDiagnosticsEffect)) {
-        decorations = e.value;
-      }
+      if (e.is(setDiagnosticsEffect)) decorations = e.value;
     }
     return decorations;
   },
   provide: f => EditorView.decorations.from(f),
 });
 
+class PlaceholderWidget {
+  constructor(text) { this.text = text; }
+  toDOM() {
+    const el = document.createElement('span');
+    el.className = 'cm-placeholder';
+    el.textContent = this.text;
+    return el;
+  }
+  eq(other) { return other.text === this.text; }
+  ignoreEvent() { return true; }
+}
+
+const placeholderPlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this.compute(view); }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.compute(update.view);
+    }
+  }
+  compute(view) {
+    if (view.state.doc.length === 0) {
+      return Decoration.set([
+        Decoration.widget({
+          widget: new PlaceholderWidget(PLACEHOLDER_TEXT),
+          side: 1,
+        }).range(0),
+      ]);
+    }
+    return Decoration.none;
+  }
+}, { decorations: v => v.decorations });
+
 // ---------------------------------------------------------------------------
-// Classification level → CSS class
+// Banner classification → CSS class
 // ---------------------------------------------------------------------------
 
 const LEVEL_CLASSES = [
   ['TOP SECRET', 'level-ts'],
-  ['SECRET', 'level-secret'],
-  ['CONFIDENTIAL', 'level-confidential'],
+  ['SECRET',     'level-secret'],
+  ['CONFIDENTIAL','level-confidential'],
 ];
 
 function classificationClass(banner) {
@@ -110,24 +168,13 @@ function classificationClass(banner) {
   return 'level-unclassified';
 }
 
-// ---------------------------------------------------------------------------
-// Banner update
-// ---------------------------------------------------------------------------
-
 const ALL_LEVEL_CLASSES = [
   'level-unclassified', 'level-confidential', 'level-secret',
   'level-ts', 'level-ts-sci', 'level-empty',
 ];
 
-function updateBanners(text, topEl, bottomEl) {
-  let banner;
-  try {
-    banner = compute_banner(text);
-  } catch {
-    banner = 'UNCLASSIFIED';
-  }
+function applyBanner(banner, topEl, bottomEl) {
   const cls = classificationClass(banner);
-
   topEl.classList.remove(...ALL_LEVEL_CLASSES);
   bottomEl.classList.remove(...ALL_LEVEL_CLASSES);
   topEl.classList.add(cls);
@@ -142,14 +189,7 @@ function updateBanners(text, topEl, bottomEl) {
 
 let auditEntryCount = 0;
 
-/**
- * Prepend a styled entry into the audit stream for one applied fix.
- *
- * @param {object} fix  - An entry from fixResult.applied (AuditRecordJson)
- * @param {Element} stream - The #audit-stream container
- * @param {Element} emptyEl - The #audit-empty placeholder element
- */
-function prependAuditEntry(fix, stream, emptyEl) {
+function prependAuditEntry(record, stream, emptyEl) {
   if (emptyEl && emptyEl.parentNode === stream) {
     stream.removeChild(emptyEl);
   }
@@ -160,212 +200,185 @@ function prependAuditEntry(fix, stream, emptyEl) {
   const ss = String(now.getSeconds()).padStart(2, '0');
   const timeStr = `${hh}:${mm}:${ss}`;
 
-  const sourceLabel = fix.source === 'CorrectionsMap' ? 'corrections-map'
-    : fix.source === 'BuiltinRule' ? 'rule'
-    : fix.source === 'MigrationTable' ? 'migration'
-    : fix.source.toLowerCase();
+  const sourceLabel = record.source === 'CorrectionsMap' ? 'corrections-map'
+    : record.source === 'BuiltinRule'    ? 'rule'
+    : record.source === 'MigrationTable' ? 'migration'
+    : record.source === 'DecoderPosterior' ? 'decoder'
+    : String(record.source).toLowerCase();
 
-  const pct = Math.round((fix.confidence ?? 1) * 100);
+  const pct = Math.round((record.confidence ?? 1) * 100);
 
   const entry = document.createElement('div');
   entry.className = 'audit-entry';
   entry.setAttribute('role', 'log');
-  const spanTime = document.createElement('span');
-  spanTime.className = 'audit-time';
-  spanTime.textContent = timeStr;
 
-  const spanRule = document.createElement('span');
-  spanRule.className = 'audit-rule';
-  spanRule.textContent = fix.rule;
-
-  const spanOriginal = document.createElement('span');
-  spanOriginal.className = 'audit-original';
-  spanOriginal.textContent = fix.original;
-
-  const spanArrow = document.createElement('span');
-  spanArrow.className = 'audit-arrow';
-  spanArrow.textContent = '→';
-
-  const spanReplacement = document.createElement('span');
-  spanReplacement.className = 'audit-replacement';
-  spanReplacement.textContent = fix.replacement;
-
-  const spanSource = document.createElement('span');
-  spanSource.className = 'audit-source';
-  spanSource.textContent = sourceLabel;
-
-  const spanConfidence = document.createElement('span');
-  spanConfidence.className = 'audit-confidence';
-  spanConfidence.textContent = `${pct}%`;
-
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanTime);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanRule);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanOriginal);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanArrow);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanReplacement);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanSource);
-  entry.appendChild(document.createTextNode('\n    '));
-  entry.appendChild(spanConfidence);
-  entry.appendChild(document.createTextNode('\n  '));
-
-  // Prepend: insert before the first child (or append if empty)
-  if (stream.firstChild) {
-    stream.insertBefore(entry, stream.firstChild);
-  } else {
-    stream.appendChild(entry);
+  const fields = [
+    ['audit-time',        timeStr],
+    ['audit-rule',        record.rule],
+    ['audit-original',    record.original],
+    ['audit-arrow',       '→'],
+    ['audit-replacement', record.replacement],
+    ['audit-source',      sourceLabel],
+    ['audit-confidence',  `${pct}%`],
+  ];
+  for (const [cls, text] of fields) {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    entry.appendChild(span);
   }
 
+  if (stream.firstChild) stream.insertBefore(entry, stream.firstChild);
+  else stream.appendChild(entry);
   auditEntryCount++;
 }
 
-/**
- * Insert a thin separator rule between correction batches (keystroke groups).
- */
 function prependAuditSeparator(stream) {
   if (auditEntryCount === 0) return;
   const hr = document.createElement('hr');
   hr.className = 'audit-separator';
-  if (stream.firstChild) {
-    stream.insertBefore(hr, stream.firstChild);
-  } else {
-    stream.appendChild(hr);
-  }
+  if (stream.firstChild) stream.insertBefore(hr, stream.firstChild);
+  else stream.appendChild(hr);
 }
 
 // ---------------------------------------------------------------------------
-// Main debounced update loop
+// Update loop — debounced post-to-worker / receive / apply
 // ---------------------------------------------------------------------------
 
 let debounceTimer = null;
-const DEBOUNCE_MS = 80;
+let nextSeq = 1;
+let activeSeq = 0;          // last-issued request seq
+let lastSettledText = null; // last text we've successfully processed
 
-/** Track last-processed text to skip redundant work. */
-let lastProcessedText = null;
+function scheduleUpdate(view, refs) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => requestUpdate(view, refs), DEBOUNCE_MS);
+}
 
-/**
- * runUpdate — called after each debounce interval.
- *
- * Fix strategy: instead of replacing the whole document (which moves the
- * cursor), we apply each fix as a targeted CodeMirror change using the byte
- * offsets returned by fix().  All changes in one transaction means one undo
- * step and correct cursor remapping.
- *
- * CodeMirror 6 ChangeSet.of() requires changes sorted by ascending `from`
- * position and expects all positions relative to the ORIGINAL document — the
- * engine already guarantees non-overlapping spans, so we just sort and pass.
- */
-function runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty) {
+function requestUpdate(view, refs) {
   const text = view.state.doc.toString();
+  if (text === lastSettledText) return;
+  activeSeq = nextSeq++;
+  worker.postMessage({
+    type: 'fix',
+    seq: activeSeq,
+    text,
+    threshold: FIX_THRESHOLD,
+    config: DEMO_CONFIG,
+  });
+}
 
-  if (text === lastProcessedText) return;
-  lastProcessedText = text;
+function applyFixResult(view, refs, msg) {
+  // Drop stale results — a newer request has already been issued.
+  if (msg.seq !== activeSeq) return;
 
-  // 1. Call fix() — threshold 0.0 applies every suggestion.
-  let fixResult;
-  try {
-    fixResult = JSON.parse(fix(text, 0.0, DEMO_CONFIG));
-  } catch (err) {
-    console.error('[marque] fix() failed:', err);
-    fixResult = null;
+  const currentText = view.state.doc.toString();
+
+  // The seqs match, but the user may have typed in the gap between the
+  // request being sent and the reply arriving. If the editor's current
+  // text differs from what we'd get by applying these fixes, we re-issue
+  // a fresh request rather than apply stale changes.
+  // (Cheap check: if there are applied fixes, their spans must still be
+  // in-bounds for the current text.)
+  if (msg.applied.length > 0) {
+    const inBounds = msg.applied.every(f =>
+      f.span.start >= 0 && f.span.end <= currentText.length
+    );
+    if (!inBounds) {
+      scheduleUpdate(view, refs);
+      return;
+    }
   }
 
-  let diagList;
-
-  if (fixResult && fixResult.applied && fixResult.applied.length > 0) {
-    // Build targeted CodeMirror changes from the applied-fix spans.
-    //
-    // The engine's two-pass fix pipeline may produce multiple applied fixes
-    // targeting the same span (e.g., pass-1 C001 "SERCET"→"SECRET" at span
-    // 52..58, then pass-2 E009 "SECRET"→"S" at the same span). CodeMirror
-    // cannot apply two changes at the same range in one transaction, so we
-    // deduplicate by span key, keeping only the LAST fix per span. The last
-    // fix represents the final state (e.g., the net effect is "SERCET"→"S").
+  // Build CodeMirror change set from the applied-fix spans.
+  // The two-pass fix pipeline can produce multiple applied fixes targeting
+  // the same span (e.g., pass-1 C001 'SERCET'→'SECRET' then pass-2 E009
+  // 'SECRET'→'S' at the same offset). CodeMirror cannot apply two changes
+  // at the same range in one transaction, so we deduplicate by span key,
+  // keeping only the LAST fix per span for the change set. Each individual
+  // fix still gets its own audit entry below — the audit log shows what
+  // the engine did; the change set shows the net effect.
+  if (msg.applied.length > 0) {
     const bySpan = new Map();
-    for (const f of fixResult.applied) {
-      const key = `${f.span.start}:${f.span.end}`;
-      bySpan.set(key, f);
+    for (const f of msg.applied) {
+      bySpan.set(`${f.span.start}:${f.span.end}`, f);
     }
     const changes = [...bySpan.values()]
       .map(f => ({ from: f.span.start, to: f.span.end, insert: f.replacement }))
       .sort((a, b) => a.from - b.from);
-
-    // Dispatch as a single transaction — cursor is remapped naturally by CM.
     view.dispatch({ changes });
-
-    // After patching the document, re-lint the fixed text for accurate spans.
-    const fixedText = view.state.doc.toString();
-    try {
-      const ndjson = lint(fixedText, DEMO_CONFIG);
-      diagList = ndjson ? parseNdjson(ndjson) : [];
-    } catch (err) {
-      console.error('[marque] lint() failed:', err);
-      diagList = [];
-    }
-
-    // Update lastProcessedText so the change-listener doesn't loop.
-    lastProcessedText = fixedText;
-
-    // Append audit entries for each applied fix (newest first).
-    prependAuditSeparator(auditStream);
-    for (const f of fixResult.applied) {
-      prependAuditEntry(f, auditStream, auditEmpty);
-    }
-  } else if (fixResult) {
-    diagList = fixResult.remaining || [];
-  } else {
-    diagList = [];
   }
 
-  // 2. Build CodeMirror decorations from remaining diagnostic spans.
-  const currentText = view.state.doc.toString();
+  // After patching, the editor's text equals msg.fixedText.
+  lastSettledText = msg.fixedText;
+
+  // Decorations from the remaining diagnostics — operate on the post-fix text.
+  const fixedText = msg.fixedText;
   const decorationRanges = [];
   const diagData = [];
-
-  for (const d of diagList) {
+  for (const d of (msg.remaining || [])) {
     const from = d.span?.start ?? 0;
     const to   = d.span?.end   ?? from;
-    if (from >= to || to > currentText.length) continue;
-
+    if (from >= to || to > fixedText.length) continue;
     const cls = d.severity === 'error' ? 'marque-error' : 'marque-warn';
     decorationRanges.push(Decoration.mark({ class: cls }).range(from, to));
     diagData.push({ from, to, rule: d.rule, message: d.message, citation: d.citation });
   }
-
   decorationRanges.sort((a, b) => a.from - b.from);
-
-  view.dispatch({
-    effects: setDiagnosticsEffect.of(Decoration.set(decorationRanges)),
-  });
-
+  view.dispatch({ effects: setDiagnosticsEffect.of(Decoration.set(decorationRanges)) });
   view._marqueDiagData = diagData;
 
-  // 3. Update banners from whatever text is now in the editor.
-  updateBanners(currentText, topBanner, bottomBanner);
+  // Banner.
+  applyBanner(msg.banner || 'UNCLASSIFIED', refs.topBanner, refs.bottomBanner);
+
+  // Audit entries — one row per applied fix, separator between batches.
+  if (msg.applied.length > 0) {
+    prependAuditSeparator(refs.auditStream);
+    for (const f of msg.applied) {
+      prependAuditEntry(f, refs.auditStream, refs.auditEmpty);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// NDJSON parser
+// Idle autoplay
 // ---------------------------------------------------------------------------
 
-function parseNdjson(ndjson) {
-  const results = [];
-  let start = 0;
-  const len = ndjson.length;
-  while (start < len) {
-    let end = ndjson.indexOf('\n', start);
-    if (end === -1) end = len;
-    if (end > start) {
-      try { results.push(JSON.parse(ndjson.substring(start, end))); } catch { /* skip */ }
-    }
-    start = end + 1;
+function makeAutoplay(view) {
+  let charIdx = 0;
+  let typingTimer = null;
+  let idleTimer   = null;
+  let aborted     = false;
+
+  function tick() {
+    if (aborted || charIdx >= AUTOPLAY_SCRIPT.length) return;
+    const ch = AUTOPLAY_SCRIPT[charIdx++];
+    const pos = view.state.doc.length;
+    view.dispatch({
+      changes: { from: pos, to: pos, insert: ch },
+      // Keep the cursor at the inserted position so subsequent inserts append.
+      selection: { anchor: pos + ch.length },
+    });
+    typingTimer = setTimeout(tick, AUTOPLAY_CHAR_MS);
   }
-  return results;
+
+  function start() {
+    if (aborted) return;
+    if (view.state.doc.length > 0) return; // user already typed
+    charIdx = 0;
+    tick();
+  }
+
+  function abort() {
+    if (aborted) return;
+    aborted = true;
+    clearTimeout(typingTimer);
+    clearTimeout(idleTimer);
+  }
+
+  idleTimer = setTimeout(start, AUTOPLAY_IDLE_MS);
+
+  return { abort };
 }
 
 // ---------------------------------------------------------------------------
@@ -373,19 +386,28 @@ function parseNdjson(ndjson) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  await initWasm();
+  await workerReadyPromise;
 
-  // Pre-warm the engine cache with the corrections map — pays AhoCorasick +
-  // rule-set construction cost here, not on the first keystroke.
-  configure(DEMO_CONFIG);
+  const refs = {
+    topBanner:    document.getElementById('banner-top'),
+    bottomBanner: document.getElementById('banner-bottom'),
+    auditStream:  document.getElementById('audit-stream'),
+    auditEmpty:   document.getElementById('audit-empty'),
+  };
 
-  const topBanner    = document.getElementById('banner-top');
-  const bottomBanner = document.getElementById('banner-bottom');
-  const auditStream  = document.getElementById('audit-stream');
-  const auditEmpty   = document.getElementById('audit-empty');
+  // Initial empty banner — UNCLASSIFIED.
+  applyBanner('UNCLASSIFIED', refs.topBanner, refs.bottomBanner);
 
-  // Tooltip that reads from view._marqueDiagData.
-  const simpleTip = hoverTooltip((view, pos) => {
+  // Worker → main: receive results, drop stale ones.
+  worker.addEventListener('message', (ev) => {
+    const msg = ev.data;
+    if (!msg) return;
+    if (msg.type === 'fix:result') applyFixResult(view, refs, msg);
+    else if (msg.type === 'error') console.error('[marque worker]', msg);
+  });
+
+  // Tooltip extension reads from view._marqueDiagData.
+  const tooltip = hoverTooltip((view, pos) => {
     const diags = view._marqueDiagData || [];
     const match = diags.find(d => pos >= d.from && pos < d.to);
     if (!match) return null;
@@ -396,69 +418,49 @@ async function main() {
       create() {
         const dom = document.createElement('div');
         dom.className = 'marque-tooltip';
-
-        const divRule = document.createElement('div');
-        divRule.className = 'tip-rule';
-        divRule.textContent = match.rule;
-
-        const divMessage = document.createElement('div');
-        divMessage.className = 'tip-message';
-        divMessage.textContent = match.message;
-
-        const divCitation = document.createElement('div');
-        divCitation.className = 'tip-citation';
-        divCitation.textContent = match.citation;
-
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divRule);
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divMessage);
-        dom.appendChild(document.createTextNode('\n          '));
-        dom.appendChild(divCitation);
-        dom.appendChild(document.createTextNode('\n        '));
-
+        const rule = document.createElement('div');
+        rule.className = 'tip-rule'; rule.textContent = match.rule;
+        const msg  = document.createElement('div');
+        msg.className = 'tip-message'; msg.textContent = match.message;
+        const cite = document.createElement('div');
+        cite.className = 'tip-citation'; cite.textContent = match.citation;
+        dom.append(rule, msg, cite);
         return { dom };
       },
     };
   });
 
-  // Create CodeMirror editor.
+  let autoplay; // forward declaration so updateListener can abort
+
   const startState = EditorState.create({
-    doc: INITIAL_BODY,
+    doc: '',
     extensions: [
       diagnosticsField,
-      simpleTip,
+      placeholderPlugin,
+      tooltip,
       EditorView.lineWrapping,
       EditorView.theme({
-        '&': {
-          background: 'transparent',
-          color: '#222',
-        },
+        '&': { background: 'transparent', color: 'var(--color-text-primary)' },
         '.cm-content': {
-          fontFamily: "Georgia, 'Times New Roman', serif",
+          fontFamily: 'var(--font-body)',
           fontSize: '14px',
           lineHeight: '1.85',
-          caretColor: '#222',
+          caretColor: 'var(--color-text-primary)',
         },
-        '.cm-cursor': { borderLeftColor: '#222' },
-        '.cm-selectionBackground': { background: '#b3d4fc !important' },
-        '&.cm-focused .cm-selectionBackground': { background: '#b3d4fc !important' },
+        '.cm-cursor': { borderLeftColor: 'var(--color-text-primary)' },
+        '.cm-selectionBackground': { background: 'rgba(126, 152, 218, 0.3) !important' },
+        '&.cm-focused .cm-selectionBackground': {
+          background: 'rgba(126, 152, 218, 0.4) !important',
+        },
         '.cm-gutters': { display: 'none' },
         '.cm-activeLine': { background: 'transparent' },
         '.cm-activeLineGutter': { background: 'transparent' },
       }, { dark: false }),
       EditorView.updateListener.of(update => {
-        if (update.docChanged) {
-          // Skip the synthetic change dispatched by runUpdate itself —
-          // lastProcessedText is already set to the fixed text at that point.
-          const newText = update.view.state.doc.toString();
-          if (newText === lastProcessedText) return;
-
-          clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            runUpdate(update.view, topBanner, bottomBanner, auditStream, auditEmpty);
-          }, DEBOUNCE_MS);
-        }
+        if (!update.docChanged) return;
+        const newText = update.view.state.doc.toString();
+        if (newText === lastSettledText) return;
+        scheduleUpdate(update.view, refs);
       }),
     ],
   });
@@ -468,8 +470,19 @@ async function main() {
     parent: document.getElementById('editor-mount'),
   });
 
-  // Run the initial pass immediately (catches the SERCET typo in the seed text).
-  runUpdate(view, topBanner, bottomBanner, auditStream, auditEmpty);
+  // Pause autoplay on any user input (keystroke, paste, click that sets focus).
+  // The autoplay's own dispatches set the 'autoplay' annotation, so we
+  // detect human input by absence — abort whenever a non-tagged docChange
+  // occurs after autoplay started. To keep this simple, we abort on the
+  // first user-driven 'keydown' or 'beforeinput' event in the editor.
+  const abortAutoplay = () => { if (autoplay) autoplay.abort(); };
+  view.dom.addEventListener('keydown',     abortAutoplay, { once: true });
+  view.dom.addEventListener('beforeinput', abortAutoplay, { once: true });
+  view.dom.addEventListener('paste',       abortAutoplay, { once: true });
+
+  autoplay = makeAutoplay(view);
 }
 
-main().catch(console.error);
+main().catch(err => {
+  console.error('[marque demo] init failed:', err);
+});

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="350mm"
+   height="350mm"
+   viewBox="0 0 350 350"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="marque_logo-dark.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title
+     id="title14">Marque logo</title>
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#cccccc"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="1"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.14309326"
+     inkscape:cx="-2411.015"
+     inkscape:cy="2005.685"
+     inkscape:window-width="1278"
+     inkscape:window-height="1520"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1">
+    <rect
+       x="1547.9415"
+       y="-76.87294"
+       width="1719.1586"
+       height="1747.1123"
+       id="rect13" />
+  </defs>
+  <g
+     inkscape:label="logo"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       d="M 80.400984,292.84903 H 106.16693 V 137.19736 l 30.41227,94.19355 h 21.11963 l 30.41226,-94.19355 v 155.65167 h 25.76595 V 104.03955 H 170.3706 l -23.23159,78.56502 -23.44279,-78.56502 H 80.400984 Z"
+       id="text6"
+       style="font-size:216.265px;font-family:OCR-B;-inkscape-font-specification:OCR-B;font-variant-numeric:ordinal;letter-spacing:4.05496px;word-spacing:0.0121649px;fill:#f1f7ed;stroke:#cda824;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       inkscape:label="M"
+       transform="scale(1.1893515,0.84079434)"
+       aria-label="M" />
+    <path
+       style="font-size:246.944px;font-family:Sans;-inkscape-font-specification:'Sans, @wght=600';font-variant-numeric:ordinal;font-variation-settings:'wght' 600;letter-spacing:2.64583px;word-spacing:0.0079375px;fill:#cda824;stroke-width:2.11667;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       d="m 34.876652,175.49386 q 0,-21.97801 4.444992,-41.48659 4.444992,-19.50858 12.3472,-36.547712 8.149152,-17.039136 18.5208,-31.114944 h 23.45968 q -15.804416,24.200512 -24.447456,51.364356 -8.396096,27.16384 -8.396096,57.53795 0,19.75552 3.951104,38.27632 3.951104,18.5208 11.11248,35.55993 7.40832,17.28608 17.779968,33.58439 H 70.189644 Q 59.324108,268.59175 51.4219,251.79956 43.519692,235.25431 39.0747,216.23962 34.876652,196.97799 34.876652,175.49386 Z"
+       id="text7"
+       inkscape:label="left-paren"
+       aria-label="(" />
+    <path
+       d="m 310.67803,175.49386 q 0,21.48413 -4.44499,40.74576 -4.19805,19.01469 -12.10026,35.55994 -7.90221,16.79219 -18.76774,30.868 H 252.1523 q 10.1247,-16.29831 17.28608,-33.58439 7.40832,-17.28608 11.35942,-35.55993 3.95111,-18.5208 3.95111,-38.27632 0,-20.49635 -3.95111,-39.2641 -3.9511,-18.76774 -11.11248,-36.053822 -7.16137,-17.533024 -17.77996,-33.584384 h 23.45968 q 10.61859,14.075808 18.5208,31.361888 7.9022,17.039138 12.3472,36.794658 4.44499,19.50857 4.44499,40.9927 z"
+       id="text8"
+       style="font-size:246.944px;font-family:Sans;-inkscape-font-specification:'Sans, @wght=600';font-variant-numeric:ordinal;font-variation-settings:'wght' 600;letter-spacing:2.64583px;word-spacing:0.0079375px;fill:#cda824;stroke-width:2.11667;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       inkscape:label="right-paren"
+       aria-label=")" />
+  </g>
+  <metadata
+     id="metadata14">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Marque logo</dc:title>
+        <dc:date>12-March-2026</dc:date>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Adam Poulemanos</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>(c) Knitli Inc.</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <dc:relation>Marque logo</dc:relation>
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>marque</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>
