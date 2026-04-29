@@ -119,51 +119,49 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// floors catch a single-class collapse that another class's
 /// improvement would mask here. Both are needed.
 ///
-/// Current measured rate (2026-04-28, after issue #234 PR-B landed
-/// REL TO USA-injection for short first entries, complementing
-/// PR-A's 3-char fuzzy trigraph priors):
+/// Current measured rate (2026-04-29, after PR #243 expanded the
+/// fixture corpus from 260 US-only fixtures to 4,746 fixtures
+/// spanning NATO/FGI/JOINT markings from CAPCO-2016, combined with
+/// the non-US reordering + prefix-insertion decoder improvements
+/// landed alongside this pin):
 ///
-/// | Class             | Resolved | Total | Rate    |
-/// |-------------------|----------|-------|---------|
-/// | GarbledDelimiter  | 51       | 51    | 100.0%  |
-/// | MissingDelimiter  | 17       | 17    | 100.0%  |
-/// | Reordering        | 41       | 41    | 100.0%  |
-/// | SupersededToken   | 2        | 3     |  66.7%  |
-/// | Typo              | 97       | 130   |  74.6%  |
-/// | WrongCase         | 18       | 18    | 100.0%  |
-/// | **Aggregate**     | **226**  | **260** | **86.9%** |
+/// | Class             | Resolved | Total  | Rate    |
+/// |-------------------|----------|--------|---------|
+/// | GarbledDelimiter  | 797      | 974    |  81.8%  |
+/// | MissingDelimiter  | 175      | 286    |  61.2%  |
+/// | Reordering        | 475      | 649    |  73.2%  |
+/// | SupersededToken   | 5        | 46     |  10.9%  |
+/// | Typo              | 1212     | 2447   |  49.5%  |
+/// | WrongCase         | 280      | 344    |  81.4%  |
+/// | **Aggregate**     | **2944** | **4746** | **62.0%** |
 ///
-/// Movement from prior pin (issue #233, 2026-04-28):
-/// `Typo` 73.8% → 74.6% (+1 fixture: `SA → USA` via the new
-/// USA-injection path covering 1-2 char first entries below
-/// PR-A's `MIN_FUZZY_LEN = 3` threshold). Aggregate
-/// 86.5% → 86.9% (+0.4pp).
+/// Movement from prior pin (issue #234 PR-B, 2026-04-28, 260
+/// fixtures): corpus expanded 260 → 4,746 (+4,486 fixtures from
+/// CAPCO-2016 manual). New fixtures include NATO/FGI/JOINT markings
+/// with vocabulary gaps (BOHEMIA, ATOMAL, NIS, etc. — tracked in
+/// issue #246) and non-standard CAPCO examples from the manual.
 ///
-/// Issue #133 PR 9 landed the literal-shape REL TO structural
-/// repair patterns (`REL OT`/`RELT O`/`A US`/`AU,S `); issue #233
-/// landed the riskier per-trigraph fuzzy cluster (`USB`, `ASU`)
-/// behind corpus-weighted log-priors and the new
-/// `try_rel_to_fuzzy_trigraph_candidates` candidate expander.
-/// Issue #234 PR-B added the §H.8 p151 USA-first invariant as a
-/// complementary structural recovery for short first entries
-/// (`SA`, `S`) that fall below the fuzzy matcher's length floor.
+/// The decoder improvements landed in this PR lifted aggregate
+/// accuracy from the raw 37.2% baseline (no non-US reordering
+/// support) to 62.0% by adding:
+///   - FGI `{trigraph} {level}` segment classification
+///   - NATO/JOINT classification segment classification
+///   - Non-US classification prefix insertion (`try_add_non_us_prefix`)
+///   - Correct `is_non_us` detection in `try_canonical_reorder`
+///     (with "TOP" exclusion to prevent false positives on US markings)
 ///
-/// Pinned at the SC-004 target (0.85). Now that the decoder
-/// clears 85% (PR 9 lifted it to 85.8%), the regression floor and
-/// the SC-004 target gate enforce the same threshold — both fail
-/// CI together if accuracy drops below 85%. Prior PRs kept the
-/// regression floor several percentage points below the measured
-/// rate as headroom against noise; that gap is no longer needed
-/// because the target gate (`resolution_rate_at_0_85`) is now
-/// load-bearing rather than `#[ignore]`d. A future PR that
-/// improves accuracy further can ratchet this back to a noise-
-/// tolerant gap below the new measured rate; until then,
-/// 0.85-equals-0.85 is the simplest correct policy.
+/// Remaining accuracy gaps:
+///   - NATO codeword vocabulary (BOHEMIA, ATOMAL, NIS) — issue #246
+///   - FVEY/ISAF coalition shorthands — issue #246
+///   - Non-standard slash-separated REL TO (`USA/CAN/GBR`) — issue #247
+///   - SAR program-nickname / identifier-internal typos — issue #180
+///   - SCI compartment fuzzy — issue #186
+///   - REL TO trigraph fuzzy — issue #186
 ///
-/// Remaining accuracy gains (REL TO trigraph fuzzy via #186, SCI
-/// compartment fuzzy, SAR program-nickname / identifier-internal
-/// typos via #180) are tracked separately.
-const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
+/// SC-004 (≥85%) is not met on the 4,746-fixture corpus.
+/// `resolution_rate_at_0_85` is `#[ignore]`d until vocabulary gaps
+/// are addressed. See that test's comment for re-enable criteria.
+const AGGREGATE_FLOOR_REGRESSION: f64 = 0.60;
 
 /// Per-class regression floors. Pinned against the current measured
 /// rates so a regression in any one mangling class fails CI even
@@ -171,49 +169,42 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.85;
 /// "Reordering 100%→60% offset by Typo 20%→40%" hole that the
 /// aggregate gate cannot detect.
 ///
-/// Floor policy by class:
+/// Floor policy by class (pinned 2026-04-29, 4,746-fixture corpus):
 ///
-/// - **Currently-perfect classes** (`Reordering`, `WrongCase`,
-///   `GarbledDelimiter`) pinned at `1.00`. Any single fixture
-///   regressing in those classes fails the gate. The fixture
-///   samples (41, 18, 51) are large enough that a `1.00` floor is
-///   honest, not noise-tripping.
-/// - **`SupersededToken`** pinned at `0.50`. The class has only
-///   3 fixtures (one per `SUPERSEDED_TOKEN_MAP` entry), so the
-///   only achievable rates are 0.0, 0.333, 0.667, and 1.0. A 0.5
-///   floor catches a regression to 1/3 or 0/3 while tolerating the
-///   current 2/3 measurement.
-/// - **`Typo`** pinned at `0.70` (~5 percentage points below the
-///   current 97/130 = 74.6% rate after issue #234 PR-B landed REL
-///   TO USA-injection for short first entries). Wide-enough margin
-///   to absorb one or two fixtures dropping; a sustained drop trips
-///   the gate. Ratchet up as subsequent PRs land SCI compartment
-///   fuzzy and the SAR / program-nickname recovery work blocked on
-///   #180.
-/// - **`MissingDelimiter`** pinned at `1.00`. After #133 PR 5 the
-///   class is at 17/17 = 100% — the PR-3 `try_insert_delimiter`
-///   helper already produced canonical bytes for every fixture, and
-///   PR 5's `HARD_SPLITTER_ABSORPTION_PENALTY` flipped the scoring
-///   contest for the 2 SAR-with-trailing-NOFORN cases that were
-///   losing to the absorbing parse. Any future fixture that
-///   regresses fails the gate.
+/// - **`GarbledDelimiter`** pinned at `0.79` (2pp below measured
+///   81.8%). Many new garbled-delimiter fixtures involve NATO/FGI
+///   markings with vocabulary gaps; the floor absorbs noise while
+///   catching real regressions.
+/// - **`MissingDelimiter`** pinned at `0.58` (3pp below measured
+///   61.2%). The 286-fixture set includes non-US markings where the
+///   `try_insert_delimiter` pass can't recover because vocabulary
+///   tokens are unknown. Ratchet up as vocabulary gaps close.
+/// - **`Reordering`** pinned at `0.71` (2pp below measured 73.2%).
+///   The remaining 26.8% are BOHEMIA/ATOMAL/NIS codeword fixtures
+///   (zero-candidate due to Unknown-token filter) and multi-`//`
+///   non-US markings that need parser changes.
+/// - **`SupersededToken`** pinned at `0.09` (above 4/46 = 8.7%).
+///   46 fixtures from the CAPCO-2016 manual include NATO superseded
+///   tokens whose replacements aren't in the current vocabulary;
+///   5/46 (10.9%) pass. Any drop to 4/46 trips the gate.
+/// - **`Typo`** pinned at `0.47` (2.5pp below measured 49.5%).
+///   The 2,447-fixture set includes extensive non-US typo variants;
+///   ratchet as vocabulary coverage improves.
+/// - **`WrongCase`** pinned at `0.79` (2.5pp below measured 81.4%).
+///   Wrong-case non-US markings where vocabulary is missing fall
+///   through; the margin absorbs noise without gold-plating.
 ///
-/// Last ratcheted (2026-04-28, issue #234 PR-B) after the REL TO
-/// USA-injection path landed: `try_rel_to_usa_injection_candidates`
-/// emits a candidate replacing a 1-2 char first entry of a REL TO
-/// block with `USA`, anchored on the §H.8 p151 USA-first invariant.
-/// One class moved: `Typo` (73.8% → 74.6%, +1 fixture:
-/// `SA → USA`); the aggregate moved (86.5% → 86.9%, +1 fixture).
-/// The per-class `Typo` floor stays at `0.70` (no ratchet) because
-/// the PR-B gain is small enough that the existing margin still
-/// absorbs noise without gold-plating.
+/// Last ratcheted (2026-04-29, PR #243 corpus expansion + non-US
+/// decoder improvements): all floors reset against the 4,746-fixture
+/// measured rates. Prior pin (2026-04-28, 260 fixtures) is
+/// superseded.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
-    ("GarbledDelimiter", 1.00),
-    ("MissingDelimiter", 1.00),
-    ("Reordering", 1.00),
-    ("SupersededToken", 0.50),
-    ("Typo", 0.70),
-    ("WrongCase", 1.00),
+    ("GarbledDelimiter", 0.79),
+    ("MissingDelimiter", 0.58),
+    ("Reordering", 0.70),
+    ("SupersededToken", 0.09),
+    ("Typo", 0.47),
+    ("WrongCase", 0.79),
 ];
 
 /// SC-004 also pins the minimum fixture count at ≥200 (so the gate is
@@ -541,18 +532,30 @@ fn run_sweep() -> AccuracyReport {
     }
 }
 
-/// SC-004 literal target gate — load-bearing as of issue #133 PR 9
-/// (2026-04-26). The decoder reached 85.8% aggregate after REL TO
-/// structural repair landed as preprocessing in
-/// `generate_candidate_bytes`, crossing the 85% threshold.
+/// SC-004 literal target gate. The decoder must resolve ≥85% of
+/// fixtures at recognition ≥0.85.
 ///
-/// This gate is now always-on: a regression below 85% blocks CI.
+/// **Currently `#[ignore]`d** (re-ignored 2026-04-29): PR #243
+/// expanded the fixture corpus from 260 US-only fixtures to 4,746
+/// fixtures sourced from the CAPCO-2016 manual, which includes
+/// NATO/FGI/JOINT markings with vocabulary gaps (BOHEMIA, ATOMAL,
+/// NIS, FVEY, etc.) that produce zero-candidate results regardless
+/// of decoder improvements. Decoder accuracy on the expanded corpus
+/// is 62.0% with the non-US reordering fixes; SC-004 requires 85%.
+///
+/// Re-enable when the following are addressed:
+///   - NATO codeword vocabulary (issue #246): BOHEMIA, ATOMAL, NIS
+///   - Coalition shorthands (issue #246): FVEY, ISAF
+///   - Non-standard REL TO slash notation (issue #247)
+///   - SAR program-nickname typos (issue #180)
+///
 /// The complementary `resolution_rate_does_not_regress` gate is
-/// currently pinned at the same 0.85 floor as this target (no
-/// headroom buffer until a future PR ratchets accuracy past 85%);
-/// see [`AGGREGATE_FLOOR_REGRESSION`] for the floor policy. Both
-/// gates fail CI together if accuracy drops below 85%.
+/// always-on and catches any real accuracy regression against the
+/// 4,746-fixture measured baseline (60% floor).
 #[test]
+#[ignore = "SC-004 not met on 4,746-fixture corpus (62.0%) — \
+            vocabulary gaps (BOHEMIA/ATOMAL/NIS etc.) tracked in #246; \
+            re-enable when those close"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(

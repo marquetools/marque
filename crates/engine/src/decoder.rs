@@ -684,6 +684,26 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- Non-US prefix insertion. For bare non-US markings that
+    //      arrive with no `//` at all (e.g., `NS`, `JOINT S GBR USA`,
+    //      `CAN S`), emit a `//{body}` candidate so the strict parser
+    //      enters the non-US classification code path. The reorder pass
+    //      above handles inputs that already contain `//` but are
+    //      missing the leading empty-US-slot prefix.
+    if let Some(prefixed) = try_add_non_us_prefix(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(FeatureEntry {
+            id: FeatureId::TokenReorder,
+            delta: -0.4,
+        });
+        emit(
+            prefixed.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Missing-delimiter insertion (issue #133 PR 3). Walks the
     //      fuzzy-corrected text, inserts `//` at category-transition
     //      whitespace gaps. Tagged with `FixSource::DecoderPosterior`
@@ -3072,11 +3092,22 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
         return None;
     }
 
+    // Detect non-US markings: any classification segment is a NATO,
+    // JOINT, or FGI classification (not a US classification level).
+    let is_non_us = class_segments.iter().any(|s| is_non_us_classification_segment(s));
+
     // Already-canonical check: if the classification segment is the
     // first non-empty segment, no reorder is needed.
+    // For non-US markings: also require that the body already starts
+    // with `//` (the empty US classification slot). If the class is
+    // first but the `//` prefix is absent, fall through to add it.
     if let Some(first) = segments.iter().find(|s| !s.trim().is_empty()) {
         if class_segments.contains(&first.trim()) {
-            return None;
+            // US: already canonical.
+            // Non-US: already canonical only when // prefix is present.
+            if !is_non_us || body.starts_with("//") {
+                return None;
+            }
         }
     }
 
@@ -3087,7 +3118,16 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
     ordered.extend(dissem_segments);
 
     let joined = ordered.join("//");
-    Some(format!("{prefix}{joined}{suffix}"))
+
+    // Non-US canonical form: `//{class}//{others}//{dissems}`. The
+    // leading `//` represents the empty US classification slot (per
+    // CAPCO-2016 §A.6) and signals the strict parser to use the
+    // non-US classification code path.
+    if is_non_us {
+        Some(format!("{prefix}//{joined}{suffix}"))
+    } else {
+        Some(format!("{prefix}{joined}{suffix}"))
+    }
 }
 
 /// Which CAPCO category a `//`-separated segment primarily belongs to.
@@ -3108,11 +3148,9 @@ fn classify_segment(seg: &str) -> SegmentClass {
     let first_token = seg.split_whitespace().next().unwrap_or("");
     // Strip trailing commas.
     let first_token = first_token.trim_end_matches(',');
-    // Single-whitespace-token classifications only. `TOP SECRET` is
-    // handled by the separate starts_with branch below — including
-    // it here would be dead: `split_whitespace().next()` always
-    // returns the first word, so the lookup sees `"TOP"`, not the
-    // full two-word phrase.
+    // Single-whitespace-token classifications only. `TOP SECRET` and
+    // multi-word NATO/JOINT forms are handled by the separate
+    // starts_with branches below.
     const CLASSIFICATIONS: &[&str] = &[
         "U",
         "R",
@@ -3123,6 +3161,18 @@ fn classify_segment(seg: &str) -> SegmentClass {
         "RESTRICTED",
         "CONFIDENTIAL",
         "SECRET",
+        // NATO classification abbreviations (single-token forms).
+        "NS",
+        "NC",
+        "NU",
+        "CTS",
+        "CTSA",
+        "NSAT",
+        "NCA",
+        "CTS-B",
+        "CTS-BALK",
+        // JOINT classification indicator.
+        "JOINT",
     ];
     // Dissemination-control tokens ONLY. SCI controls (HCS, SI, TK,
     // and all their sub-compartment forms) are NOT in this list —
@@ -3134,9 +3184,11 @@ fn classify_segment(seg: &str) -> SegmentClass {
     // `SegmentClass::Other`, which the reorder helper inserts
     // between classification and dissem — the right spot per
     // CAPCO-2016 §A.6.
+    //
+    // "REL" is the first token of "REL TO {country-list}" segments.
     const DISSEMS: &[&str] = &[
         "NOFORN", "NF", "ORCON", "OC", "PROPIN", "PR", "IMCON", "IMC", "RELIDO", "RS", "RSEN",
-        "DSEN", "FISA", "FOUO",
+        "DSEN", "FISA", "FOUO", "REL",
     ];
     if CLASSIFICATIONS.contains(&first_token) {
         SegmentClass::Classification
@@ -3144,8 +3196,118 @@ fn classify_segment(seg: &str) -> SegmentClass {
         SegmentClass::Dissem
     } else if first_token == "TOP" && seg.starts_with("TOP SECRET") {
         SegmentClass::Classification
+    } else if first_token == "COSMIC" && seg.starts_with("COSMIC TOP SECRET") {
+        SegmentClass::Classification
+    } else if first_token == "NATO"
+        && (seg.starts_with("NATO SECRET")
+            || seg.starts_with("NATO CONFIDENTIAL")
+            || seg.starts_with("NATO UNCLASSIFIED")
+            || seg.starts_with("NATO RESTRICTED"))
+    {
+        SegmentClass::Classification
+    } else if CapcoTokenSet.is_trigraph(first_token) {
+        // FGI pattern: {registered country trigraph} {classification level}.
+        // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
+        // typos like "OTP" (→ TOP) don't get mistaken for FGI country codes.
+        let second = seg.split_whitespace().nth(1).unwrap_or("");
+        let second = second.trim_end_matches(',');
+        if matches!(
+            second,
+            "U" | "R" | "C" | "S" | "TS" | "UNCLASSIFIED" | "RESTRICTED" | "CONFIDENTIAL"
+                | "SECRET"
+        ) || (second == "TOP"
+            && seg
+                .split_whitespace()
+                .nth(2)
+                .map_or(false, |t| t.trim_end_matches(',') == "SECRET"))
+        {
+            SegmentClass::Classification
+        } else {
+            SegmentClass::Other
+        }
     } else {
         SegmentClass::Other
+    }
+}
+
+/// Returns true when `seg` is a non-US classification segment: a NATO
+/// classification abbreviation, a JOINT classification phrase, or an FGI
+/// `{trigraph} {level}` pattern.
+///
+/// Used by `try_canonical_reorder` to decide whether the reordered output
+/// needs a leading `//` (the empty US classification slot that signals the
+/// strict parser to take the non-US code path).
+fn is_non_us_classification_segment(seg: &str) -> bool {
+    const NATO_ABBREVS: &[&str] = &[
+        "NS", "NC", "NU", "CTS", "CTSA", "NSAT", "NCA", "CTS-B", "CTS-BALK",
+    ];
+    let mut tokens = seg.split_whitespace();
+    let first = tokens.next().unwrap_or("");
+    let first = first.trim_end_matches(',');
+    if NATO_ABBREVS.contains(&first) {
+        return true;
+    }
+    if first == "JOINT" {
+        return true;
+    }
+    if first == "COSMIC" && seg.starts_with("COSMIC TOP SECRET") {
+        return true;
+    }
+    if first == "NATO"
+        && (seg.starts_with("NATO SECRET")
+            || seg.starts_with("NATO CONFIDENTIAL")
+            || seg.starts_with("NATO UNCLASSIFIED")
+            || seg.starts_with("NATO RESTRICTED"))
+    {
+        return true;
+    }
+    // FGI: {registered country trigraph} {classification level}.
+    // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
+    // typos like "OTP" (→ TOP) are not mistaken for FGI country codes.
+    if CapcoTokenSet.is_trigraph(first) {
+        let second = tokens.next().unwrap_or("");
+        let second = second.trim_end_matches(',');
+        if matches!(
+            second,
+            "U" | "R" | "C" | "S" | "TS" | "UNCLASSIFIED" | "RESTRICTED" | "CONFIDENTIAL"
+                | "SECRET"
+        ) {
+            return true;
+        }
+        if second == "TOP"
+            && tokens
+                .next()
+                .map_or(false, |t| t.trim_end_matches(',') == "SECRET")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Prepends the non-US leading `//` when the entire input (no existing `//`)
+/// looks like a non-US classification segment.
+///
+/// This covers bare non-US markings like `NS`, `JOINT S GBR USA`, or
+/// `CAN S` that arrive with no delimiter at all — `try_canonical_reorder`
+/// cannot act on them because it requires at least two `//`-separated
+/// segments. Emitting `//NS`, `//JOINT S GBR USA`, etc. lets the strict
+/// parser recognize the non-US code path (CAPCO-2016 §A.6, parser block 1).
+fn try_add_non_us_prefix(text: &str) -> Option<String> {
+    // Only act when there is no `//` at all — try_canonical_reorder
+    // handles the has-// but missing-prefix case.
+    if text.contains("//") {
+        return None;
+    }
+    let (prefix, body, suffix) = if text.starts_with('(') && text.ends_with(')') {
+        ("(", &text[1..text.len() - 1], ")")
+    } else {
+        ("", text, "")
+    };
+    if is_non_us_classification_segment(body.trim()) {
+        Some(format!("{prefix}//{body}{suffix}"))
+    } else {
+        None
     }
 }
 
