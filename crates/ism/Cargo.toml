@@ -36,13 +36,22 @@ include = [
   # from the generated vocabulary tables in published builds).
   "schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json",
   "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
+  # Issue #208: ISMCAT Tetragraph Taxonomy V2022-NOV. build.rs parses
+  # only TetragraphTaxonomyDenormalized.xml; the canonical hierarchical
+  # form is shipped alongside so a published-crate consumer can verify
+  # ODNI's denormalization stayed in sync. The Documents/ISMCAT/*.pdf
+  # human-readable reference is deliberately excluded — repo-only.
+  "schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/*.xml",
   "src/**/*.rs",
 ]
 
-# Schema version pinned here — bump intentionally when ODNI publishes updates.
-# Schemas live in schemas/ISM-v<version>/
+# Schema versions pinned here — bump intentionally when ODNI publishes updates.
+# Schemas live in schemas/ISM-v<version>/. ISMCAT Tetragraph Taxonomy is
+# versioned independently of the ISM bundle (TESVersion="202211" in the XML
+# root) and lives at schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/.
 [package.metadata.marque]
 ism-schema-version = "ISM-v2022-DEC"
+ismcat-tetra-version = "2022-NOV"
 
 [lints]
 workspace = true

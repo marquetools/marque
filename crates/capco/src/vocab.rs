@@ -12,15 +12,18 @@
 //! a portion releasable to `FVEY` is releasable to every Five Eyes
 //! nation.
 //!
-//! Issue #183 PR-B: this module is now a thin re-export over
+//! Issue #208 made this module a thin re-export over
 //! [`marque_ism::TETRAGRAPH_MEMBERS`] /
-//! [`marque_ism::lookup_tetragraph_members`] — the canonical
-//! membership table emitted by `marque-ism::build.rs` from
-//! hand-curated CAPCO Register data plus any org-specific extensions
-//! declared in `crates/ism/country_extensions.toml`. Pre-PR-B this
+//! [`marque_ism::lookup_tetragraph_members`] /
+//! [`marque_ism::is_decomposable`] — sourced at build time from the
+//! ODNI ISMCAT V2022-NOV Tetragraph Taxonomy
+//! (`schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`)
+//! plus any org-specific extensions declared in
+//! `crates/ism/country_extensions.toml`. Pre-PR-B (issue #183) this
 //! crate and `marque-ism::page_context` carried two private copies of
 //! the FVEY/ACGU table that drifted independently; consolidating to
-//! one source eliminates the drift.
+//! one ODNI-backed source eliminated the drift and surfaced the
+//! decomposability discriminator for issue #206's S005 rule.
 //!
 //! # Why `&'static [&'static str]` (and not typed `CountryCode`)
 //!
@@ -36,40 +39,60 @@
 /// Kingdom / New Zealand / United States community. Convenience
 /// re-export of the row served by
 /// [`marque_ism::lookup_tetragraph_members`] for the `"FVEY"` key.
+/// Members are sorted ASCII-alphabetical — the ODNI taxonomy XML
+/// lists them in publication order (`AUS, CAN, NZL, GBR, USA`), but
+/// when FVEY appears in REL TO it's a single token and the
+/// constituent order has no semantic weight. Banner roll-up re-sorts
+/// the expanded set per CAPCO §H.8 (USA first, then trigraph-alpha,
+/// tetragraph-alpha) regardless.
 pub const FVEY: &[&str] = &["AUS", "CAN", "GBR", "NZL", "USA"];
 
 /// Four Eyes minus New Zealand: AUS, CAN, GBR, USA.
 ///
 /// Convenience re-export of the row served by
 /// [`marque_ism::lookup_tetragraph_members`] for the `"ACGU"` key.
+/// Members sorted ASCII-alphabetical (taxonomy XML order happens to
+/// agree here).
 pub const ACGU: &[&str] = &["AUS", "CAN", "GBR", "USA"];
 
-/// NATO tetragraph expansion — **intentionally empty / opaque**.
-///
-/// NATO membership is treaty-driven and changes over time; the
-/// canonical member list is **not** emitted by `marque-ism`'s
-/// tetragraph table — `lookup_tetragraph_members("NATO")` returns
-/// `None`, and `REL TO NATO` therefore composes as an opaque atom
-/// in intersection.
-///
-/// A future NATO scheme adapter (tracked alongside the Phase F
-/// NATO classification lattice) will land the membership table;
-/// once it does, this module's documentation should switch to
-/// reference that source instead of describing the gap.
-pub const NATO: &[&str] = &[];
-
 /// Look up a tetragraph's constituent trigraphs. Returns `None` for
-/// unknown / opaque codes (NATO and operation-specific tetragraphs
-/// like RSMA / ISAF / KFOR) and for trigraphs (which have no
-/// expansion).
+/// codes outside the ISMCAT taxonomy's `decomposable="Yes"` set —
+/// `decomposable="No"` atoms (`EU`, `GCCH`, `KFOR`, …),
+/// `decomposable="NA"` deprecated codes (`RSMA`, `ISAF`, `MCFI`, …),
+/// trigraphs (which have no expansion), and codes absent from the
+/// taxonomy entirely. Use [`is_decomposable_tetragraph`] for the
+/// three-state ODNI-authoritative discriminator that distinguishes
+/// these cases.
 ///
-/// Issue #183 PR-B: thin wrapper around the canonical generated
-/// table in `marque-ism`. The pre-PR-B `match` arms on
-/// `FVEY`/`ACGU`/(NATO-opaque-via-`_`) are replaced by a single
-/// `binary_search`-backed lookup, so extension-defined tetragraphs
+/// Issue #208: thin wrapper around the canonical generated table in
+/// `marque-ism`, built from the ISMCAT V2022-NOV Tetragraph Taxonomy.
+/// The pre-issue-208 `match` arms on hand-curated `FVEY`/`ACGU` are
+/// replaced by a single `binary_search`-backed lookup, so taxonomy
+/// codes (NATO, AUSTRALIA_GROUP, …) and extension-defined tetragraphs
 /// are picked up automatically.
 pub fn expand_tetragraph(code: &str) -> Option<&'static [&'static str]> {
     marque_ism::lookup_tetragraph_members(code)
+}
+
+/// Three-state ISMCAT decomposability discriminator.
+///
+/// Returns:
+///
+/// - `Some(true)` — ODNI taxonomy `decomposable="Yes"` (24 codes in
+///   V2022-NOV, e.g. `FVEY`, `ACGU`, `NATO`, `AUSTRALIA_GROUP`).
+/// - `Some(false)` — ODNI taxonomy `decomposable="No"` — atom by
+///   authority (19 codes, e.g. `EU`, `GCCH`, `KFOR`).
+/// - `None` — ODNI taxonomy `decomposable="NA"` — deprecated;
+///   membership suppressed, OCA-deferred, or recursive (18 codes,
+///   e.g. `RSMA`, `ISAF`, `MCFI`); OR code absent from taxonomy
+///   entirely (org-fork extensions, unknown codes, trigraphs).
+///
+/// Issue #208 / #206: this is the discriminator S005's silent-loss
+/// diagnostic depends on. Routes through [`marque_ism::is_decomposable`]
+/// so the dependency arrow stays pointed at `marque-ism`; rule code
+/// in this crate does not reach across to query it directly.
+pub fn is_decomposable_tetragraph(code: &str) -> Option<bool> {
+    marque_ism::is_decomposable(code)
 }
 
 /// Human-readable names for a small set of CAPCO country trigraphs.
@@ -170,9 +193,58 @@ mod tests {
     }
 
     #[test]
-    fn expand_tetragraph_nato_is_opaque_pass_through() {
-        // NATO stays opaque until Phase F lands the membership table.
-        assert!(expand_tetragraph("NATO").is_none());
+    fn expand_tetragraph_nato_returns_members() {
+        // Issue #208: NATO is now decomposable=Yes in the ISMCAT
+        // V2022-NOV taxonomy with a materialized 30-trigraph member
+        // list (the pre-issue-208 "opaque NATO" behavior was a gap,
+        // not a deliberate design).
+        let members =
+            expand_tetragraph("NATO").expect("NATO is decomposable=Yes in ISMCAT V2022-NOV");
+        assert!(!members.is_empty(), "NATO members must not be empty");
+        for m in members {
+            assert_eq!(m.len(), 3, "NATO member not a trigraph: {m}");
+            assert!(
+                m.chars().all(|c| c.is_ascii_uppercase()),
+                "NATO member not uppercase: {m}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_decomposable_eu_returns_false() {
+        // EU is decomposable="No" in the ISMCAT taxonomy — atom by
+        // authority. The diagnostic discriminator distinguishes this
+        // (Some(false)) from a deprecated / absent code (None) so
+        // S005 can stay silent on EU intersections.
+        assert_eq!(is_decomposable_tetragraph("EU"), Some(false));
+    }
+
+    #[test]
+    fn is_decomposable_fvey_returns_true() {
+        assert_eq!(is_decomposable_tetragraph("FVEY"), Some(true));
+        assert_eq!(is_decomposable_tetragraph("ACGU"), Some(true));
+        assert_eq!(is_decomposable_tetragraph("NATO"), Some(true));
+    }
+
+    #[test]
+    fn is_decomposable_deprecated_returns_none() {
+        // RSMA / ISAF / MCFI are decomposable="NA" (deprecated) in
+        // the ISMCAT taxonomy — None means "membership uncertain"
+        // for S005's silent-loss diagnostic.
+        assert_eq!(is_decomposable_tetragraph("RSMA"), None);
+        assert_eq!(is_decomposable_tetragraph("ISAF"), None);
+        assert_eq!(is_decomposable_tetragraph("MCFI"), None);
+    }
+
+    #[test]
+    fn is_decomposable_unknown_returns_none() {
+        // Code absent from the taxonomy entirely — same None as
+        // deprecated, distinguishable via TETRAGRAPH_PROVENANCE if
+        // a consumer needs the distinction.
+        assert_eq!(is_decomposable_tetragraph("XYZW"), None);
+        // Trigraph (atomic country code) — undefined for tetragraph
+        // expansion, expected None.
+        assert_eq!(is_decomposable_tetragraph("USA"), None);
     }
 
     #[test]

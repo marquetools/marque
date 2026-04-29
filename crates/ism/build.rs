@@ -37,6 +37,8 @@ fn main() {
 
     // T010: Assert schema version matches Cargo.toml metadata.
     verify_schema_version();
+    // Issue #208: ISMCAT Tetragraph Taxonomy version pin.
+    verify_ismcat_tetra_version();
 
     // Rerun if schema files change.
     println!("cargo:rerun-if-changed=schemas/");
@@ -631,20 +633,44 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     writeln!(content, "];").unwrap();
     writeln!(content).unwrap();
 
-    // Issue #183 PR-B: emit the canonical tetragraph membership
-    // table. CVE files list tetragraph codes (`FVEY`, `ACGU`, …)
-    // but do not record their constituent trigraphs; the
-    // membership data is hand-curated from the CAPCO Register
-    // here. Extensions with a non-empty `members` list participate
-    // in expansion; extensions without members (and CVE codes
-    // without entries here, e.g. NATO and operation-specific codes
-    // like RSMA) stay opaque — they survive REL TO intersection
-    // only when present in every portion's list.
-    //
-    // Sorted by code for stable diffs and binary-search lookup
-    // (consumers in `marque-ism::page_context` and
-    // `marque-capco::vocab` both use this single source of truth).
-    emit_tetragraph_members(&mut content, &extensions);
+    // Issue #208: parse the ISMCAT Tetragraph Taxonomy V2022-NOV. The
+    // 24 `decomposable="Yes"` entries with materialized `<Country>`
+    // members feed `TETRAGRAPH_MEMBERS`; the full 61-entry table feeds
+    // `is_decomposable` (three-state discriminator) and
+    // `TETRAGRAPH_PROVENANCE` (audit metadata). Extensions with
+    // `members = […]` are appended to the membership table after the
+    // taxonomy rows; extensions cannot shadow taxonomy codes because
+    // `load_country_extensions` rejects any extension whose `code`
+    // duplicates a CVE entry, and all 61 ISMCAT taxonomy codes appear
+    // in `CVEnumISMCATRelTo.xsd`.
+    let taxonomy_path = Path::new(ISMCAT_TETRA_PATH);
+    let taxonomy = parse_tetragraph_taxonomy(taxonomy_path);
+    check_taxonomy_invariants(&taxonomy);
+
+    // Emit the canonical tetragraph membership table consumed by
+    // `marque-ism::page_context` and `marque-capco::vocab`. Sorted by
+    // code for stable diffs and binary-search lookup.
+    emit_tetragraph_members(&mut content, &taxonomy, &extensions);
+
+    // Emit the three-state `is_decomposable(code)` discriminator (issue
+    // #208) and the `TETRAGRAPH_PROVENANCE` audit table consumed by the
+    // future `DecisionRecord` integration. Provenance struct must be
+    // emitted before the static so the `&[TetragraphProvenance]` type
+    // is in scope.
+    emit_tax_provenance(&mut content, &taxonomy);
+    emit_is_decomposable(&mut content, &taxonomy);
+
+    // Emit `pub const ISMCAT_TETRA_VERSION` so consumers can check
+    // which taxonomy snapshot the binary was built against (parallel
+    // to `SCHEMA_VERSION`).
+    writeln!(
+        content,
+        "/// ISMCAT Tetragraph Taxonomy version pinned at build time \
+         (issue #208).\n\
+         pub const ISMCAT_TETRA_VERSION: &str = {ISMCAT_TETRA_VERSION:?};"
+    )
+    .unwrap();
+    writeln!(content).unwrap();
 
     // --- Emit a flat token list for the Aho-Corasick automaton ---
     //
@@ -1450,27 +1476,665 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #208: ISMCAT Tetragraph Taxonomy V2022-NOV — build-time parsing
+// ---------------------------------------------------------------------------
+//
+// Replaces the previous hand-curated `BUILTIN_TETRAGRAPH_MEMBERS` slice with
+// data sourced from the ODNI taxonomy at
+// `schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`.
+// The same data drives three generated artifacts:
+//
+//   - `TETRAGRAPH_MEMBERS` / `lookup_tetragraph_members` — country lists
+//     for the 24 `decomposable="Yes"` codes (used by REL TO intersection).
+//   - `is_decomposable(code)` — three-state ODNI-authoritative flag
+//     consumed by issue #206's S005 rule (silent-loss diagnostic).
+//   - `TETRAGRAPH_PROVENANCE` — full audit row preserving the
+//     `decomposable` value, membership shape, deprecation date, and
+//     `dateLastVerified`. Reserved for the `DecisionRecord` work in the
+//     2026-04-20 roadmap; not yet exposed publicly.
+//
+// We parse only the **denormalized** form. The canonical hierarchical
+// `TetragraphTaxonomy.xml` is vendored alongside for divergence detection
+// (Constitution Principle VIII — authoritative source fidelity); a future
+// taxonomy revision that introduces unexpected `<Organization>` refs in
+// the denormalized file is caught at build time by guard #4 below.
+
+const ISMCAT_TETRA_VERSION: &str = "2022-NOV";
+const ISMCAT_TETRA_PATH: &str =
+    "schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml";
+
+/// Mirrors the XSD `DecomposableType` enumeration. Three-state, not four:
+/// `NA` is documented as "applied to deprecated tetragraphs" — every NA
+/// entry in V2022-NOV also carries a `deprecated="YYYY-MM-DD"` attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TaxDecomposable {
+    Yes,
+    No,
+    Na,
+}
+
+impl TaxDecomposable {
+    fn as_xml(self) -> &'static str {
+        match self {
+            Self::Yes => "Yes",
+            Self::No => "No",
+            Self::Na => "NA",
+        }
+    }
+}
+
+/// Mirrors the `<Membership>` `xs:choice` from `Tetragraph.xsd` exactly.
+/// The XSD guarantees exactly one variant is populated per entry; the
+/// parser asserts that invariant and panics on violation.
+#[derive(Debug)]
+enum TaxMembership {
+    /// One-or-more `<Country>` and/or `<Organization>` children.
+    /// `recursive == true` if any `<Organization>` reference appears
+    /// (the BHTF case in V2022-NOV — NA-deprecated, runtime-inert).
+    /// `organizations` is retained verbatim for future diagnostics (e.g.
+    /// "BHTF includes Organization MNTF, itself decomposable=No"), even
+    /// though only the `recursive` flag is read in PR-1 emitters.
+    Members {
+        countries: Vec<String>,
+        #[allow(
+            dead_code,
+            reason = "reserved for future organization-aware diagnostics"
+        )]
+        organizations: Vec<String>,
+        recursive: bool,
+    },
+    /// `<Description>` free text — typically an OCA-deferral pointer.
+    /// Retained verbatim so issue #206's S005 emitter can quote it
+    /// without re-parsing the XML at runtime; surfaced through
+    /// [`TETRAGRAPH_PROVENANCE`].
+    Description(String),
+    /// `<MembershipSupressed/>` sentinel (ODNI's spelling — single `p`).
+    Suppressed,
+}
+
+impl TaxMembership {
+    fn shape_label(&self) -> &'static str {
+        match self {
+            Self::Members {
+                recursive: true, ..
+            } => "Members(recursive)",
+            Self::Members { .. } => "Members",
+            Self::Description(_) => "Description",
+            Self::Suppressed => "Suppressed",
+        }
+    }
+}
+
+/// One parsed `<Tetragraph>` entry.
+#[derive(Debug)]
+struct TaxEntry {
+    code: String,
+    decomposable: TaxDecomposable,
+    /// Always `Some` for `decomposable == Na` in V2022-NOV; `None`
+    /// elsewhere. Stored verbatim from the XSD `xs:date` attribute (no
+    /// jiff dep in build.rs); the four-guard pass below validates the
+    /// 1:1 NA-deprecated invariant.
+    deprecated: Option<String>,
+    /// `<Membership dateLastVerified="YYYY-MM-DD">` — required by XSD.
+    last_verified: String,
+    membership: TaxMembership,
+}
+
+/// Read [`package.metadata.marque`] `ismcat-tetra-version` from
+/// `Cargo.toml` and panic on mismatch with [`ISMCAT_TETRA_VERSION`].
+/// Constitution Principle IV — schema versions are pinned in cargo
+/// metadata and bumped intentionally.
+fn verify_ismcat_tetra_version() {
+    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
+    let table: toml::Table = cargo_toml
+        .parse()
+        .expect("failed to parse Cargo.toml as TOML");
+
+    let pinned = table
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("marque"))
+        .and_then(|m| m.get("ismcat-tetra-version"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "issue #208: [package.metadata.marque] ismcat-tetra-version not found in \
+                 Cargo.toml. Add: ismcat-tetra-version = \"{ISMCAT_TETRA_VERSION}\""
+            )
+        });
+
+    assert_eq!(
+        pinned, ISMCAT_TETRA_VERSION,
+        "issue #208: ISMCAT taxonomy version mismatch — Cargo.toml says \
+         {pinned:?} but build.rs targets {ISMCAT_TETRA_VERSION:?}. Update \
+         one to match the other (and re-vendor the taxonomy XML if bumping)."
+    );
+}
+
+/// Parse the ISMCAT denormalized taxonomy XML into a `Vec<TaxEntry>` in
+/// document order. Panics on malformed XML or XSD violations the
+/// downstream emitters depend on (every `<Tetragraph>` carries a
+/// `decomposable` attribute, a `<TetraToken>`, and a `<Membership>`
+/// with exactly one populated `xs:choice` branch).
+fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
+    let content = fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let mut reader = Reader::from_str(&content);
+
+    let mut entries: Vec<TaxEntry> = Vec::new();
+
+    let mut in_tetragraph = false;
+    let mut current_decomposable: Option<TaxDecomposable> = None;
+    let mut current_deprecated: Option<String> = None;
+
+    let mut in_tetra_token = false;
+    let mut current_token = String::new();
+
+    let mut in_membership = false;
+    let mut current_last_verified: Option<String> = None;
+    let mut current_countries: Vec<String> = Vec::new();
+    let mut current_organizations: Vec<String> = Vec::new();
+    let mut current_membership_description: Option<String> = None;
+    let mut current_suppressed = false;
+
+    let mut in_country = false;
+    let mut current_country = String::new();
+
+    let mut in_organization = false;
+    let mut current_organization = String::new();
+
+    let mut in_membership_description = false;
+    let mut current_description = String::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) => {
+                let local = local_name(e.name().as_ref()).to_owned();
+                match local.as_slice() {
+                    b"Tetragraph" => {
+                        in_tetragraph = true;
+                        current_decomposable = None;
+                        current_deprecated = None;
+                        current_token.clear();
+                        current_last_verified = None;
+                        current_countries.clear();
+                        current_organizations.clear();
+                        current_membership_description = None;
+                        current_suppressed = false;
+                        for attr_res in e.attributes() {
+                            let attr = attr_res.unwrap_or_else(|err| {
+                                panic!(
+                                    "{}: attribute parse error in <Tetragraph>: {err}",
+                                    path.display()
+                                )
+                            });
+                            let key_local = local_name(attr.key.as_ref()).to_owned();
+                            match key_local.as_slice() {
+                                b"decomposable" => {
+                                    let value = attr.unescape_value().unwrap_or_else(|err| {
+                                        panic!(
+                                            "{}: failed to unescape `decomposable`: {err}",
+                                            path.display()
+                                        )
+                                    });
+                                    current_decomposable = Some(match value.as_ref() {
+                                        "Yes" => TaxDecomposable::Yes,
+                                        "No" => TaxDecomposable::No,
+                                        "NA" => TaxDecomposable::Na,
+                                        other => panic!(
+                                            "{}: unknown decomposable value {other:?} \
+                                             (expected Yes|No|NA per Tetragraph.xsd)",
+                                            path.display()
+                                        ),
+                                    });
+                                }
+                                b"deprecated" => {
+                                    let value = attr.unescape_value().unwrap_or_else(|err| {
+                                        panic!(
+                                            "{}: failed to unescape `deprecated`: {err}",
+                                            path.display()
+                                        )
+                                    });
+                                    current_deprecated = Some(value.into_owned());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    b"TetraToken" if in_tetragraph => in_tetra_token = true,
+                    b"Membership" if in_tetragraph => {
+                        in_membership = true;
+                        for attr_res in e.attributes() {
+                            let attr = attr_res.unwrap_or_else(|err| {
+                                panic!(
+                                    "{}: attribute parse error in <Membership>: {err}",
+                                    path.display()
+                                )
+                            });
+                            if local_name(attr.key.as_ref()) == b"dateLastVerified" {
+                                let value = attr.unescape_value().unwrap_or_else(|err| {
+                                    panic!(
+                                        "{}: failed to unescape `dateLastVerified`: {err}",
+                                        path.display()
+                                    )
+                                });
+                                current_last_verified = Some(value.into_owned());
+                            }
+                        }
+                    }
+                    b"Country" if in_membership => in_country = true,
+                    b"Organization" if in_membership => in_organization = true,
+                    b"Description" if in_membership => in_membership_description = true,
+                    _ => {}
+                }
+            }
+            // Self-closing elements within <Membership>. The only one
+            // we care about is <MembershipSupressed/>; <Country> /
+            // <Organization> are always Start+Text+End in the actual
+            // taxonomy, but we tolerate empty forms defensively.
+            Ok(Event::Empty(ref e))
+                if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
+            {
+                current_suppressed = true;
+            }
+            Ok(Event::End(ref e)) => {
+                let local = local_name(e.name().as_ref()).to_owned();
+                match local.as_slice() {
+                    b"Tetragraph" => {
+                        if in_tetragraph {
+                            let token = current_token.trim().to_owned();
+                            if token.is_empty() {
+                                panic!("{}: <Tetragraph> with empty <TetraToken>", path.display());
+                            }
+                            let decomposable = current_decomposable.unwrap_or_else(|| {
+                                panic!(
+                                    "{}: <Tetragraph> {token:?} missing required \
+                                     `decomposable` attribute",
+                                    path.display()
+                                )
+                            });
+                            let last_verified =
+                                current_last_verified.clone().unwrap_or_else(|| {
+                                    panic!(
+                                        "{}: <Tetragraph> {token:?} missing required \
+                                         <Membership dateLastVerified>",
+                                        path.display()
+                                    )
+                                });
+
+                            // Resolve <Membership> xs:choice. Schema validity
+                            // requires exactly one branch populated; we panic
+                            // on violation rather than silently picking a
+                            // default.
+                            let has_members =
+                                !current_countries.is_empty() || !current_organizations.is_empty();
+                            let has_description = current_membership_description.is_some();
+                            let has_suppressed = current_suppressed;
+                            let populated = (has_members as u8)
+                                + (has_description as u8)
+                                + (has_suppressed as u8);
+                            if populated != 1 {
+                                panic!(
+                                    "{}: <Tetragraph> {token:?} <Membership> violates \
+                                     xs:choice — {populated} branches populated \
+                                     (members={has_members}, \
+                                     description={has_description}, \
+                                     suppressed={has_suppressed})",
+                                    path.display()
+                                );
+                            }
+                            let membership = if has_suppressed {
+                                TaxMembership::Suppressed
+                            } else if let Some(desc) = current_membership_description.take() {
+                                TaxMembership::Description(desc.trim().to_owned())
+                            } else {
+                                let recursive = !current_organizations.is_empty();
+                                TaxMembership::Members {
+                                    countries: std::mem::take(&mut current_countries),
+                                    organizations: std::mem::take(&mut current_organizations),
+                                    recursive,
+                                }
+                            };
+
+                            entries.push(TaxEntry {
+                                code: token,
+                                decomposable,
+                                deprecated: current_deprecated.take(),
+                                last_verified,
+                                membership,
+                            });
+                        }
+                        in_tetragraph = false;
+                    }
+                    b"TetraToken" => in_tetra_token = false,
+                    b"Membership" => in_membership = false,
+                    b"Country" => {
+                        if in_country {
+                            let val = current_country.trim().to_owned();
+                            if !val.is_empty() {
+                                current_countries.push(val);
+                            }
+                        }
+                        current_country.clear();
+                        in_country = false;
+                    }
+                    b"Organization" => {
+                        if in_organization {
+                            let val = current_organization.trim().to_owned();
+                            if !val.is_empty() {
+                                current_organizations.push(val);
+                            }
+                        }
+                        current_organization.clear();
+                        in_organization = false;
+                    }
+                    b"Description" => {
+                        if in_membership_description {
+                            current_membership_description = Some(current_description.clone());
+                            current_description.clear();
+                        }
+                        in_membership_description = false;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Text(ref e)) => {
+                let decoded = e.decode().unwrap_or_else(|err| {
+                    panic!("XML entity unescape error in {}: {err}", path.display())
+                });
+                if in_tetra_token {
+                    current_token.push_str(&decoded);
+                } else if in_country {
+                    current_country.push_str(&decoded);
+                } else if in_organization {
+                    current_organization.push_str(&decoded);
+                } else if in_membership_description {
+                    current_description.push_str(&decoded);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => panic!("XML parse error in {}: {e}", path.display()),
+            _ => {}
+        }
+    }
+
+    println!("cargo:rerun-if-changed={}", path.display());
+
+    if entries.is_empty() {
+        panic!(
+            "{}: parsed zero <Tetragraph> entries — taxonomy file is empty \
+             or the schema changed shape (issue #208)",
+            path.display()
+        );
+    }
+
+    entries
+}
+
+/// Emit `cargo:warning=` for any taxonomy entry that violates the
+/// V2022-NOV-empirical invariants the runtime API depends on. These are
+/// soft guards — the build still succeeds — so a future ODNI revision
+/// can land without breaking CI, but the operator gets a signal that
+/// `is_decomposable` semantics may need revisiting.
+fn check_taxonomy_invariants(entries: &[TaxEntry]) {
+    for entry in entries {
+        // Guard 1: decomposable=Yes with non-Members membership shape.
+        if entry.decomposable == TaxDecomposable::Yes {
+            match &entry.membership {
+                TaxMembership::Members {
+                    recursive: false, ..
+                } => {}
+                _ => {
+                    println!(
+                        "cargo:warning=ISMCAT taxonomy: <Tetragraph> {:?} has \
+                         decomposable=\"Yes\" but membership shape is {} \
+                         (V2022-NOV had zero such entries; verify is_decomposable \
+                         mapping)",
+                        entry.code,
+                        entry.membership.shape_label()
+                    );
+                }
+            }
+        }
+
+        // Guard 2: decomposable=NA without `deprecated` attribute.
+        if entry.decomposable == TaxDecomposable::Na && entry.deprecated.is_none() {
+            println!(
+                "cargo:warning=ISMCAT taxonomy: <Tetragraph> {:?} has \
+                 decomposable=\"NA\" but no `deprecated` attribute \
+                 (V2022-NOV had 18/18 NA entries with deprecated; future revision \
+                 may decouple — NA→None mapping may need revisiting)",
+                entry.code
+            );
+        }
+
+        // Guard 3: decomposable=No with non-Suppressed membership.
+        if entry.decomposable == TaxDecomposable::No
+            && !matches!(entry.membership, TaxMembership::Suppressed)
+        {
+            println!(
+                "cargo:warning=ISMCAT taxonomy: <Tetragraph> {:?} has \
+                 decomposable=\"No\" but membership shape is {} (expected \
+                 Suppressed) — atom-by-authority semantics may not apply",
+                entry.code,
+                entry.membership.shape_label()
+            );
+        }
+
+        // Guard 4: <Organization> ref in the denormalized file outside
+        // NA-deprecated entries. V2022-NOV only has BHTF (NA) recursive.
+        if let TaxMembership::Members {
+            recursive: true, ..
+        } = &entry.membership
+        {
+            if entry.decomposable != TaxDecomposable::Na {
+                println!(
+                    "cargo:warning=ISMCAT taxonomy: <Tetragraph> {:?} carries an \
+                     <Organization> ref in the denormalized file with \
+                     decomposable={:?} (V2022-NOV only had BHTF/NA recursive). \
+                     Re-vendor against a freshly-denormalized release or \
+                     implement recursive-fixed-point expansion.",
+                    entry.code,
+                    entry.decomposable.as_xml()
+                );
+            }
+        }
+    }
+}
+
+/// Emit `pub static TETRAGRAPH_PROVENANCE` and the
+/// `TetragraphProvenance` row type. Preserves the full three-state
+/// `decomposable` flag, the `<Membership>` shape variant, and both
+/// dates — collapsed by the binary `is_decomposable` runtime API.
+/// Reserved for `DecisionRecord` integration; not yet part of the
+/// stable public API.
+fn emit_tax_provenance(content: &mut String, taxonomy: &[TaxEntry]) {
+    use std::fmt::Write;
+
+    writeln!(
+        content,
+        "/// Provenance metadata row for [`TETRAGRAPH_PROVENANCE`]. Reserved\n\
+         /// for future `DecisionRecord` integration; not yet part of the\n\
+         /// stable public API. Issue #208."
+    )
+    .unwrap();
+    writeln!(content, "#[doc(hidden)]").unwrap();
+    writeln!(content, "#[derive(Debug, Clone, Copy)]").unwrap();
+    writeln!(content, "pub struct TetragraphProvenance {{").unwrap();
+    writeln!(content, "    pub code: &'static str,").unwrap();
+    writeln!(
+        content,
+        "    /// One of `\"Yes\"`, `\"No\"`, `\"NA\"` — verbatim XSD attribute."
+    )
+    .unwrap();
+    writeln!(content, "    pub decomposable: &'static str,").unwrap();
+    writeln!(
+        content,
+        "    /// One of `\"Members\"`, `\"Members(recursive)\"`, `\"Description\"`, `\"Suppressed\"`."
+    )
+    .unwrap();
+    writeln!(content, "    pub membership_shape: &'static str,").unwrap();
+    writeln!(
+        content,
+        "    /// `<Tetragraph deprecated=\"YYYY-MM-DD\">` when present."
+    )
+    .unwrap();
+    writeln!(content, "    pub deprecated: Option<&'static str>,").unwrap();
+    writeln!(
+        content,
+        "    /// `<Membership dateLastVerified=\"YYYY-MM-DD\">` (XSD-required)."
+    )
+    .unwrap();
+    writeln!(content, "    pub last_verified: &'static str,").unwrap();
+    writeln!(
+        content,
+        "    /// Verbatim `<Description>` body for `Description`-shape entries\n    \
+         /// (typically OCA-deferral pointers); `None` for other shapes. The text is\n    \
+         /// already classification U/USA-marked and is surfaced verbatim by\n    \
+         /// issue #206's S005 diagnostic — Constitution V audit-content-ignorance\n    \
+         /// applies (this is ODNI taxonomy data, not user-document content)."
+    )
+    .unwrap();
+    writeln!(content, "    pub description: Option<&'static str>,").unwrap();
+    writeln!(content, "}}").unwrap();
+    writeln!(content).unwrap();
+
+    let mut sorted: Vec<&TaxEntry> = taxonomy.iter().collect();
+    sorted.sort_by(|a, b| a.code.cmp(&b.code));
+
+    writeln!(
+        content,
+        "/// Per-tetragraph ISMCAT V{ISMCAT_TETRA_VERSION} provenance metadata.\n\
+         ///\n\
+         /// Sorted by `code` for binary-search lookup. {} entries total.",
+        sorted.len()
+    )
+    .unwrap();
+    writeln!(content, "#[doc(hidden)]").unwrap();
+    writeln!(
+        content,
+        "pub static TETRAGRAPH_PROVENANCE: &[TetragraphProvenance] = &["
+    )
+    .unwrap();
+    for entry in sorted {
+        let deprecated = match &entry.deprecated {
+            Some(d) => format!("Some({d:?})"),
+            None => "None".to_owned(),
+        };
+        let description = match &entry.membership {
+            TaxMembership::Description(text) => format!("Some({text:?})"),
+            _ => "None".to_owned(),
+        };
+        writeln!(
+            content,
+            "    TetragraphProvenance {{ code: {:?}, decomposable: {:?}, \
+             membership_shape: {:?}, deprecated: {}, last_verified: {:?}, \
+             description: {} }},",
+            entry.code,
+            entry.decomposable.as_xml(),
+            entry.membership.shape_label(),
+            deprecated,
+            entry.last_verified,
+            description,
+        )
+        .unwrap();
+    }
+    writeln!(content, "];").unwrap();
+    writeln!(content).unwrap();
+}
+
+/// Emit the public three-state `is_decomposable(code)` discriminator.
+///
+/// Mapping:
+///
+/// - `Some(true)` — taxonomy `decomposable="Yes"` AND non-recursive
+///   `<Members>` with non-empty `<Country>` list (24 codes in V2022-NOV).
+/// - `Some(false)` — taxonomy `decomposable="No"` (19 codes — atom by
+///   authority).
+/// - `None` — `decomposable="NA"` (18 deprecated codes), or any `Yes`
+///   entry that fails the materialized-members precondition (zero such
+///   entries in V2022-NOV; guard #1 emits a `cargo:warning=` if one
+///   ever appears), or a code absent from the taxonomy entirely
+///   (org-fork extensions and unknown codes).
+///
+/// Org-fork extensions (`country_extensions.toml`) deliberately route to
+/// `None` even when they declare `members = […]` — extensions don't
+/// carry ODNI authority. `lookup_tetragraph_members` still resolves
+/// extension members; `is_decomposable` reflects taxonomy status only.
+/// Issue #206's S005 rule depends on this distinction.
+fn emit_is_decomposable(content: &mut String, taxonomy: &[TaxEntry]) {
+    use std::fmt::Write;
+
+    let mut yes: Vec<&str> = Vec::new();
+    let mut no: Vec<&str> = Vec::new();
+    for entry in taxonomy {
+        match entry.decomposable {
+            TaxDecomposable::Yes => {
+                if let TaxMembership::Members {
+                    countries,
+                    recursive: false,
+                    ..
+                } = &entry.membership
+                {
+                    if !countries.is_empty() {
+                        yes.push(&entry.code);
+                    }
+                }
+            }
+            TaxDecomposable::No => no.push(&entry.code),
+            TaxDecomposable::Na => {}
+        }
+    }
+    yes.sort_unstable();
+    no.sort_unstable();
+
+    writeln!(
+        content,
+        "/// Three-state ISMCAT V{ISMCAT_TETRA_VERSION} decomposability flag (issue #208).\n\
+         ///\n\
+         /// Returns:\n\
+         ///\n\
+         /// - `Some(true)` — taxonomy `decomposable=\"Yes\"` with materialized\n\
+         ///   non-recursive members ({yes_n} codes).\n\
+         /// - `Some(false)` — taxonomy `decomposable=\"No\"` — atom by authority\n\
+         ///   ({no_n} codes).\n\
+         /// - `None` — taxonomy `decomposable=\"NA\"` (deprecated; membership\n\
+         ///   suppressed, OCA-deferred, or recursive); OR code absent from\n\
+         ///   taxonomy entirely.\n\
+         ///\n\
+         /// Org-fork extensions (`country_extensions.toml`) deliberately route to `None`\n\
+         /// even when they declare members — extensions don't carry ODNI authority. Use\n\
+         /// `lookup_tetragraph_members` for materialized member resolution that includes\n\
+         /// extensions; use `is_decomposable` for the ODNI-authoritative discriminator\n\
+         /// consumed by issue #206's S005 rule.\n\
+         ///\n\
+         /// Source: `Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`.",
+        yes_n = yes.len(),
+        no_n = no.len(),
+    )
+    .unwrap();
+
+    writeln!(
+        content,
+        "pub fn is_decomposable(code: &str) -> Option<bool> {{"
+    )
+    .unwrap();
+    writeln!(content, "    match code {{").unwrap();
+    for c in &yes {
+        writeln!(content, "        {c:?} => Some(true),").unwrap();
+    }
+    for c in &no {
+        writeln!(content, "        {c:?} => Some(false),").unwrap();
+    }
+    writeln!(content, "        _ => None,").unwrap();
+    writeln!(content, "    }}").unwrap();
+    writeln!(content, "}}").unwrap();
+    writeln!(content).unwrap();
+}
+
+// ---------------------------------------------------------------------------
 // Issue #183 PR-B: org-specific country-code extensions
 // ---------------------------------------------------------------------------
-
-/// Built-in tetragraph membership table.
-///
-/// CVE files list tetragraph **codes** (`FVEY`, `ACGU`, …) but do
-/// not record their constituent trigraphs. The membership data
-/// below is hand-curated from the CAPCO Register and is the
-/// canonical source consumed by `marque-ism::page_context` and
-/// `marque-capco::vocab`.
-///
-/// NATO and operation-specific tetragraphs (RSMA, ISAF, KFOR, …)
-/// are intentionally absent — they stay opaque (treated as atoms
-/// in REL TO intersection) until a future scheme adapter lands a
-/// canonical membership table for them.
-const BUILTIN_TETRAGRAPH_MEMBERS: &[(&str, &[&str])] = &[
-    // ACGU = AUS, CAN, GBR, USA (Four Eyes minus NZL).
-    ("ACGU", &["AUS", "CAN", "GBR", "USA"]),
-    // FVEY = AUS, CAN, GBR, NZL, USA (Five Eyes).
-    ("FVEY", &["AUS", "CAN", "GBR", "NZL", "USA"]),
-];
 
 /// Parsed extension entry from `country_extensions.toml`.
 struct CountryExtension {
@@ -1853,50 +2517,87 @@ fn load_country_extensions(
     out
 }
 
-/// Emit `pub static TETRAGRAPH_MEMBERS: &[(&str, &[&str])]`. Built-in
-/// FVEY/ACGU rows are emitted first; extension entries with non-
-/// empty `members` are appended. The final slice is sorted by code
-/// for stable diffs and for binary-search lookup at the consumer
-/// side.
-fn emit_tetragraph_members(content: &mut String, extensions: &[CountryExtension]) {
+/// Emit `pub static TETRAGRAPH_MEMBERS: &[(&str, &[&str])]`. Rows are
+/// sourced from the ISMCAT taxonomy (24 `decomposable="Yes"` entries with
+/// materialized `<Country>` lists in V2022-NOV) and appended with
+/// `country_extensions.toml` entries that declare non-empty `members`.
+/// The final slice is sorted by code for stable diffs and binary-search
+/// lookup at consumer sites.
+///
+/// Extensions cannot shadow taxonomy codes — `load_country_extensions`
+/// rejects any extension whose `code` is already in the CVE recognition
+/// set, and all 61 ISMCAT taxonomy codes appear in
+/// `CVEnumISMCATRelTo.xsd`. The shadowing question (plan §8 Q2) is
+/// therefore resolved by the existing duplicate guard; no `override`
+/// opt-in is needed.
+fn emit_tetragraph_members(
+    content: &mut String,
+    taxonomy: &[TaxEntry],
+    extensions: &[CountryExtension],
+) {
     use std::fmt::Write;
 
-    // Collect (code, members) tuples from built-ins + extensions
-    // with members. Extensions without members participate in
-    // recognition (via TRIGRAPHS) but not in expansion.
-    let mut rows: Vec<(&str, Vec<&str>)> = BUILTIN_TETRAGRAPH_MEMBERS
-        .iter()
-        .map(|(code, members)| (*code, members.to_vec()))
-        .collect();
+    // Collect (code, members) tuples from taxonomy entries that pass
+    // the materialized-non-recursive-Members predicate, then append
+    // extensions with non-empty `members`. Extensions without members
+    // participate in recognition (via TRIGRAPHS) but not in expansion.
+    //
+    // Member-list order is sorted ASCII-alphabetical at emit time. The
+    // ODNI XML lists members in publication order (e.g. FVEY as
+    // `AUS, CAN, NZL, GBR, USA`), but that order carries no semantic
+    // weight — when the set hits banner roll-up the consumer re-sorts
+    // per CAPCO §H.8 (USA first, then trigraph-alpha, tetragraph-alpha)
+    // anyway, and the alphabetical form is unambiguously friendlier
+    // for `pub const FVEY` reviewers and for diff stability across
+    // future taxonomy revisions that may reorder typographically.
+    let mut rows: Vec<(&str, Vec<&str>)> = Vec::new();
+    let mut taxonomy_count = 0usize;
+    for entry in taxonomy {
+        if let TaxMembership::Members {
+            countries,
+            recursive: false,
+            ..
+        } = &entry.membership
+        {
+            if !countries.is_empty() {
+                let mut members: Vec<&str> = countries.iter().map(String::as_str).collect();
+                members.sort_unstable();
+                rows.push((entry.code.as_str(), members));
+                taxonomy_count += 1;
+            }
+        }
+    }
+    let mut extension_count = 0usize;
     for ext in extensions {
         if !ext.members.is_empty() {
-            rows.push((
-                ext.code.as_str(),
-                ext.members.iter().map(String::as_str).collect(),
-            ));
+            let mut members: Vec<&str> = ext.members.iter().map(String::as_str).collect();
+            members.sort_unstable();
+            rows.push((ext.code.as_str(), members));
+            extension_count += 1;
         }
     }
     rows.sort_by_key(|(code, _)| *code);
 
     writeln!(
         content,
-        "/// Canonical tetragraph / country-group code membership \
-         table (issue #183 PR-B).\n\
+        "/// Canonical tetragraph / country-group code membership table.\n\
          ///\n\
-         /// CVE files list tetragraph codes but do not record \
-         their constituent trigraphs.\n\
-         /// This table is the single source of truth consumed by \
-         banner roll-up and rule\n\
-         /// evaluation. Codes absent from this table (NATO, \
-         operation-specific tetragraphs\n\
-         /// like RSMA / ISAF / KFOR, extensions without `members`) \
-         are opaque — they\n\
-         /// survive REL TO intersection only when present in every \
-         portion's list.\n\
+         /// Sourced from the ISMCAT V{ISMCAT_TETRA_VERSION} Tetragraph Taxonomy\n\
+         /// (`Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml` — issue #208) plus\n\
+         /// any `members`-bearing entries from `country_extensions.toml` (issue #183 PR-B).\n\
          ///\n\
-         /// Sorted by code for stable diffs and `binary_search` \
-         lookup. {} entries total.",
+         /// Codes absent from this table — taxonomy `decomposable=\"No\"` entries (EU,\n\
+         /// GCCH, KFOR, …, atom by authority), `decomposable=\"NA\"` deprecated entries\n\
+         /// (RSMA, ISAF, MCFI, …, membership suppressed or OCA-deferred), and codes\n\
+         /// outside the taxonomy entirely — are opaque to expansion. They survive REL TO\n\
+         /// intersection only when present in every portion's list. Use `is_decomposable`\n\
+         /// for the ODNI-authoritative discriminator that distinguishes these cases.\n\
+         ///\n\
+         /// Sorted by code for stable diffs and `binary_search` lookup. {} entries total\n\
+         /// ({} taxonomy + {} extension).",
         rows.len(),
+        taxonomy_count,
+        extension_count,
     )
     .unwrap();
     writeln!(

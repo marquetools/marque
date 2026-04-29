@@ -33,7 +33,8 @@ pub use attrs::{
 };
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use generated::values::{
-    SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, is_bare_cve_value, lookup_tetragraph_members,
+    ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, is_bare_cve_value,
+    is_decomposable, lookup_tetragraph_members,
 };
 pub use page_context::{PageContext, sar_sort_key};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
