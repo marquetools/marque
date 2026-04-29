@@ -299,9 +299,11 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
-                let parsed_trigraphs =
+                let parsed =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
-                rel_to.extend(parsed_trigraphs);
+                rel_to.extend(parsed.countries);
+                dissem.extend(parsed.trailing_dissem);
+                non_ic.extend(parsed.trailing_non_ic);
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
                 || is_bare_cve_value(trimmed)
@@ -1074,8 +1076,28 @@ fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
     })
 }
 
+/// Return type for [`parse_rel_to_with_spans`].
+///
+/// Carries both the recognized country codes and any dissem/non-IC controls
+/// that were appended to the last comma entry via an intra-segment `/`
+/// separator (e.g., `REL TO USA, FVEY/NF` → countries=[USA, FVEY],
+/// trailing_dissem=[NF]).
+struct RelToParseResult {
+    countries: Vec<CountryCode>,
+    trailing_dissem: Vec<DissemControl>,
+    trailing_non_ic: Vec<NonIcDissem>,
+}
+
 /// Span-aware parse of a `REL TO ...` block. Records one
 /// `TokenKind::RelToTrigraph` per recognized country code.
+///
+/// When a comma entry ends with `/<control>` — e.g., the last entry is
+/// `FVEY/NF` instead of just `FVEY` — the function splits on the `/` and
+/// parses the tail as additional dissem/non-IC controls. This handles the
+/// CAPCO portion-mark convention where dissem controls in the same `//`-slot
+/// are separated by `/` (e.g., `(TS//REL TO USA, FVEY/NF)` is valid). The
+/// caller must extend its own `dissem`/`non_ic` vecs from the returned
+/// `trailing_dissem` / `trailing_non_ic` fields.
 ///
 /// `block_offset` is the absolute byte offset of `block` within the
 /// original source buffer.
@@ -1084,7 +1106,7 @@ fn parse_rel_to_with_spans(
     block_offset: usize,
     tokens: &dyn TokenSet,
     token_spans: &mut Vec<TokenSpan>,
-) -> Vec<CountryCode> {
+) -> RelToParseResult {
     // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
     // need the offset of the *trigraph list* within `block` so that each
     // trigraph's absolute span can be computed.
@@ -1097,7 +1119,9 @@ fn parse_rel_to_with_spans(
     };
     let after_rel = &block[prefix_skip..];
 
-    let mut out: Vec<CountryCode> = Vec::new();
+    let mut countries: Vec<CountryCode> = Vec::new();
+    let mut trailing_dissem: Vec<DissemControl> = Vec::new();
+    let mut trailing_non_ic: Vec<NonIcDissem> = Vec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
@@ -1117,6 +1141,74 @@ fn parse_rel_to_with_spans(
             continue;
         }
         let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
+
+        // If the entry contains `/`, the part before the slash is the country
+        // code and the part(s) after are additional dissem/non-IC controls
+        // packed into the same `//`-slot (e.g., `FVEY/NF` in `REL TO USA,
+        // FVEY/NF`). CAPCO portion-mark syntax uses `/` as the intra-segment
+        // control separator within a `//`-delimited slot (§A.4 / §D.1).
+        if let Some(slash_pos) = trimmed.find('/') {
+            let country_part = trimmed[..slash_pos].trim();
+            let tail = trimmed[slash_pos + 1..].trim();
+
+            // Parse the country part (may be empty if the slash is leading).
+            if !country_part.is_empty() {
+                if tokens.is_trigraph(country_part) {
+                    if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
+                        countries.push(t);
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::RelToTrigraph,
+                            span: Span::new(abs_start, abs_start + country_part.len()),
+                            text: country_part.into(),
+                        });
+                    }
+                } else {
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span: Span::new(abs_start, abs_start + country_part.len()),
+                        text: country_part.into(),
+                    });
+                }
+            }
+
+            // Parse each `/`-separated tail token as a dissem or non-IC control.
+            let tail_base = abs_start + slash_pos + 1;
+            let mut tail_cursor = 0usize;
+            for part in tail.split('/') {
+                let part_trim_lead = part.len() - part.trim_start().len();
+                let part = part.trim();
+                let part_abs = tail_base + tail_cursor + part_trim_lead;
+                tail_cursor += part.len() + part_trim_lead + 1; // +1 for `/`
+                if part.is_empty() {
+                    continue;
+                }
+                if let Some(ctrl) =
+                    DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
+                {
+                    trailing_dissem.push(ctrl);
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::DissemControl,
+                        span: Span::new(part_abs, part_abs + part.len()),
+                        text: part.into(),
+                    });
+                } else if let Some(nic) = parse_non_ic_full_form(part) {
+                    trailing_non_ic.push(nic);
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::NonIcDissem,
+                        span: Span::new(part_abs, part_abs + part.len()),
+                        text: part.into(),
+                    });
+                } else {
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span: Span::new(part_abs, part_abs + part.len()),
+                        text: part.into(),
+                    });
+                }
+            }
+            continue;
+        }
+
         if !tokens.is_trigraph(trimmed) {
             // Issue #233: emit an Unknown span for unrecognized
             // entries inside a REL TO block instead of silently
@@ -1155,14 +1247,18 @@ fn parse_rel_to_with_spans(
         let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
             continue;
         };
-        out.push(t);
+        countries.push(t);
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
             span: Span::new(abs_start, abs_start + trimmed.len()),
             text: trimmed.into(),
         });
     }
-    out
+    RelToParseResult {
+        countries,
+        trailing_dissem,
+        trailing_non_ic,
+    }
 }
 
 // SCI controls, dissemination controls, SAR identifiers, and declass

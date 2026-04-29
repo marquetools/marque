@@ -121,9 +121,38 @@ const NATO_CLASSIFICATION_KEYWORDS: &[&str] = &["ATOMAL", "BALK", "BOHEMIA", "CO
 /// missing-hyphen path that handles `USAR-BP` / `SARBP`.
 const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 
+/// AEA and SCI structural keywords not present in `ALL_CVE_TOKENS`.
+///
+/// These individual words appear as components of multi-word Marking Titles
+/// that the strict parser recognises. The decoder's whitespace tokeniser
+/// splits them, so each word arrives at the fuzzy matcher independently. Without
+/// these entries, OCR/transcription typos (`TAELNT`, `TALNET`, `FRMERLY`,
+/// `KEYOLE`) produce `TokenKind::Unknown` spans that cause the decoder to
+/// discard the candidate.
+///
+/// **TALENT / KEYHOLE** (§H.4 p73): The full Marking Title for TK is "TALENT
+/// KEYHOLE". OCR commonly mangles individual words of long titles; having both
+/// bare words in the vocab lets `TAELNT KEYHOLE` → `TALENT KEYHOLE` → `TK`.
+///
+/// **FORMERLY** (§H.6 p116): The full Marking Title for FRD is "FORMERLY
+/// RESTRICTED DATA". A typo like `FRMERLY RESTRICTED DATA` arrives at the
+/// fuzzy matcher as the token `FRMERLY`; without `FORMERLY` in the vocab the
+/// decoder cannot recover it.
+///
+/// Round-trip safety: the strict parser already handles `TALENT KEYHOLE` →
+/// `TK` and `FORMERLY RESTRICTED DATA` → `FRD` via `parse_sci_block` /
+/// `title_to_portion` paths respectively, so fuzzy-corrected tokens land at
+/// the expected parsed values without further changes.
+///
+/// Note: `NUCLEAR` (appears in CNWDI/TFNI/DOD-UCNI/DOE-UCNI titles) is
+/// intentionally excluded — it is a very common English word and would produce
+/// excessive false-positive fuzzy corrections on unrelated text.
+const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
 /// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
-/// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`],
+/// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`] ∪
+/// [`AEA_SCI_STRUCTURAL_KEYWORDS`],
 /// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
@@ -167,6 +196,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     v.extend_from_slice(SAR_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
+    v.extend_from_slice(AEA_SCI_STRUCTURAL_KEYWORDS);
     v.sort();
     v.dedup();
     v
@@ -441,6 +471,24 @@ mod tests {
                 "correction_vocab MUST contain {expected:?} — \
                  SAR structural keyword per CAPCO-2016 §H.5 p100 \
                  (issue #133 PR 6)"
+            );
+        }
+    }
+
+    #[test]
+    fn correction_vocab_contains_aea_sci_structural_keywords() {
+        // PR #256: AEA/SCI long-title structural keywords added so the fuzzy
+        // matcher can recover OCR typos in "FORMERLY RESTRICTED DATA" (FRD,
+        // §H.6) and "TALENT KEYHOLE" (TK, §H.4 p71). `NUCLEAR` is
+        // intentionally excluded — see `AEA_SCI_STRUCTURAL_KEYWORDS` doc
+        // comment.
+        let vocab = CapcoTokenSet.correction_vocab();
+        for expected in &["FORMERLY", "KEYHOLE", "TALENT"] {
+            assert!(
+                vocab.binary_search(expected).is_ok(),
+                "correction_vocab MUST contain {expected:?} — \
+                 AEA/SCI structural keyword per CAPCO-2016 §H.6 / §H.4 p71 \
+                 (PR #256)"
             );
         }
     }

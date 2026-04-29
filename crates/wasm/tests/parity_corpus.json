@@ -125,7 +125,7 @@
       "name": "nodis_portion_rel_to_banner.txt",
       "category": "invalid",
       "input": "(S//NF//ND)\nSECRET//NOFORN//REL TO USA, GBR//NODIS\n",
-      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":\"REL TO is not authorized in the banner line when any portion contains NODIS or EXDIS; NOFORN conveys the foreign-release decision in this case per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":\"REL TO is not authorized in the banner line when any portion contains NODIS or EXDIS; NOFORN conveys the foreign-release decision in this case per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":26},\"message\":\"NOFORN cannot be used with REL TO (§H.8 p145); remove one or the other\",\"citation\":\"CAPCO-2016 §H.8 p145\",\"fix\":null}\n"
     },
     {
       "name": "nodis_without_noforn.txt",
