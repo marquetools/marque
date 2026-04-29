@@ -168,7 +168,7 @@ impl PageContext {
     pub fn expected_classification(&self) -> Option<Classification> {
         self.portions
             .iter()
-            .filter_map(|a| a.us_classification())
+            .filter_map(|a| a.classification.as_ref().map(|c| c.effective_level()))
             .max()
     }
 
@@ -976,6 +976,62 @@ mod tests {
     #[test]
     fn expected_classification_empty_returns_none() {
         assert_eq!(PageContext::new().expected_classification(), None);
+    }
+
+    #[test]
+    fn nato_secret_contributes_to_max_classification() {
+        // (C//NF) + (//NS//REL TO USA, NATO) → banner must be SECRET
+        use crate::attrs::NatoClassification::NatoSecret;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Confidential));
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Nato(NatoSecret)),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_classification(),
+            Some(Classification::Secret),
+            "NS (NATO SECRET) should drive banner to SECRET"
+        );
+    }
+
+    #[test]
+    fn fgi_secret_contributes_to_max_classification() {
+        // (C//NF) + (//DEU S//...) → banner must be SECRET
+        use crate::attrs::{CountryCode, FgiClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Confidential));
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+            })),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_classification(),
+            Some(Classification::Secret),
+            "DEU S (FGI SECRET) should drive banner to SECRET"
+        );
+    }
+
+    #[test]
+    fn joint_secret_contributes_to_max_classification() {
+        use crate::attrs::JointClassification;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Confidential));
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([]),
+            })),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_classification(),
+            Some(Classification::Secret),
+            "JOINT SECRET should drive banner to SECRET"
+        );
     }
 
     #[test]

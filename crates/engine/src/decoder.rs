@@ -684,6 +684,26 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
         );
     }
 
+    // ---- Non-US prefix insertion. For bare non-US markings that
+    //      arrive with no `//` at all (e.g., `NS`, `JOINT S GBR USA`,
+    //      `CAN S`), emit a `//{body}` candidate so the strict parser
+    //      enters the non-US classification code path. The reorder pass
+    //      above handles inputs that already contain `//` but are
+    //      missing the leading empty-US-slot prefix.
+    if let Some(prefixed) = try_add_non_us_prefix(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(FeatureEntry {
+            id: FeatureId::TokenReorder,
+            delta: -0.4,
+        });
+        emit(
+            prefixed.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
     // ---- Missing-delimiter insertion (issue #133 PR 3). Walks the
     //      fuzzy-corrected text, inserts `//` at category-transition
     //      whitespace gaps. Tagged with `FixSource::DecoderPosterior`
@@ -1015,13 +1035,33 @@ fn fuzzy_correct_tokens(
         let (token, tail) = rest.split_at(token_len);
         rest = tail;
 
-        // Case 1: superseded token.
+        // Case 1: exact superseded token (e.g., standalone `COMINT` → `SI`).
         if let Some(replacement) = SUPERSEDED_TOKEN_MAP
             .iter()
             .find(|&&(from, _)| from == token)
             .map(|&(_, to)| to)
         {
             out.push_str(replacement);
+            features.push(FeatureEntry {
+                id: FeatureId::SupersededToken,
+                delta: -0.2,
+            });
+            continue;
+        }
+
+        // Case 1b: embedded superseded token — the deprecated keyword
+        // appears as a substring within a longer token. Handles compound
+        // prefixes (`COMINT-G` → `SI-G`), embedded substitutions
+        // (`UNCLASCOMINTFIED` → `UNCLASSIFIED`, `FRD-COMINTGMA 14` →
+        // `FRD-SIGMA 14`, `SENCOMINTTIVE` → `SENSITIVE`). The token !=
+        // from guard ensures the exact-match case above is the only path
+        // for bare superseded tokens. CAPCO-2016 §H.4 p74.
+        let embedded_replacement = SUPERSEDED_TOKEN_MAP
+            .iter()
+            .find(|&&(from, _)| token != from && token.contains(from))
+            .map(|&(from, to)| token.replace(from, to));
+        if let Some(replaced) = embedded_replacement {
+            out.push_str(&replaced);
             features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: -0.2,
@@ -2411,7 +2451,7 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 // ---------------------------------------------------------------------------
 
 /// Emit one canonical-byte alternate per fuzzy candidate for each
-/// unknown 3-char REL TO entry.
+/// unknown 3- or 4-char REL TO entry.
 ///
 /// The standard fuzzy path in [`fuzzy_correct_tokens`] operates against
 /// the [`CapcoTokenSet::correction_vocab`] slice, which deliberately
@@ -2427,11 +2467,11 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 ///
 /// With the original candidate filtered out, this function provides
 /// the alternates the dispatcher chooses between: it walks each
-/// `REL TO ` block in `text`, finds 3-char comma-separated entries
-/// that aren't already valid trigraphs, asks the trigraph-vocab
-/// matcher for all candidates within the edit-distance bound, and
-/// emits one alternate text per candidate (with the substitution
-/// applied in-place).
+/// `REL TO ` block in `text`, finds 3- or 4-char comma-separated
+/// entries that aren't already valid trigraphs/tetragraphs, asks the
+/// trigraph-vocab matcher for all candidates within the edit-distance
+/// bound, and emits one alternate text per candidate (with the
+/// substitution applied in-place).
 ///
 /// Each emitted alternate carries an `EditDistance1` /
 /// `EditDistance2` feature (paired with the candidate's distance) so
@@ -2443,18 +2483,21 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
 /// log_prior(UZB)` ≈ +7 nats) decides which alternate wins the
 /// `UNAMBIGUOUS_LOG_MARGIN` (~1.6 nat) contest.
 ///
-/// **Scope**: trigraph-shaped (3-char ASCII uppercase) entries only.
-/// Two-letter entries (`EU`) are below `MIN_FUZZY_LEN`; longer
-/// multi-char entries (`AUSTRALIA_GROUP`) have low fuzzy-tie risk
-/// because their lengths rarely collide. Only fires when the entry
-/// token is NOT already a valid trigraph — so `AUT`, `UZB`, `ASM`
-/// in legitimate use pass through unchanged.
+/// **Scope**: 3-char (trigraph) and 4-char (tetragraph) ASCII
+/// uppercase entries only. Two-letter entries (`EU`) are below
+/// `MIN_FUZZY_LEN`; longer multi-char entries (`AUSTRALIA_GROUP`)
+/// have low fuzzy-tie risk because their lengths rarely collide.
+/// Only fires when the entry token is NOT already a valid
+/// trigraph/tetragraph — so `AUT`, `UZB`, `FVEY`, `ACGU`, `ISAF`
+/// in legitimate use pass through unchanged. 4-char scope added to
+/// recover coalition-shorthand typos (`FVYE` → `FVEY`,
+/// `SGAF` → `ISAF`); issue #246.
 ///
 /// **CAPCO authority**: REL TO syntax is defined in CAPCO-2016 §H.8.
-/// The trigraph dictionary itself comes from the ODNI CVE schema in
-/// `CVEnumISMCATRelTo.xsd`, baked into [`CapcoTokenSet::is_trigraph`]
-/// and into the [`marque_ism::TRIGRAPHS`] slice this function fuzzy-
-/// matches against.
+/// The trigraph/tetragraph dictionary itself comes from the ODNI CVE
+/// schema in `CVEnumISMCATRelTo.xsd`, baked into
+/// [`CapcoTokenSet::is_trigraph`] and into the
+/// [`marque_ism::TRIGRAPHS`] slice this function fuzzy-matches against.
 fn try_rel_to_fuzzy_trigraph_candidates(
     text: &str,
     trigraph_matcher: &FuzzyVocabMatcher<'_>,
@@ -2490,16 +2533,16 @@ fn try_rel_to_fuzzy_trigraph_candidates(
             cursor = entry_end + 1; // skip the comma
 
             let trimmed = entry.trim();
-            // Only 3-char ASCII-uppercase trigraph-shaped entries —
-            // see fn doc for the scope rationale.
-            if trimmed.len() != 3 || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
+            // 3-char (trigraph) or 4-char (tetragraph) ASCII-uppercase
+            // entries only — see fn doc for scope rationale.
+            let tlen = trimmed.len();
+            if (tlen != 3 && tlen != 4) || !trimmed.bytes().all(|b| b.is_ascii_uppercase()) {
                 continue;
             }
-            // Skip already-valid trigraphs (the matcher's binary
-            // search would also short-circuit on a vocab hit, but
-            // keeping the explicit check means a token like `AUT`
-            // appearing legitimately never gets multi-cast as
-            // USA/AUS/etc.).
+            // Skip already-valid trigraphs/tetragraphs (the matcher's
+            // binary search would also short-circuit on a vocab hit, but
+            // keeping the explicit check means a token like `FVEY`
+            // appearing legitimately never gets multi-cast).
             if token_set.is_trigraph(trimmed) {
                 continue;
             }
@@ -2542,7 +2585,8 @@ fn try_rel_to_fuzzy_trigraph_candidates(
                 .split(',')
                 .map(str::trim)
                 .filter(|e| {
-                    e.len() == 3
+                    let elen = e.len();
+                    (elen == 3 || elen == 4)
                         && e.bytes().all(|b| b.is_ascii_uppercase())
                         && *e != trimmed
                         && token_set.is_trigraph(e)
@@ -3072,11 +3116,24 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
         return None;
     }
 
+    // Detect non-US markings: any classification segment is a NATO,
+    // JOINT, or FGI classification (not a US classification level).
+    let is_non_us = class_segments
+        .iter()
+        .any(|s| is_non_us_classification_segment(s));
+
     // Already-canonical check: if the classification segment is the
     // first non-empty segment, no reorder is needed.
+    // For non-US markings: also require that the body already starts
+    // with `//` (the empty US classification slot). If the class is
+    // first but the `//` prefix is absent, fall through to add it.
     if let Some(first) = segments.iter().find(|s| !s.trim().is_empty()) {
         if class_segments.contains(&first.trim()) {
-            return None;
+            // US: already canonical.
+            // Non-US: already canonical only when // prefix is present.
+            if !is_non_us || body.starts_with("//") {
+                return None;
+            }
         }
     }
 
@@ -3087,7 +3144,16 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
     ordered.extend(dissem_segments);
 
     let joined = ordered.join("//");
-    Some(format!("{prefix}{joined}{suffix}"))
+
+    // Non-US canonical form: `//{class}//{others}//{dissems}`. The
+    // leading `//` represents the empty US classification slot (per
+    // CAPCO-2016 §A.6) and signals the strict parser to use the
+    // non-US classification code path.
+    if is_non_us {
+        Some(format!("{prefix}//{joined}{suffix}"))
+    } else {
+        Some(format!("{prefix}{joined}{suffix}"))
+    }
 }
 
 /// Which CAPCO category a `//`-separated segment primarily belongs to.
@@ -3108,11 +3174,9 @@ fn classify_segment(seg: &str) -> SegmentClass {
     let first_token = seg.split_whitespace().next().unwrap_or("");
     // Strip trailing commas.
     let first_token = first_token.trim_end_matches(',');
-    // Single-whitespace-token classifications only. `TOP SECRET` is
-    // handled by the separate starts_with branch below — including
-    // it here would be dead: `split_whitespace().next()` always
-    // returns the first word, so the lookup sees `"TOP"`, not the
-    // full two-word phrase.
+    // Single-whitespace-token classifications only. `TOP SECRET` and
+    // multi-word NATO/JOINT forms are handled by the separate
+    // starts_with branches below.
     const CLASSIFICATIONS: &[&str] = &[
         "U",
         "R",
@@ -3123,29 +3187,198 @@ fn classify_segment(seg: &str) -> SegmentClass {
         "RESTRICTED",
         "CONFIDENTIAL",
         "SECRET",
+        // NATO classification abbreviations (single-token forms).
+        "NS",
+        "NC",
+        "NU",
+        "CTS",
+        "CTSA",
+        "NSAT",
+        "NCA",
+        "CTS-B",
+        "CTS-BALK",
+        // JOINT classification indicator.
+        "JOINT",
     ];
-    // Dissemination-control tokens ONLY. SCI controls (HCS, SI, TK,
-    // and all their sub-compartment forms) are NOT in this list —
-    // they belong to their own category under CAPCO §A.6 and the
-    // canonical order places them between classification and dissem.
-    // Classifying an HCS segment as Dissem would drive
-    // `try_canonical_reorder` to move it past the dissem block,
-    // corrupting the rewrite. SCI segments therefore fall through to
-    // `SegmentClass::Other`, which the reorder helper inserts
-    // between classification and dissem — the right spot per
+    // Dissemination-control tokens — IC (§H.8) and non-IC (§H.9).
+    // SCI controls (HCS, SI, TK, and all their sub-compartment forms)
+    // are NOT in this list — they belong to their own category under
+    // CAPCO §A.6 and the canonical order places them between
+    // classification and dissem. Classifying an HCS segment as Dissem
+    // would drive `try_canonical_reorder` to move it past the dissem
+    // block, corrupting the rewrite. SCI segments therefore fall
+    // through to `SegmentClass::Other`, which the reorder helper
+    // inserts between classification and dissem — the right spot per
     // CAPCO-2016 §A.6.
+    //
+    // AEA controls (RD, FRD, TFNI, CNWDI, SIGMA) are also omitted —
+    // they appear between SCI and dissem per §A.6. A pre-check above
+    // `CLASSIFICATIONS.contains` prevents "RESTRICTED DATA" from being
+    // mistaken for the NATO RESTRICTED classification.
+    //
+    // "REL" is the first token of "REL TO {country-list}" segments.
+    //
+    // Non-IC dissem controls (§H.9): portion marks (DS, XD, ND,
+    // SBU, SBU-NF, LES, LES-NF, SSI) and banner abbreviations
+    // (LIMDIS, EXDIS, NODIS) are included so reordering places them
+    // in the dissem block, not the SCI/AEA block (CAPCO-2016 §A.6).
     const DISSEMS: &[&str] = &[
+        // §H.8 IC dissemination controls
         "NOFORN", "NF", "ORCON", "OC", "PROPIN", "PR", "IMCON", "IMC", "RELIDO", "RS", "RSEN",
-        "DSEN", "FISA", "FOUO",
+        "DSEN", "FISA", "FOUO", "EYES", "REL",
+        // §H.9 non-IC dissemination controls — portion marks
+        "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI",
+        // §H.9 non-IC dissemination controls — banner abbreviations
+        "LIMDIS", "EXDIS", "NODIS",
     ];
+    // Pre-check: "RESTRICTED DATA" (AEA marking, §H.6) must not be
+    // mistaken for the NATO RESTRICTED classification even though
+    // "RESTRICTED" appears in CLASSIFICATIONS. The bare token
+    // "RESTRICTED" IS valid as NATO classification; "RESTRICTED DATA"
+    // and longer AEA forms are not. CAPCO-2016 §H.6 p113.
+    if first_token == "RESTRICTED" && seg.split_whitespace().nth(1).is_some() {
+        return SegmentClass::Other;
+    }
     if CLASSIFICATIONS.contains(&first_token) {
         SegmentClass::Classification
-    } else if DISSEMS.contains(&first_token) {
+    // Single-token dissem controls and multi-word non-IC long-title forms.
+    // Multi-word forms cannot be single-token-matched because their first words
+    // ("LIMITED", "NO", "EXCLUSIVE", "LAW", "SENSITIVE") are too ambiguous;
+    // they are checked via starts_with here. CAPCO-2016 §H.8–9.
+    } else if DISSEMS.contains(&first_token)
+        || (first_token == "LIMITED" && seg.starts_with("LIMITED DISTRIBUTION"))
+        || (first_token == "NO" && seg.starts_with("NO DISTRIBUTION"))
+        || (first_token == "EXCLUSIVE" && seg.starts_with("EXCLUSIVE DISTRIBUTION"))
+        || (first_token == "LAW" && seg.starts_with("LAW ENFORCEMENT SENSITIVE"))
+        || (first_token == "SENSITIVE"
+            && (seg.starts_with("SENSITIVE BUT UNCLASSIFIED")
+                || seg.starts_with("SENSITIVE SECURITY INFORMATION")))
+    {
         SegmentClass::Dissem
-    } else if first_token == "TOP" && seg.starts_with("TOP SECRET") {
+    } else if (first_token == "TOP" && seg.starts_with("TOP SECRET"))
+        || (first_token == "COSMIC" && seg.starts_with("COSMIC TOP SECRET"))
+        || (first_token == "NATO"
+            && (seg.starts_with("NATO SECRET")
+                || seg.starts_with("NATO CONFIDENTIAL")
+                || seg.starts_with("NATO UNCLASSIFIED")
+                || seg.starts_with("NATO RESTRICTED")))
+    {
         SegmentClass::Classification
+    } else if CapcoTokenSet.is_trigraph(first_token) {
+        // FGI pattern: {registered country trigraph} {classification level}.
+        // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
+        // typos like "OTP" (→ TOP) don't get mistaken for FGI country codes.
+        let second = seg.split_whitespace().nth(1).unwrap_or("");
+        let second = second.trim_end_matches(',');
+        if matches!(
+            second,
+            "U" | "R"
+                | "C"
+                | "S"
+                | "TS"
+                | "UNCLASSIFIED"
+                | "RESTRICTED"
+                | "CONFIDENTIAL"
+                | "SECRET"
+        ) || (second == "TOP"
+            && seg
+                .split_whitespace()
+                .nth(2)
+                .is_some_and(|t| t.trim_end_matches(',') == "SECRET"))
+        {
+            SegmentClass::Classification
+        } else {
+            SegmentClass::Other
+        }
     } else {
         SegmentClass::Other
+    }
+}
+
+/// Returns true when `seg` is a non-US classification segment: a NATO
+/// classification abbreviation, a JOINT classification phrase, or an FGI
+/// `{trigraph} {level}` pattern.
+///
+/// Used by `try_canonical_reorder` to decide whether the reordered output
+/// needs a leading `//` (the empty US classification slot that signals the
+/// strict parser to take the non-US code path).
+fn is_non_us_classification_segment(seg: &str) -> bool {
+    const NATO_ABBREVS: &[&str] = &[
+        "NS", "NC", "NU", "CTS", "CTSA", "NSAT", "NCA", "CTS-B", "CTS-BALK",
+    ];
+    let mut tokens = seg.split_whitespace();
+    let first = tokens.next().unwrap_or("");
+    let first = first.trim_end_matches(',');
+    if NATO_ABBREVS.contains(&first) {
+        return true;
+    }
+    if first == "JOINT" {
+        return true;
+    }
+    if first == "COSMIC" && seg.starts_with("COSMIC TOP SECRET") {
+        return true;
+    }
+    if first == "NATO"
+        && (seg.starts_with("NATO SECRET")
+            || seg.starts_with("NATO CONFIDENTIAL")
+            || seg.starts_with("NATO UNCLASSIFIED")
+            || seg.starts_with("NATO RESTRICTED"))
+    {
+        return true;
+    }
+    // FGI: {registered country trigraph} {classification level}.
+    // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
+    // typos like "OTP" (→ TOP) are not mistaken for FGI country codes.
+    if CapcoTokenSet.is_trigraph(first) {
+        let second = tokens.next().unwrap_or("");
+        let second = second.trim_end_matches(',');
+        if matches!(
+            second,
+            "U" | "R"
+                | "C"
+                | "S"
+                | "TS"
+                | "UNCLASSIFIED"
+                | "RESTRICTED"
+                | "CONFIDENTIAL"
+                | "SECRET"
+        ) {
+            return true;
+        }
+        if second == "TOP"
+            && tokens
+                .next()
+                .is_some_and(|t| t.trim_end_matches(',') == "SECRET")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Prepends the non-US leading `//` when the entire input (no existing `//`)
+/// looks like a non-US classification segment.
+///
+/// This covers bare non-US markings like `NS`, `JOINT S GBR USA`, or
+/// `CAN S` that arrive with no delimiter at all — `try_canonical_reorder`
+/// cannot act on them because it requires at least two `//`-separated
+/// segments. Emitting `//NS`, `//JOINT S GBR USA`, etc. lets the strict
+/// parser recognize the non-US code path (CAPCO-2016 §A.6, parser block 1).
+fn try_add_non_us_prefix(text: &str) -> Option<String> {
+    // Only act when there is no `//` at all — try_canonical_reorder
+    // handles the has-// but missing-prefix case.
+    if text.contains("//") {
+        return None;
+    }
+    let (prefix, body, suffix) = if text.starts_with('(') && text.ends_with(')') {
+        ("(", &text[1..text.len() - 1], ")")
+    } else {
+        ("", text, "")
+    };
+    if is_non_us_classification_segment(body.trim()) {
+        Some(format!("{prefix}//{body}{suffix}"))
+    } else {
+        None
     }
 }
 
@@ -5068,6 +5301,58 @@ mod tests {
         assert_eq!(classify_segment("SI"), SegmentClass::Other);
         assert_eq!(classify_segment("SI-G"), SegmentClass::Other);
         assert_eq!(classify_segment("TK"), SegmentClass::Other);
+    }
+
+    #[test]
+    fn classify_segment_non_ic_dissem_tokens() {
+        // §H.9 abbreviations and long-title forms must classify as Dissem so
+        // try_canonical_reorder places them after SCI, not in Other.
+        // Regression guard for PR #256.
+        for tok in &[
+            "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI", "LIMDIS", "EXDIS", "NODIS",
+        ] {
+            assert_eq!(
+                classify_segment(tok),
+                SegmentClass::Dissem,
+                "classify_segment({tok:?}) should be Dissem"
+            );
+        }
+        // Multi-word long-title forms.
+        assert_eq!(
+            classify_segment("LIMITED DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("EXCLUSIVE DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(classify_segment("NO DISTRIBUTION"), SegmentClass::Dissem);
+        assert_eq!(
+            classify_segment("LAW ENFORCEMENT SENSITIVE"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE BUT UNCLASSIFIED"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE SECURITY INFORMATION"),
+            SegmentClass::Dissem
+        );
+    }
+
+    #[test]
+    fn classify_segment_restricted_data_is_not_classification() {
+        // "RESTRICTED DATA" (AEA, §H.6) must not be mistaken for the NATO
+        // RESTRICTED classification even though "RESTRICTED" is in CLASSIFICATIONS.
+        // Bare "RESTRICTED" (NATO classification) must still be Classification.
+        // Regression guard for PR #256.
+        assert_eq!(classify_segment("RESTRICTED DATA"), SegmentClass::Other);
+        assert_eq!(
+            classify_segment("RESTRICTED DATA-CNWDI"),
+            SegmentClass::Other
+        );
+        assert_eq!(classify_segment("RESTRICTED"), SegmentClass::Classification);
     }
 
     #[test]

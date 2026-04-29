@@ -1494,8 +1494,20 @@ fn e012_dual_classification(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
     }
 }
 
+/// Returns `true` if `trigraph` is directly in `rel_to` or is a member of any
+/// tetragraph in `rel_to` (e.g., GBR is covered when FVEY appears in REL TO).
+pub(crate) fn rel_to_covers(rel_to: &[marque_ism::CountryCode], trigraph: &str) -> bool {
+    rel_to.iter().any(|r| {
+        r.as_str() == trigraph
+            || crate::vocab::expand_tetragraph(r.as_str())
+                .is_some_and(|members| members.contains(&trigraph))
+    })
+}
+
 /// E014 — every JOINT participant must appear in the marking's REL TO list.
 /// CAPCO §H.3 p57 ("Requires REL TO USA, LIST" relationship statement).
+/// Tetragraphs in REL TO expand to their constituent trigraphs: a participant
+/// covered by a tetragraph (e.g., GBR via FVEY) is considered present.
 fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
@@ -1504,7 +1516,7 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
     let missing: Vec<&str> = joint
         .countries
         .iter()
-        .filter(|c| !attrs.rel_to.contains(c))
+        .filter(|c| !rel_to_covers(&attrs.rel_to, c.as_str()))
         .map(|c| c.as_str())
         .collect();
     if missing.is_empty() {
