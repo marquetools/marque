@@ -272,8 +272,16 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
 /// handles them structurally, so the vocabulary-bounded check does not apply.
 fn is_non_us_classification_block(block: &str) -> bool {
     const US_CLASS: &[&str] = &[
-        "TOP SECRET", "TS", "SECRET", "S", "CONFIDENTIAL", "C",
-        "RESTRICTED", "R", "UNCLASSIFIED", "U",
+        "TOP SECRET",
+        "TS",
+        "SECRET",
+        "S",
+        "CONFIDENTIAL",
+        "C",
+        "RESTRICTED",
+        "R",
+        "UNCLASSIFIED",
+        "U",
     ];
     let parts: Vec<&str> = block.split_ascii_whitespace().collect();
     if parts.len() < 2 {

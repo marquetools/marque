@@ -1,0 +1,1360 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../Schematron/ISM/ISM_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<?xml-model href="../../Schematron/ISMCAT/ISMCAT_XML.sch" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<!--This is a generated file. DO NOT EDIT!-->
+<!-- Distribution Notice: 
+           This document has been approved for Public Release and is available for use without restriction.
+        -->
+<Tetragraphs xmlns="urn:us:gov:ic:taxonomy:catt:tetragraph"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:ism="urn:us:gov:ic:ism"
+             xmlns:arh="urn:us:gov:ic:arh"
+             xmlns:tax="urn:us:gov:ic:taxonomy:common"
+             xmlns:tetra="urn:us:gov:ic:taxonomy:catt:tetragraph"
+             xsi:schemaLocation="urn:us:gov:ic:taxonomy:catt:tetragraph ../../Schema/ISMCAT/Tetragraph.xsd"
+             tetra:TESVersion="202211">
+	  <arh:Security ism:ownerProducer="USA"
+                 ism:classification="U"
+                 ism:DESVersion="202111.202211"
+                 ism:resourceElement="true"
+                 ism:compliesWith="USGov USIC"
+                 ism:ISMCATCESVersion="202211"
+                 ism:createDate="2015-03-13"/>
+	  <tax:IRM>
+		    <tax:URN>urn:us:gov:ic:taxonomy:catt:tetragraph</tax:URN>
+		    <tax:Description ism:classification="U" ism:ownerProducer="USA">Tetragraph Taxonomy: Alpha-sort by Tetragraph</tax:Description>
+		    <tax:Created>2015-06-08</tax:Created>
+		    <tax:Source ism:classification="U" ism:ownerProducer="USA">Deputy Director of National Intelligence for Intelligence Integration (DDII)</tax:Source>
+		    <tax:PointOfContact ism:classification="U" ism:ownerProducer="USA">
+			      <tax:Name>Office IC CIO</tax:Name>
+			      <tax:Email>ic-standards-support@odni.gov</tax:Email>
+		    </tax:PointOfContact>
+	  </tax:IRM>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">ACGU</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">FOUR EYES</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AUS</Country>
+			      <Country>CAN</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">AMSP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">AFRICOM Multinational Strategic Partners</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AUS</Country>
+			      <Country>AUT</Country>
+			      <Country>BEL</Country>
+			      <Country>CAN</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>ITA</Country>
+			      <Country>JPN</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>PRT</Country>
+			      <Country>KOR</Country>
+			      <Country>ROU</Country>
+			      <Country>ESP</Country>
+			      <Country>SWE</Country>
+			      <Country>TUR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">APFS</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">African Peacekeeping Force Somalia</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">ASEA</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Association of Southeast Asian Nations (ASEAN)</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>BRN</Country>
+			      <Country>MMR</Country>
+			      <Country>KHM</Country>
+			      <Country>IDN</Country>
+			      <Country>LAO</Country>
+			      <Country>MYS</Country>
+			      <Country>PHL</Country>
+			      <Country>SGP</Country>
+			      <Country>THA</Country>
+			      <Country>VNM</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">AUSTRALIA_GROUP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Australia Group</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>ARG</Country>
+			      <Country>AUS</Country>
+			      <Country>AUT</Country>
+			      <Country>BEL</Country>
+			      <Country>BGR</Country>
+			      <Country>CAN</Country>
+			      <Country>HRV</Country>
+			      <Country>CYP</Country>
+			      <Country>CZE</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>IRL</Country>
+			      <Country>ITA</Country>
+			      <Country>JPN</Country>
+			      <Country>LVA</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>MLT</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>KOR</Country>
+			      <Country>ROU</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>ESP</Country>
+			      <Country>SWE</Country>
+			      <Country>CHE</Country>
+			      <Country>TUR</Country>
+			      <Country>UKR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">BWCS</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Biological Weapons Convention States</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AFG</Country>
+			      <Country>ALB</Country>
+			      <Country>DZA</Country>
+			      <Country>AND</Country>
+			      <Country>AGO</Country>
+			      <Country>ATG</Country>
+			      <Country>ARG</Country>
+			      <Country>ARM</Country>
+			      <Country>AUS</Country>
+			      <Country>AUT</Country>
+			      <Country>AZE</Country>
+			      <Country>BHS</Country>
+			      <Country>BHR</Country>
+			      <Country>BGD</Country>
+			      <Country>BRB</Country>
+			      <Country>BLR</Country>
+			      <Country>BEL</Country>
+			      <Country>BLZ</Country>
+			      <Country>BEN</Country>
+			      <Country>BTN</Country>
+			      <Country>BOL</Country>
+			      <Country>BIH</Country>
+			      <Country>BWA</Country>
+			      <Country>BRA</Country>
+			      <Country>BRN</Country>
+			      <Country>BGR</Country>
+			      <Country>BFA</Country>
+			      <Country>BDI</Country>
+			      <Country>KHM</Country>
+			      <Country>CMR</Country>
+			      <Country>CAN</Country>
+			      <Country>CPV</Country>
+			      <Country>CAF</Country>
+			      <Country>CHL</Country>
+			      <Country>CHN</Country>
+			      <Country>COL</Country>
+			      <Country>COG</Country>
+			      <Country>COK</Country>
+			      <Country>CRI</Country>
+			      <Country>CIV</Country>
+			      <Country>HRV</Country>
+			      <Country>CUB</Country>
+			      <Country>CYP</Country>
+			      <Country>CZE</Country>
+			      <Country>PRK</Country>
+			      <Country>COD</Country>
+			      <Country>DNK</Country>
+			      <Country>DMA</Country>
+			      <Country>DOM</Country>
+			      <Country>ECU</Country>
+			      <Country>SLV</Country>
+			      <Country>GNQ</Country>
+			      <Country>EST</Country>
+			      <Country>SWZ</Country>
+			      <Country>ETH</Country>
+			      <Country>FJI</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>GAB</Country>
+			      <Country>GMB</Country>
+			      <Country>GEO</Country>
+			      <Country>DEU</Country>
+			      <Country>GHA</Country>
+			      <Country>GRC</Country>
+			      <Country>GRD</Country>
+			      <Country>GTM</Country>
+			      <Country>GIN</Country>
+			      <Country>GNB</Country>
+			      <Country>GUY</Country>
+			      <Country>VAT</Country>
+			      <Country>HND</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>IND</Country>
+			      <Country>IDN</Country>
+			      <Country>IRN</Country>
+			      <Country>IRQ</Country>
+			      <Country>IRL</Country>
+			      <Country>ITA</Country>
+			      <Country>JAM</Country>
+			      <Country>JPN</Country>
+			      <Country>JOR</Country>
+			      <Country>KAZ</Country>
+			      <Country>KEN</Country>
+			      <Country>KWT</Country>
+			      <Country>KGZ</Country>
+			      <Country>LAO</Country>
+			      <Country>LVA</Country>
+			      <Country>LBN</Country>
+			      <Country>LSO</Country>
+			      <Country>LBR</Country>
+			      <Country>LBY</Country>
+			      <Country>LIE</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>MDG</Country>
+			      <Country>MWI</Country>
+			      <Country>MYS</Country>
+			      <Country>MDV</Country>
+			      <Country>MLI</Country>
+			      <Country>MLT</Country>
+			      <Country>MHL</Country>
+			      <Country>MRT</Country>
+			      <Country>MUS</Country>
+			      <Country>MEX</Country>
+			      <Country>MCO</Country>
+			      <Country>MNG</Country>
+			      <Country>MNE</Country>
+			      <Country>MAR</Country>
+			      <Country>MOZ</Country>
+			      <Country>MMR</Country>
+			      <Country>NRU</Country>
+			      <Country>NPL</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NIC</Country>
+			      <Country>NER</Country>
+			      <Country>NGA</Country>
+			      <Country>NIU</Country>
+			      <Country>MKD</Country>
+			      <Country>NOR</Country>
+			      <Country>OMN</Country>
+			      <Country>PAK</Country>
+			      <Country>PLW</Country>
+			      <Country>PAN</Country>
+			      <Country>PNG</Country>
+			      <Country>PRY</Country>
+			      <Country>PER</Country>
+			      <Country>PHL</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>QAT</Country>
+			      <Country>KOR</Country>
+			      <Country>MDA</Country>
+			      <Country>ROU</Country>
+			      <Country>RUS</Country>
+			      <Country>RWA</Country>
+			      <Country>KNA</Country>
+			      <Country>LCA</Country>
+			      <Country>VCT</Country>
+			      <Country>WSM</Country>
+			      <Country>SMR</Country>
+			      <Country>STP</Country>
+			      <Country>SAU</Country>
+			      <Country>SEN</Country>
+			      <Country>SRB</Country>
+			      <Country>SYC</Country>
+			      <Country>SLE</Country>
+			      <Country>SGP</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>SLB</Country>
+			      <Country>ZAF</Country>
+			      <Country>ESP</Country>
+			      <Country>LKA</Country>
+			      <Country>SDN</Country>
+			      <Country>SUR</Country>
+			      <Country>SWE</Country>
+			      <Country>CHE</Country>
+			      <Country>TJK</Country>
+			      <Country>THA</Country>
+			      <Country>TLS</Country>
+			      <Country>TGO</Country>
+			      <Country>TON</Country>
+			      <Country>TTO</Country>
+			      <Country>TUN</Country>
+			      <Country>TUR</Country>
+			      <Country>TKM</Country>
+			      <Country>UGA</Country>
+			      <Country>UKR</Country>
+			      <Country>ARE</Country>
+			      <Country>GBR</Country>
+			      <Country>TZA</Country>
+			      <Country>USA</Country>
+			      <Country>URY</Country>
+			      <Country>UZB</Country>
+			      <Country>VUT</Country>
+			      <Country>VEN</Country>
+			      <Country>VNM</Country>
+			      <Country>YEM</Country>
+			      <Country>ZMB</Country>
+			      <Country>ZWE</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CFCK</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Combined Forces Command Korea</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>KOR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CLFC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Combined Libya Fusion Cell</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CMFC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Combined Maritime Forces Central</TetraDescription>
+		    <Membership dateLastVerified="2022-10-26"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AUS</Country>
+			      <Country>BHR</Country>
+			      <Country>BEL</Country>
+			      <Country>BRA</Country>
+			      <Country>CAN</Country>
+			      <Country>DNK</Country>
+			      <Country>EGY</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>IDN</Country>
+			      <Country>IND</Country>
+			      <Country>ITA</Country>
+			      <Country>JPN</Country>
+			      <Country>JOR</Country>
+			      <Country>KWT</Country>
+			      <Country>MYS</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>PAK</Country>
+			      <Country>PHL</Country>
+			      <Country>PRT</Country>
+			      <Country>QAT</Country>
+			      <Country>SYC</Country>
+			      <Country>SAU</Country>
+			      <Country>SGP</Country>
+			      <Country>ESP</Country>
+			      <Country>KOR</Country>
+			      <Country>THA</Country>
+			      <Country>TUR</Country>
+			      <Country>ARE</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CMFP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Cooperative Maritime Forces Pacific</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>BRN</Country>
+			      <Country>CAN</Country>
+			      <Country>CHL</Country>
+			      <Country>DNK</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>IND</Country>
+			      <Country>IDN</Country>
+			      <Country>ITA</Country>
+			      <Country>JPN</Country>
+			      <Country>MYS</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>PER</Country>
+			      <Country>PHL</Country>
+			      <Country>SGP</Country>
+			      <Country>KOR</Country>
+			      <Country>ESP</Country>
+			      <Country>THA</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CPMT</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Civilian Protection Monitoring Team for Sudan</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>CAN</Country>
+			      <Country>IRL</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CTOC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Countering Transnational Organized Crime</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CWCS</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Chemical Weapons Convention States</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AFG</Country>
+			      <Country>ALB</Country>
+			      <Country>DZA</Country>
+			      <Country>AND</Country>
+			      <Country>AGO</Country>
+			      <Country>ATG</Country>
+			      <Country>ARG</Country>
+			      <Country>ARM</Country>
+			      <Country>AUS</Country>
+			      <Country>AUT</Country>
+			      <Country>AZE</Country>
+			      <Country>BHS</Country>
+			      <Country>BHR</Country>
+			      <Country>BGD</Country>
+			      <Country>BRB</Country>
+			      <Country>BLR</Country>
+			      <Country>BEL</Country>
+			      <Country>BLZ</Country>
+			      <Country>BEN</Country>
+			      <Country>BTN</Country>
+			      <Country>BOL</Country>
+			      <Country>BIH</Country>
+			      <Country>BWA</Country>
+			      <Country>BRA</Country>
+			      <Country>BRN</Country>
+			      <Country>BGR</Country>
+			      <Country>BFA</Country>
+			      <Country>BDI</Country>
+			      <Country>KHM</Country>
+			      <Country>CMR</Country>
+			      <Country>CAN</Country>
+			      <Country>CPV</Country>
+			      <Country>CAF</Country>
+			      <Country>TCD</Country>
+			      <Country>CHL</Country>
+			      <Country>CHN</Country>
+			      <Country>COL</Country>
+			      <Country>COM</Country>
+			      <Country>COG</Country>
+			      <Country>COK</Country>
+			      <Country>CRI</Country>
+			      <Country>CIV</Country>
+			      <Country>HRV</Country>
+			      <Country>CUB</Country>
+			      <Country>CYP</Country>
+			      <Country>CZE</Country>
+			      <Country>COD</Country>
+			      <Country>DNK</Country>
+			      <Country>DJI</Country>
+			      <Country>DMA</Country>
+			      <Country>DOM</Country>
+			      <Country>ECU</Country>
+			      <Country>SLV</Country>
+			      <Country>GNQ</Country>
+			      <Country>ERI</Country>
+			      <Country>EST</Country>
+			      <Country>SWZ</Country>
+			      <Country>ETH</Country>
+			      <Country>FJI</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>GAB</Country>
+			      <Country>GMB</Country>
+			      <Country>GEO</Country>
+			      <Country>DEU</Country>
+			      <Country>GHA</Country>
+			      <Country>GRC</Country>
+			      <Country>GRD</Country>
+			      <Country>GTM</Country>
+			      <Country>GIN</Country>
+			      <Country>GNB</Country>
+			      <Country>GUY</Country>
+			      <Country>HTI</Country>
+			      <Country>VAT</Country>
+			      <Country>HND</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>IND</Country>
+			      <Country>IDN</Country>
+			      <Country>IRN</Country>
+			      <Country>IRQ</Country>
+			      <Country>IRL</Country>
+			      <Country>ITA</Country>
+			      <Country>JAM</Country>
+			      <Country>JPN</Country>
+			      <Country>JOR</Country>
+			      <Country>KAZ</Country>
+			      <Country>KEN</Country>
+			      <Country>KIR</Country>
+			      <Country>KWT</Country>
+			      <Country>KGZ</Country>
+			      <Country>LAO</Country>
+			      <Country>LVA</Country>
+			      <Country>LBN</Country>
+			      <Country>LSO</Country>
+			      <Country>LBR</Country>
+			      <Country>LBY</Country>
+			      <Country>LIE</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>MDG</Country>
+			      <Country>MWI</Country>
+			      <Country>MYS</Country>
+			      <Country>MDV</Country>
+			      <Country>MLI</Country>
+			      <Country>MLT</Country>
+			      <Country>MHL</Country>
+			      <Country>MRT</Country>
+			      <Country>MUS</Country>
+			      <Country>MEX</Country>
+			      <Country>FSM</Country>
+			      <Country>MCO</Country>
+			      <Country>MNG</Country>
+			      <Country>MNE</Country>
+			      <Country>MAR</Country>
+			      <Country>MOZ</Country>
+			      <Country>MMR</Country>
+			      <Country>NAM</Country>
+			      <Country>NRU</Country>
+			      <Country>NPL</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NIC</Country>
+			      <Country>NER</Country>
+			      <Country>NGA</Country>
+			      <Country>NIU</Country>
+			      <Country>MKD</Country>
+			      <Country>NOR</Country>
+			      <Country>OMN</Country>
+			      <Country>PAK</Country>
+			      <Country>PLW</Country>
+			      <Country>PAN</Country>
+			      <Country>PNG</Country>
+			      <Country>PRY</Country>
+			      <Country>PER</Country>
+			      <Country>PHL</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>QAT</Country>
+			      <Country>KOR</Country>
+			      <Country>MDA</Country>
+			      <Country>ROU</Country>
+			      <Country>RUS</Country>
+			      <Country>RWA</Country>
+			      <Country>KNA</Country>
+			      <Country>LCA</Country>
+			      <Country>VCT</Country>
+			      <Country>WSM</Country>
+			      <Country>SMR</Country>
+			      <Country>STP</Country>
+			      <Country>SAU</Country>
+			      <Country>SEN</Country>
+			      <Country>SRB</Country>
+			      <Country>SYC</Country>
+			      <Country>SLE</Country>
+			      <Country>SGP</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>SLB</Country>
+			      <Country>SOM</Country>
+			      <Country>ZAF</Country>
+			      <Country>ESP</Country>
+			      <Country>LKA</Country>
+			      <Country>SDN</Country>
+			      <Country>SUR</Country>
+			      <Country>SWE</Country>
+			      <Country>CHE</Country>
+			      <Country>SYR</Country>
+			      <Country>TJK</Country>
+			      <Country>THA</Country>
+			      <Country>TLS</Country>
+			      <Country>TGO</Country>
+			      <Country>TON</Country>
+			      <Country>TTO</Country>
+			      <Country>TUN</Country>
+			      <Country>TUR</Country>
+			      <Country>TKM</Country>
+			      <Country>TUV</Country>
+			      <Country>UGA</Country>
+			      <Country>UKR</Country>
+			      <Country>ARE</Country>
+			      <Country>GBR</Country>
+			      <Country>TZA</Country>
+			      <Country>USA</Country>
+			      <Country>URY</Country>
+			      <Country>UZB</Country>
+			      <Country>VUT</Country>
+			      <Country>VEN</Country>
+			      <Country>VNM</Country>
+			      <Country>YEM</Country>
+			      <Country>ZMB</Country>
+			      <Country>ZWE</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">EU</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">European Union</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">FRME</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Counter Violent Extremist Organizations Framework Partners</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>BEL</Country>
+			      <Country>CAN</Country>
+			      <Country>DNK</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>ITA</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>ESP</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">FVEY</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">FIVE EYES</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>CAN</Country>
+			      <Country>NZL</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:ownerProducer="USA" ism:classification="U">GCCH</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Gulf Cooperation Council</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">GFNX</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Global Foreign Terrorist Fighter Network Exchange</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">GMIF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Global Maritime Interception Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>JPN</Country>
+			      <Country>NZL</Country>
+			      <Country>USA</Country>
+			      <Organization>NATO</Organization>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">IMSC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">International Maritime Security Construct</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/> 
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">IMSP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">INDOPACOM Multinational Strategic Partners</TetraDescription>		
+		    <Membership dateLastVerified="2022-05-09"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>CAN</Country>
+			      <Country>FRA</Country>			
+			      <Country>JPN</Country>			
+			      <Country>NZL</Country>
+			      <Country>PHL</Country>
+			      <Country>KOR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>			
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">IPMC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">INDO PACIFIC Maritime Call</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/> 
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">IRKS</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Inherent Resolve Kinetic Support</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">ISSG</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">International Syria Support Group</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">KFOR</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Stabilization Forces in Kosovo</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MESF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Middle East Stability Force</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MGEU</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multinational GEOINT Europe</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MLEC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multi-Lateral Enduring Contingency</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">			
+			      <Country>AUS</Country>
+			      <Country>CAN</Country>
+			      <Country>FRA</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>ESP</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA"> 
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MNTF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multinational Task Force</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA"> 
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NACT</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">North African Counter-Terrorism Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NATO</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">North Atlantic Treaty Organization</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>ALB</Country>
+			      <Country>BEL</Country>
+			      <Country>BGR</Country>
+			      <Country>CAN</Country>
+			      <Country>HRV</Country>
+			      <Country>CZE</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>ITA</Country>
+			      <Country>LVA</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>MKD</Country>
+			      <Country>MNE</Country>
+			      <Country>NLD</Country>
+			      <Country>NOR</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>ROU</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>ESP</Country>
+			      <Country>TUR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NCFE</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">NATO CFE Treaty on Conventional Armed Forces in Europe</TetraDescription>
+		    <Notes ism:classification="U" ism:ownerProducer="USA"> Per CIA, the code should be expanded to its individual members for the purposes of common country banner line roll-up. 
+			Treaty-related information releasable only to those NATO nations that are States Parties to the Treaty on Conventional Armed Forces in Europe (CFE).</Notes>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>BEL</Country>
+			      <Country>BGR</Country>
+			      <Country>CAN</Country>
+			      <Country>CZE</Country>
+			      <Country>DNK</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>ITA</Country>
+			      <Country>LUX</Country>
+			      <Country>NLD</Country>
+			      <Country>NOR</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>ROU</Country>
+			      <Country>SVK</Country>
+			      <Country>ESP</Country>
+			      <Country>TUR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NKIC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">North Korea Intelligence Coalition</TetraDescription>
+		    <Notes ism:classification="U" ism:ownerProducer="USA">
+			This tetragraph is authorized for use in the DIA-sponsored NKIC exchange only.
+			Please contact DIA/OPE for implementation guidance.
+		</Notes>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NRDC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">NORDIC</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">NSG</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Nuclear Suppliers' Group</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>ARG</Country>
+			      <Country>AUS</Country>
+			      <Country>AUT</Country>
+			      <Country>BLR</Country>
+			      <Country>BEL</Country>
+			      <Country>BRA</Country>
+			      <Country>BGR</Country>
+			      <Country>CAN</Country>
+			      <Country>CHN</Country>
+			      <Country>HRV</Country>
+			      <Country>CYP</Country>
+			      <Country>CZE</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>HUN</Country>
+			      <Country>IRL</Country>
+			      <Country>ITA</Country>
+			      <Country>JPN</Country>
+			      <Country>KAZ</Country>
+			      <Country>KOR</Country>
+			      <Country>LVA</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>MLT</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>ROU</Country>
+			      <Country>RUS</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>ZAF</Country>
+			      <Country>ESP</Country>
+			      <Country>SWE</Country>
+			      <Country>CHE</Country>
+			      <Country>TUR</Country>
+			      <Country>UKR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>	
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">OSTY</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Open Skies Treaty</TetraDescription>
+		    <Notes ism:classification="U" ism:ownerProducer="USA"> Per NGA, the code should be expanded to its individual members for the purposes of common country banner line roll-up.</Notes>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>BLR</Country>
+			      <Country>BEL</Country>
+			      <Country>BIH</Country>
+			      <Country>BGR</Country>
+			      <Country>CAN</Country>
+			      <Country>HRV</Country>
+			      <Country>CZE</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country>
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>GEO</Country>
+			      <Country>DEU</Country>
+			      <Country>GRC</Country>
+			      <Country>GBR</Country>
+			      <Country>HUN</Country>
+			      <Country>ISL</Country>
+			      <Country>ITA</Country>
+			      <Country>LVA</Country>
+			      <Country>LTU</Country>
+			      <Country>LUX</Country>
+			      <Country>NLD</Country>
+			      <Country>NOR</Country>
+			      <Country>POL</Country>
+			      <Country>PRT</Country>
+			      <Country>ROU</Country>
+			      <Country>RUS</Country>
+			      <Country>SVK</Country>
+			      <Country>SVN</Country>
+			      <Country>ESP</Country>
+			      <Country>SWE</Country>
+			      <Country>TUR</Country>
+			      <Country>UKR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:ownerProducer="USA" ism:classification="U">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">PAWA</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Partnership for Actions in West Africa</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AUT</Country> 
+			      <Country>BEL</Country>
+			      <Country>CAN</Country>
+			      <Country>DNK</Country>
+			      <Country>EST</Country> 
+			      <Country>FIN</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>ITA</Country>
+			      <Country>NLD</Country>
+			      <Country>NZL</Country>
+			      <Country>NOR</Country>
+			      <Country>PRT</Country>
+			      <Country>ESP</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:ownerProducer="USA" ism:classification="U">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">PSMX</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Pacific Security Monitoring Exchange</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>AUS</Country> 
+			      <Country>CAN</Country>
+			      <Country>FRA</Country>
+			      <Country>DEU</Country>
+			      <Country>JPN</Country> 
+			      <Country>NZL</Country>
+			      <Country>KOR</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">RISC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Russia Intelligence Sharing Coalition</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="No" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">SOFP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Special Operations Forces Partners</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">TEYE</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">THREE EYES</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">		
+			      <Country>AUS</Country>
+			      <Country>GBR</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">TFTC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Terrorist Financing Targeting Center</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">		
+			      <Country>BHR</Country>
+			      <Country>KWT</Country>
+			      <Country>OMN</Country>
+			      <Country>QAT</Country>
+			      <Country>SAU</Country>
+			      <Country>ARE</Country>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph> 
+	  <Tetragraph decomposable="Yes" ism:classification="U" ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">UNCK</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">United Nations Command, Korea</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Country>USA</Country>
+			      <Country>AUS</Country>
+			      <Country>BEL</Country>
+			      <Country>CAN</Country>
+			      <Country>COL</Country>
+			      <Country>DNK</Country>
+			      <Country>FRA</Country>
+			      <Country>GRC</Country>
+			      <Country>ITA</Country>
+			      <Country>NLD</Country>
+			      <Country>NOR</Country>
+			      <Country>NZL</Country>
+			      <Country>PHL</Country>
+			      <Country>ZAF</Country>
+			      <Country>KOR</Country>
+			      <Country>THA</Country>
+			      <Country>TUR</Country>
+			      <Country>GBR</Country>
+		    </Membership>
+	  </Tetragraph>	
+	  <Tetragraph decomposable="NA"
+               deprecated="2005-12-12"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">AOSC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Athens Olympics Security Coalition</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>	
+	  <Tetragraph decomposable="NA"
+               deprecated="2015-10-27"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">BHTF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Boko Haram Task Force</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Organization>MNTF</Organization>
+			      <Country>USA</Country>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">CFOD</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Coalition Forces Odyssey Dawn</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:ownerProducer="USA" ism:classification="U">CFUP</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Coalition Forces Unified Protector</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:ownerProducer="USA" ism:classification="U">ECTF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">European Counter-Terrorism Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">EFOR</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">European Union Stabilization Forces in Bosnia</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>	
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">EUDA</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">European Union DARFUR</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Description ism:classification="U" ism:ownerProducer="USA">As of 15 March 2016, disclosure request 
+				should be referred to the original classification authority for a disclosure decision.</Description>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">GCTF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Global Counter-Terrorism Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">IESC</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">International Events Security Coalition</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">ISAF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">International Security Assistance Force for Afghanistan</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>	
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MCFI</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multinational Coalition Forces-Iraq</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MIFH</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multinational Interim Force Haiti</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">MPFL</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Multinational Peacekeeping Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Description ism:classification="U" ism:ownerProducer="USA">As of 15 March 2016, foreign disclosure request 
+				should be referred to the original classification authority for the disclosure decision.</Description>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">OSAG</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Olympic Security Advisory Group</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">PGMF</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Persian Gulf Multinational Forces</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <Description ism:classification="U" ism:ownerProducer="USA">As of 15 March 2016, any derivative
+				foreign disclosure request should be referred to the original classification authority for the disclosure decision.</Description>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2021-11-03"
+               ism:ownerProducer="USA"
+               ism:classification="U">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">RSMA</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Resolute Support Mission Afghanistan</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2016-03-17"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">SFOR</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">Stabilization Force</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+	  <Tetragraph decomposable="NA"
+               deprecated="2021-11-03"
+               ism:classification="U"
+               ism:ownerProducer="USA">
+		    <TetraToken ism:classification="U" ism:ownerProducer="USA">SPAA</TetraToken>
+		    <TetraDescription ism:classification="U" ism:ownerProducer="USA">SOF Planning Activities in Afghanistan (also called "11-Eyes")</TetraDescription>
+		    <Membership dateLastVerified="2022-11-02"
+                  ism:classification="U"
+                  ism:ownerProducer="USA">
+			      <MembershipSupressed ism:classification="U" ism:ownerProducer="USA"/>
+		    </Membership>
+	  </Tetragraph>
+</Tetragraphs>
