@@ -59,19 +59,76 @@ pub struct MarkingForm {
     pub portion: &'static str,
 }
 
-/// All markings where banner abbreviation ≠ portion mark.
+/// All markings where the long Marking Title differs from the banner
+/// abbreviation or portion mark.
 ///
 /// Source: CAPCO Register (Implementation Manual for the IC, current edition).
 ///
 /// Sections covered:
-/// - §8  Dissemination Control Markings
-/// - §9  Non-IC Dissemination Control Markings
-/// - §6  Atomic Energy Act Information Markings (subset with differing forms)
+/// - §H.4  SCI Control System Markings (long-title forms only)
+/// - §H.6  Atomic Energy Act Information Markings
+/// - §H.8  Dissemination Control Markings
+/// - §H.9  Non-IC Dissemination Control Markings
 ///
-/// Markings where banner = portion (e.g., FOUO, FISA, RELIDO, HCS, TK) are
-/// intentionally omitted — they don't need form correction.
+/// Two kinds of entries are included:
+///
+/// 1. **Differing-form entries** (`title != banner || banner != portion`): E001
+///    (banner uses portion abbreviation) and E009 (portion uses banner expansion)
+///    need these to detect and correct cross-form usage.
+///
+/// 2. **Same-form entries** (`banner == portion` but `title != banner`): S001
+///    fires when it sees the long Marking Title used in a banner line instead
+///    of the authorized abbreviation (e.g. "FOR OFFICIAL USE ONLY" → "FOUO").
+///    Without an entry here, S001 cannot detect the substitution opportunity.
+///    `title == banner` entries (e.g. `DEA SENSITIVE`) are still included when
+///    the portion mark differs, but S001 skips them (no substitution possible).
 pub static MARKING_FORMS: &[MarkingForm] = &[
-    // §8 Dissemination Control Markings
+    // §H.4 SCI Control System Markings — long-title forms.
+    // CAPCO-2016 §H.4 p73 defines full names for control systems. Banner and
+    // portion forms are identical (e.g. TK, HCS, SI), so these are same-form
+    // entries; only S001 uses them. Titles verified against §H.4 headings.
+    MarkingForm {
+        title: "TALENT KEYHOLE",
+        banner: "TK",
+        portion: "TK",
+    },
+    // §H.6 Atomic Energy Act Information Markings.
+    // Long Marking Titles from CAPCO-2016 §H.6 p113–122. Banner and portion
+    // forms are identical for RD, FRD, TFNI, CNWDI — same-form entries for
+    // S001 detection. SIGMA [##] ↔ SG [##] is parametric and handled
+    // separately by the parser's pattern-matching path, not this table.
+    // DOD/DOE UCNI have differing forms and are entries of the first kind.
+    MarkingForm {
+        title: "RESTRICTED DATA",
+        banner: "RD",
+        portion: "RD",
+    },
+    MarkingForm {
+        title: "FORMERLY RESTRICTED DATA",
+        banner: "FRD",
+        portion: "FRD",
+    },
+    MarkingForm {
+        title: "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
+        banner: "TFNI",
+        portion: "TFNI",
+    },
+    MarkingForm {
+        title: "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION",
+        banner: "CNWDI",
+        portion: "CNWDI",
+    },
+    MarkingForm {
+        title: "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
+        banner: "DOD UCNI",
+        portion: "DCNI",
+    },
+    MarkingForm {
+        title: "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
+        banner: "DOE UCNI",
+        portion: "UCNI",
+    },
+    // §H.8 Dissemination Control Markings.
     //
     // Titles below are transcribed from CAPCO-2016 §G.1 Table 4 (lines
     // 821–841). Each row uses columns (Title | Abbreviation | Portion).
@@ -113,7 +170,25 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         banner: "DEA SENSITIVE",
         portion: "DSEN",
     },
-    // §9 Non-IC Dissemination Control Markings
+    // §H.8 same-form entries: banner == portion, but title differs.
+    // S001 fires when a banner line spells out the Marking Title instead
+    // of the authorized abbreviation. §G.1 Table 4 / §H.8 p157–171.
+    MarkingForm {
+        title: "FOR OFFICIAL USE ONLY",
+        banner: "FOUO",
+        portion: "FOUO",
+    },
+    MarkingForm {
+        title: "RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
+        banner: "RELIDO",
+        portion: "RELIDO",
+    },
+    MarkingForm {
+        title: "FOREIGN INTELLIGENCE SURVEILLANCE ACT",
+        banner: "FISA",
+        portion: "FISA",
+    },
+    // §H.9 Non-IC Dissemination Control Markings.
     MarkingForm {
         title: "LIMITED DISTRIBUTION",
         banner: "LIMDIS",
@@ -129,29 +204,32 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         banner: "NODIS",
         portion: "ND",
     },
+    // §H.9 same-form entries: banner == portion, but title differs.
+    MarkingForm {
+        title: "SENSITIVE BUT UNCLASSIFIED",
+        banner: "SBU",
+        portion: "SBU",
+    },
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED NOFORN",
         banner: "SBU NOFORN",
         portion: "SBU-NF",
     },
     MarkingForm {
+        title: "LAW ENFORCEMENT SENSITIVE",
+        banner: "LES",
+        portion: "LES",
+    },
+    MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE NOFORN",
         banner: "LES NOFORN",
         portion: "LES-NF",
     },
-    // §6 Atomic Energy Act Information Markings (differing forms only)
     MarkingForm {
-        title: "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
-        banner: "DOD UCNI",
-        portion: "DCNI",
+        title: "SENSITIVE SECURITY INFORMATION",
+        banner: "SSI",
+        portion: "SSI",
     },
-    MarkingForm {
-        title: "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
-        banner: "DOE UCNI",
-        portion: "UCNI",
-    },
-    // Note: SIGMA [##] ↔ SG [##] is parametric and handled separately
-    // by the parser's pattern-matching path, not this static table.
 ];
 
 /// Look up the portion-form abbreviation for a banner-form string.
@@ -160,12 +238,15 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
 /// - E009 (portion-abbreviation): detects banner forms in portions, suggests abbreviation
 /// - Parser (`parse_dissem_full_form`): accepts banner-form input and maps to CVE code
 ///
-/// Returns `None` if the input is not a known banner form (i.e., it's already
-/// the portion form, or it's not a recognized marking).
+/// Returns `None` if the input is not a known banner form, or if it is a
+/// same-form entry (`banner == portion`, e.g., `NOFORN` is already both banner
+/// and portion for `NF`→`NOFORN` but `NOFORN` itself needs no substitution).
+/// Same-form entries (`LES`, `SBU`, `FOUO`, etc.) return `None` here; the
+/// parser's `parse_dissem_full_form` path handles them directly.
 pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
-        .find(|f| f.banner == banner)
+        .find(|f| f.banner == banner && f.banner != f.portion)
         .map(|f| f.portion)
 }
 
@@ -174,12 +255,14 @@ pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
 /// Used by:
 /// - E001 (portion-mark-in-banner): detects portion marks used in banner lines, suggests banner abbreviation
 ///
-/// Returns `None` if the input is not a known portion form that has a distinct
-/// banner form (i.e., it's already the banner form, or banner = portion).
+/// Returns `None` if the input is not a known portion form that has a *distinct*
+/// banner form (`banner != portion`). Same-form entries (e.g., `LES`, `SBU`,
+/// `FOUO`, `FISA`, `RELIDO`) return `None` because there is no substitution to
+/// make — E001 must not fire a no-op fix for them.
 pub fn portion_to_banner(portion: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
-        .find(|f| f.portion == portion)
+        .find(|f| f.portion == portion && f.banner != f.portion)
         .map(|f| f.banner)
 }
 
@@ -309,13 +392,22 @@ mod tests {
     }
 
     #[test]
-    fn banner_and_portion_never_equal() {
+    fn banner_and_portion_forms_are_valid() {
         for f in MARKING_FORMS {
-            assert_ne!(
-                f.banner, f.portion,
-                "marking form has identical banner and portion: {:?}",
-                f.banner
-            );
+            if f.banner != f.portion {
+                // Differing-form entries: E001/E009 use cases. The banner and
+                // portion abbreviations are distinct (e.g. NOFORN/NF, ORCON/OC).
+                // Nothing further to assert here — the differ is the invariant.
+            } else {
+                // Same-form entries: S001 use case only. Banner and portion
+                // abbreviations are identical, but the long title MUST differ
+                // from the abbreviation so S001 has something to detect.
+                assert_ne!(
+                    f.title, f.banner,
+                    "same-form entry has title equal to banner (S001 would never fire): {:?}",
+                    f.banner
+                );
+            }
         }
     }
 
