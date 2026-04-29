@@ -188,7 +188,7 @@ mod tests {
         let result = LintResult {
             diagnostics: vec![
                 Diagnostic::new(
-                    RuleId::new("E034"),
+                    RuleId::new("W034"),
                     Severity::Info,
                     Span::new(0, 0),
                     "info one",
@@ -196,7 +196,7 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("E034"),
+                    RuleId::new("W034"),
                     Severity::Info,
                     Span::new(0, 0),
                     "info two",

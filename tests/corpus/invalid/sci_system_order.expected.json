@@ -1,7 +1,7 @@
 {
-  "_note": "E032 fires on system order (SI before 123); E034 fires on custom control '123' (Severity::Off by default).",
+  "_note": "E032 fires on system order (SI before 123); W034 fires on custom control '123' (Severity::Off by default).",
   "diagnostics": [
     {"rule": "E032", "span": {"start": 12, "end": 18}},
-    {"rule": "E034", "span": {"start": 15, "end": 18}}
+    {"rule": "W034", "span": {"start": 15, "end": 18}}
   ]
 }

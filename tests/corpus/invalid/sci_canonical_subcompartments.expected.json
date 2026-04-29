@@ -1,6 +1,6 @@
 {
-  "_note": "Canonical CAPCO-2016 §A.6 p16 example. Uses custom control '123' which triggers E034 (Severity::Off by default — surfaced only by harnesses that bypass severity gating).",
+  "_note": "Canonical CAPCO-2016 §A.6 p16 example. Uses custom control '123' which triggers W034 (Severity::Off by default — surfaced only by harnesses that bypass severity gating).",
   "diagnostics": [
-    {"rule": "E034", "span": {"start": 12, "end": 15}}
+    {"rule": "W034", "span": {"start": 12, "end": 15}}
   ]
 }

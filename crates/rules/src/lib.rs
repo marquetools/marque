@@ -92,7 +92,7 @@ impl std::fmt::Display for RuleId {
 /// means "this might be wrong"; `Info` means "FYI, probably
 /// intentional but worth surfacing"; `Suggest` means "I have a
 /// candidate replacement but I'm not confident enough to auto-apply
-/// it — eyes on it." Rules like `E034 sci-custom-control-info`
+/// it — eyes on it." Rules like `W034 sci-custom-control-info`
 /// (which reports unpublished SCI control systems — legitimate per
 /// CAPCO but rare) are natural `Info` candidates; rules like `S004
 /// rel-to-trigraph-suggest` (which proposes a higher-prior trigraph

@@ -43,7 +43,7 @@
 //!   W003 = non-IC dissem in classified banner
 //!   E032 = SCI control-system sort order (spec 003-sci-compartments)
 //!   E033 = SCI compartment / sub-compartment sort order
-//!   E034 = SCI custom (unpublished) control-system audit visibility
+//!   W034 = SCI custom (unpublished) control-system audit visibility
 //!   E035 = SCI banner rollup (missing compartments from portions)
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
 //!   E037 = NODIS and EXDIS must not coexist (T035c-21 PR-A)
@@ -4822,7 +4822,7 @@ impl Rule for SciCompartmentOrderRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E034 — SCI custom-control audit visibility
+// Rule: W034 — SCI custom-control audit visibility
 // ---------------------------------------------------------------------------
 
 /// Per CAPCO-2016 §A.6 p16 + §H.4 p61: unpublished (agency-allocated) SCI
@@ -4840,7 +4840,7 @@ impl Rule for SciCompartmentOrderRule {
 /// allocation. `Warn` reflects that rarity without making it
 /// error-level by default. (Note: `Warn` still produces a non-zero
 /// CLI exit via `EX_DIAG_WARN`, so orgs that treat any warning as
-/// CI-blocking should configure `E034 = "info"` if they want
+/// CI-blocking should configure `W034 = "info"` if they want
 /// audit-visibility only.)
 ///
 /// T035c-2 landed the `Severity::Info` variant and dropped the earlier
@@ -4849,13 +4849,13 @@ impl Rule for SciCompartmentOrderRule {
 /// unrepresentable — and relied on the test harness bypassing
 /// engine-level severity filtering to observe the diagnostics. That was
 /// a constitutional-invariant violation. Users who want informational
-/// (non-warn) treatment can configure `E034 = "info"` in `.marque.toml`;
-/// users who want it silent can configure `E034 = "off"`.
+/// (non-warn) treatment can configure `W034 = "info"` in `.marque.toml`;
+/// users who want it silent can configure `W034 = "off"`.
 struct SciCustomControlInfoRule;
 
 impl Rule for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E034")
+        RuleId::new("W034")
     }
     fn name(&self) -> &'static str {
         "sci-custom-control-info"
@@ -5703,7 +5703,7 @@ mod tests {
         assert!(ids.contains(&"E031"));
         assert!(ids.contains(&"E032"));
         assert!(ids.contains(&"E033"));
-        assert!(ids.contains(&"E034"));
+        assert!(ids.contains(&"W034"));
         assert!(ids.contains(&"E035"));
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
@@ -9257,33 +9257,33 @@ mod tests {
         );
     }
 
-    // --- E034: SCI custom control info ---
+    // --- W034: SCI custom control info ---
 
     #[test]
     fn e034_fires_on_custom_control_via_structural_path() {
         // `123/SI-G` routes through the structural subparser; the `123` head
-        // creates a Custom-system SciMarking. E034 surfaces that for audit
+        // creates a Custom-system SciMarking. W034 surfaces that for audit
         // visibility (severity Off by default, so the engine gates it).
         let diags = lint_banner("TOP SECRET//123/SI-G//NOFORN");
-        let e034: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E034").collect();
+        let w034: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W034").collect();
         assert_eq!(
-            e034.len(),
+            w034.len(),
             1,
-            "E034 must fire on custom control 123: {diags:?}"
+            "W034 must fire on custom control 123: {diags:?}"
         );
-        assert!(e034[0].fix.is_none(), "E034 must not propose a fix");
-        // T035c-2: E034 now defaults to Warn (was Off with a harness
+        assert!(w034[0].fix.is_none(), "W034 must not propose a fix");
+        // T035c-2: W034 now defaults to Warn (was Off with a harness
         // workaround). Info is available as a config-opt-in.
-        assert_eq!(e034[0].severity, marque_rules::Severity::Warn);
-        assert!(e034[0].message.contains("unpublished SCI control system"));
+        assert_eq!(w034[0].severity, marque_rules::Severity::Warn);
+        assert!(w034[0].message.contains("unpublished SCI control system"));
     }
 
     #[test]
     fn e034_does_not_fire_on_published_only() {
         let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E034"),
-            "E034 must not fire on SI-G alone: {diags:?}"
+            diags.iter().all(|d| d.rule.as_str() != "W034"),
+            "W034 must not fire on SI-G alone: {diags:?}"
         );
     }
 

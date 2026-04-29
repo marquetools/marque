@@ -264,6 +264,44 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
     tokens
 }
 
+/// Detects non-US classification blocks per CAPCO-2016 §H.7 — patterns like
+/// `ITA RESTRICTED`, `FRA R`, `GBR DEU TS`. These are {trigraph}+ {class}
+/// combinations where each trigraph is exactly 3 uppercase ASCII letters and
+/// the trailing word is a known US classification abbreviation or full word.
+/// The CVE vocabulary does not enumerate these compound tokens; the parser
+/// handles them structurally, so the vocabulary-bounded check does not apply.
+fn is_non_us_classification_block(block: &str) -> bool {
+    const US_CLASS: &[&str] = &[
+        "TOP SECRET", "TS", "SECRET", "S", "CONFIDENTIAL", "C",
+        "RESTRICTED", "R", "UNCLASSIFIED", "U",
+    ];
+    let parts: Vec<&str> = block.split_ascii_whitespace().collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    // Last part must be a US classification word/abbreviation; "TOP SECRET"
+    // occupies two parts so check both single and double suffixes.
+    let (trigraphs, class_ok) = if parts.len() >= 3
+        && matches!(
+            *parts.last().unwrap(),
+            "SECRET" | "CONFIDENTIAL" | "RESTRICTED" | "UNCLASSIFIED"
+        )
+        && *parts.get(parts.len() - 2).unwrap() == "TOP"
+    {
+        (&parts[..parts.len() - 2], true)
+    } else {
+        let last = *parts.last().unwrap();
+        (&parts[..parts.len() - 1], US_CLASS.contains(&last))
+    };
+    if !class_ok || trigraphs.is_empty() {
+        return false;
+    }
+    // All remaining parts must be 3-letter uppercase-ASCII country trigraphs.
+    trigraphs
+        .iter()
+        .all(|t| t.len() == 3 && t.chars().all(|c| c.is_ascii_uppercase()))
+}
+
 /// Detects structurally-formed SCI tokens (spec 003-sci-compartments) like
 /// `SI-G ABCD`, `HCS-P INTEL OPS`, `SI-G ABCD DEFG-MMM AACD`. These are
 /// structurally parsed rather than CVE-matched, so the vocabulary-bounded
@@ -357,6 +395,12 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 
                 for token in sub_tokens {
                     if token.is_empty() {
+                        continue;
+                    }
+                    // Skip non-US classification blocks (CAPCO-2016 §H.7):
+                    // `{trigraph}+ {classification}` patterns like `ITA RESTRICTED`
+                    // or `FRA R` are structurally parsed, not CVE-enumerated.
+                    if is_non_us_classification_block(token) {
                         continue;
                     }
                     // Skip structural SCI blocks (spec 003-sci-compartments):

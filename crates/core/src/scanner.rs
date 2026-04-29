@@ -103,15 +103,22 @@ impl Scanner {
 
     fn scan_banners(source: &[u8], out: &mut Vec<MarkingCandidate>) {
         // Classification prefixes that can start a banner line.
+        // Full-form US classifications are listed first. Abbreviated US forms
+        // (`TS//`, `S//`, `C//`, `U//`) are included so rules like E001 (portion
+        // abbreviation in banner context) can fire on abbreviated banners.
         // `//` detects non-US classifications (FGI, NATO, JOINT) where the
         // US classification slot is empty. `RESTRICTED` supports foreign-origin
         // markings with the RESTRICTED level.
         const BANNER_PREFIXES: &[&[u8]] = &[
             b"TOP SECRET",
+            b"TS//",
             b"SECRET",
+            b"S//",
             b"CONFIDENTIAL",
+            b"C//",
             b"RESTRICTED",
             b"UNCLASSIFIED",
+            b"U//",
             b"//",
         ];
 
