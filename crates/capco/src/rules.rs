@@ -8924,6 +8924,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn e014_does_not_fire_when_joint_country_covered_by_fvey_tetragraph() {
+        // GBR is a FVEY member; REL TO USA, FVEY implicitly covers GBR.
+        // §H.8 p145 defines tetragraphs as collective references to their
+        // constituent trigraphs.
+        let diags = lint_banner("//JOINT S GBR USA//REL TO USA, FVEY");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E014"),
+            "E014 must not fire when JOINT country is covered by FVEY: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e014_does_not_fire_when_all_five_eyes_in_joint_covered_by_fvey() {
+        // All five FVEY members in JOINT; FVEY alone covers them all.
+        let diags = lint_banner("//JOINT S AUS CAN GBR NZL USA//REL TO USA, FVEY");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E014"),
+            "E014 must not fire when all JOINT countries covered by FVEY: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e014_still_fires_when_joint_country_not_covered_by_tetragraph() {
+        // DEU is not a FVEY member; REL TO USA, FVEY does not cover DEU.
+        let diags = lint_banner("//JOINT S DEU USA//REL TO USA, FVEY");
+        let e014: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E014").collect();
+        assert_eq!(
+            e014.len(),
+            1,
+            "E014 must still fire when a JOINT country is not in any REL TO tetragraph: {diags:?}"
+        );
+        assert!(e014[0].message.contains("DEU"));
+    }
+
     // --- E015: Non-US without dissem ---
 
     #[test]

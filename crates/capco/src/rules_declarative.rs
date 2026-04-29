@@ -370,7 +370,7 @@ impl Rule for DeclarativeJointRelToRule {
         let missing: Vec<&str> = joint
             .countries
             .iter()
-            .filter(|c| !attrs.rel_to.contains(c))
+            .filter(|c| !crate::scheme::rel_to_covers(&attrs.rel_to, c.as_str()))
             .map(|c| c.as_str())
             .collect();
         if missing.is_empty() {
