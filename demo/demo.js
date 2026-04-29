@@ -67,18 +67,18 @@ const AUTOPLAY_IDLE_MS = 6_000;
 const AUTOPLAY_CHAR_MS = 70;
 const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
-  'Try typing — for example: This is a (sercet//noforn) test memo.';
+  'Type to begin — the engine corrects, lints, and audits as you write.';
 
 // Mutable: bound to the slider in the side rail. Changing this re-issues a
 // fix request so the user can watch how few diagnostics actually drop out
 // when the bar is raised — that's the robustness story.
+//
+// The threshold also gates which recognizer the worker uses:
+//   threshold == 1.0 → strict header-only recognizer (`fix`)
+//   threshold <  1.0 → Phase D probabilistic recovery (`fix_deep_scan`)
+// No separate toggle — accepting any sub-1.0 fix means accepting decoder
+// posteriors, so the slider is the single dial.
 let currentThreshold = 0.0;
-
-// Mutable: bound to the deep-scan toggle in the side rail. When true, the
-// worker calls `fix_deep_scan` (Phase D probabilistic recognizer) instead of
-// strict `fix`. Mangled markings recover via the decoder; audit records carry
-// V2 provenance (recognition × rule axes, runner_up_ratio, features).
-let deepScanMode = false;
 
 // Autoplay script: a short representative passage that exercises typo
 // correction (SERCET → SECRET → S), portion abbreviation, and banner
@@ -242,81 +242,146 @@ function prependAuditEntry(record, stream, emptyEl) {
     stream.removeChild(emptyEl);
   }
 
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  const timeStr = `${hh}:${mm}:${ss}`;
+  // Prefer the engine's RFC3339 timestamp from the audit record. Fall back
+  // to the wall clock if the WASM emitted a V0 record without it.
+  const ts = parseAuditTimestamp(record.timestamp);
+  const timeStr = formatAuditTime(ts);
 
-  const sourceLabel = record.source === 'CorrectionsMap' ? 'corrections-map'
-    : record.source === 'BuiltinRule'    ? 'rule'
-    : record.source === 'MigrationTable' ? 'migration'
-    : record.source === 'DecoderPosterior' ? 'decoder'
-    : String(record.source).toLowerCase();
-
+  const sourceLabel = formatAuditSource(record.source);
   const pct = Math.round((record.confidence ?? 1) * 100);
+  const startOff = record.span?.start;
+  const endOff   = record.span?.end;
+  const hasSpan  = Number.isInteger(startOff) && Number.isInteger(endOff);
 
-  const entry = document.createElement('div');
+  const entry = document.createElement('article');
   entry.className = 'audit-entry';
   entry.setAttribute('role', 'log');
 
-  const fields = [
-    ['audit-time',        timeStr],
-    ['audit-rule',        record.rule],
-    ['audit-original',    record.original],
-    ['audit-arrow',       '→'],
-    ['audit-replacement', record.replacement],
-    ['audit-source',      sourceLabel],
-    ['audit-confidence',  `${pct}%`],
-  ];
-  for (const [cls, text] of fields) {
-    const span = document.createElement('span');
-    span.className = cls;
-    span.textContent = text;
-    entry.appendChild(span);
+  // ── Row 1: timestamp · rule · source · span · confidence ──────────────
+  const headRow = document.createElement('div');
+  headRow.className = 'audit-row audit-head';
+
+  const timeEl = document.createElement('span');
+  timeEl.className = 'audit-time';
+  timeEl.textContent = timeStr;
+  headRow.appendChild(timeEl);
+
+  const ruleEl = document.createElement('span');
+  ruleEl.className = 'audit-rule';
+  ruleEl.textContent = record.rule;
+  headRow.appendChild(ruleEl);
+
+  const sourceEl = document.createElement('span');
+  sourceEl.className = 'audit-source';
+  sourceEl.textContent = sourceLabel;
+  headRow.appendChild(sourceEl);
+
+  if (hasSpan) {
+    const spanEl = document.createElement('span');
+    spanEl.className = 'audit-span';
+    spanEl.textContent = `span ${startOff}..${endOff}`;
+    headRow.appendChild(spanEl);
   }
 
-  // Phase D provenance — V2 audit schema. Surface recognition score and
-  // runner-up posterior margin when present (deep-scan path only).
+  const spacer = document.createElement('span');
+  spacer.className = 'audit-spacer';
+  headRow.appendChild(spacer);
+
+  const confEl = document.createElement('span');
+  confEl.className = 'audit-confidence';
+  confEl.textContent = `${pct}%`;
+  headRow.appendChild(confEl);
+
+  entry.appendChild(headRow);
+
+  // ── Row 2: diff — "original" → "replacement" ──────────────────────────
+  const diffRow = document.createElement('div');
+  diffRow.className = 'audit-row audit-diff';
+
+  const arrowEl = document.createElement('span');
+  arrowEl.className = 'audit-arrow';
+  arrowEl.textContent = '→';
+
+  const originalEl = document.createElement('span');
+  originalEl.className = 'audit-original';
+  originalEl.textContent = JSON.stringify(record.original ?? '');
+
+  const replacementEl = document.createElement('span');
+  replacementEl.className = 'audit-replacement';
+  replacementEl.textContent = JSON.stringify(record.replacement ?? '');
+
+  diffRow.append(originalEl, arrowEl, replacementEl);
+  entry.appendChild(diffRow);
+
+  // ── Row 3 (optional): provenance/extras — migration · classifier ·
+  // dry-run · V2 recognition/runner-up/features ─────────────────────────
+  const meta = [];
+  if (record.migration_ref) {
+    meta.push(['migration', record.migration_ref]);
+  }
+  if (record.classifier_id) {
+    meta.push(['classifier', record.classifier_id]);
+  }
+  if (record.dry_run) {
+    meta.push(['mode', 'dry-run']);
+  }
   if (typeof record.recognition === 'number' && record.recognition < 1) {
-    const prov = document.createElement('div');
-    prov.className = 'audit-provenance';
-    const recLabel = document.createElement('span');
-    recLabel.className = 'audit-prov-key';
-    recLabel.textContent = 'recognition';
-    prov.appendChild(recLabel);
-    const recVal = document.createElement('span');
-    recVal.className = 'audit-prov-val';
-    recVal.textContent = record.recognition.toFixed(3);
-    prov.appendChild(recVal);
-
+    meta.push(['recognition', record.recognition.toFixed(3)]);
     if (typeof record.runner_up_ratio === 'number') {
-      const runnerLabel = document.createElement('span');
-      runnerLabel.className = 'audit-prov-key';
-      runnerLabel.textContent = 'runner-up';
-      prov.appendChild(runnerLabel);
-      const runnerVal = document.createElement('span');
-      runnerVal.className = 'audit-prov-val';
-      runnerVal.textContent = record.runner_up_ratio.toFixed(3);
-      prov.appendChild(runnerVal);
+      meta.push(['runner-up', record.runner_up_ratio.toFixed(3)]);
     }
-
     if (Array.isArray(record.features) && record.features.length > 0) {
-      const featLabel = document.createElement('span');
-      featLabel.className = 'audit-prov-key';
-      featLabel.textContent = 'features';
-      prov.appendChild(featLabel);
-      const featVal = document.createElement('span');
-      featVal.className = 'audit-prov-val audit-prov-features';
-      featVal.textContent = record.features.join(' · ');
-      prov.appendChild(featVal);
+      const labels = record.features.map(f =>
+        typeof f === 'string'
+          ? f
+          : (f && f.id ? f.id : '')
+      ).filter(Boolean);
+      if (labels.length > 0) meta.push(['features', labels.join(' · ')]);
     }
-    entry.appendChild(prov);
+  }
+
+  if (meta.length > 0) {
+    const metaRow = document.createElement('div');
+    metaRow.className = 'audit-row audit-meta';
+    for (const [key, value] of meta) {
+      const k = document.createElement('span');
+      k.className = 'audit-meta-key';
+      k.textContent = key;
+      const v = document.createElement('span');
+      v.className = 'audit-meta-val';
+      v.textContent = value;
+      metaRow.append(k, v);
+    }
+    entry.appendChild(metaRow);
   }
 
   if (stream.firstChild) stream.insertBefore(entry, stream.firstChild);
   else stream.appendChild(entry);
   auditEntryCount++;
+}
+
+function parseAuditTimestamp(raw) {
+  if (typeof raw === 'string' && raw.length > 0) {
+    const t = Date.parse(raw);
+    if (!Number.isNaN(t)) return new Date(t);
+  }
+  return new Date();
+}
+
+function formatAuditTime(date) {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+function formatAuditSource(source) {
+  if (source === 'CorrectionsMap')    return 'corrections-map';
+  if (source === 'BuiltinRule')       return 'rule';
+  if (source === 'MigrationTable')    return 'migration';
+  if (source === 'DecoderPosterior')  return 'decoder';
+  return String(source ?? '').toLowerCase();
 }
 
 function prependAuditSeparator(stream) {
@@ -345,8 +410,8 @@ function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
-  if (deepScanMode) {
-    // Phase D path — no threshold, no config (decoder uses compile-time priors).
+  if (currentThreshold < 1.0) {
+    // Sub-1.0 threshold accepts decoder posteriors → engage Phase D.
     worker.postMessage({
       type: 'fix:deep',
       seq: activeSeq,
@@ -354,6 +419,7 @@ function requestUpdate(view, refs, { force = false } = {}) {
       config: DEMO_CONFIG,
     });
   } else {
+    // Strict path — only fully-certain fixes apply.
     worker.postMessage({
       type: 'fix',
       seq: activeSeq,
@@ -770,29 +836,6 @@ function attachThresholdControls(view, refs) {
 }
 
 // ---------------------------------------------------------------------------
-// Deep-scan toggle wiring
-// ---------------------------------------------------------------------------
-
-function attachDeepScanToggle(view, refs) {
-  const cb = refs.deepScanToggle;
-  const note = refs.deepScanNote;
-  if (!cb) return;
-
-  cb.addEventListener('change', () => {
-    deepScanMode = !!cb.checked;
-    if (refs.docCard) {
-      refs.docCard.classList.toggle('is-deepscan', deepScanMode);
-    }
-    if (note) {
-      note.innerHTML = deepScanMode
-        ? 'On — probabilistic decoder. Synthetic <code>R001</code> diagnostics carry decoder posteriors.'
-        : 'Off — strict header-only recognizer. Try <code>SECRT//NOFRN</code> with this on.';
-    }
-    requestUpdate(view, refs, { force: true });
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Multi-page support — page-break insertion + per-page banner ladder
 // ---------------------------------------------------------------------------
 
@@ -989,7 +1032,6 @@ async function main() {
   const refs = {
     topBanner:    document.getElementById('banner-top'),
     bottomBanner: document.getElementById('banner-bottom'),
-    docCard:      document.getElementById('document-card'),
     auditStream:  document.getElementById('audit-stream'),
     auditEmpty:   document.getElementById('audit-empty'),
     bannerTooltip:    document.getElementById('banner-tooltip'),
@@ -1003,8 +1045,6 @@ async function main() {
     remainingCount:   document.getElementById('remaining-count'),
     contrastStrip:    document.getElementById('contrast-strip'),
     contrastDismiss:  document.getElementById('contrast-dismiss'),
-    deepScanToggle:   document.getElementById('deepscan-toggle'),
-    deepScanNote:     document.getElementById('deepscan-note'),
     insertPageBreak:  document.getElementById('insert-page-break'),
     docPageCount:     document.getElementById('doc-page-count'),
     toggleCab:        document.getElementById('toggle-cab'),
@@ -1116,8 +1156,7 @@ async function main() {
   // re-issue requestUpdate against the editor.
   attachThresholdControls(view, refs);
 
-  // Tier 3 wiring — deep-scan, page-break, CAB, scenario tabs.
-  attachDeepScanToggle(view, refs);
+  // Tier 3 wiring — page-break, CAB, scenario tabs.
   attachPageBreakButton(view, refs);
   attachCabPanel(refs);
   attachScenarioTabs(view, refs);
