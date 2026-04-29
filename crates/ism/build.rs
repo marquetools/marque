@@ -1952,20 +1952,32 @@ fn check_taxonomy_invariants(entries: &[TaxEntry]) {
     }
 }
 
-/// Emit `pub static TETRAGRAPH_PROVENANCE` and the
-/// `TetragraphProvenance` row type. Preserves the full three-state
-/// `decomposable` flag, the `<Membership>` shape variant, and both
-/// dates — collapsed by the binary `is_decomposable` runtime API.
-/// Reserved for `DecisionRecord` integration; not yet part of the
-/// stable public API.
+/// Emit the `TetragraphProvenance` row type, a `pub(crate)` static
+/// table of rows, and the public `lookup_tetragraph_provenance(code)`
+/// accessor. Preserves the full three-state `decomposable` flag, the
+/// `<Membership>` shape variant, both dates, and the verbatim
+/// `<Description>` text — collapsed by the binary `is_decomposable`
+/// runtime API.
+///
+/// SemVer surface: the accessor function is the **stable** entry point
+/// for cross-crate consumers (PR-2's S005 in marque-capco). The
+/// `TetragraphProvenance` struct is `pub` because the accessor returns
+/// `&'static TetragraphProvenance`, but is marked `#[doc(hidden)]` to
+/// signal that field additions are not major-version events. The
+/// underlying `TETRAGRAPH_PROVENANCE` static is `pub(crate)` — only
+/// the accessor surfaces it externally.
 fn emit_tax_provenance(content: &mut String, taxonomy: &[TaxEntry]) {
     use std::fmt::Write;
 
     writeln!(
         content,
-        "/// Provenance metadata row for [`TETRAGRAPH_PROVENANCE`]. Reserved\n\
-         /// for future `DecisionRecord` integration; not yet part of the\n\
-         /// stable public API. Issue #208."
+        "/// Provenance metadata row returned by [`lookup_tetragraph_provenance`].\n\
+         ///\n\
+         /// `#[doc(hidden)]`: the struct is `pub` only because the accessor returns\n\
+         /// a reference to it across crate boundaries (PR-2 S005 consumer). Field\n\
+         /// additions and renames are conventionally **not** major-version events;\n\
+         /// stable consumers should call accessor methods or pattern-match defensively.\n\
+         /// Issue #208."
     )
     .unwrap();
     writeln!(content, "#[doc(hidden)]").unwrap();
@@ -2016,14 +2028,15 @@ fn emit_tax_provenance(content: &mut String, taxonomy: &[TaxEntry]) {
         content,
         "/// Per-tetragraph ISMCAT V{ISMCAT_TETRA_VERSION} provenance metadata.\n\
          ///\n\
+         /// `pub(crate)` — external consumers MUST go through\n\
+         /// [`lookup_tetragraph_provenance`] (the SemVer-stable accessor).\n\
          /// Sorted by `code` for binary-search lookup. {} entries total.",
         sorted.len()
     )
     .unwrap();
-    writeln!(content, "#[doc(hidden)]").unwrap();
     writeln!(
         content,
-        "pub static TETRAGRAPH_PROVENANCE: &[TetragraphProvenance] = &["
+        "pub(crate) static TETRAGRAPH_PROVENANCE: &[TetragraphProvenance] = &["
     )
     .unwrap();
     for entry in sorted {
@@ -2051,6 +2064,25 @@ fn emit_tax_provenance(content: &mut String, taxonomy: &[TaxEntry]) {
     }
     writeln!(content, "];").unwrap();
     writeln!(content).unwrap();
+
+    // Public stable accessor.
+    writeln!(
+        content,
+        "/// Look up a tetragraph's provenance metadata.\n\
+         ///\n\
+         /// Returns `None` for codes absent from the ISMCAT V{ISMCAT_TETRA_VERSION}\n\
+         /// taxonomy entirely (org-fork extensions, unknown codes, trigraphs).\n\
+         /// Cross-crate consumers — notably issue #206's S005 silent-loss\n\
+         /// diagnostic in `marque-capco` — call this instead of touching the\n\
+         /// underlying static directly. Issue #208.\n\
+         pub fn lookup_tetragraph_provenance(code: &str) -> Option<&'static TetragraphProvenance> {{\n\
+         \x20   TETRAGRAPH_PROVENANCE\n\
+         \x20       .binary_search_by_key(&code, |row| row.code)\n\
+         \x20       .ok()\n\
+         \x20       .map(|i| &TETRAGRAPH_PROVENANCE[i])\n\
+         }}\n"
+    )
+    .unwrap();
 }
 
 /// Emit the public three-state `is_decomposable(code)` discriminator.

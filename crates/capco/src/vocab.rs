@@ -58,13 +58,23 @@ pub const FVEY: &[&str] = &["AUS", "CAN", "GBR", "NZL", "USA"];
 pub const ACGU: &[&str] = &["AUS", "CAN", "GBR", "USA"];
 
 /// Look up a tetragraph's constituent trigraphs. Returns `None` for
-/// codes outside the ISMCAT taxonomy's `decomposable="Yes"` set —
-/// `decomposable="No"` atoms (`EU`, `GCCH`, `KFOR`, …),
-/// `decomposable="NA"` deprecated codes (`RSMA`, `ISAF`, `MCFI`, …),
-/// trigraphs (which have no expansion), and codes absent from the
-/// taxonomy entirely. Use [`is_decomposable_tetragraph`] for the
-/// three-state ODNI-authoritative discriminator that distinguishes
-/// these cases.
+/// codes that don't expand via either of the two sources backing
+/// [`marque_ism::lookup_tetragraph_members`]:
+///
+/// - **Taxonomy entries outside the ISMCAT `decomposable="Yes"` set**:
+///   `decomposable="No"` atoms (`EU`, `GCCH`, `KFOR`, …),
+///   `decomposable="NA"` deprecated codes (`RSMA`, `ISAF`, `MCFI`, …),
+///   and trigraphs (which have no tetragraph expansion).
+/// - **Codes absent from both** the ODNI taxonomy and
+///   `country_extensions.toml` — fully unknown.
+///
+/// A code that is **absent from the ODNI taxonomy** can still return
+/// `Some(_)` if `country_extensions.toml` declares it with non-empty
+/// `members`. Use [`is_decomposable_tetragraph`] for the three-state
+/// ODNI-authoritative discriminator that distinguishes "ODNI says it's
+/// decomposable" from "an extension claims members" — relevant to
+/// issue #206's S005 rule, which fires on extension-claimed expansion
+/// precisely because it depends on org-local data ODNI didn't bless.
 ///
 /// Issue #208: thin wrapper around the canonical generated table in
 /// `marque-ism`, built from the ISMCAT V2022-NOV Tetragraph Taxonomy.
