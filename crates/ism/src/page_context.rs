@@ -1309,14 +1309,20 @@ mod tests {
 
     #[test]
     fn rel_to_opaque_tetragraph_in_one_portion_drops_from_intersection() {
-        // Portion 1: REL TO USA, NATO  → atoms {NATO, USA} (NATO opaque)
+        // Portion 1: REL TO USA, KFOR  → atoms {KFOR, USA} (KFOR is
+        //                                decomposable="No" — atom by
+        //                                authority per ISMCAT V2022-NOV)
         // Portion 2: REL TO USA, GBR   → atoms {GBR, USA}
-        // Intersection: {USA}. NATO is not in portion 2's set, so the
-        // opaque atom drops out — the banner cannot claim a NATO
+        // Intersection: {USA}. KFOR is not in portion 2's set, so the
+        // opaque atom drops out — the banner cannot claim a KFOR
         // release the second portion didn't authorize.
+        //
+        // Pre-issue-208 this test used NATO; #208 made NATO
+        // decomposable=Yes with 30 trigraph members, so KFOR (still
+        // an atom-by-authority code) is the canonical replacement.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
@@ -1330,23 +1336,26 @@ mod tests {
 
     #[test]
     fn rel_to_opaque_tetragraph_in_every_portion_survives_intersection() {
-        // Portion 1: REL TO USA, NATO  → atoms {NATO, USA}
-        // Portion 2: REL TO USA, NATO  → atoms {NATO, USA}
-        // Intersection: {NATO, USA} — NATO survives because both
+        // Portion 1: REL TO USA, KFOR  → atoms {KFOR, USA}
+        // Portion 2: REL TO USA, KFOR  → atoms {KFOR, USA}
+        // Intersection: {KFOR, USA} — KFOR survives because both
         // portions explicitly list it. USA renders first per CAPCO
         // §H.8 ordering.
+        //
+        // Pre-issue-208 this test used NATO; see the sibling test
+        // above for the same NATO → KFOR rationale.
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
-            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NATO").unwrap()].into(),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
         let rel = ctx.expected_rel_to();
         let codes: Vec<&str> = rel.iter().map(|c| c.as_str()).collect();
-        assert_eq!(codes, vec!["USA", "NATO"]);
+        assert_eq!(codes, vec!["USA", "KFOR"]);
     }
 
     #[test]
@@ -1394,12 +1403,20 @@ mod tests {
 
     #[test]
     fn expand_tetragraph_returns_none_for_opaque_and_unknown() {
-        // NATO and operation-specific tetragraphs (RSMA, ISAF, …)
-        // stay opaque — the generated table omits them, so the
-        // wrapper returns `None` and intersection treats them as
-        // atoms. Trigraphs (no expansion defined) also return None.
-        assert!(super::expand_tetragraph("NATO").is_none());
+        // Issue #208: codes outside the ISMCAT V2022-NOV
+        // decomposable="Yes" set still pass through as opaque atoms.
+        // - EU / KFOR / GCCH: decomposable="No" — atom by authority.
+        // - RSMA / ISAF / MCFI: decomposable="NA" — deprecated
+        //   (membership suppressed or OCA-deferred).
+        // - USA: trigraph (no tetragraph expansion defined).
+        // - XYZW: code absent from taxonomy entirely.
+        //
+        // Pre-issue-208 NATO was in this list; #208 surfaced its 30
+        // trigraph members and moved it to decomposable=Yes.
+        assert!(super::expand_tetragraph("EU").is_none());
+        assert!(super::expand_tetragraph("KFOR").is_none());
         assert!(super::expand_tetragraph("RSMA").is_none());
+        assert!(super::expand_tetragraph("ISAF").is_none());
         assert!(super::expand_tetragraph("USA").is_none());
         assert!(super::expand_tetragraph("XYZW").is_none());
     }
