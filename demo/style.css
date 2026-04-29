@@ -853,3 +853,319 @@ nav .nav-hint {
   outline: 3px solid var(--color-accent);
   outline-offset: -3px;
 }
+
+/* ---------------------------------------------------------------------------
+   Tier 3 — scenario tabs, deep-scan toggle, doc toolbar, page break,
+   CAB panel, V2 audit provenance
+   --------------------------------------------------------------------------- */
+
+/* Scenario tabs */
+.scenario-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.scenario-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--charcoal-100);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: 500 12px var(--font-body);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.scenario-tab:hover {
+  background: var(--mint-50);
+  color: var(--color-text-primary);
+}
+
+.scenario-tab.is-active {
+  background: var(--color-text-primary);
+  color: var(--color-surface);
+  border-color: var(--color-text-primary);
+}
+
+.scenario-tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.scenario-note {
+  color: var(--color-text-secondary);
+  font: 400 12px var(--font-body);
+  line-height: 1.5;
+}
+
+/* Deep-scan toggle */
+.deepscan-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.deepscan-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.deepscan-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  background: var(--charcoal-100);
+  border-radius: 999px;
+  margin-top: 2px;
+  transition: background 0.16s ease;
+}
+
+.deepscan-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--color-surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.16s ease;
+}
+
+.deepscan-toggle input:checked ~ .deepscan-switch {
+  background: var(--color-accent);
+}
+
+.deepscan-toggle input:checked ~ .deepscan-switch::after {
+  transform: translateX(16px);
+}
+
+.deepscan-toggle input:focus-visible ~ .deepscan-switch {
+  box-shadow: 0 0 0 3px rgba(205, 168, 36, 0.4);
+}
+
+.deepscan-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deepscan-title {
+  color: var(--color-text-primary);
+  font: 500 13px var(--font-body);
+}
+
+.deepscan-sub {
+  color: var(--color-text-secondary);
+  font: 400 11px var(--font-body);
+}
+
+.deepscan-note {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--charcoal-50);
+  color: var(--color-text-secondary);
+  font: 400 12px var(--font-body);
+  line-height: 1.5;
+}
+
+.deepscan-note code {
+  font: 500 11px var(--font-mono, ui-monospace, monospace);
+  background: var(--mint-50);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--color-text-primary);
+}
+
+/* Mark the document subtly when deep-scan is active so the user can see
+   the engine is in a different mode — without shouting it. */
+.document.is-deepscan {
+  box-shadow: 0 0 0 1px var(--color-accent), 0 14px 28px rgba(20, 24, 22, 0.06);
+}
+
+.document.is-deepscan::after {
+  content: 'deep scan';
+  position: absolute;
+  top: -10px;
+  right: 14px;
+  background: var(--color-accent);
+  color: var(--charcoal-900);
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.document { position: relative; }
+
+/* Document toolbar */
+.doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 12px;
+  flex-wrap: wrap;
+}
+
+.doc-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--charcoal-100);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: 500 12px var(--font-body);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.doc-tool:hover {
+  background: var(--mint-50);
+  color: var(--color-text-primary);
+  border-color: var(--charcoal-200);
+}
+
+.doc-tool.is-active {
+  background: var(--charcoal-50);
+  color: var(--color-text-primary);
+  border-color: var(--charcoal-200);
+}
+
+.doc-tool:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.doc-tool-icon {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.doc-toolbar-spacer { flex: 1; }
+
+.doc-page-count {
+  color: var(--color-text-secondary);
+  font: 500 11px var(--font-body);
+  letter-spacing: 0.02em;
+}
+
+/* Inline page-break decoration in the editor */
+.cm-pagebreak {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  padding: 4px 0;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font: 500 11px var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-top: 1px dashed var(--charcoal-200);
+  border-bottom: 1px dashed var(--charcoal-200);
+  user-select: none;
+}
+
+/* CAB panel */
+.cab-panel { padding-bottom: 14px; }
+
+.cab-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cab-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cab-label {
+  color: var(--color-text-secondary);
+  font: 500 11px var(--font-body);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cab-input {
+  padding: 6px 10px;
+  border: 1px solid var(--charcoal-100);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: 400 13px var(--font-body);
+  border-radius: 4px;
+}
+
+.cab-input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  border-color: transparent;
+}
+
+.cab-output {
+  margin: 0 0 8px;
+  padding: 12px;
+  background: var(--charcoal-900);
+  color: var(--mint-100);
+  font: 400 12px / 1.55 var(--font-mono, ui-monospace, "SF Mono", monospace);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  min-height: 80px;
+  overflow-x: auto;
+}
+
+.cab-note {
+  color: var(--color-text-secondary);
+  font: 400 11px var(--font-body);
+  line-height: 1.5;
+}
+
+.cab-note code {
+  font: 500 11px var(--font-mono, ui-monospace, monospace);
+  color: var(--color-text-primary);
+}
+
+/* Phase D audit provenance — recognition / runner-up / features */
+.audit-provenance {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--charcoal-50);
+  border-radius: 4px;
+  font: 400 11px var(--font-mono, ui-monospace, monospace);
+  align-items: baseline;
+}
+
+.audit-prov-key {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.audit-prov-key + .audit-prov-val {
+  margin-right: 4px;
+}
+
+.audit-prov-val { color: var(--color-text-primary); }
+
+.audit-prov-features {
+  font: 400 11px var(--font-mono, ui-monospace, monospace);
+  color: var(--color-accent);
+}

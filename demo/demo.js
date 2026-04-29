@@ -74,6 +74,12 @@ const PLACEHOLDER_TEXT =
 // when the bar is raised — that's the robustness story.
 let currentThreshold = 0.0;
 
+// Mutable: bound to the deep-scan toggle in the side rail. When true, the
+// worker calls `fix_deep_scan` (Phase D probabilistic recognizer) instead of
+// strict `fix`. Mangled markings recover via the decoder; audit records carry
+// V2 provenance (recognition × rule axes, runner_up_ratio, features).
+let deepScanMode = false;
+
 // Autoplay script: a short representative passage that exercises typo
 // correction (SERCET → SECRET → S), portion abbreviation, and banner
 // roll-up. Newlines are part of the script.
@@ -147,6 +153,43 @@ const placeholderPlugin = ViewPlugin.fromClass(class {
       ]);
     }
     return Decoration.none;
+  }
+}, { decorations: v => v.decorations });
+
+// ---------------------------------------------------------------------------
+// Page-break decoration — make form-feed (\f) visible as a horizontal rule.
+// ---------------------------------------------------------------------------
+
+class PageBreakWidget {
+  toDOM() {
+    const el = document.createElement('span');
+    el.className = 'cm-pagebreak';
+    el.setAttribute('aria-label', 'Page break');
+    el.textContent = '— page break —';
+    return el;
+  }
+  eq() { return true; }
+  ignoreEvent() { return true; }
+}
+
+const pageBreakPlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this.compute(view); }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.compute(update.view);
+    }
+  }
+  compute(view) {
+    const ranges = [];
+    const text = view.state.doc.toString();
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) === 0x0c /* \f */) {
+        ranges.push(
+          Decoration.replace({ widget: new PageBreakWidget() }).range(i, i + 1),
+        );
+      }
+    }
+    return Decoration.set(ranges);
   }
 }, { decorations: v => v.decorations });
 
@@ -233,6 +276,44 @@ function prependAuditEntry(record, stream, emptyEl) {
     entry.appendChild(span);
   }
 
+  // Phase D provenance — V2 audit schema. Surface recognition score and
+  // runner-up posterior margin when present (deep-scan path only).
+  if (typeof record.recognition === 'number' && record.recognition < 1) {
+    const prov = document.createElement('div');
+    prov.className = 'audit-provenance';
+    const recLabel = document.createElement('span');
+    recLabel.className = 'audit-prov-key';
+    recLabel.textContent = 'recognition';
+    prov.appendChild(recLabel);
+    const recVal = document.createElement('span');
+    recVal.className = 'audit-prov-val';
+    recVal.textContent = record.recognition.toFixed(3);
+    prov.appendChild(recVal);
+
+    if (typeof record.runner_up_ratio === 'number') {
+      const runnerLabel = document.createElement('span');
+      runnerLabel.className = 'audit-prov-key';
+      runnerLabel.textContent = 'runner-up';
+      prov.appendChild(runnerLabel);
+      const runnerVal = document.createElement('span');
+      runnerVal.className = 'audit-prov-val';
+      runnerVal.textContent = record.runner_up_ratio.toFixed(3);
+      prov.appendChild(runnerVal);
+    }
+
+    if (Array.isArray(record.features) && record.features.length > 0) {
+      const featLabel = document.createElement('span');
+      featLabel.className = 'audit-prov-key';
+      featLabel.textContent = 'features';
+      prov.appendChild(featLabel);
+      const featVal = document.createElement('span');
+      featVal.className = 'audit-prov-val audit-prov-features';
+      featVal.textContent = record.features.join(' · ');
+      prov.appendChild(featVal);
+    }
+    entry.appendChild(prov);
+  }
+
   if (stream.firstChild) stream.insertBefore(entry, stream.firstChild);
   else stream.appendChild(entry);
   auditEntryCount++;
@@ -264,13 +345,23 @@ function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
-  worker.postMessage({
-    type: 'fix',
-    seq: activeSeq,
-    text,
-    threshold: currentThreshold,
-    config: DEMO_CONFIG,
-  });
+  if (deepScanMode) {
+    // Phase D path — no threshold, no config (decoder uses compile-time priors).
+    worker.postMessage({
+      type: 'fix:deep',
+      seq: activeSeq,
+      text,
+      config: DEMO_CONFIG,
+    });
+  } else {
+    worker.postMessage({
+      type: 'fix',
+      seq: activeSeq,
+      text,
+      threshold: currentThreshold,
+      config: DEMO_CONFIG,
+    });
+  }
 }
 
 function applyFixResult(view, refs, msg) {
@@ -357,6 +448,10 @@ function applyFixResult(view, refs, msg) {
   updateThresholdCounter(msg.applied, msg.remaining || [], refs);
   updateConfidenceHistogram(msg.applied, msg.remaining || [], refs);
   updateRemainingPanel(view, msg.remaining || [], refs);
+
+  // Multi-page indicator + CAB refresh — both derive from the post-fix text.
+  updatePageCount(fixedText, refs);
+  requestCab(refs);
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +770,175 @@ function attachThresholdControls(view, refs) {
 }
 
 // ---------------------------------------------------------------------------
+// Deep-scan toggle wiring
+// ---------------------------------------------------------------------------
+
+function attachDeepScanToggle(view, refs) {
+  const cb = refs.deepScanToggle;
+  const note = refs.deepScanNote;
+  if (!cb) return;
+
+  cb.addEventListener('change', () => {
+    deepScanMode = !!cb.checked;
+    if (refs.docCard) {
+      refs.docCard.classList.toggle('is-deepscan', deepScanMode);
+    }
+    if (note) {
+      note.innerHTML = deepScanMode
+        ? 'On — probabilistic decoder. Synthetic <code>R001</code> diagnostics carry decoder posteriors.'
+        : 'Off — strict header-only recognizer. Try <code>SECRT//NOFRN</code> with this on.';
+    }
+    requestUpdate(view, refs, { force: true });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-page support — page-break insertion + per-page banner ladder
+// ---------------------------------------------------------------------------
+
+const PAGE_BREAK = '\f';
+
+function splitPages(text) {
+  // Pages are separated by form-feed (\f) — what the engine treats as a hard
+  // page break. Empty trailing pages are dropped so the page count matches
+  // what the user sees.
+  const raw = text.split(PAGE_BREAK);
+  const pages = [];
+  for (let i = 0; i < raw.length; i++) {
+    const page = raw[i];
+    if (i === raw.length - 1 && page.length === 0) continue;
+    pages.push(page);
+  }
+  return pages.length > 0 ? pages : [''];
+}
+
+function attachPageBreakButton(view, refs) {
+  const btn = refs.insertPageBreak;
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const sel = view.state.selection.main;
+    const insert = (sel.from === 0 ? '' : '\n') + PAGE_BREAK + '\n';
+    view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert },
+      selection: { anchor: sel.from + insert.length },
+    });
+    view.focus();
+  });
+}
+
+function updatePageCount(text, refs) {
+  if (!refs.docPageCount) return;
+  const pages = splitPages(text);
+  if (pages.length <= 1) {
+    refs.docPageCount.textContent = '';
+    return;
+  }
+  refs.docPageCount.textContent = `${pages.length} pages · banner resets per page`;
+}
+
+// ---------------------------------------------------------------------------
+// CAB generator wiring
+// ---------------------------------------------------------------------------
+
+let cabSeq = 0;
+
+function attachCabPanel(refs) {
+  const toggleBtn = refs.toggleCab;
+  const panel = refs.cabPanel;
+  if (!toggleBtn || !panel) return;
+
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = panel.hidden;
+    panel.hidden = !isHidden;
+    toggleBtn.classList.toggle('is-active', isHidden);
+    const label = toggleBtn.querySelector('.doc-tool-label');
+    if (label) label.textContent = isHidden ? 'Hide CAB' : 'Show CAB';
+    if (isHidden) requestCab(refs);
+  });
+
+  for (const input of [refs.cabClassifiedBy, refs.cabDerivedFrom]) {
+    if (!input) continue;
+    input.addEventListener('input', () => requestCab(refs));
+  }
+}
+
+function requestCab(refs) {
+  if (!refs.cabPanel || refs.cabPanel.hidden) return;
+  cabSeq++;
+  worker.postMessage({
+    type: 'cab',
+    seq: cabSeq,
+    text: refs.lastFixedText || '',
+    classifiedBy: (refs.cabClassifiedBy?.value || '').trim() || null,
+    derivedFrom:  (refs.cabDerivedFrom?.value  || '').trim() || null,
+    config: DEMO_CONFIG,
+  });
+}
+
+function applyCabResult(refs, msg) {
+  if (msg.seq !== cabSeq) return;
+  if (refs.cabOutput) {
+    refs.cabOutput.textContent = msg.cab || '(no portion markings yet)';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scenario tabs — U.S. memo vs FGI / JOINT
+// ---------------------------------------------------------------------------
+
+const SCENARIOS = {
+  us: {
+    note: 'Standard U.S. classification with SCI, SAR, and dissem controls.',
+    seed:
+      'This memo summarizes the program review.\n\n' +
+      '(SERCET//NOFORN) Initial findings indicate the system is operating ' +
+      'within nominal parameters.\n\n' +
+      '(C) Status reports will continue on a weekly cadence.\n',
+  },
+  fgi: {
+    note:
+      'Foreign Government Information, JOINT classification, and NATO ' +
+      'tetragraphs. CAPCO §H.7 country-code ordering applies.',
+    seed:
+      'JOINT memo — coalition program coordination.\n\n' +
+      '(//FGI GBR S) Analytical assessment shared by the United Kingdom.\n\n' +
+      '(//JOINT SECRET USA, GBR, AUS) Combined operational summary; ' +
+      'releasability follows the lowest classifier.\n\n' +
+      '(//SECRET//REL TO USA, FVEY) Distribution limited to Five Eyes ' +
+      'partners — note tetragraph form.\n',
+  },
+};
+
+function attachScenarioTabs(view, refs) {
+  const tabs = refs.scenarioTabs;
+  if (!tabs || tabs.length === 0) return;
+
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => {
+      const key = tab.dataset.scenario;
+      const scenario = SCENARIOS[key];
+      if (!scenario) return;
+      for (const t of tabs) {
+        const active = t === tab;
+        t.classList.toggle('is-active', active);
+        t.setAttribute('aria-selected', active ? 'true' : 'false');
+      }
+      if (refs.scenarioNote) refs.scenarioNote.textContent = scenario.note;
+
+      // Replace the document content with the scenario seed. This is a hard
+      // reset: we want to demonstrate a different domain, not splice into
+      // existing prose.
+      const len = view.state.doc.length;
+      view.dispatch({
+        changes: { from: 0, to: len, insert: scenario.seed },
+        selection: { anchor: scenario.seed.length },
+      });
+      view.focus();
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Idle autoplay
 // ---------------------------------------------------------------------------
 
@@ -725,6 +989,7 @@ async function main() {
   const refs = {
     topBanner:    document.getElementById('banner-top'),
     bottomBanner: document.getElementById('banner-bottom'),
+    docCard:      document.getElementById('document-card'),
     auditStream:  document.getElementById('audit-stream'),
     auditEmpty:   document.getElementById('audit-empty'),
     bannerTooltip:    document.getElementById('banner-tooltip'),
@@ -738,6 +1003,17 @@ async function main() {
     remainingCount:   document.getElementById('remaining-count'),
     contrastStrip:    document.getElementById('contrast-strip'),
     contrastDismiss:  document.getElementById('contrast-dismiss'),
+    deepScanToggle:   document.getElementById('deepscan-toggle'),
+    deepScanNote:     document.getElementById('deepscan-note'),
+    insertPageBreak:  document.getElementById('insert-page-break'),
+    docPageCount:     document.getElementById('doc-page-count'),
+    toggleCab:        document.getElementById('toggle-cab'),
+    cabPanel:         document.getElementById('cab-panel'),
+    cabClassifiedBy:  document.getElementById('cab-classified-by'),
+    cabDerivedFrom:   document.getElementById('cab-derived-from'),
+    cabOutput:        document.getElementById('cab-output'),
+    scenarioTabs:     document.querySelectorAll('.scenario-tab'),
+    scenarioNote:     document.getElementById('scenario-note'),
     lastBanner: 'UNCLASSIFIED',
     lastFixedText: '',
   };
@@ -766,8 +1042,9 @@ async function main() {
   worker.addEventListener('message', (ev) => {
     const msg = ev.data;
     if (!msg) return;
-    if (msg.type === 'fix:result') applyFixResult(view, refs, msg);
-    else if (msg.type === 'error') console.error('[marque worker]', msg);
+    if (msg.type === 'fix:result')      applyFixResult(view, refs, msg);
+    else if (msg.type === 'cab:result') applyCabResult(refs, msg);
+    else if (msg.type === 'error')      console.error('[marque worker]', msg);
   });
 
   // Tooltip extension reads from view._marqueDiagData.
@@ -801,6 +1078,7 @@ async function main() {
     extensions: [
       diagnosticsField,
       placeholderPlugin,
+      pageBreakPlugin,
       tooltip,
       EditorView.lineWrapping,
       EditorView.theme({
@@ -837,6 +1115,12 @@ async function main() {
   // Threshold controls — wire after the view exists so chips/slider can
   // re-issue requestUpdate against the editor.
   attachThresholdControls(view, refs);
+
+  // Tier 3 wiring — deep-scan, page-break, CAB, scenario tabs.
+  attachDeepScanToggle(view, refs);
+  attachPageBreakButton(view, refs);
+  attachCabPanel(refs);
+  attachScenarioTabs(view, refs);
 
   // Pause autoplay on any user input (keystroke, paste, click that sets focus).
   // The autoplay's own dispatches set the 'autoplay' annotation, so we

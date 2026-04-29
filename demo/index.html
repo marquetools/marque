@@ -50,6 +50,22 @@ SPDX-License-Identifier: Apache-2.0
   <!-- Main column: document + audit stream -->
   <div class="main-col">
 
+    <!-- Document toolbar — page break + CAB toggle -->
+    <div class="doc-toolbar" role="toolbar" aria-label="Document tools">
+      <button type="button" class="doc-tool" id="insert-page-break"
+              title="Insert page break (form-feed) — banner roll-up resets per page">
+        <span class="doc-tool-icon" aria-hidden="true">⤓</span>
+        <span class="doc-tool-label">Insert page break</span>
+      </button>
+      <button type="button" class="doc-tool" id="toggle-cab"
+              title="Show/hide Classification Authority Block">
+        <span class="doc-tool-icon" aria-hidden="true">§</span>
+        <span class="doc-tool-label">Show CAB</span>
+      </button>
+      <span class="doc-toolbar-spacer" aria-hidden="true"></span>
+      <span class="doc-page-count" id="doc-page-count" aria-live="polite"></span>
+    </div>
+
     <!-- Document card -->
     <div class="document" id="document-card">
 
@@ -97,8 +113,47 @@ SPDX-License-Identifier: Apache-2.0
 
   </div>
 
-  <!-- Side rail: threshold control + remaining diagnostics -->
+  <!-- Side rail: scenario selector, deep-scan, threshold, CAB, remaining -->
   <aside class="side-col" aria-label="Engine controls and diagnostics">
+
+    <!-- Scenario tabs: switch between U.S. memo and FGI/JOINT scenarios -->
+    <section class="panel scenario-panel" aria-labelledby="scenario-heading">
+      <header class="panel-header">
+        <h2 id="scenario-heading" class="panel-title">Scenario</h2>
+        <span class="panel-hint">try different marking domains</span>
+      </header>
+      <div class="scenario-tabs" role="tablist">
+        <button type="button" class="scenario-tab is-active"
+                role="tab" aria-selected="true"
+                data-scenario="us">U.S. memo</button>
+        <button type="button" class="scenario-tab"
+                role="tab" aria-selected="false"
+                data-scenario="fgi">FGI / JOINT</button>
+      </div>
+      <div class="scenario-note" id="scenario-note">
+        Standard U.S. classification with SCI, SAR, and dissem controls.
+      </div>
+    </section>
+
+    <!-- Deep-scan toggle (Phase D probabilistic recognizer) -->
+    <section class="panel deepscan-panel" aria-labelledby="deepscan-heading">
+      <header class="panel-header">
+        <h2 id="deepscan-heading" class="panel-title">Deep scan</h2>
+        <span class="panel-hint">probabilistic recovery</span>
+      </header>
+      <label class="deepscan-toggle">
+        <input type="checkbox" id="deepscan-toggle" />
+        <span class="deepscan-switch" aria-hidden="true"></span>
+        <span class="deepscan-label">
+          <span class="deepscan-title">Recover mangled markings</span>
+          <span class="deepscan-sub">Phase D decoder · log-posterior scoring</span>
+        </span>
+      </label>
+      <div class="deepscan-note" id="deepscan-note">
+        Off — strict header-only recognizer. Try
+        <code>SECRT//NOFRN</code> with this on.
+      </div>
+    </section>
 
     <!-- Confidence threshold control -->
     <section class="panel threshold-panel" aria-labelledby="thresh-heading">
@@ -138,6 +193,31 @@ SPDX-License-Identifier: Apache-2.0
       <div class="threshold-note">
         Drop to 0.00 and almost everything still applies — the engine's
         fixes cluster near 1.0. The slider is here to let you see that.
+      </div>
+    </section>
+
+    <!-- CAB generator — collapsed by default, toggled from doc toolbar -->
+    <section class="panel cab-panel" id="cab-panel" hidden
+             aria-labelledby="cab-heading">
+      <header class="panel-header">
+        <h2 id="cab-heading" class="panel-title">Classification Authority Block</h2>
+        <span class="panel-hint">derived from portions</span>
+      </header>
+      <div class="cab-fields">
+        <label class="cab-field">
+          <span class="cab-label">Classified by</span>
+          <input type="text" class="cab-input" id="cab-classified-by"
+                 placeholder="Derivative Classifier" autocomplete="off" />
+        </label>
+        <label class="cab-field">
+          <span class="cab-label">Derived from</span>
+          <input type="text" class="cab-input" id="cab-derived-from"
+                 placeholder="Multiple Sources" autocomplete="off" />
+        </label>
+      </div>
+      <pre class="cab-output" id="cab-output" aria-live="polite"></pre>
+      <div class="cab-note">
+        Built from <code>generate_cab()</code>. Updates as you type.
       </div>
     </section>
 
