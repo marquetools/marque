@@ -1733,7 +1733,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
             // <Organization> are always Start+Text+End in the actual
             // taxonomy, but we tolerate empty forms defensively.
             Ok(Event::Empty(ref e))
-                if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
+                if in_membership && local_name(e.name().as_ref()) == b"MembershipSuppressed" =>
             {
                 current_suppressed = true;
             }
