@@ -3118,7 +3118,9 @@ fn try_canonical_reorder(text: &str) -> Option<String> {
 
     // Detect non-US markings: any classification segment is a NATO,
     // JOINT, or FGI classification (not a US classification level).
-    let is_non_us = class_segments.iter().any(|s| is_non_us_classification_segment(s));
+    let is_non_us = class_segments
+        .iter()
+        .any(|s| is_non_us_classification_segment(s));
 
     // Already-canonical check: if the classification segment is the
     // first non-empty segment, no reorder is needed.
@@ -3218,15 +3220,13 @@ fn classify_segment(seg: &str) -> SegmentClass {
         SegmentClass::Classification
     } else if DISSEMS.contains(&first_token) {
         SegmentClass::Dissem
-    } else if first_token == "TOP" && seg.starts_with("TOP SECRET") {
-        SegmentClass::Classification
-    } else if first_token == "COSMIC" && seg.starts_with("COSMIC TOP SECRET") {
-        SegmentClass::Classification
-    } else if first_token == "NATO"
-        && (seg.starts_with("NATO SECRET")
-            || seg.starts_with("NATO CONFIDENTIAL")
-            || seg.starts_with("NATO UNCLASSIFIED")
-            || seg.starts_with("NATO RESTRICTED"))
+    } else if (first_token == "TOP" && seg.starts_with("TOP SECRET"))
+        || (first_token == "COSMIC" && seg.starts_with("COSMIC TOP SECRET"))
+        || (first_token == "NATO"
+            && (seg.starts_with("NATO SECRET")
+                || seg.starts_with("NATO CONFIDENTIAL")
+                || seg.starts_with("NATO UNCLASSIFIED")
+                || seg.starts_with("NATO RESTRICTED")))
     {
         SegmentClass::Classification
     } else if CapcoTokenSet.is_trigraph(first_token) {
@@ -3237,13 +3237,19 @@ fn classify_segment(seg: &str) -> SegmentClass {
         let second = second.trim_end_matches(',');
         if matches!(
             second,
-            "U" | "R" | "C" | "S" | "TS" | "UNCLASSIFIED" | "RESTRICTED" | "CONFIDENTIAL"
+            "U" | "R"
+                | "C"
+                | "S"
+                | "TS"
+                | "UNCLASSIFIED"
+                | "RESTRICTED"
+                | "CONFIDENTIAL"
                 | "SECRET"
         ) || (second == "TOP"
             && seg
                 .split_whitespace()
                 .nth(2)
-                .map_or(false, |t| t.trim_end_matches(',') == "SECRET"))
+                .is_some_and(|t| t.trim_end_matches(',') == "SECRET"))
         {
             SegmentClass::Classification
         } else {
@@ -3293,7 +3299,13 @@ fn is_non_us_classification_segment(seg: &str) -> bool {
         let second = second.trim_end_matches(',');
         if matches!(
             second,
-            "U" | "R" | "C" | "S" | "TS" | "UNCLASSIFIED" | "RESTRICTED" | "CONFIDENTIAL"
+            "U" | "R"
+                | "C"
+                | "S"
+                | "TS"
+                | "UNCLASSIFIED"
+                | "RESTRICTED"
+                | "CONFIDENTIAL"
                 | "SECRET"
         ) {
             return true;
@@ -3301,7 +3313,7 @@ fn is_non_us_classification_segment(seg: &str) -> bool {
         if second == "TOP"
             && tokens
                 .next()
-                .map_or(false, |t| t.trim_end_matches(',') == "SECRET")
+                .is_some_and(|t| t.trim_end_matches(',') == "SECRET")
         {
             return true;
         }
