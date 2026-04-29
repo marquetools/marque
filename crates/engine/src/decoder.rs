@@ -3200,25 +3200,60 @@ fn classify_segment(seg: &str) -> SegmentClass {
         // JOINT classification indicator.
         "JOINT",
     ];
-    // Dissemination-control tokens ONLY. SCI controls (HCS, SI, TK,
-    // and all their sub-compartment forms) are NOT in this list —
-    // they belong to their own category under CAPCO §A.6 and the
-    // canonical order places them between classification and dissem.
-    // Classifying an HCS segment as Dissem would drive
-    // `try_canonical_reorder` to move it past the dissem block,
-    // corrupting the rewrite. SCI segments therefore fall through to
-    // `SegmentClass::Other`, which the reorder helper inserts
-    // between classification and dissem — the right spot per
+    // Dissemination-control tokens — IC (§H.8) and non-IC (§H.9).
+    // SCI controls (HCS, SI, TK, and all their sub-compartment forms)
+    // are NOT in this list — they belong to their own category under
+    // CAPCO §A.6 and the canonical order places them between
+    // classification and dissem. Classifying an HCS segment as Dissem
+    // would drive `try_canonical_reorder` to move it past the dissem
+    // block, corrupting the rewrite. SCI segments therefore fall
+    // through to `SegmentClass::Other`, which the reorder helper
+    // inserts between classification and dissem — the right spot per
     // CAPCO-2016 §A.6.
     //
+    // AEA controls (RD, FRD, TFNI, CNWDI, SIGMA) are also omitted —
+    // they appear between SCI and dissem per §A.6. A pre-check above
+    // `CLASSIFICATIONS.contains` prevents "RESTRICTED DATA" from being
+    // mistaken for the NATO RESTRICTED classification.
+    //
     // "REL" is the first token of "REL TO {country-list}" segments.
+    //
+    // Non-IC dissem controls (§H.9): portion marks (DS, XD, ND,
+    // SBU, SBU-NF, LES, LES-NF, SSI) and banner abbreviations
+    // (LIMDIS, EXDIS, NODIS) are included so reordering places them
+    // in the dissem block, not the SCI/AEA block (CAPCO-2016 §A.6).
     const DISSEMS: &[&str] = &[
+        // §H.8 IC dissemination controls
         "NOFORN", "NF", "ORCON", "OC", "PROPIN", "PR", "IMCON", "IMC", "RELIDO", "RS", "RSEN",
-        "DSEN", "FISA", "FOUO", "REL",
+        "DSEN", "FISA", "FOUO", "EYES", "REL",
+        // §H.9 non-IC dissemination controls — portion marks
+        "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI",
+        // §H.9 non-IC dissemination controls — banner abbreviations
+        "LIMDIS", "EXDIS", "NODIS",
     ];
+    // Pre-check: "RESTRICTED DATA" (AEA marking, §H.6) must not be
+    // mistaken for the NATO RESTRICTED classification even though
+    // "RESTRICTED" appears in CLASSIFICATIONS. The bare token
+    // "RESTRICTED" IS valid as NATO classification; "RESTRICTED DATA"
+    // and longer AEA forms are not. CAPCO-2016 §H.6 p113.
+    if first_token == "RESTRICTED" && seg.split_whitespace().nth(1).is_some() {
+        return SegmentClass::Other;
+    }
     if CLASSIFICATIONS.contains(&first_token) {
         SegmentClass::Classification
-    } else if DISSEMS.contains(&first_token) {
+    // Single-token dissem controls and multi-word non-IC long-title forms.
+    // Multi-word forms cannot be single-token-matched because their first words
+    // ("LIMITED", "NO", "EXCLUSIVE", "LAW", "SENSITIVE") are too ambiguous;
+    // they are checked via starts_with here. CAPCO-2016 §H.8–9.
+    } else if DISSEMS.contains(&first_token)
+        || (first_token == "LIMITED" && seg.starts_with("LIMITED DISTRIBUTION"))
+        || (first_token == "NO" && seg.starts_with("NO DISTRIBUTION"))
+        || (first_token == "EXCLUSIVE" && seg.starts_with("EXCLUSIVE DISTRIBUTION"))
+        || (first_token == "LAW" && seg.starts_with("LAW ENFORCEMENT SENSITIVE"))
+        || (first_token == "SENSITIVE"
+            && (seg.starts_with("SENSITIVE BUT UNCLASSIFIED")
+                || seg.starts_with("SENSITIVE SECURITY INFORMATION")))
+    {
         SegmentClass::Dissem
     } else if (first_token == "TOP" && seg.starts_with("TOP SECRET"))
         || (first_token == "COSMIC" && seg.starts_with("COSMIC TOP SECRET"))
@@ -5266,6 +5301,58 @@ mod tests {
         assert_eq!(classify_segment("SI"), SegmentClass::Other);
         assert_eq!(classify_segment("SI-G"), SegmentClass::Other);
         assert_eq!(classify_segment("TK"), SegmentClass::Other);
+    }
+
+    #[test]
+    fn classify_segment_non_ic_dissem_tokens() {
+        // §H.9 abbreviations and long-title forms must classify as Dissem so
+        // try_canonical_reorder places them after SCI, not in Other.
+        // Regression guard for PR #256.
+        for tok in &[
+            "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI", "LIMDIS", "EXDIS", "NODIS",
+        ] {
+            assert_eq!(
+                classify_segment(tok),
+                SegmentClass::Dissem,
+                "classify_segment({tok:?}) should be Dissem"
+            );
+        }
+        // Multi-word long-title forms.
+        assert_eq!(
+            classify_segment("LIMITED DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("EXCLUSIVE DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(classify_segment("NO DISTRIBUTION"), SegmentClass::Dissem);
+        assert_eq!(
+            classify_segment("LAW ENFORCEMENT SENSITIVE"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE BUT UNCLASSIFIED"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE SECURITY INFORMATION"),
+            SegmentClass::Dissem
+        );
+    }
+
+    #[test]
+    fn classify_segment_restricted_data_is_not_classification() {
+        // "RESTRICTED DATA" (AEA, §H.6) must not be mistaken for the NATO
+        // RESTRICTED classification even though "RESTRICTED" is in CLASSIFICATIONS.
+        // Bare "RESTRICTED" (NATO classification) must still be Classification.
+        // Regression guard for PR #256.
+        assert_eq!(classify_segment("RESTRICTED DATA"), SegmentClass::Other);
+        assert_eq!(
+            classify_segment("RESTRICTED DATA-CNWDI"),
+            SegmentClass::Other
+        );
+        assert_eq!(classify_segment("RESTRICTED"), SegmentClass::Classification);
     }
 
     #[test]
