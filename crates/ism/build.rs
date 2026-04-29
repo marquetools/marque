@@ -1725,15 +1725,23 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                     b"Country" if in_membership => in_country = true,
                     b"Organization" if in_membership => in_organization = true,
                     b"Description" if in_membership => in_membership_description = true,
+                    // <MembershipSupressed> (note ODNI's misspelling — single
+                    // `p`). The taxonomy ships it as a self-closing
+                    // `<MembershipSupressed/>`, but XML allows the equivalent
+                    // `<MembershipSupressed></MembershipSupressed>` Start+End
+                    // form, and a future ODNI tool that round-trips through a
+                    // generic XML library could emit either. Set the flag on
+                    // both Start and Empty (the matching End arm below is a
+                    // no-op for this element since we don't track an
+                    // `in_suppressed` state — there's nothing inside).
+                    b"MembershipSupressed" if in_membership => {
+                        current_suppressed = true;
+                    }
                     _ => {}
                 }
             }
-            // Self-closing elements within <Membership>. The only one
-            // we care about is <MembershipSupressed/>; <Country> /
-            // <Organization> are always Start+Text+End in the actual
-            // taxonomy, but we tolerate empty forms defensively.
             Ok(Event::Empty(ref e))
-                if in_membership && local_name(e.name().as_ref()) == b"MembershipSuppressed" =>
+                if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
             {
                 current_suppressed = true;
             }

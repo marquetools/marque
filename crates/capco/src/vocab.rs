@@ -12,18 +12,20 @@
 //! a portion releasable to `FVEY` is releasable to every Five Eyes
 //! nation.
 //!
-//! Issue #208 made this module a thin re-export over
-//! [`marque_ism::TETRAGRAPH_MEMBERS`] /
-//! [`marque_ism::lookup_tetragraph_members`] /
-//! [`marque_ism::is_decomposable`] — sourced at build time from the
-//! ODNI ISMCAT V2022-NOV Tetragraph Taxonomy
-//! (`schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`)
-//! plus any org-specific extensions declared in
-//! `crates/ism/country_extensions.toml`. Pre-PR-B (issue #183) this
-//! crate and `marque-ism::page_context` carried two private copies of
-//! the FVEY/ACGU table that drifted independently; consolidating to
-//! one ODNI-backed source eliminated the drift and surfaced the
-//! decomposability discriminator for issue #206's S005 rule.
+//! Issue #183 PR-B made this module a thin re-export over
+//! [`marque_ism::TETRAGRAPH_MEMBERS`] / [`marque_ism::lookup_tetragraph_members`].
+//! Pre-PR-B this crate and `marque-ism::page_context` carried two private
+//! copies of the FVEY/ACGU table that drifted independently; consolidating
+//! to one source eliminated the drift.
+//!
+//! Issue #208 then swapped the backing data source from a hand-curated
+//! `BUILTIN_TETRAGRAPH_MEMBERS` slice to the ODNI ISMCAT V2022-NOV
+//! Tetragraph Taxonomy (`schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`)
+//! parsed at build time, and added [`marque_ism::is_decomposable`] —
+//! the three-state ODNI-authoritative discriminator surfaced through
+//! [`is_decomposable_tetragraph`] below for issue #206's S005 rule.
+//! Org-specific extensions declared in `crates/ism/country_extensions.toml`
+//! continue to layer on top of the taxonomy data.
 //!
 //! # Why `&'static [&'static str]` (and not typed `CountryCode`)
 //!

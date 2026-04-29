@@ -83,7 +83,7 @@ fn deprecated_tetragraphs_are_opaque() {
 }
 
 #[test]
-fn no_decomposable_tetragraphs_are_opaque() {
+fn non_decomposable_tetragraphs_are_opaque() {
     // decomposable="No" codes (atom by authority) are also opaque
     // for tetragraph expansion — the code IS the recipient.
     for code in ["EU", "GCCH", "KFOR", "MNTF"] {
