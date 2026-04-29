@@ -1724,6 +1724,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                     }
                     b"Country" if in_membership => in_country = true,
                     b"Organization" if in_membership => in_organization = true,
+                    // spellchecker:off
                     b"Description" if in_membership => in_membership_description = true,
                     // <MembershipSupressed> (note ODNI's misspelling — single
                     // `p`). The taxonomy ships it as a self-closing
@@ -1743,6 +1744,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
             Ok(Event::Empty(ref e))
                 if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
             {
+            // spellchecker:on
                 current_suppressed = true;
             }
             Ok(Event::End(ref e)) => {
