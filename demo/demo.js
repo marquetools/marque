@@ -62,12 +62,17 @@ const DEMO_CONFIG = JSON.stringify({
   },
 });
 
-const FIX_THRESHOLD = 0.0;        // Tier 2 will surface this as a slider.
 const DEBOUNCE_MS   = 80;
 const AUTOPLAY_IDLE_MS = 6_000;
 const AUTOPLAY_CHAR_MS = 70;
+const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
   'Try typing — for example: This is a (sercet//noforn) test memo.';
+
+// Mutable: bound to the slider in the side rail. Changing this re-issues a
+// fix request so the user can watch how few diagnostics actually drop out
+// when the bar is raised — that's the robustness story.
+let currentThreshold = 0.0;
 
 // Autoplay script: a short representative passage that exercises typo
 // correction (SERCET → SECRET → S), portion abbreviation, and banner
@@ -255,15 +260,15 @@ function scheduleUpdate(view, refs) {
   debounceTimer = setTimeout(() => requestUpdate(view, refs), DEBOUNCE_MS);
 }
 
-function requestUpdate(view, refs) {
+function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
-  if (text === lastSettledText) return;
+  if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
   worker.postMessage({
     type: 'fix',
     seq: activeSeq,
     text,
-    threshold: FIX_THRESHOLD,
+    threshold: currentThreshold,
     config: DEMO_CONFIG,
   });
 }
@@ -330,6 +335,8 @@ function applyFixResult(view, refs, msg) {
 
   // Banner.
   applyBanner(msg.banner || 'UNCLASSIFIED', refs.topBanner, refs.bottomBanner);
+  refs.lastBanner = msg.banner || 'UNCLASSIFIED';
+  refs.lastFixedText = fixedText;
 
   // Audit entries — one row per applied fix, separator between batches.
   if (msg.applied.length > 0) {
@@ -338,6 +345,333 @@ function applyFixResult(view, refs, msg) {
       prependAuditEntry(f, refs.auditStream, refs.auditEmpty);
     }
   }
+
+  // NOFORN-clears-REL-TO supersession callout. The PageRewrite that
+  // implements `capco/noforn-clears-rel-to` doesn't surface as a fix —
+  // it changes the banner roll-up. Detect heuristically: any portion
+  // marking on the page contains NOFORN/NF AND any portion contains
+  // REL TO, but the post-rewrite banner has dropped the REL TO list.
+  maybeEmitNofornCallout(fixedText, refs.lastBanner, refs);
+
+  // Side rail: threshold counter + histogram + remaining-diagnostics list.
+  updateThresholdCounter(msg.applied, msg.remaining || [], refs);
+  updateConfidenceHistogram(msg.applied, msg.remaining || [], refs);
+  updateRemainingPanel(view, msg.remaining || [], refs);
+}
+
+// ---------------------------------------------------------------------------
+// Side-rail: threshold counter, histogram, remaining-diagnostics panel
+// ---------------------------------------------------------------------------
+
+function fixableCount(applied, remaining) {
+  // Total diagnostics that have a fix proposal at all (regardless of where
+  // they landed against the threshold).
+  let total = applied.length;
+  for (const r of remaining) if (r.fix) total++;
+  return total;
+}
+
+function updateThresholdCounter(applied, remaining, refs) {
+  const total = fixableCount(applied, remaining);
+  const pct = Math.round(currentThreshold * 100);
+  if (total === 0) {
+    refs.thresholdCounter.textContent = '—';
+    return;
+  }
+  refs.thresholdCounter.textContent =
+    `${applied.length} of ${total} applied @ ${pct}%`;
+}
+
+function updateConfidenceHistogram(applied, remaining, refs) {
+  const root = refs.histogram;
+  const buckets = new Array(HISTOGRAM_BUCKETS).fill(0);
+
+  const push = (c) => {
+    if (typeof c !== 'number' || !Number.isFinite(c)) return;
+    const clamped = Math.max(0, Math.min(1, c));
+    let idx = Math.floor(clamped * HISTOGRAM_BUCKETS);
+    if (idx === HISTOGRAM_BUCKETS) idx = HISTOGRAM_BUCKETS - 1;
+    buckets[idx]++;
+  };
+  for (const a of applied) push(a.confidence);
+  for (const r of remaining) if (r.fix) push(r.fix.confidence);
+
+  const max = Math.max(1, ...buckets);
+  const tIdx = Math.min(
+    HISTOGRAM_BUCKETS - 1,
+    Math.floor(currentThreshold * HISTOGRAM_BUCKETS),
+  );
+
+  // Reuse / create bar elements.
+  while (root.children.length < HISTOGRAM_BUCKETS) {
+    const bar = document.createElement('span');
+    bar.className = 'histo-bar';
+    root.appendChild(bar);
+  }
+  while (root.children.length > HISTOGRAM_BUCKETS) {
+    root.removeChild(root.lastChild);
+  }
+
+  for (let i = 0; i < HISTOGRAM_BUCKETS; i++) {
+    const bar = root.children[i];
+    const h = (buckets[i] / max) * 100;
+    bar.style.height = buckets[i] === 0 ? '2px' : `${Math.max(6, h)}%`;
+    bar.classList.remove('is-above-threshold', 'is-below-threshold', 'is-at-threshold');
+    if (i === tIdx) bar.classList.add('is-at-threshold');
+    else if (i > tIdx) bar.classList.add('is-above-threshold');
+    else bar.classList.add('is-below-threshold');
+    bar.title = `${(i / HISTOGRAM_BUCKETS).toFixed(2)}–${((i + 1) / HISTOGRAM_BUCKETS).toFixed(2)}: ${buckets[i]}`;
+  }
+}
+
+function updateRemainingPanel(view, remaining, refs) {
+  const list = refs.remainingList;
+  const empty = refs.remainingEmpty;
+  const count = refs.remainingCount;
+
+  // Wipe and rebuild — small lists, simple wins.
+  list.replaceChildren();
+
+  if (remaining.length === 0) {
+    list.appendChild(empty);
+    count.textContent = 'none';
+    return;
+  }
+  count.textContent = `${remaining.length}`;
+
+  for (const d of remaining) {
+    const item = document.createElement('li');
+    item.className = `remaining-item sev-${d.severity || 'info'}`;
+    item.tabIndex = 0;
+
+    const head = document.createElement('div');
+    head.className = 'remaining-head';
+    const ruleEl = document.createElement('span');
+    ruleEl.className = 'remaining-rule';
+    ruleEl.textContent = d.rule;
+    head.appendChild(ruleEl);
+    if (d.fix && typeof d.fix.confidence === 'number') {
+      const conf = document.createElement('span');
+      conf.className = 'remaining-confidence';
+      conf.textContent = `${Math.round(d.fix.confidence * 100)}% conf`;
+      head.appendChild(conf);
+    }
+    item.appendChild(head);
+
+    const message = document.createElement('div');
+    message.className = 'remaining-message';
+    message.textContent = d.message || '';
+    item.appendChild(message);
+
+    if (d.citation) {
+      const cite = document.createElement('div');
+      cite.className = 'remaining-citation';
+      cite.textContent = d.citation;
+      item.appendChild(cite);
+    }
+
+    item.addEventListener('click', () => focusEditorSpan(view, d.span));
+    item.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        focusEditorSpan(view, d.span);
+      }
+    });
+    list.appendChild(item);
+  }
+}
+
+function focusEditorSpan(view, span) {
+  if (!span) return;
+  const len = view.state.doc.length;
+  const from = Math.max(0, Math.min(len, span.start ?? 0));
+  const to   = Math.max(from, Math.min(len, span.end ?? from));
+  view.focus();
+  view.dispatch({
+    selection: { anchor: from, head: to },
+    scrollIntoView: true,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// NOFORN-supersession callout
+//
+// `capco/noforn-clears-rel-to` is a PageRewrite, not a FixProposal — it
+// changes the banner roll-up rather than rewriting source bytes. Detect
+// heuristically: any portion contains NOFORN/NF, any portion contains
+// REL TO, and the resulting banner has dropped the REL TO list.
+// ---------------------------------------------------------------------------
+
+let lastNofornState = false;
+
+const PORTION_RE = /\(([^)]+)\)/g;
+
+function maybeEmitNofornCallout(fixedText, banner, refs) {
+  let hasNoforn = false;
+  let hasRelTo  = false;
+  for (const m of fixedText.matchAll(PORTION_RE)) {
+    const inner = m[1].toUpperCase();
+    if (/\bNOFORN\b|\bNF\b/.test(inner)) hasNoforn = true;
+    if (/REL\s+TO\b/.test(inner)) hasRelTo = true;
+  }
+  const bannerLacksRelTo = !banner.toUpperCase().includes('REL TO');
+  const fired = hasNoforn && hasRelTo && bannerLacksRelTo;
+
+  // Only emit when transitioning into the fired state — avoids spamming
+  // the audit stream with one callout per keystroke.
+  if (fired && !lastNofornState) {
+    prependNofornCallout(refs.auditStream, refs.auditEmpty);
+  }
+  lastNofornState = fired;
+}
+
+function prependNofornCallout(stream, emptyEl) {
+  if (emptyEl && emptyEl.parentNode === stream) {
+    stream.removeChild(emptyEl);
+  }
+  const el = document.createElement('div');
+  el.className = 'audit-callout';
+  el.setAttribute('role', 'note');
+
+  const tag = document.createElement('span');
+  tag.className = 'audit-callout-tag';
+  tag.textContent = 'lattice';
+  el.appendChild(tag);
+
+  const body = document.createElement('span');
+  body.className = 'audit-callout-body';
+  body.textContent =
+    'NOFORN supersedes REL TO at the page level — REL TO list cleared from the banner.';
+  el.appendChild(body);
+
+  const rule = document.createElement('span');
+  rule.className = 'audit-callout-rule';
+  rule.textContent = 'capco/noforn-clears-rel-to';
+  el.appendChild(rule);
+
+  if (stream.firstChild) stream.insertBefore(el, stream.firstChild);
+  else stream.appendChild(el);
+}
+
+// ---------------------------------------------------------------------------
+// Banner-derivation tooltip
+//
+// On focus or hover of either banner, parse all portion markings out of the
+// post-fix text and list them. Doesn't reach into the engine — the surface
+// area we need (which portions contributed) is already visible in the source.
+// ---------------------------------------------------------------------------
+
+function attachBannerTooltip(refs) {
+  const tt = refs.bannerTooltip;
+  if (!tt) return;
+
+  function show(target) {
+    const banner = refs.lastBanner || 'UNCLASSIFIED';
+    const text   = refs.lastFixedText || '';
+    const portions = [...text.matchAll(PORTION_RE)].map(m => m[1].trim());
+
+    tt.replaceChildren();
+    const title = document.createElement('div');
+    title.className = 'banner-tooltip-title';
+    title.textContent = 'Banner derivation';
+    tt.appendChild(title);
+
+    const ruleLine = document.createElement('div');
+    ruleLine.className = 'banner-tooltip-rule';
+    ruleLine.textContent =
+      'max(classification) ∪ caveats across all portions on the page';
+    tt.appendChild(ruleLine);
+
+    if (portions.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'banner-tooltip-empty';
+      empty.textContent = 'No portion markings yet — banner is the default.';
+      tt.appendChild(empty);
+    } else {
+      const list = document.createElement('div');
+      list.className = 'banner-tooltip-portions';
+      const seen = new Set();
+      for (const p of portions) {
+        if (seen.has(p)) continue;
+        seen.add(p);
+        const li = document.createElement('span');
+        li.textContent = `(${p})`;
+        list.appendChild(li);
+        if (seen.size >= 8) break;
+      }
+      tt.appendChild(list);
+      if (portions.length > seen.size) {
+        const more = document.createElement('span');
+        more.className = 'banner-tooltip-empty';
+        more.textContent = `…and ${portions.length - seen.size} more.`;
+        tt.appendChild(more);
+      }
+    }
+
+    const rect = target.getBoundingClientRect();
+    // Position centered horizontally just under the banner.
+    tt.setAttribute('aria-hidden', 'false');
+    tt.dataset.open = 'true';
+    // Render once to measure, then position.
+    const ttRect = tt.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - ttRect.width / 2;
+    left = Math.max(8, Math.min(window.innerWidth - ttRect.width - 8, left));
+    let top = rect.bottom + 6;
+    if (top + ttRect.height > window.innerHeight - 8) {
+      top = rect.top - ttRect.height - 6;
+    }
+    tt.style.left = `${left + window.scrollX}px`;
+    tt.style.top  = `${top + window.scrollY}px`;
+  }
+
+  function hide() {
+    tt.setAttribute('aria-hidden', 'true');
+    tt.dataset.open = 'false';
+  }
+
+  for (const el of [refs.topBanner, refs.bottomBanner]) {
+    el.addEventListener('mouseenter', () => show(el));
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('focus',      () => show(el));
+    el.addEventListener('blur',       hide);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Threshold control wiring
+// ---------------------------------------------------------------------------
+
+function attachThresholdControls(view, refs) {
+  const slider = refs.thresholdSlider;
+  const valueEl = refs.thresholdValue;
+  const presets = refs.thresholdPresets;
+
+  function setThreshold(t, opts = {}) {
+    currentThreshold = Math.max(0, Math.min(1, Number(t) || 0));
+    valueEl.textContent = currentThreshold.toFixed(2);
+    if (slider.value !== String(currentThreshold)) {
+      slider.value = String(currentThreshold);
+    }
+    // Update the active preset chip — exact match wins, otherwise nothing.
+    for (const chip of presets) {
+      const v = parseFloat(chip.dataset.threshold);
+      chip.classList.toggle('is-active', Math.abs(v - currentThreshold) < 1e-6);
+    }
+    if (!opts.silent) {
+      // Force a fresh request even if the document hasn't changed — only
+      // the threshold has, and we want the side rail to reflect that.
+      requestUpdate(view, refs, { force: true });
+    }
+  }
+
+  slider.addEventListener('input', () => setThreshold(slider.value));
+  for (const chip of presets) {
+    chip.addEventListener('click', () => setThreshold(chip.dataset.threshold));
+  }
+
+  // Seed the readout — but don't force-issue a request before the worker
+  // has even processed the initial empty-doc lint.
+  setThreshold(currentThreshold, { silent: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -393,10 +727,40 @@ async function main() {
     bottomBanner: document.getElementById('banner-bottom'),
     auditStream:  document.getElementById('audit-stream'),
     auditEmpty:   document.getElementById('audit-empty'),
+    bannerTooltip:    document.getElementById('banner-tooltip'),
+    thresholdSlider:  document.getElementById('threshold-slider'),
+    thresholdValue:   document.getElementById('threshold-value'),
+    thresholdCounter: document.getElementById('threshold-counter'),
+    thresholdPresets: document.querySelectorAll('.preset-chip'),
+    histogram:        document.getElementById('confidence-histogram'),
+    remainingList:    document.getElementById('remaining-list'),
+    remainingEmpty:   document.getElementById('remaining-empty'),
+    remainingCount:   document.getElementById('remaining-count'),
+    contrastStrip:    document.getElementById('contrast-strip'),
+    contrastDismiss:  document.getElementById('contrast-dismiss'),
+    lastBanner: 'UNCLASSIFIED',
+    lastFixedText: '',
   };
+
+  // Contrast strip: dismissable, persisted in localStorage.
+  if (refs.contrastStrip && refs.contrastDismiss) {
+    try {
+      if (localStorage.getItem('marque-demo:contrast-dismissed') === '1') {
+        refs.contrastStrip.hidden = true;
+      }
+    } catch { /* localStorage may be unavailable */ }
+    refs.contrastDismiss.addEventListener('click', () => {
+      refs.contrastStrip.hidden = true;
+      try { localStorage.setItem('marque-demo:contrast-dismissed', '1'); }
+      catch { /* ignore */ }
+    });
+  }
 
   // Initial empty banner — UNCLASSIFIED.
   applyBanner('UNCLASSIFIED', refs.topBanner, refs.bottomBanner);
+
+  // Banner-derivation tooltip — hover/focus on either banner.
+  attachBannerTooltip(refs);
 
   // Worker → main: receive results, drop stale ones.
   worker.addEventListener('message', (ev) => {
@@ -469,6 +833,10 @@ async function main() {
     state: startState,
     parent: document.getElementById('editor-mount'),
   });
+
+  // Threshold controls — wire after the view exists so chips/slider can
+  // re-issue requestUpdate against the editor.
+  attachThresholdControls(view, refs);
 
   // Pause autoplay on any user input (keystroke, paste, click that sets focus).
   // The autoplay's own dispatches set the 'autoplay' annotation, so we

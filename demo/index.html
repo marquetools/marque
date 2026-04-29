@@ -21,53 +21,146 @@ SPDX-License-Identifier: Apache-2.0
   <span class="nav-hint">classification-marking lint · fix · audit</span>
 </nav>
 
+<!-- "What you used to do" contrast strip — dismissible, allusive only -->
+<aside class="contrast-strip" id="contrast-strip" aria-label="Workflow comparison">
+  <div class="contrast-strip-inner">
+    <div class="contrast-col contrast-then">
+      <span class="contrast-label">What you used to do</span>
+      <span class="contrast-body">
+        Open the popup. Find the right tab. Scroll the country list.
+        Ctrl-click each one (don't lose the selection). Tick caveats.
+        Compute the banner yourself. Hope nothing slipped.
+      </span>
+    </div>
+    <div class="contrast-divider" aria-hidden="true">→</div>
+    <div class="contrast-col contrast-now">
+      <span class="contrast-label">Now</span>
+      <span class="contrast-body">
+        Type the document. The banner rolls itself up. Conflicts surface
+        before you save. Every fix is audited.
+      </span>
+    </div>
+    <button type="button" class="contrast-dismiss"
+            id="contrast-dismiss" aria-label="Dismiss">×</button>
+  </div>
+</aside>
+
 <div class="page-wrapper">
 
-  <!-- Document card -->
-  <div class="document" id="document-card">
+  <!-- Main column: document + audit stream -->
+  <div class="main-col">
 
-    <!-- Top banner (auto-updated from portion markings) -->
-    <div class="banner level-empty" id="banner-top">Loading…</div>
+    <!-- Document card -->
+    <div class="document" id="document-card">
 
-    <!-- Memo header (non-editable) -->
-    <div class="doc-header">
-      <table>
-        <tr>
-          <td>MEMORANDUM FOR:</td>
-          <td>Distribution List</td>
-        </tr>
-        <tr>
-          <td>FROM:</td>
-          <td>Office of the Directorate</td>
-        </tr>
-        <tr>
-          <td>SUBJECT:</td>
-          <td>Intelligence Assessment — Program Status</td>
-        </tr>
-        <tr>
-          <td>DATE:</td>
-          <td id="doc-date"></td>
-        </tr>
-      </table>
-      <hr class="doc-divider" />
+      <!-- Top banner (auto-updated from portion markings) -->
+      <div class="banner level-empty" id="banner-top"
+           tabindex="0" aria-describedby="banner-tooltip">Loading…</div>
+
+      <!-- Memo header (non-editable) -->
+      <div class="doc-header">
+        <table>
+          <tr>
+            <td>MEMORANDUM FOR:</td>
+            <td>Distribution List</td>
+          </tr>
+          <tr>
+            <td>FROM:</td>
+            <td>Office of the Directorate</td>
+          </tr>
+          <tr>
+            <td>SUBJECT:</td>
+            <td>Intelligence Assessment — Program Status</td>
+          </tr>
+          <tr>
+            <td>DATE:</td>
+            <td id="doc-date"></td>
+          </tr>
+        </table>
+        <hr class="doc-divider" />
+      </div>
+
+      <!-- Editable body — CodeMirror mounts here -->
+      <div class="doc-body">
+        <div id="editor-mount"></div>
+      </div>
+
+      <!-- Bottom banner (mirrors top) -->
+      <div class="banner level-empty" id="banner-bottom">Loading…</div>
+
     </div>
 
-    <!-- Editable body — CodeMirror mounts here -->
-    <div class="doc-body">
-      <div id="editor-mount"></div>
+    <!-- Audit stream — blends with page background, prepends entries as fixes fire -->
+    <div class="audit-stream" id="audit-stream" aria-label="Correction audit log">
+      <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
     </div>
-
-    <!-- Bottom banner (mirrors top) -->
-    <div class="banner level-empty" id="banner-bottom">Loading…</div>
 
   </div>
 
-  <!-- Audit stream — blends with page background, prepends entries as fixes fire -->
-  <div class="audit-stream" id="audit-stream" aria-label="Correction audit log">
-    <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
-  </div>
+  <!-- Side rail: threshold control + remaining diagnostics -->
+  <aside class="side-col" aria-label="Engine controls and diagnostics">
+
+    <!-- Confidence threshold control -->
+    <section class="panel threshold-panel" aria-labelledby="thresh-heading">
+      <header class="panel-header">
+        <h2 id="thresh-heading" class="panel-title">Confidence threshold</h2>
+        <span class="panel-hint">fixes at or above this auto-apply</span>
+      </header>
+
+      <div class="threshold-presets" role="group" aria-label="Threshold presets">
+        <button type="button" class="preset-chip" data-threshold="0.99">
+          <span class="chip-label">Conservative</span>
+          <span class="chip-value">0.99</span>
+        </button>
+        <button type="button" class="preset-chip" data-threshold="0.85">
+          <span class="chip-label">Default</span>
+          <span class="chip-value">0.85</span>
+        </button>
+        <button type="button" class="preset-chip is-active" data-threshold="0.00">
+          <span class="chip-label">Aggressive</span>
+          <span class="chip-value">0.00</span>
+        </button>
+      </div>
+
+      <div class="threshold-slider-wrap">
+        <input type="range" class="threshold-slider" id="threshold-slider"
+               min="0" max="1" step="0.01" value="0"
+               aria-label="Confidence threshold" />
+        <div class="threshold-readout">
+          <span class="threshold-value" id="threshold-value">0.00</span>
+          <span class="threshold-counter" id="threshold-counter">—</span>
+        </div>
+      </div>
+
+      <!-- Distribution histogram of fix confidences -->
+      <div class="confidence-histogram" id="confidence-histogram"
+           aria-label="Distribution of fix confidences"></div>
+      <div class="threshold-note">
+        Drop to 0.00 and almost everything still applies — the engine's
+        fixes cluster near 1.0. The slider is here to let you see that.
+      </div>
+    </section>
+
+    <!-- Remaining diagnostics -->
+    <section class="panel remaining-panel" aria-labelledby="remain-heading">
+      <header class="panel-header">
+        <h2 id="remain-heading" class="panel-title">Remaining</h2>
+        <span class="panel-hint" id="remaining-count">none</span>
+      </header>
+      <ol class="remaining-list" id="remaining-list">
+        <li class="remaining-empty" id="remaining-empty">
+          Nothing to surface. Anything below threshold or without a
+          confident fix will show here.
+        </li>
+      </ol>
+    </section>
+
+  </aside>
 
 </div>
+
+<!-- Banner-derivation tooltip (positioned next to banner on focus/hover) -->
+<div class="banner-tooltip" id="banner-tooltip" role="tooltip" aria-hidden="true"></div>
 
 <script>
   const d = new Date();
