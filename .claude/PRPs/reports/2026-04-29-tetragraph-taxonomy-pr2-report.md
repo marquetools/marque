@@ -3,13 +3,18 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Implementation Report: Issue #206 (PR-2) — S005 `rel-to-opaque-uncertain-reduction`
+# Implementation Report: Issue #206 (PR-2) — S005/S006 `rel-to-opaque-uncertain-reduction`
 
 ## Summary
 
-PR-2 of the merged plan `docs/plans/2026-04-28-tetragraph-taxonomy-and-uncertain-reduction.md` is implemented. `S005` is a new suggest-channel rule (`Severity::Suggest` default; falls to `Severity::Info` when the banner is consistent with atom-semantics) that fires when a REL TO tetragraph with uncertain ISMCAT membership drops out of the page-level atom-semantics intersection AND the remaining atom union contains codes the operator may have intended to release to via the dropped code's hypothetical membership.
+PR-2 of the merged plan `docs/plans/2026-04-28-tetragraph-taxonomy-and-uncertain-reduction.md` is implemented as **two** registered rules sharing one analysis helper:
 
-The rule is the second consumer of the suggest-don't-fix channel (after S004, PR #242) and the first consumer of the new `marque_ism::is_decomposable` discriminator landed in PR-1 (#208). It also surfaces verbatim ODNI taxonomy `<Description>` text via `lookup_tetragraph_provenance`, closing PR-1's open use-case for the description payload.
+- **S005** (`rel-to-opaque-uncertain-reduction`, `Severity::Suggest`) — fires when a REL TO tetragraph with uncertain ISMCAT membership drops out of the page-level atom-semantics intersection AND the banner has no REL TO (active validation) OR the banner's REL TO is missing a code atom-semantics says should survive (`expected ⊄ banner_atomic`).
+- **S006** (`rel-to-opaque-uncertain-reduction-info`, `Severity::Info`) — same trigger as S005, but fires when the banner is consistent with atom-semantics (`expected ⊆ banner_atomic`). Audit-only signal for the case where the producer plausibly drew on membership data we don't have.
+
+The conceptual design is plan §3.1's "split severity" rule. The two-rule split is forced by `marque_engine::Engine::lint`'s severity-override behavior (`engine.rs:641` unconditionally overwrites every emitted diagnostic's severity with the rule's configured/default severity), which was caught by Copilot review on the initial single-rule implementation. Two rules sharing an `analyze_uncertain_reduction` helper preserve the plan's intent without changing engine semantics.
+
+Together the pair is the second consumer of the suggest-don't-fix channel (after S004, PR #242) and the first consumer of the new `marque_ism::is_decomposable` discriminator landed in PR-1 (#208). They surface verbatim ODNI taxonomy `<Description>` text via `lookup_tetragraph_provenance`, closing PR-1's open use-case for the description payload.
 
 A small public-API addition supports this: `marque_ism::PageContext::portions(&self) -> &[IsmAttributes]`. Most banner rules want one of the rolled-up `expected_*` accessors; S005 is the first rule that needs the pre-rollup view because the diagnostic depends on which portion contributed which code, not on the rolled-up answer. The accessor doc comment makes this explicit so future rules don't reach for raw portions when an aggregator would do.
 
