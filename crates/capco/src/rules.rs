@@ -3601,6 +3601,37 @@ fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<
         return Vec::new();
     }
 
+    // NOFORN supersedes REL TO at the page level (CAPCO-2016
+    // §H.8 + §H.9 — NOFORN/REL TO mutual exclusion). When any
+    // portion carries NOFORN, or when the non-IC SBU-NF/LES-NF
+    // split forces NF injection at banner roll-up,
+    // `PageContext::expected_rel_to` returns empty *because the
+    // marking is superseded*, not because the atom intersection
+    // is empty. Firing S005/S006 in that case produces a
+    // misleading "intersection produced REL TO (empty)"
+    // diagnostic — the operator's actual problem is "you have
+    // NOFORN AND REL TO portions on the same page", which is a
+    // different rule's territory. Bail so S005/S006 only run
+    // when REL TO is semantically in play. Mirrors the
+    // supersession checks `PageContext::expected_rel_to` runs
+    // internally; we duplicate them here because the rule needs
+    // to distinguish "empty due to supersession" from "empty
+    // due to genuinely-disjoint portion REL TO lists" (the
+    // latter is a legitimate S005/S006 trigger). (Caught by
+    // Copilot review on PR #249.)
+    let any_portion_noforn = page.portions().iter().any(|p| {
+        p.dissem_controls
+            .iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_portion_noforn {
+        return Vec::new();
+    }
+    let (_expected_non_ic, needs_nf_from_split) = page.expected_non_ic_dissem();
+    if needs_nf_from_split {
+        return Vec::new();
+    }
+
     // The atom-semantics intersection. `PageContext::expected_rel_to`
     // already does tetragraph expansion before intersection and
     // returns the result USA-first then alphabetical (per CAPCO
@@ -8102,6 +8133,34 @@ mod tests {
             count_s005_or_s006(&diags),
             0,
             "S005/S006 must suppress when no 'other codes' to surface: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_a_portion_carries_noforn() {
+        // Regression for Copilot review on PR #249: NOFORN supersedes
+        // REL TO at the page level. `PageContext::expected_rel_to`
+        // returns empty because the marking is superseded, not
+        // because the atom intersection is empty — firing S005 in
+        // that case produces a misleading "intersection produced
+        // REL TO (empty…)" diagnostic. Pin the bail.
+        //
+        // Fixture: portion 1 has NOFORN, portions 2+3 have REL TO
+        // with an uncertain code (RSMA). Pre-fix, the rule would
+        // have computed `portions_with_rel_to.len() == 2`,
+        // `expected_set = {}` (NOFORN supersession), and fired
+        // S005 with empty-intersection wording. Post-fix, the
+        // NOFORN check bails before any of that runs.
+        let source = "(S//NF)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when any portion carries NOFORN \
+             (REL TO is superseded at the page level): {diags:?}"
         );
     }
 

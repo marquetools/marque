@@ -28,9 +28,9 @@ Plan §8 Q3 (banner-consistency primitive) — **resolved**. Verified against `c
 |---|---|---|
 | Sequencing | Two PRs, #206 second | PR-2 implemented after PR-1 merged |
 | Files changed | 2 (per plan §3.4) | 3 (added `page_context.rs` for the `portions()` accessor) |
-| Severity model | Split (Info / Suggest) | Split (Info / Suggest) — implemented per §3.2 |
-| Test cases | 7 fire / no-fire (§3.5) | 17 unit tests (7 fire/no-fire + state-text variants + audit-content-ignorance) |
-| Rule count | 57 | 57 (56 + 1) |
+| Severity model | Split (Info / Suggest) implemented as one rule with context-dependent severity | Split implemented as **two rules** (S005 Suggest + S006 Info) sharing one analysis helper. Single-rule context-dependent severity doesn't survive `Engine::lint`'s severity override (Copilot review surfaced this). |
+| Test cases | 7 fire / no-fire (§3.5) | 18 unit tests (Suggest fires, Info fires, six no-fire branches, four state-text shapes, audit-content-ignorance, plus two regression tests for Copilot reviews — `other_codes` per-portion correction and NOFORN supersession bail) |
+| Rule count | 57 (one rule added) | **58** (two rules added: S005 + S006) |
 
 ## Tasks Completed
 
@@ -38,11 +38,12 @@ Plan §8 Q3 (banner-consistency primitive) — **resolved**. Verified against `c
 |---|------|--------|-------|
 | 1 | Resolve plan §8 Q3 banner-consistency primitive | ✅ Complete | XSL inspection: `util:expandDecomposableTetras` confirms post-expansion comparison |
 | 2 | Add `PageContext::portions()` accessor | ✅ Complete | Doc comment explains it's the first per-portion-needing rule; future rules should prefer `expected_*` |
-| 3 | Implement `RelToOpaqueUncertainReductionRule` | ✅ Complete | Trichotomy split (Info / Suggest), trigraph filter, `s005_state_text` covers all four `is_decomposable=None` shapes |
-| 4 | Register S005 in `CapcoRuleSet::new()` after E052 | ✅ Complete | Per plan §3.6 |
-| 5 | S005 fire / no-fire / Info-vs-Suggest tests | ✅ Complete | Inline unit tests in `rules.rs::tests` (the natural home for diagnostic-level tests; rel_to_invariants.rs is engine-fix-level) |
-| 6 | Update `capco_rule_set_registers_all_rules` | ✅ Complete | Count 56 → 57; added explicit S004 + S005 `contains` checks |
-| 7 | Update `rule_count_reflects_registration_changes` | ✅ Complete | Count 56 → 57 in `corpus_parity.rs` integration test |
+| 3 | Implement S005 (Suggest) + S006 (Info) sharing `analyze_uncertain_reduction` | ✅ Complete | Trigraph filter, `s005_state_text` covers all four `is_decomposable=None` shapes, NOFORN supersession bail (Copilot review #4), `other_codes` computed from portions-without-X intersection (Copilot review #2), `ISMCAT_TETRA_VERSION` interpolation (Copilot review #3) |
+| 4 | Register both rules in `CapcoRuleSet::new()` after E052 | ✅ Complete | Per plan §3.6 (adapted: two `Box::new(...)` instead of one) |
+| 5 | S005/S006 fire / no-fire / Info-vs-Suggest tests | ✅ Complete | Inline unit tests in `rules.rs::tests` (engine-fix-level `rel_to_invariants.rs` doesn't apply since neither rule emits a fix) |
+| 6 | Update `capco_rule_set_registers_all_rules` | ✅ Complete | Count 56 → 58; added explicit S004, S005, S006 `contains` checks |
+| 7 | Update `rule_count_reflects_registration_changes` | ✅ Complete | Count 56 → 58 in `corpus_parity.rs` integration test, with S005+S006 changelog entries |
+| 8 | Address three Copilot review comments | ✅ Complete | Engine severity override → two-rule split; `other_codes` → portions-WITHOUT-X intersection; hardcoded `V2022-NOV` → `ISMCAT_TETRA_VERSION` interpolation. Two follow-on Copilot comments: NOFORN supersession bail + report counts; both addressed in commit chain. |
 
 ## Validation Results
 
@@ -51,17 +52,17 @@ Plan §8 Q3 (banner-consistency primitive) — **resolved**. Verified against `c
 | Static Analysis | ✅ Pass | `cargo clippy --workspace --all-targets -- -D warnings` clean |
 | Build (workspace) | ✅ Pass | `cargo build --workspace` clean |
 | Build (WASM) | ✅ Pass | `cargo build -p marque-wasm --target wasm32-unknown-unknown` clean (Constitution Principle III preserved — `PageContext::portions()` is `marque-ism` and ships on the WASM-safe path) |
-| Unit Tests | ✅ Pass | 409 unit tests pass (17 new S005 tests); full workspace: 0 failures |
+| Unit Tests | ✅ Pass | 410 unit tests pass (18 new S005/S006 tests); full workspace: 0 failures |
 | Format | ✅ Pass | `cargo fmt --check` clean |
-| Integration (REL TO invariants) | ✅ Pass | 8 existing E002/E020/E052 overlap tests still pass; S005 doesn't introduce new C-1 overlap interactions because it never emits a fix |
+| Integration (REL TO invariants) | ✅ Pass | 8 existing E002/E020/E052 overlap tests still pass; S005/S006 don't introduce new C-1 overlap interactions because neither emits a fix |
 
 ## Files Changed
 
 | File | Action | Notes |
 |---|--------|-------|
-| `crates/ism/src/page_context.rs` | UPDATED | +22 lines — added `pub fn portions(&self) -> &[IsmAttributes]` with doc comment explaining why most rules should prefer `expected_*` |
-| `crates/capco/src/rules.rs` | UPDATED | +681 / -4 lines — `RelToOpaqueUncertainReductionRule`, three module-private helpers (`s005_state_text`, `s005_expand_atomic`, `s005_render_set`), registration in `CapcoRuleSet::new()`, manifest comment for S005, 17 unit tests, updated `capco_rule_set_registers_all_rules` count to 57 |
-| `crates/capco/tests/corpus_parity.rs` | UPDATED | +14 / -3 lines — bumped `rule_count_reflects_registration_changes` to 57 with S005 changelog entry |
+| `crates/ism/src/page_context.rs` | UPDATED | Added `pub fn portions(&self) -> &[IsmAttributes]` with doc comment explaining why most rules should prefer `expected_*`. |
+| `crates/capco/src/rules.rs` | UPDATED | `RelToOpaqueUncertainReductionSuggestRule` (S005), `RelToOpaqueUncertainReductionInfoRule` (S006), shared `analyze_uncertain_reduction` helper, three private helpers (`s005_state_text`, `s005_expand_atomic`, `s005_render_set`), `S005Branch` enum + `S005Candidate` struct, NOFORN supersession bail, registration of both rules in `CapcoRuleSet::new()` after E052, S005+S006 manifest entries, 18 unit tests, `capco_rule_set_registers_all_rules` count 56 → 58. |
+| `crates/capco/tests/corpus_parity.rs` | UPDATED | Bumped `rule_count_reflects_registration_changes` 56 → 58 with S005+S006 changelog entries. |
 
 ## Deviations from Plan
 
@@ -81,19 +82,25 @@ Plan §8 Q3 (banner-consistency primitive) — **resolved**. Verified against `c
 
 2. **Initial test fixture for the Suggest-inconsistent-banner case actually produced Info.** First-draft fixture had banner = `REL TO USA, FRA` against atom-intersection {USA}. `{USA} ⊆ {USA, FRA}` is true, so the consistency check picked Info. Realized I needed atom-intersection to have ≥2 codes so the banner could *miss* one — switched portion 2 from `(S//REL TO USA, AUS)` to `(S//REL TO USA, AUS, GBR)` so atom-intersection becomes `{USA, GBR}`, banner `REL TO USA` then misses GBR ⇒ Suggest. Plan §3.5 case 3 wording was vague enough that this took test-design iteration to nail down; updated the test comments to make the math explicit.
 
-3. **Two existing rule-count tests drifted past 56 → 57.** `capco_rule_set_registers_all_rules` (unit) and `rule_count_reflects_registration_changes` (integration). Both updated together with a S005 entry in the changelog comment so the next rule addition has the same prompt to bump.
+3. **Two existing rule-count tests drifted past 56 → 58 (two new rules).** `capco_rule_set_registers_all_rules` (unit) and `rule_count_reflects_registration_changes` (integration). Both updated together with S005+S006 entries in the changelog comment so the next rule addition has the same prompt to bump.
+
+4. **Engine severity-override mismatch (Copilot review).** The first-pass implementation used a single rule with context-dependent severity returned from `check`. `marque_engine::Engine::lint` at `engine.rs:641` unconditionally overwrites every emitted diagnostic's severity with the rule's configured/default severity, so the Info branch would have flattened to Suggest in production (unit tests passed because `lint_banner` calls `rule.check()` directly, bypassing the engine). Refactored into S005 (Suggest) + S006 (Info) sharing one `analyze_uncertain_reduction` helper.
+
+5. **`other_codes` over-inclusion (Copilot review).** The first-pass `other_codes = union(all portions) − expected − {X}` included atoms already explicitly listed alongside X in the same portion. Such atoms can't be hypothetically pulled in by X's membership — they're already there. Replaced with `intersection(portions-WITHOUT-X expansions) − expected − {X}`, which captures exactly the atoms whose intersection survival would change if X had hypothetical membership. Regression test pins the case.
+
+6. **NOFORN supersession bail (Copilot review).** When any portion carries `DissemControl::Nf` (or the non-IC SBU-NF/LES-NF split forces NF injection), `PageContext::expected_rel_to` returns empty *because the marking is superseded*, not because the atom intersection is empty. Firing S005/S006 in that case would produce a misleading "intersection produced REL TO (empty)" diagnostic. Added an early bail mirroring the supersession checks `PageContext::expected_rel_to` runs internally. Regression test pins the bail.
 
 ## Tests Written
 
 | Test File | Tests | Coverage |
 |---|------:|----------|
-| `crates/capco/src/rules.rs::tests` | +17 | S005 firing: Suggest (active-validation, banner drops a preserved code); Info (banner equals atom-intersection, banner is proper superset). S005 no-fire: uncertain in every portion, KFOR atom-by-authority, EU atom-by-authority, FVEY decomposable-known, single REL TO portion, pure-trigraph fixtures, empty other_codes set. State text: NA-Suppressed (RSMA), NA-Description (EUDA, with verbatim quote), NA-Members(recursive) (BHTF), absent (XYZW). Constitution V audit-content-ignorance: surrounding document text doesn't leak into the message. |
-| `crates/capco/src/rules.rs::tests` | 1 modified | `capco_rule_set_registers_all_rules` count 56 → 57 with explicit `S004` and `S005` containment checks |
-| `crates/capco/tests/corpus_parity.rs` | 1 modified | `rule_count_reflects_registration_changes` count 56 → 57 with S005 changelog entry |
+| `crates/capco/src/rules.rs::tests` | +18 | S005 firing: Suggest (active-validation, banner drops a preserved code). S006 firing: Info (banner equals atom-intersection, banner is proper superset). S005/S006 no-fire: uncertain in every portion, KFOR atom-by-authority, EU atom-by-authority, FVEY decomposable-known, single REL TO portion, pure-trigraph fixtures, empty other_codes set, **`other_codes` only-alongside-X regression**, **NOFORN supersession bail regression**. State text: NA-Suppressed (RSMA), NA-Description (EUDA, with verbatim quote), NA-Members(recursive) (BHTF), absent (XYZW). Constitution V audit-content-ignorance: surrounding document text doesn't leak into the message. |
+| `crates/capco/src/rules.rs::tests` | 1 modified | `capco_rule_set_registers_all_rules` count 56 → 58 with explicit `S004`, `S005`, `S006` containment checks |
+| `crates/capco/tests/corpus_parity.rs` | 1 modified | `rule_count_reflects_registration_changes` count 56 → 58 with S005+S006 changelog entries |
 
 ## Generated-Output Spot Check
 
-Sample diagnostic for the canonical fixture
+Sample diagnostic for the canonical Suggest fixture
 `(S//REL TO USA, GBR, RSMA)\n(S//REL TO USA, AUS, GBR)\nSECRET//NOFORN`:
 
 ```
@@ -106,9 +113,15 @@ membership may include AUS from other portions. Resolution: (a) add
 `RSMA` membership to country_extensions.toml with an authoritative
 source citation, or (b) revise the marking to use codes with known
 membership.
-Citation: CAPCO-2016 §H.8 + ODNI ISMCAT V2022-NOV Tetragraph Taxonomy
+Citation: CAPCO-2016 §H.8 + ODNI ISMCAT Tetragraph Taxonomy (see ISMCAT_TETRA_VERSION)
 Fix: None
 ```
+
+For the Info-branch fixture (banner = `SECRET//REL TO USA, GBR`,
+`expected ⊆ banner`), the same payload emits at S006 / `Severity::Info`
+instead. The version literal `V2022-NOV` is interpolated from
+`marque_ism::ISMCAT_TETRA_VERSION` at format time so a future taxonomy
+revision picks up the new value automatically.
 
 EUDA fixture additionally surfaces the verbatim ODNI Description text:
 `"As of 15 March 2016, disclosure request should be referred to the
