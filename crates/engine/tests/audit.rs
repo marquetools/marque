@@ -103,6 +103,13 @@ const PROSE_SENTINELS: &[&str] = &[
 ];
 
 fn test_engine() -> Engine {
+    // `audit_v2_strict_path_invariants` (T052) asserts strict-shape
+    // invariants on every produced `AppliedFix`. Pin the recognizer to
+    // `StrictRecognizer` explicitly — the engine default
+    // (`StrictOrDecoderRecognizer`) would still hold the invariant on
+    // today's fixture set because no fixture trips the decoder, but a
+    // future fixture that does would silently weaken the assertion if
+    // we relied on the default.
     Engine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
@@ -110,6 +117,9 @@ fn test_engine() -> Engine {
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    .with_recognizer(std::sync::Arc::new(
+        marque_engine::StrictRecognizer::new(),
+    ))
 }
 
 fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
@@ -368,9 +378,11 @@ fn sentinel_check_panics_on_synthetic_leak() {
 // T052 — audit v2 strict-path record invariants.
 // ---------------------------------------------------------------------------
 //
-// The strict path is the engine's default: `Engine::new(...)` without
-// `with_deep_scan()` installs `StrictRecognizer` and only ever produces
-// fixes from rules / corrections / migrations — never from
+// The strict path is the explicit-opt-out mode: `Engine::new(...)`
+// installs the `StrictOrDecoderRecognizer` dispatcher by default;
+// callers that need strict-only behavior install `StrictRecognizer`
+// via `Engine::with_recognizer`. The strict path produces fixes only
+// from rules / corrections / migrations — never from
 // `FixSource::DecoderPosterior`. The v2 audit contract pins four
 // per-record shape invariants on every fix that comes out of that
 // path:
@@ -615,14 +627,16 @@ fn v1_records_parse_in_v2_consumer() {
 // at all — silently weakening the assertion.
 
 fn deep_scan_engine() -> Engine {
-    let engine = Engine::with_clock(
+    // The decoder fallback is the engine default (`Engine::new` /
+    // `Engine::with_clock` install `StrictOrDecoderRecognizer`); no
+    // explicit opt-in is required.
+    Engine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
-    .expect("default CAPCO scheme has no rewrite cycles");
-    engine.with_deep_scan()
+    .expect("default CAPCO scheme has no rewrite cycles")
 }
 
 #[test]

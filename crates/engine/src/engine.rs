@@ -8,7 +8,7 @@ use crate::clock::{Clock, SystemClock};
 use crate::errors::{EngineConstructionError, EngineError};
 use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
-use crate::recognizer::{StrictRecognizer, shift_token_spans};
+use crate::recognizer::shift_token_spans;
 use crate::scheduler::schedule_rewrites;
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
@@ -108,20 +108,24 @@ pub struct Engine {
     /// order (Kahn's algorithm seeded in declaration order). Empty
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
-    /// Strict-path recognizer used by `lint()` to resolve each scanner
-    /// candidate to an `IsmAttributes`. Held behind `Arc<dyn Recognizer>`
-    /// so Phase 4 PR-3 can swap in a `DecoderRecognizer` or combined
-    /// strict→decoder dispatcher at construction time without touching
-    /// the lint loop. Shared across threads unchanged — the recognizer
-    /// trait is `Send + Sync` and `BatchEngine` workers hold the same
-    /// `Arc` reference (Constitution VI, FR-023).
+    /// Recognizer used by `lint()` to resolve each scanner candidate to
+    /// an `IsmAttributes`. Held behind `Arc<dyn Recognizer>` so callers
+    /// can override the default via [`Engine::with_recognizer`] without
+    /// touching the lint loop. Shared across threads unchanged — the
+    /// recognizer trait is `Send + Sync` and `BatchEngine` workers hold
+    /// the same `Arc` reference (Constitution VI, FR-023).
+    ///
+    /// Default: [`StrictOrDecoderRecognizer`] — strict-first dispatch
+    /// with a decoder fallback on strict-parse zero-candidate. The
+    /// decoder recovers mangled markings that are edit-distance-1/2,
+    /// token-reordered, superseded, or case-mangled from a real
+    /// CAPCO-2016 marking. Live-typing surfaces concerned with
+    /// per-keystroke latency are expected to debounce their calls into
+    /// the engine; surfaces that need to pin strict-only behavior (the
+    /// SC-001 interactive-latency benchmark, tests asserting strict
+    /// dispatch) install [`StrictRecognizer`] explicitly via
+    /// [`Engine::with_recognizer`].
     recognizer: Arc<dyn Recognizer<CapcoScheme>>,
-    /// When `true`, `lint()` passes `strict_evidence = false` in the
-    /// `ParseContext` so the recognizer is allowed to fall back to the
-    /// decoder on strict-parse zero-candidate. Flipped by
-    /// [`Engine::with_deep_scan`]; false by default so interactive-
-    /// authoring latency (SC-001) is identical to PR-2.
-    deep_scan: bool,
 
     /// CLI-supplied corpus override (Phase 4 PR-5 / FR-013 / T069).
     /// Held only behind the `corpus-override` Cargo feature so the
@@ -225,8 +229,7 @@ impl Engine {
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
-            recognizer: Arc::new(StrictRecognizer::new()),
-            deep_scan: false,
+            recognizer: Arc::new(crate::decoder::StrictOrDecoderRecognizer::new()),
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
         })
@@ -242,40 +245,23 @@ impl Engine {
         &self.scheduled_rewrites
     }
 
-    /// Swap the engine's strict-only recognizer for the strict-then-
-    /// decoder dispatcher (Phase 4 PR-3). Returns the engine by value
-    /// so callers can chain:
+    /// Override the engine's recognizer. The default installed by
+    /// [`Engine::new`] is [`StrictOrDecoderRecognizer`] (strict-first,
+    /// decoder fallback). Callers that need to pin a different dispatch
+    /// — most commonly [`StrictRecognizer`] for the SC-001 interactive-
+    /// latency benchmark or tests asserting strict-only behavior —
+    /// install one explicitly here.
+    ///
+    /// Returns the engine by value so callers can chain:
     ///
     /// ```ignore
-    /// let engine = Engine::new(config, rules, scheme)?.with_deep_scan();
+    /// let engine = Engine::new(config, rules, scheme)?
+    ///     .with_recognizer(Arc::new(StrictRecognizer::new()));
     /// ```
-    ///
-    /// With deep-scan on, [`Engine::lint`] first tries the strict path
-    /// for every scanner candidate; if strict returns a zero-candidate
-    /// `Ambiguous`, the engine falls back to [`DecoderRecognizer`].
-    /// The decoder recovers mangled markings that are edit-distance-1/2,
-    /// token-reordered, superseded, or case-mangled from a real
-    /// CAPCO-2016 marking.
-    ///
-    /// Interactive-authoring latency is not affected: without
-    /// deep-scan, the engine's dispatch is identical to Phase 4 PR-2.
-    /// The decoder only fires on explicit opt-in (this method today;
-    /// a `--deep-scan` CLI flag lands in PR-4 alongside audit v2).
-    #[must_use = "with_deep_scan returns a new Engine; the result must be bound to take effect — `engine.with_deep_scan()` alone leaves the engine in strict-only mode"]
-    pub fn with_deep_scan(mut self) -> Self {
-        self.recognizer = Arc::new(crate::decoder::StrictOrDecoderRecognizer::new());
-        self.deep_scan = true;
+    #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
+    pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
+        self.recognizer = recognizer;
         self
-    }
-
-    /// Whether this engine is running in deep-scan mode.
-    ///
-    /// Exposed for test inspection and for `BatchEngine` /
-    /// `marque-server` code paths that need to mirror the engine's
-    /// mode onto their own configuration (e.g., audit records'
-    /// `FixSource::DecoderPosterior` only makes sense in deep-scan).
-    pub fn deep_scan_enabled(&self) -> bool {
-        self.deep_scan
     }
 
     /// Install a CLI-supplied corpus override. Only available when
@@ -460,12 +446,15 @@ impl Engine {
             }
 
             // Parse context built per-candidate so the floor accumulated
-            // earlier on the page reaches the recognizer. `strict_evidence`
-            // is the engine-level deep-scan opt-in mirror; the dispatcher
-            // (StrictOrDecoderRecognizer) reads it to decide whether to
-            // fall back to the decoder on strict-parse zero-candidate.
+            // earlier on the page reaches the recognizer. `strict_evidence
+            // = false` permits the dispatcher
+            // (`StrictOrDecoderRecognizer`, the default) to fall back to
+            // the decoder on strict-parse zero-candidate. The
+            // `StrictRecognizer` ignores this flag entirely; consumers
+            // that pin strict-only behavior install it via
+            // [`Engine::with_recognizer`].
             let parse_cx = ParseContext {
-                strict_evidence: !self.deep_scan,
+                strict_evidence: false,
                 zone: None,
                 position: None,
                 classification_floor,
@@ -1206,6 +1195,26 @@ fn engine_promotion_token() -> EnginePromotionToken {
 /// is a separate bug to surface — silently dropping the synthetic
 /// diagnostic is the conservative move.
 ///
+/// # Audit-shape contract (Constitution V Principle V / G13)
+///
+/// The diagnostic's `message` and the synthesized `FixProposal.original`
+/// MUST NOT carry verbatim input bytes — only token canonicals, span
+/// offsets, and digests/posterior scalars are permitted in audit
+/// output. The "before" form is therefore omitted from the message
+/// and `proposal.original` is set to the empty string for
+/// decoder-path R001 records: span tells the audit consumer *where*
+/// the fix landed, `proposal.replacement` carries *what* it became.
+/// The original bytes already exist in the source document; the audit
+/// record is not the right channel for them.
+///
+/// Note: this contract addresses the audit-record *shape*. A separate
+/// upstream concern is whether `proposal.replacement` itself is a
+/// well-formed canonical (Constitution V permits "token canonicals"
+/// in audit output). When the decoder accepts unrecognized bytes as a
+/// compartment-shaped token and uppercases them, the resulting
+/// "canonical" carries those bytes through `replacement` — that's a
+/// decoder-correctness issue to address separately.
+///
 /// The fix's `Confidence` is populated entirely from the decoder's
 /// provenance trace:
 ///
@@ -1289,11 +1298,18 @@ fn build_decoder_diagnostic(
         features,
     };
     let rule = RuleId::new(DECODER_RULE_ID);
+    // Audit-shape contract: `proposal.original` is the empty string for
+    // decoder-path R001 records (Constitution V Principle V / G13). The
+    // span identifies *where* the fix landed; the bytes are still in
+    // the source document. The unused `original` binding documents that
+    // we held UTF-8 validity for the input but intentionally do not
+    // route it into the audit record.
+    let _ = original;
     let proposal = FixProposal::new(
         rule.clone(),
         fix_source,
         span,
-        original,
+        "",
         replacement,
         confidence,
         None,
@@ -1302,7 +1318,7 @@ fn build_decoder_diagnostic(
         rule,
         severity,
         span,
-        format!("decoder-recognized canonical form: {original:?} → {replacement:?}"),
+        format!("decoder-recognized canonical form: {replacement:?}"),
         DECODER_CITATION,
         Some(proposal),
     ))

@@ -12,12 +12,24 @@
 //! - **SC-003a**: Zero diagnostics on clean prose (precision gate)
 
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{Engine, FixMode, StrictRecognizer};
 use marque_test_utils::{
     invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
+/// Strict-pinned engine used by every corpus-accuracy gate in this file.
+///
+/// SC-002 / SC-003a / C001 were specified against the strict-path
+/// recognizer (the engine default at the time of authorship). The
+/// dispatcher default (`StrictOrDecoderRecognizer`) is the right
+/// user-facing default but introduces a separate false-positive
+/// surface (e.g., `(s)` in prose looking like a case-mangled SECRET
+/// portion marking) that needs its own gating. Pinning the
+/// strict recognizer here preserves the original precision /
+/// recall contract; decoder false-positive precision is a separate
+/// follow-up gate.
 fn make_engine() -> Engine {
     Engine::new(
         Config::default(),
@@ -25,6 +37,7 @@ fn make_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------

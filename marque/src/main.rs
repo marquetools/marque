@@ -162,17 +162,6 @@ struct CommonOptions {
     #[arg(long)]
     explain_config: bool,
 
-    /// Enable the Phase D probabilistic decoder for mangled-marking
-    /// recovery (typo / token-reorder / superseded-token / case
-    /// canonicalization). Without this flag the engine runs strict-only
-    /// for SC-001 interactive-authoring latency. With it set, the
-    /// strict path still runs first; the decoder fallback only fires
-    /// when the strict result is incomplete or zero-candidate, and any
-    /// fix it produces carries `FixSource::DecoderPosterior` plus a
-    /// non-trivial `Confidence` record (FR-011 / T064).
-    #[arg(long)]
-    deep_scan: bool,
-
     /// Install a corpus override (JSON) for the decoder. Available only
     /// when this build of marque was compiled with the `corpus-override`
     /// Cargo feature — the WASM target does not declare the feature
@@ -182,8 +171,7 @@ struct CommonOptions {
     /// produced under override is stamped with
     /// `CorpusOverrideInEffect` in its audit record. Override priors
     /// do not yet substitute into decoder scoring; that is the next-PR
-    /// step. Requires `--deep-scan` (the override has no effect when
-    /// the decoder is not firing).
+    /// step.
     #[cfg(feature = "corpus-override")]
     #[arg(long, value_name = "PATH")]
     corpus_override: Option<PathBuf>,
@@ -295,11 +283,8 @@ fn load_config(
 /// PR-5 minimal scope (T065/T069): when the feature is compiled in
 /// AND `common.corpus_override` is `Some(_)`, parse the JSON via
 /// `marque_config::corpus_override::load_corpus_override` and call
-/// `engine.with_corpus_override(...)`. Returns `EX_USAGE` if the
-/// override flag was set without `--deep-scan` (the override would
-/// have no observable effect — decoder never fires — and silently
-/// no-op would be a footgun). Returns `EX_DATAERR` / `EX_IOERR` on
-/// parse / IO errors.
+/// `engine.with_corpus_override(...)`. Returns `EX_DATAERR` /
+/// `EX_IOERR` on parse / IO errors.
 ///
 /// Without the `corpus-override` feature this function is a no-op
 /// passthrough.
@@ -313,13 +298,6 @@ fn install_corpus_override(
         let Some(path) = common.corpus_override.as_ref() else {
             return Ok(engine);
         };
-        if !common.deep_scan {
-            eprintln!(
-                "error: --corpus-override requires --deep-scan (override has \
-                 no effect when the decoder is not firing)"
-            );
-            return Err(EX_USAGE);
-        }
         let parsed = match marque_config::corpus_override::load_corpus_override(path) {
             Ok(p) => p,
             Err(e) => {
@@ -443,15 +421,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
             return err.exit_code();
         }
     };
-    // Phase 4 PR-4b — `--deep-scan` opt-in installs the decoder fallback.
-    // Strict-only by default keeps SC-001 latency intact.
-    let engine = if common.deep_scan {
-        engine.with_deep_scan()
-    } else {
-        engine
-    };
-    // Phase 4 PR-5 — install CLI-supplied corpus override. Hard-fails
-    // if `--corpus-override` was set without `--deep-scan`.
+    // Phase 4 PR-5 — install CLI-supplied corpus override.
     let engine = match install_corpus_override(engine, &common) {
         Ok(e) => e,
         Err(code) => return code,
@@ -654,14 +624,7 @@ fn run_fix(
             return err.exit_code();
         }
     };
-    // Phase 4 PR-4b — `--deep-scan` opt-in installs the decoder fallback.
-    let engine = if common.deep_scan {
-        engine.with_deep_scan()
-    } else {
-        engine
-    };
-    // Phase 4 PR-5 — install CLI-supplied corpus override. Hard-fails
-    // if `--corpus-override` was set without `--deep-scan`.
+    // Phase 4 PR-5 — install CLI-supplied corpus override.
     let engine = match install_corpus_override(engine, &common) {
         Ok(e) => e,
         Err(code) => return code,

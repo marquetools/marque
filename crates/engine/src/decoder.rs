@@ -3899,31 +3899,33 @@ fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
 /// Recognizer that runs the strict path first and falls back to the
 /// decoder when the strict parse yields no meaningful attributes.
 ///
-/// Installed by [`crate::Engine::with_deep_scan`]. Deep-scan opt-in
-/// therefore happens by calling `with_deep_scan()`, not by separately
-/// toggling [`ParseContext::strict_evidence`] at the engine boundary
-/// — the engine sets `strict_evidence = false` when the deep-scan
-/// flag is on, and `= true` otherwise.
+/// Default recognizer installed by [`crate::Engine::new`]. Callers
+/// that need strict-only dispatch (the SC-001 interactive-latency
+/// benchmark, tests asserting strict behavior) install
+/// [`StrictRecognizer`] explicitly via
+/// [`crate::Engine::with_recognizer`].
 ///
 /// Within this recognizer, dispatch is keyed off
 /// [`ParseContext::strict_evidence`]:
 ///
 /// - `strict_evidence = true`: collapse to strict-only behavior. The
-///   decoder is not called.
-/// - `strict_evidence = false`: try strict first. Fall back to the
-///   decoder when the strict result is either (a) zero-candidate
-///   `Ambiguous` or (b) `Unambiguous` with an empty / trivial
-///   [`CapcoMarking`] (no classification, no SCI, no dissem, no
-///   FGI, etc.). The trivial-Unambiguous case matters because
+///   decoder is not called. The engine never sets this; it's reserved
+///   for callers (e.g., test code) that construct a `ParseContext`
+///   directly and want to drive only the strict half of the dispatcher.
+/// - `strict_evidence = false` (the engine default): try strict first.
+///   Fall back to the decoder when the strict result is either (a)
+///   zero-candidate `Ambiguous` or (b) `Unambiguous` with an empty /
+///   trivial [`CapcoMarking`] (no classification, no SCI, no dissem,
+///   no FGI, etc.). The trivial-Unambiguous case matters because
 ///   `marque_core::Parser` is lenient: it accepts arbitrary
 ///   `BYTES//BYTES` shapes and returns `Ok` with an empty
 ///   `IsmAttributes` when nothing in the input is a recognized CVE
-///   token. Treating such a result as a successful parse would
-///   leave the decoder dormant on exactly the mangled inputs it
-///   exists to recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …).
-///   Strict is always called with `strict_evidence = true`
-///   internally; the decoder is always called with
-///   `strict_evidence = false` internally.
+///   token. Treating such a result as a successful parse would leave
+///   the decoder dormant on exactly the mangled inputs it exists to
+///   recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …). Strict is
+///   always called with `strict_evidence = true` internally; the
+///   decoder is always called with `strict_evidence = false`
+///   internally.
 ///
 /// Other [`ParseContext`] fields (`zone`, `position`,
 /// `classification_floor`) pass through unchanged.
@@ -3950,13 +3952,13 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         };
         let strict_result = self.strict.recognize(bytes, &strict_inner_cx);
 
-        // When the outer caller asked for strict-only (the default
-        // engine mode), collapse to the strict result — never call
-        // the decoder. Preserves interactive-authoring latency
-        // (SC-001) for engines that have been wrapped in
-        // `with_deep_scan` but are currently being driven without
-        // the deep-scan opt-in (Engine sets `strict_evidence = true`
-        // when `deep_scan = false`).
+        // When the outer caller asked for strict-only via
+        // `strict_evidence = true`, collapse to the strict result —
+        // never call the decoder. The engine never sets this flag (it
+        // installs `StrictRecognizer` directly via `with_recognizer`
+        // when a strict-only mode is needed); this branch exists for
+        // direct callers that construct a `ParseContext` themselves
+        // (e.g., test code).
         if cx.strict_evidence {
             return strict_result;
         }

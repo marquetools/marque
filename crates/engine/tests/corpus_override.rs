@@ -27,13 +27,14 @@ use marque_engine::{Engine, FixMode};
 use marque_rules::{FeatureId, FixSource};
 
 fn deep_scan_engine_without_override() -> Engine {
+    // The decoder fallback is the engine default; no explicit opt-in
+    // is required.
     Engine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_deep_scan()
 }
 
 fn deep_scan_engine_with_override() -> Engine {
