@@ -453,12 +453,28 @@ impl Engine {
             // `StrictRecognizer` ignores this flag entirely; consumers
             // that pin strict-only behavior install it via
             // [`Engine::with_recognizer`].
+            //
+            // `preceded_by_whitespace` is computed against the source
+            // buffer here — the decoder receives only the candidate
+            // slice and cannot recover the surrounding context on its
+            // own. Used downstream to suppress prose-glue false
+            // positives like `letter(s)` / `loss(s)` /
+            // `function(c)`. Start-of-buffer counts as whitespace by
+            // the `ParseContext` convention.
+            let preceded_by_whitespace = match candidate.span.start.checked_sub(1) {
+                None => true,
+                Some(prev_idx) => source
+                    .get(prev_idx)
+                    .map(|b| b.is_ascii_whitespace())
+                    .unwrap_or(true),
+            };
             let parse_cx = ParseContext {
                 strict_evidence: false,
                 zone: None,
                 position: None,
                 classification_floor,
                 as_of: None,
+                preceded_by_whitespace,
             };
 
             // Route each candidate's bytes through the recognizer. Zero-

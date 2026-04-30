@@ -25,18 +25,35 @@
 //! under the Constitution III rule that the WASM target "MUST NOT accept
 //! runtime configuration that expands the engine's semantic surface."
 //!
+//! The relevant Constitution III property is *not* "no decoder runs in the
+//! WASM build" — the decoder fallback is the engine default for every
+//! target (see [`marque_engine::Engine::new`], which installs
+//! `StrictOrDecoderRecognizer`), and the WASM `lint` / `fix` entry points
+//! exercise the same strict-first / decoder-fallback dispatch as the CLI
+//! and server. The property is "no *caller-controlled* configuration
+//! switches the recognizer codepath or alters recognizer posteriors at
+//! runtime." The decoder, the corpus priors it consumes, and the
+//! recognizer choice are all compile-time decisions.
+//!
 //! - **No new recognizer codepath.** `deadline_ms` translates into
 //!   `LintOptions { deadline: Some(Instant) }` / `FixOptions { deadline: ... }`,
-//!   the same data the strict-path engine already consults whenever the
-//!   per-document deadline check fires. There is no decoder, no priors, no
-//!   alternate scanner — the recognizer choice (`StrictRecognizer`,
-//!   compile-time-baked CVE token set) is unaffected.
+//!   the same data the engine already consults whenever the per-document
+//!   deadline check fires. The recognizer trait object
+//!   ([`marque_engine::StrictOrDecoderRecognizer`] by default,
+//!   [`marque_engine::StrictRecognizer`] when a caller in CLI/server context
+//!   pins via `Engine::with_recognizer`) is fixed at engine construction —
+//!   `deadline_ms` does not flip strict ↔ decoder, and the WASM target does
+//!   not expose `with_recognizer` to JS callers.
 //! - **No posterior change.** The deadline check is a `bool` early-return at
 //!   candidate boundaries; it gates whether the next candidate is processed,
 //!   not how it is scored. A truncated lint produces a *subset* of the
 //!   diagnostics the same input would produce without a deadline; every
 //!   diagnostic that does fire has identical `Span`, `Severity`, and
-//!   `FixProposal` values to the non-truncated equivalent.
+//!   `FixProposal` values to the non-truncated equivalent. Decoder priors
+//!   are read from compile-time-baked tables in `marque-capco::priors`; a
+//!   WASM caller cannot redirect, override, or tamper with those priors
+//!   at runtime (the `corpus-override` Cargo feature is gated out of the
+//!   WASM artifact — see Gate 1 / Gate 2 in `cli-server-wasm-gates.md`).
 //! - **No vocabulary surface change.** The CVE token set, severity table,
 //!   and corrections map are unchanged. `deadline_ms` does not introduce a
 //!   new way for a caller to influence which tokens the engine recognizes
@@ -46,15 +63,6 @@
 //!   shares the strict-path data shape — severity overrides, corrections
 //!   maps. `deadline_ms` is the same kind of object: a runtime budget cap
 //!   that constrains *how much* work the engine does, not *what* work.
-//!
-//! The decoder fallback is the engine default (see
-//! [`marque_engine::Engine::new`]); the WASM `lint` / `fix` entry
-//! points run with strict-first / decoder-fallback dispatch
-//! transparently. The decoder reads its corpus priors from
-//! compile-time-baked tables in `marque-capco::priors`; a WASM caller
-//! cannot redirect, override, or tamper with those priors at runtime
-//! (Constitution III + FR-013a + Gate 1 / Gate 2 in
-//! `cli-server-wasm-gates.md`).
 
 // TalcLock is tuned for multi-threaded workloads (i.e. server-side)
 // if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocator_api2::Allocator` on stable
