@@ -518,11 +518,65 @@ PY
     return 0
 }
 
+# report_fix_latency
+#
+# Advisory (non-gating): runs the `fix_latency` bench and prints the three
+# timings — `fix_single_e001_apply`, `fix_single_e001_dry_run`,
+# `lint_single_e001_baseline` — without enforcing a threshold. There is no
+# SC-target for per-fix latency yet; this exists so the numbers print
+# alongside the gated benches and so a regression in single-fix throughput
+# is at least visible in CI logs.
+report_fix_latency() {
+    echo "bench-check[fix_latency]: running benchmark (advisory, not gated)..."
+
+    local bench_output
+    if ! bench_output=$(cargo bench -p marque-engine --bench fix_latency 2>&1); then
+        echo "bench-check[fix_latency]: WARN — 'cargo bench' invocation failed (advisory; not failing overall status)"
+        if [[ -n "$bench_output" ]]; then
+            printf '%s\n' "$bench_output"
+        fi
+        return 0
+    fi
+
+    # Print the `time:` line for each of the three benches. The bench
+    # name precedes `time:` either inline or on the previous line; the
+    # same multi-line tolerance other parsers in this script use applies.
+    python3 - "$bench_output" <<'PY' 2>/dev/null || true
+import re, sys
+
+text = sys.argv[1]
+names = (
+    "fix_single_e001_apply",
+    "fix_single_e001_dry_run",
+    "lint_single_e001_baseline",
+)
+pat = re.compile(
+    r"({names})\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)".format(names="|".join(names))
+)
+
+found = {}
+for m in pat.finditer(text):
+    found[m.group(1)] = (m.group(2), m.group(3), m.group(4))
+
+for name in names:
+    if name in found:
+        lo, mean, hi = found[name]
+        print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
+    else:
+        print(f"bench-check[fix_latency]: WARN — could not parse {name} timing")
+PY
+    return 0
+}
+
 OVERALL_STATUS=0
 check_one_bench "lint_10kb" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
 check_deadline_overhead || OVERALL_STATUS=1
+report_fix_latency
 
 if [[ "$OVERALL_STATUS" -ne 0 ]]; then
     echo "bench-check: FAIL — one or more benches failed their regression / absolute gates"
