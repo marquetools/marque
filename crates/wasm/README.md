@@ -19,7 +19,7 @@ Use a web worker to avoid blocking the main thread. The artifact is ~252KB (unop
 ## Building
 
 ```bash
-wasm-pack build crates/wasm --target web --profile release
+wasm-pack build crates/wasm --target web --profile release-web
 ```
 
 Targets `bundler` and `nodejs` work the same way. Output lands in `crates/wasm/pkg/`.

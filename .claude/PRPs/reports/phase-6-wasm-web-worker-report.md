@@ -52,7 +52,7 @@ Implemented the WASM build target for `marque-wasm`, producing byte-identical di
 | `crates/engine/Cargo.toml` | UPDATED | Feature-gated tokio/futures/recoco-utils behind `batch` |
 | `crates/engine/src/lib.rs` | UPDATED | `#[cfg(feature = "batch")]` on batch module |
 | `benches/wasm_latency.md` | CREATED | +100 lines |
-| `Cargo.toml` (root) | UNCHANGED | release profile already present |
+| `Cargo.toml` (root) | UNCHANGED | release-web profile already present |
 
 ## Deviations from Plan
 

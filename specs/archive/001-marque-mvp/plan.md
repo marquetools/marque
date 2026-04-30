@@ -308,7 +308,7 @@ creation.
 3. Run again without `--dry-run` and observe (a) the file modified, (b) the
    audit record on stderr, (c) a re-lint pass exits clean.
 4. Build the WASM target with `wasm-pack build crates/wasm --target web
-   --profile release` and verify a manual `lint(text)` call from the
+   --profile release-web` and verify a manual `lint(text)` call from the
    bundled HTML harness produces byte-identical diagnostics to the CLI output.
 
 ### Agent context update

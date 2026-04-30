@@ -268,7 +268,7 @@ cargo clippy --workspace --benches -- -D warnings
      - Lint with `--format json`
      - Dry-run fix with audit capture
      - Apply fix and re-lint
-     - WASM build with `wasm-pack build crates/wasm --target web --profile release`
+     - WASM build with `wasm-pack build crates/wasm --target web --profile release-web`
      - `cargo test --workspace`
   2. Fix any quickstart.md references to fixture paths that don't exist (the spec references `E001-banner-abbreviation.txt` but actual corpus uses `banner_abbrev.txt`)
   3. If any step fails, fix the underlying issue (not the quickstart)

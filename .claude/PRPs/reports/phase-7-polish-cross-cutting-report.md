@@ -27,7 +27,7 @@ Implemented all 10 Phase 7 tasks (T067–T074): criterion benchmarks for lint la
 | 4 | T069: Corpus accuracy harness | Complete | Deviated — fix accuracy only counts fixable rules |
 | 5 | T070: WASM parity scaling | Complete | Full corpus (47 fixtures + prose) |
 | 6 | T071: CLAUDE.md update | Complete | |
-| 7 | T072: Quickstart validation | Complete | Note: use --release not --profile release for wasm-pack |
+| 7 | T072: Quickstart validation | Complete | Note: use --release not --profile release-web for wasm-pack |
 | 8 | T072a: Fuzz target | Complete | Compiles; requires nightly to run |
 | 9 | T073: Code quality gates | Complete | clippy + fmt clean |
 | 10 | T074: Classifier ID audit | Complete | Zero leaks |
@@ -63,11 +63,11 @@ Implemented all 10 Phase 7 tasks (T067–T074): criterion benchmarks for lint la
 
 1. **T069 fix accuracy**: Changed to only count rules with above-threshold fixes. Rules E003 (confidence 0.6), E005 (no fix), and E008 (FR-012: no fix) intentionally don't auto-fix. Counting them would make the 95% threshold meaningless.
 
-2. **T072 WASM build**: `--profile release` doesn't work with wasm-pack's custom profile metadata. `--release` works correctly. The wasm-opt disable metadata is only recognized under `profile.release`, not custom profiles.
+2. **T072 WASM build**: `--profile release-web` doesn't work with wasm-pack's custom profile metadata. `--release` works correctly. The wasm-opt disable metadata is only recognized under `profile.release`, not custom profiles.
 
 ## Issues Encountered
 
-1. **wasm-opt profile name**: wasm-pack only recognizes `release`, `dev`, and `profiling` profile metadata sections. Added `release` section but it wasn't read. Resolved by using `--release` for the quickstart.
+1. **wasm-opt profile name**: wasm-pack only recognizes `release`, `dev`, and `profiling` profile metadata sections. Added `release-web` section but it wasn't read. Resolved by using `--release` for the quickstart.
 
 ## Tests Written
 

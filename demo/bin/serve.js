@@ -98,6 +98,10 @@ const wasmRoot = resolveWasmRoot();
 function handleRequest(req, res) {
   const url = req.url.split('?')[0]; // strip query string
 
+  if (process.env.MARQUE_DEMO_LOG === '1') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  }
+
   // /wasm/* → serve from WASM root
   if (url.startsWith('/wasm/')) {
     if (!wasmRoot) {
@@ -108,7 +112,7 @@ function handleRequest(req, res) {
       res.end(
         'WASM module not found.\n\n' +
         'If running from the marque monorepo, build it first:\n' +
-        '  wasm-pack build crates/wasm --target web --profile release\n\n' +
+        '  wasm-pack build crates/wasm --target web --profile release-web\n\n' +
         'If running from an npm install, the package may be incomplete.\n'
       );
       return;
@@ -162,6 +166,10 @@ function serveFile(res, absPath) {
       // Allow SharedArrayBuffer (needed by some WASM builds)
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
+      // Required by COEP=require-corp on subresources that the page
+      // (or a module worker) embeds — without this, modern browsers
+      // refuse to load the worker script and its WASM imports.
+      'Cross-Origin-Resource-Policy': 'same-origin',
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(data);
@@ -175,7 +183,7 @@ function serveFile(res, absPath) {
 const server = http.createServer(handleRequest);
 
 server.listen(port, '127.0.0.1', () => {
-  const url = `http://localhost:${port}`;
+  const url = `http://127.0.0.1:${port}`;
 
   console.log('');
   console.log('  \x1b[1m\x1b[34mmar\x1b[33mque\x1b[0m demo');
@@ -185,7 +193,7 @@ server.listen(port, '127.0.0.1', () => {
   if (!wasmRoot) {
     console.warn('  \x1b[33m⚠\x1b[0m  WASM module not found — lint/fix features will be unavailable.');
     console.warn('     Build it with:');
-    console.warn('       wasm-pack build crates/wasm --target web --profile release');
+    console.warn('       wasm-pack build crates/wasm --target web --profile release-web');
     console.warn('');
   }
 

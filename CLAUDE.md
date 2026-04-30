@@ -36,7 +36,7 @@ cargo build -p marque
 cargo build -p marque-server
 
 # Build WASM target (requires wasm-pack)
-wasm-pack build crates/wasm --target web --profile release
+wasm-pack build crates/wasm --target web --profile release-web
 
 # Run all tests
 cargo test

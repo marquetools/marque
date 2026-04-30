@@ -11,6 +11,12 @@ SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+path = ["assets/images/marque_logo*.svg", "assets/images/marque_logomark*.svg", "assets/images/marque_logomark*.png"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Knitli Inc. — design by Adam Poulemanos"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
+[[annotations]]
 path = ["**/*.wasm"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
