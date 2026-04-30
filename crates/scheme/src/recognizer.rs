@@ -156,8 +156,26 @@ impl Default for ParseContext {
     /// which is the safer default — a recognizer that doesn't know its
     /// position behaves the same as one at column zero).
     ///
-    /// The strict path is the safe default — callers that know they
-    /// want deep-scan decoding must opt in explicitly.
+    /// **`ParseContext` defaults to `strict_evidence: true` regardless
+    /// of how the engine dispatches.** Two layers, two different
+    /// defaults:
+    ///
+    /// - **`ParseContext` default** (this `impl Default`): strict-only.
+    ///   Direct callers of a `Recognizer` (test code, fixture
+    ///   construction) get the conservative answer — no probabilistic
+    ///   candidates — unless they explicitly set `strict_evidence: false`.
+    /// - **`Engine` dispatch default** (`Engine::new` →
+    ///   `StrictOrDecoderRecognizer`): strict-first / decoder-fallback.
+    ///   The engine populates `ParseContext` per-candidate with
+    ///   `strict_evidence: false` so its installed dispatcher can fall
+    ///   back to the decoder on a strict-parse zero-candidate. Callers
+    ///   that need strict-only `Engine` behavior install
+    ///   `StrictRecognizer` via `Engine::with_recognizer` — that swaps
+    ///   the recognizer object, not this `ParseContext` flag.
+    ///
+    /// Don't infer engine behavior from this default: the
+    /// `strict_evidence` flag is consumed by the recognizer object the
+    /// engine has installed, not by the engine itself.
     fn default() -> Self {
         Self {
             strict_evidence: true,

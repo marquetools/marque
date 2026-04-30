@@ -37,7 +37,7 @@ use std::sync::OnceLock;
 /// abbreviation that survives fuzzy correction unchanged. The decoder
 /// canonicalizes to `(SECRET//NF)`. The scanner-detectability +
 /// guaranteed-decoder-fire combination is documented in
-/// `crates/engine/tests/decoder_dispatch.rs::deep_scan_dispatcher_actually_reaches_the_decoder_on_mangled_input`.
+/// `crates/engine/tests/decoder_dispatch.rs::default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input`.
 const MANGLED_INPUT: &[u8] = b"(SERCET//NF)";
 
 fn shared_native_engine() -> &'static Engine {
