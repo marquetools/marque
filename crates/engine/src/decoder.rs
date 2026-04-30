@@ -99,7 +99,7 @@ use marque_rules::confidence::{FeatureContribution, FeatureId};
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
-use crate::recognizer::{StrictRecognizer, is_restricted_without_fgi_marker};
+use crate::recognizer::{StrictRecognizer, is_us_restricted};
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -275,15 +275,16 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 3c-bis. Reject `Us(Restricted)` markings without an FGI
-            //         marker. Same rationale as the strict recognizer
-            //         (see `is_restricted_without_fgi_marker`): a bare
-            //         RESTRICTED portion is structurally indistinguishable
-            //         from prose glyphs (registered-mark `(R)`) and
-            //         cannot be recovered into a real CAPCO marking
-            //         without a foreign-origin signal that this
-            //         candidate, by construction, lacks.
-            if is_restricted_without_fgi_marker(&marking) {
+            // 3c-bis. Reject `Us(Restricted)` markings. Same rationale
+            //         as the strict recognizer (see [`is_us_restricted`]):
+            //         RESTRICTED is by definition a non-US classification,
+            //         so any candidate the parser landed on the US axis
+            //         is invalid regardless of what other tokens
+            //         (`fgi_marker`, dissem controls, REL TO) accompany
+            //         it. Real foreign-origin RESTRICTED markings parse
+            //         to `Fgi(...)` / `Nato(...)` / `Joint(...)` and
+            //         pass through.
+            if is_us_restricted(&marking) {
                 continue;
             }
 
@@ -5298,7 +5299,7 @@ mod tests {
     #[test]
     fn decoder_rejects_bare_restricted_via_recognizer_predicate() {
         // `(R)` parses cleanly under the strict path's lenient
-        // grammar but fails `is_restricted_without_fgi_marker` at
+        // grammar but fails `is_us_restricted` at
         // both the strict recognizer and inside the decoder's
         // candidate loop (step 3c-bis). The decoder must produce
         // zero candidates regardless of preceded-by-whitespace.

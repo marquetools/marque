@@ -220,7 +220,7 @@ fn default_engine_rejects_bare_restricted_portion() {
     // CAPCO §H.7: `(R)` without an FGI marker is structurally
     // indistinguishable from prose glyphs (registered-mark, list-item)
     // and is rejected at both the strict recognizer
-    // (`is_restricted_without_fgi_marker`) and the decoder's per-
+    // (`is_us_restricted`) and the decoder's per-
     // candidate filter. The engine emits no diagnostics for bare
     // `(R)` — neither a strict-path E015 ("non-US classification
     // without dissem control") nor a decoder R001 ("decoder-recognized

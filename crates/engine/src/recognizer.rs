@@ -93,12 +93,12 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                     shift_token_spans(&mut parsed.attrs, leading_ws);
                 }
                 let marking = CapcoMarking::new(parsed.attrs);
-                // Reject bare RESTRICTED markings: a `Classification::Restricted`
-                // without an accompanying FGI marker is structurally
-                // indistinguishable from prose glyphs (registered-mark `(R)`,
-                // list-item `(R)`) and is not a valid CAPCO marking — see
-                // [`is_restricted_without_fgi_marker`] for the full rationale.
-                if is_restricted_without_fgi_marker(&marking) {
+                // Reject `Us(Restricted)` markings. RESTRICTED is by
+                // definition a non-US classification level — see
+                // [`is_us_restricted`] for the full rationale and
+                // why `fgi_marker.is_some()` does not redeem the
+                // marking.
+                if is_us_restricted(&marking) {
                     return Parsed::Ambiguous {
                         candidates: Vec::new(),
                     };
@@ -112,39 +112,42 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
     }
 }
 
-/// True when the marking carries a `Us(Restricted)` classification
-/// but no foreign-origin signal (`fgi_marker`) is present.
+/// True when the marking is classified as `Us(Restricted)`.
 ///
-/// CAPCO §H.7: a bare RESTRICTED portion (`(R)`) is structurally
-/// indistinguishable from prose glyphs — registered-mark `(R)`,
-/// list-item `(R)` enumeration markers, etc. — and is not a valid
-/// CAPCO marking. RESTRICTED is by definition a non-US classification
-/// level that only appears in foreign-origin context: a country
-/// trigraph (`(//DEU R)`) or NATO tetragraph (`(//NATO R)`) marker
-/// MUST accompany the `R` token. The fully-spelled banner form
-/// `//NATO RESTRICTED//REL TO USA, NATO//` parses as
-/// `MarkingClassification::Nato(NatoRestricted)`, not
-/// `Us(Restricted)`, and does not trigger this rejection.
-/// `Fgi(...)` and `Joint(...)` classifications carry their foreign
-/// origin in the variant itself; only the `Us(Restricted)` shape
-/// produced by the parser blindly mapping `R` to the US axis is the
-/// bug this function gates.
+/// CAPCO §H.7: RESTRICTED is by definition a non-US classification
+/// level. A US document cannot be RESTRICTED. Every legitimate
+/// foreign-origin RESTRICTED form parses to a non-US variant of
+/// [`MarkingClassification`] — `Fgi(Restricted)` for `(//DEU R)` or
+/// `(//FGI DEU R)`, `Nato(NatoRestricted)` for `(//NR)` or fully-
+/// spelled `(//NATO RESTRICTED)`, `Joint(...)` for shared-origin
+/// markings — so those are unaffected by this predicate.
+///
+/// `Us(Restricted)` only appears when the strict parser blindly
+/// mapped a leading `R` token onto the US classification axis
+/// (`Classification::Restricted`'s portion abbreviation is `"R"`).
+/// That mapping is the bug. Every shape that produces it — bare
+/// `(R)`, `(R//NF)` (R first, dissem after), `R//USA, GBR` (banner
+/// shape, R first), `RESTRICTED//FGI DEU//NOFORN` (long-form R
+/// followed by a US-marking FGI block) — is invalid and must be
+/// rejected.
+///
+/// **Why `fgi_marker.is_some()` does not redeem the marking.**
+/// `fgi_marker` is the `FGI [LIST]` block parsed in *US-classified*
+/// markings (e.g., `SECRET//FGI DEU//NOFORN` → `Us(Secret)` +
+/// `fgi_marker: Some([DEU])`). The block annotates that a
+/// US-classified document references foreign-government
+/// information; it does not retroactively make the US-axis
+/// classification valid. `Us(Restricted)` + any `fgi_marker` value
+/// is still `Us(Restricted)`, still nonsense.
 ///
 /// Used by both the strict recognizer and the decoder so the engine
-/// never produces a `Us(Restricted)` marking that lacks the foreign-
-/// origin context the level requires. The check is intentionally
-/// narrow — `fgi_marker.is_none()` is the load-bearing signal, not
-/// the contents of `dissem_controls`/`rel_to`. A hypothetical
-/// `(R//NF)` or `(R//USA, GBR)` is also rejected here: US-domestic
-/// dissem controls and REL TO lists do not establish foreign-origin
-/// provenance, so even with those tokens present a bare-axis
-/// `Us(Restricted)` marking is still nonsense.
-pub(crate) fn is_restricted_without_fgi_marker(marking: &CapcoMarking) -> bool {
-    let attrs = &marking.0;
+/// never produces a `Us(Restricted)` marking, regardless of what
+/// other tokens the input carried.
+pub(crate) fn is_us_restricted(marking: &CapcoMarking) -> bool {
     matches!(
-        attrs.classification,
+        marking.0.classification,
         Some(MarkingClassification::Us(Classification::Restricted))
-    ) && attrs.fgi_marker.is_none()
+    )
 }
 
 /// Shift every source-relative byte offset recorded inside `attrs` by
@@ -291,7 +294,7 @@ mod tests {
         // a registered-mark glyph or list-item enumerator. RESTRICTED
         // requires foreign-origin context (FGI marker); without it the
         // strict path must NOT recognize the input as a marking, so
-        // `is_restricted_without_fgi_marker` collapses the marking to
+        // `is_us_restricted` collapses the marking to
         // zero-candidate Ambiguous.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
@@ -356,6 +359,37 @@ mod tests {
     }
 
     #[test]
+    fn strict_recognizer_rejects_us_restricted_with_fgi_marker() {
+        // `RESTRICTED//FGI DEU//NOFORN` is the parser shape that
+        // led to the predicate's earlier `fgi_marker.is_none()`
+        // hedge (PR #262 review). The strict parser sees `RESTRICTED`
+        // first, lands `Us(Restricted)`, then parses the trailing
+        // `FGI DEU` as the US-marking FGI block — producing
+        // `classification: Us(Restricted), fgi_marker: Some([DEU])`.
+        // The shape is still nonsense (a US doc cannot be RESTRICTED;
+        // RESTRICTED is the foreign classification level), so the
+        // recognizer must reject it. Pinning this case prevents a
+        // future refactor from re-introducing an FGI-marker hedge
+        // that would silently let `Us(Restricted)` slip through.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "RESTRICTED//FGI DEU//NOFORN must be zero-candidate, \
+                 got {} candidates",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "RESTRICTED//FGI DEU//NOFORN must be rejected — an FGI \
+                 marker block does not redeem a Us(Restricted) \
+                 classification; got Unambiguous({:?}, fgi_marker={:?})",
+                m.0.classification, m.0.fgi_marker
+            ),
+        }
+    }
+
+    #[test]
     fn strict_recognizer_accepts_fgi_axis_restricted() {
         // The legitimate foreign-origin RESTRICTED form `(//FGI R//NF)`
         // parses to `MarkingClassification::Fgi(level=Restricted)` —
@@ -369,7 +403,7 @@ mod tests {
         match rx.recognize(b"(//FGI R//NF)", &cx) {
             Parsed::Unambiguous(m) => {
                 assert!(
-                    !is_restricted_without_fgi_marker(&m),
+                    !is_us_restricted(&m),
                     "FGI-axis RESTRICTED must not match the bare-`Us(Restricted)` predicate; \
                      classification = {:?}",
                     m.0.classification,
@@ -380,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn is_restricted_without_fgi_marker_distinguishes_us_secret() {
+    fn is_us_restricted_distinguishes_us_secret() {
         // Defensive: only `Us(Restricted)` triggers the rejection; other
         // US classifications (Secret, Confidential, Unclassified) are
         // unaffected because they are valid US-axis classifications
@@ -391,7 +425,7 @@ mod tests {
             panic!("(S) must parse to a SECRET portion");
         };
         assert!(
-            !is_restricted_without_fgi_marker(&m),
+            !is_us_restricted(&m),
             "Us(Secret) must not match the bare-RESTRICTED predicate",
         );
     }

@@ -27,7 +27,7 @@ use std::sync::Arc;
 /// user-facing default, and `feat/preceded-by-whitespace` closed two
 /// of its precision regressions — prose-glue (`letter(s)`,
 /// `function(c)`) via `ParseContext.preceded_by_whitespace`, and
-/// bare-`(R)` via `is_restricted_without_fgi_marker`. The remaining
+/// bare-`(R)` via `is_us_restricted`. The remaining
 /// regression is mid-prose footnote / subsection references like
 /// `Notwithstanding (s) the early prevalence` (Federalist-corpus
 /// `article.txt`): `(s)` is preceded by whitespace, so the
