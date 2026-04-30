@@ -101,7 +101,7 @@ Follow-up artifact updates (non-blocking for this amendment):
     constitutional-change. A replacement dependency-hygiene CI gate (no
     copyleft, no competing source-available licenses) belongs in a
     `deny.toml` overlay applied in CI and remains tracked as a gap.
-  - Per-crate README files, root README, and docs-site pages that assert
+  - Per-crate README files, root README, and site pages that assert
     Apache-2.0 posture for the WASM-safe set — audit and update.
 
 Note: Each crate's `LICENSE.md` file carries
