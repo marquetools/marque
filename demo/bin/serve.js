@@ -98,6 +98,10 @@ const wasmRoot = resolveWasmRoot();
 function handleRequest(req, res) {
   const url = req.url.split('?')[0]; // strip query string
 
+  if (process.env.MARQUE_DEMO_LOG === '1') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  }
+
   // /wasm/* → serve from WASM root
   if (url.startsWith('/wasm/')) {
     if (!wasmRoot) {
@@ -162,6 +166,10 @@ function serveFile(res, absPath) {
       // Allow SharedArrayBuffer (needed by some WASM builds)
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
+      // Required by COEP=require-corp on subresources that the page
+      // (or a module worker) embeds — without this, modern browsers
+      // refuse to load the worker script and its WASM imports.
+      'Cross-Origin-Resource-Policy': 'same-origin',
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(data);
