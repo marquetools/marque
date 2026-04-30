@@ -541,7 +541,13 @@ report_fix_latency() {
     # Print the `time:` line for each of the three benches. The bench
     # name precedes `time:` either inline or on the previous line; the
     # same multi-line tolerance other parsers in this script use applies.
-    python3 - "$bench_output" <<'PY' 2>/dev/null || true
+    #
+    # Capture stdout + stderr separately so we can distinguish a Python
+    # startup/crash (parser_err non-empty) from per-bench parse failures
+    # (WARN lines emitted to stdout by the script itself).
+    local parser_out parser_err
+    parser_err=$(mktemp)
+    parser_out=$(python3 - "$bench_output" 2>"$parser_err" <<'PY'
 import re, sys
 
 text = sys.argv[1]
@@ -568,6 +574,19 @@ for name in names:
     else:
         print(f"bench-check[fix_latency]: WARN — could not parse {name} timing")
 PY
+    )
+    local py_exit=$?
+    if [[ $py_exit -ne 0 ]]; then
+        echo "bench-check[fix_latency]: WARN — Python parser exited with status $py_exit (advisory; not failing overall status)"
+        if [[ -s "$parser_err" ]]; then
+            echo "bench-check[fix_latency]: WARN — Python stderr output follows:"
+            cat "$parser_err"
+        fi
+    fi
+    rm -f "$parser_err"
+    if [[ -n "$parser_out" ]]; then
+        printf '%s\n' "$parser_out"
+    fi
     return 0
 }
 

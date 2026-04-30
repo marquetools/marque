@@ -71,12 +71,24 @@ jobs:
               r"(fix_single_e001_apply|fix_single_e001_dry_run|lint_single_e001_baseline):"
               r".*"
           )
-          lines = [m.group(0) for m in pat.finditer(text)]
+          lines_by_name = {m.group(1): m.group(0) for m in pat.finditer(text)}
 
-          if not lines:
-              sys.stderr.write("no fix_latency lines parsed; bench-check output follows:\n")
+          expected_names = {
+              "fix_single_e001_apply",
+              "fix_single_e001_dry_run",
+              "lint_single_e001_baseline",
+          }
+          missing = expected_names - lines_by_name.keys()
+          if missing:
+              sys.stderr.write(
+                  f"expected 3 fix_latency bench lines but missing: {sorted(missing)}\n"
+                  "bench-check output follows:\n"
+              )
               sys.stderr.write(text)
               sys.exit(1)
+
+          # Preserve canonical bench order in the comment.
+          lines = [lines_by_name[n] for n in sorted(expected_names)]
 
           repo = os.environ["GITHUB_REPOSITORY"]
           sha = os.environ.get("GITHUB_SHA", "unknown")
