@@ -81,7 +81,7 @@ jobs:
           missing = expected_names - lines_by_name.keys()
           if missing:
               sys.stderr.write(
-                  f"expected 3 fix_latency bench lines but missing: {sorted(missing)}\n"
+                  f"expected {len(expected_names)} fix_latency bench lines but missing: {sorted(missing)}\n"
                   "bench-check output follows:\n"
               )
               sys.stderr.write(text)
