@@ -99,7 +99,7 @@ use marque_rules::confidence::{FeatureContribution, FeatureId};
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
-use crate::recognizer::StrictRecognizer;
+use crate::recognizer::{StrictRecognizer, is_restricted_without_fgi_marker};
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -163,6 +163,33 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 candidates: Vec::new(),
             };
         };
+
+        // Prose-glue suppression: a single-letter portion candidate
+        // (`(s)`, `(c)`, `(u)`, `(r)`, …) immediately glued to a
+        // preceding word — `letter(s)`, `function(c)`, `loss(s)` —
+        // is overwhelmingly a plural-suffix or function-call-shaped
+        // prose glyph, not a real CAPCO marking. The strict recognizer
+        // doesn't have the surrounding-byte context to tell these
+        // apart; the engine populates `cx.preceded_by_whitespace`
+        // from the source byte preceding the candidate's span and
+        // hands it to the decoder so this fallback path doesn't
+        // resurrect the false positive that the strict path would
+        // never have produced (the strict parser is case-sensitive
+        // and rejects lowercase tokens, so `(s)` only reaches the
+        // decoder via the case-fold canonicalization).
+        //
+        // Bullets and numbered-list markers are not a problem — they
+        // always have whitespace between the bullet and the marking
+        // (`1. (S)`, `* (S//NF)`, `(a) (S)` all set
+        // `preceded_by_whitespace = true`).
+        if !cx.preceded_by_whitespace
+            && matches!(kind, MarkingType::Portion)
+            && is_single_letter_portion(bytes)
+        {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
 
         // 1. Canonicalize the observed bytes into zero-or-more
         //    candidate byte-strings + per-candidate feature trace.
@@ -245,6 +272,18 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //     such trivial parses so the decoder doesn't
             //     fabricate a marking for prose like `FROBNITZ//WIBBLE`.
             if !is_nontrivial_marking(&marking) {
+                continue;
+            }
+
+            // 3c-bis. Reject `Us(Restricted)` markings without an FGI
+            //         marker. Same rationale as the strict recognizer
+            //         (see `is_restricted_without_fgi_marker`): a bare
+            //         RESTRICTED portion is structurally indistinguishable
+            //         from prose glyphs (registered-mark `(R)`) and
+            //         cannot be recovered into a real CAPCO marking
+            //         without a foreign-origin signal that this
+            //         candidate, by construction, lacks.
+            if is_restricted_without_fgi_marker(&marking) {
                 continue;
             }
 
@@ -3428,6 +3467,29 @@ fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
 /// complete; otherwise the decoder is invoked to try to recover the
 /// missing pieces.
 ///
+/// True when `bytes` is a portion-shaped slice whose inner content
+/// is exactly one ASCII letter — `(s)`, `(c)`, `(u)`, `(r)`, `(S)`,
+/// etc. Tolerant of leading whitespace; the strict recognizer
+/// already accepts a small amount of leading whitespace on portion
+/// candidates (`StrictRecognizer::recognize` strips it before
+/// parsing) and the prose-glue heuristic must do the same so the
+/// caller's `cx.preceded_by_whitespace` flag remains the authoritative
+/// signal for "is this glued to a word."
+///
+/// Used by [`DecoderRecognizer::recognize`] for the prose-glue
+/// suppression early-out. A 2-letter inner content like `(TS)` is
+/// outside the heuristic's scope — multi-letter classification
+/// abbrevs are rare in prose and don't share the plural-suffix
+/// confusability that drives this filter.
+fn is_single_letter_portion(bytes: &[u8]) -> bool {
+    let trimmed = bytes
+        .iter()
+        .position(|b| !b.is_ascii_whitespace())
+        .map(|i| &bytes[i..])
+        .unwrap_or(bytes);
+    matches!(trimmed, [b'(', inner, b')'] if inner.is_ascii_alphabetic())
+}
+
 /// Used inside the decoder itself to filter out lenient-parse-
 /// accepts-anything results (`FROBNITZ//WIBBLE` trip-fires the
 /// banner scanner and produces a zero-attribute parse); without
@@ -4033,6 +4095,7 @@ mod tests {
             position: None,
             classification_floor: None,
             as_of: None,
+            preceded_by_whitespace: true,
         }
     }
 
@@ -5180,6 +5243,89 @@ mod tests {
     }
 
     #[test]
+    fn decoder_suppresses_prose_glue_single_letter_portion() {
+        // Prose-glue heuristic: when the byte preceding the candidate
+        // is NOT whitespace, a single-letter `(s)` / `(c)` is
+        // overwhelmingly a plural-suffix (`letter(s)`) or function-
+        // call glyph (`function(c)`). The decoder must produce zero
+        // candidates so the engine doesn't synthesize a spurious R001
+        // diagnostic.
+        let rx = DecoderRecognizer::new();
+        let glued = ParseContext {
+            preceded_by_whitespace: false,
+            ..deep_cx()
+        };
+        for input in &[b"(s)", b"(c)", b"(u)", b"(S)", b"(C)"] {
+            match rx.recognize(*input, &glued) {
+                Parsed::Ambiguous { candidates } => assert!(
+                    candidates.is_empty(),
+                    "{:?} glued to a word must produce zero candidates, got {}",
+                    std::str::from_utf8(*input).unwrap_or("<bytes>"),
+                    candidates.len(),
+                ),
+                Parsed::Unambiguous(_) => panic!(
+                    "{:?} glued to a word must not resolve",
+                    std::str::from_utf8(*input).unwrap_or("<bytes>"),
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn decoder_canonicalizes_single_letter_when_preceded_by_whitespace() {
+        // Counterpart to the prose-glue test: when
+        // `preceded_by_whitespace = true` (the engine's start-of-buffer
+        // / post-whitespace convention), single-letter portions still
+        // canonicalize through the case-fold path. The heuristic only
+        // suppresses the glued-to-a-word shape; mid-prose with leading
+        // whitespace remains the decoder's responsibility (and is
+        // governed separately by future per-token null-hypothesis
+        // priors — see issue #258).
+        let rx = DecoderRecognizer::new();
+        match rx.recognize(b"(s)", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(
+                    marking_classification(&m),
+                    Some(Classification::Secret),
+                    "lowercase (s) with preceded_by_whitespace=true must \
+                     canonicalize to SECRET via the case-fold path"
+                );
+            }
+            other => panic!("expected Unambiguous resolution, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_bare_restricted_via_recognizer_predicate() {
+        // `(R)` parses cleanly under the strict path's lenient
+        // grammar but fails `is_restricted_without_fgi_marker` at
+        // both the strict recognizer and inside the decoder's
+        // candidate loop (step 3c-bis). The decoder must produce
+        // zero candidates regardless of preceded-by-whitespace.
+        let rx = DecoderRecognizer::new();
+        for cx in &[
+            deep_cx(),
+            ParseContext {
+                preceded_by_whitespace: false,
+                ..deep_cx()
+            },
+        ] {
+            match rx.recognize(b"(r)", cx) {
+                Parsed::Ambiguous { candidates } => assert!(
+                    candidates.is_empty(),
+                    "bare (r) must be zero-candidate (preceded_by_whitespace={}), got {}",
+                    cx.preceded_by_whitespace,
+                    candidates.len()
+                ),
+                Parsed::Unambiguous(m) => panic!(
+                    "bare (r) must be rejected, got Unambiguous({:?})",
+                    m.0.classification
+                ),
+            }
+        }
+    }
+
+    #[test]
     fn decoder_recovers_superseded_comint_to_si() {
         let rx = DecoderRecognizer::new();
         // SECRET//COMINT//NOFORN — COMINT is CAPCO-2016 §A.6 p16-superseded to SI.
@@ -5229,6 +5375,7 @@ mod tests {
             position: None,
             classification_floor: Some(Classification::Secret as u8),
             as_of: None,
+            preceded_by_whitespace: true,
         };
         match rx.recognize(b"(U)", &cx) {
             Parsed::Ambiguous { candidates } => assert!(
@@ -5253,6 +5400,7 @@ mod tests {
             position: None,
             classification_floor: Some(Classification::Confidential as u8),
             as_of: None,
+            preceded_by_whitespace: true,
         };
         match rx.recognize(b"(S//NF)", &cx) {
             Parsed::Unambiguous(m) => {

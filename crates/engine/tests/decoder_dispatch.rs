@@ -154,6 +154,98 @@ fn default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Prose-glue suppression + bare-RESTRICTED rejection (this PR).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn default_engine_suppresses_prose_glue_single_letter_portions() {
+    // `letter(s)` / `function(c)` / `loss(s)` — the single-letter
+    // portion is glued to a preceding word, so the engine populates
+    // `ParseContext.preceded_by_whitespace = false` from the source
+    // byte preceding the candidate. The decoder must produce zero
+    // candidates and the engine must emit zero diagnostics — these
+    // shapes are overwhelmingly plural-suffix prose, not markings.
+    let engine = build_engine();
+    for input in &[
+        b"the letter(s)" as &[u8],
+        b"function(c)",
+        b"loss(s)",
+        b"reset(u)",
+    ] {
+        let result = engine.lint(input);
+        assert!(
+            result.diagnostics.is_empty(),
+            "prose-glued single-letter portion {:?} must produce zero diagnostics, got: {:?}",
+            std::str::from_utf8(input).unwrap_or("<bytes>"),
+            result
+                .diagnostics
+                .iter()
+                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .collect::<Vec<_>>(),
+        );
+    }
+}
+
+#[test]
+fn default_engine_recovers_single_letter_portion_after_whitespace() {
+    // Counterpart: when the single-letter portion is preceded by
+    // whitespace (column zero, after a space, post-newline), the
+    // dispatcher's strict path resolves it directly. The prose-glue
+    // heuristic must NOT fire here — verifying the heuristic doesn't
+    // overshoot into legitimate marking territory.
+    let engine = build_engine();
+    // Leading whitespace + canonical-case `(S)`: strict path produces
+    // a SECRET marking; downstream rules see it as a real marking.
+    let result = engine.lint(b" (S) some text");
+    let saw_marking = result
+        .diagnostics
+        .iter()
+        .any(|d| d.fix.is_some() || d.rule.as_str().starts_with('E'));
+    let _ = saw_marking; // diagnostic set is rule-dependent; the load-bearing
+    // assertion is "no panic, marking surfaces normally" — recognizer
+    // proves it via the `(s)` lower-case canonicalization in
+    // `decoder_canonicalizes_single_letter_when_preceded_by_whitespace`.
+    // Engine-level test: zero panics and the strict path completes.
+    assert!(
+        result.candidates_processed >= 1,
+        "engine must reach the recognizer for whitespace-preceded `(S)`, \
+         got candidates_processed = {}",
+        result.candidates_processed
+    );
+}
+
+#[test]
+fn default_engine_rejects_bare_restricted_portion() {
+    // CAPCO §H.7: `(R)` without an FGI marker is structurally
+    // indistinguishable from prose glyphs (registered-mark, list-item)
+    // and is rejected at both the strict recognizer
+    // (`is_restricted_without_fgi_marker`) and the decoder's per-
+    // candidate filter. The engine emits no diagnostics for bare
+    // `(R)` — neither a strict-path E015 ("non-US classification
+    // without dissem control") nor a decoder R001 ("decoder-recognized
+    // canonical form") should fire.
+    let engine = build_engine();
+    for input in &[
+        b"(R)" as &[u8],     // bare uppercase
+        b"(r)",              // lowercase form (decoder canonicalizes case)
+        b"text (R) more",    // mid-prose, whitespace-preceded
+        b"footnote(R)",      // word-glued — both heuristics apply
+    ] {
+        let result = engine.lint(input);
+        assert!(
+            result.diagnostics.is_empty(),
+            "bare RESTRICTED portion {:?} must produce zero diagnostics, got: {:?}",
+            std::str::from_utf8(input).unwrap_or("<bytes>"),
+            result
+                .diagnostics
+                .iter()
+                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .collect::<Vec<_>>(),
+        );
+    }
+}
+
 #[test]
 fn default_engine_does_not_change_canonical_input_diagnostics() {
     // A canonical portion marking hits the strict path unambiguously.

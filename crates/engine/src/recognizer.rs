@@ -43,7 +43,7 @@
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
 use marque_ism::{
-    CapcoTokenSet, IsmAttributes,
+    CapcoTokenSet, Classification, IsmAttributes, MarkingClassification,
     span::{MarkingCandidate, MarkingType, Span},
 };
 use marque_scheme::ambiguity::Parsed;
@@ -92,13 +92,59 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                 if leading_ws != 0 {
                     shift_token_spans(&mut parsed.attrs, leading_ws);
                 }
-                Parsed::Unambiguous(CapcoMarking::new(parsed.attrs))
+                let marking = CapcoMarking::new(parsed.attrs);
+                // Reject bare RESTRICTED markings: a `Classification::Restricted`
+                // without an accompanying FGI marker is structurally
+                // indistinguishable from prose glyphs (registered-mark `(R)`,
+                // list-item `(R)`) and is not a valid CAPCO marking — see
+                // [`is_restricted_without_fgi_marker`] for the full rationale.
+                if is_restricted_without_fgi_marker(&marking) {
+                    return Parsed::Ambiguous {
+                        candidates: Vec::new(),
+                    };
+                }
+                Parsed::Unambiguous(marking)
             }
             Err(_) => Parsed::Ambiguous {
                 candidates: Vec::new(),
             },
         }
     }
+}
+
+/// True when the marking carries a `Us(Restricted)` classification
+/// but no foreign-origin signal (`fgi_marker`) is present.
+///
+/// CAPCO §H.7: a bare RESTRICTED portion (`(R)`) is structurally
+/// indistinguishable from prose glyphs — registered-mark `(R)`,
+/// list-item `(R)` enumeration markers, etc. — and is not a valid
+/// CAPCO marking. RESTRICTED is by definition a non-US classification
+/// level that only appears in foreign-origin context: a country
+/// trigraph (`(//DEU R)`) or NATO tetragraph (`(//NATO R)`) marker
+/// MUST accompany the `R` token. The fully-spelled banner form
+/// `//NATO RESTRICTED//REL TO USA, NATO//` parses as
+/// `MarkingClassification::Nato(NatoRestricted)`, not
+/// `Us(Restricted)`, and does not trigger this rejection.
+/// `Fgi(...)` and `Joint(...)` classifications carry their foreign
+/// origin in the variant itself; only the `Us(Restricted)` shape
+/// produced by the parser blindly mapping `R` to the US axis is the
+/// bug this function gates.
+///
+/// Used by both the strict recognizer and the decoder so the engine
+/// never produces a `Us(Restricted)` marking that lacks the foreign-
+/// origin context the level requires. The check is intentionally
+/// narrow — `fgi_marker.is_none()` is the load-bearing signal, not
+/// the contents of `dissem_controls`/`rel_to`. A hypothetical
+/// `(R//NF)` or `(R//USA, GBR)` is also rejected here: US-domestic
+/// dissem controls and REL TO lists do not establish foreign-origin
+/// provenance, so even with those tokens present a bare-axis
+/// `Us(Restricted)` marking is still nonsense.
+pub(crate) fn is_restricted_without_fgi_marker(marking: &CapcoMarking) -> bool {
+    let attrs = &marking.0;
+    matches!(
+        attrs.classification,
+        Some(MarkingClassification::Us(Classification::Restricted))
+    ) && attrs.fgi_marker.is_none()
 }
 
 /// Shift every source-relative byte offset recorded inside `attrs` by
@@ -237,6 +283,117 @@ mod tests {
             Parsed::Unambiguous(_) => {}
             other => panic!("expected Unambiguous, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn strict_recognizer_rejects_bare_restricted_portion() {
+        // CAPCO §H.7: bare `(R)` is structurally indistinguishable from
+        // a registered-mark glyph or list-item enumerator. RESTRICTED
+        // requires foreign-origin context (FGI marker); without it the
+        // strict path must NOT recognize the input as a marking, so
+        // `is_restricted_without_fgi_marker` collapses the marking to
+        // zero-candidate Ambiguous.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        match rx.recognize(b"(R)", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "bare (R) must be zero-candidate, got {} candidates",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "bare (R) must be rejected, got Unambiguous({:?})",
+                m.0.classification
+            ),
+        }
+    }
+
+    #[test]
+    fn strict_recognizer_rejects_restricted_with_dissem_only() {
+        // `(R//NF)` parses to `Us(Restricted)` + `dissem_controls: [Nf]`,
+        // no `fgi_marker`. Per CAPCO §H.7 the canonical form requires
+        // a foreign-origin signal (FGI/tetragraph/trigraph) BEFORE the
+        // R, not a dissem control AFTER. The predicate must reject so
+        // a future refactor that loosened the FGI-marker check (e.g.,
+        // by treating REL TO or NOFORN as foreign-origin evidence,
+        // which they are not) is caught here.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        match rx.recognize(b"(R//NF)", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "(R//NF) must be zero-candidate, got {} candidates",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "(R//NF) must be rejected — `Us(Restricted)` with dissem \
+                 control but no FGI marker is invalid; got Unambiguous({:?})",
+                m.0.classification
+            ),
+        }
+    }
+
+    #[test]
+    fn strict_recognizer_rejects_restricted_with_rel_to_only() {
+        // Banner-shape `R//USA, GBR` — same rejection rationale as
+        // `(R//NF)`. REL TO populates `rel_to` but is not foreign-
+        // origin evidence; `R` first is the bug-case `Us(Restricted)`.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        match rx.recognize(b"R//USA, GBR", &cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "R//USA, GBR must be zero-candidate, got {} candidates",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "R//USA, GBR must be rejected — banner-shape \
+                 `Us(Restricted)` with REL TO but no FGI marker is \
+                 invalid; got Unambiguous({:?})",
+                m.0.classification
+            ),
+        }
+    }
+
+    #[test]
+    fn strict_recognizer_accepts_fgi_axis_restricted() {
+        // The legitimate foreign-origin RESTRICTED form `(//FGI R//NF)`
+        // parses to `MarkingClassification::Fgi(level=Restricted)` —
+        // the FGI classification axis, NOT `Us(Restricted)`. The
+        // rejection predicate matches only on `Us(Restricted)`, so
+        // this shape passes through and the strict recognizer
+        // produces an Unambiguous marking. Real RESTRICTED markings
+        // never reach the bug path the predicate gates against.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        match rx.recognize(b"(//FGI R//NF)", &cx) {
+            Parsed::Unambiguous(m) => {
+                assert!(
+                    !is_restricted_without_fgi_marker(&m),
+                    "FGI-axis RESTRICTED must not match the bare-`Us(Restricted)` predicate; \
+                     classification = {:?}",
+                    m.0.classification,
+                );
+            }
+            other => panic!("expected Unambiguous for `(//FGI R//NF)`, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn is_restricted_without_fgi_marker_distinguishes_us_secret() {
+        // Defensive: only `Us(Restricted)` triggers the rejection; other
+        // US classifications (Secret, Confidential, Unclassified) are
+        // unaffected because they are valid US-axis classifications
+        // that don't require foreign-origin context.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", &cx) else {
+            panic!("(S) must parse to a SECRET portion");
+        };
+        assert!(
+            !is_restricted_without_fgi_marker(&m),
+            "Us(Secret) must not match the bare-RESTRICTED predicate",
+        );
     }
 
     #[test]

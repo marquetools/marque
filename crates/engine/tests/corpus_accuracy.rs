@@ -24,12 +24,21 @@ use std::sync::Arc;
 /// SC-002 / SC-003a / C001 were specified against the strict-path
 /// recognizer (the engine default at the time of authorship). The
 /// dispatcher default (`StrictOrDecoderRecognizer`) is the right
-/// user-facing default but introduces a separate false-positive
-/// surface (e.g., `(s)` in prose looking like a case-mangled SECRET
-/// portion marking) that needs its own gating. Pinning the
-/// strict recognizer here preserves the original precision /
-/// recall contract; decoder false-positive precision is a separate
-/// follow-up gate.
+/// user-facing default, and `feat/preceded-by-whitespace` closed two
+/// of its precision regressions — prose-glue (`letter(s)`,
+/// `function(c)`) via `ParseContext.preceded_by_whitespace`, and
+/// bare-`(R)` via `is_restricted_without_fgi_marker`. The remaining
+/// regression is mid-prose footnote / subsection references like
+/// `Notwithstanding (s) the early prevalence` (Federalist-corpus
+/// `article.txt`): `(s)` is preceded by whitespace, so the
+/// prose-glue heuristic correctly leaves the candidate alone, and the
+/// decoder canonicalizes it to a SECRET portion. Distinguishing that
+/// shape from a real `(s)` portion requires the per-token prose
+/// null-hypothesis priors tracked in #258, which are out of scope
+/// here. Pinning the strict recognizer keeps the SC-003a gate
+/// meaningful until #258 lands; do NOT unpin without first
+/// confirming the prose corpus stays at zero diagnostics under the
+/// dispatcher default.
 fn make_engine() -> Engine {
     Engine::new(
         Config::default(),
