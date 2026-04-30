@@ -56,7 +56,7 @@ N/A — internal change. The WASM API is consumed by JavaScript code, not a visu
 
 | Topic | Source | Key Takeaway |
 |---|---|---|
-| wasm-pack | https://rustwasm.github.io/docs/wasm-pack/ | `wasm-pack build --target web --profile release-wasm` is the build command |
+| wasm-pack | https://rustwasm.github.io/docs/wasm-pack/ | `wasm-pack build --target web --profile release` is the build command |
 | wasm-bindgen | https://rustwasm.github.io/docs/wasm-bindgen/ | `#[wasm_bindgen]` exports; `JsValue` for error returns; `String` return for JSON |
 | cargo-deny | https://embarkstudios.github.io/cargo-deny/ | Can audit dependency tree for banned crates; alternative: manual `cargo tree` grep |
 
@@ -292,12 +292,12 @@ TOP SECRET//SI//NF
 - **IMPLEMENT**:
   1. Install wasm-pack if not present: `cargo install wasm-pack` (or check with `wasm-pack --version`).
   2. Install the wasm32 target: `rustup target add wasm32-unknown-unknown`.
-  3. Build: `wasm-pack build crates/wasm --target web --profile release-wasm`.
+  3. Build: `wasm-pack build crates/wasm --target web --profile release`.
   4. Measure: `ls -la crates/wasm/pkg/marque_wasm_bg.wasm` — must be ≤1MB.
   5. If >1MB: check if `wasm-opt` is installed and being applied (the Cargo.toml configures `-Os`). Consider: removing unused features, checking for large static data in generated code.
 - **MIRROR**: N/A — build verification.
 - **GOTCHA**: `wasm-pack` may not be installed in CI. Document the installation step.
-- **GOTCHA**: The `--profile release-wasm` flag requires the profile to be defined in root `Cargo.toml` (already done: `[profile.release-wasm]` at line 96).
+- **GOTCHA**: The `--profile release` flag requires the profile to be defined in root `Cargo.toml` (already done: `[profile.release]` at line 96).
 - **VALIDATE**: Build succeeds with exit code 0. Artifact size ≤1MB.
 
 ### Task 7: T066a — WASM latency measurement documentation
@@ -379,7 +379,7 @@ EXPECT: No regressions. All 226+ tests pass.
 
 ### WASM Build
 ```bash
-wasm-pack build crates/wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release
 ```
 EXPECT: Build succeeds. `pkg/marque_wasm_bg.wasm` ≤1MB.
 
