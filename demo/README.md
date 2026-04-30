@@ -35,7 +35,7 @@ wasm-pack build crates/wasm --target web --dev
 Production build (optimized):
 
 ```sh
-wasm-pack build crates/wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-web
 ```
 
 Enable the panic hook for better WASM error messages in the browser console:

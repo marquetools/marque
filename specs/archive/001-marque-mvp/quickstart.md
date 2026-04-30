@@ -132,7 +132,7 @@ rm -rf /tmp/marque-bad-config
 ## 7. Build and exercise the WASM target
 
 ```sh
-wasm-pack build crates/wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release-web
 ```
 
 Open the bundled HTML harness (whichever path the WASM build emits — typically

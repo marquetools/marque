@@ -177,7 +177,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Goal**: A WASM build of `marque-wasm` exposes `lint(text: &str) -> JsValue` and `fix(text: &str, threshold: f32) -> JsValue` to a web worker. Diagnostics are byte-identical to the CLI for the same input. No file system, no network.
 
-**Independent Test**: Build `crates/wasm` with `wasm-pack build --target web --profile release-wasm`; load it from a minimal `quickstart.md` HTML harness; pass the same string used by a CLI `marque check` invocation and assert the JSON diagnostics match byte-for-byte, including spans (SC-008).
+**Independent Test**: Build `crates/wasm` with `wasm-pack build --target web --profile release-web`; load it from a minimal `quickstart.md` HTML harness; pass the same string used by a CLI `marque check` invocation and assert the JSON diagnostics match byte-for-byte, including spans (SC-008).
 
 ### Tests for User Story 4
 
@@ -189,7 +189,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T063 [US4] Implement `wasm-bindgen` exports `lint(text: &str) -> JsValue` and `fix(text: &str, threshold: f32) -> JsValue` in `crates/wasm/src/lib.rs`, wrapping `marque-engine::Engine` and serializing to the same NDJSON shape as the CLI per `contracts/diagnostic.json`.
 - [ ] T064 [US4] Switch `marque-core/src/parser/mod.rs` (T016) to `daachorse` under `cfg(target_arch = "wasm32")` per research item R-7; verify binary size is acceptable.
 - [ ] T065 [US4] Add a minimal HTML harness at `crates/wasm/examples/harness.html` driving the WASM build with one fixture and printing the diagnostic JSON to the page, used by `quickstart.md` step 4.
-- [ ] T066 [US4] Verify `wasm-pack build crates/wasm --target web --profile release-wasm` succeeds in CI and produces an artifact ≤1MB.
+- [ ] T066 [US4] Verify `wasm-pack build crates/wasm --target web --profile release-web` succeeds in CI and produces an artifact ≤1MB.
 - [ ] T066a [P] [US4] Measure and record WASM interactive latency per SC-001b: add `benches/wasm_latency.md` documenting the measurement method (harness page, browser/version, input sizes, p50/p95/p99 observed on the reference machine). Advisory, not CI-gating for the MVP — hard gate arrives in the browser-extension slice.
 
 **Checkpoint**: All four user stories independently functional. The MVP can drive a CLI workflow AND a web-worker workflow from a single shared engine.

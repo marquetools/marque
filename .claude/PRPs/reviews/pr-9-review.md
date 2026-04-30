@@ -68,7 +68,7 @@ None
 | `crates/engine/fuzz/Cargo.toml` | Added — fuzz workspace |
 | `crates/engine/fuzz/fuzz_targets/lint.rs` | Added — fuzz target |
 | `crates/engine/tests/corpus_accuracy.rs` | Added — accuracy harness |
-| `crates/wasm/Cargo.toml` | Modified — release-wasm wasm-opt |
+| `crates/wasm/Cargo.toml` | Modified — release-web wasm-opt |
 | `crates/wasm/tests/native_parity.rs` | Modified — full corpus parity |
 | `scripts/bench-check.sh` | Added — regression gate |
 | `scripts/check.sh` | Modified — bench gate integration |

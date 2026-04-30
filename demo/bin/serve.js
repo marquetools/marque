@@ -108,7 +108,7 @@ function handleRequest(req, res) {
       res.end(
         'WASM module not found.\n\n' +
         'If running from the marque monorepo, build it first:\n' +
-        '  wasm-pack build crates/wasm --target web --profile release-wasm\n\n' +
+        '  wasm-pack build crates/wasm --target web --profile release-web\n\n' +
         'If running from an npm install, the package may be incomplete.\n'
       );
       return;
@@ -185,7 +185,7 @@ server.listen(port, '127.0.0.1', () => {
   if (!wasmRoot) {
     console.warn('  \x1b[33m⚠\x1b[0m  WASM module not found — lint/fix features will be unavailable.');
     console.warn('     Build it with:');
-    console.warn('       wasm-pack build crates/wasm --target web --profile release-wasm');
+    console.warn('       wasm-pack build crates/wasm --target web --profile release-web');
     console.warn('');
   }
 
