@@ -65,7 +65,12 @@ const DEMO_CONFIG = JSON.stringify({
 
 const DEBOUNCE_MS   = 80;
 const AUTOPLAY_IDLE_MS = 6_000;
-const AUTOPLAY_CHAR_MS = 70;
+const AUTOPLAY_CHAR_MS = 30;
+// Brief beat at single newlines (sentence end), longer beat at paragraph
+// breaks (the second newline of a `\n\n`). Lets the audit log catch up
+// and gives the reader time to take in each marking domain.
+const AUTOPLAY_NEWLINE_MS   = 250;
+const AUTOPLAY_PARAGRAPH_MS = 700;
 const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
   'Type to begin — the engine corrects, lints, and audits as you write.';
@@ -82,14 +87,35 @@ const PLACEHOLDER_TEXT =
 // fixes start to apply.
 let currentThreshold = 0.0;
 
-// Autoplay script: a short representative passage that exercises typo
-// correction (SERCET → SECRET → S), portion abbreviation, and banner
-// roll-up. Newlines are part of the script.
+// Autoplay script: a tour of marking domains, narrated, seeded with
+// intentional typos so the audit log lights up while the script types.
+// The final line drops `OC` (ORCON) on purpose — SI-G requires ORCON
+// per CAPCO §H.4 p80, so the engine fires E047 with no auto-fix. This
+// is the demo's showcase of a true error: an underline appears under
+// SI-G and the autoplay-completion hook pops the tooltip.
+//
+// Verified against the engine (Apr 30, post-#259):
+//   (u)                            → (U)                            [case fold, fix]
+//   (U//rel to USA, FVEY)          → (U//REL TO USA, FVEY)          [case fold, fix]
+//   (SERCET//SI//REL TO USA, GBR)  → (SECRET//SI//REL TO USA, GBR)  [edit-dist, fix]
+//   (TS//SI-G/TK//RS/NOFRON//LES)  → (TS//SI-G/TK//RS/NOFORN//LES)  [edit-dist, fix]
+//   E047  warn  no-fix  SI-G requires ORCON (§H.4 p80)
+// (U//FOUO) and (//NC//REL TO USA, NATO) stay canonical — domain
+// breadth, not a fix path.
 const AUTOPLAY_SCRIPT =
-  'This memo summarizes the program review.\n\n' +
-  '(SERCET//NOFORN) Initial findings indicate the system is operating ' +
-  'within nominal parameters.\n\n' +
-  '(C) Status reports will continue on a weekly cadence.\n';
+  '(u) None of this is real — I\'m showing the tool, ' +
+  'not releasing anything.\n\n' +
+  '(U//FOUO) Most internal traffic lives here: not classified, ' +
+  'just not for the public.\n\n' +
+  '(U//rel to USA, FVEY) Some drafts go to the Anglophone allies — ' +
+  'Five Eyes shareable.\n\n' +
+  '(//NC//REL TO USA, NATO) Some go to NATO partners instead.\n\n' +
+  '(SERCET//SI//REL TO USA, GBR) Things tighten up: SIGINT, ' +
+  'bilateral with the UK.\n\n' +
+  '(TS//SI-G/TK//RS/NOFRON//LES) Then the deep end. ' +
+  'Top Secret, two compartments, two dissem controls, ' +
+  'law-enforcement sensitive. Banner rolled up from the portions. ' +
+  'Typos caught on the way in.\n';
 
 // ---------------------------------------------------------------------------
 // Worker boot
@@ -963,10 +989,22 @@ function makeAutoplay(view) {
   let charIdx = 0;
   let typingTimer = null;
   let idleTimer   = null;
+  let demoTipTimer = null;
+  let demoTipEl   = null;
   let aborted     = false;
 
   function tick() {
-    if (aborted || charIdx >= AUTOPLAY_SCRIPT.length) return;
+    if (aborted) return;
+    if (charIdx >= AUTOPLAY_SCRIPT.length) {
+      // Done typing. After the final fix has settled, pop a demo
+      // tooltip over the SI-G error so a viewer sees what an
+      // unfixable diagnostic looks like — that's the showcase that
+      // the autoplay was building toward.
+      demoTipTimer = setTimeout(() => {
+        if (!aborted) showSiGDemoTooltip(view);
+      }, 1500);
+      return;
+    }
     const ch = AUTOPLAY_SCRIPT[charIdx++];
     const pos = view.state.doc.length;
     view.dispatch({
@@ -974,7 +1012,59 @@ function makeAutoplay(view) {
       // Keep the cursor at the inserted position so subsequent inserts append.
       selection: { anchor: pos + ch.length },
     });
-    typingTimer = setTimeout(tick, AUTOPLAY_CHAR_MS);
+    // Pause longer after newlines so the audit log can catch up and the
+    // reader gets a beat between paragraphs. `\n\n` is a paragraph break
+    // (we just typed the second `\n`); a single `\n` is a sentence end.
+    let delay = AUTOPLAY_CHAR_MS;
+    if (ch === '\n') {
+      const prev = AUTOPLAY_SCRIPT[charIdx - 2];
+      delay = prev === '\n' ? AUTOPLAY_PARAGRAPH_MS : AUTOPLAY_NEWLINE_MS;
+    }
+    typingTimer = setTimeout(tick, delay);
+  }
+
+  function showSiGDemoTooltip(view) {
+    // Find the SI-G diagnostic the engine emitted. Prefer rule
+    // matching, fall back to message-text matching for resilience.
+    const diags = view._marqueDiagData || [];
+    const target =
+      diags.find(d => d.rule === 'E047') ||
+      diags.find(d => /SI-G/.test(d.message || ''));
+    if (!target) return;
+    // CodeMirror coords are page-relative; absolute positioning on
+    // body is the simplest anchor.
+    const midPos = target.from + Math.floor((target.to - target.from) / 2);
+    const coords = view.coordsAtPos(Math.min(midPos, view.state.doc.length));
+    if (!coords) return;
+    removeDemoTooltip();
+    const dom = document.createElement('div');
+    dom.className = 'marque-tooltip marque-tooltip--demo';
+    const rule = document.createElement('div');
+    rule.className = 'tip-rule'; rule.textContent = target.rule;
+    const msg  = document.createElement('div');
+    msg.className = 'tip-message'; msg.textContent = target.message;
+    const cite = document.createElement('div');
+    cite.className = 'tip-citation'; cite.textContent = target.citation;
+    dom.append(rule, msg, cite);
+    document.body.appendChild(dom);
+    // Position above the SI-G token. After append we know the
+    // tooltip's height so we can offset it correctly.
+    const rect = dom.getBoundingClientRect();
+    const left = Math.max(8, coords.left - rect.width / 2);
+    const top  = (coords.top + window.scrollY) - rect.height - 10;
+    dom.style.left = `${left}px`;
+    dom.style.top  = `${top}px`;
+    demoTipEl = dom;
+    // Auto-dismiss so the demo doesn't leave the tooltip stuck on
+    // screen forever.
+    demoTipTimer = setTimeout(removeDemoTooltip, 6000);
+  }
+
+  function removeDemoTooltip() {
+    if (demoTipEl && demoTipEl.parentNode) {
+      demoTipEl.parentNode.removeChild(demoTipEl);
+    }
+    demoTipEl = null;
   }
 
   function start() {
@@ -989,6 +1079,8 @@ function makeAutoplay(view) {
     aborted = true;
     clearTimeout(typingTimer);
     clearTimeout(idleTimer);
+    clearTimeout(demoTipTimer);
+    removeDemoTooltip();
   }
 
   idleTimer = setTimeout(start, AUTOPLAY_IDLE_MS);

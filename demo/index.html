@@ -102,16 +102,16 @@ SPDX-License-Identifier: Apache-2.0
            `generate_cab()` against the full §H authority chain. -->
       <aside class="cab-static" id="cab-static" aria-label="Classification Authority Block">
         <div class="cab-static-row">
-          <span class="cab-static-key">Classified by:</span>
-          <span class="cab-static-val">─</span>
-        </div>
-        <div class="cab-static-row">
-          <span class="cab-static-key">Derived from:</span>
+          <span class="cab-static-key">Classified By:</span>
           <span class="cab-static-val">123456</span>
         </div>
         <div class="cab-static-row">
-          <span class="cab-static-key">Declassify on:</span>
-          <span class="cab-static-val">─</span>
+          <span class="cab-static-key">Derived From:</span>
+          <span class="cab-static-val">Multiple Sources</span>
+        </div>
+        <div class="cab-static-row">
+          <span class="cab-static-key">Declassify On:</span>
+          <span class="cab-static-val" id="cab-declassify-on"></span>
         </div>
       </aside>
 
@@ -216,6 +216,13 @@ SPDX-License-Identifier: Apache-2.0
   const d = new Date();
   document.getElementById('doc-date').textContent =
     d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // CAB Declassify On = today + 25 years, in CAPCO §E YYYYMMDD form.
+  const dec = new Date(d);
+  dec.setFullYear(dec.getFullYear() + 25);
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('cab-declassify-on').textContent =
+    `${dec.getFullYear()}${pad(dec.getMonth() + 1)}${pad(dec.getDate())}`;
 </script>
 
 <script type="module" src="demo.js"></script>

@@ -304,6 +304,30 @@ nav .nav-hint {
 .marque-tooltip .tip-message  { color: var(--charcoal-100); }
 .marque-tooltip .tip-citation { margin-top: 6px; color: var(--charcoal-400); font-size: 11px; }
 
+/* Synthetic tooltip popped by autoplay completion to showcase what an
+   error looks like. CodeMirror's hoverTooltip wraps `.marque-tooltip`
+   in `.cm-tooltip` (which carries the dark background + shadow); the
+   demo variant is a standalone DOM element pinned to body, so it has
+   to provide the wrapper styling itself. */
+.marque-tooltip--demo {
+  position: absolute;
+  z-index: 1000;
+  max-width: 380px;
+  background: var(--charcoal-900);
+  color: var(--charcoal-100);
+  border: 1px solid var(--charcoal-700);
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+  font: 13px/1.55 var(--font-body);
+  pointer-events: none;
+  animation: marque-tooltip-fade 240ms var(--ease-out-expo, ease-out);
+}
+
+@keyframes marque-tooltip-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ─── Audit Stream ──────────────────────────────────────────────────── */
 
 .audit-stream { padding: 28px 0 0; min-height: 80px; }
