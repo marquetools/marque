@@ -52,7 +52,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          toolchain: "1.89"
+          toolchain: "nightly"
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
@@ -97,7 +97,8 @@ jobs:
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
 
       - name: wasm-pack build
-        run: wasm-pack build crates/wasm --target web --release
+        # we use profiling profile as an intermediate step to sidestep wasm-pack issues
+        run: wasm-pack build crates/wasm --target web --profiling
 
       # T088 — WASM-target SC-008 parity gate.
       #
@@ -119,16 +120,12 @@ jobs:
             --enable-bulk-memory-opt
             --enable-bulk-memory
             --enable-extended-const
-            --enable-gc
-            --enable-multi-value
-            --enable-mutable-globals
+            --enable-multivalue
             --enable-nontrapping-float-to-int
             --enable-reference-types
             --enable-sign-ext
             --enable-simd
             --enable-tail-call
-            --enable-threads
-            --enable-typed-function-references
             --type-refining-gufa
             --generate-global-effects
             -O3
@@ -136,6 +133,7 @@ jobs:
             --precompute-propagate
             --low-memory-unused
             --gufa
+            --vacuum
             -O3
             --converge
             --strip-toolchain-annotations

@@ -183,7 +183,7 @@ function serveFile(res, absPath) {
 const server = http.createServer(handleRequest);
 
 server.listen(port, '127.0.0.1', () => {
-  const url = `http://localhost:${port}`;
+  const url = `http://127.0.0.1:${port}`;
 
   console.log('');
   console.log('  \x1b[1m\x1b[34mmar\x1b[33mque\x1b[0m demo');

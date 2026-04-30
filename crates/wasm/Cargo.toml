@@ -18,28 +18,41 @@ include = [
   "src/**/*.rs",
 ]
 
+# wasm-pack only supports three profiles -- dev, profiling, release
+# We use the profiling profile as a baseline build
+# Then we optimize from there for release builds
+# We have to do this to avoid an issue with wasm-pack's handoff with wasm-opt
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ["--all-features"]
+
+[package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
+debug-js-glue = false
+dwarf-debug-info = false
+split-linked-modules = true
+
 [package.metadata.wasm-pack.profile.dev]
-wasm-opt = false
+wasm-opt = ["--all-features"]
 
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 debug-js-glue = true
-dwarf-debug-info = true
+dwarf-debug-info = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["--all-features"]
 
 # Are these profiles over-the-top?  Yes.
 # The cost in build time is marginal for deployment-long (potential) benefit.
-[package.metadata.wasm-pack.profile.release]
+[package.metadata.wasm-pack.profile.release-web]
 wasm-opt = [  # tool options:
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
   "--enable-extended-const",
-  "--enable-multi-value",
-  "--enable-mutable-globals",
+  "--enable-multivalue",
   "--enable-nontrapping-float-to-int",
   "--enable-reference-types",
   "--enable-sign-ext",
   "--enable-simd",
   "--enable-tail-call",
-  "--enable-typed-function-references",
 
   # optimization passes:
   "--type-refining-gufa",
@@ -55,7 +68,7 @@ wasm-opt = [  # tool options:
   "--O4",
 ]
 
-[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+[package.metadata.wasm-pack.profile.release-web.wasm-bindgen]
 split-linked-modules = true
 
 [package.metadata.wasm-pack.profile.release-cloud]
@@ -64,8 +77,7 @@ wasm-opt = [
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
   "--enable-extended-const",
-  "--enable-multi-value",
-  "--enable-mutable-globals",
+  "--enable-multivalue",
   "--enable-nontrapping-float-to-int",
   "--enable-reference-types",
   "--enable-sign-ext",
@@ -93,7 +105,7 @@ wasm-opt = [
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
   "--enable-extended-const",
-  "--enable-multi-value",
+  "--enable-multivalue",
   "--enable-mutable-globals",
   "--enable-nontrapping-float-to-int",
   "--enable-reference-types",
@@ -210,3 +222,4 @@ talc_debug = [
 
 [lints]
 workspace = true
+

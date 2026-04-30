@@ -3,7 +3,7 @@
 # NOTE: SPDX identifiers at the top of a file apply only to that file.
 # The [Marque License 1.0 (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code.
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
   "crates/capco",
   "crates/config",
@@ -176,8 +176,19 @@ lto = "fat"
 codegen-units = 1
 
 # --- WASM-specific profiles
+
+# There's an issue with wasm-pack making the hand-off in more complex scenarios
+# So instead we have a basic profile and then optimize separately
+[profile.profiling]
+inherits = "release"
+opt-level = 3
+
 [profile.release-cloud]
 inherits = "release"
 
 [profile.release-server]
 inherits = "release"
+
+[profile.release-web]
+inherits = "release"
+
