@@ -709,7 +709,7 @@ cargo test -p marque-capco rel_to_invariants
 cargo test -p marque-capco corpus_parity                   # SC-002 / SC-004 gates
 
 # WASM parity (SC-008)
-wasm-pack build crates/wasm --target web --profile release-wasm
+wasm-pack build crates/wasm --target web --profile release
 # (corpus parity harness consumes this — runs separately)
 ```
 

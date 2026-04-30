@@ -16,7 +16,7 @@ site surfaces (home, blog, docs).
 ## What is vendored here
 
 `font/` contains the Latin-subset WOFF2 files at the weights and
-styles referenced by `docs-site/astro.config.mjs`:
+styles referenced by `site/astro.config.mjs`:
 
 | File | Weight | Style |
 |---|---|---|
@@ -39,7 +39,7 @@ Source: extracted from the `@fontsource/ibm-plex-sans` npm package
 
 ## Why local-vendored
 
-Previously the docs-site declared `fontProviders.fontsource()` in
+Previously the site declared `fontProviders.fontsource()` in
 `astro.config.mjs`, which causes Astro to fetch font files from the
 Fontsource API and the jsDelivr CDN at build time. Vendoring the
 font files removes the build-time CDN dependency entirely — the build

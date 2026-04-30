@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Knitli Inc.
 #
 # SPDX-License-Identifier: MIT OR Apache-2.0
+#:tombi schema.strict = false
 
 [package]
 name = "marque-wasm"
@@ -20,17 +21,17 @@ include = [
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+debug-js-glue = true
+dwarf-debug-info = true
 
-# alias for release
-[package.metadata.wasm-pack.profile.release-wasm]
-wasm-opt = [
-  # tool options:
+# Are these profiles over-the-top?  Yes.
+# The cost in build time is marginal for deployment-long (potential) benefit.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [  # tool options:
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
   "--enable-extended-const",
-  "--enable-gc",
   "--enable-multi-value",
   "--enable-mutable-globals",
   "--enable-nontrapping-float-to-int",
@@ -38,7 +39,6 @@ wasm-opt = [
   "--enable-sign-ext",
   "--enable-simd",
   "--enable-tail-call",
-  "--enable-threads",
   "--enable-typed-function-references",
 
   # optimization passes:
@@ -52,7 +52,11 @@ wasm-opt = [
   "-O3",
   "--converge",
   "--strip-toolchain-annotations",
+  "--O4",
 ]
+
+[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+split-linked-modules = true
 
 [package.metadata.wasm-pack.profile.release-cloud]
 wasm-opt = [
@@ -60,7 +64,6 @@ wasm-opt = [
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
   "--enable-extended-const",
-  "--enable-gc",
   "--enable-multi-value",
   "--enable-mutable-globals",
   "--enable-nontrapping-float-to-int",
@@ -81,6 +84,37 @@ wasm-opt = [
   "-O3",
   "--converge",
   "--strip-toolchain-annotations",
+  "--O4",
+]
+
+# optimizations for multi-threaded deployments; requires atomics
+[package.metadata.wasm-pack.profile.release-server]
+wasm-opt = [
+  "--enable-bulk-memory-opt",
+  "--enable-bulk-memory",
+  "--enable-extended-const",
+  "--enable-multi-value",
+  "--enable-mutable-globals",
+  "--enable-nontrapping-float-to-int",
+  "--enable-reference-types",
+  "--enable-sign-ext",
+  "--enable-threads",
+  "--enable-simd",
+  "--enable-relaxed-simd",
+  "--enable-tail-call",
+
+  # optimization passes:
+  "--type-refining-gufa",
+  "--generate-global-effects",
+  "-O3",
+  "--monomorphize",
+  "--precompute-propagate",
+  "--low-memory-unused",
+  "--gufa",
+  "-O3",
+  "--converge",
+  "--strip-toolchain-annotations",
+  "--O4",
 ]
 
 [lib]
@@ -121,7 +155,7 @@ serde_json = { workspace = true }
 # compilation target. Pinned via `=` to the version that the parity
 # harness was verified against and the version Cargo.lock currently
 # resolves. Tracks wasm-bindgen 0.2.118.
-wasm-bindgen-test = "=0.3.68"
+wasm-bindgen-test = "=0.3.70"
 
 # marque-extract intentionally excluded — format extraction is caller's
 # responsibility in WASM context; core operates on pre-extracted text.
@@ -167,7 +201,12 @@ console_error_panic_hook = ["dep:console_error_panic_hook"]
 # Debug allocator with heap counters (allocation/deallocation metrics via talc/counters).
 # Uses TalcLock so counter access is safe from any thread; most useful in a browser
 # devtools session. Enables console_error_panic_hook for readable panic messages.
-talc_debug = ["console_error_panic_hook", "dep:spinning_top", "dep:talc", "talc/counters"]
+talc_debug = [
+  "console_error_panic_hook",
+  "dep:spinning_top",
+  "dep:talc",
+  "talc/counters"
+]
 
 [lints]
 workspace = true
