@@ -48,12 +48,22 @@ wasm-pack build crates/wasm --target web --dev -- --features console_error_panic
 
 | Behavior | How |
 |-----------|-----|
-| Banner auto-updates as you type | `compute_banner()` on every keystroke (80ms debounce) |
+| Banner auto-updates as you type | `compute_banner()` after each fix pass (80ms debounce) |
 | Typo correction | `fix()` with corrections map — e.g., SERCET → SECRET → S |
 | Abbreviation enforcement | E009: SECRET → S, NOFORN → NF in portion markings |
-| Squiggly underlines | `lint()` → CodeMirror `Decoration.mark` for remaining diagnostics |
+| Squiggly underlines | Remaining diagnostics rendered as CodeMirror `Decoration.mark` |
 | Hover tooltips | CodeMirror `hoverTooltip` showing rule ID, message, citation |
 | Inline audit log | Each applied fix produces a timestamped audit entry |
+| Idle autoplay | After ~6s of no input, a scripted typing sequence runs. Pauses on any keystroke, paste, or `beforeinput` event |
+
+## Architecture
+
+The Marque WASM engine runs in a Web Worker (`worker.js`). The main thread
+posts `{type:'fix', text, threshold, config}` after debounce; the worker
+returns `{fixedText, banner, applied[], remaining[]}`. The worker model
+mirrors the deployment shape `marque-wasm` is built for and keeps typing
+latency at frame rate even on large inputs. Stale results are dropped via
+sequence numbers — only the most recent request's reply is applied.
 
 ## Recording a Demo Video
 

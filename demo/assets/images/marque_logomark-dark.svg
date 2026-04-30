@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="950mm"
+   height="350mm"
+   viewBox="0 0 950 350"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="marque_logomark-dark.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title
+     id="title14">Marque logomark</title>
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#cccccc"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="1"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.14309326"
+     inkscape:cx="1453.5975"
+     inkscape:cy="2005.685"
+     inkscape:window-width="1278"
+     inkscape:window-height="1520"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1">
+    <rect
+       x="1547.9415"
+       y="-76.87294"
+       width="1719.1586"
+       height="1747.1123"
+       id="rect13" />
+  </defs>
+  <g
+     inkscape:label="logo"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       d="M 86.344107,292.84903 H 112.11005 V 137.19736 l 30.41227,94.19355 h 21.11963 l 30.41226,-94.19355 v 155.65167 h 25.76595 V 104.03955 h -43.50643 l -23.2316,78.56502 -23.44278,-78.56502 H 86.344107 Z"
+       id="text6"
+       style="font-size:216.265px;font-family:OCR-B;-inkscape-font-specification:OCR-B;font-variant-numeric:ordinal;letter-spacing:4.05496px;word-spacing:0.0121649px;fill:#f1f7ed;stroke:#cda824;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke fill markers"
+       inkscape:label="M"
+       transform="scale(1.1893515,0.84079434)"
+       aria-label="M" />
+    <path
+       style="font-size:246.944px;font-family:Sans;-inkscape-font-specification:'Sans, @wght=600';font-variant-numeric:ordinal;font-variation-settings:'wght' 600;letter-spacing:2.64583px;word-spacing:0.0079375px;fill:#cda824;stroke-width:2.11667;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       d="m 41.945115,175.49386 q 0,-21.97801 4.444992,-41.48659 4.444992,-19.50858 12.3472,-36.547712 8.149152,-17.039136 18.5208,-31.114944 h 23.459683 q -15.804419,24.200512 -24.447459,51.364356 -8.396096,27.16384 -8.396096,57.53795 0,19.75552 3.951104,38.27632 3.951104,18.5208 11.11248,35.55993 7.40832,17.28608 17.779971,33.58439 H 77.258107 q -10.865536,-14.07581 -18.767744,-30.868 -7.902208,-16.54525 -12.3472,-35.55994 -4.198048,-19.26163 -4.198048,-40.74576 z"
+       id="text7"
+       inkscape:label="left-paren"
+       aria-label="(" />
+    <path
+       d="m 317.74649,175.49386 q 0,21.48413 -4.44499,40.74576 -4.19805,19.01469 -12.10025,35.55994 -7.90221,16.79219 -18.76775,30.868 h -23.21273 q 10.1247,-16.29831 17.28608,-33.58439 7.40832,-17.28608 11.35942,-35.55993 3.9511,-18.5208 3.9511,-38.27632 0,-20.49635 -3.9511,-39.2641 -3.9511,-18.76774 -11.11248,-36.053822 -7.16138,-17.533024 -17.77997,-33.584384 h 23.45968 q 10.61859,14.075808 18.5208,31.361888 7.90221,17.039138 12.3472,36.794658 4.44499,19.50857 4.44499,40.9927 z"
+       id="text8"
+       style="font-size:246.944px;font-family:Sans;-inkscape-font-specification:'Sans, @wght=600';font-variant-numeric:ordinal;font-variation-settings:'wght' 600;letter-spacing:2.64583px;word-spacing:0.0079375px;fill:#cda824;stroke-width:2.11667;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       inkscape:label="right-paren"
+       aria-label=")" />
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="arque">
+    <path
+       style="font-weight:450;font-size:194.028px;line-height:1.05;font-family:'FiraCode Nerd Font Mono';-inkscape-font-specification:'FiraCode Nerd Font Mono, weight=450';font-variant-numeric:ordinal;letter-spacing:0px;word-spacing:0.0079375px;fill:#f1f7ed;stroke-width:2.11667;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       d="m 423.76594,209.04248 q 0,6.2686 1.99004,9.15415 1.99003,2.78604 6.26859,4.17906 l -4.47757,13.1342 q -7.16411,-0.89551 -12.53719,-4.27856 -5.27358,-3.38305 -7.76112,-10.34816 -5.67159,7.36311 -14.32822,11.04467 -8.65664,3.68156 -18.80579,3.68156 -15.82075,0 -24.97489,-8.95514 -9.15414,-8.95514 -9.15414,-23.58187 0,-16.31825 12.7362,-25.07439 12.8357,-8.85563 36.81557,-8.85563 h 15.22373 v -7.96013 q 0,-10.84566 -6.4676,-15.42273 -6.3681,-4.57707 -17.81077,-4.57707 -5.27359,0 -12.4377,1.29352 -7.06461,1.29352 -15.12423,4.07956 l -4.87558,-13.93022 q 9.65165,-3.68155 18.60679,-5.27358 8.95514,-1.59202 16.71626,-1.59202 20.19881,0 30.24847,9.25364 10.14915,9.25364 10.14915,25.17389 z m -44.27818,12.23869 q 7.26361,0 14.02972,-3.78105 6.8656,-3.78106 11.24367,-10.54717 v -25.37289 h -13.93021 q -16.61676,0 -23.58187,5.67159 -6.96511,5.57208 -6.96511,15.32323 0,18.70629 19.2038,18.70629 z m 87.36244,11.84069 v -14.12922 h 15.92024 V 142.37645 H 466.8502 v -14.12921 h 30.54697 l 3.48255,24.57688 q 5.9701,-13.03471 14.62673,-19.99981 8.75613,-7.06461 22.68635,-7.06461 4.57707,0 8.05962,0.69651 3.58206,0.69651 7.26362,1.79103 l -2.98505,36.81556 h -14.72623 v -21.89033 h -0.0995 q -23.58186,0 -33.83052,33.73102 v 42.08915 h 21.29333 v 14.12922 z M 620.18215,125.7597 q 18.00978,0 28.65645,13.4327 l 1.39302,-10.94516 h 16.41775 v 147.36177 l -19.10429,-2.28853 v -52.73582 q -5.57209,7.66162 -13.03471,11.34318 -7.36311,3.68156 -16.01974,3.68156 -14.02972,0 -22.58685,-6.76611 -8.45763,-6.86561 -12.23869,-19.2038 -3.78106,-12.33819 -3.78106,-28.85544 0,-15.92025 4.57707,-28.25844 4.67657,-12.43769 13.63171,-19.6018 8.95514,-7.16411 22.08934,-7.16411 z m 4.77608,15.02473 q -24.87539,0 -24.87539,39.99962 0,20.19881 5.77109,29.85046 5.77109,9.55215 17.11427,9.55215 8.15912,0 14.32822,-4.57707 6.16909,-4.57707 10.24866,-10.94517 v -51.2433 q -3.98007,-5.97009 -9.75115,-9.25364 -5.77109,-3.38305 -12.8357,-3.38305 z m 98.80513,-12.53719 v 73.83014 q 0,9.95015 3.98006,14.32822 4.07956,4.27856 12.53719,4.27856 7.96012,0 15.22374,-4.67657 7.36311,-4.67657 11.44267,-11.14417 v -76.61618 h 19.1043 v 104.87462 h -16.41776 l -1.39302,-13.83072 q -6.06959,7.96013 -15.12423,12.13919 -8.95514,4.17907 -18.20878,4.17907 -15.22374,0 -22.78585,-8.25863 -7.46262,-8.25863 -7.46262,-22.88536 v -76.21817 z m 115.72036,58.90491 q 0.79601,17.31326 9.35314,25.17389 8.65663,7.86062 20.49732,7.86062 7.86062,0 14.42772,-2.38804 6.5671,-2.38804 13.33321,-6.96511 l 8.65663,12.03969 q -7.36311,5.87059 -17.01476,9.35314 -9.65165,3.38306 -19.99981,3.38306 -15.72125,0 -26.76592,-6.86561 -10.94517,-6.96511 -16.71625,-19.3033 -5.67159,-12.33819 -5.67159,-28.65644 0,-15.82075 5.67159,-28.25844 5.77108,-12.43769 16.21875,-19.6018 10.44766,-7.16411 24.87538,-7.16411 20.29831,0 31.93999,13.93021 11.74119,13.83072 11.74119,37.91009 0,2.68654 -0.0995,5.17408 -0.0995,2.48754 -0.2985,4.37807 z m 27.06441,-46.46722 q -11.24367,0 -18.60678,7.96012 -7.36312,7.96012 -8.45763,24.57688 h 52.1388 q -0.2985,-15.92025 -6.96511,-24.17887 -6.5671,-8.35813 -18.10928,-8.35813 z"
+       id="text14"
+       inkscape:label="arque-text"
+       aria-label="arque" />
+  </g>
+  <metadata
+     id="metadata14">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Marque logomark</dc:title>
+        <dc:date>12-March-2026</dc:date>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Adam Poulemanos</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>(c) Knitli Inc.</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <dc:relation>Marque logo</dc:relation>
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>marque</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>
