@@ -64,7 +64,8 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_core::CoreError;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{Engine, FixMode, StrictRecognizer};
+use std::sync::Arc;
 
 /// A high-entropy ASCII run that cannot occur in any valid CAPCO/ISM
 /// marking: lowercase letters, digits, and hyphens combined into a
@@ -73,6 +74,14 @@ use marque_engine::{Engine, FixMode};
 /// it can have come from only one place — the bytes the test fed in.
 const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 
+/// `CoreError` is produced only on the strict path
+/// (`StrictRecognizer::recognize` catches `CoreError` from
+/// `Parser::parse` and discards it). The decoder fallback uses a
+/// different error shape entirely. To exercise the *CoreError*
+/// content-isolation channel that this file is named for, pin the
+/// engine to `StrictRecognizer` rather than relying on the default
+/// dispatcher (which would also exercise decoder-side leak channels —
+/// real but separately scoped issues, not the one this file gates).
 fn test_engine() -> Engine {
     Engine::new(
         Config::default(),
@@ -80,6 +89,7 @@ fn test_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------

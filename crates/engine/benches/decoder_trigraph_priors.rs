@@ -92,8 +92,7 @@ fn trigraph_priors_benchmark(c: &mut Criterion) {
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
-    .expect("default CAPCO scheme has no rewrite cycles")
-    .with_deep_scan();
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     c.bench_function("decoder_10kb_trigraph_typo", |b| {
         b.iter(|| engine.lint(black_box(&input)));

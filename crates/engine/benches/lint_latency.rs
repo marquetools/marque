@@ -5,8 +5,11 @@
 //! Engine::lint latency benchmarks. Two functions live here:
 //!
 //! - **SC-001 strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
-//!   representative input with the default (strict-only) recognizer.
-//!   Target p95 <= 16ms.
+//!   representative input with [`StrictRecognizer`] explicitly
+//!   installed. Target p95 <= 16ms. Pinning the strict recognizer
+//!   directly (rather than relying on the engine default, which is the
+//!   strict-then-decoder dispatcher) keeps SC-001 measuring a pure
+//!   strict-path number even if the dispatcher's overhead grows.
 //! - **SC-002 decoder-path**: `decoder_10kb_one_mangled_region` —
 //!   `Engine::lint` on a 10KB representative input where exactly one
 //!   region contains a mangled marking that forces the decoder to fire.
@@ -23,8 +26,9 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::{Engine, StrictRecognizer};
 use std::hint::black_box;
+use std::sync::Arc;
 
 /// Build a ~10KB representative input by repeating a block of mixed valid and
 /// invalid markings interspersed with prose. This mimics a real document with
@@ -71,7 +75,8 @@ fn lint_latency_benchmark(c: &mut Criterion) {
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
-    .expect("default CAPCO scheme has no rewrite cycles");
+    .expect("default CAPCO scheme has no rewrite cycles")
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
 
     c.bench_function("lint_10kb", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -142,13 +147,18 @@ fn build_decoder_input(target_bytes: usize) -> Vec<u8> {
 
 fn decoder_latency_benchmark(c: &mut Criterion) {
     let input = build_decoder_input(10_000);
+    // The decoder fallback is the engine default (`Engine::new` installs
+    // `StrictOrDecoderRecognizer`), so this bench exercises the same
+    // dispatcher every CLI / WASM caller runs against. The mangled
+    // portion in `build_decoder_input` forces the strict path to leave
+    // `classification = None`, which trips the dispatcher's fallback
+    // into the decoder.
     let engine = Engine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
-    .expect("default CAPCO scheme has no rewrite cycles")
-    .with_deep_scan();
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     c.bench_function("decoder_10kb_one_mangled_region", |b| {
         b.iter(|| engine.lint(black_box(&input)));

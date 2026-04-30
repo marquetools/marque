@@ -84,8 +84,7 @@ fn rel_to_invariant_benchmark(c: &mut Criterion) {
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
-    .expect("default CAPCO scheme has no rewrite cycles")
-    .with_deep_scan();
+    .expect("default CAPCO scheme has no rewrite cycles");
 
     c.bench_function("decoder_10kb_rel_to_invariant", |b| {
         b.iter(|| engine.lint(black_box(&input)));
