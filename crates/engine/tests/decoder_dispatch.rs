@@ -227,10 +227,10 @@ fn default_engine_rejects_bare_restricted_portion() {
     // canonical form") should fire.
     let engine = build_engine();
     for input in &[
-        b"(R)" as &[u8],     // bare uppercase
-        b"(r)",              // lowercase form (decoder canonicalizes case)
-        b"text (R) more",    // mid-prose, whitespace-preceded
-        b"footnote(R)",      // word-glued — both heuristics apply
+        b"(R)" as &[u8],  // bare uppercase
+        b"(r)",           // lowercase form (decoder canonicalizes case)
+        b"text (R) more", // mid-prose, whitespace-preceded
+        b"footnote(R)",   // word-glued — both heuristics apply
     ] {
         let result = engine.lint(input);
         assert!(
