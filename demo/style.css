@@ -884,8 +884,8 @@ nav .nav-hint {
 }
 
 /* ---------------------------------------------------------------------------
-   Tier 3 — scenario tabs, deep-scan toggle, doc toolbar, page break,
-   CAB panel, V2 audit provenance
+   Tier 3 — scenario tabs, doc toolbar, page break,
+   static CAB block, V2 audit provenance
    --------------------------------------------------------------------------- */
 
 /* Scenario tabs */
@@ -1001,64 +1001,48 @@ nav .nav-hint {
   user-select: none;
 }
 
-/* CAB panel */
-.cab-panel { padding-bottom: 14px; }
-
-.cab-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.cab-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cab-label {
+/* Static Classification Authority Block — visible only when the
+   document is classified. Position absolutely over the bottom-left of
+   the document card so it doesn't disrupt the editor's normal flow.
+   `.doc-body` carries extra bottom padding under .is-classified so
+   long body text reflows above the block instead of running under it.
+   Subdued opacity communicates "placeholder" rather than "live data". */
+.cab-static {
+  display: none;
+  position: absolute;
+  left: 32px;
+  bottom: 50px; /* clears the bottom banner (~36px) + breathing room */
+  padding: 10px 14px;
+  border-left: 2px solid var(--charcoal-200);
+  background: rgba(0, 0, 0, 0.02);
+  font: 400 11px / 1.55 var(--font-mono, ui-monospace, "SF Mono", monospace);
   color: var(--color-text-secondary);
-  font: 500 11px var(--font-body);
+  opacity: 0.65;
+  pointer-events: none;
+  user-select: none;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
-.cab-input {
-  padding: 6px 10px;
-  border: 1px solid var(--charcoal-100);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: 400 13px var(--font-body);
-  border-radius: 4px;
+.document.is-classified .cab-static {
+  display: block;
 }
 
-.cab-input:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-  border-color: transparent;
+.document.is-classified .doc-body {
+  padding-bottom: 140px; /* ~CAB block height + spacing */
 }
 
-.cab-output {
-  margin: 0 0 8px;
-  padding: 12px;
-  background: var(--charcoal-900);
-  color: var(--mint-100);
-  font: 400 12px / 1.55 var(--font-mono, ui-monospace, "SF Mono", monospace);
-  border-radius: 4px;
-  white-space: pre-wrap;
-  min-height: 80px;
-  overflow-x: auto;
+.cab-static-row {
+  display: flex;
+  gap: 6px;
 }
 
-.cab-note {
+.cab-static-key {
   color: var(--color-text-secondary);
-  font: 400 11px var(--font-body);
-  line-height: 1.5;
+  min-width: 96px;
 }
 
-.cab-note code {
-  font: 500 11px var(--font-mono, ui-monospace, monospace);
+.cab-static-val {
   color: var(--color-text-primary);
+  font-weight: 500;
 }
 

@@ -50,17 +50,12 @@ SPDX-License-Identifier: Apache-2.0
   <!-- Main column: document + audit stream -->
   <div class="main-col">
 
-    <!-- Document toolbar — page break + CAB toggle -->
+    <!-- Document toolbar — page break -->
     <div class="doc-toolbar" role="toolbar" aria-label="Document tools">
       <button type="button" class="doc-tool" id="insert-page-break"
               title="Insert page break (form-feed) — banner roll-up resets per page">
         <span class="doc-tool-icon" aria-hidden="true">⤓</span>
         <span class="doc-tool-label">Insert page break</span>
-      </button>
-      <button type="button" class="doc-tool" id="toggle-cab"
-              title="Show/hide Classification Authority Block">
-        <span class="doc-tool-icon" aria-hidden="true">§</span>
-        <span class="doc-tool-label">Show CAB</span>
       </button>
       <span class="doc-toolbar-spacer" aria-hidden="true"></span>
       <span class="doc-page-count" id="doc-page-count" aria-live="polite"></span>
@@ -101,6 +96,25 @@ SPDX-License-Identifier: Apache-2.0
         <div id="editor-mount"></div>
       </div>
 
+      <!-- Static Classification Authority Block — visible only when the
+           document is classified. Placeholder content for now; the live
+           CAB generator is staged for a follow-up that polishes
+           `generate_cab()` against the full §H authority chain. -->
+      <aside class="cab-static" id="cab-static" aria-label="Classification Authority Block">
+        <div class="cab-static-row">
+          <span class="cab-static-key">Classified by:</span>
+          <span class="cab-static-val">─</span>
+        </div>
+        <div class="cab-static-row">
+          <span class="cab-static-key">Derived from:</span>
+          <span class="cab-static-val">123456</span>
+        </div>
+        <div class="cab-static-row">
+          <span class="cab-static-key">Declassify on:</span>
+          <span class="cab-static-val">─</span>
+        </div>
+      </aside>
+
       <!-- Bottom banner (mirrors top) -->
       <div class="banner level-empty" id="banner-bottom">Loading…</div>
 
@@ -113,7 +127,7 @@ SPDX-License-Identifier: Apache-2.0
 
   </div>
 
-  <!-- Side rail: scenario selector, threshold, CAB, remaining -->
+  <!-- Side rail: scenario selector, threshold, remaining -->
   <aside class="side-col" aria-label="Engine controls and diagnostics">
 
     <!-- Scenario tabs: switch between U.S. memo and FGI/JOINT scenarios -->
@@ -174,31 +188,6 @@ SPDX-License-Identifier: Apache-2.0
         Drop below 1.00 and the engine engages probabilistic recovery —
         even mangled markings get repaired. At 1.00 only fixes the engine
         is fully certain about apply.
-      </div>
-    </section>
-
-    <!-- CAB generator — collapsed by default, toggled from doc toolbar -->
-    <section class="panel cab-panel" id="cab-panel" hidden
-             aria-labelledby="cab-heading">
-      <header class="panel-header">
-        <h2 id="cab-heading" class="panel-title">Classification Authority Block</h2>
-        <span class="panel-hint">derived from portions</span>
-      </header>
-      <div class="cab-fields">
-        <label class="cab-field">
-          <span class="cab-label">Classified by</span>
-          <input type="text" class="cab-input" id="cab-classified-by"
-                 placeholder="Derivative Classifier" autocomplete="off" />
-        </label>
-        <label class="cab-field">
-          <span class="cab-label">Derived from</span>
-          <input type="text" class="cab-input" id="cab-derived-from"
-                 placeholder="Multiple Sources" autocomplete="off" />
-        </label>
-      </div>
-      <pre class="cab-output" id="cab-output" aria-live="polite"></pre>
-      <div class="cab-note">
-        Built from <code>generate_cab()</code>. Updates as you type.
       </div>
     </section>
 

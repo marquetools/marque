@@ -8,27 +8,28 @@
  * Runs the Marque WASM engine off the main thread so typing latency stays
  * frame-rate even on large inputs. This mirrors the worker-first deployment
  * shape `marque-wasm` is built for: the engine boots once, owns its own
- * config-keyed cache, and answers `lint`/`fix`/`banner` requests via
- * postMessage.
+ * config-keyed cache, and answers `fix`/`banner` requests via postMessage.
+ *
+ * Recognizer dispatch lives inside the engine: post-#259, `Engine::new`
+ * installs `StrictOrDecoderRecognizer` (strict-first / decoder-fallback)
+ * by default. Lowercase, typo'd, superseded, or otherwise mangled
+ * markings get recovered through the regular `fix` path with no flag
+ * opt-in. The threshold gates which fixes auto-apply, not which
+ * recognizer runs.
  *
  * Protocol (main → worker):
  *   { type: 'configure', config }                 → { type: 'ready' }
  *   { type: 'fix',    seq, text, threshold, config }
  *                                                 → { type: 'fix:result',    seq, ... }
- *   { type: 'fix:deep', seq, text }               → { type: 'fix:result',    seq, ..., mode: 'deep' }
  *   { type: 'banner', seq, text }                 → { type: 'banner:result', seq, banner }
- *   { type: 'cab',    seq, text, classifiedBy, derivedFrom }
- *                                                 → { type: 'cab:result',    seq, cab }
  *
  * Sequence numbers let the main thread drop stale results when a newer
  * request has already been issued.
  */
 
 import initWasm, {
-  configure, fix, fix_deep_scan, compute_banner, generate_cab,
+  configure, fix, compute_banner,
 } from '/wasm/marque_wasm.js';
-
-const textEncoder = new TextEncoder();
 
 let ready = false;
 let warmedConfig = null;
@@ -76,31 +77,6 @@ self.onmessage = async (event) => {
         self.postMessage({
           type: 'fix:result',
           seq: msg.seq,
-          mode: 'strict',
-          fixedText,
-          banner,
-          applied: parsed.applied ?? [],
-          remaining: parsed.remaining ?? [],
-        });
-        return;
-      }
-
-      case 'fix:deep': {
-        // Phase D probabilistic recognizer. The deep-scan API takes only the
-        // byte buffer — no threshold, no runtime config. Audit records carry
-        // V2 provenance (recognition, runner_up_ratio, features).
-        await ensureReady(msg.config);
-        const bytes = textEncoder.encode(msg.text);
-        const json = fix_deep_scan(bytes);
-        const parsed = JSON.parse(json);
-        const fixedText = parsed.fixed_text ?? msg.text;
-        let banner;
-        try { banner = compute_banner(fixedText); }
-        catch { banner = 'UNCLASSIFIED'; }
-        self.postMessage({
-          type: 'fix:result',
-          seq: msg.seq,
-          mode: 'deep',
           fixedText,
           banner,
           applied: parsed.applied ?? [],
@@ -118,29 +94,6 @@ self.onmessage = async (event) => {
           banner = 'UNCLASSIFIED';
         }
         self.postMessage({ type: 'banner:result', seq: msg.seq, banner });
-        return;
-      }
-
-      case 'cab': {
-        await ensureReady(msg.config);
-        let cab;
-        try {
-          cab = generate_cab(
-            msg.text,
-            msg.classifiedBy ?? null,
-            msg.derivedFrom  ?? null,
-          );
-        } catch (err) {
-          cab = '';
-          self.postMessage({
-            type: 'cab:result',
-            seq: msg.seq,
-            cab: '',
-            error: String(err && err.message ? err.message : err),
-          });
-          return;
-        }
-        self.postMessage({ type: 'cab:result', seq: msg.seq, cab });
         return;
       }
 

@@ -65,7 +65,7 @@ wasm-opt = [  # tool options:
   "-O3",
   "--converge",
   "--strip-toolchain-annotations",
-  "--O4",
+  "-O4",
 ]
 
 [package.metadata.wasm-pack.profile.release-web.wasm-bindgen]
@@ -96,7 +96,7 @@ wasm-opt = [
   "-O3",
   "--converge",
   "--strip-toolchain-annotations",
-  "--O4",
+  "-O4",
 ]
 
 # optimizations for multi-threaded deployments; requires atomics
@@ -126,7 +126,7 @@ wasm-opt = [
   "-O3",
   "--converge",
   "--strip-toolchain-annotations",
-  "--O4",
+  "-O4",
 ]
 
 [lib]

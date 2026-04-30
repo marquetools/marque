@@ -3,5 +3,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Entry point for esbuild — re-exports everything from @codemirror packages
-export { EditorView, ViewPlugin, Decoration, hoverTooltip, keymap } from '@codemirror/view';
+export { EditorView, ViewPlugin, Decoration, WidgetType, hoverTooltip, keymap } from '@codemirror/view';
 export { StateEffect, StateField, EditorState, Transaction } from '@codemirror/state';

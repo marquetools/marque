@@ -34,6 +34,7 @@ import {
   EditorView,
   Decoration,
   ViewPlugin,
+  WidgetType,
   hoverTooltip,
   StateEffect,
   StateField,
@@ -73,11 +74,12 @@ const PLACEHOLDER_TEXT =
 // fix request so the user can watch how few diagnostics actually drop out
 // when the bar is raised — that's the robustness story.
 //
-// The threshold also gates which recognizer the worker uses:
-//   threshold == 1.0 → strict header-only recognizer (`fix`)
-//   threshold <  1.0 → Phase D probabilistic recovery (`fix_deep_scan`)
-// No separate toggle — accepting any sub-1.0 fix means accepting decoder
-// posteriors, so the slider is the single dial.
+// The threshold gates which fixes auto-apply, not which recognizer runs.
+// Post-#259 the engine itself installs `StrictOrDecoderRecognizer` by
+// default (strict-first, decoder fallback) — there's no `--deep-scan`
+// any more. At 1.00 the engine still parses both ways, but only fixes it
+// is fully certain about cross the bar. Below 1.00 the decoder's recovery
+// fixes start to apply.
 let currentThreshold = 0.0;
 
 // Autoplay script: a short representative passage that exercises typo
@@ -124,8 +126,8 @@ const diagnosticsField = StateField.define({
   provide: f => EditorView.decorations.from(f),
 });
 
-class PlaceholderWidget {
-  constructor(text) { this.text = text; }
+class PlaceholderWidget extends WidgetType {
+  constructor(text) { super(); this.text = text; }
   toDOM() {
     const el = document.createElement('span');
     el.className = 'cm-placeholder';
@@ -160,7 +162,7 @@ const placeholderPlugin = ViewPlugin.fromClass(class {
 // Page-break decoration — make form-feed (\f) visible as a horizontal rule.
 // ---------------------------------------------------------------------------
 
-class PageBreakWidget {
+class PageBreakWidget extends WidgetType {
   toDOM() {
     const el = document.createElement('span');
     el.className = 'cm-pagebreak';
@@ -229,6 +231,17 @@ function applyBanner(banner, topEl, bottomEl) {
   bottomEl.classList.add(cls);
   topEl.textContent = banner;
   bottomEl.textContent = banner;
+
+  // Toggle the document-card classified state, which gates visibility of
+  // the static CAB block. UNCLASSIFIED (and the empty-doc placeholder) =
+  // no CAB; anything else = CAB visible. Cheap string check matches the
+  // banner output verbatim — `compute_banner()` returns canonical
+  // uppercase text.
+  const docCard = document.getElementById('document-card');
+  if (docCard) {
+    const classified = banner && !banner.startsWith('UNCLASSIFIED');
+    docCard.classList.toggle('is-classified', !!classified);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,22 +308,38 @@ function prependAuditEntry(record, stream, emptyEl) {
   entry.appendChild(headRow);
 
   // ── Row 2: diff — "original" → "replacement" ──────────────────────────
+  // Decoder-path records (R001 / probabilistic recovery) intentionally
+  // omit the "before" form per the audit-record-shape contract
+  // (Constitution V Principle V / G13): the original byte sequence cannot
+  // be echoed back into the audit log, even though the engine knows it.
+  // When original is empty, render only the replacement — the meta row
+  // below carries the recognition / features context.
+  const original = record.original ?? '';
+  const replacement = record.replacement ?? '';
   const diffRow = document.createElement('div');
   diffRow.className = 'audit-row audit-diff';
 
-  const arrowEl = document.createElement('span');
-  arrowEl.className = 'audit-arrow';
-  arrowEl.textContent = '→';
+  if (original.length > 0) {
+    const originalEl = document.createElement('span');
+    originalEl.className = 'audit-original';
+    originalEl.textContent = JSON.stringify(original);
 
-  const originalEl = document.createElement('span');
-  originalEl.className = 'audit-original';
-  originalEl.textContent = JSON.stringify(record.original ?? '');
+    const arrowEl = document.createElement('span');
+    arrowEl.className = 'audit-arrow';
+    arrowEl.textContent = '→';
 
-  const replacementEl = document.createElement('span');
-  replacementEl.className = 'audit-replacement';
-  replacementEl.textContent = JSON.stringify(record.replacement ?? '');
+    const replacementEl = document.createElement('span');
+    replacementEl.className = 'audit-replacement';
+    replacementEl.textContent = JSON.stringify(replacement);
 
-  diffRow.append(originalEl, arrowEl, replacementEl);
+    diffRow.append(originalEl, arrowEl, replacementEl);
+  } else {
+    // Decoder path: only the canonical replacement is in the log.
+    const insertEl = document.createElement('span');
+    insertEl.className = 'audit-replacement';
+    insertEl.textContent = `inserted ${JSON.stringify(replacement)}`;
+    diffRow.appendChild(insertEl);
+  }
   entry.appendChild(diffRow);
 
   // ── Row 3 (optional): provenance/extras — migration · classifier ·
@@ -410,24 +439,13 @@ function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
-  if (currentThreshold < 1.0) {
-    // Sub-1.0 threshold accepts decoder posteriors → engage Phase D.
-    worker.postMessage({
-      type: 'fix:deep',
-      seq: activeSeq,
-      text,
-      config: DEMO_CONFIG,
-    });
-  } else {
-    // Strict path — only fully-certain fixes apply.
-    worker.postMessage({
-      type: 'fix',
-      seq: activeSeq,
-      text,
-      threshold: currentThreshold,
-      config: DEMO_CONFIG,
-    });
-  }
+  worker.postMessage({
+    type: 'fix',
+    seq: activeSeq,
+    text,
+    threshold: currentThreshold,
+    config: DEMO_CONFIG,
+  });
 }
 
 function applyFixResult(view, refs, msg) {
@@ -515,9 +533,8 @@ function applyFixResult(view, refs, msg) {
   updateConfidenceHistogram(msg.applied, msg.remaining || [], refs);
   updateRemainingPanel(view, msg.remaining || [], refs);
 
-  // Multi-page indicator + CAB refresh — both derive from the post-fix text.
+  // Multi-page indicator — derives from the post-fix text.
   updatePageCount(fixedText, refs);
-  requestCab(refs);
 }
 
 // ---------------------------------------------------------------------------
@@ -539,8 +556,11 @@ function updateThresholdCounter(applied, remaining, refs) {
     refs.thresholdCounter.textContent = '—';
     return;
   }
+  // The trailing percentage is the threshold setting (the slider value),
+  // not a per-fix confidence. Phrase as "above N%" so it reads as the
+  // qualifying bar rather than as an averaged confidence.
   refs.thresholdCounter.textContent =
-    `${applied.length} of ${total} applied @ ${pct}%`;
+    `${applied.length} of ${total} above ${pct}%`;
 }
 
 function updateConfidenceHistogram(applied, remaining, refs) {
@@ -880,52 +900,6 @@ function updatePageCount(text, refs) {
 }
 
 // ---------------------------------------------------------------------------
-// CAB generator wiring
-// ---------------------------------------------------------------------------
-
-let cabSeq = 0;
-
-function attachCabPanel(refs) {
-  const toggleBtn = refs.toggleCab;
-  const panel = refs.cabPanel;
-  if (!toggleBtn || !panel) return;
-
-  toggleBtn.addEventListener('click', () => {
-    const isHidden = panel.hidden;
-    panel.hidden = !isHidden;
-    toggleBtn.classList.toggle('is-active', isHidden);
-    const label = toggleBtn.querySelector('.doc-tool-label');
-    if (label) label.textContent = isHidden ? 'Hide CAB' : 'Show CAB';
-    if (isHidden) requestCab(refs);
-  });
-
-  for (const input of [refs.cabClassifiedBy, refs.cabDerivedFrom]) {
-    if (!input) continue;
-    input.addEventListener('input', () => requestCab(refs));
-  }
-}
-
-function requestCab(refs) {
-  if (!refs.cabPanel || refs.cabPanel.hidden) return;
-  cabSeq++;
-  worker.postMessage({
-    type: 'cab',
-    seq: cabSeq,
-    text: refs.lastFixedText || '',
-    classifiedBy: (refs.cabClassifiedBy?.value || '').trim() || null,
-    derivedFrom:  (refs.cabDerivedFrom?.value  || '').trim() || null,
-    config: DEMO_CONFIG,
-  });
-}
-
-function applyCabResult(refs, msg) {
-  if (msg.seq !== cabSeq) return;
-  if (refs.cabOutput) {
-    refs.cabOutput.textContent = msg.cab || '(no portion markings yet)';
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Scenario tabs — U.S. memo vs FGI / JOINT
 // ---------------------------------------------------------------------------
 
@@ -1047,11 +1021,6 @@ async function main() {
     contrastDismiss:  document.getElementById('contrast-dismiss'),
     insertPageBreak:  document.getElementById('insert-page-break'),
     docPageCount:     document.getElementById('doc-page-count'),
-    toggleCab:        document.getElementById('toggle-cab'),
-    cabPanel:         document.getElementById('cab-panel'),
-    cabClassifiedBy:  document.getElementById('cab-classified-by'),
-    cabDerivedFrom:   document.getElementById('cab-derived-from'),
-    cabOutput:        document.getElementById('cab-output'),
     scenarioTabs:     document.querySelectorAll('.scenario-tab'),
     scenarioNote:     document.getElementById('scenario-note'),
     lastBanner: 'UNCLASSIFIED',
@@ -1082,9 +1051,8 @@ async function main() {
   worker.addEventListener('message', (ev) => {
     const msg = ev.data;
     if (!msg) return;
-    if (msg.type === 'fix:result')      applyFixResult(view, refs, msg);
-    else if (msg.type === 'cab:result') applyCabResult(refs, msg);
-    else if (msg.type === 'error')      console.error('[marque worker]', msg);
+    if (msg.type === 'fix:result')   applyFixResult(view, refs, msg);
+    else if (msg.type === 'error')   console.error('[marque worker]', msg);
   });
 
   // Tooltip extension reads from view._marqueDiagData.
@@ -1156,9 +1124,8 @@ async function main() {
   // re-issue requestUpdate against the editor.
   attachThresholdControls(view, refs);
 
-  // Tier 3 wiring — page-break, CAB, scenario tabs.
+  // Tier 3 wiring — page-break, scenario tabs.
   attachPageBreakButton(view, refs);
-  attachCabPanel(refs);
   attachScenarioTabs(view, refs);
 
   // Pause autoplay on any user input (keystroke, paste, click that sets focus).
