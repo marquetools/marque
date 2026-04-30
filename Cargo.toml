@@ -176,8 +176,12 @@ lto = "fat"
 codegen-units = 1
 
 # --- WASM-specific profiles
+[profile.release-web]
+inherits = "release"
+
 [profile.release-cloud]
 inherits = "release"
+
 
 [profile.release-server]
 inherits = "release"

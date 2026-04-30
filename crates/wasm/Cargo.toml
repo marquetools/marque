@@ -27,7 +27,7 @@ dwarf-debug-info = true
 
 # Are these profiles over-the-top?  Yes.
 # The cost in build time is marginal for deployment-long (potential) benefit.
-[package.metadata.wasm-pack.profile.release]
+[package.metadata.wasm-pack.profile.release-web]
 wasm-opt = [  # tool options:
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",
@@ -55,7 +55,7 @@ wasm-opt = [  # tool options:
   "--O4",
 ]
 
-[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+[package.metadata.wasm-pack.profile.release-web.wasm-bindgen]
 split-linked-modules = true
 
 [package.metadata.wasm-pack.profile.release-cloud]
@@ -210,3 +210,6 @@ talc_debug = [
 
 [lints]
 workspace = true
+
+[profile.release]
+wasm-opt = false
