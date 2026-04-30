@@ -32,34 +32,13 @@ const INVALID_OVERRIDE_BAD_SCHEMA: &str = r#"{
 
 #[cfg(feature = "corpus-override")]
 #[test]
-fn corpus_override_without_deep_scan_errors_ex_usage() {
-    let tmp = tempfile::tempdir().unwrap();
-    let override_path = tmp.path().join("override.json");
-    std::fs::write(&override_path, VALID_OVERRIDE).unwrap();
-
-    let assert = marque()
-        .args(["check", "--corpus-override"])
-        .arg(&override_path)
-        .write_stdin("UNCLASSIFIED")
-        .assert()
-        .code(64); // EX_USAGE
-
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--corpus-override requires --deep-scan"),
-        "expected --deep-scan guard message, got: {stderr}"
-    );
-}
-
-#[cfg(feature = "corpus-override")]
-#[test]
 fn corpus_override_with_bad_schema_errors_ex_dataerr() {
     let tmp = tempfile::tempdir().unwrap();
     let override_path = tmp.path().join("override.json");
     std::fs::write(&override_path, INVALID_OVERRIDE_BAD_SCHEMA).unwrap();
 
     let assert = marque()
-        .args(["check", "--deep-scan", "--corpus-override"])
+        .args(["check", "--corpus-override"])
         .arg(&override_path)
         .write_stdin("UNCLASSIFIED")
         .assert()
@@ -74,7 +53,7 @@ fn corpus_override_with_bad_schema_errors_ex_dataerr() {
 
 #[cfg(feature = "corpus-override")]
 #[test]
-fn corpus_override_with_valid_json_and_deep_scan_runs_successfully() {
+fn corpus_override_with_valid_json_runs_successfully() {
     let tmp = tempfile::tempdir().unwrap();
     let override_path = tmp.path().join("override.json");
     std::fs::write(&override_path, VALID_OVERRIDE).unwrap();
@@ -83,8 +62,12 @@ fn corpus_override_with_valid_json_and_deep_scan_runs_successfully() {
     // The point is to verify the override loads and the engine
     // accepts it; behavioral coverage of the audit annotation lives
     // in `crates/engine/tests/corpus_override.rs`.
+    //
+    // The decoder fallback is the engine default, so the override
+    // takes effect without any opt-in flag. (Pre-PR #259 this test
+    // also passed `--deep-scan`; that flag is now retired.)
     marque()
-        .args(["check", "--deep-scan", "--corpus-override"])
+        .args(["check", "--corpus-override"])
         .arg(&override_path)
         .write_stdin("UNCLASSIFIED text only.")
         .assert()
@@ -106,7 +89,7 @@ fn corpus_override_with_missing_file_errors_ex_ioerr() {
     let missing_path_display = missing_path.display().to_string();
 
     let assert = marque()
-        .args(["check", "--deep-scan", "--corpus-override"])
+        .args(["check", "--corpus-override"])
         .arg(&missing_path)
         .write_stdin("UNCLASSIFIED")
         .assert()
