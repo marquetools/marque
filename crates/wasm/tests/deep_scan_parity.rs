@@ -134,7 +134,8 @@ fn wasm_lint_native_matches_native_engine_on_mangled_input() {
     .expect("lint_native must succeed on a UTF-8 fixture");
 
     assert_eq!(
-        native_ndjson, wasm_ndjson,
+        native_ndjson,
+        wasm_ndjson,
         "decoder-fallback parity violated: native engine and WASM \
          lint_native produced different NDJSON for {:?}",
         std::str::from_utf8(MANGLED_INPUT).unwrap()

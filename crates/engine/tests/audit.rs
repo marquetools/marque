@@ -117,9 +117,7 @@ fn test_engine() -> Engine {
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(std::sync::Arc::new(
-        marque_engine::StrictRecognizer::new(),
-    ))
+    .with_recognizer(std::sync::Arc::new(marque_engine::StrictRecognizer::new()))
 }
 
 fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {

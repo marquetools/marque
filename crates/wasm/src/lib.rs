@@ -932,7 +932,6 @@ fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult) -> String
     }
 }
 
-
 /// Lint multiple text entries in a single WASM boundary crossing.
 ///
 /// Accepts a JSON array of `{"id": "...", "text": "..."}` objects and returns
