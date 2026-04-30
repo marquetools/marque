@@ -31,6 +31,7 @@ fn deep_cx() -> ParseContext {
         position: None,
         classification_floor: None,
         as_of: None,
+        preceded_by_whitespace: true,
     }
 }
 
