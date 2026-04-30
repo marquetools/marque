@@ -16,7 +16,7 @@ blocks, terminal output, and rule IDs.
 ## What is vendored here
 
 `font/` contains the Latin-subset WOFF2 files at the five weights
-referenced by `docs-site/astro.config.mjs`:
+referenced by `site/astro.config.mjs`:
 
 | File | Weight |
 |---|---|
@@ -33,7 +33,7 @@ files out of `node_modules/@fontsource/fira-code/files/`.
 
 ## Why local-vendored
 
-Previously the docs-site declared `fontProviders.fontsource()` in
+Previously the site declared `fontProviders.fontsource()` in
 `astro.config.mjs`, which causes Astro to fetch font files from the
 Fontsource API and the jsDelivr CDN at build time. Vendoring the
 font files removes the build-time CDN dependency entirely — the build

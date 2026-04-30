@@ -175,6 +175,9 @@ lto = "fat"
 # resilience to a single rule defect outranks marginal binary size.
 codegen-units = 1
 
-[profile.release-wasm]
+# --- WASM-specific profiles
+[profile.release-cloud]
 inherits = "release"
-opt-level = "s"  # size-optimized for WASM
+
+[profile.release-server]
+inherits = "release"

@@ -14,7 +14,7 @@ on:
       - "crates/**"
       - "tools/**"
       - "marque/**"
-      - "docs-site/**"
+      - "site/**"
       - "Cargo.toml"
       - "deny.toml"
 

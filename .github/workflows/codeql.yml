@@ -64,7 +64,7 @@ jobs:
               - '**/*.rs'
               - '.github/workflows/**'
               - '.github/actions/**'
-              - 'docs-site/src/**/*.ts'
+              - 'site/src/**/*.ts'
               - 'tools/**/*.py'
             paths-ignore:
               - 'tools/corpus-analysis/analyze.py'
