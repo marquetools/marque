@@ -5,7 +5,7 @@
 import { defineConfig, fontProviders } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://marque.rs',
+  site: 'https://marque.tools',
   compressHTML: true,
   build: {
     assets: 'assets',
@@ -17,7 +17,7 @@ export default defineConfig({
       provider: fontProviders.local(),
       name: 'OCR B',
       cssVariable: '--font-display',
-      fallbacks: ['OCR-B', 'Courier Prime', 'Courier New', 'monospace'],
+      fallbacks: ['OCR-B', 'DM Mono', 'Roboto Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', 'monospace'],
       options: {
         variants: [
           {
@@ -37,7 +37,7 @@ export default defineConfig({
       provider: fontProviders.local(),
       name: 'Fira Code',
       cssVariable: '--font-mono',
-      fallbacks: ['JetBrains Mono', 'Cascadia Code', 'Consolas', 'monospace'],
+      fallbacks: ['JetBrains Mono', 'Cascadia Code', 'DM Mono', 'Roboto Mono', 'Menlo', 'Consolas', 'DejaVu Sans Mono', 'monospace'],
       options: {
         variants: [
           { src: ['./src/assets/Fira-Code/font/Fira-Code-300.woff2'], weight: 300, style: 'normal' },

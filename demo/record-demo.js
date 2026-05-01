@@ -8,10 +8,9 @@
  * record-demo.js — Playwright demo video producer for marque
  *
  * Records a scripted walkthrough of the Marque interactive demo:
- *   Scene 1  — (SECRET//NOFORN) → (S//NF) — abbreviation enforcement
- *   Scene 2  — (SERCET//NF) → (S//NF) — typo correction + abbreviation
- *   Scene 3  — (TS//SI-G//NOFORN) → (TS//SI-G//NF) — TS/SCI + banner escalation
- *   Outro    — scroll to audit log
+ *   Scene 0  — blank document reveal + engine warm-up
+ *   Scene 1  — narrative typing with live fixes and confidence change
+ *   Outro    — hold on fixed frame with rotating audit slot
  *
  * (A prior "deprecated-control migration" scene used FOUO→CUI. That
  * migration was removed in Phase E of the recursive-lattice plan —
@@ -59,6 +58,8 @@ const BASE_URL = `http://localhost:${port}`;
 // Helpers
 // ---------------------------------------------------------------------------
 
+function waitForFix()
+
 function waitForServer(url, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
@@ -76,13 +77,17 @@ function waitForServer(url, timeoutMs = 15_000) {
 const hold = (page, ms) => page.waitForTimeout(ms);
 
 /** Jitter ±40 % around a base delay (keeps typing looking human). */
-const jitter = base => base * 0.6 + Math.random() * base * 0.8;
+const jitter = base => Math.max(base * 0.4 + Math.random() * base * 0.8, 80);
+
+const STYLE_MARKERS = Object.freeze({
+  emphasis: { prefix: '[[em]]', suffix: '[[/em]]' },
+});
 
 /**
  * Type text into the CodeMirror editor character by character.
  * Handles special chars like newlines via keyboard.press.
  */
-async function type(page, text, { charMs = 95 } = {}) {
+async function type(page, text, { charMs = Math.min(Math.random() * 100, 20) } = {}) {
   for (const ch of text) {
     if (ch === '\n') {
       await page.keyboard.press('Enter');
@@ -93,30 +98,55 @@ async function type(page, text, { charMs = 95 } = {}) {
   }
 }
 
+function encodeStyledSegment(segment) {
+  const text = segment?.text ?? '';
+  if (!text) return '';
+  const marker = STYLE_MARKERS[segment.style];
+  if (!marker) return text;
+  return `${marker.prefix}${text}${marker.suffix}`;
+}
+
 /** Focus the editor and place cursor at the end of document. */
 async function focusEnd(page) {
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+End');
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(125);
 }
 
+
 /**
- * Wait for a visible correction — polls until the editor text no longer
- * contains `errorText`.  Timeout after `ms` millis (returns without error).
+ * Type text with lightweight display styling hints.
+ *
+ * The editor is plain text, so styling is expressed as markers that the demo
+ * page decorates visually. For now, `emphasis` maps to `*text*`.
  */
-async function waitForCorrection(page, errorText, ms = 2000) {
-  const deadline = Date.now() + ms;
-  while (Date.now() < deadline) {
-    const content = await page.locator('.cm-content').innerText();
-    if (!content.includes(errorText)) return;
-    await page.waitForTimeout(50);
+async function typeSegments(page, segments, opts = {}) {
+  for (const segment of segments) {
+    if (!segment || !segment.text) continue;
+    if (segment.text.endsWith(') ')) {
+      // After a portion marking, we pause briefly to let the debouncing drop and the fix to apply
+      // Note: We're not gaming the portion identification here -- the engine knows it's a portion in under a millisecond.
+      // But it doesn't get the information until the debounced change event fires, which is currently set to 50ms.
+      // In the future, we could add a non-debounced event for "portion complete" to eliminate this artificial pause in the demo.
+      opts = { ...opts, charMs: 50 };
+    }
+    const text = encodeStyledSegment(segment);
+    await type(page, text, {
+      ...opts,
+      ...(typeof segment.charMs === 'number' ? { charMs: segment.charMs } : {}),
+    });
+    if (typeof segment.pauseAfterMs === 'number' && segment.pauseAfterMs > 0) {
+      await hold(page, segment.pauseAfterMs);
+    }
   }
 }
 
-/** Hold after a correction so the viewer can absorb the change. */
-const afterCorrection = page => hold(page, 1400);
-/** Short beat between paragraphs. */
-const betweenParagraphs = page => hold(page, 900);
+async function typeLine(page, segments, opts = {}) {
+  const list = Array.isArray(segments) ? segments : [{ text: String(segments ?? '') }];
+  await typeSegments(page, list, opts);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+}
 
 // ---------------------------------------------------------------------------
 // Scene runners
@@ -131,101 +161,90 @@ async function scene0_blank(page) {
   await page.goto(BASE_URL);
 
   // Wait for CodeMirror and WASM engine
-  await page.waitForSelector('.cm-content', { timeout: 20_000 });
-  await hold(page, 2200); // WASM init + configure()
+  await page.waitForSelector('.cm-content', { timeout: 10_000 });
+  await hold(page, 2000); // WASM init + configure()
 
   // Clear any seed content so we start from a clean slate
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
-  await hold(page, 400);
+  await hold(page, 300);
 
   // Hold on the blank document — UNCLASSIFIED banners visible
-  await hold(page, 2000);
+  await hold(page, 800);
 }
 
 /**
- * Scene 1 — Abbreviation enforcement: type (SECRET//NOFORN), watch it correct
- * to (S//NF). Rule E009 enforces abbreviated forms in portion markings per
- * CAPCO-2016 §C.1.
- * Banner updates to SECRET//NOFORN.
+ * Scene 1 — Narrative
  */
-async function scene1_abbreviation(page) {
-  console.log('  Scene 1: (SECRET//NOFORN) → (S//NF)');
+async function scene1(page) {
+  console.log('  Scene 1');
   await focusEnd(page);
 
-  await type(page, '(SECRET//NOFORN) ');
+  await typeLine(page, [
+    { text: '(U) ' , style: 'bold' },
+    { text: 'Nothing here is classified. We\'ll use some classified markings to introduce you to ' },
+    { text: 'Marque' },
+    { text: '. ' },
+  ]);
 
-  await waitForCorrection(page, 'NOFORN', 2000);
-  await afterCorrection(page);
+  await typeLine(page, [
+    { text: '(u//Fouo) ' , style: 'bold' },
+    { text: 'If you\'ve ever had to deal with markings, you know how complex they can be. Lots of rules, special cases. Existing tools slow you down. Taking ' },
+    { text: '10+ minutes', style: 'emphasis' },
+    { text: ' to mark a document is common.' },
+  ]);
 
-  await type(page, 'Classified source material confirms the operational assessment with high confidence.', { charMs: 50 });
-  await hold(page, 800);
+  await typeLine(page, [
+    { text: '(s//REL TO fvey, CAN, FRA, Ita) ' , style: 'bold' },
+    { text: 'That ends now.' },
+  ]);
 
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter');
-  await betweenParagraphs(page);
+  await typeLine(page, [
+    { text: '(s//REL TO naTO) ' , style: 'bold' },
+    { text: 'Ultra-fast. On a mid-level laptop, Marque can fix about 8 ' },
+    { text: 'million', style: 'emphasis' },
+    { text: ' markings per ' },
+    { text: 'second', style: 'emphasis' },
+    { text: '. ' },
+  ]);
+
+  const slider = page.locator('#threshold-slider');
+  await typeLine(page, [
+    { text: '(ts//LES//RD//SI//ORCON//IMCON//NOFORN) ' , style: 'bold' },
+    { text: 'Every decision has an empirical ' },
+    { text: 'confidence score', style: 'emphasis' },
+    { text: '. Like here. This generates an ' },
+    { text: 'error', style: 'emphasis' },
+    { text: ' but Marque can fix it with lower confidence.' },
+  ]);
+
+  await hold(page, 500);
+  await typeLine(page, ' Let\'s dial down the confidence');
+
+  await slider.hover();
+  await slider.evaluate((el, value) => {
+    el.value = String(value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, 0.5);
+  await hold(page, 200);
+  await typeLine(page, [
+    { text: '(U//xd) ' , style: 'bold' },
+    { text: 'Every fix is ' },
+    { text: 'explainable', style: 'emphasis' },
+    { text: ' and ' },
+    { text: 'auditable', style: 'emphasis' },
+    { text: '.' },
+  ]);
 }
 
 /**
- * Scene 2 — Typo correction: type (SERCET//NF), watch the two-pass pipeline
- * correct the typo via the corrections map (C001: SERCET → SECRET) then
- * abbreviate (E009: SECRET → S), yielding (S//NF).
- * Banner remains SECRET//NOFORN (same classification level as scene 1).
- */
-async function scene2_typo(page) {
-  console.log('  Scene 2: (SERCET//NF) → (S//NF)');
-  await focusEnd(page);
-
-  await type(page, '(SERCET//NF) ');
-
-  await waitForCorrection(page, 'SERCET', 2000);
-  await afterCorrection(page);
-
-  await type(page, 'Sensitive reporting corroborates the threat assessment.', { charMs: 52 });
-  await hold(page, 800);
-
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter');
-  await betweenParagraphs(page);
-}
-
-/**
- * Scene 3 — TS/SCI escalation: type (TS//SI-G//NOFORN), watch the engine
- * abbreviate NOFORN → NF (E009).
- * Banner escalates to TOP SECRET//SI-G//NOFORN — the climax of the demo.
- */
-async function scene3_ts_sci(page) {
-  console.log('  Scene 3: (TS//SI-G//NOFORN) → (TS//SI-G//NF)');
-  await focusEnd(page);
-
-  // Type slowly — this is the climax scene, give the viewer time to read it
-  await type(page, '(TS//SI-G//NOFORN)', { charMs: 100 });
-
-  // Hold to let the viewer see the marking before correction fires
-  await hold(page, 800);
-  await waitForCorrection(page, 'NOFORN', 3000);
-  await hold(page, 2200); // extra hold on corrected form + banner
-
-  // Brief sentence to complete the last paragraph
-  await type(page, ' Compartmented analysis supports the assessment.', { charMs: 55 });
-  await hold(page, 1200);
-}
-
-/**
- * Outro — scroll down to reveal the audit log, then back up.
+ * Outro — fixed-frame hold (no page scrolling in the recording).
  */
 async function outro(page) {
-  console.log('  Outro: audit log reveal');
-  await hold(page, 800);
-
-  await page.evaluate(() => {
-    document.getElementById('audit-stream')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-  await hold(page, 3500);
-
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  await hold(page, 1500);
+  console.log('  Outro: hold on fixed frame');
+  await hold(page, 1400);
 }
 
 // ---------------------------------------------------------------------------
@@ -270,9 +289,7 @@ async function outro(page) {
     // ── Run the script ─────────────────────────────────────────────────────
     console.log('Recording…\n');
     await scene0_blank(page);
-    await scene1_abbreviation(page);
-    await scene2_typo(page);
-    await scene3_ts_sci(page);
+    await scene1(page);
     await outro(page);
 
     // Final hold on the completed document

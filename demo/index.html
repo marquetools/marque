@@ -10,47 +10,44 @@ SPDX-License-Identifier: Apache-2.0
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Marque — Interactive Demo</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="recording.css" />
 </head>
 <body>
 
 <nav>
   <a class="logo" href="#" aria-label="Marque home">
-    <img src="assets/images/marque_logo-dark-bg.svg" alt="Marque" />
+    <img src="assets/images/marque_logomark-dark.svg" alt="Marque" />
   </a>
   <span class="nav-hint">classification-marking lint · fix · audit</span>
 </nav>
 
-<!-- "What you used to do" contrast strip — dismissible, allusive only -->
-<aside class="contrast-strip" id="contrast-strip" aria-label="Workflow comparison">
-  <div class="contrast-strip-inner">
-    <div class="contrast-col contrast-then">
-      <span class="contrast-label">What you used to do</span>
-      <span class="contrast-body">
-        Open the popup. Find the right tab. Scroll the country list.
-        Ctrl-click each one (don't lose the selection). Tick caveats.
-        Compute the banner yourself. Hope nothing slipped.
-      </span>
-    </div>
-    <div class="contrast-divider" aria-hidden="true">→</div>
-    <div class="contrast-col contrast-now">
-      <span class="contrast-label">Now</span>
-      <span class="contrast-body">
-        Type the document. The banner rolls itself up. Conflicts surface
-        before you save. Every fix is audited.
-      </span>
-    </div>
-    <button type="button" class="contrast-dismiss"
-            id="contrast-dismiss" aria-label="Dismiss">×</button>
-  </div>
-</aside>
 
 <div class="page-wrapper">
-
-  <!-- Main column: document + audit stream -->
+  <!-- Main column: controls + document + audit stream -->
   <div class="main-col">
 
+    <section class="panel threshold-panel threshold-panel--top" aria-labelledby="thresh-heading">
+      <header class="panel-header panel-header--compact">
+        <h2 id="thresh-heading" class="panel-title visually-hidden">Confidence</h2>
+      </header>
+
+      <div class="threshold-slider-wrap">
+        <input type="range" class="threshold-slider" id="threshold-slider"
+               min="0" max="1" step="0.01" value="0.95"
+               aria-label="Confidence threshold" />
+        <div class="threshold-readout">
+          <span class="threshold-value" id="threshold-value">Fix Threshold: 95% confidence</span>
+          <span class="threshold-counter" id="threshold-counter">—</span>
+        </div>
+      </div>
+
+      <!-- Distribution histogram of fix confidences -->
+      <div class="confidence-histogram" id="confidence-histogram"
+           aria-label="Distribution of fix confidences"></div>
+    </section>
+
     <!-- Document toolbar — page break -->
+
     <div class="doc-toolbar" role="toolbar" aria-label="Document tools">
       <button type="button" class="doc-tool" id="insert-page-break"
               title="Insert page break (form-feed) — banner roll-up resets per page">
@@ -72,16 +69,12 @@ SPDX-License-Identifier: Apache-2.0
       <div class="doc-header">
         <table>
           <tr>
-            <td>MEMORANDUM FOR:</td>
-            <td>Distribution List</td>
-          </tr>
-          <tr>
             <td>FROM:</td>
-            <td>Office of the Directorate</td>
+            <td>Directorate of Tracker Tracking, Department of Silly Walks</td>
           </tr>
           <tr>
             <td>SUBJECT:</td>
-            <td>Intelligence Assessment — Program Status</td>
+            <td>(U) Getting Things Done</td>
           </tr>
           <tr>
             <td>DATE:</td>
@@ -120,87 +113,24 @@ SPDX-License-Identifier: Apache-2.0
 
     </div>
 
-    <!-- Audit stream — blends with page background, prepends entries as fixes fire -->
+    <!-- Audit stream — fixed-height slot-machine style feed -->
     <div class="audit-stream" id="audit-stream" aria-label="Correction audit log">
       <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
     </div>
 
   </div>
 
-  <!-- Side rail: scenario selector, threshold, remaining -->
+  <!-- Side rail: remaining diagnostics -->
   <aside class="side-col" aria-label="Engine controls and diagnostics">
-
-    <!-- Scenario tabs: switch between U.S. memo and FGI/JOINT scenarios -->
-    <section class="panel scenario-panel" aria-labelledby="scenario-heading">
-      <header class="panel-header">
-        <h2 id="scenario-heading" class="panel-title">Scenario</h2>
-        <span class="panel-hint">try different marking domains</span>
-      </header>
-      <div class="scenario-tabs" role="tablist">
-        <button type="button" class="scenario-tab is-active"
-                role="tab" aria-selected="true"
-                data-scenario="us">U.S. memo</button>
-        <button type="button" class="scenario-tab"
-                role="tab" aria-selected="false"
-                data-scenario="fgi">FGI / JOINT</button>
-      </div>
-      <div class="scenario-note" id="scenario-note">
-        Standard U.S. classification with SCI, SAR, and dissem controls.
-      </div>
-    </section>
-
-    <!-- Confidence threshold control -->
-    <section class="panel threshold-panel" aria-labelledby="thresh-heading">
-      <header class="panel-header">
-        <h2 id="thresh-heading" class="panel-title">Confidence threshold</h2>
-        <span class="panel-hint">fixes at or above this auto-apply</span>
-      </header>
-
-      <div class="threshold-presets" role="group" aria-label="Threshold presets">
-        <button type="button" class="preset-chip" data-threshold="0.99">
-          <span class="chip-label">Conservative</span>
-          <span class="chip-value">0.99</span>
-        </button>
-        <button type="button" class="preset-chip" data-threshold="0.85">
-          <span class="chip-label">Default</span>
-          <span class="chip-value">0.85</span>
-        </button>
-        <button type="button" class="preset-chip is-active" data-threshold="0.00">
-          <span class="chip-label">Aggressive</span>
-          <span class="chip-value">0.00</span>
-        </button>
-      </div>
-
-      <div class="threshold-slider-wrap">
-        <input type="range" class="threshold-slider" id="threshold-slider"
-               min="0" max="1" step="0.01" value="0"
-               aria-label="Confidence threshold" />
-        <div class="threshold-readout">
-          <span class="threshold-value" id="threshold-value">0.00</span>
-          <span class="threshold-counter" id="threshold-counter">—</span>
-        </div>
-      </div>
-
-      <!-- Distribution histogram of fix confidences -->
-      <div class="confidence-histogram" id="confidence-histogram"
-           aria-label="Distribution of fix confidences"></div>
-      <div class="threshold-note">
-        Drop below 1.00 and the engine engages probabilistic recovery —
-        even mangled markings get repaired. At 1.00 only fixes the engine
-        is fully certain about apply.
-      </div>
-    </section>
-
     <!-- Remaining diagnostics -->
     <section class="panel remaining-panel" aria-labelledby="remain-heading">
       <header class="panel-header">
-        <h2 id="remain-heading" class="panel-title">Remaining</h2>
+        <h2 id="remain-heading" class="panel-title">Left to Fix</h2>
         <span class="panel-hint" id="remaining-count">none</span>
       </header>
       <ol class="remaining-list" id="remaining-list">
         <li class="remaining-empty" id="remaining-empty">
-          Nothing to surface. Anything below threshold or without a
-          confident fix will show here.
+          Nothing yet! Marque will list any issues it finds here.
         </li>
       </ol>
     </section>
