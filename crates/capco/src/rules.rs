@@ -6411,19 +6411,14 @@ impl Rule for FgiBannerClassificationAuthorityRule {
 
         // Build the foreign-authority prefix: `//FGI` for source-concealed,
         // `//[TRIGRAPH]` for single country, `//[TRIGRAPH1] [TRIGRAPH2]` for multi.
-        let auth_prefix = if expected.countries.is_empty() {
-            "//FGI".to_owned()
-        } else {
-            let countries: Vec<&str> = expected.countries.iter().map(|c| c.as_str()).collect();
-            format!("//{}", countries.join(" "))
-        };
+        let auth_prefix = fgi_classification_authority_prefix(&expected);
 
         // Confidence: single-source or concealed → high (auto-fix under default
         // threshold); multiple sources → suggest only (human review recommended).
         let confidence: f32 = if expected.countries.len() <= 1 {
-            0.9
+            E055_SINGLE_SOURCE_CONFIDENCE
         } else {
-            0.6
+            E055_MULTI_SOURCE_CONFIDENCE
         };
 
         // Find the classification token to derive the fix span.
@@ -6487,6 +6482,33 @@ fn render_fgi_marker_block(marker: &FgiMarker) -> String {
         format!("FGI {}", countries.join(" "))
     }
 }
+
+/// Build the foreign classification-authority prefix for use in a banner line.
+///
+/// - Source-concealed (empty `countries`) → `"//FGI"`
+/// - Single country → `"//DEU"`
+/// - Multiple countries → `"//DEU GBR"`
+///
+/// Pairs with [`render_fgi_marker_block`] (which omits the `//` and leading
+/// country trigger): `auth_prefix + " " + level_text` gives `//DEU SECRET`.
+fn fgi_classification_authority_prefix(marker: &FgiMarker) -> String {
+    if marker.countries.is_empty() {
+        "//FGI".to_owned()
+    } else {
+        let countries: Vec<&str> = marker.countries.iter().map(|c| c.as_str()).collect();
+        format!("//{}", countries.join(" "))
+    }
+}
+
+/// Fix confidence for E055 when there is a single source country or the source
+/// is concealed. Auto-applies under the default 0.95 engine threshold.
+const E055_SINGLE_SOURCE_CONFIDENCE: f32 = 0.9;
+
+/// Fix confidence for E055 when there are multiple foreign source countries.
+/// Below the default 0.95 threshold so the fix surfaces as a suggestion only
+/// (not auto-applied). Multi-source pure-foreign banners may benefit from
+/// JOINT or COALITION markings rather than a bare `//CAN DEU LEVEL` form.
+const E055_MULTI_SOURCE_CONFIDENCE: f32 = 0.6;
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
