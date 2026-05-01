@@ -1018,22 +1018,65 @@ impl Engine {
         let mut deadline_aborted = false;
         let output = match mode {
             FixMode::Apply => {
-                let mut buf = effective_source.clone();
-                for fix in kept_fixes {
+                // Forward-pass buffer construction: O(source_len + Σ replacement_lens).
+                //
+                // `kept_fixes` is in reverse-end (span.start DESC) order from
+                // the C-1 dedup walk. Iterating in reverse gives ascending
+                // span.start order so we can copy each gap and replacement in a
+                // single left-to-right pass over `effective_source`.
+                //
+                // This replaces the previous `Vec::splice`-per-fix approach
+                // that was O(N × M): each splice shifted every byte after the
+                // splice point, so N evenly-spaced fixes on an M-byte buffer
+                // cost O(N × M / 2) total — quadratic when fix density scales
+                // with document size.
+                //
+                // After C-1 has guaranteed `kept_fixes` is non-overlapping in
+                // reverse-end order, ascending order is also non-overlapping
+                // (the property does not depend on traversal direction), so the
+                // forward walk is safe.
+                let extra: usize = kept_fixes
+                    .iter()
+                    .map(|f| {
+                        f.replacement
+                            .len()
+                            .saturating_sub(f.span.end - f.span.start)
+                    })
+                    .sum();
+                let mut buf = Vec::with_capacity(effective_source.len() + extra);
+                let mut last_end = 0usize;
+                for fix in kept_fixes.iter().rev() {
                     if deadline_expired(deadline) {
                         deadline_aborted = true;
                         break;
                     }
-                    buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-                    applied_keys.insert((fix.rule.clone(), fix.span));
-                    applied.push(AppliedFix::__engine_promote(
-                        fix,
-                        now,
-                        classifier_id.clone(),
-                        dry_run,
-                        None, // input identifier set by CLI at the boundary
-                        engine_promotion_token(),
-                    ));
+                    buf.extend_from_slice(&effective_source[last_end..fix.span.start]);
+                    buf.extend_from_slice(fix.replacement.as_bytes());
+                    last_end = fix.span.end;
+                }
+                if !deadline_aborted {
+                    // Append the tail after the last fix (or the full source if
+                    // there were no fixes).
+                    buf.extend_from_slice(&effective_source[last_end..]);
+                }
+                // Audit records: original descending order, matching DryRun so
+                // the two modes produce identical `applied` orderings.
+                if !deadline_aborted {
+                    for fix in kept_fixes {
+                        if deadline_expired(deadline) {
+                            deadline_aborted = true;
+                            break;
+                        }
+                        applied_keys.insert((fix.rule.clone(), fix.span));
+                        applied.push(AppliedFix::__engine_promote(
+                            fix,
+                            now,
+                            classifier_id.clone(),
+                            dry_run,
+                            None, // input identifier set by CLI at the boundary
+                            engine_promotion_token(),
+                        ));
+                    }
                 }
                 buf
             }
