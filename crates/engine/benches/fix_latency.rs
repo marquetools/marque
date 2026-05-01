@@ -62,21 +62,37 @@ fn build_engine() -> Engine {
 fn assert_bench_invariants(engine: &Engine) {
     let fix_result = engine.fix(SINGLE_FIX_INPUT, FixMode::Apply);
 
-    let e001_count = fix_result
-        .applied
-        .iter()
-        .filter(|f| f.proposal.rule.as_str() == "E001")
-        .count();
+    // Exactly one fix applied total — extra fixes would change what the bench
+    // is measuring (multiple rewrites, different pipeline branch).
     assert_eq!(
-        e001_count, 1,
-        "fix_latency invariant: expected exactly 1 E001 applied fix on input {:?}; \
-         got {e001_count}. Applied rules: {:?}",
+        fix_result.applied.len(),
+        1,
+        "fix_latency invariant: expected exactly 1 applied fix on input {:?}; \
+         got {}. Applied rules: {:?}",
         std::str::from_utf8(SINGLE_FIX_INPUT).unwrap_or("<non-utf8>"),
+        fix_result.applied.len(),
         fix_result
             .applied
             .iter()
             .map(|f| f.proposal.rule.as_str())
             .collect::<Vec<_>>(),
+    );
+
+    let e001_fix = &fix_result.applied[0];
+    assert_eq!(
+        e001_fix.proposal.rule.as_str(),
+        "E001",
+        "fix_latency invariant: expected the sole applied fix to be E001, got {:?}",
+        e001_fix.proposal.rule.as_str(),
+    );
+
+    // Confidence must be exactly 1.0 (combined = recognition × rule). A drop
+    // below 1.0 means the bench is measuring a probabilistic path, not the
+    // deterministic strict path this benchmark documents.
+    let combined = e001_fix.confidence.combined();
+    assert!(
+        (combined - 1.0_f32).abs() < f32::EPSILON,
+        "fix_latency invariant: expected E001 fix confidence 1.0, got {combined}",
     );
 
     assert_eq!(

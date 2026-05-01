@@ -46,7 +46,9 @@ jobs:
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: scripts/bench-check.sh (capture full output)
-        run: bash scripts/bench-check.sh | tee bench-output.log
+        run: |
+          set -o pipefail
+          bash scripts/bench-check.sh | tee bench-output.log
 
       - name: Parse fix_latency lines and post comment to #268
         env:
