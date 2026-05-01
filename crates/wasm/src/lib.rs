@@ -66,7 +66,6 @@
 
 // TalcLock is tuned for multi-threaded workloads (i.e. server-side)
 // if we implement TalcCell, we can use `core::Allocator` on nightly builds and `allocator_api2::Allocator` on stable
-// TODO: implement JavaScript calling instead of serializing to JSON using newer WASM 2.0 features
 
 #![cfg_attr(
     not(all(

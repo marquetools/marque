@@ -63,17 +63,18 @@ const DEMO_CONFIG = JSON.stringify({
   },
 });
 
-const DEBOUNCE_MS   = 80;
+const DEBOUNCE_MS   = 50;
+const APPLY_IDLE_MS = 70;
 const AUTOPLAY_IDLE_MS = 6_000;
 const AUTOPLAY_CHAR_MS = 30;
 // Brief beat at single newlines (sentence end), longer beat at paragraph
 // breaks (the second newline of a `\n\n`). Lets the audit log catch up
 // and gives the reader time to take in each marking domain.
-const AUTOPLAY_NEWLINE_MS   = 250;
-const AUTOPLAY_PARAGRAPH_MS = 700;
+const AUTOPLAY_NEWLINE_MS   = 150;
+const AUTOPLAY_PARAGRAPH_MS = 400;
 const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
-  'Type to begin — the engine corrects, lints, and audits as you write.';
+  'Type to begin — Marque\'s engine corrects, lints, and audits as you write.';
 
 // Mutable: bound to the slider in the side rail. Changing this re-issues a
 // fix request so the user can watch how few diagnostics actually drop out
@@ -85,7 +86,7 @@ const PLACEHOLDER_TEXT =
 // any more. At 1.00 the engine still parses both ways, but only fixes it
 // is fully certain about cross the bar. Below 1.00 the decoder's recovery
 // fixes start to apply.
-let currentThreshold = 0.0;
+let currentThreshold = 0.95;
 
 // Autoplay script: a tour of marking domains, narrated, seeded with
 // intentional typos so the audit log lights up while the script types.
@@ -222,12 +223,51 @@ const pageBreakPlugin = ViewPlugin.fromClass(class {
 }, { decorations: v => v.decorations });
 
 // ---------------------------------------------------------------------------
+// Scripted styling decorations (display-only)
+//
+// The recording script must type plain text through Playwright, but we still
+// want a few words to read with emphasis. This plugin layers visual styling on
+// top of the underlying text, so engine spans/offsets remain untouched.
+// ---------------------------------------------------------------------------
+
+const scriptedStylePlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this.compute(view); }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.compute(update.view);
+    }
+  }
+  compute(view) {
+    const text = view.state.doc.toString();
+    const marks = [];
+
+    for (const m of text.matchAll(/\bMarque\b/g)) {
+      marks.push(Decoration.mark({ class: 'demo-brand' }).range(m.index, m.index + m[0].length));
+    }
+
+    for (const m of text.matchAll(/\[\[em\]\]([^\n]+?)\[\[\/em\]\]/g)) {
+      const start = m.index;
+      const end = start + m[0].length;
+      const prefixLen = 6; // [[em]]
+      const suffixLen = 7; // [[/em]]
+      if (end - start <= prefixLen + suffixLen) continue;
+      marks.push(Decoration.replace({}).range(start, start + prefixLen));
+      marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(start + prefixLen, end - suffixLen));
+      marks.push(Decoration.replace({}).range(end - suffixLen, end));
+    }
+
+    return Decoration.set(marks);
+  }
+}, { decorations: v => v.decorations });
+
+// ---------------------------------------------------------------------------
 // Banner classification → CSS class
 // ---------------------------------------------------------------------------
 
 const LEVEL_CLASSES = [
   ['TOP SECRET', 'level-ts'],
   ['SECRET',     'level-secret'],
+  ['RESTRICTED',  'level-restricted'], // only in non-U.S. schemes but valid in that context
   ['CONFIDENTIAL','level-confidential'],
 ];
 
@@ -246,7 +286,7 @@ function classificationClass(banner) {
 
 const ALL_LEVEL_CLASSES = [
   'level-unclassified', 'level-confidential', 'level-secret',
-  'level-ts', 'level-ts-sci', 'level-empty',
+  'level-ts', 'level-ts-sci', 'level-restricted', 'level-empty',
 ];
 
 function applyBanner(banner, topEl, bottomEl) {
@@ -275,11 +315,63 @@ function applyBanner(banner, topEl, bottomEl) {
 // ---------------------------------------------------------------------------
 
 let auditEntryCount = 0;
+const AUDIT_SLOT_MIN_DWELL_MS = 1600;
+const AUDIT_SLOT_TRANSITION_MS = 320;
+const auditQueue = [];
+let auditSlotBusy = false;
 
-function prependAuditEntry(record, stream, emptyEl) {
-  if (emptyEl && emptyEl.parentNode === stream) {
-    stream.removeChild(emptyEl);
+function ensureAuditSlot(stream, emptyEl) {
+  let slot = stream.querySelector('.audit-slot');
+  if (slot) return slot;
+
+  slot = document.createElement('div');
+  slot.className = 'audit-slot';
+
+  const reel = document.createElement('div');
+  reel.className = 'audit-reel';
+  reel.appendChild(emptyEl);
+  slot.appendChild(reel);
+  stream.replaceChildren(slot);
+  return slot;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function renderAuditQueue(stream, emptyEl) {
+  if (auditSlotBusy) return;
+  auditSlotBusy = true;
+  const slot = ensureAuditSlot(stream, emptyEl);
+
+  while (auditQueue.length > 0) {
+    const nextNode = auditQueue.shift();
+    const current = slot.querySelector('.audit-reel');
+
+    const incoming = document.createElement('div');
+    incoming.className = 'audit-reel is-enter';
+    incoming.appendChild(nextNode);
+    slot.appendChild(incoming);
+
+    void incoming.offsetHeight;
+    incoming.classList.add('is-enter-active');
+    if (current) current.classList.add('is-exit');
+    await delay(AUDIT_SLOT_TRANSITION_MS);
+
+    if (current && current.parentNode === slot) current.remove();
+    incoming.classList.remove('is-enter', 'is-enter-active');
+    await delay(AUDIT_SLOT_MIN_DWELL_MS);
   }
+
+  auditSlotBusy = false;
+}
+
+function queueAuditNode(node, stream, emptyEl) {
+  auditQueue.push(node);
+  void renderAuditQueue(stream, emptyEl);
+}
+
+function enqueueAuditEntry(record, stream, emptyEl) {
 
   // Prefer the engine's RFC3339 timestamp from the audit record. Fall back
   // to the wall clock if the WASM emitted a V0 record without it.
@@ -410,8 +502,7 @@ function prependAuditEntry(record, stream, emptyEl) {
     entry.appendChild(metaRow);
   }
 
-  if (stream.firstChild) stream.insertBefore(entry, stream.firstChild);
-  else stream.appendChild(entry);
+  queueAuditNode(entry, stream, emptyEl);
   auditEntryCount++;
 }
 
@@ -439,22 +530,36 @@ function formatAuditSource(source) {
   return String(source ?? '').toLowerCase();
 }
 
-function prependAuditSeparator(stream) {
-  if (auditEntryCount === 0) return;
-  const hr = document.createElement('hr');
-  hr.className = 'audit-separator';
-  if (stream.firstChild) stream.insertBefore(hr, stream.firstChild);
-  else stream.appendChild(hr);
-}
-
 // ---------------------------------------------------------------------------
 // Update loop — debounced post-to-worker / receive / apply
 // ---------------------------------------------------------------------------
 
 let debounceTimer = null;
+let applyTimer = null;
 let nextSeq = 1;
 let activeSeq = 0;          // last-issued request seq
+let activeRequestText = '';
 let lastSettledText = null; // last text we've successfully processed
+let lastDocChangeAt = 0;
+
+function clearPendingApply() {
+  if (applyTimer !== null) {
+    clearTimeout(applyTimer);
+    applyTimer = null;
+  }
+}
+
+function deferApplyWhileTyping(view, refs, msg) {
+  const idleForMs = performance.now() - lastDocChangeAt;
+  if (idleForMs >= APPLY_IDLE_MS) return false;
+
+  clearPendingApply();
+  applyTimer = setTimeout(() => {
+    applyTimer = null;
+    applyFixResult(view, refs, msg);
+  }, APPLY_IDLE_MS - idleForMs);
+  return true;
+}
 
 function scheduleUpdate(view, refs) {
   clearTimeout(debounceTimer);
@@ -465,6 +570,7 @@ function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
+  activeRequestText = text;
   worker.postMessage({
     type: 'fix',
     seq: activeSeq,
@@ -478,22 +584,17 @@ function applyFixResult(view, refs, msg) {
   // Drop stale results — a newer request has already been issued.
   if (msg.seq !== activeSeq) return;
 
+  if (deferApplyWhileTyping(view, refs, msg)) return;
+
   const currentText = view.state.doc.toString();
 
-  // The seqs match, but the user may have typed in the gap between the
-  // request being sent and the reply arriving. If the editor's current
-  // text differs from what we'd get by applying these fixes, we re-issue
-  // a fresh request rather than apply stale changes.
-  // (Cheap check: if there are applied fixes, their spans must still be
-  // in-bounds for the current text.)
-  if (msg.applied.length > 0) {
-    const inBounds = msg.applied.every(f =>
-      f.span.start >= 0 && f.span.end <= currentText.length
-    );
-    if (!inBounds) {
-      scheduleUpdate(view, refs);
-      return;
-    }
+  // Worker replies are only safe to apply against the exact snapshot they
+  // were computed from. Offset-in-bounds is not enough once the user keeps
+  // typing — applying a valid-but-stale span is what can shove subsequent
+  // keystrokes into the wrong visual position.
+  if (currentText !== activeRequestText) {
+    scheduleUpdate(view, refs);
+    return;
   }
 
   // Build CodeMirror change set from the applied-fix spans.
@@ -541,9 +642,8 @@ function applyFixResult(view, refs, msg) {
 
   // Audit entries — one row per applied fix, separator between batches.
   if (msg.applied.length > 0) {
-    prependAuditSeparator(refs.auditStream);
     for (const f of msg.applied) {
-      prependAuditEntry(f, refs.auditStream, refs.auditEmpty);
+      enqueueAuditEntry(f, refs.auditStream, refs.auditEmpty);
     }
   }
 
@@ -733,22 +833,19 @@ function maybeEmitNofornCallout(fixedText, banner, refs) {
 }
 
 function prependNofornCallout(stream, emptyEl) {
-  if (emptyEl && emptyEl.parentNode === stream) {
-    stream.removeChild(emptyEl);
-  }
   const el = document.createElement('div');
   el.className = 'audit-callout';
   el.setAttribute('role', 'note');
 
   const tag = document.createElement('span');
   tag.className = 'audit-callout-tag';
-  tag.textContent = 'lattice';
+  tag.textContent = 'lattice rule';
   el.appendChild(tag);
 
   const body = document.createElement('span');
   body.className = 'audit-callout-body';
   body.textContent =
-    'NOFORN supersedes REL TO at the page level — REL TO list cleared from the banner.';
+    'REL markings are stripped from the banner when a portion contains NOFORN';
   el.appendChild(body);
 
   const rule = document.createElement('span');
@@ -756,8 +853,7 @@ function prependNofornCallout(stream, emptyEl) {
   rule.textContent = 'capco/noforn-clears-rel-to';
   el.appendChild(rule);
 
-  if (stream.firstChild) stream.insertBefore(el, stream.firstChild);
-  else stream.appendChild(el);
+  queueAuditNode(el, stream, emptyEl);
 }
 
 // ---------------------------------------------------------------------------
@@ -851,18 +947,12 @@ function attachBannerTooltip(refs) {
 function attachThresholdControls(view, refs) {
   const slider = refs.thresholdSlider;
   const valueEl = refs.thresholdValue;
-  const presets = refs.thresholdPresets;
 
   function setThreshold(t, opts = {}) {
     currentThreshold = Math.max(0, Math.min(1, Number(t) || 0));
-    valueEl.textContent = currentThreshold.toFixed(2);
+    valueEl.textContent = `${Math.round(currentThreshold * 100)}% confidence`;
     if (slider.value !== String(currentThreshold)) {
       slider.value = String(currentThreshold);
-    }
-    // Update the active preset chip — exact match wins, otherwise nothing.
-    for (const chip of presets) {
-      const v = parseFloat(chip.dataset.threshold);
-      chip.classList.toggle('is-active', Math.abs(v - currentThreshold) < 1e-6);
     }
     if (!opts.silent) {
       // Force a fresh request even if the document hasn't changed — only
@@ -872,9 +962,6 @@ function attachThresholdControls(view, refs) {
   }
 
   slider.addEventListener('input', () => setThreshold(slider.value));
-  for (const chip of presets) {
-    chip.addEventListener('click', () => setThreshold(chip.dataset.threshold));
-  }
 
   // Seed the readout — but don't force-issue a request before the worker
   // has even processed the initial empty-doc lint.
@@ -1104,7 +1191,6 @@ async function main() {
     thresholdSlider:  document.getElementById('threshold-slider'),
     thresholdValue:   document.getElementById('threshold-value'),
     thresholdCounter: document.getElementById('threshold-counter'),
-    thresholdPresets: document.querySelectorAll('.preset-chip'),
     histogram:        document.getElementById('confidence-histogram'),
     remainingList:    document.getElementById('remaining-list'),
     remainingEmpty:   document.getElementById('remaining-empty'),
@@ -1179,6 +1265,7 @@ async function main() {
       diagnosticsField,
       placeholderPlugin,
       pageBreakPlugin,
+      scriptedStylePlugin,
       tooltip,
       EditorView.lineWrapping,
       EditorView.theme({
@@ -1200,6 +1287,8 @@ async function main() {
       }, { dark: false }),
       EditorView.updateListener.of(update => {
         if (!update.docChanged) return;
+        lastDocChangeAt = performance.now();
+        clearPendingApply();
         const newText = update.view.state.doc.toString();
         if (newText === lastSettledText) return;
         scheduleUpdate(update.view, refs);
