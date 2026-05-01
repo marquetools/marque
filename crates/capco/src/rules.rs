@@ -677,7 +677,7 @@ impl Rule for MisorderedBlocksRule {
             span,
             "marking blocks are out of CAPCO order \
              (expected: Classification // SCI // SAR // AEA // FGI // \
-             Dissem // REL TO // Non-IC)",
+             Dissem // Non-IC)",
             "CAPCO-2016 §A.6 p15-16",
             fix,
         )]
