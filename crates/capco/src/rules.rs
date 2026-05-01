@@ -58,11 +58,13 @@
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
+//!   E054 = FGI banner roll-up missing on commingled page (issue FGI-banner, §H.7)
+//!   E055 = FGI banner classification-authority prefix missing on wholly-foreign page (§H.7 / §A.6)
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    IsmAttributes, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
-    sar_sort_key,
+    FgiMarker, IsmAttributes, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind,
+    TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -223,6 +225,11 @@ impl CapcoRuleSet {
                 // `capco/noforn-conflicts-rel-to` constraint already
                 // declared in `CapcoScheme::constraints()`.
                 Box::new(DeclarativeNofornRelToConflictRule),
+                // FGI banner roll-up rules (§H.7):
+                //   E054 — commingled page missing FGI [LIST] in banner.
+                //   E055 — wholly-foreign page banner missing //[trigraph] LEVEL.
+                Box::new(FgiBannerRollupCommingledRule),
+                Box::new(FgiBannerClassificationAuthorityRule),
             ],
         }
     }
@@ -6163,6 +6170,324 @@ impl Rule for NodisSupersedesExdisInPortionRule {
     }
 }
 
+// ===========================================================================
+// FGI banner roll-up rules (§H.7)
+// ===========================================================================
+//
+// Two hand-written page-level rules covering the two FGI/banner gap cases:
+//
+//   E054 — Commingled page: US + FGI portions, but banner missing `FGI [LIST]`
+//           dissem block. Roll-up required per §H.7 p124 line 3032.
+//   E055 — Wholly-foreign page: no US portions, but banner uses US
+//           classification form instead of `//[trigraph] [LEVEL]`.
+//           §A.6 + §H.7 p124–126.
+//
+// Both rules are analogous to E031 (SAR), E035 (SCI), and E040
+// (NODIS/EXDIS): they consume `ctx.page_context` to get the expected
+// roll-up and compare against the observed banner.
+
+// ---------------------------------------------------------------------------
+// Rule: E054 — FGI banner roll-up (commingled page)
+// ---------------------------------------------------------------------------
+
+/// Fires when a page has at least one U.S. classified portion AND at least
+/// one FGI/NATO/JOINT portion (or any portion carrying `fgi_marker`), but
+/// the banner is missing — or has an incorrect — `FGI [LIST]` dissem block.
+///
+/// # Authority
+///
+/// - **§H.7 p124 line 3032**: *"If a US document has portions with FGI
+///   markings … roll-up the foreign control markings to the applicable
+///   marking category in the banner line after any US controls in that
+///   category."*
+/// - **§H.7 p127 line 3131**: Example `TOP SECRET//FGI CAN DEU//REL TO USA,
+///   CAN, DEU` (banner of a U.S. document with CAN and DEU FGI portions).
+/// - **§F.1 p20 line 1314**: *"the banner line is a US classification
+///   marking … when US and non-US portions are combined in a single
+///   document, the overall marking is a US classification."*
+///
+/// # Source-concealed FGI
+///
+/// When `expected_fgi_marker()` returns a marker with no countries
+/// (source-concealed), the banner uses bare `FGI` per §H.7 p126 line 3057.
+/// `PageContext::expected_fgi_marker()` handles the concealed-supersedes-
+/// acknowledged invariant; this rule simply renders the marker it receives.
+///
+/// # Fix
+///
+/// If the banner has an existing FGI block (`TokenKind::FgiMarker` present),
+/// replace it with the fully-rolled-up form at confidence 1.0.
+///
+/// If the banner has no FGI block at all, emit `Error` without a fix —
+/// inserting a new block between AEA and dissem categories requires knowing
+/// separator offsets that cannot be safely derived from rule-level
+/// information alone (same policy as E031/E035/E040).
+struct FgiBannerRollupCommingledRule;
+
+impl Rule for FgiBannerRollupCommingledRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E054")
+    }
+    fn name(&self) -> &'static str {
+        "fgi-banner-rollup-commingled"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+
+        // Banner / CAB markings only.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        let Some(page) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        // Only fire on commingled pages (at least one US + FGI expected).
+        if !page.has_us_classified_portion() {
+            return vec![];
+        }
+
+        let Some(expected) = page.expected_fgi_marker() else {
+            // No FGI sources in any portion — nothing to roll up.
+            return vec![];
+        };
+
+        // Banner already has the correct FGI marker — nothing to do.
+        if attrs.fgi_marker.as_ref() == Some(&expected) {
+            return vec![];
+        }
+
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §H.7 p124 line 3032 (FGI roll-up to banner) + ",
+            "§H.7 p127 line 3131 (example: TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU)",
+        );
+
+        let expected_text = render_fgi_marker_block(&expected);
+        let message = if attrs.fgi_marker.is_none() {
+            format!(
+                "banner is missing FGI block required by portions: {expected_text} \
+                 (§H.7 roll-up rule: FGI markings in portions must appear in the banner)",
+            )
+        } else {
+            format!(
+                "banner FGI block does not match the roll-up expected from portions: \
+                 expected {expected_text}",
+            )
+        };
+
+        // Fix path: if banner has an FGI token, replace it.
+        let fgi_token_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiMarker)
+            .collect();
+
+        if fgi_token_spans.is_empty() {
+            // No FGI block in banner at all. Byte-positioning a new block
+            // between AEA and dissem categories requires separator offsets
+            // the rule cannot safely supply. No fix.
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            return vec![Diagnostic::new(
+                self.id(),
+                Severity::Error,
+                span,
+                message,
+                CITATION,
+                None,
+            )];
+        }
+
+        // Replace the entire existing FGI block with the expected form.
+        let fix_start = fgi_token_spans.first().unwrap().span.start;
+        let fix_end = fgi_token_spans.last().unwrap().span.end;
+        let original = fgi_token_spans
+            .iter()
+            .map(|t| t.text.as_ref())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let fix_span = Span::new(fix_start, fix_end);
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: fix_span,
+            message,
+            citation: CITATION,
+            original,
+            replacement: expected_text,
+            confidence: 1.0,
+            migration_ref: None,
+        })]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E055 — FGI banner classification authority (wholly-foreign page)
+// ---------------------------------------------------------------------------
+
+/// Fires when a page has no U.S. classified portions (wholly-foreign page)
+/// and the banner uses the U.S. classification form instead of the required
+/// foreign classification-authority form (`//[trigraph] [LEVEL]`).
+///
+/// # Authority
+///
+/// - **§A.6** (classification-authority form grammar): the leading `//` +
+///   country trigraph/tetragraph before the classification level is required
+///   for non-US classified documents.
+/// - **§H.7 p124–126**: when the document is wholly foreign-owned, the
+///   banner must carry the foreign classification-authority prefix.
+/// - **§H.7 p126 example**: `//GBR SECRET` for a wholly-foreign GBR page.
+///
+/// # Source-concealed FGI
+///
+/// When the source is concealed (`expected_fgi_marker()` returns an empty
+/// countries list), the banner uses `//FGI [LEVEL]` per §H.7 p126 line 3063
+/// (portion form `(//FGI TS)` → banner `//FGI TOP SECRET`).
+///
+/// # Fix confidence
+///
+/// - Single source country **or** source-concealed (0 countries): confidence
+///   0.9 — auto-fix under the default 0.95 threshold.
+/// - Two or more source countries: confidence 0.6 — stays a suggestion, not
+///   auto-applied, because multi-source pure-foreign banners may benefit from
+///   JOINT or COALITION markings rather than a bare `//CAN DEU LEVEL` form.
+struct FgiBannerClassificationAuthorityRule;
+
+impl Rule for FgiBannerClassificationAuthorityRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E055")
+    }
+    fn name(&self) -> &'static str {
+        "fgi-banner-classification-authority"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        use marque_ism::MarkingType;
+
+        // Banner / CAB markings only.
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+            return vec![];
+        }
+
+        let Some(page) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        // Only fire on wholly-foreign pages (no US classified portions).
+        if page.has_us_classified_portion() {
+            return vec![];
+        }
+
+        // Must have FGI sources in portions to require the authority prefix.
+        let Some(expected) = page.expected_fgi_marker() else {
+            return vec![];
+        };
+
+        // If the banner already uses a non-US classification form, it's correct.
+        match attrs.classification.as_ref() {
+            Some(MarkingClassification::Fgi(_))
+            | Some(MarkingClassification::Nato(_))
+            | Some(MarkingClassification::Joint(_)) => return vec![],
+            _ => {}
+        }
+
+        const CITATION: &str = concat!(
+            "CAPCO-2016 §A.6 (foreign classification-authority form) + ",
+            "§H.7 p124–126 (wholly-foreign page banner must use //[trigraph] [LEVEL] form)",
+        );
+
+        // Build the foreign-authority prefix: `//FGI` for source-concealed,
+        // `//[TRIGRAPH]` for single country, `//[TRIGRAPH1] [TRIGRAPH2]` for multi.
+        let auth_prefix = if expected.countries.is_empty() {
+            "//FGI".to_owned()
+        } else {
+            let countries: Vec<&str> = expected.countries.iter().map(|c| c.as_str()).collect();
+            format!("//{}", countries.join(" "))
+        };
+
+        // Confidence: single-source or concealed → high (auto-fix under default
+        // threshold); multiple sources → suggest only (human review recommended).
+        let confidence: f32 = if expected.countries.len() <= 1 {
+            0.9
+        } else {
+            0.6
+        };
+
+        // Find the classification token to derive the fix span.
+        let Some(class_tok) = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+        else {
+            // No classification token — cannot construct a safe fix.
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            return vec![Diagnostic::new(
+                self.id(),
+                Severity::Error,
+                span,
+                "wholly-foreign page banner must use foreign classification-authority \
+                 form (//[trigraph] [LEVEL]) — classification token not found in banner",
+                CITATION,
+                None,
+            )];
+        };
+
+        let original = class_tok.text.as_ref().to_owned();
+        let replacement = format!("{auth_prefix} {original}");
+        let message = format!(
+            "wholly-foreign page banner must use foreign classification-authority \
+             form: expected \"{replacement}\" instead of \"{original}\" \
+             (§H.7 p124–126: no U.S. classified portions on this page)",
+        );
+
+        vec![make_fix_diagnostic(FixDiagnosticParams {
+            rule: self.id(),
+            severity: self.default_severity(),
+            source: FixSource::BuiltinRule,
+            span: class_tok.span,
+            message,
+            citation: CITATION,
+            original,
+            replacement,
+            confidence,
+            migration_ref: None,
+        })]
+    }
+}
+
+/// Render an [`FgiMarker`] as its banner-form text.
+///
+/// - Source-concealed (empty `countries`) → `"FGI"`
+/// - Single or multiple countries → `"FGI DEU"` / `"FGI CAN DEU"`
+///
+/// Countries are space-separated per §A.6 p15-16 (CAPCO-2016 single-space
+/// delimiter for FGI codes in the banner).
+fn render_fgi_marker_block(marker: &FgiMarker) -> String {
+    if marker.countries.is_empty() {
+        "FGI".to_owned()
+    } else {
+        let countries: Vec<&str> = marker.countries.iter().map(|c| c.as_str()).collect();
+        format!("FGI {}", countries.join(" "))
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -6275,7 +6600,11 @@ mod tests {
         // wrapper over the `capco/noforn-conflicts-rel-to` constraint
         // in CapcoScheme. §H.8 p145. Net: 59.
         assert!(ids.contains(&"E053"));
-        assert_eq!(set.rules().len(), 59);
+        // FGI banner roll-up (§H.7): added E054 (fgi-banner-rollup-commingled)
+        // + E055 (fgi-banner-classification-authority). Net: 61.
+        assert!(ids.contains(&"E054"));
+        assert!(ids.contains(&"E055"));
+        assert_eq!(set.rules().len(), 61);
     }
 
     #[test]
@@ -11285,6 +11614,252 @@ mod tests {
         assert!(
             diags.iter().any(|d| d.rule.as_str() == "E008"),
             "E008 must fire on malformed SCI-shaped token: {diags:?}"
+        );
+    }
+
+    // --- E054: FGI banner roll-up (commingled page) ---
+
+    #[test]
+    fn e054_fires_when_commingled_banner_missing_fgi_block() {
+        // Case 2 from the issue: US + FGI portions, banner missing FGI DEU.
+        // Portions come before banner so the page context is populated when
+        // the banner is checked (mirroring how the real engine processes docs).
+        let source =
+            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
+        assert_eq!(
+            e054.len(),
+            1,
+            "E054 must fire when commingled banner is missing FGI block: {diags:?}"
+        );
+        assert!(
+            e054[0].message.contains("FGI DEU"),
+            "E054 message must name the expected FGI token; got: {:?}",
+            e054[0].message
+        );
+        assert!(
+            e054[0].citation.contains("§H.7"),
+            "E054 citation must reference §H.7; got: {:?}",
+            e054[0].citation
+        );
+        // No fix when banner has no FGI block.
+        assert!(
+            e054[0].fix.is_none(),
+            "E054 must carry no fix when banner has no FGI block: {:?}",
+            e054[0].fix
+        );
+    }
+
+    #[test]
+    fn e054_fires_when_commingled_banner_has_wrong_fgi_countries() {
+        // Banner has `FGI GBR` but portions have DEU and GBR; expected `FGI DEU GBR`.
+        // (BTreeSet ensures alphabetical: DEU before GBR)
+        let source = "(//DEU S//REL TO USA, DEU) A.\n(//GBR S//REL TO USA, GBR) B.\n(S//REL TO USA, DEU, GBR) C.\nSECRET//FGI GBR//REL TO USA, DEU, GBR";
+        let diags = lint_banner(source);
+        let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
+        assert_eq!(
+            e054.len(),
+            1,
+            "E054 must fire when FGI block is incomplete: {diags:?}"
+        );
+        let fix = e054[0].fix.as_ref().expect("E054 must carry a fix when banner has FGI block");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "FGI DEU GBR",
+            "E054 fix replacement must be the fully-rolled-up FGI block"
+        );
+        assert!(
+            (fix.confidence.combined() - 1.0).abs() < 1e-6,
+            "E054 fix confidence must be 1.0 for a replacement fix"
+        );
+    }
+
+    #[test]
+    fn e054_does_not_fire_when_banner_already_has_correct_fgi_block() {
+        let source =
+            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//FGI DEU//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E054"),
+            "E054 must not fire when banner already has correct FGI block: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e054_does_not_fire_on_purely_foreign_page() {
+        // Wholly-foreign page: no US portions. E054 is commingled-only.
+        // E055 (not E054) should fire here.
+        let source =
+            "(//DEU S//REL TO USA, DEU) Foreign.\nSECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E054"),
+            "E054 must not fire on a wholly-foreign page (E055 handles that): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e054_does_not_fire_without_page_context() {
+        // When lint_banner is called on a banner with no prior portions,
+        // there is no page context so E054 must not fire.
+        let diags = lint_banner("SECRET//REL TO USA, DEU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E054"),
+            "E054 must not fire without page context: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e054_source_concealed_fgi_fires_missing_bare_fgi_block() {
+        // Commingled concealed: (//FGI S) + (S) → banner needs `FGI` (no countries).
+        let source = "(//FGI S//REL TO USA, GBR) Concealed.\n(S) US.\nSECRET//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
+        assert_eq!(
+            e054.len(),
+            1,
+            "E054 must fire for source-concealed FGI missing from banner: {diags:?}"
+        );
+        assert!(
+            e054[0].message.contains("FGI"),
+            "E054 message must mention FGI for concealed case; got: {:?}",
+            e054[0].message
+        );
+    }
+
+    #[test]
+    fn e054_commingled_with_noforn_fires_missing_fgi_block() {
+        // Case 3 from the issue: DEU FGI portion + NOFORN US portion.
+        // Banner `SECRET//NOFORN` is missing `FGI DEU`.
+        let source =
+            "(//DEU S//REL TO USA, DEU) FGI.\n(S//NF) US.\nSECRET//NOFORN";
+        let diags = lint_banner(source);
+        let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
+        assert_eq!(
+            e054.len(),
+            1,
+            "E054 must fire for commingled NF+FGI page missing FGI DEU: {diags:?}"
+        );
+    }
+
+    // --- E055: FGI banner classification authority (wholly-foreign page) ---
+
+    #[test]
+    fn e055_fires_when_wholly_foreign_banner_uses_us_form() {
+        // Case 1 from the issue: wholly-foreign page, banner `SECRET` instead of `//DEU SECRET`.
+        // Portion comes before banner so the page context is populated first.
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\nSECRET";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire when wholly-foreign banner uses US classification form: {diags:?}"
+        );
+        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for single-source");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "//DEU SECRET",
+            "E055 fix must prepend the foreign authority prefix"
+        );
+        assert!(
+            (fix.confidence.combined() - 0.9).abs() < 1e-6,
+            "E055 single-source fix confidence must be 0.9; got {}",
+            fix.confidence.combined()
+        );
+    }
+
+    #[test]
+    fn e055_does_not_fire_when_banner_already_uses_foreign_authority_form() {
+        // Banner `//DEU SECRET` is already in the correct form.
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n//DEU SECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E055"),
+            "E055 must not fire when banner already uses foreign authority form: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e055_does_not_fire_on_commingled_page() {
+        // Commingled page: US + FGI portions. E054 (not E055) should fire.
+        let source =
+            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E055"),
+            "E055 must not fire on a commingled page (E054 handles that): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e055_does_not_fire_without_page_context() {
+        // No portions → no page context → E055 must not fire.
+        let diags = lint_banner("SECRET//REL TO USA, DEU");
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E055"),
+            "E055 must not fire without page context: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e055_source_concealed_fires_and_produces_fgi_prefix() {
+        // Source-concealed: (//FGI S) only → banner `//FGI SECRET`.
+        let source = "(//FGI S//REL TO USA, GBR) Concealed.\nSECRET//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire for source-concealed wholly-foreign page: {diags:?}"
+        );
+        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for concealed");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "//FGI SECRET",
+            "E055 fix for source-concealed must use bare //FGI prefix"
+        );
+    }
+
+    #[test]
+    fn e055_multi_source_fix_has_reduced_confidence() {
+        // Multiple foreign sources → confidence drops to 0.6 (suggest, not auto-fix).
+        let source =
+            "(//DEU S//REL TO USA, DEU) A.\n(//GBR S//REL TO USA, GBR) B.\nSECRET//REL TO USA, DEU, GBR";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire for multi-source wholly-foreign page: {diags:?}"
+        );
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix even for multi-source");
+        assert!(
+            fix.confidence.combined() < 0.9,
+            "E055 multi-source fix confidence must be below 0.9 (suggest only); got {}",
+            fix.confidence.combined()
+        );
+    }
+
+    #[test]
+    fn e055_citation_references_a6_and_h7() {
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\nSECRET";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(e055.len(), 1);
+        assert!(
+            e055[0].citation.contains("§A.6"),
+            "E055 citation must reference §A.6; got: {:?}",
+            e055[0].citation
+        );
+        assert!(
+            e055[0].citation.contains("§H.7"),
+            "E055 citation must reference §H.7; got: {:?}",
+            e055[0].citation
         );
     }
 }

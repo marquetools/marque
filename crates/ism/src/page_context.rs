@@ -172,6 +172,49 @@ impl PageContext {
             .max()
     }
 
+    /// The full `MarkingClassification` the banner must carry, preserving the
+    /// foreign-authority form (FGI/NATO/JOINT) for wholly-foreign pages.
+    ///
+    /// For a **commingled** page (at least one U.S. classified portion), U.S.
+    /// classification wins per CAPCO-2016 §F.1 p20 ("the banner line is a US
+    /// classification marking … when US and non-US portions are combined in a
+    /// single document, the overall marking is a US classification"). The
+    /// returned value is `MarkingClassification::Us(max_level)`.
+    ///
+    /// For a **wholly-foreign** page (no U.S. classified portions), the most
+    /// restrictive foreign classification is returned as-is so that
+    /// `page_context_to_attrs` and similar projections preserve the
+    /// `//[trigraph] [LEVEL]` banner form required by §H.7 p126.
+    ///
+    /// Returns `None` only if no portions have been accumulated or all
+    /// portions failed to parse a classification level.
+    pub fn expected_marking_classification(&self) -> Option<MarkingClassification> {
+        if self.has_us_classified_portion() {
+            // U.S. classification wins per §F.1 p20.
+            self.expected_classification().map(MarkingClassification::Us)
+        } else {
+            // Wholly-foreign page: preserve the most restrictive foreign type.
+            self.portions
+                .iter()
+                .filter_map(|a| a.classification.clone())
+                .max_by_key(|c| c.effective_level())
+        }
+    }
+
+    /// Whether any accumulated portion uses a U.S. (or U.S.-wins Conflict)
+    /// classification system.
+    ///
+    /// Used by E054/E055 to distinguish commingled pages (US + FGI) from
+    /// wholly-foreign pages (all FGI/NATO/JOINT, no US content).
+    pub fn has_us_classified_portion(&self) -> bool {
+        self.portions.iter().any(|a| {
+            matches!(
+                a.classification,
+                Some(MarkingClassification::Us(_)) | Some(MarkingClassification::Conflict { .. })
+            )
+        })
+    }
+
     /// All SCI controls that must appear on the banner (union of all portions).
     pub fn expected_sci_controls(&self) -> Vec<SciControl> {
         let mut seen = std::collections::BTreeSet::new();
