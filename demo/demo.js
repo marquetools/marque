@@ -63,17 +63,31 @@ const DEMO_CONFIG = JSON.stringify({
   },
 });
 
-const DEBOUNCE_MS   = 80;
-const AUTOPLAY_IDLE_MS = 6_000;
-const AUTOPLAY_CHAR_MS = 30;
-// Brief beat at single newlines (sentence end), longer beat at paragraph
-// breaks (the second newline of a `\n\n`). Lets the audit log catch up
-// and gives the reader time to take in each marking domain.
-const AUTOPLAY_NEWLINE_MS   = 250;
-const AUTOPLAY_PARAGRAPH_MS = 700;
+// ---------------------------------------------------------------------------
+// Timing — single source of truth for all delays in the page.
+// Adjust here only; nothing else in this file contains timing literals.
+// ---------------------------------------------------------------------------
+
+const DEBOUNCE_MS          = 100;   // ms to wait after last keystroke before posting to worker
+const APPLY_IDLE_MS        = 140;   // ms of editor quiet before applying pending fixes
+const AUTOPLAY_IDLE_MS     = 6_000; // ms of user inactivity before autoplay starts
+const AUTOPLAY_CHAR_MS     = 30;   // per-character typing speed during autoplay
+const AUTOPLAY_NEWLINE_MS  = 150;  // extra pause at single newlines during autoplay
+const AUTOPLAY_PARAGRAPH_MS = 150; // extra pause at paragraph breaks during autoplay
 const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
-  'Type to begin — the engine corrects, lints, and audits as you write.';
+  '';
+
+const DEBUG_TIMING = new URLSearchParams(window.location.search).has('debug_timing');
+
+function debugTimingLog(event, details = {}) {
+  if (!DEBUG_TIMING) return;
+  const payload = {
+    t: Number(performance.now().toFixed(1)),
+    ...details,
+  };
+  console.debug(`[demo-timing] ${event}`, payload);
+}
 
 // Mutable: bound to the slider in the side rail. Changing this re-issues a
 // fix request so the user can watch how few diagnostics actually drop out
@@ -85,7 +99,7 @@ const PLACEHOLDER_TEXT =
 // any more. At 1.00 the engine still parses both ways, but only fixes it
 // is fully certain about cross the bar. Below 1.00 the decoder's recovery
 // fixes start to apply.
-let currentThreshold = 0.0;
+let currentThreshold = 0.95;
 
 // Autoplay script: a tour of marking domains, narrated, seeded with
 // intentional typos so the audit log lights up while the script types.
@@ -102,20 +116,7 @@ let currentThreshold = 0.0;
 //   E047  warn  no-fix  SI-G requires ORCON (§H.4 p80)
 // (U//FOUO) and (//NC//REL TO USA, NATO) stay canonical — domain
 // breadth, not a fix path.
-const AUTOPLAY_SCRIPT =
-  '(u) None of this is real — I\'m showing the tool, ' +
-  'not releasing anything.\n\n' +
-  '(U//FOUO) Most internal traffic lives here: not classified, ' +
-  'just not for the public.\n\n' +
-  '(U//rel to USA, FVEY) Some drafts go to the Anglophone allies — ' +
-  'Five Eyes shareable.\n\n' +
-  '(//NC//REL TO USA, NATO) Some go to NATO partners instead.\n\n' +
-  '(SERCET//SI//REL TO USA, GBR) Things tighten up: SIGINT, ' +
-  'bilateral with the UK.\n\n' +
-  '(TS//SI-G/TK//RS/NOFRON//LES) Then the deep end. ' +
-  'Top Secret, two compartments, two dissem controls, ' +
-  'law-enforcement sensitive. Banner rolled up from the portions. ' +
-  'Typos caught on the way in.\n';
+const AUTOPLAY_SCRIPT ='';
 
 // ---------------------------------------------------------------------------
 // Worker boot
@@ -222,12 +223,149 @@ const pageBreakPlugin = ViewPlugin.fromClass(class {
 }, { decorations: v => v.decorations });
 
 // ---------------------------------------------------------------------------
+// Scripted styling decorations (display-only)
+//
+// The recording script must type plain text through Playwright, but we still
+// want a few words to read with emphasis. This plugin layers visual styling on
+// top of the underlying text, so engine spans/offsets remain untouched.
+// ---------------------------------------------------------------------------
+
+const scriptedStylePlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this.compute(view); }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.compute(update.view);
+    }
+  }
+  compute(view) {
+    const text = view.state.doc.toString();
+    const marks = [];
+
+    for (const m of text.matchAll(/\bMarque\b/g)) {
+      marks.push(Decoration.mark({ class: 'demo-brand' }).range(m.index, m.index + m[0].length));
+    }
+
+    const OPEN_SINGLE = '[em]';
+    const CLOSE_SINGLE = '[/em]';
+    const OPEN_DOUBLE = '[[em]]';
+    const CLOSE_DOUBLE = '[[/em]]';
+
+    const delimiterPrefixes = [
+      OPEN_DOUBLE,
+      CLOSE_DOUBLE,
+      OPEN_SINGLE,
+      CLOSE_SINGLE,
+    ];
+
+    const hideRange = (from, to) => {
+      if (to > from) marks.push(Decoration.replace({}).range(from, to));
+    };
+
+    const trailingPrefixLen = (s, start, fullDelimiter) => {
+      const available = s.length - start;
+      const maxLen = Math.min(fullDelimiter.length - 1, available);
+      for (let len = maxLen; len >= 1; len--) {
+        if (s.slice(s.length - len) === fullDelimiter.slice(0, len) && s.length - len >= start) {
+          return len;
+        }
+      }
+      return 0;
+    };
+
+    let i = 0;
+    while (i < text.length) {
+      if (text.startsWith(OPEN_DOUBLE, i)) {
+        hideRange(i, i + OPEN_DOUBLE.length);
+        const contentStart = i + OPEN_DOUBLE.length;
+        const closeAt = text.indexOf(CLOSE_DOUBLE, contentStart);
+
+        if (closeAt === -1) {
+          const partialLen = trailingPrefixLen(text, contentStart, CLOSE_DOUBLE);
+          const contentEnd = text.length - partialLen;
+          if (contentEnd > contentStart) {
+            marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, contentEnd));
+          }
+          if (partialLen > 0) {
+            hideRange(text.length - partialLen, text.length);
+          }
+          break;
+        }
+
+        if (closeAt > contentStart) {
+          marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, closeAt));
+        }
+        hideRange(closeAt, closeAt + CLOSE_DOUBLE.length);
+        i = closeAt + CLOSE_DOUBLE.length;
+        continue;
+      }
+
+      if (text.startsWith(OPEN_SINGLE, i)) {
+        hideRange(i, i + OPEN_SINGLE.length);
+        const contentStart = i + OPEN_SINGLE.length;
+        const closeAt = text.indexOf(CLOSE_SINGLE, contentStart);
+
+        if (closeAt === -1) {
+          const partialLen = trailingPrefixLen(text, contentStart, CLOSE_SINGLE);
+          const contentEnd = text.length - partialLen;
+          if (contentEnd > contentStart) {
+            marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, contentEnd));
+          }
+          if (partialLen > 0) {
+            hideRange(text.length - partialLen, text.length);
+          }
+          break;
+        }
+
+        if (closeAt > contentStart) {
+          marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, closeAt));
+        }
+        hideRange(closeAt, closeAt + CLOSE_SINGLE.length);
+        i = closeAt + CLOSE_SINGLE.length;
+        continue;
+      }
+
+      if (i > 0 || i + 1 === text.length) {
+        let hiddenPartial = false;
+        for (const delimiter of delimiterPrefixes) {
+          const maxLen = Math.min(delimiter.length - 1, text.length - i);
+          for (let len = maxLen; len >= 1; len--) {
+            if (i + len === text.length && text.slice(i, i + len) === delimiter.slice(0, len)) {
+              hideRange(i, i + len);
+              i += len;
+              hiddenPartial = true;
+              break;
+            }
+          }
+          if (hiddenPartial) break;
+        }
+        if (hiddenPartial) continue;
+      }
+
+      i += 1;
+    }
+
+    const portionPattern = /(^|\n)(\((?:ts|s|c|u|r)(?:\/\/[^)\n]+)?\))(?=\s|$)/gim;
+    for (const m of text.matchAll(portionPattern)) {
+      const leadingLen = m[1] ? m[1].length : 0;
+      const portionText = m[2] || '';
+      if (!portionText) continue;
+      const from = m.index + leadingLen;
+      const to = from + portionText.length;
+      marks.push(Decoration.mark({ class: 'demo-portion' }).range(from, to));
+    }
+
+    return Decoration.set(marks, true);
+  }
+}, { decorations: v => v.decorations });
+
+// ---------------------------------------------------------------------------
 // Banner classification → CSS class
 // ---------------------------------------------------------------------------
 
 const LEVEL_CLASSES = [
   ['TOP SECRET', 'level-ts'],
   ['SECRET',     'level-secret'],
+  ['RESTRICTED',  'level-restricted'], // only in non-U.S. schemes but valid in that context
   ['CONFIDENTIAL','level-confidential'],
 ];
 
@@ -246,7 +384,7 @@ function classificationClass(banner) {
 
 const ALL_LEVEL_CLASSES = [
   'level-unclassified', 'level-confidential', 'level-secret',
-  'level-ts', 'level-ts-sci', 'level-empty',
+  'level-ts', 'level-ts-sci', 'level-restricted', 'level-empty',
 ];
 
 function applyBanner(banner, topEl, bottomEl) {
@@ -275,11 +413,33 @@ function applyBanner(banner, topEl, bottomEl) {
 // ---------------------------------------------------------------------------
 
 let auditEntryCount = 0;
+const MAX_AUDIT_ENTRIES = 80;
 
-function prependAuditEntry(record, stream, emptyEl) {
-  if (emptyEl && emptyEl.parentNode === stream) {
-    stream.removeChild(emptyEl);
+function ensureAuditList(stream) {
+  let list = stream.querySelector('.audit-list');
+  if (list) return list;
+
+  list = document.createElement('div');
+  list.className = 'audit-list';
+  stream.appendChild(list);
+  return list;
+}
+
+function prependAuditNode(node, stream, emptyEl) {
+  const list = ensureAuditList(stream);
+
+  emptyEl.hidden = true;
+  stream.classList.add('has-entries');
+  list.prepend(node);
+
+  while (list.childElementCount > MAX_AUDIT_ENTRIES) {
+    list.lastElementChild.remove();
   }
+
+  stream.scrollTop = 0;
+}
+
+function enqueueAuditEntry(record, stream, emptyEl) {
 
   // Prefer the engine's RFC3339 timestamp from the audit record. Fall back
   // to the wall clock if the WASM emitted a V0 record without it.
@@ -410,8 +570,7 @@ function prependAuditEntry(record, stream, emptyEl) {
     entry.appendChild(metaRow);
   }
 
-  if (stream.firstChild) stream.insertBefore(entry, stream.firstChild);
-  else stream.appendChild(entry);
+  prependAuditNode(entry, stream, emptyEl);
   auditEntryCount++;
 }
 
@@ -439,25 +598,47 @@ function formatAuditSource(source) {
   return String(source ?? '').toLowerCase();
 }
 
-function prependAuditSeparator(stream) {
-  if (auditEntryCount === 0) return;
-  const hr = document.createElement('hr');
-  hr.className = 'audit-separator';
-  if (stream.firstChild) stream.insertBefore(hr, stream.firstChild);
-  else stream.appendChild(hr);
-}
-
 // ---------------------------------------------------------------------------
 // Update loop — debounced post-to-worker / receive / apply
 // ---------------------------------------------------------------------------
 
 let debounceTimer = null;
+let applyTimer = null;
 let nextSeq = 1;
 let activeSeq = 0;          // last-issued request seq
+let activeRequestText = '';
 let lastSettledText = null; // last text we've successfully processed
+let lastDocChangeAt = 0;
+const pendingFixRequests = new Map();
+
+function clearPendingApply() {
+  if (applyTimer !== null) {
+    clearTimeout(applyTimer);
+    applyTimer = null;
+  }
+}
+
+function deferApplyWhileTyping(view, refs, msg) {
+  const idleForMs = performance.now() - lastDocChangeAt;
+  if (idleForMs >= APPLY_IDLE_MS) return false;
+
+  debugTimingLog('apply-deferred', {
+    seq: msg.seq,
+    idleForMs: Number(idleForMs.toFixed(1)),
+    waitMs: Number((APPLY_IDLE_MS - idleForMs).toFixed(1)),
+  });
+
+  clearPendingApply();
+  applyTimer = setTimeout(() => {
+    applyTimer = null;
+    applyFixResult(view, refs, msg);
+  }, APPLY_IDLE_MS - idleForMs);
+  return true;
+}
 
 function scheduleUpdate(view, refs) {
   clearTimeout(debounceTimer);
+  debugTimingLog('update-scheduled', { delayMs: DEBOUNCE_MS, docLen: view.state.doc.length });
   debounceTimer = setTimeout(() => requestUpdate(view, refs), DEBOUNCE_MS);
 }
 
@@ -465,6 +646,14 @@ function requestUpdate(view, refs, { force = false } = {}) {
   const text = view.state.doc.toString();
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
+  activeRequestText = text;
+  pendingFixRequests.set(activeSeq, performance.now());
+  debugTimingLog('worker-request', {
+    seq: activeSeq,
+    force,
+    docLen: text.length,
+    threshold: currentThreshold,
+  });
   worker.postMessage({
     type: 'fix',
     seq: activeSeq,
@@ -475,25 +664,45 @@ function requestUpdate(view, refs, { force = false } = {}) {
 }
 
 function applyFixResult(view, refs, msg) {
+  const requestStartedAt = pendingFixRequests.get(msg.seq);
+  const roundTripMs = typeof requestStartedAt === 'number'
+    ? performance.now() - requestStartedAt
+    : null;
+
   // Drop stale results — a newer request has already been issued.
-  if (msg.seq !== activeSeq) return;
+  if (msg.seq !== activeSeq) {
+    debugTimingLog('worker-stale', {
+      seq: msg.seq,
+      activeSeq,
+      roundTripMs: roundTripMs === null ? null : Number(roundTripMs.toFixed(1)),
+    });
+    pendingFixRequests.delete(msg.seq);
+    return;
+  }
+
+  debugTimingLog('worker-result', {
+    seq: msg.seq,
+    roundTripMs: roundTripMs === null ? null : Number(roundTripMs.toFixed(1)),
+    applied: (msg.applied || []).length,
+    remaining: (msg.remaining || []).length,
+  });
+
+  if (deferApplyWhileTyping(view, refs, msg)) return;
 
   const currentText = view.state.doc.toString();
 
-  // The seqs match, but the user may have typed in the gap between the
-  // request being sent and the reply arriving. If the editor's current
-  // text differs from what we'd get by applying these fixes, we re-issue
-  // a fresh request rather than apply stale changes.
-  // (Cheap check: if there are applied fixes, their spans must still be
-  // in-bounds for the current text.)
-  if (msg.applied.length > 0) {
-    const inBounds = msg.applied.every(f =>
-      f.span.start >= 0 && f.span.end <= currentText.length
-    );
-    if (!inBounds) {
-      scheduleUpdate(view, refs);
-      return;
-    }
+  // Worker replies are only safe to apply against the exact snapshot they
+  // were computed from. Offset-in-bounds is not enough once the user keeps
+  // typing — applying a valid-but-stale span is what can shove subsequent
+  // keystrokes into the wrong visual position.
+  if (currentText !== activeRequestText) {
+    debugTimingLog('apply-skipped-text-mismatch', {
+      seq: msg.seq,
+      currentLen: currentText.length,
+      requestLen: activeRequestText.length,
+    });
+    scheduleUpdate(view, refs);
+    return;
   }
 
   // Build CodeMirror change set from the applied-fix spans.
@@ -541,9 +750,8 @@ function applyFixResult(view, refs, msg) {
 
   // Audit entries — one row per applied fix, separator between batches.
   if (msg.applied.length > 0) {
-    prependAuditSeparator(refs.auditStream);
     for (const f of msg.applied) {
-      prependAuditEntry(f, refs.auditStream, refs.auditEmpty);
+      enqueueAuditEntry(f, refs.auditStream, refs.auditEmpty);
     }
   }
 
@@ -561,6 +769,12 @@ function applyFixResult(view, refs, msg) {
 
   // Multi-page indicator — derives from the post-fix text.
   updatePageCount(fixedText, refs);
+  pendingFixRequests.delete(msg.seq);
+  debugTimingLog('apply-complete', {
+    seq: msg.seq,
+    fixedLen: fixedText.length,
+    applied: (msg.applied || []).length,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -635,6 +849,10 @@ function updateRemainingPanel(view, remaining, refs) {
   const list = refs.remainingList;
   const empty = refs.remainingEmpty;
   const count = refs.remainingCount;
+
+  if (!list || !empty || !count) {
+    return;
+  }
 
   // Wipe and rebuild — small lists, simple wins.
   list.replaceChildren();
@@ -733,22 +951,19 @@ function maybeEmitNofornCallout(fixedText, banner, refs) {
 }
 
 function prependNofornCallout(stream, emptyEl) {
-  if (emptyEl && emptyEl.parentNode === stream) {
-    stream.removeChild(emptyEl);
-  }
   const el = document.createElement('div');
   el.className = 'audit-callout';
   el.setAttribute('role', 'note');
 
   const tag = document.createElement('span');
   tag.className = 'audit-callout-tag';
-  tag.textContent = 'lattice';
+  tag.textContent = 'lattice rule';
   el.appendChild(tag);
 
   const body = document.createElement('span');
   body.className = 'audit-callout-body';
   body.textContent =
-    'NOFORN supersedes REL TO at the page level — REL TO list cleared from the banner.';
+    'REL markings are stripped from the banner when a portion contains NOFORN';
   el.appendChild(body);
 
   const rule = document.createElement('span');
@@ -756,8 +971,7 @@ function prependNofornCallout(stream, emptyEl) {
   rule.textContent = 'capco/noforn-clears-rel-to';
   el.appendChild(rule);
 
-  if (stream.firstChild) stream.insertBefore(el, stream.firstChild);
-  else stream.appendChild(el);
+  prependAuditNode(el, stream, emptyEl);
 }
 
 // ---------------------------------------------------------------------------
@@ -851,18 +1065,12 @@ function attachBannerTooltip(refs) {
 function attachThresholdControls(view, refs) {
   const slider = refs.thresholdSlider;
   const valueEl = refs.thresholdValue;
-  const presets = refs.thresholdPresets;
 
   function setThreshold(t, opts = {}) {
     currentThreshold = Math.max(0, Math.min(1, Number(t) || 0));
-    valueEl.textContent = currentThreshold.toFixed(2);
+    valueEl.textContent = `Fix Threshold: ${Math.round(currentThreshold * 100)}% Confidence`;
     if (slider.value !== String(currentThreshold)) {
       slider.value = String(currentThreshold);
-    }
-    // Update the active preset chip — exact match wins, otherwise nothing.
-    for (const chip of presets) {
-      const v = parseFloat(chip.dataset.threshold);
-      chip.classList.toggle('is-active', Math.abs(v - currentThreshold) < 1e-6);
     }
     if (!opts.silent) {
       // Force a fresh request even if the document hasn't changed — only
@@ -872,9 +1080,6 @@ function attachThresholdControls(view, refs) {
   }
 
   slider.addEventListener('input', () => setThreshold(slider.value));
-  for (const chip of presets) {
-    chip.addEventListener('click', () => setThreshold(chip.dataset.threshold));
-  }
 
   // Seed the readout — but don't force-issue a request before the worker
   // has even processed the initial empty-doc lint.
@@ -1088,6 +1293,115 @@ function makeAutoplay(view) {
   return { abort };
 }
 
+function installRecorderApi(view) {
+  const resolveEditorScrollTarget = () => {
+    const cmScroller = view.scrollDOM || view.dom.querySelector('.cm-scroller');
+    if (cmScroller && cmScroller.scrollHeight > cmScroller.clientHeight + 1) {
+      return cmScroller;
+    }
+
+    const docBody = view.dom.closest('.doc-body') || document.querySelector('.doc-body');
+    if (docBody) return docBody;
+
+    return cmScroller;
+  };
+
+  const scrollEditorToBottom = () => {
+    const target = resolveEditorScrollTarget();
+    if (!target) return;
+    target.scrollTop = target.scrollHeight;
+  };
+
+  // appendText is synchronous (returns immediately). It chains setTimeout
+  // calls internally so the browser event loop handles cadence with zero
+  // Playwright IPC overhead. `window.__marqueDemoRecorder.busy` is true
+  // while typing is in progress — Playwright polls this to know when done.
+  const appendText = (text, timing = {}) => {
+    const charMs = Number.isFinite(timing.charMs) ? timing.charMs : 30;
+    const sentencePauseMs = Number.isFinite(timing.sentencePauseMs) ? timing.sentencePauseMs : 0;
+    const commaPauseMs = Number.isFinite(timing.commaPauseMs) ? timing.commaPauseMs : 0;
+
+    const chars = [...String(text ?? '')];
+    if (chars.length === 0) return;
+
+    window.__marqueDemoRecorder.busy = true;
+    let index = 0;
+    let prevCh = '';
+
+    const typeNext = () => {
+      if (index >= chars.length) {
+        window.__marqueDemoRecorder.busy = false;
+        return;
+      }
+      const ch = chars[index++];
+      const from = view.state.doc.length;
+      view.dispatch({ changes: { from, to: from, insert: ch } });
+      // Keep the latest typed text visible once the page starts overflowing.
+      scrollEditorToBottom();
+
+      let wait = charMs > 0 ? charMs : 0;
+      if (ch === ' ') {
+        if ('.!?'.includes(prevCh) && sentencePauseMs > 0) wait += sentencePauseMs;
+        else if (',;'.includes(prevCh) && commaPauseMs > 0) wait += commaPauseMs;
+      }
+      prevCh = ch;
+      setTimeout(typeNext, wait);
+    };
+
+    setTimeout(typeNext, 0);
+  };
+
+  const clearDocument = () => {
+    const len = view.state.doc.length;
+    if (len > 0) {
+      view.dispatch({ changes: { from: 0, to: len, insert: '' } });
+    }
+  };
+
+  const setThreshold = (value) => {
+    const slider = document.getElementById('threshold-slider');
+    if (!slider) return;
+    slider.value = String(value);
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  const fadeHeader = () => {
+    const header = document.querySelector('.doc-header');
+    if (header) header.classList.add('is-hidden');
+  };
+
+  const scrollEditor = (offset) => {
+    const target = resolveEditorScrollTarget();
+    if (!target) return;
+    const delta = Number(offset) || 0;
+    target.scrollTo({ top: target.scrollTop + delta, behavior: 'smooth' });
+  };
+
+  let ejectionCount = 0;
+
+  const fifoText = (eject) => {
+    const textWrapper = document.querySelector('#editor-mount > div > div.cm-scroller > div');
+    if (!textWrapper) return;
+    const textElements = textWrapper.querySelectorAll('.cm-line');
+    const texts = Array.from(textElements);
+    if (texts.length === 0) return;
+    texts.slice(0, eject + ejectionCount).forEach(el => el.style.display = 'none');
+    ejectionCount += eject;
+  };
+
+  window.__marqueDemoRecorder = {
+    ready: true,
+    busy: false,
+    appendText,
+    clearDocument,
+    setThreshold,
+    fadeHeader,
+    scrollEditor,
+    fifoText,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
@@ -1104,7 +1418,6 @@ async function main() {
     thresholdSlider:  document.getElementById('threshold-slider'),
     thresholdValue:   document.getElementById('threshold-value'),
     thresholdCounter: document.getElementById('threshold-counter'),
-    thresholdPresets: document.querySelectorAll('.preset-chip'),
     histogram:        document.getElementById('confidence-histogram'),
     remainingList:    document.getElementById('remaining-list'),
     remainingEmpty:   document.getElementById('remaining-empty'),
@@ -1179,6 +1492,7 @@ async function main() {
       diagnosticsField,
       placeholderPlugin,
       pageBreakPlugin,
+      scriptedStylePlugin,
       tooltip,
       EditorView.lineWrapping,
       EditorView.theme({
@@ -1200,6 +1514,8 @@ async function main() {
       }, { dark: false }),
       EditorView.updateListener.of(update => {
         if (!update.docChanged) return;
+        lastDocChangeAt = performance.now();
+        clearPendingApply();
         const newText = update.view.state.doc.toString();
         if (newText === lastSettledText) return;
         scheduleUpdate(update.view, refs);
@@ -1211,6 +1527,8 @@ async function main() {
     state: startState,
     parent: document.getElementById('editor-mount'),
   });
+
+  installRecorderApi(view);
 
   // Threshold controls — wire after the view exists so chips/slider can
   // re-issue requestUpdate against the editor.
