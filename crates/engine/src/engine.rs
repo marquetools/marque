@@ -1020,10 +1020,11 @@ impl Engine {
             FixMode::Apply => {
                 // Forward-pass buffer construction: O(source_len + Σ replacement_lens).
                 //
-                // `kept_fixes` is in reverse-end (span.start DESC) order from
-                // the C-1 dedup walk. Iterating in reverse gives ascending
-                // span.start order so we can copy each gap and replacement in a
-                // single left-to-right pass over `effective_source`.
+                // `kept_fixes` is in (span.end DESC, span.start DESC) order
+                // from the FR-016 sort (line ~936) and C-1 dedup walk.
+                // Iterating in reverse gives ascending span.end / span.start
+                // order so we can copy each gap and replacement in a single
+                // left-to-right pass over `effective_source`.
                 //
                 // This replaces the previous `Vec::splice`-per-fix approach
                 // that was O(N × M): each splice shifted every byte after the
