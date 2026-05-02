@@ -284,7 +284,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
 | 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
-| 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor; build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
+| 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor. **`CategoryShape::Container` + `ListDelimiter` (§8.5)**: per-container delimiter tables for REL TO / DISPLAY ONLY (canonical Comma, accepts Space as common-mistake); JOINT / FGI (canonical Space, accepts Comma); SAR program lists (canonical Space, accepts Comma + `SAR-`-repeat as prior-canonical); structural subparser handles EYES / SCI; documented variants emit fix proposals to canonical delimiter (rewrite path, not silent rewrite); decoder fallback on Tier-3. Build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
 | 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
@@ -294,7 +294,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
 | 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking), and the **fix-emission-time** phase contract (sub-token vs. whole-marking span shape) — registration sees only the tag, span shape can only be checked when a `FixProposal` exists. **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). **R003 diagnostic** for phase-contract violation (rule emitted a fix span outside its declared phase). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
 | 8 | Decoder prose null hypothesis priors (`marque-priors-3` schema bump); fold bare `NATO {level}` to canonical NATO marking. **Note: third problem class (recognizer scoring quality) — outside the two underlying problems frame; this plan does not claim closure of #258/#260, only delivery of priors and folding logic.** | #258, #260 | III |
-| 9 | Parser separator spans (#106); 7B `dissem_us` / `dissem_nato` position-attributed fields; banner-validation rules migrate to `&ProjectedMarking`; declare missing `PageRewrite`s; ATOMAL/BOHEMIA recognition; NATO-portion-in-US-doc → REL TO USA, NATO derivation as declarative `Constraint` | #106, #270, #271, #265, #246, #264, #251 | IV, VI, VIII |
+| 9 | Parser separator spans (#106); 7B `dissem_us` / `dissem_nato` position-attributed fields; banner-validation rules migrate to `&ProjectedMarking`; declare missing `PageRewrite`s; ATOMAL/BOHEMIA recognition; NATO-portion-in-US-doc → REL TO USA, NATO derivation as declarative `Constraint`; **`--preserve-historical-form` flag** for compliance-archaeology batch-correction mode (§8.5 — flips documented-variant matches from auto-rewrite to diagnostic-only) | #106, #270, #271, #265, #246, #264, #251 | IV, VI, VIII |
 | 10 | F.1 corpus gate maturation (full per-cited-authority coverage; was PR 11). 8C vendored-source registry declared (declarative-only). | #267 Gap C if not closed by 0.6 | VIII |
 
 **PRs folded under clean break:**
@@ -854,6 +854,148 @@ problem class (§0). #258 (decoder prose null hypothesis) and #260
 descriptors raise the floor on what gets *admitted* into the
 open-vocab path; corpus priors decide what gets *promoted* to a
 high-confidence fix. Both are needed; neither replaces the other.
+
+### 8.5 Delimiter tolerance + versioned canonical form
+
+Marque's batch-correction market means we routinely see documents
+written under *prior* CAPCO conventions, or under common-mistake
+conventions where users conflate sibling categories. Three documented
+sources of delimiter drift:
+
+1. **SAR** programs were historically `SAR-`-prefixed per program
+   (`SAR-FOO SAR-BAR SAR-BAZ`); current §H.5 form is one prefix
+   followed by a space-delimited program list (`SAR-FOO BAR BAZ`).
+   Comma-delimited program lists (`SAR-FOO,BAR,BAZ`) are common as a
+   transcription error.
+2. **EYES** (deprecated; §F) carried country lists as `/`-delimited
+   trigraphs (`EYES USA/GBR/AUS`). EYES itself is a dissem control,
+   and the dissem-control container at the banner boundary is also
+   `/`-delimited. The local ambiguity (`//EYES USA/GBR//` —
+   are the trigraphs EYES countries or sibling dissem controls?)
+   has to resolve via grammar, not delimiter sniffing.
+3. **Trigraph lists** are comma-delimited under REL TO and
+   DISPLAY ONLY (§H.8) but space-delimited under JOINT (§H.3) and
+   FGI (§H.7). The parser already comments the conflation hazard
+   (`crates/core/src/parser.rs:899` — *"Countries are space-delimited
+   (NOT comma-delimited like REL TO)"*). Documents commonly use the
+   wrong delimiter for the container they're in.
+
+The four operational requirements:
+
+| Requirement | What it means |
+|-------------|---------------|
+| **Recognize** | Parser produces a structurally-correct `IsmAttributes` regardless of which documented delimiter form the input uses (canonical, prior-canonical, common-mistake). |
+| **Identify** | The parsed form records *which* delimiter shape was observed, so diagnostic messages and audit records can name it. |
+| **Fix** | When in fix mode and confidence is high, rewrite to the active schema's canonical form. The fix proposal is a `MARQUE_AUDIT_SCHEMA`-pinned migration entry — not a silent rewrite. |
+| **Preserve** | Compliance-archaeology mode (`--preserve-historical-form` flag, planned for PR 9) suppresses the auto-rewrite. The diagnostic still emits — the user sees that a non-canonical form was detected — but the document text is left alone. |
+
+**Descriptor extension.** `CategoryShape` from §8.4 covers token shape;
+delimiters are about *list/container shape*, a different axis. Two
+new descriptor variants:
+
+```rust
+pub enum CategoryShape {
+    /* Exact, Range, Structured, Custom — from §8.4 */
+
+    /// Flat list of `element`-shaped tokens. Container's accepted +
+    /// canonical delimiters are spelled out per-category.
+    Container {
+        element: &'static CategoryShape,
+        delim: ListDelimiter,
+    },
+}
+
+pub struct ListDelimiter {
+    /// Single delimiter the active CAPCO revision designates as
+    /// canonical. Renderer emits this; fixes target this.
+    pub canonical: Delim,
+
+    /// Other delimiters the parser also accepts at the same shape
+    /// level. Each carries a citation explaining *why* it's accepted
+    /// (prior-canonical from a CAPCO revision, well-attested
+    /// common-mistake, etc.) and the rule ID that emits the rewrite
+    /// fix when this variant is observed.
+    pub also_accepted: &'static [(Delim, Provenance, RuleId)],
+}
+
+pub enum Delim {
+    Comma,            // `,` with optional surrounding whitespace
+    Space,            // SPACE+
+    Slash,            // `/`
+    SlashOrSpace,     // for the EYES grammar, where the structural
+                      // subparser disambiguates against the dissem
+                      // boundary
+    Custom(...),
+}
+
+pub enum Provenance {
+    PriorCanonical { revision: SchemaVersion, citation: &'static str },
+    CommonMistake  { sibling_category: CategoryId, citation: &'static str },
+    /* Last-resort `Custom` — CI lint flags new occurrences */
+}
+```
+
+**Three-tier dispatch.** This pairs with the existing
+`StrictRecognizer` / `DecoderRecognizer` /
+`StrictOrDecoderRecognizer` architecture without adding a fourth
+recognizer:
+
+| Tier | What strict accepts | Diagnostic emitted |
+|------|---------------------|--------------------|
+| 1 — canonical | `delim == ListDelimiter::canonical` | None |
+| 2 — documented variant | `delim ∈ ListDelimiter::also_accepted` | A diagnostic at INFO/WARN with a fix proposal rewriting to the canonical delimiter. The fix's `RuleId` is the one declared in the `also_accepted` entry; the diagnostic message names the variant's `Provenance`. |
+| 3 — neither matches | (no strict path success) | Decoder takes over with corpus priors. Probabilistic candidates may include "did you mean canonical?" and "did you mean prior-canonical?" suggestions. |
+
+This keeps strict-tier latency unchanged for canonical input (the
+common case), keeps strict-tier latency cheap for documented variants
+(one lookup against `also_accepted`), and reserves the decoder for
+genuinely unknown shapes. The audit trail distinguishes "documented
+variant" (high-confidence rewrite, schema-pinned migration) from
+"probabilistic recovery" (lower-confidence, may not auto-apply at
+default threshold) — which is what compliance reviewers need.
+
+**Initial CAPCO container table** (PR-2 fill-in; every cell carries
+a §-citation, citation-lint enforces):
+
+| Container | `canonical` | `also_accepted` |
+|-----------|-------------|-----------------|
+| REL TO trigraph list | `Comma` | `Space` (common-mistake; sibling = JOINT) |
+| DISPLAY ONLY trigraph list | `Comma` | `Space` (common-mistake; sibling = FGI) |
+| JOINT country trigraph list | `Space` | `Comma` (common-mistake; sibling = REL TO) |
+| FGI country trigraph list | `Space` | `Comma` (common-mistake; sibling = REL TO) |
+| SAR program list (within `SAR-` prefix) | `Space` | `Comma` (common-mistake), `SAR-`-repeat (prior-canonical, citation TBD at PR-2 fill-in) |
+| EYES country list | `Structured(EyesShape)` (dispatched via subparser) | n/a — grammar disambiguates against the dissem boundary, not a delimiter table |
+| SCI compartment / sub-compartment | `Structured(SciShape)` (existing subparser) | n/a — recursive grammar |
+
+**Interaction with `--preserve-historical-form`** (planned PR 9
+flag). The flag flips `also_accepted` matches from "emit fix
+proposal" to "emit informational diagnostic, no fix." Strict path
+behavior on `canonical` and decoder fallback are unaffected; this is
+a fix-suppression switch, not a parser-mode switch. The audit trail
+under preservation mode records the variant + the suppression — so
+even when no rewrite happens, the compliance review can see that
+marque saw the non-canonical form and chose not to act.
+
+**Threading.** PR 2's row already covers `CategoryShape`'s initial
+fill-in; widen to include the `Container` variant and the per-category
+`ListDelimiter` tables. The Constitution check stays I, III, IV,
+VIII (the new variants don't change the constitutional surface).
+PR 8's corpus-prior work picks up the Tier-3 decoder side: priors
+should weight `delimiter == canonical` highest, `delimiter ∈
+also_accepted` second, and unknown-delimiter shapes by their corpus
+attestation. PR 9's banner-validation migration row picks up the
+`--preserve-historical-form` flag.
+
+**What this does NOT solve.** Multi-active-revision support — i.e.,
+"this document is a CAPCO-2008 document and the canonical form is
+CAPCO-2008's, not CAPCO-2016's" — is out of scope. The active schema
+version pinned in `marque-ism/Cargo.toml`'s `[package.metadata.marque]
+ism-schema-version` is the canonical target, full stop. Prior-canonical
+forms are *recognized* (so we can fix them) but not *honored* (so we
+can't preserve them as canonical). If a customer surfaces a use case
+where an old document must remain in its old form — different from
+"don't rewrite, just diagnose" — that's a multi-revision engine
+project, not a delimiter project. Flag for revisit if it appears.
 
 ---
 
