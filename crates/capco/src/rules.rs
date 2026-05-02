@@ -6440,11 +6440,14 @@ impl Rule for FgiBannerClassificationAuthorityRule {
                     fgi.countries.iter().map(|c| c.as_str()).collect();
                 let expected_countries: std::collections::BTreeSet<_> =
                     expected.countries.iter().map(|c| c.as_str()).collect();
-                if banner_countries == expected_countries {
-                    // Authority prefix already correct — nothing to fix.
+                let page_level = page.expected_classification();
+                if banner_countries == expected_countries
+                    && page_level.map_or(true, |l| l == fgi.level)
+                {
+                    // Authority prefix and level already correct — nothing to fix.
                     return vec![];
                 }
-                // Fall through: wrong countries → fire E055.
+                // Fall through: wrong countries or underclassified → fire E055.
             }
             Some(MarkingClassification::Nato(_)) | Some(MarkingClassification::Joint(_)) => {
                 // Defense-in-depth: should already be filtered above.
@@ -12039,6 +12042,30 @@ mod tests {
             fix.replacement.as_ref(),
             "DEU TOP SECRET",
             "E055 fix must use rolled-up page level (TS → TOP SECRET), not banner's SECRET"
+        );
+    }
+
+    #[test]
+    fn e055_fires_when_fgi_country_correct_but_level_too_low() {
+        // Wholly-foreign page: portion is `//DEU TS`, banner has `//DEU SECRET`
+        // (correct country, but underclassified). E055 must fire even though the
+        // country prefix already matches, and the fix must raise the level.
+        let source = "(//DEU TS//REL TO USA, DEU) Foreign.\n//DEU SECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire when banner level is too low even if country prefix is correct: {diags:?}"
+        );
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix for underclassified FGI banner");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "DEU TOP SECRET",
+            "E055 fix must raise the level to match the rolled-up page classification"
         );
     }
 }
