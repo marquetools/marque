@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read, and these particular cases are re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file into source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e7cb225d54393fe4b7d9cb9593c4e50641b5674506c92f8231fbe36727615519 # shrinks to src = "TOP SECRET//NOFORN//RELIDO\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS//HCS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n(TS)\n"

@@ -17,10 +17,11 @@
 # across the SC-005 sweep. Fails if R² falls below the `r_squared_min`
 # threshold in `benches/baseline.json`.
 #
-# Four gates are checked:
+# Five gates are checked:
 #   - `lint_10kb`                         (SC-001, target 16ms upper CI)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#   - `fix_throughput`                    (fix-apply linearity, R² >= 0.9 across size sweep)
 #   - `deadline_overhead`                 (Spec 005, with-deadline overhead ≤ max_ratio_pct)
 #
 # Per-bench regression policy:
@@ -518,6 +519,140 @@ PY
     return 0
 }
 
+# check_fix_throughput
+#
+# Runs the `fix_throughput` Criterion bench (`crates/engine/benches/fix_throughput.rs`)
+# and computes R² for a linear regression of (input_size_bytes, mean_time_µs)
+# across the size sweep. Fails if R² < `fix_throughput.r_squared_min` from
+# `benches/baseline.json`. Mirrors `check_linear_scaling` for the fix path.
+#
+# This gate specifically guards the quadratic `Vec::splice`-per-fix regression
+# (perf(engine): fix-apply path is quadratic in input size): a quadratic apply
+# path produces a convex throughput curve (R² well below 0.9 for a linear fit)
+# while the linear forward-pass replacement is indistinguishable from linear
+# scaling at the R² ≥ 0.9 gate.
+#
+# The sweep runs from 1 MB to 100 MB with fix density proportional to input
+# size, which is the exact input shape that exposed the original pathology.
+check_fix_throughput() {
+    local r_squared_min
+    r_squared_min=$(python3 -c "
+import json
+with open('$BASELINE') as f:
+    data = json.load(f)
+print(data['fix_throughput']['r_squared_min'])
+" 2>/dev/null || echo "")
+
+    if [[ -z "$r_squared_min" ]]; then
+        echo "bench-check[fix_throughput]: ERROR — could not parse 'fix_throughput.r_squared_min' from $BASELINE"
+        return 1
+    fi
+
+    if ! python3 -c "
+v = float('$r_squared_min')
+assert 0.0 < v <= 1.0, 'out of range'
+" 2>/dev/null; then
+        echo "bench-check[fix_throughput]: ERROR — r_squared_min not a float in (0, 1]: ${r_squared_min}"
+        return 1
+    fi
+
+    echo "bench-check[fix_throughput]: minimum R² = ${r_squared_min}"
+    echo "bench-check[fix_throughput]: running benchmark..."
+
+    local bench_output
+    if ! bench_output=$(cargo bench -p marque-engine --bench fix_throughput 2>&1); then
+        echo "bench-check[fix_throughput]: ERROR — 'cargo bench' invocation failed"
+        if [[ -n "$bench_output" ]]; then
+            printf '%s\n' "$bench_output"
+        fi
+        return 1
+    fi
+
+    # Extract every `fix_throughput/<bytes>     time:   [lower mean upper]` line
+    # and compute R² on (size_bytes, mean_time_µs). The bench uses
+    # `BenchmarkId::from_parameter(input.len())` — a raw byte count — matching
+    # the `lint_scaling/<bytes>` convention.  Parsing the byte count directly
+    # avoids the integer-MB rounding that would occur if we encoded an `<N>mb`
+    # label and then reconstructed bytes as `N * 1_000_000`.
+    local r_squared
+    r_squared=$(python3 - "$bench_output" <<'PY' 2>/dev/null || true
+import math, re, sys
+
+text = sys.argv[1]
+# Match `fix_throughput/<bytes>` followed by `time:   [lower unit mean unit upper unit]`.
+# The byte-count parameter matches one or more digits with no suffix, just like
+# the `lint_scaling/<bytes>` IDs parsed by check_linear_scaling.
+size_pat = re.compile(
+    r"fix_throughput/(\d+)\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
+    r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)"
+)
+
+def to_us(value, unit):
+    v = float(value)
+    if unit == "ns":
+        return v / 1000.0
+    if unit == "µs":
+        return v
+    if unit == "ms":
+        return v * 1000.0
+    raise ValueError(f"unknown unit: {unit}")
+
+points = []
+for m in size_pat.finditer(text):
+    # The parameter is already the byte count — no conversion needed.
+    size_bytes = int(m.group(1))
+    # Group 4 / unit 5 is the mean (middle of the three CI numbers).
+    mean_us = to_us(m.group(4), m.group(5))
+    points.append((size_bytes, mean_us))
+
+if len(points) < 3:
+    sys.stderr.write(f"insufficient samples: {len(points)}\n")
+    sys.exit(1)
+
+n = len(points)
+sx = sum(x for x, _ in points)
+sy = sum(y for _, y in points)
+sxx = sum(x * x for x, _ in points)
+syy = sum(y * y for _, y in points)
+sxy = sum(x * y for x, y in points)
+
+mx = sx / n
+my = sy / n
+ss_xy = sxy - n * mx * my
+ss_xx = sxx - n * mx * mx
+ss_yy = syy - n * my * my
+
+if ss_xx <= 0 or ss_yy <= 0:
+    sys.stderr.write("zero variance in samples\n")
+    sys.exit(1)
+
+r2 = (ss_xy * ss_xy) / (ss_xx * ss_yy)
+print(f"{r2:.6f}")
+PY
+)
+
+    if [[ -z "$r_squared" ]]; then
+        echo "bench-check[fix_throughput]: ERROR — could not extract sample points from criterion output"
+        echo "$bench_output"
+        return 1
+    fi
+
+    echo "bench-check[fix_throughput]: measured R² = ${r_squared}"
+
+    local pass
+    pass=$(python3 -c "print('1' if float('$r_squared') >= float('$r_squared_min') else '0')")
+
+    if [[ "$pass" != "1" ]]; then
+        echo "bench-check[fix_throughput]: FAIL — R² ${r_squared} < ${r_squared_min} (super-linear apply path)"
+        return 1
+    fi
+
+    echo "bench-check[fix_throughput]: PASS — R² ${r_squared} >= ${r_squared_min}"
+    return 0
+}
+
 # report_fix_latency
 #
 # Advisory (non-gating): runs the `fix_latency` bench and prints the three
@@ -594,6 +729,7 @@ OVERALL_STATUS=0
 check_one_bench "lint_10kb" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
+check_fix_throughput || OVERALL_STATUS=1
 check_deadline_overhead || OVERALL_STATUS=1
 report_fix_latency
 
