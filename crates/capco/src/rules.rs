@@ -666,6 +666,18 @@ impl Rule for MisorderedBlocksRule {
         // this layer"; consumers that need the original bytes should read
         // `source[span.start..span.end]` from the authoritative buffer.
         let reordered = reorder_marking(attrs);
+        let message = match &reordered {
+            Some(replacement) => format!(
+                "marking blocks are out of CAPCO order; suggested: \
+                 {replacement} \
+                 (expected order: Classification // SCI // SAR // AEA // \
+                 FGI // Dissem // REL TO // Non-IC)"
+            ),
+            None => "marking blocks are out of CAPCO order \
+                     (expected: Classification // SCI // SAR // AEA // FGI // \
+                     Dissem // REL TO // Non-IC)"
+                .to_owned(),
+        };
         let fix = reordered.map(|replacement| {
             FixProposal::new(
                 self.id(),
@@ -682,9 +694,7 @@ impl Rule for MisorderedBlocksRule {
             self.id(),
             self.default_severity(),
             span,
-            "marking blocks are out of CAPCO order \
-             (expected: Classification // SCI // SAR // AEA // FGI // \
-             Dissem // Non-IC)",
+            message,
             "CAPCO-2016 §A.6 p15-16",
             fix,
         )]

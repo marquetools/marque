@@ -71,19 +71,19 @@
       "name": "misordered_blocks.txt",
       "category": "invalid",
       "input": "SECRET//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":18},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":18},\"message\":\"marking blocks are out of CAPCO order; suggested: SECRET//SI//NOFORN (expected order: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "misordered_blocks_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":24},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"CONFIDENTIAL//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":24},\"message\":\"marking blocks are out of CAPCO order; suggested: CONFIDENTIAL//SI//NOFORN (expected order: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"CONFIDENTIAL//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "misordered_blocks_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//NOFORN//TK\n",
-      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":22},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"TOP SECRET//TK//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":22},\"message\":\"marking blocks are out of CAPCO order; suggested: TOP SECRET//TK//NOFORN (expected order: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"TOP SECRET//TK//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph.txt",
@@ -107,7 +107,7 @@
       "name": "mixed_confidence.txt",
       "category": "invalid",
       "input": "SECRET//NF\nSECRET//NOFORN//SI\n",
-      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":\"banner contains portion mark \\\"NF\\\" for an IC dissem control; use banner abbreviation \\\"NOFORN\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"NOFORN\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":11,\"end\":29},\"message\":\"marking blocks are out of CAPCO order (expected: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":\"banner contains portion mark \\\"NF\\\" for an IC dissem control; use banner abbreviation \\\"NOFORN\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"NOFORN\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E003\",\"severity\":\"error\",\"span\":{\"start\":11,\"end\":29},\"message\":\"marking blocks are out of CAPCO order; suggested: SECRET//SI//NOFORN (expected order: Classification // SCI // SAR // AEA // FGI // Dissem // REL TO // Non-IC)\",\"citation\":\"CAPCO-2016 §A.6 p15-16\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SECRET//SI//NOFORN\",\"confidence\":0.6,\"migration_ref\":null}}\n"
     },
     {
       "name": "nodis_exdis_conflict.txt",
