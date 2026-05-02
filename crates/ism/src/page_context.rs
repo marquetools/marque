@@ -198,7 +198,9 @@ impl PageContext {
     pub fn expected_marking_classification(&self) -> Option<MarkingClassification> {
         if self.has_us_classified_portion() {
             // U.S. classification wins per §F.1 p20.
-            return self.expected_classification().map(MarkingClassification::Us);
+            return self
+                .expected_classification()
+                .map(MarkingClassification::Us);
         }
 
         // For FGI-only pages, synthesize a single Fgi carrying the max level
@@ -2260,10 +2262,7 @@ mod tests {
             classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
             ..Default::default()
         });
-        assert!(
-            ctx.has_nato_or_joint_portion(),
-            "must detect NATO portion"
-        );
+        assert!(ctx.has_nato_or_joint_portion(), "must detect NATO portion");
     }
 
     #[test]
@@ -2281,10 +2280,7 @@ mod tests {
             })),
             ..Default::default()
         });
-        assert!(
-            ctx.has_nato_or_joint_portion(),
-            "must detect JOINT portion"
-        );
+        assert!(ctx.has_nato_or_joint_portion(), "must detect JOINT portion");
     }
 
     #[test]

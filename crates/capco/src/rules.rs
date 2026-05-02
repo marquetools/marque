@@ -11740,8 +11740,7 @@ mod tests {
         // Case 2 from the issue: US + FGI portions, banner missing FGI DEU.
         // Portions come before banner so the page context is populated when
         // the banner is checked (mirroring how the real engine processes docs).
-        let source =
-            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
         let diags = lint_banner(source);
         let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
         assert_eq!(
@@ -11779,7 +11778,10 @@ mod tests {
             1,
             "E054 must fire when FGI block is incomplete: {diags:?}"
         );
-        let fix = e054[0].fix.as_ref().expect("E054 must carry a fix when banner has FGI block");
+        let fix = e054[0]
+            .fix
+            .as_ref()
+            .expect("E054 must carry a fix when banner has FGI block");
         assert_eq!(
             fix.replacement.as_ref(),
             "FGI DEU GBR",
@@ -11793,8 +11795,7 @@ mod tests {
 
     #[test]
     fn e054_does_not_fire_when_banner_already_has_correct_fgi_block() {
-        let source =
-            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//FGI DEU//REL TO USA, DEU";
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//FGI DEU//REL TO USA, DEU";
         let diags = lint_banner(source);
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E054"),
@@ -11806,8 +11807,7 @@ mod tests {
     fn e054_does_not_fire_on_purely_foreign_page() {
         // Wholly-foreign page: no US portions. E054 is commingled-only.
         // E055 (not E054) should fire here.
-        let source =
-            "(//DEU S//REL TO USA, DEU) Foreign.\nSECRET//REL TO USA, DEU";
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\nSECRET//REL TO USA, DEU";
         let diags = lint_banner(source);
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E054"),
@@ -11848,8 +11848,7 @@ mod tests {
     fn e054_commingled_with_noforn_fires_missing_fgi_block() {
         // Case 3 from the issue: DEU FGI portion + NOFORN US portion.
         // Banner `SECRET//NOFORN` is missing `FGI DEU`.
-        let source =
-            "(//DEU S//REL TO USA, DEU) FGI.\n(S//NF) US.\nSECRET//NOFORN";
+        let source = "(//DEU S//REL TO USA, DEU) FGI.\n(S//NF) US.\nSECRET//NOFORN";
         let diags = lint_banner(source);
         let e054: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E054").collect();
         assert_eq!(
@@ -11873,7 +11872,10 @@ mod tests {
             1,
             "E055 must fire when wholly-foreign banner uses US classification form: {diags:?}"
         );
-        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for single-source");
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix for single-source");
         assert_eq!(
             fix.replacement.as_ref(),
             "//DEU SECRET",
@@ -11900,8 +11902,7 @@ mod tests {
     #[test]
     fn e055_does_not_fire_on_commingled_page() {
         // Commingled page: US + FGI portions. E054 (not E055) should fire.
-        let source =
-            "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n(S//REL TO USA, DEU) US.\nSECRET//REL TO USA, DEU";
         let diags = lint_banner(source);
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E055"),
@@ -11930,7 +11931,10 @@ mod tests {
             1,
             "E055 must fire for source-concealed wholly-foreign page: {diags:?}"
         );
-        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for concealed");
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix for concealed");
         assert_eq!(
             fix.replacement.as_ref(),
             "//FGI SECRET",
@@ -11941,8 +11945,7 @@ mod tests {
     #[test]
     fn e055_multi_source_fix_has_reduced_confidence() {
         // Multiple foreign sources → confidence drops to 0.6 (suggest, not auto-fix).
-        let source =
-            "(//DEU S//REL TO USA, DEU) A.\n(//GBR S//REL TO USA, GBR) B.\nSECRET//REL TO USA, DEU, GBR";
+        let source = "(//DEU S//REL TO USA, DEU) A.\n(//GBR S//REL TO USA, GBR) B.\nSECRET//REL TO USA, DEU, GBR";
         let diags = lint_banner(source);
         let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
         assert_eq!(
@@ -11991,7 +11994,10 @@ mod tests {
             1,
             "E055 must fire when banner FGI country doesn't match portions: {diags:?}"
         );
-        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for wrong-country FGI banner");
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix for wrong-country FGI banner");
         assert_eq!(
             fix.replacement.as_ref(),
             "DEU SECRET",
