@@ -279,14 +279,14 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 
 | PR | Description | Closes | Constitution check |
 |----|-------------|--------|--------------------|
-| 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex) | (preemptive) | VI |
+| 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex); **promote-callsite lint at `tools/promote-callsite-lint/`** (also AST-based — enforces I-15: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` only callable from `Engine::fix_inner` in production code, with `#[cfg(test)]`/`tests/` carve-out per Constitution V Principle V) | (preemptive) | V, VI |
 | 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
 | 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
 | 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs:1317-1323` carve-out delete + `--canonicalizer` flag forced-on then deleted in same PR + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
 | 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve all eight §10 open items; **no "explicitly deferred to a tracked issue" escape valve**. Patch §3 Q3 (`noforn-clears-rel-to` is already a declared `PageRewrite` per CLAUDE.md "Phase B"; reframe as confirm-and-document). Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
@@ -370,7 +370,7 @@ decoder-path invariants today hold by carve-out
 (`provenance.canonical_bytes` may include uppercased unrecognized input
 segments; `recognition_score()` saturates at `0.999999` for solo
 candidates regardless of evidence). The `proposal.original = ""` carve-out
-at `engine.rs:1317-1323` is the tell — invariants enforced by
+at `engine.rs::build_decoder_diagnostic` (the `proposal.original = ""` branch, currently `engine.rs:1369-1384` — re-grep at edit time) is the tell — invariants enforced by
 comment-propagation across code paths are the failure mode that produces
 this class of bug.
 
@@ -381,7 +381,7 @@ decoder's contract becomes "produce `Parsed::Unambiguous` or
 `Parsed::Ambiguous` over closed-CVE shapes only; refer open-vocab to
 diagnostic-only output." #258 closes in PR 8 independently as recognizer
 scoring work, not as G13 closure work. The carve-out at
-`engine.rs:1317-1323` is deleted in PR 3c.
+`engine.rs::build_decoder_diagnostic` (the `proposal.original = ""` branch, currently `engine.rs:1369-1384` — re-grep at edit time) is deleted in PR 3c.
 
 ---
 
@@ -949,8 +949,12 @@ blocks PR 4 — no soft punt.
 
 §3 Q3 (`NF` clears `REL TO`: lattice op vs. `PageRewrite`) is **not an
 open question** per CLAUDE.md "Phase B": `capco/noforn-clears-rel-to` is
-already a declared `PageRewrite`, rewrites run before projection per the
-topological scheduler. Reframe as "confirm and document," not "decide."
+already a declared `PageRewrite`. The dispatch shape is **projection
+first, then `page_rewrites` apply within `project(Scope::Page, ...)`**
+(see `crates/capco/src/scheme.rs::project` body). The topological
+scheduler in `crates/engine/src/scheduler.rs` orders the rewrites among
+themselves (writers before readers); it does not run them before
+projection. Reframe Q3 as "confirm and document," not "decide."
 
 ### 11.3 Acceptance
 
@@ -1127,8 +1131,10 @@ murder-board override (§3.1).
 
 PR 3c is where `marque-rules` gains a `marque-scheme` dependency. PR 3a
 adds the pivot types (`ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`)
-without touching the rule-API surface, so the dep graph is unchanged at
-3a.
+inside `marque-ism` (replacing `IsmAttributes`'s overloaded role).
+Rules' input-type *signature* changes (`&IsmAttributes` → `&CanonicalAttrs`),
+but both types live in `marque-ism` — a crate `marque-rules` already
+depends on — so **no new crate-level dep-graph edge forms at 3a**.
 
 The shift lands in PR 3c with `FixIntent<S>`: the rule-API value rules
 emit instead of constructing `Canonical<S>` directly. `FixIntent<S>`

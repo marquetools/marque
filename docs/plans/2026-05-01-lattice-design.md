@@ -139,10 +139,15 @@ acceptance items.**
    by `REL TO USA, FVEY, GBR` is set-extension not supersession.
    The lattice surface needs to distinguish "supersedes the token"
    from "extends the token's payload."
-3. `NF` clears `REL TO` per §H.8 (it dominates). Existing
-   `capco/noforn-clears-rel-to` `PageRewrite` (per CLAUDE.md) is the
-   first declared rewrite. Does the in-category lattice handle this,
-   or does the rewrite step before the lattice projection?
+3. ~~`NF` clears `REL TO` per §H.8 (it dominates). Does the in-category
+   lattice handle this, or does the rewrite step before the lattice
+   projection?~~ **Resolved (2026-05-02): confirm-and-document, not
+   decide.** `capco/noforn-clears-rel-to` is already a declared
+   `PageRewrite` and runs *after* projection inside
+   `CapcoScheme::project(Scope::Page, ...)` (see
+   `crates/capco/src/scheme.rs::project` body). The PR 3.7 fill-in for
+   §3 documents this dispatch shape with the §H.8 §-citation; the lattice
+   itself does not encode the supersession.
 
 ---
 
@@ -294,8 +299,16 @@ Before PR 4 lands, this document must satisfy:
       including edge cases the §-citation calls out.
 - [ ] Every category section names property-test fixtures by file
       and test name.
-- [ ] Every "Open question" is either resolved (§-citation +
-      explicit decision) or explicitly deferred to a tracked issue.
+- [ ] Every "Open question" is resolved (§-citation + explicit
+      decision). **No "explicitly deferred to a tracked issue" escape
+      valve** — per `2026-05-02-engine-refactor-consolidated.md` §11.
+      A question that genuinely cannot resolve blocks PR 4.
+- [ ] Cross-axis dominance fixtures are present where a category's
+      values interact with another category's dominance: FOUO eviction
+      by classification > U AND by non-FD&R dissem; FGI banner
+      roll-up #276; SCI cross-system canonicalization; AEA exemption
+      commingling with classification (per consolidated plan §11.1
+      item (5)).
 - [ ] FD&R semantics from refactor doc Appendix A are embedded in
       §3 (Dissem set) with §-citation to §H.8.
 - [ ] Reviewer (named in PR description) has confirmed each
@@ -310,7 +323,9 @@ to make a call before the section can be filled:
 
 1. **§2 cross-branch join semantics**: refusal vs structural combination.
 2. **§3 `EYES` lattice participation**: pre- or post-migration form.
-3. **§3 `NF` clears `REL TO`**: lattice op vs `PageRewrite`.
+3. ~~**§3 `NF` clears `REL TO`**: lattice op vs `PageRewrite`.~~
+   **Resolved 2026-05-02 (see §3 above): confirm-and-document. PR 3.7
+   fill-in cites §H.8; lattice does not encode the supersession.**
 4. **§4 SCI per-system canonicalization**: lattice vs `render_canonical` boundary.
 5. **§5 SAR ordering**: lattice canonical vs render canonical.
 6. **§6 tetragraph join level**: trigraph-expanded vs tetragraph-atomic.
