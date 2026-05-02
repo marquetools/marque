@@ -287,7 +287,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor. **`CategoryShape::Container` + `ListDelimiter` (§8.5)**: per-container delimiter tables for REL TO / DISPLAY ONLY (canonical Comma, accepts Space as common-mistake); JOINT / FGI (canonical Space, accepts Comma); SAR program lists (canonical Space, accepts Comma + `SAR-`-repeat as prior-canonical); structural subparser handles EYES / SCI; documented variants emit fix proposals to canonical delimiter (rewrite path, not silent rewrite); decoder fallback on Tier-3. Build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` lands in `marque-scheme`** (not `marque-rules` — see §8.1 placement rationale; avoids a `marque-scheme → marque-rules` cycle that would otherwise form via `render_canonical`'s parameter) + **`FixReplacement<S>::Strict(FixIntent<S>) \| Decoder(Box<str>)` discriminant in `marque-rules`** (which already gains `marque-scheme` as a dep at this PR) + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
 | 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve every currently-open §10 item (item 3 already resolved 2026-05-02; seven remain); **no "explicitly deferred to a tracked issue" escape valve**. Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` lands here as a regression gate. | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
@@ -607,10 +607,37 @@ uses for confidence; we extend the pattern.
 
 The provenance tag **lands the cheap part of `FixIntent` now** (the
 type-level closure of the leak channel) and **defers nothing**. PR 3c
-ships the rule-API surface for `FixIntent<S>` — rules emit
+ships the rule-emission surface for `FixIntent<S>` — rules emit
 `FixIntent<S>` values; the engine renders them through
 `MarkingScheme::render_canonical` to produce `Canonical<S>` with correct
 provenance.
+
+**Where `FixIntent<S>` lives — and why.** `FixIntent<S>` is defined
+in **`marque-scheme`**, alongside `MarkingScheme`, `Scope`,
+`CategoryId`, and `TokenId`. It is a scheme-level type, not a rule
+type, even though rules are its primary emitter. Two reasons make
+this placement load-bearing:
+
+1. **Avoids a dep cycle.** `MarkingScheme::render_canonical(&self,
+   intent: &FixIntent<Self>) -> Box<str>` puts `FixIntent` on the
+   trait surface. If `FixIntent` lived in `marque-rules`, then
+   `marque-scheme` would have to depend on `marque-rules` — directly
+   contradicting the planned `marque-rules → marque-scheme` edge
+   (Appendix D) and creating a workspace cycle. With `FixIntent` in
+   `marque-scheme`, the only new edge is `marque-rules →
+   marque-scheme`, which `Rule::check`'s return path
+   (`FixProposal → FixReplacement::Strict(FixIntent<S>)`) already
+   needs anyway.
+2. **It is parametric over `S: MarkingScheme` and embeds
+   scheme-defined types.** `Scope`, `CategoryId`, `TokenId` are all
+   `marque-scheme`'s. A scheme-level type that references only
+   scheme-level types belongs with the scheme.
+
+The `marque-rules` view: `FixReplacement<S>` (the
+`Strict | Decoder` discriminant from PR 3c) is defined in
+`marque-rules` and re-exports `FixIntent<S>` for ergonomics —
+`use marque_rules::FixIntent;` and `use marque_scheme::FixIntent;`
+both name the same type.
 
 **Trait additions in PR 3c.** The current `MarkingScheme` trait at
 `crates/scheme/src/scheme.rs` exposes `render_portion`, `render_banner`,
@@ -619,6 +646,10 @@ adds it as a new required method. The signature is shaped to keep
 `Canonical<S>::from_render` crate-private to `marque-scheme`:
 
 ```rust
+// Both items in marque-scheme:
+
+pub struct FixIntent<S: MarkingScheme> { /* scope, category, token, ... */ }
+
 trait MarkingScheme {
     /* existing methods unchanged */
 
@@ -1552,11 +1583,22 @@ backend-architect F1, refactoring-expert F3) accepted it on three
 grounds:
 
 1. **The edge is semantically required, not incidental.** Rules need
-   scheme abstractions (`Scope`, `CategoryId`, `TokenId`) to express
-   type-safe fix emission. The pre-PR-3c shape — rules emitting
-   `Box<str>` or untyped fix descriptors and the engine reconstructing
-   the scheme context — re-introduces the G13 leak channel that §8 is
-   designed to close. Refusing the edge means refusing the closure.
+   scheme abstractions (`Scope`, `CategoryId`, `TokenId`,
+   `FixIntent<S>`) to express type-safe fix emission. The pre-PR-3c
+   shape — rules emitting `Box<str>` or untyped fix descriptors and
+   the engine reconstructing the scheme context — re-introduces the
+   G13 leak channel that §8 is designed to close. Refusing the edge
+   means refusing the closure.
+
+   **Direction of the edge matters: it is `marque-rules →
+   marque-scheme`, not the other way.** `FixIntent<S>` lives in
+   `marque-scheme` (per §8.1 placement rationale); rules import it.
+   Putting `FixIntent<S>` in `marque-rules` would force
+   `MarkingScheme::render_canonical(&self, &FixIntent<Self>)` to drag
+   `marque-rules` into the trait surface, creating a `marque-scheme
+   → marque-rules` edge that combines with `marque-rules →
+   marque-scheme` (the planned rule-API edge) into a cycle. The
+   placement is part of the acceptance, not separate from it.
 2. **Acyclicity preserved.** `marque-scheme` is downstream of nothing
    in the WASM-safe set (zero runtime deps, per CLAUDE.md). Adding
    `marque-rules → marque-scheme` therefore cannot introduce a cycle.
