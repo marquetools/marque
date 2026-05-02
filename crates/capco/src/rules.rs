@@ -11877,8 +11877,8 @@ mod tests {
             "E055 fix must prepend the foreign authority prefix"
         );
         assert!(
-            (fix.confidence.combined() - 0.9).abs() < 1e-6,
-            "E055 single-source fix confidence must be 0.9; got {}",
+            (fix.confidence.combined() - 0.95).abs() < 1e-6,
+            "E055 single-source fix confidence must be 0.95; got {}",
             fix.confidence.combined()
         );
     }
