@@ -7,7 +7,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Date:** 2026-05-02
 **Status:** ready for implementation
-**Supersedes:** `2026-05-01-engine-rule-architecture-refactor.md` (delete after this lands)
+**Supersedes:** `2026-05-01-engine-rule-architecture-refactor.md` (deleted in the PR that landed this plan)
 **Gates:** `2026-05-01-lattice-design.md` (filled in by PR 3.7 — see §11)
 **Synthesizes:**
 - Three independent reviews (system architecture, QA, backend data-flow) of the
@@ -75,7 +75,7 @@ standalone work; **this plan does not claim to close them.**
 
 ### 1.1 The pivot type does too many jobs
 
-`IsmAttributes` (`crates/ism/src/attributes.rs`) is simultaneously:
+`IsmAttributes` (`crates/ism/src/attrs.rs`) is simultaneously:
 
 1. **Parser output** — what `marque-core::parser` produces, possibly carrying
    degraded or partial structure on malformed input.
@@ -169,7 +169,7 @@ citation accuracy a correctness requirement. Murder board added:
 doc-comment `§X.Y` form (not just `citation:` fields); F.1 corpus
 skeleton lands at PR 0.5 alongside 8A (not deferred to the end);
 preemptive PR 0.6 fixes the four pre-existing citation defects the
-murder board surfaced (§10.2).
+murder board surfaced (see PR 0.5 / 0.6 rows in §4).
 
 ---
 
@@ -291,7 +291,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
-| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking \| Both` at registration. Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking). **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
+| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking). **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
 | 8 | Decoder prose null hypothesis priors (`marque-priors-3` schema bump); fold bare `NATO {level}` to canonical NATO marking. **Note: third problem class (recognizer scoring quality) — outside the two underlying problems frame; this plan does not claim closure of #258/#260, only delivery of priors and folding logic.** | #258, #260 | III |
 | 9 | Parser separator spans (#106); 7B `dissem_us` / `dissem_nato` position-attributed fields; banner-validation rules migrate to `&ProjectedMarking`; declare missing `PageRewrite`s; ATOMAL/BOHEMIA recognition; NATO-portion-in-US-doc → REL TO USA, NATO derivation as declarative `Constraint` | #106, #270, #271, #265, #246, #264, #251 | IV, VI, VIII |
 | 10 | F.1 corpus gate maturation (full per-cited-authority coverage; was PR 11). 8C vendored-source registry declared (declarative-only). | #267 Gap C if not closed by 0.6 | VIII |
@@ -341,7 +341,7 @@ invariant holds; until then, masking-pin discipline (I-16) tracks gaps.
 | # | Invariant | Enforcement | Regression catch |
 |---|-----------|-------------|------------------|
 | I-1 | Every byte in `FixProposal::replacement` came from `MarkingScheme::render_canonical(token, scope)` against a `Vocabulary<S>::shape_admits`-passing canonical | **Type system**: `Canonical`'s sealed closed-CVE constructor (`Canonical::from_cve(TokenId)`) is the only public path for closed-vocabulary tokens. Open-vocab path goes through `render_canonical` with provenance tag (§8.1). Decoder cannot construct an open-vocab `Canonical` (§8.2). | Property test: every emitted `FixProposal::replacement` decomposes back into `(TokenId, Scope)` for closed-vocab; open-vocab decomposes into `(Category, RenderCallSite)`. Compile-fail tests demonstrating `Box<str> → Canonical` paths don't exist. |
-| I-2 | `FixProposal.original` and `Diagnostic.message` carry no document content bytes — only category IDs, span offsets, BLAKE3 digests, posterior scalars, enumerated `FeatureId` labels | **Type system**: `Diagnostic::message` constructor takes `MessageTemplate` (an enum of stable strings) + `MessageArgs` (a closed set of permitted scalar/ID types). `FixProposal::original` becomes `Span` only — caller resolves bytes if needed; audit emitter resolves to BLAKE3. | `core_error_isolation.rs`; corpus canary scan for verbatim input. The `engine.rs:1336` `format!("decoder-recognized canonical form: {replacement:?}")` interpolation deletes (becomes `MessageTemplate::DecoderRecognized { token: TokenId }`). |
+| I-2 | `FixProposal.original` and `Diagnostic.message` carry no document content bytes — only category IDs, span offsets, BLAKE3 digests, posterior scalars, enumerated `FeatureId` labels | **Type system**: `Diagnostic::message` constructor takes `MessageTemplate` (an enum of stable strings) + `MessageArgs` (a closed set of permitted scalar/ID types). `FixProposal::original` becomes `Span` only — caller resolves bytes if needed; audit emitter resolves to BLAKE3. | `core_error_isolation.rs`; corpus canary scan for verbatim input. The `engine.rs:1389` `format!("decoder-recognized canonical form: {replacement:?}")` interpolation deletes (becomes `MessageTemplate::DecoderRecognized { token: TokenId }`). |
 | I-3 | `kept_fixes` non-overlapping in span order regardless of iteration direction | C-1 overlap guard (existing) | Property: shuffle, splice ascending vs. descending, byte-identical |
 | I-4 | Pass 2 reads only post-pass-1 buffer + `&CanonicalAttrs<'src>` (re-parsed) | Engine re-parses between passes (PR 7) | Property: pass-1 token change feeds pass-2 rule input |
 | I-5 | `Vec<AppliedFix>` monotonically appended; never reordered post-promotion | `Engine::fix_inner` (existing) | Snapshot test on audit-record sequence |
@@ -357,7 +357,7 @@ invariant holds; until then, masking-pin discipline (I-16) tracks gaps.
 | I-15 | `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` called only from `Engine::fix_inner` in production code (test-fixture carve-out per Constitution V Principle V; carve-out enumerated for both constructors) | Convention; type-level seal via `EnginePromotionToken`'s private field (existing); `from_parsed_unchecked` adapter does NOT exist post-PR-3c | **AST-based** CI lint at `tools/promote-callsite-lint/`; `#[cfg(test)]`/`tests/` carve-out enumerated per call site |
 | I-16 | Every `with_recognizer(StrictRecognizer)` test pin carries `// MASKING-PIN: tracks #NNN` (with `#NNN` open) or `// INTENTIONAL-STRICT: <reason>`; masking pins removed in the issue-closing PR; **GitHub-API closure check is mandatory, not optional, and follows `closed_as_duplicate_of` chains** | `tools/masking-pin-lint/` (AST-based, not regex). Backfill: 2 masking pins (`core_error_isolation.rs` → #257 closes at 3c; `corpus_accuracy.rs` → #258 closes at PR 8), 5 intentional pins | The lint; both masking pins die after PR 3c + PR 8 |
 | I-17 | Every category in `CapcoScheme::categories()` has a `Lattice` impl satisfying assoc/comm/idem/identity-with-bottom AND cross-axis dominance (FOUO eviction, FGI banner roll-up, SCI cross-system canonicalization) | Property tests in `crates/capco/tests/category_lattice_laws.rs` + cross-axis fixtures in `crates/capco/tests/cross_axis_dominance.rs` (PR 4); contents of `2026-05-01-lattice-design.md` after PR 3.7 fill-in | Property tests + cross-axis corpus regression |
-| **I-18** | **For any pass-1 `AppliedFix` with span S₁ and any pass-2 `AppliedFix` with span S₂, S₁ ∩ S₂ = ∅** (pass-2 fixes overlapping pass-1 spans demote to suggestions, not auto-applied) | Engine pass-2 dispatch filters by overlap; `Phase::Localized \| WholeMarking \| Both` declared at rule registration | Property test in `crates/engine/tests/two_pass_invariants.rs` shuffling fix orderings |
+| **I-18** | **For any pass-1 `AppliedFix` with span S₁ and any pass-2 `AppliedFix` with span S₂, S₁ ∩ S₂ = ∅** (pass-2 fixes overlapping pass-1 spans demote to suggestions, not auto-applied) | Engine pass-2 dispatch filters by overlap; `Phase::Localized \| WholeMarking` declared at rule registration (one phase per rule; defect classes needing both register two entries) | Property test in `crates/engine/tests/two_pass_invariants.rs` shuffling fix orderings |
 | **I-19** | **`Phase::WholeMarking` rules whose span overlaps a pass-1 fix re-validate against pre-pass-1 attrs (cached from pass-0) before firing** (avoids retroactive-satisfaction false positives where pass-1 reshape coincidentally matches a pass-2 predicate) | `RuleContext.pre_pass_1_attrs: Option<&CanonicalAttrs<'src>>` for `Phase::WholeMarking` rules; `None` for `Phase::Localized`; engine populates from pass-0 cache | Property test + reshape-targeted fixtures (E001 `OC → ORCON` followed by E003 ordering check) |
 
 ### Decoder/strict drift as a type-system gap
@@ -536,7 +536,7 @@ binding, not aspirational.
   clean break (§10).
 - **PR 3 split into 3a/3b/3c** — independent revert (§4).
 - **PR 0.5 F.1 skeleton + PR 0.6 preemptive citation fix** — closes the
-  HCS-P precedent exposure window (§10.2).
+  HCS-P precedent exposure window (§2.8; PR 0.5 / 0.6 rows in §4).
 - **PR 3.7 lattice §-resolution spike** — closes the gate-as-stub
   failure mode (§4, §11).
 - **Bench gap closure** — `fix_10kb` + multi-page projection + p99 tail
@@ -694,7 +694,7 @@ struct MessageArgs {
 }
 ```
 
-The `engine.rs:1337` interpolation `format!("decoder-recognized canonical
+The `engine.rs:1389` interpolation `format!("decoder-recognized canonical
 form: {replacement:?}")` deletes; replaced by
 `Message::new(MessageTemplate::DecoderRecognized, MessageArgs { token: ... })`.
 The template renders to a stable string with no input-byte interpolation;
@@ -719,7 +719,6 @@ Each rule declares its phase at construction:
 enum Phase {
     Localized,      // span MUST be strictly inside a single token boundary
     WholeMarking,   // span MUST cover a full marking span
-    Both,           // mixed; runs in pass-1 only (rare, requires team-review approval)
 }
 
 trait Rule {
@@ -731,12 +730,15 @@ trait Rule {
 Engine enforces at registration:
 - `Phase::Localized` rule's `FixProposal::span` is sub-token-only.
 - `Phase::WholeMarking` rule's span covers a full marking.
-- `Phase::Both` is a flag for a narrow set of rules that need to fire in
-  both phases; runs in pass-1 only with explicit phase-2 dispatch
-  bypass — must be justified per rule.
 
-Mixed-phase rule registration without a team-review approval comment is
-rejected at `Engine::new`.
+Each rule belongs to exactly one phase. If a defect class genuinely
+needs detection in both phases (rare), register two rule entries
+sharing a backend module — one `Phase::Localized`, one
+`Phase::WholeMarking` — each with its own `RuleId`. This keeps the
+dispatch contract single-valued at registration and surfaces the
+"this rule is doing two distinct jobs" cost at the rule-set level
+where it can be reviewed, rather than hiding it behind a `Both`
+escape hatch.
 
 ### 9.2 I-18 — span non-overlap between passes
 
@@ -807,7 +809,10 @@ about what happened (the audit ledger would say "no fixes" while the
 intermediate state was real); this approach keeps the audit ledger
 coherent with document state.
 
-R002 lives in `marque-rules` alongside R001; lands in PR 7.
+R002 is minted by `marque-engine` alongside R001 (currently
+`crates/engine/src/engine.rs:49`, `DECODER_RULE_ID`); lands in PR 7.
+Centralizing the synthetic-engine-diagnostic IDs (R001, R002, …) into
+`marque-rules` is a separate refactor not in scope for this plan.
 
 ---
 
@@ -1106,9 +1111,9 @@ murder-board override (§3.1).
 | 0.6 | VIII — preemptive citation-defect fix |
 | 1 | I, VI — splice rewrite + bench gate (already landed in PR #278) |
 | 2 | I, III, IV, VIII — `Vocabulary<S>::shape_admits`, FGI discriminant, p99 latency probe |
-| 3a | III, V, VI, VII — pivot split, marque-rules gains marque-scheme dep (graph depth +1, still acyclic) |
+| 3a | III, V, VI, VII — pivot split (`ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`); no dep-graph change yet |
 | 3b | IV, VI — rule collapse |
-| 3c | III, V (G13 → type invariant via §8), VI, VII — discriminant, sealing, FixIntent, ID retire, schema cutover |
+| 3c | III, V (G13 → type invariant via §8), VI, VII — discriminant, sealing, FixIntent, ID retire, schema cutover; **dep-graph: `marque-rules` gains a `marque-scheme` dep when `FixIntent<S>` lands here (graph depth +1, still acyclic)** |
 | 3.7 | VI, VIII — lattice §-resolution + cross-axis fixtures |
 | 4 | VI — lattice impls; `CapcoMarking::join` delegation deletion (clean break) |
 | 5 | VI, VIII — `expected_classification` widening |
@@ -1118,12 +1123,21 @@ murder-board override (§3.1).
 | 9 | IV, VI, VIII — banner-validation migration, declarative `Constraint`s, ATOMAL/BOHEMIA |
 | 10 | VIII — F.1 maturation, 8C registry declared |
 
-### Note on PR 3a dependency-graph shift
+### Note on PR 3c dependency-graph shift
 
-PR 3a introduces `Canonical<S>`, which is constrained by
-`Vocabulary<S>::shape_admits` (a `marque-scheme` trait). For `Rule`
-implementations to construct `Canonical`, **`marque-rules` gains a
-`marque-scheme` dependency**.
+PR 3c is where `marque-rules` gains a `marque-scheme` dependency. PR 3a
+adds the pivot types (`ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`)
+without touching the rule-API surface, so the dep graph is unchanged at
+3a.
+
+The shift lands in PR 3c with `FixIntent<S>`: the rule-API value rules
+emit instead of constructing `Canonical<S>` directly. `FixIntent<S>`
+references scheme-defined types (`Scope`, `CategoryId`, `TokenId`),
+which forces the `marque-rules → marque-scheme` edge. Per §8.1,
+external rule crates **never construct `Canonical<S>` directly** — they
+emit `FixIntent<S>` and the engine renders to `Canonical<S>` via
+`MarkingScheme::render_canonical` against the sealed
+`CanonicalConstructor<S>` impl.
 
 Updated dependency graph:
 
@@ -1164,7 +1178,7 @@ items) and where this plan addresses it.
 | W5 — Performance benches don't measure claims | performance-engineer | `fix_10kb`, `lint_100kb_multipage`, p99 tail (§6) |
 | W6 — Audit-schema accept-list (three reviewers) | backend-architect, root-cause-analyst, system-architect | §10 (single-value validation) |
 | FgiMarker shape collision | backend-architect #8 | PR 2 + I-9 + §2.4 |
-| `format!("decoder-recognized canonical form: {replacement:?}")` at `engine.rs:1337` | root-cause-analyst F1 | §8.3 (`MessageTemplate`) |
+| `format!("decoder-recognized canonical form: {replacement:?}")` at `engine.rs:1389` | root-cause-analyst F1 | §8.3 (`MessageTemplate`) |
 | Pass-1 reshape | backend-architect #4 | §9 (P7-1 through P7-4, I-18, I-19, R002) |
 | CAPCO-first hardening | system-architect #4 | §3.10 (semver-unstable, accept the cost) |
 | `marque-rules` gains `marque-scheme` dep | system-architect #1 | Appendix D note |
@@ -1174,5 +1188,5 @@ items) and where this plan addresses it.
 ---
 
 **End of plan.** This document supersedes
-`docs/plans/2026-05-01-engine-rule-architecture-refactor.md`. The prior
-draft is to be deleted after this plan passes user review and validation.
+`docs/plans/2026-05-01-engine-rule-architecture-refactor.md`, which was
+deleted in the PR that landed this consolidated plan.

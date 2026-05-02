@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Lattice design — per-category join semantics
 
 **Date:** 2026-05-01
-**Status:** stub — gates PR 4 of `2026-05-01-engine-rule-architecture-refactor.md`
+**Status:** stub — gates PR 4 of `2026-05-02-engine-refactor-consolidated.md`
 **Acceptance:** This document must be filled in and reviewed before
 PR 4 implementation lands. Each category section below requires:
 
@@ -20,7 +20,7 @@ PR 4 implementation lands. Each category section below requires:
    commutativity, idempotency, identity-with-bottom for the category.
 
 **Related docs:**
-- `2026-05-01-engine-rule-architecture-refactor.md` (drives this gate)
+- `2026-05-02-engine-refactor-consolidated.md` (drives this gate; supersedes the deleted 2026-05-01 draft)
 - `2026-04-19-recursive-lattice-and-decoder.md` §3 (existing
   `SciSet`/`SarSet`/`FgiSet` lattice work; equal-depth meet policy)
 - `2026-04-17-marking-scheme-lattice-design.md` §0–2 (Phase A
