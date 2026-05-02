@@ -23,12 +23,12 @@ SPDX-License-Identifier: Apache-2.0
 
 
 <div class="page-wrapper">
-  <!-- Main column: controls + document + audit stream -->
+  <!-- Main column: controls + document -->
   <div class="main-col">
 
     <section class="panel threshold-panel threshold-panel--top" aria-labelledby="thresh-heading">
       <header class="panel-header panel-header--compact">
-        <h2 id="thresh-heading" class="panel-title visually-hidden">Confidence</h2>
+        <h2 id="thresh-heading" class="panel-title visually-hidden">Confidence Threshold</h2>
       </header>
 
       <div class="threshold-slider-wrap">
@@ -36,7 +36,7 @@ SPDX-License-Identifier: Apache-2.0
                min="0" max="1" step="0.01" value="0.95"
                aria-label="Confidence threshold" />
         <div class="threshold-readout">
-          <span class="threshold-value" id="threshold-value">Fix Threshold: 95% confidence</span>
+          <span class="threshold-value" id="threshold-value">Fix Threshold: 95% Confidence</span>
           <span class="threshold-counter" id="threshold-counter">—</span>
         </div>
       </div>
@@ -46,8 +46,7 @@ SPDX-License-Identifier: Apache-2.0
            aria-label="Distribution of fix confidences"></div>
     </section>
 
-    <!-- Document toolbar — page break -->
-
+    <!-- Document toolbar (hidden in recording) -->
     <div class="doc-toolbar" role="toolbar" aria-label="Document tools">
       <button type="button" class="doc-tool" id="insert-page-break"
               title="Insert page break (form-feed) — banner roll-up resets per page">
@@ -84,15 +83,12 @@ SPDX-License-Identifier: Apache-2.0
         <hr class="doc-divider" />
       </div>
 
-      <!-- Editable body — CodeMirror mounts here -->
+      <!-- Editable body: CodeMirror mounts here -->
       <div class="doc-body">
         <div id="editor-mount"></div>
       </div>
 
-      <!-- Static Classification Authority Block — visible only when the
-           document is classified. Placeholder content for now; the live
-           CAB generator is staged for a follow-up that polishes
-           `generate_cab()` against the full §H authority chain. -->
+      <!-- Static Classification Authority Block -->
       <aside class="cab-static" id="cab-static" aria-label="Classification Authority Block">
         <div class="cab-static-row">
           <span class="cab-static-key">Classified By:</span>
@@ -113,33 +109,26 @@ SPDX-License-Identifier: Apache-2.0
 
     </div>
 
-    <!-- Audit stream — fixed-height slot-machine style feed -->
-    <div class="audit-stream" id="audit-stream" aria-label="Correction audit log">
-      <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
-    </div>
-
   </div>
 
-  <!-- Side rail: remaining diagnostics -->
+  <!-- Side rail: audit feed -->
   <aside class="side-col" aria-label="Engine controls and diagnostics">
-    <!-- Remaining diagnostics -->
-    <section class="panel remaining-panel" aria-labelledby="remain-heading">
+
+    <!-- Audit stream: slot-machine feed of applied fixes -->
+    <section class="panel audit-panel" aria-label="Correction audit log">
       <header class="panel-header">
-        <h2 id="remain-heading" class="panel-title">Left to Fix</h2>
-        <span class="panel-hint" id="remaining-count">none</span>
+        <h2 class="panel-title">Fixes Applied</h2>
       </header>
-      <ol class="remaining-list" id="remaining-list">
-        <li class="remaining-empty" id="remaining-empty">
-          Nothing yet! Marque will list any issues it finds here.
-        </li>
-      </ol>
+      <div class="audit-stream" id="audit-stream">
+        <div class="audit-empty" id="audit-empty">Corrections will appear here as you type.</div>
+      </div>
     </section>
 
   </aside>
 
 </div>
 
-<!-- Banner-derivation tooltip (positioned next to banner on focus/hover) -->
+<!-- Banner-derivation tooltip -->
 <div class="banner-tooltip" id="banner-tooltip" role="tooltip" aria-hidden="true"></div>
 
 <script>
@@ -147,7 +136,6 @@ SPDX-License-Identifier: Apache-2.0
   document.getElementById('doc-date').textContent =
     d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // CAB Declassify On = today + 25 years, in CAPCO §E YYYYMMDD form.
   const dec = new Date(d);
   dec.setFullYear(dec.getFullYear() + 25);
   const pad = n => String(n).padStart(2, '0');

@@ -1097,16 +1097,12 @@ nav .nav-hint {
 }
 
 /* Static Classification Authority Block — visible only when the
-   document is classified. Position absolutely over the bottom-left of
-   the document card so it doesn't disrupt the editor's normal flow.
-   `.doc-body` carries extra bottom padding under .is-classified so
-   long body text reflows above the block instead of running under it.
+   document is classified. Flows between the editor body and the
+   bottom banner so text never runs beneath it regardless of doc length.
    Subdued opacity communicates "placeholder" rather than "live data". */
 .cab-static {
   display: none;
-  position: absolute;
-  left: 32px;
-  bottom: 50px; /* clears the bottom banner (~36px) + breathing room */
+  margin: 0 32px 0 48px;
   padding: 10px 14px;
   border-left: 2px solid var(--charcoal-200);
   background: rgba(0, 0, 0, 0.02);
@@ -1120,10 +1116,7 @@ nav .nav-hint {
 
 .document.is-classified .cab-static {
   display: block;
-}
-
-.document.is-classified .doc-body {
-  padding-bottom: 140px; /* ~CAB block height + spacing */
+  margin-bottom: 16px;
 }
 
 .cab-static-row {

@@ -63,18 +63,31 @@ const DEMO_CONFIG = JSON.stringify({
   },
 });
 
-const DEBOUNCE_MS   = 50;
-const APPLY_IDLE_MS = 70;
-const AUTOPLAY_IDLE_MS = 6_000;
-const AUTOPLAY_CHAR_MS = 30;
-// Brief beat at single newlines (sentence end), longer beat at paragraph
-// breaks (the second newline of a `\n\n`). Lets the audit log catch up
-// and gives the reader time to take in each marking domain.
-const AUTOPLAY_NEWLINE_MS   = 150;
-const AUTOPLAY_PARAGRAPH_MS = 400;
+// ---------------------------------------------------------------------------
+// Timing — single source of truth for all delays in the page.
+// Adjust here only; nothing else in this file contains timing literals.
+// ---------------------------------------------------------------------------
+
+const DEBOUNCE_MS          = 100;   // ms to wait after last keystroke before posting to worker
+const APPLY_IDLE_MS        = 140;   // ms of editor quiet before applying pending fixes
+const AUTOPLAY_IDLE_MS     = 6_000; // ms of user inactivity before autoplay starts
+const AUTOPLAY_CHAR_MS     = 30;   // per-character typing speed during autoplay
+const AUTOPLAY_NEWLINE_MS  = 150;  // extra pause at single newlines during autoplay
+const AUTOPLAY_PARAGRAPH_MS = 150; // extra pause at paragraph breaks during autoplay
 const HISTOGRAM_BUCKETS = 20;     // 0.05-wide buckets across [0, 1]
 const PLACEHOLDER_TEXT =
-  'Type to begin — Marque\'s engine corrects, lints, and audits as you write.';
+  '';
+
+const DEBUG_TIMING = new URLSearchParams(window.location.search).has('debug_timing');
+
+function debugTimingLog(event, details = {}) {
+  if (!DEBUG_TIMING) return;
+  const payload = {
+    t: Number(performance.now().toFixed(1)),
+    ...details,
+  };
+  console.debug(`[demo-timing] ${event}`, payload);
+}
 
 // Mutable: bound to the slider in the side rail. Changing this re-issues a
 // fix request so the user can watch how few diagnostics actually drop out
@@ -103,20 +116,7 @@ let currentThreshold = 0.95;
 //   E047  warn  no-fix  SI-G requires ORCON (§H.4 p80)
 // (U//FOUO) and (//NC//REL TO USA, NATO) stay canonical — domain
 // breadth, not a fix path.
-const AUTOPLAY_SCRIPT =
-  '(u) None of this is real — I\'m showing the tool, ' +
-  'not releasing anything.\n\n' +
-  '(U//FOUO) Most internal traffic lives here: not classified, ' +
-  'just not for the public.\n\n' +
-  '(U//rel to USA, FVEY) Some drafts go to the Anglophone allies — ' +
-  'Five Eyes shareable.\n\n' +
-  '(//NC//REL TO USA, NATO) Some go to NATO partners instead.\n\n' +
-  '(SERCET//SI//REL TO USA, GBR) Things tighten up: SIGINT, ' +
-  'bilateral with the UK.\n\n' +
-  '(TS//SI-G/TK//RS/NOFRON//LES) Then the deep end. ' +
-  'Top Secret, two compartments, two dissem controls, ' +
-  'law-enforcement sensitive. Banner rolled up from the portions. ' +
-  'Typos caught on the way in.\n';
+const AUTOPLAY_SCRIPT ='';
 
 // ---------------------------------------------------------------------------
 // Worker boot
@@ -245,18 +245,116 @@ const scriptedStylePlugin = ViewPlugin.fromClass(class {
       marks.push(Decoration.mark({ class: 'demo-brand' }).range(m.index, m.index + m[0].length));
     }
 
-    for (const m of text.matchAll(/\[\[em\]\]([^\n]+?)\[\[\/em\]\]/g)) {
-      const start = m.index;
-      const end = start + m[0].length;
-      const prefixLen = 6; // [[em]]
-      const suffixLen = 7; // [[/em]]
-      if (end - start <= prefixLen + suffixLen) continue;
-      marks.push(Decoration.replace({}).range(start, start + prefixLen));
-      marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(start + prefixLen, end - suffixLen));
-      marks.push(Decoration.replace({}).range(end - suffixLen, end));
+    const OPEN_SINGLE = '[em]';
+    const CLOSE_SINGLE = '[/em]';
+    const OPEN_DOUBLE = '[[em]]';
+    const CLOSE_DOUBLE = '[[/em]]';
+
+    const delimiterPrefixes = [
+      OPEN_DOUBLE,
+      CLOSE_DOUBLE,
+      OPEN_SINGLE,
+      CLOSE_SINGLE,
+    ];
+
+    const hideRange = (from, to) => {
+      if (to > from) marks.push(Decoration.replace({}).range(from, to));
+    };
+
+    const trailingPrefixLen = (s, start, fullDelimiter) => {
+      const available = s.length - start;
+      const maxLen = Math.min(fullDelimiter.length - 1, available);
+      for (let len = maxLen; len >= 1; len--) {
+        if (s.slice(s.length - len) === fullDelimiter.slice(0, len) && s.length - len >= start) {
+          return len;
+        }
+      }
+      return 0;
+    };
+
+    let i = 0;
+    while (i < text.length) {
+      if (text.startsWith(OPEN_DOUBLE, i)) {
+        hideRange(i, i + OPEN_DOUBLE.length);
+        const contentStart = i + OPEN_DOUBLE.length;
+        const closeAt = text.indexOf(CLOSE_DOUBLE, contentStart);
+
+        if (closeAt === -1) {
+          const partialLen = trailingPrefixLen(text, contentStart, CLOSE_DOUBLE);
+          const contentEnd = text.length - partialLen;
+          if (contentEnd > contentStart) {
+            marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, contentEnd));
+          }
+          if (partialLen > 0) {
+            hideRange(text.length - partialLen, text.length);
+          }
+          break;
+        }
+
+        if (closeAt > contentStart) {
+          marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, closeAt));
+        }
+        hideRange(closeAt, closeAt + CLOSE_DOUBLE.length);
+        i = closeAt + CLOSE_DOUBLE.length;
+        continue;
+      }
+
+      if (text.startsWith(OPEN_SINGLE, i)) {
+        hideRange(i, i + OPEN_SINGLE.length);
+        const contentStart = i + OPEN_SINGLE.length;
+        const closeAt = text.indexOf(CLOSE_SINGLE, contentStart);
+
+        if (closeAt === -1) {
+          const partialLen = trailingPrefixLen(text, contentStart, CLOSE_SINGLE);
+          const contentEnd = text.length - partialLen;
+          if (contentEnd > contentStart) {
+            marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, contentEnd));
+          }
+          if (partialLen > 0) {
+            hideRange(text.length - partialLen, text.length);
+          }
+          break;
+        }
+
+        if (closeAt > contentStart) {
+          marks.push(Decoration.mark({ class: 'demo-emphasis' }).range(contentStart, closeAt));
+        }
+        hideRange(closeAt, closeAt + CLOSE_SINGLE.length);
+        i = closeAt + CLOSE_SINGLE.length;
+        continue;
+      }
+
+      if (i > 0 || i + 1 === text.length) {
+        let hiddenPartial = false;
+        for (const delimiter of delimiterPrefixes) {
+          const maxLen = Math.min(delimiter.length - 1, text.length - i);
+          for (let len = maxLen; len >= 1; len--) {
+            if (i + len === text.length && text.slice(i, i + len) === delimiter.slice(0, len)) {
+              hideRange(i, i + len);
+              i += len;
+              hiddenPartial = true;
+              break;
+            }
+          }
+          if (hiddenPartial) break;
+        }
+        if (hiddenPartial) continue;
+      }
+
+      i += 1;
     }
 
-    return Decoration.set(marks);
+    const portionPattern = /(^|\n)(\((?:ts|s|c|u|r)(?:\/\/[^)\n]+)?\))(?=\s|$)/gim;
+    for (const m of text.matchAll(portionPattern)) {
+      const leadingLen = m[1] ? m[1].length : 0;
+      const portionText = m[2] || '';
+      if (!portionText) continue;
+      const from = m.index + leadingLen;
+      const to = from + portionText.length;
+      marks.push(Decoration.mark({ class: 'demo-portion' }).range(from, to));
+    }
+
+    return Decoration.set(marks, true);
   }
 }, { decorations: v => v.decorations });
 
@@ -315,60 +413,30 @@ function applyBanner(banner, topEl, bottomEl) {
 // ---------------------------------------------------------------------------
 
 let auditEntryCount = 0;
-const AUDIT_SLOT_MIN_DWELL_MS = 1600;
-const AUDIT_SLOT_TRANSITION_MS = 320;
-const auditQueue = [];
-let auditSlotBusy = false;
+const MAX_AUDIT_ENTRIES = 80;
 
-function ensureAuditSlot(stream, emptyEl) {
-  let slot = stream.querySelector('.audit-slot');
-  if (slot) return slot;
+function ensureAuditList(stream) {
+  let list = stream.querySelector('.audit-list');
+  if (list) return list;
 
-  slot = document.createElement('div');
-  slot.className = 'audit-slot';
-
-  const reel = document.createElement('div');
-  reel.className = 'audit-reel';
-  reel.appendChild(emptyEl);
-  slot.appendChild(reel);
-  stream.replaceChildren(slot);
-  return slot;
+  list = document.createElement('div');
+  list.className = 'audit-list';
+  stream.appendChild(list);
+  return list;
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+function prependAuditNode(node, stream, emptyEl) {
+  const list = ensureAuditList(stream);
 
-async function renderAuditQueue(stream, emptyEl) {
-  if (auditSlotBusy) return;
-  auditSlotBusy = true;
-  const slot = ensureAuditSlot(stream, emptyEl);
+  emptyEl.hidden = true;
+  stream.classList.add('has-entries');
+  list.prepend(node);
 
-  while (auditQueue.length > 0) {
-    const nextNode = auditQueue.shift();
-    const current = slot.querySelector('.audit-reel');
-
-    const incoming = document.createElement('div');
-    incoming.className = 'audit-reel is-enter';
-    incoming.appendChild(nextNode);
-    slot.appendChild(incoming);
-
-    void incoming.offsetHeight;
-    incoming.classList.add('is-enter-active');
-    if (current) current.classList.add('is-exit');
-    await delay(AUDIT_SLOT_TRANSITION_MS);
-
-    if (current && current.parentNode === slot) current.remove();
-    incoming.classList.remove('is-enter', 'is-enter-active');
-    await delay(AUDIT_SLOT_MIN_DWELL_MS);
+  while (list.childElementCount > MAX_AUDIT_ENTRIES) {
+    list.lastElementChild.remove();
   }
 
-  auditSlotBusy = false;
-}
-
-function queueAuditNode(node, stream, emptyEl) {
-  auditQueue.push(node);
-  void renderAuditQueue(stream, emptyEl);
+  stream.scrollTop = 0;
 }
 
 function enqueueAuditEntry(record, stream, emptyEl) {
@@ -502,7 +570,7 @@ function enqueueAuditEntry(record, stream, emptyEl) {
     entry.appendChild(metaRow);
   }
 
-  queueAuditNode(entry, stream, emptyEl);
+  prependAuditNode(entry, stream, emptyEl);
   auditEntryCount++;
 }
 
@@ -541,6 +609,7 @@ let activeSeq = 0;          // last-issued request seq
 let activeRequestText = '';
 let lastSettledText = null; // last text we've successfully processed
 let lastDocChangeAt = 0;
+const pendingFixRequests = new Map();
 
 function clearPendingApply() {
   if (applyTimer !== null) {
@@ -553,6 +622,12 @@ function deferApplyWhileTyping(view, refs, msg) {
   const idleForMs = performance.now() - lastDocChangeAt;
   if (idleForMs >= APPLY_IDLE_MS) return false;
 
+  debugTimingLog('apply-deferred', {
+    seq: msg.seq,
+    idleForMs: Number(idleForMs.toFixed(1)),
+    waitMs: Number((APPLY_IDLE_MS - idleForMs).toFixed(1)),
+  });
+
   clearPendingApply();
   applyTimer = setTimeout(() => {
     applyTimer = null;
@@ -563,6 +638,7 @@ function deferApplyWhileTyping(view, refs, msg) {
 
 function scheduleUpdate(view, refs) {
   clearTimeout(debounceTimer);
+  debugTimingLog('update-scheduled', { delayMs: DEBOUNCE_MS, docLen: view.state.doc.length });
   debounceTimer = setTimeout(() => requestUpdate(view, refs), DEBOUNCE_MS);
 }
 
@@ -571,6 +647,13 @@ function requestUpdate(view, refs, { force = false } = {}) {
   if (!force && text === lastSettledText) return;
   activeSeq = nextSeq++;
   activeRequestText = text;
+  pendingFixRequests.set(activeSeq, performance.now());
+  debugTimingLog('worker-request', {
+    seq: activeSeq,
+    force,
+    docLen: text.length,
+    threshold: currentThreshold,
+  });
   worker.postMessage({
     type: 'fix',
     seq: activeSeq,
@@ -581,8 +664,28 @@ function requestUpdate(view, refs, { force = false } = {}) {
 }
 
 function applyFixResult(view, refs, msg) {
+  const requestStartedAt = pendingFixRequests.get(msg.seq);
+  const roundTripMs = typeof requestStartedAt === 'number'
+    ? performance.now() - requestStartedAt
+    : null;
+
   // Drop stale results — a newer request has already been issued.
-  if (msg.seq !== activeSeq) return;
+  if (msg.seq !== activeSeq) {
+    debugTimingLog('worker-stale', {
+      seq: msg.seq,
+      activeSeq,
+      roundTripMs: roundTripMs === null ? null : Number(roundTripMs.toFixed(1)),
+    });
+    pendingFixRequests.delete(msg.seq);
+    return;
+  }
+
+  debugTimingLog('worker-result', {
+    seq: msg.seq,
+    roundTripMs: roundTripMs === null ? null : Number(roundTripMs.toFixed(1)),
+    applied: (msg.applied || []).length,
+    remaining: (msg.remaining || []).length,
+  });
 
   if (deferApplyWhileTyping(view, refs, msg)) return;
 
@@ -593,6 +696,11 @@ function applyFixResult(view, refs, msg) {
   // typing — applying a valid-but-stale span is what can shove subsequent
   // keystrokes into the wrong visual position.
   if (currentText !== activeRequestText) {
+    debugTimingLog('apply-skipped-text-mismatch', {
+      seq: msg.seq,
+      currentLen: currentText.length,
+      requestLen: activeRequestText.length,
+    });
     scheduleUpdate(view, refs);
     return;
   }
@@ -661,6 +769,12 @@ function applyFixResult(view, refs, msg) {
 
   // Multi-page indicator — derives from the post-fix text.
   updatePageCount(fixedText, refs);
+  pendingFixRequests.delete(msg.seq);
+  debugTimingLog('apply-complete', {
+    seq: msg.seq,
+    fixedLen: fixedText.length,
+    applied: (msg.applied || []).length,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +849,10 @@ function updateRemainingPanel(view, remaining, refs) {
   const list = refs.remainingList;
   const empty = refs.remainingEmpty;
   const count = refs.remainingCount;
+
+  if (!list || !empty || !count) {
+    return;
+  }
 
   // Wipe and rebuild — small lists, simple wins.
   list.replaceChildren();
@@ -853,7 +971,7 @@ function prependNofornCallout(stream, emptyEl) {
   rule.textContent = 'capco/noforn-clears-rel-to';
   el.appendChild(rule);
 
-  queueAuditNode(el, stream, emptyEl);
+  prependAuditNode(el, stream, emptyEl);
 }
 
 // ---------------------------------------------------------------------------
@@ -950,7 +1068,7 @@ function attachThresholdControls(view, refs) {
 
   function setThreshold(t, opts = {}) {
     currentThreshold = Math.max(0, Math.min(1, Number(t) || 0));
-    valueEl.textContent = `${Math.round(currentThreshold * 100)}% confidence`;
+    valueEl.textContent = `Fix Threshold: ${Math.round(currentThreshold * 100)}% Confidence`;
     if (slider.value !== String(currentThreshold)) {
       slider.value = String(currentThreshold);
     }
@@ -1175,6 +1293,115 @@ function makeAutoplay(view) {
   return { abort };
 }
 
+function installRecorderApi(view) {
+  const resolveEditorScrollTarget = () => {
+    const cmScroller = view.scrollDOM || view.dom.querySelector('.cm-scroller');
+    if (cmScroller && cmScroller.scrollHeight > cmScroller.clientHeight + 1) {
+      return cmScroller;
+    }
+
+    const docBody = view.dom.closest('.doc-body') || document.querySelector('.doc-body');
+    if (docBody) return docBody;
+
+    return cmScroller;
+  };
+
+  const scrollEditorToBottom = () => {
+    const target = resolveEditorScrollTarget();
+    if (!target) return;
+    target.scrollTop = target.scrollHeight;
+  };
+
+  // appendText is synchronous (returns immediately). It chains setTimeout
+  // calls internally so the browser event loop handles cadence with zero
+  // Playwright IPC overhead. `window.__marqueDemoRecorder.busy` is true
+  // while typing is in progress — Playwright polls this to know when done.
+  const appendText = (text, timing = {}) => {
+    const charMs = Number.isFinite(timing.charMs) ? timing.charMs : 30;
+    const sentencePauseMs = Number.isFinite(timing.sentencePauseMs) ? timing.sentencePauseMs : 0;
+    const commaPauseMs = Number.isFinite(timing.commaPauseMs) ? timing.commaPauseMs : 0;
+
+    const chars = [...String(text ?? '')];
+    if (chars.length === 0) return;
+
+    window.__marqueDemoRecorder.busy = true;
+    let index = 0;
+    let prevCh = '';
+
+    const typeNext = () => {
+      if (index >= chars.length) {
+        window.__marqueDemoRecorder.busy = false;
+        return;
+      }
+      const ch = chars[index++];
+      const from = view.state.doc.length;
+      view.dispatch({ changes: { from, to: from, insert: ch } });
+      // Keep the latest typed text visible once the page starts overflowing.
+      scrollEditorToBottom();
+
+      let wait = charMs > 0 ? charMs : 0;
+      if (ch === ' ') {
+        if ('.!?'.includes(prevCh) && sentencePauseMs > 0) wait += sentencePauseMs;
+        else if (',;'.includes(prevCh) && commaPauseMs > 0) wait += commaPauseMs;
+      }
+      prevCh = ch;
+      setTimeout(typeNext, wait);
+    };
+
+    setTimeout(typeNext, 0);
+  };
+
+  const clearDocument = () => {
+    const len = view.state.doc.length;
+    if (len > 0) {
+      view.dispatch({ changes: { from: 0, to: len, insert: '' } });
+    }
+  };
+
+  const setThreshold = (value) => {
+    const slider = document.getElementById('threshold-slider');
+    if (!slider) return;
+    slider.value = String(value);
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  const fadeHeader = () => {
+    const header = document.querySelector('.doc-header');
+    if (header) header.classList.add('is-hidden');
+  };
+
+  const scrollEditor = (offset) => {
+    const target = resolveEditorScrollTarget();
+    if (!target) return;
+    const delta = Number(offset) || 0;
+    target.scrollTo({ top: target.scrollTop + delta, behavior: 'smooth' });
+  };
+
+  let ejectionCount = 0;
+
+  const fifoText = (eject) => {
+    const textWrapper = document.querySelector('#editor-mount > div > div.cm-scroller > div');
+    if (!textWrapper) return;
+    const textElements = textWrapper.querySelectorAll('.cm-line');
+    const texts = Array.from(textElements);
+    if (texts.length === 0) return;
+    texts.slice(0, eject + ejectionCount).forEach(el => el.style.display = 'none');
+    ejectionCount += eject;
+  };
+
+  window.__marqueDemoRecorder = {
+    ready: true,
+    busy: false,
+    appendText,
+    clearDocument,
+    setThreshold,
+    fadeHeader,
+    scrollEditor,
+    fifoText,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
@@ -1300,6 +1527,8 @@ async function main() {
     state: startState,
     parent: document.getElementById('editor-mount'),
   });
+
+  installRecorderApi(view);
 
   // Threshold controls — wire after the view exists so chips/slider can
   // re-issue requestUpdate against the editor.
