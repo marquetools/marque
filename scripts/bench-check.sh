@@ -17,10 +17,11 @@
 # across the SC-005 sweep. Fails if R² falls below the `r_squared_min`
 # threshold in `benches/baseline.json`.
 #
-# Four gates are checked:
+# Five gates are checked:
 #   - `lint_10kb`                         (SC-001, target 16ms upper CI)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
+#   - `fix_throughput`                    (fix-apply linearity, R² >= 0.9 across size sweep)
 #   - `deadline_overhead`                 (Spec 005, with-deadline overhead ≤ max_ratio_pct)
 #
 # Per-bench regression policy:
@@ -567,17 +568,22 @@ assert 0.0 < v <= 1.0, 'out of range'
         return 1
     fi
 
-    # Extract every `fix_throughput/<size>mb     time:   [lower mean upper]` line
-    # and compute R² on (size_bytes, mean_time_µs). Sizes are extracted from the
-    # `<N>mb` label emitted by `BenchmarkId::from_parameter(format!("{}mb", ...))`.
+    # Extract every `fix_throughput/<bytes>     time:   [lower mean upper]` line
+    # and compute R² on (size_bytes, mean_time_µs). The bench uses
+    # `BenchmarkId::from_parameter(input.len())` — a raw byte count — matching
+    # the `lint_scaling/<bytes>` convention.  Parsing the byte count directly
+    # avoids the integer-MB rounding that would occur if we encoded an `<N>mb`
+    # label and then reconstructed bytes as `N * 1_000_000`.
     local r_squared
     r_squared=$(python3 - "$bench_output" <<'PY' 2>/dev/null || true
 import math, re, sys
 
 text = sys.argv[1]
-# Match `fix_throughput/<N>mb` followed by `time:   [lower unit mean unit upper unit]`.
+# Match `fix_throughput/<bytes>` followed by `time:   [lower unit mean unit upper unit]`.
+# The byte-count parameter matches one or more digits with no suffix, just like
+# the `lint_scaling/<bytes>` IDs parsed by check_linear_scaling.
 size_pat = re.compile(
-    r"fix_throughput/(\d+)mb\s+(?:\n\s+)?time:\s+\[\s*"
+    r"fix_throughput/(\d+)\s+(?:\n\s+)?time:\s+\[\s*"
     r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
     r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)\s+"
     r"([0-9]+(?:\.[0-9]+)?)\s*([µnm]s)"
@@ -595,8 +601,8 @@ def to_us(value, unit):
 
 points = []
 for m in size_pat.finditer(text):
-    # Convert MB label back to bytes for the regression x-axis.
-    size_bytes = int(m.group(1)) * 1_000_000
+    # The parameter is already the byte count — no conversion needed.
+    size_bytes = int(m.group(1))
     # Group 4 / unit 5 is the mean (middle of the three CI numbers).
     mean_us = to_us(m.group(4), m.group(5))
     points.append((size_bytes, mean_us))

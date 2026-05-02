@@ -15,9 +15,14 @@
 //! each size. Linearity is enforced by `scripts/bench-check.sh` via the
 //! `fix_throughput` R² gate in `benches/baseline.json` (R² ≥ 0.9 across the
 //! size sweep), mirroring the `lint_scaling` gate for SC-005. The
-//! `fix_throughput/100mb` data point specifically guards the
+//! `fix_throughput/100000000` data point specifically guards the
 //! `Vec::splice`-per-fix regression described in the
 //! `perf(engine): fix-apply path is quadratic in input size` issue.
+//!
+//! Benchmark IDs are the actual byte length of the generated input (e.g.
+//! `fix_throughput/10912000`), matching the `lint_scaling/<bytes>` convention
+//! so `bench-check.sh` can use the raw byte count as the regression x-axis
+//! without integer-MB rounding artifacts.
 //!
 //! **Expected behavior after the fix**: throughput at 100 MB should be in the
 //! same MB/s ballpark as at 1 MB (within 2×). Before the fix the 100 MB case
@@ -102,7 +107,7 @@ fn fix_throughput_benchmark(c: &mut Criterion) {
         let input = build_fix_input(size);
         group.throughput(Throughput::Bytes(input.len() as u64));
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}mb", input.len() / 1_000_000)),
+            BenchmarkId::from_parameter(input.len()),
             &input,
             |b, input| {
                 b.iter(|| {
