@@ -12,12 +12,14 @@
 //! rate" shape a batch user would feed in.
 //!
 //! The benchmark sweeps from 1 MB to 100 MB and reports throughput (MB/s) at
-//! each size. Linearity is verified by inspection of the Criterion HTML report
-//! (`target/criterion/`). The `fix_throughput/100mb` data point specifically
-//! gates the fix from the quadratic `Vec::splice`-per-fix regression described
-//! in the `perf(engine): fix-apply path is quadratic in input size` issue.
+//! each size. Linearity is enforced by `scripts/bench-check.sh` via the
+//! `fix_throughput` R² gate in `benches/baseline.json` (R² ≥ 0.9 across the
+//! size sweep), mirroring the `lint_scaling` gate for SC-005. The
+//! `fix_throughput/100mb` data point specifically guards the
+//! `Vec::splice`-per-fix regression described in the
+//! `perf(engine): fix-apply path is quadratic in input size` issue.
 //!
-//! **Expected behaviour after the fix**: throughput at 100 MB should be in the
+//! **Expected behavior after the fix**: throughput at 100 MB should be in the
 //! same MB/s ballpark as at 1 MB (within 2×). Before the fix the 100 MB case
 //! did not complete within 20 minutes of single-threaded CPU.
 

@@ -1038,6 +1038,14 @@ impl Engine {
                 let extra: usize = kept_fixes
                     .iter()
                     .map(|f| {
+                        // `saturating_sub` gives the per-fix growth contribution
+                        // (0 when the replacement is shorter than the span).
+                        // The result is an upper-bound preallocation: fixes that
+                        // shrink the buffer contribute 0 here, so the true net
+                        // change may be smaller. This is intentional — it avoids
+                        // the sign-handling complexity of a true net delta while
+                        // still preventing the O(log N) reallocation cascade that
+                        // would occur for repeated grow-by-one insertions.
                         f.replacement
                             .len()
                             .saturating_sub(f.span.end - f.span.start)
