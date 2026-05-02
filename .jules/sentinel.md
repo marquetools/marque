@@ -25,3 +25,8 @@ The year **is 2026**.
 **Vulnerability:** The `marque-server` axum REST API lacked the `X-Content-Type-Options: nosniff` header.
 **Learning:** Axum does not add security headers by default. If `nosniff` is missing, API clients or browsers directly interacting with the endpoints might perform MIME sniffing and misinterpret the response, which could pose XSS risks.
 **Prevention:** Use `tower_http::set_header::SetResponseHeaderLayer` to globally enforce `X-Content-Type-Options: nosniff` across all axum routes. Ensure `tower-http` has the `set-header` feature enabled.
+
+## 2026-05-02 - [MEDIUM] Missing Clickjacking Protection (X-Frame-Options)
+**Vulnerability:** The `X-Frame-Options` HTTP response header was absent in both the `marque-server` axum REST API and the static dev server (`demo/bin/serve.js`).
+**Learning:** Without this header, the application could be embedded in an iframe on a malicious third-party site, exposing users to clickjacking attacks.
+**Prevention:** Always set `X-Frame-Options: DENY` (or `SAMEORIGIN`) on all HTTP responses, particularly in web applications and API endpoints, to prevent the content from being rendered within a `<frame>`, `<iframe>`, `<embed>` or `<object>`. In axum, this can be achieved using another `SetResponseHeaderLayer`.
