@@ -36,7 +36,7 @@ SPDX-FileCopyrightText = "2019 Raisty <https://github.com/raisty>"
 
 
 # IBM Plex Sans — vendored locally from the @fontsource/ibm-plex-sans npm
-# package (SIL OFL 1.1) for the same reason as Fira Code above. See
+# package (SIL OFL 1.1). See
 # whitepaper §8.6 and src/assets/IBM-Plex-Sans/README.md.
 [[annotations]]
 path = ["assets/IBM-Plex-Sans/**"]
