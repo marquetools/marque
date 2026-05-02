@@ -107,7 +107,8 @@ function handleRequest(req, res) {
     if (!wasmRoot) {
       res.writeHead(503, {
         'Content-Type': 'text/plain',
-        'X-Content-Type-Options': 'nosniff'
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
       });
       res.end(
         'WASM module not found.\n\n' +
@@ -137,7 +138,8 @@ function serveFile(res, absPath) {
   if (!isSafeDemo && !isSafeWasm) {
     res.writeHead(403, {
       'Content-Type': 'text/plain',
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY'
     });
     res.end('403 Forbidden');
     return;
@@ -148,13 +150,15 @@ function serveFile(res, absPath) {
       if (err.code === 'ENOENT') {
         res.writeHead(404, {
           'Content-Type': 'text/plain',
-          'X-Content-Type-Options': 'nosniff'
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY'
         });
         res.end('404 Not Found');
       } else {
         res.writeHead(500, {
           'Content-Type': 'text/plain',
-          'X-Content-Type-Options': 'nosniff'
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY'
         });
         res.end('500 Internal Server Error');
       }
@@ -171,6 +175,7 @@ function serveFile(res, absPath) {
       // refuse to load the worker script and its WASM imports.
       'Cross-Origin-Resource-Policy': 'same-origin',
       'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
     });
     res.end(data);
   });
