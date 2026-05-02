@@ -38,7 +38,7 @@ experimental = true
 [tasks.build-wasm]
 run = '''
 wasm-pack build crates/wasm --profiling --target web &&
-wasm-opt --enable-bulk-memory-opt --enable-bulk-memory --enable-extended-const --enable-multivalue --enable-nontrapping-float-to-int --enable-reference-types --enable-sign-ext --enable-simd --enable-tail-call --generate-global-effects -O3 -monomorphize --precompute-propagate --low-memory-unused --gufa --vacuum -O3 --converge --strip-toolchain-annotations --out-name marque_wasm_bg_tmp --out-dir crates/wasm/pkg/ crates/wasm/pkg/marque_wasm_bg.wasm &&
+wasm-opt --enable-bulk-memory-opt --enable-bulk-memory --enable-extended-const --enable-multivalue --enable-nontrapping-float-to-int --enable-reference-types --enable-sign-ext --enable-simd --enable-tail-call --generate-global-effects -O3 --monomorphize --precompute-propagate --low-memory-unused --gufa --vacuum -O3 --converge --strip-toolchain-annotations -o crates/wasm/pkg/marque_wasm_bg_tmp.wasm crates/wasm/pkg/marque_wasm_bg.wasm &&
 rm crates/wasm/pkg/marque_wasm_bg.wasm &&
 mv crates/wasm/pkg/marque_wasm_bg_tmp.wasm crates/wasm/pkg/marque_wasm_bg.wasm
 '''
