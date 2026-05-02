@@ -11,7 +11,11 @@ SPDX-FileCopyrightText = "Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-path = ["assets/images/marque_logo*.svg", "assets/images/marque_logomark*.svg", "assets/images/marque_logomark*.png"]
+path = [
+  "assets/images/marque_logo*.svg",
+  "assets/images/marque_logomark*.svg",
+  "assets/images/marque_logomark*.png"
+]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Knitli Inc. — design by Adam Poulemanos"
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
@@ -30,15 +34,14 @@ SPDX-FileCopyrightText = "Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbe
 SPDX-License-Identifier = "MIT"
 
 [[annotations]]
-path = ["assets/OCR-B/**"]
+path = ["assets/fonts/OCR-B/**"]
 SPDX-License-Identifier = "OFL-1.1-RFN"
 SPDX-FileCopyrightText = "2019 Raisty <https://github.com/raisty>"
 
-
 # IBM Plex Sans — vendored locally from the @fontsource/ibm-plex-sans npm
 # package (SIL OFL 1.1). See
-# whitepaper §8.6 and src/assets/IBM-Plex-Sans/README.md.
+# whitepaper §8.6 and assets/fonts/IBM-Plex-Sans/README.md.
 [[annotations]]
-path = ["assets/IBM-Plex-Sans/**"]
+path = ["assets/fonts/IBM-Plex-Sans/**"]
 SPDX-License-Identifier = "OFL-1.1"
 SPDX-FileCopyrightText = "2019 IBM Corp."
