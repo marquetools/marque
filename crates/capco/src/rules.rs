@@ -6593,7 +6593,7 @@ fn fgi_classification_authority_prefix(marker: &FgiMarker) -> String {
 
 /// Fix confidence for E055 when there is a single source country or the source
 /// is concealed. Auto-applies under the default 0.95 engine threshold.
-const E055_SINGLE_SOURCE_CONFIDENCE: f32 = 0.9;
+const E055_SINGLE_SOURCE_CONFIDENCE: f32 = 0.95;
 
 /// Fix confidence for E055 when there are multiple foreign source countries.
 /// Below the default 0.95 threshold so the fix surfaces as a suggestion only
