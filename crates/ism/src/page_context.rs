@@ -213,7 +213,7 @@ impl PageContext {
                 // expected_classification() is None, every portion had a None
                 // classification, so the fallback max_by_key below would also
                 // return None. Returning None here is equivalent and avoids
-                // synthesising a Fgi with an invalid level.
+                // synthesizing a Fgi with an invalid level.
                 let level = self.expected_classification()?;
                 return Some(MarkingClassification::Fgi(FgiClassification {
                     countries: fgi_marker.countries,
