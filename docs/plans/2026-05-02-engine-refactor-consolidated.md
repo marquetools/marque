@@ -193,7 +193,8 @@ violates the laws. PR 4 (lattice-law foundation) lands before PR 5
 (`expected_classification()` widening). Cost: #276 partial close delays
 one PR. Worth it. **Murder board override: PR 4 is gated by PR 3.7
 (lattice §-resolution spike), which fills the lattice design doc with
-actual math, including the eight §10 open-question resolutions and
+actual math, including the §10 open-question resolutions (seven
+currently open after item 3 was resolved in-place 2026-05-02) and
 cross-axis dominance fixtures (FOUO eviction, FGI banner roll-up,
 SCI cross-system canonicalization).** The previous lattice attempt's
 "bandaged until almost unused" failure mode was the gate-as-stub
@@ -286,9 +287,9 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
-| 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve all eight §10 open items; **no "explicitly deferred to a tracked issue" escape valve**. Patch §3 Q3 (`noforn-clears-rel-to` is already a declared `PageRewrite` per CLAUDE.md "Phase B"; reframe as confirm-and-document). Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
-| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
+| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve every currently-open §10 item (item 3 already resolved 2026-05-02; seven remain); **no "explicitly deferred to a tracked issue" escape valve**. Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
+| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` lands here as a regression gate. | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
 | 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking), and the **fix-emission-time** phase contract (sub-token vs. whole-marking span shape) — registration sees only the tag, span shape can only be checked when a `FixProposal` exists. **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). **R003 diagnostic** for phase-contract violation (rule emitted a fix span outside its declared phase). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
@@ -610,6 +611,35 @@ ships the rule-API surface for `FixIntent<S>` — rules emit
 `FixIntent<S>` values; the engine renders them through
 `MarkingScheme::render_canonical` to produce `Canonical<S>` with correct
 provenance.
+
+**Trait additions in PR 3c.** The current `MarkingScheme` trait at
+`crates/scheme/src/scheme.rs` exposes `render_portion`, `render_banner`,
+`project`, and `page_rewrites` — but **not** `render_canonical`. PR 3c
+adds it as a new required method. The signature is shaped to keep
+`Canonical<S>::from_render` crate-private to `marque-scheme`:
+
+```rust
+trait MarkingScheme {
+    /* existing methods unchanged */
+
+    /// Render the canonical bytes for `intent`. Returns the byte
+    /// payload (not `Canonical<S>`) — the engine wraps the result
+    /// into `Canonical<S>` via the sealed `CanonicalConstructor<S>`
+    /// impl, which is the only path with access to
+    /// `Canonical::from_render`. Implementations live in scheme
+    /// crates (e.g. `marque-capco::CapcoScheme`) and never see
+    /// `Canonical<S>` directly.
+    fn render_canonical(&self, intent: &FixIntent<Self>) -> Box<str>;
+}
+```
+
+This shape addresses an otherwise-fatal visibility hazard:
+`Canonical::from_render` is `pub(crate)` to `marque-scheme`, so a
+`MarkingScheme` implementor in an external crate (`CapcoScheme` in
+`marque-capco`, future `marque-cui::CuiScheme`, etc.) cannot construct
+`Canonical<S>` directly. By having `render_canonical` return *bytes*
+and letting the engine wrap, the visibility seal is preserved without
+forcing scheme implementations to move into the engine crate.
 
 **Cross-crate rule emission.** Rule crates other than `marque-capco`
 (e.g., a future `marque-cui`, a partner-national scheme adapter) need to
@@ -1027,11 +1057,36 @@ cached as `Engine::scheduled_rewrites`. **However**, today's
 order in `build_page_rewrites` is currently consistent with the
 scheduler's topological order (the comment at `scheme.rs:454` makes
 the dependency on `CAT_REL_TO` explicit), but the scheduler is not
-the *driver* of dispatch yet. PR 3.7 documents this state of affairs
-and PR 4 / Phase D-or-later switches `project()` to consume
-`Engine::scheduled_rewrites` — at which point the
-build-time-and-runtime orders become a single source of truth instead
-of two hand-kept-consistent ones.
+the *driver* of dispatch yet.
+
+PR 3.7 documents this state of affairs. The cutover to
+scheduler-driven dispatch is a **trait change**, not a refactor:
+`MarkingScheme::project(&self, scope, markings) -> Self::Marking`
+takes no engine state today, so it cannot consume an engine-cached
+order. Two options for the trait change, to be chosen and scheduled
+at PR 4:
+
+- **Option A — augment `project`'s signature**: add
+  `MarkingScheme::project_with_order(&self, scope, markings, order:
+  &[RewriteId]) -> Self::Marking` (existing `project` becomes a
+  default-impl shim that calls `project_with_order` with the scheme's
+  own declaration order). The engine, holding
+  `Engine::scheduled_rewrites`, calls the new method.
+- **Option B — invert dispatch**: scheme exposes
+  `apply_rewrite(&self, rewrite_id, marking) -> marking` and the
+  engine drives the per-id loop in scheduler order. `project` then
+  becomes a pure category-wise join (no rewrite dispatch).
+
+The choice between A and B is left to PR 4 — both are realizable,
+both close the "two hand-kept-consistent orders" hazard. PR 4's row
+in §4 is updated to call out that this trait change is in scope when
+the lattice impls land. Until that PR ships, the build-arranged
+declaration order remains the runtime contract; CI guards against
+divergence by asserting `Engine::scheduled_rewrites` matches
+`CapcoScheme::page_rewrites().iter().map(|r| r.id)` byte-for-byte
+(this assert lives in the lattice property test suite added at
+PR 4 and is the only thing keeping the two orders honest until
+the cutover).
 
 ### 11.3 Acceptance
 

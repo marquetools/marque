@@ -18,6 +18,13 @@ PR 4 implementation lands. Each category section below requires:
    result, including any edge cases the §-citation calls out.
 4. Property-test fixtures (named test cases) covering associativity,
    commutativity, idempotency, identity-with-bottom for the category.
+5. **Cross-axis dominance fixtures** (added 2026-05-02 per
+   `2026-05-02-engine-refactor-consolidated.md` §11.1) where the
+   category's values interact with another category's dominance:
+   FOUO eviction by classification > U AND by non-FD&R dissem; FGI
+   banner roll-up #276; SCI cross-system canonicalization; AEA
+   exemption commingling with classification. The §9 acceptance
+   checklist enumerates these by category.
 
 **Related docs:**
 - `2026-05-02-engine-refactor-consolidated.md` (drives this gate; supersedes the deleted 2026-05-01 draft)
