@@ -284,7 +284,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
 | 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
-| 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
+| 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor; build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
 | 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
@@ -731,6 +731,129 @@ The template renders to a stable string with no input-byte interpolation;
 the audit consumer reads the template enum + args, not a free-form string.
 
 This is what makes I-2 a type invariant rather than a grep firewall.
+
+### 8.4 Open-vocabulary shape descriptors
+
+I-8 already routes open-vocabulary identifier shape checks through
+`Vocabulary<S>::shape_admits` — keeping `is_ascii_alphanumeric()` and
+similar inline predicates out of `marque-core/parser.rs`. The slot
+exists; the question is *how rich* the slot is.
+
+Today's implicit shape is just a predicate
+(`shape_admits(category, bytes) -> bool`). Replacing the predicate
+with a declarative descriptor — at small cost — buys real leverage:
+build-time fixture generation for fuzzing, shape-aware diagnostics
+("expected 4-6 uppercase alphanumeric, got 'AB' (length 2)"), rendered
+docs of every category's shape, and a CI lint that flags spreading
+use of an escape valve. The ~150 LOC investment threads into PR 2's
+existing scope; no new PR.
+
+```rust
+pub enum CategoryShape {
+    /// Fixed length. Country trigraphs (3 alpha), ISMCAT tetragraphs
+    /// (4 alpha), etc.
+    Exact { len: usize, chars: CharClass },
+
+    /// Length range. SCI control (2-3 alpha), SCI sub-compartment
+    /// (4-6 alphanumeric), SAR top-level (2 alpha), SAR sub-program
+    /// (3 alpha), etc.
+    Range { min: usize, max: usize, chars: CharClass },
+
+    /// Compositional grammar (SCI's `control + (comp (sub-comp)*)*`
+    /// recursion). Carries a small descriptor of the sub-shapes; the
+    /// recursive structure isn't shoehornable into `Range`.
+    Structured(StructuredShape),
+
+    /// Last-resort escape valve. `Custom` use is rare by design; CI
+    /// lint flags any new occurrence so it gets named-reviewer
+    /// approval at PR time, not retroactively.
+    Custom(fn(&[u8]) -> bool),
+}
+
+pub enum CharClass {
+    UpperAlpha,         // [A-Z]
+    Alpha,              // [A-Za-z]
+    UpperAlphaNumeric,  // [A-Z0-9]
+    AlphaNumeric,       // [A-Za-z0-9]
+    Numeric,            // [0-9]
+}
+
+trait Vocabulary<S: MarkingScheme> {
+    /* existing methods unchanged */
+
+    fn category_shape(&self, category: CategoryId) -> &'static CategoryShape;
+
+    /// Default impl derived from `category_shape`. Implementors that
+    /// provide `category_shape` can leave this alone.
+    fn shape_admits(&self, category: CategoryId, bytes: &[u8]) -> bool {
+        self.category_shape(category).admits(bytes)
+    }
+}
+```
+
+**Three-layer composition.** Open-vocab shape descriptors do not
+replace the existing CVE lookup or the corpus-derived decoder priors
+— they slot beneath both:
+
+| Layer | Mechanism | Trust | Example for SCI control |
+|-------|-----------|-------|-------------------------|
+| 1 | `Vocabulary<S>::lookup` matches a `TokenId` (CVE-registered) | Highest — sealed via `Canonical::from_cve` (§8.1) | `SI`, `TK`, `HCS`, `RSV` (CVEnumISMSCIControls.xml) |
+| 2 | `lookup` misses; `category_shape` admits; corpus prior present | Medium — open-vocab `Canonical::from_render` with `OpenVocab { category, render_call_site }` provenance + non-trivial `recognition` from priors | A historical-but-not-CVE'd control attested in the corpus |
+| 3 | `lookup` misses; `category_shape` admits; corpus prior absent | Low — same provenance shape but `recognition` near the prior floor | A shape-conforming candidate not seen in the corpus (most likely a typo) |
+
+The decoder weights candidates accordingly. For categories where the
+empirical universe is much smaller than the spec's nominal
+open-vocabulary surface — SCI controls being the canonical example;
+domain feedback (Knitli IC operator, 18 years) is that `SI`/`TK`/`HCS`
+cover essentially all encountered cases, with `RSV` rare-but-real and
+the unregistered tail effectively empty — Layer 3 should produce a
+"did you mean…?" suggestion against Layer 1 nearest-neighbors rather
+than auto-applying. This is already how the corpus-derived priors at
+PR 8 (`marque-priors-3` schema bump) work; the descriptor just makes
+the shape side of the gate auditable.
+
+**Per-category descriptors (initial CAPCO table)**:
+
+| Category | Descriptor |
+|----------|------------|
+| SCI control | `Range { min: 2, max: 3, chars: UpperAlpha }` |
+| SCI compartment | `Range { min: 1, max: 3, chars: UpperAlpha }` (verify against §A.6 at PR 2 fill-in) |
+| SCI sub-compartment | `Range { min: 4, max: 6, chars: UpperAlphaNumeric }` |
+| SCI marking (full) | `Structured(SciStructuredShape)` |
+| SAR top-level | `Range { min: 2, max: 2, chars: UpperAlpha }` (degenerates to `Exact` — keep `Range` for uniform PR-2 handling) |
+| SAR sub-program | `Range { min: 3, max: 3, chars: UpperAlpha }` |
+| Country trigraph (FGI / REL TO) | `Exact { len: 3, chars: UpperAlpha }` |
+| ISMCAT tetragraph (FVEY etc.) | `Exact { len: 4, chars: UpperAlpha }` |
+
+The exact cell values are PR-2 fill-in work — every cell carries a
+§-citation back to CAPCO-2016 / ODNI vocabulary at fill time, and
+the citation-lint (PR 0.5) flags missing or fabricated citations.
+
+**Why a `Range { min: N, max: N }` rather than `Exact { len: N }` for
+SAR**: writing all degenerate-fixed cases as `Exact` is fine, but it
+forks PR 2's per-category dispatch logic into two near-identical
+arms. Picking one (we use `Range` for variable-length cases and
+`Exact` only for true fixed-length-by-spec cases like trigraphs and
+tetragraphs) keeps the table readable while also signaling "this is
+fixed because the spec says so" vs. "this happens to be the same min
+and max." Author judgment at fill time.
+
+**Threading into PR 2.** PR 2's existing scope row already covers
+`Vocabulary<S>::shape_admits` and the four parser-site migrations.
+Add: per-category static `CategoryShape` tables generated from the
+ODNI XML + hand-coded entries for non-CVE'd categories (sub-comp
+shape rules, etc.); `Vocabulary<S>::category_shape` accessor; default
+`shape_admits` derived from the descriptor. The build-time fixture
+generator + `Custom`-spread CI lint land in the same PR. PR 2's
+Constitution check is unchanged (still I, III, IV, VIII).
+
+**What this does NOT solve.** Shape descriptors don't address the
+recognizer-quality / decoder-scoring questions covered by the third
+problem class (§0). #258 (decoder prose null hypothesis) and #260
+(decoder folds bare `NATO {level}`) are still PR 8's problem. Shape
+descriptors raise the floor on what gets *admitted* into the
+open-vocab path; corpus priors decide what gets *promoted* to a
+high-confidence fix. Both are needed; neither replaces the other.
 
 ---
 
