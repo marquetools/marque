@@ -287,9 +287,9 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor. **`CategoryShape::Container` + `ListDelimiter` (§8.5)**: per-container delimiter tables for REL TO / DISPLAY ONLY (canonical Comma, accepts Space as common-mistake); JOINT / FGI (canonical Space, accepts Comma); SAR program lists (canonical Space, accepts Comma + `SAR-`-repeat as prior-canonical); structural subparser handles EYES / SCI; documented variants emit fix proposals to canonical delimiter (rewrite path, not silent rewrite); decoder fallback on Tier-3. Build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` lands in `marque-scheme`** (not `marque-rules` — see §8.1 placement rationale; avoids a `marque-scheme → marque-rules` cycle that would otherwise form via `render_canonical`'s parameter) + **`FixReplacement<S>::Strict(FixIntent<S>) \| Decoder(Box<str>)` discriminant in `marque-rules`** (which already gains `marque-scheme` as a dep at this PR) + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` lands in `marque-scheme`** (not `marque-rules` — see §8.1 placement rationale; avoids a `marque-scheme → marque-rules` cycle that would otherwise form via `render_canonical`'s parameter) + **`FixReplacement<S>::Strict(FixIntent<S>) \| Decoder(Canonical<S>)` discriminant in `marque-rules`** (which already gains `marque-scheme` as a dep at this PR; the `Decoder` arm carries a sealed `Canonical<S>` because the decoder is locked out of open-vocabulary canonicalization per §8.2 and only produces `Canonical::from_cve(TokenId, Scope)` values — same closed-CVE seal as the strict path, with `TokenSource`/digest provenance retained, just a different audit-trail label) + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
 | 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve every currently-open §10 item (item 3 already resolved 2026-05-02; seven remain); **no "explicitly deferred to a tracked issue" escape valve**. Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
-| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` lands here as a regression gate. | (regression gate) | VI |
+| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. The transitional CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` (introduced earlier as a divergence guard while declaration order was the runtime contract) is **removed in this PR**, since after cutover the scheduler is the authoritative order and topologically-equivalent reorderings of independent rewrites must be permitted. | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
 | 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking), and the **fix-emission-time** phase contract (sub-token vs. whole-marking span shape) — registration sees only the tag, span shape can only be checked when a `FixProposal` exists. **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). **R003 diagnostic** for phase-contract violation (rule emitted a fix span outside its declared phase). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
@@ -944,9 +944,15 @@ pub struct ListDelimiter {
     /// Other delimiters the parser also accepts at the same shape
     /// level. Each carries a citation explaining *why* it's accepted
     /// (prior-canonical from a CAPCO revision, well-attested
-    /// common-mistake, etc.) and the rule ID that emits the rewrite
-    /// fix when this variant is observed.
-    pub also_accepted: &'static [(Delim, Provenance, RuleId)],
+    /// common-mistake, etc.) and the predicate identifier of the
+    /// rule that emits the rewrite fix when this variant is
+    /// observed. The identifier shape uses the post-PR-3c
+    /// `(scheme, predicate-id)` key (PR 2 ships this table after PR
+    /// 3c has retired the legacy `RuleId` form, OR — if PR 2 lands
+    /// first — uses a transitional `RuleId` that PR 3c migrates
+    /// alongside the rest of the rule-set; the migration ordering
+    /// is decided at PR-2 fill-in time, not pre-committed here).
+    pub also_accepted: &'static [(Delim, Provenance, PredicateRef)],
 }
 
 pub enum Delim {
@@ -974,7 +980,7 @@ recognizer:
 | Tier | What strict accepts | Diagnostic emitted |
 |------|---------------------|--------------------|
 | 1 — canonical | `delim == ListDelimiter::canonical` | None |
-| 2 — documented variant | `delim ∈ ListDelimiter::also_accepted` | A diagnostic at INFO/WARN with a fix proposal rewriting to the canonical delimiter. The fix's `RuleId` is the one declared in the `also_accepted` entry; the diagnostic message names the variant's `Provenance`. |
+| 2 — documented variant | `delim ∈ ListDelimiter::also_accepted` | A diagnostic at INFO/WARN with a fix proposal rewriting to the canonical delimiter. The fix's predicate identifier (`PredicateRef`, post-PR-3c `(scheme, predicate-id)` key — see §8.5 struct doc) is the one declared in the `also_accepted` entry; the diagnostic message names the variant's `Provenance`. |
 | 3 — neither matches | (no strict path success) | Decoder takes over with corpus priors. Probabilistic candidates may include "did you mean canonical?" and "did you mean prior-canonical?" suggestions. |
 
 This keeps strict-tier latency unchanged for canonical input (the
@@ -1148,17 +1154,31 @@ spans.
 If `parse(post_pass_1_buffer)` fails:
 
 - Pass-1 `AppliedFix` records remain in the audit log (they happened;
-  the audit is honest about what was applied).
+  the audit is honest about what was applied — same in `Apply` and
+  `DryRun`, matching the existing `apply_text_corrections` pattern at
+  `engine.rs:1206` where corrections are recorded in audit even in
+  DryRun).
 - Pass-2 does not run.
 - Engine emits a new diagnostic class **`R002 — pass-1 fix produced
   unparseable buffer`** carrying the pass-1 fix IDs that contributed.
-- Document state: pass-1 buffer is returned as the corrected document.
-  The user sees the pass-1 fixes plus the R002 diagnostic.
+- Document-state return path is **`FixMode`-dependent** to preserve
+  the existing DryRun contract:
+  - `FixMode::Apply` → return the pass-1 buffer (the partial-progress
+    document; user sees the pass-1 fixes plus the R002 diagnostic in
+    output).
+  - `FixMode::DryRun` → return the **original** source bytes
+    unchanged, per the existing DryRun contract that the engine never
+    mutates the document text in dry-run mode regardless of what the
+    audit log says was promoted. The R002 diagnostic still emits and
+    the pass-1 audit records still appear in the dry-run report; only
+    the returned bytes differ.
 
-This is **honest about partial progress**. Atomic rollback would lie
-about what happened (the audit ledger would say "no fixes" while the
-intermediate state was real); this approach keeps the audit ledger
-coherent with document state.
+This is **honest about partial progress**. Atomic rollback in Apply
+mode would lie about what happened (the audit ledger would say "no
+fixes" while the intermediate state was real). DryRun mode preserves
+the existing semantic ("audit reports what *would have been*
+applied; bytes returned are pristine"); R002 is part of that report,
+not an exception to it.
 
 R002 is minted by `marque-engine` alongside R001 (currently
 `crates/engine/src/engine.rs:49`, `DECODER_RULE_ID`); lands in PR 7.
@@ -1329,10 +1349,22 @@ For each category in `2026-05-01-lattice-design.md` §§2–8:
 
 ### 11.2 Open question resolution
 
-All eight items in lattice doc §10 must resolve to a §-citation +
-explicit decision. The "explicitly deferred to a tracked issue" escape
-valve in §9 is removed. If a question genuinely cannot resolve, it
+All currently-open items in lattice doc §10 (seven, after item 3 was
+resolved 2026-05-02) must resolve to a §-citation + explicit decision.
+The "explicitly deferred to a tracked issue" escape valve in §9 is
+removed for §10 items. If a §10 question genuinely cannot resolve, it
 blocks PR 4 — no soft punt.
+
+**Pre-existing in-text scope cuts are not §10 items.** Lattice doc §8
+explicitly defers AEA / NATO canned-string supersession ordering to
+`#266`; that is a documented scope cut accepted before the
+consolidated plan landed, not an open gate question. The "no
+deferrals" rule applies to §10 (the gate-question registry); it does
+not retroactively re-open scope cuts already reasoned about and
+documented in §§2–8. PR 3.7 fill-in confirms each in-text deferral
+remains an intentional scope cut and updates §8 / §10 wording to
+make the distinction unambiguous to a future reviewer (scope cut vs.
+gate question).
 
 §3 Q3 (`NF` clears `REL TO`: lattice op vs. `PageRewrite`) is **not an
 open question** per CLAUDE.md "Phase B": `capco/noforn-clears-rel-to` is
@@ -1377,12 +1409,19 @@ The choice between A and B is left to PR 4 — both are realizable,
 both close the "two hand-kept-consistent orders" hazard. PR 4's row
 in §4 is updated to call out that this trait change is in scope when
 the lattice impls land. Until that PR ships, the build-arranged
-declaration order remains the runtime contract; CI guards against
-divergence by asserting `Engine::scheduled_rewrites` matches
-`CapcoScheme::page_rewrites().iter().map(|r| r.id)` byte-for-byte
-(this assert lives in the lattice property test suite added at
-PR 4 and is the only thing keeping the two orders honest until
-the cutover).
+declaration order remains the runtime contract; a **transitional**
+CI gate guards against divergence by asserting
+`Engine::scheduled_rewrites` matches
+`CapcoScheme::page_rewrites().iter().map(|r| r.id)` byte-for-byte.
+The assert lands earlier (as soon as the scheduler is computing an
+order) and is **deleted in PR 4 at the cutover** — once the engine
+drives dispatch from the scheduler, topologically-equivalent
+reorderings of independent rewrites must be permitted. Replacement
+post-cutover invariant: a property test asserting that
+`Engine::scheduled_rewrites` is *some valid* topological order over
+the `reads`/`writes` graph (no cycle, no unannotated `Custom`,
+producers before consumers) — that is the durable contract; the
+byte-for-byte equality is not.
 
 ### 11.3 Acceptance
 

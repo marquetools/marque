@@ -24,7 +24,11 @@ PR 4 implementation lands. Each category section below requires:
    FOUO eviction by classification > U AND by non-FD&R dissem; FGI
    banner roll-up #276; SCI cross-system canonicalization; AEA
    exemption commingling with classification. The §9 acceptance
-   checklist enumerates these by category.
+   checklist enumerates each fixture; PR 3.7 fill-in places each
+   one in its primary category section (§§2–8) so a reviewer
+   verifying coverage category-by-category sees the fixtures
+   alongside the rest of the category's deliverables, not in a
+   separate global pile.
 
 **Related docs:**
 - `2026-05-02-engine-refactor-consolidated.md` (drives this gate; supersedes the deleted 2026-05-01 draft)
@@ -306,16 +310,43 @@ Before PR 4 lands, this document must satisfy:
       including edge cases the §-citation calls out.
 - [ ] Every category section names property-test fixtures by file
       and test name.
-- [ ] Every "Open question" is resolved (§-citation + explicit
+- [ ] Every "Open question" listed under §10 (Open items requiring
+      author input before fill-in) is resolved (§-citation + explicit
       decision). **No "explicitly deferred to a tracked issue" escape
-      valve** — per `2026-05-02-engine-refactor-consolidated.md` §11.
-      A question that genuinely cannot resolve blocks PR 4.
-- [ ] Cross-axis dominance fixtures are present where a category's
-      values interact with another category's dominance: FOUO eviction
-      by classification > U AND by non-FD&R dissem; FGI banner
-      roll-up #276; SCI cross-system canonicalization; AEA exemption
-      commingling with classification (per consolidated plan §11.1
-      item (5)).
+      valve for §10 items** — per `2026-05-02-engine-refactor-consolidated.md`
+      §11. A §10 question that genuinely cannot resolve blocks PR 4.
+      Pre-existing in-text deferrals to tracked issues that name a
+      specific scope-cut (e.g., §8's `#266 deferred` for AEA / NATO
+      canned-string supersession ordering) are NOT subject to this
+      rule — they are documented scope cuts, not unresolved gate
+      questions, and were already accepted before the consolidated
+      plan landed. PR 3.7 fill-in confirms each such scope cut
+      remains intentional and updates §8 / §10 to make the
+      distinction explicit (scope cut vs. gate question).
+- [ ] Cross-axis dominance fixtures are present in their primary
+      category sections (per consolidated plan §11.1 item (5)). The
+      mapping (PR 3.7 fill-in places fixtures in the named section;
+      additional secondary touchpoints land as cross-references):
+      - §2 (`MarkingClassification`) — **FOUO eviction by
+        classification > U** (cross-touchpoint to §3); **FGI banner
+        roll-up #276** (cross-touchpoint to §6 `FgiSet`).
+      - §3 (Dissem set) — **FOUO eviction by non-FD&R dissem**
+        (in-category supersession; cross-touchpoint to §2 for the
+        eviction direction).
+      - §4 (`SciSet`) — **SCI cross-system canonicalization**
+        (HCS-O / HCS-O-P / SI-G interactions; #267 Gap A).
+      - §5 (`SarSet`) — no primary cross-axis fixture today; revisit
+        if SAR ordering interacts with classification or dissem
+        beyond what §H.5 already enumerates.
+      - §6 (`FgiSet`) — **FGI banner roll-up #276** (primary site;
+        §2 cross-reference).
+      - §7 (NATO control set) — no primary cross-axis fixture in
+        this round; deferred until ATOMAL/BOHEMIA work in PR 9.
+      - §8 (Declassify-on / `MaxDate`) — **AEA exemption
+        commingling with classification** (cross-touchpoint to §2
+        for the classification axis).
+      A fixture appears once (in its primary section); secondary
+      touchpoints carry a one-line cross-reference, not a duplicate.
 - [ ] FD&R semantics from refactor doc Appendix A are embedded in
       §3 (Dissem set) with §-citation to §H.8.
 - [ ] Reviewer (named in PR description) has confirmed each
