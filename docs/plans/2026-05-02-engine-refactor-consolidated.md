@@ -279,7 +279,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 
 | PR | Description | Closes | Constitution check |
 |----|-------------|--------|--------------------|
-| 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex); **promote-callsite lint at `tools/promote-callsite-lint/`** (also AST-based — enforces I-15: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` only callable from `Engine::fix_inner` in production code, with `#[cfg(test)]`/`tests/` carve-out per Constitution V Principle V) | (preemptive) | V, VI |
+| 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex); **promote-callsite lint at `tools/promote-callsite-lint/`** (also AST-based — enforces I-15: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` only callable from the **production allow-list** (today: `Engine::fix_inner`, `Engine::apply_text_corrections`; the allow-list is sourced from `engine_promotion_token`'s doc comment in `crates/engine/src/engine.rs` so the lint and the engine stay in sync), with `#[cfg(test)]`/`tests/` carve-out per Constitution V Principle V) | (preemptive) | V, VI |
 | 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
 | 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
@@ -291,7 +291,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
-| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking). **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
+| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking), and the **fix-emission-time** phase contract (sub-token vs. whole-marking span shape) — registration sees only the tag, span shape can only be checked when a `FixProposal` exists. **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). **R003 diagnostic** for phase-contract violation (rule emitted a fix span outside its declared phase). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
 | 8 | Decoder prose null hypothesis priors (`marque-priors-3` schema bump); fold bare `NATO {level}` to canonical NATO marking. **Note: third problem class (recognizer scoring quality) — outside the two underlying problems frame; this plan does not claim closure of #258/#260, only delivery of priors and folding logic.** | #258, #260 | III |
 | 9 | Parser separator spans (#106); 7B `dissem_us` / `dissem_nato` position-attributed fields; banner-validation rules migrate to `&ProjectedMarking`; declare missing `PageRewrite`s; ATOMAL/BOHEMIA recognition; NATO-portion-in-US-doc → REL TO USA, NATO derivation as declarative `Constraint` | #106, #270, #271, #265, #246, #264, #251 | IV, VI, VIII |
 | 10 | F.1 corpus gate maturation (full per-cited-authority coverage; was PR 11). 8C vendored-source registry declared (declarative-only). | #267 Gap C if not closed by 0.6 | VIII |
@@ -354,7 +354,7 @@ invariant holds; until then, masking-pin discipline (I-16) tracks gaps.
 | I-12 | `Scope::Page` projection is the source of truth for banner-validation rule input; no `PageContext`-only paths exist. **Depends on I-17 holding** (lattice impls satisfying laws are the substrate the projection runs on) | Lattice foundation (PR 4); `scheme.project(Scope::Page, ...)` enabled in PR 6; `PageContext` deleted in PR 6 (clean break, no equivalence shim window) | `tests/corpus/lattice/` regression suite (cross-axis fixtures from PR 3.7); multi-page `lint_100kb_multipage` bench |
 | I-13 | `MarkingClassification::Us` never hardcoded in any projection function; `expected_classification()` returns `Option<MarkingClassification>` | Removal of `scheme.rs:365` (PR 5) | `tests/corpus/foreign/pure_foreign_banner.json` (#276 reproduction) |
 | I-14 | `MARQUE_AUDIT_SCHEMA` build-time-pinned; one schema per binary; **no accept-list — single value validation** (FR-014, clean break) | Build-time validation (existing, tightened) | `audit_schema_consistency.rs` |
-| I-15 | `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` called only from `Engine::fix_inner` in production code (test-fixture carve-out per Constitution V Principle V; carve-out enumerated for both constructors) | Convention; type-level seal via `EnginePromotionToken`'s private field (existing); `from_parsed_unchecked` adapter does NOT exist post-PR-3c | **AST-based** CI lint at `tools/promote-callsite-lint/`; `#[cfg(test)]`/`tests/` carve-out enumerated per call site |
+| I-15 | `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` called only from the **production allow-list** (today: `Engine::fix_inner`, `Engine::apply_text_corrections`); allow-list is the one in `engine_promotion_token`'s doc comment, single source of truth — adding a fourth promotion site is a deliberate edit to that doc + the lint allow-list, not an accident; test-fixture carve-out per Constitution V Principle V enumerated for both constructors | Convention; type-level seal via `EnginePromotionToken`'s private field (existing); `from_parsed_unchecked` adapter does NOT exist post-PR-3c | **AST-based** CI lint at `tools/promote-callsite-lint/`; `#[cfg(test)]`/`tests/` carve-out enumerated per call site |
 | I-16 | Every `with_recognizer(StrictRecognizer)` test pin carries `// MASKING-PIN: tracks #NNN` (with `#NNN` open) or `// INTENTIONAL-STRICT: <reason>`; masking pins removed in the issue-closing PR; **GitHub-API closure check is mandatory, not optional, and follows `closed_as_duplicate_of` chains** | `tools/masking-pin-lint/` (AST-based, not regex). Backfill: 2 masking pins (`core_error_isolation.rs` → #257 closes at 3c; `corpus_accuracy.rs` → #258 closes at PR 8), 5 intentional pins | The lint; both masking pins die after PR 3c + PR 8 |
 | I-17 | Every category in `CapcoScheme::categories()` has a `Lattice` impl satisfying assoc/comm/idem/identity-with-bottom AND cross-axis dominance (FOUO eviction, FGI banner roll-up, SCI cross-system canonicalization) | Property tests in `crates/capco/tests/category_lattice_laws.rs` + cross-axis fixtures in `crates/capco/tests/cross_axis_dominance.rs` (PR 4); contents of `2026-05-01-lattice-design.md` after PR 3.7 fill-in | Property tests + cross-axis corpus regression |
 | **I-18** | **For any pass-1 `AppliedFix` with span S₁ and any pass-2 `AppliedFix` with span S₂, S₁ ∩ S₂ = ∅** (pass-2 fixes overlapping pass-1 spans demote to suggestions, not auto-applied) | Engine pass-2 dispatch filters by overlap; `Phase::Localized \| WholeMarking` declared at rule registration (one phase per rule; defect classes needing both register two entries) | Property test in `crates/engine/tests/two_pass_invariants.rs` shuffling fix orderings |
@@ -727,15 +727,40 @@ trait Rule {
 }
 ```
 
-Engine enforces at registration:
-- `Phase::Localized` rule's `FixProposal::span` is sub-token-only.
-- `Phase::WholeMarking` rule's span covers a full marking.
+Two enforcement points — registration time can only see the phase
+*tag* the rule declares, not the spans of fixes the rule will later
+emit. Span shape is verifiable only when a `FixProposal` exists.
+
+**At registration time** (`Engine::new`):
+- The rule declares a `Phase` value. The engine records it.
+- No span check is possible (rules haven't run; no proposals exist).
+- The only registration-time invariant is uniqueness of the
+  `(scheme, predicate-id)` key (post-PR-3c identity model — see
+  PR 3c row in §4): two distinct registrations may share a backend
+  module but their keys must differ.
+
+**At fix-emission time** (every `Rule::check` return):
+- For each `FixProposal` the rule emits, the engine validates that
+  `proposal.span` matches the rule's declared phase contract:
+  - `Phase::Localized` rule → span MUST be strictly inside a single
+    token boundary as parsed at the rule's input attrs.
+  - `Phase::WholeMarking` rule → span MUST cover a full marking
+    (banner/CAB/portion bracket, depending on `MarkingType` of
+    that span).
+- A `FixProposal` whose span violates the phase contract is rejected
+  at the engine boundary: the diagnostic is dropped, an audit-log
+  R003 ("rule emitted a fix outside its declared phase contract")
+  is recorded carrying the offending `(scheme, predicate-id)` key.
+  Production-time R003 is treated as an engine-construction-style
+  bug (a rule misdeclared its phase); `cargo test` regression
+  fixtures in `crates/engine/tests/two_pass_invariants.rs` exercise
+  the rejection path.
 
 Each rule belongs to exactly one phase. If a defect class genuinely
-needs detection in both phases (rare), register two rule entries
-sharing a backend module — one `Phase::Localized`, one
-`Phase::WholeMarking` — each with its own `RuleId`. This keeps the
-dispatch contract single-valued at registration and surfaces the
+needs detection in both phases (rare), register two entries sharing
+a backend module — one `Phase::Localized`, one `Phase::WholeMarking`
+— each with its own `(scheme, predicate-id)` key. This keeps the
+dispatch contract single-valued per registration and surfaces the
 "this rule is doing two distinct jobs" cost at the rule-set level
 where it can be reviewed, rather than hiding it behind a `Both`
 escape hatch.
@@ -813,6 +838,42 @@ R002 is minted by `marque-engine` alongside R001 (currently
 `crates/engine/src/engine.rs:49`, `DECODER_RULE_ID`); lands in PR 7.
 Centralizing the synthetic-engine-diagnostic IDs (R001, R002, …) into
 `marque-rules` is a separate refactor not in scope for this plan.
+
+### 9.5 No rule-level dependency graph
+
+A natural follow-up question to the pass split is *"do we also need a
+topologically-ordered dependency graph over rules?"* — answered: **no.**
+The lattice + phase tagging + the topo scheduler over `PageRewrite`
+already cover every dependency class that exists between rules. Adding
+a per-rule dep graph on top would either duplicate that machinery or
+re-introduce abstractions the post-PR-3 architecture is designed to
+delete. Document the absence so future reviewers don't re-litigate it.
+
+The three dependency classes that actually arise between rules, and
+where each is handled:
+
+| Dep class | Example | Where it routes |
+|-----------|---------|-----------------|
+| **Token-shape (parsing-state)** | E003 reads a canonical token list that E001's `OC → ORCON` may have re-shaped | Phase tag (`Phase::Localized` vs `Phase::WholeMarking`) + re-parse between passes + I-19 (reshape-aware whole-marking re-validates against `pre_pass_1_attrs`). The lattice cannot help here — it operates on parsed values; if pass-1 changes *which* values exist, only re-parsing recovers correctness. |
+| **Cross-category dominance (value-state)** | NF clears REL TO; classification `> U` evicts FOUO; SCI compartment grammar bounds | `PageRewrite::reads`/`writes` axes + topo scheduler in `marque-engine::scheduler`. The dep graph already exists, just at the rewrite layer (per-axis) rather than the rule layer (per-predicate, which would be coarser and leakier). Banner rules read the projected page state and see the post-rewrite values; they don't need to know which rewrites ran in which order. |
+| **Confidence interactions (scoring-state)** | E003 confidence drops when E001 fired upstream on the same span | `FeatureContribution { feature: FeatureId::PrecedingFixPenalty, ... }` in the `Confidence` model — a feature in the scoring axis, not a graph edge. The rule still fires; its confidence is just adjusted. Same shape as how recognition confidence is composed today. |
+
+What a rule-level dep graph would be tempting for — *"if rule A fixed
+something, give rule B's check a different input"* — turns out to be
+one of those three: a phase shift (re-parse), a category-level rewrite
+(`PageRewrite`), or a confidence signal (`FeatureContribution`). Rules
+themselves stay stateless and order-independent within a phase — which
+is what makes `BatchEngine` correctness-preserving (Constitution VI),
+makes rule registration commutative, and makes the rule-set a flat
+sequence rather than a DAG that has to be maintained, validated for
+cycles, and topologically sorted at every `Engine::new`.
+
+**Falsification clause.** If a future rule-set design surfaces a
+genuine fourth dep class — one that does not decompose into phase /
+rewrite / confidence — that is a signal to revisit this section, not
+a license to add per-rule dep edges by reflex. The plan's bias is:
+look for the missing `PageRewrite` or the missing `FeatureId` first;
+escalate to a rule graph only if both are demonstrably wrong shapes.
 
 ---
 
@@ -951,10 +1012,26 @@ blocks PR 4 — no soft punt.
 open question** per CLAUDE.md "Phase B": `capco/noforn-clears-rel-to` is
 already a declared `PageRewrite`. The dispatch shape is **projection
 first, then `page_rewrites` apply within `project(Scope::Page, ...)`**
-(see `crates/capco/src/scheme.rs::project` body). The topological
-scheduler in `crates/engine/src/scheduler.rs` orders the rewrites among
-themselves (writers before readers); it does not run them before
-projection. Reframe Q3 as "confirm and document," not "decide."
+(see `crates/capco/src/scheme.rs::project` body, line 1378-area: the
+loop `for rw in &self.page_rewrites { ... }`). Reframe Q3 as "confirm
+and document," not "decide."
+
+**Caveat — scheduler vs. runtime dispatch order.** The topological
+scheduler in `crates/engine/src/scheduler.rs::schedule_rewrites` runs
+once at `Engine::new`, builds the dataflow graph from each rewrite's
+`reads`/`writes` axes, and produces a deterministic `Box<[RewriteId]>`
+cached as `Engine::scheduled_rewrites`. **However**, today's
+`CapcoScheme::project` does not consume that order — it iterates
+`self.page_rewrites` in **declaration order** (the order
+`build_page_rewrites` produces them). The hand-arranged declaration
+order in `build_page_rewrites` is currently consistent with the
+scheduler's topological order (the comment at `scheme.rs:454` makes
+the dependency on `CAT_REL_TO` explicit), but the scheduler is not
+the *driver* of dispatch yet. PR 3.7 documents this state of affairs
+and PR 4 / Phase D-or-later switches `project()` to consume
+`Engine::scheduled_rewrites` — at which point the
+build-time-and-runtime orders become a single source of truth instead
+of two hand-kept-consistent ones.
 
 ### 11.3 Acceptance
 
@@ -1145,28 +1222,64 @@ emit `FixIntent<S>` and the engine renders to `Canonical<S>` via
 `MarkingScheme::render_canonical` against the sealed
 `CanonicalConstructor<S>` impl.
 
+**Murder-board acceptance rationale.** Constitution VII calls dep-graph
+discipline "the foundation of independent testing, incremental
+compilation, and selective inclusion" and warns against "architectural
+debt that cannot be refactored cheaply." Adding the
+`marque-rules → marque-scheme` edge is therefore a Constitution VII
+event, not a routine change. The murder board (system-architect F2,
+backend-architect F1, refactoring-expert F3) accepted it on three
+grounds:
+
+1. **The edge is semantically required, not incidental.** Rules need
+   scheme abstractions (`Scope`, `CategoryId`, `TokenId`) to express
+   type-safe fix emission. The pre-PR-3c shape — rules emitting
+   `Box<str>` or untyped fix descriptors and the engine reconstructing
+   the scheme context — re-introduces the G13 leak channel that §8 is
+   designed to close. Refusing the edge means refusing the closure.
+2. **Acyclicity preserved.** `marque-scheme` is downstream of nothing
+   in the WASM-safe set (zero runtime deps, per CLAUDE.md). Adding
+   `marque-rules → marque-scheme` therefore cannot introduce a cycle.
+   The dep graph remains acyclic; `cargo check --workspace` continues
+   to pass; selective inclusion (WASM target excludes `marque-extract`)
+   continues to work; incremental compilation boundaries are unchanged
+   because the new edge is a leaf-ward dependency, not a cycle-forming
+   one.
+3. **Cost is bounded and one-time.** Graph depth +1 (rules now
+   transitively depends on `marque-scheme` in addition to `marque-ism`).
+   No new runtime cost; no new binary-size cost on WASM. The depth
+   increase is paid once; the type-safety benefit accrues across
+   every rule that emits a fix and every future scheme that adopts
+   the same `FixIntent<S>` surface. Net: a small, durable cost in
+   exchange for closing a load-bearing correctness channel.
+
 Updated dependency graph:
 
 ```text
-marque-ism    ←── marque-core ──────────────────────┐
-marque-ism    ←── marque-scheme ←── marque-rules ←── marque-capco ──┤
-                                                                    ↓
-                                                              marque-engine ←── marque-config
-                                                                    ↑
-                                                              marque-wasm
-                                                                    ↑
-                                              marque-extract (non-WASM only)
-                                                                    ↑
-                                                              marque-server
-                                                                    ↑
-                                                               marque (CLI)
+marque-ism    ←── marque-core ────────────────────┐
+marque-ism    ←── marque-rules ←── marque-capco ──┤
+marque-scheme ←── marque-rules ←── marque-capco ──┤  (NEW edge: rules → scheme, lands at PR 3c)
+                                                  ↓
+                                            marque-engine ←── marque-config
+                                                  ↑
+                                            marque-wasm
+                                                  ↑
+                              marque-extract (non-WASM only)
+                                                  ↑
+                                            marque-server
+                                                  ↑
+                                             marque (CLI)
 ```
 
-Read `A ←── B` as "B depends on A". `marque-rules` now depends on
-`marque-scheme` (it always implicitly depended on the scheme abstraction;
-PR 3a makes the dependency explicit). Graph remains acyclic.
-`cargo check --workspace` passes; CLAUDE.md and the constitution graph
-update in PR 3a.
+Read `A ←── B` as "B depends on A". The graph above shows two parallel
+incoming edges to `marque-rules`: `marque-ism` (existing) and
+`marque-scheme` (new at PR 3c). `marque-scheme` itself remains a
+zero-runtime-deps crate — it does **not** depend on `marque-ism`
+(per CLAUDE.md "marque-scheme... has no runtime deps on
+`marque-ism`/`marque-core`/`marque-rules`"). Graph remains acyclic.
+`cargo check --workspace` passes; CLAUDE.md and Constitution VII's
+canonical graph update in PR 3c (the edge lands and the docs land
+in the same PR — no doc-vs-code drift window).
 
 ---
 
