@@ -100,7 +100,7 @@ SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 [[annotations]]
 path = [
   "tests/**",
-  "**/tests/snapshots/**",
+  "**/tests/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc."

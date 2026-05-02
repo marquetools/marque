@@ -33,6 +33,10 @@ name = "decoder_10kb_rel_to_invariant"
 
 [[bench]]
 harness = false
+name = "fix_throughput"
+
+[[bench]]
+harness = false
 name = "fix_latency"
 
 [lints]
