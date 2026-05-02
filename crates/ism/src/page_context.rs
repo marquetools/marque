@@ -215,6 +215,23 @@ impl PageContext {
         })
     }
 
+    /// Whether any accumulated portion uses a NATO or JOINT classification
+    /// system.
+    ///
+    /// NATO and JOINT banners follow distinct syntactic forms
+    /// (`//NS//REL TO USA, NATO`, `//JOINT S USA GBR//REL TO USA, GBR`) that
+    /// are NOT interchangeable with the FGI-authority form (`//DEU SECRET`).
+    /// E055 uses this to skip pages where JOINT or NATO portions are present —
+    /// those cases are governed by rules that understand the JOINT/NATO grammar.
+    pub fn has_nato_or_joint_portion(&self) -> bool {
+        self.portions.iter().any(|a| {
+            matches!(
+                a.classification,
+                Some(MarkingClassification::Nato(_)) | Some(MarkingClassification::Joint(_))
+            )
+        })
+    }
+
     /// All SCI controls that must appear on the banner (union of all portions).
     pub fn expected_sci_controls(&self) -> Vec<SciControl> {
         let mut seen = std::collections::BTreeSet::new();
@@ -2076,5 +2093,150 @@ mod tests {
         assert!(sar_sort_key("AC") < sar_sort_key("BP"));
         // Numeric ordering by value, not lex: "2" < "10" despite lex.
         assert!(sar_sort_key("2") < sar_sort_key("10"));
+    }
+
+    // --- expected_marking_classification() + has_nato_or_joint_portion() ---
+
+    #[test]
+    fn expected_marking_classification_returns_us_for_us_page() {
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+        ctx.add_portion(attrs_with_classification(Classification::Confidential));
+        assert_eq!(
+            ctx.expected_marking_classification(),
+            Some(MarkingClassification::Us(Classification::Secret)),
+            "US page must return Us(Secret)"
+        );
+    }
+
+    #[test]
+    fn expected_marking_classification_returns_fgi_for_wholly_fgi_page() {
+        use crate::attrs::{CountryCode, FgiClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+                level: Classification::Secret,
+            })),
+            ..Default::default()
+        });
+        let result = ctx.expected_marking_classification();
+        assert!(
+            matches!(result, Some(MarkingClassification::Fgi(_))),
+            "wholly-FGI page must return Fgi(…), got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn expected_marking_classification_returns_nato_for_wholly_nato_page() {
+        use crate::attrs::NatoClassification;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
+            ..Default::default()
+        });
+        let result = ctx.expected_marking_classification();
+        assert!(
+            matches!(result, Some(MarkingClassification::Nato(_))),
+            "wholly-NATO page must return Nato(…), got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn expected_marking_classification_returns_joint_for_wholly_joint_page() {
+        use crate::attrs::{CountryCode, JointClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: vec![
+                    CountryCode::try_new(b"USA").unwrap(),
+                    CountryCode::try_new(b"GBR").unwrap(),
+                ]
+                .into(),
+            })),
+            ..Default::default()
+        });
+        let result = ctx.expected_marking_classification();
+        assert!(
+            matches!(result, Some(MarkingClassification::Joint(_))),
+            "wholly-JOINT page must return Joint(…), got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn expected_marking_classification_us_wins_on_commingled_page() {
+        use crate::attrs::{CountryCode, FgiClassification};
+        let mut ctx = PageContext::new();
+        // FGI portion
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+                level: Classification::Secret,
+            })),
+            ..Default::default()
+        });
+        // US portion
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+
+        let result = ctx.expected_marking_classification();
+        assert_eq!(
+            result,
+            Some(MarkingClassification::Us(Classification::Secret)),
+            "commingled page: US classification must win per §F.1 p20, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn has_nato_or_joint_portion_true_for_nato() {
+        use crate::attrs::NatoClassification;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
+            ..Default::default()
+        });
+        assert!(
+            ctx.has_nato_or_joint_portion(),
+            "must detect NATO portion"
+        );
+    }
+
+    #[test]
+    fn has_nato_or_joint_portion_true_for_joint() {
+        use crate::attrs::{CountryCode, JointClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: vec![
+                    CountryCode::try_new(b"USA").unwrap(),
+                    CountryCode::try_new(b"GBR").unwrap(),
+                ]
+                .into(),
+            })),
+            ..Default::default()
+        });
+        assert!(
+            ctx.has_nato_or_joint_portion(),
+            "must detect JOINT portion"
+        );
+    }
+
+    #[test]
+    fn has_nato_or_joint_portion_false_for_us_or_fgi() {
+        use crate::attrs::{CountryCode, FgiClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+                level: Classification::Secret,
+            })),
+            ..Default::default()
+        });
+        assert!(
+            !ctx.has_nato_or_joint_portion(),
+            "must not detect NATO/JOINT for US/FGI page"
+        );
     }
 }

@@ -6391,16 +6391,44 @@ impl Rule for FgiBannerClassificationAuthorityRule {
             return vec![];
         }
 
+        // NATO and JOINT pages use distinct banner syntaxes (e.g. `//NS//…`,
+        // `//JOINT S USA GBR//…`) that are incompatible with the FGI-authority
+        // form (`//DEU SECRET`). Skip those pages — a separate rule (not yet
+        // implemented) governs JOINT/NATO banner forms.
+        if page.has_nato_or_joint_portion() {
+            return vec![];
+        }
+
         // Must have FGI sources in portions to require the authority prefix.
         let Some(expected) = page.expected_fgi_marker() else {
             return vec![];
         };
 
-        // If the banner already uses a non-US classification form, it's correct.
+        // Build the foreign-authority prefix: `//FGI` for source-concealed,
+        // `//[TRIGRAPH]` for single country, `//[TRIGRAPH1] [TRIGRAPH2]` for multi.
+        let auth_prefix = fgi_classification_authority_prefix(&expected);
+
+        // If the banner already uses an FGI authority form, compare it against the
+        // expected roll-up. Identical countries → nothing to fix. Different countries
+        // → fall through and fire E055 with the corrected form.
+        // JOINT/NATO are already excluded above; any remaining non-US, non-Fgi
+        // form (if somehow present) is also skipped.
         match attrs.classification.as_ref() {
-            Some(MarkingClassification::Fgi(_))
-            | Some(MarkingClassification::Nato(_))
-            | Some(MarkingClassification::Joint(_)) => return vec![],
+            Some(MarkingClassification::Fgi(fgi)) => {
+                let banner_countries: std::collections::BTreeSet<_> =
+                    fgi.countries.iter().map(|c| c.as_str()).collect();
+                let expected_countries: std::collections::BTreeSet<_> =
+                    expected.countries.iter().map(|c| c.as_str()).collect();
+                if banner_countries == expected_countries {
+                    // Authority prefix already correct — nothing to fix.
+                    return vec![];
+                }
+                // Fall through: wrong countries → fire E055.
+            }
+            Some(MarkingClassification::Nato(_)) | Some(MarkingClassification::Joint(_)) => {
+                // Defense-in-depth: should already be filtered above.
+                return vec![];
+            }
             _ => {}
         }
 
@@ -6408,10 +6436,6 @@ impl Rule for FgiBannerClassificationAuthorityRule {
             "CAPCO-2016 §A.6 (foreign classification-authority form) + ",
             "§H.7 p124–126 (wholly-foreign page banner must use //[trigraph] [LEVEL] form)",
         );
-
-        // Build the foreign-authority prefix: `//FGI` for source-concealed,
-        // `//[TRIGRAPH]` for single country, `//[TRIGRAPH1] [TRIGRAPH2]` for multi.
-        let auth_prefix = fgi_classification_authority_prefix(&expected);
 
         // Confidence: single-source or concealed → high (auto-fix under default
         // threshold); multiple sources → suggest only (human review recommended).
@@ -6444,13 +6468,50 @@ impl Rule for FgiBannerClassificationAuthorityRule {
             )];
         };
 
-        let original = class_tok.text.as_ref().to_owned();
-        let replacement = format!("{auth_prefix} {original}");
-        let message = format!(
-            "wholly-foreign page banner must use foreign classification-authority \
-             form: expected \"{replacement}\" instead of \"{original}\" \
-             (§H.7 p124–126: no U.S. classified portions on this page)",
-        );
+        // Build original/replacement depending on the current banner form:
+        //
+        // - US form (`SECRET`): class_tok.text = "SECRET".
+        //   The `//` separator is absent, so the replacement must include it:
+        //   `"//DEU SECRET"`.
+        //
+        // - FGI with wrong countries (`GBR SECRET`): class_tok.text = "GBR SECRET".
+        //   The `//` separator already exists in the source before this token's
+        //   span, so the replacement is just `"DEU SECRET"` (country + level, no `//`).
+        let (original, replacement, message) = match attrs.classification.as_ref() {
+            Some(MarkingClassification::Fgi(fgi)) => {
+                // Wrong-country FGI banner: replace "GBR SECRET" with "DEU SECRET".
+                let level = fgi.level.banner_str();
+                let countries_str = if expected.countries.is_empty() {
+                    "FGI".to_owned()
+                } else {
+                    expected
+                        .countries
+                        .iter()
+                        .map(|c| c.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
+                let orig = class_tok.text.as_ref().to_owned();
+                let repl = format!("{countries_str} {level}");
+                let msg = format!(
+                    "wholly-foreign page banner has wrong FGI authority prefix: \
+                     expected \"{repl}\" (from portions) but found \"{orig}\" \
+                     (§H.7 p124–126: FGI authority must match the page's foreign owners)",
+                );
+                (orig, repl, msg)
+            }
+            _ => {
+                // US or missing classification: need full "//DEU SECRET" form.
+                let orig = class_tok.text.as_ref().to_owned();
+                let repl = format!("{auth_prefix} {orig}");
+                let msg = format!(
+                    "wholly-foreign page banner must use foreign classification-authority \
+                     form: expected \"{repl}\" instead of \"{orig}\" \
+                     (§H.7 p124–126: no U.S. classified portions on this page)",
+                );
+                (orig, repl, msg)
+            }
+        };
 
         vec![make_fix_diagnostic(FixDiagnosticParams {
             rule: self.id(),
@@ -11882,6 +11943,49 @@ mod tests {
             e055[0].citation.contains("§H.7"),
             "E055 citation must reference §H.7; got: {:?}",
             e055[0].citation
+        );
+    }
+
+    #[test]
+    fn e055_fires_when_banner_has_wrong_fgi_country() {
+        // Wholly-foreign page: portion is DEU, but banner has //GBR SECRET.
+        // E055 must fire and fix the wrong country prefix to //DEU SECRET.
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n//GBR SECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire when banner FGI country doesn't match portions: {diags:?}"
+        );
+        let fix = e055[0].fix.as_ref().expect("E055 must carry a fix for wrong-country FGI banner");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "DEU SECRET",
+            "E055 fix must replace wrong-country block with correct countries+level (no // prefix)"
+        );
+    }
+
+    #[test]
+    fn e055_does_not_fire_when_fgi_banner_already_has_correct_country() {
+        // Banner `//DEU SECRET` already correct — E055 must not fire.
+        let source = "(//DEU S//REL TO USA, DEU) Foreign.\n//DEU SECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E055"),
+            "E055 must not fire when banner already has correct FGI country: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e055_does_not_fire_on_wholly_nato_page() {
+        // A page with only NATO portions uses `//NS//…` banner form.
+        // E055 must not fire — JOINT/NATO are excluded.
+        let source = "(//NS//REL TO USA, NATO) NATO portion.\n//NATO SECRET//REL TO USA, NATO";
+        let diags = lint_banner(source);
+        assert!(
+            diags.iter().all(|d| d.rule.as_str() != "E055"),
+            "E055 must not fire on a wholly-NATO page: {diags:?}"
         );
     }
 }
