@@ -6248,8 +6248,9 @@ impl Rule for FgiBannerRollupCommingledRule {
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
 
-        // Banner / CAB markings only.
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+        // Banner markings only — CAB parsing never populates `fgi_marker` or
+        // `token_spans`, so running on CABs produces spurious E054 at 0..0.
+        if !matches!(ctx.marking_type, MarkingType::Banner) {
             return vec![];
         }
 
@@ -6266,6 +6267,15 @@ impl Rule for FgiBannerRollupCommingledRule {
             // No FGI sources in any portion — nothing to roll up.
             return vec![];
         };
+
+        // `parse_fgi_marker` only keeps 3-byte trigraphs (skips "NATO" and
+        // other tetragraphs). If the expected roll-up includes any non-trigraph
+        // code we cannot reliably compare against attrs.fgi_marker, so skip.
+        // TRIGRAPH_LEN = 3: ISO 3166-1 alpha-3 trigraphs are exactly 3 bytes.
+        const TRIGRAPH_LEN: usize = 3;
+        if expected.countries.iter().any(|c| c.len() != TRIGRAPH_LEN) {
+            return vec![];
+        }
 
         // Banner already has the correct FGI marker — nothing to do.
         if attrs.fgi_marker.as_ref() == Some(&expected) {
@@ -6387,8 +6397,9 @@ impl Rule for FgiBannerClassificationAuthorityRule {
     fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
 
-        // Banner / CAB markings only.
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+        // Banner markings only — CAB parsing produces no classification token,
+        // so running on CABs emits a bogus "classification token not found" E055.
+        if !matches!(ctx.marking_type, MarkingType::Banner) {
             return vec![];
         }
 
@@ -6487,10 +6498,19 @@ impl Rule for FgiBannerClassificationAuthorityRule {
         // - FGI with wrong countries (`GBR SECRET`): class_tok.text = "GBR SECRET".
         //   The `//` separator already exists in the source before this token's
         //   span, so the replacement is just `"DEU SECRET"` (country + level, no `//`).
+        //
+        // In both cases use the rolled-up page level (not the banner's observed
+        // level): if the banner is simultaneously wrong-country AND underclassified,
+        // the fix must correct both rather than preserving the lower level.
+        let page_level = page
+            .expected_classification()
+            .map(|c| c.banner_str())
+            .unwrap_or_else(|| class_tok.text.as_ref());
+
         let (original, replacement, message) = match attrs.classification.as_ref() {
-            Some(MarkingClassification::Fgi(fgi)) => {
-                // Wrong-country FGI banner: replace "GBR SECRET" with "DEU SECRET".
-                let level = fgi.level.banner_str();
+            Some(MarkingClassification::Fgi(_)) => {
+                // Wrong-country FGI banner: replace "GBR SECRET" with "DEU SECRET"
+                // (or "DEU TS" if the banner was also underclassified).
                 let countries_str = if expected.countries.is_empty() {
                     "FGI".to_owned()
                 } else {
@@ -6502,7 +6522,7 @@ impl Rule for FgiBannerClassificationAuthorityRule {
                         .join(" ")
                 };
                 let orig = class_tok.text.as_ref().to_owned();
-                let repl = format!("{countries_str} {level}");
+                let repl = format!("{countries_str} {page_level}");
                 let msg = format!(
                     "wholly-foreign page banner has wrong FGI authority prefix: \
                      expected \"{repl}\" (from portions) but found \"{orig}\" \
@@ -6513,7 +6533,7 @@ impl Rule for FgiBannerClassificationAuthorityRule {
             _ => {
                 // US or missing classification: need full "//DEU SECRET" form.
                 let orig = class_tok.text.as_ref().to_owned();
-                let repl = format!("{auth_prefix} {orig}");
+                let repl = format!("{auth_prefix} {page_level}");
                 let msg = format!(
                     "wholly-foreign page banner must use foreign classification-authority \
                      form: expected \"{repl}\" instead of \"{orig}\" \
@@ -11996,6 +12016,29 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E055"),
             "E055 must not fire on a wholly-NATO page: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e055_wrong_country_fix_uses_page_level_not_banner_level() {
+        // Wholly-foreign page: portion is `//DEU TS`, but banner has `//GBR SECRET`
+        // (wrong country AND underclassified). E055 must fix both: `DEU TOP SECRET`.
+        let source = "(//DEU TS//REL TO USA, DEU) Foreign.\n//GBR SECRET//REL TO USA, DEU";
+        let diags = lint_banner(source);
+        let e055: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E055").collect();
+        assert_eq!(
+            e055.len(),
+            1,
+            "E055 must fire for wrong-country+underclassified banner: {diags:?}"
+        );
+        let fix = e055[0]
+            .fix
+            .as_ref()
+            .expect("E055 must carry a fix for wrong-country+underclassified banner");
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "DEU TOP SECRET",
+            "E055 fix must use rolled-up page level (TS → TOP SECRET), not banner's SECRET"
         );
     }
 }

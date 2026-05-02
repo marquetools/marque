@@ -43,9 +43,9 @@
 //! no explicit date is present.
 
 use crate::attrs::{
-    AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
-    IsmAttributes, MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking,
-    SarProgram, SciCompartment, SciControl, SciControlSystem, SciMarking,
+    AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
+    FgiMarker, IsmAttributes, MarkingClassification, NonIcDissem, SarCompartment, SarIndicator,
+    SarMarking, SarProgram, SciCompartment, SciControl, SciControlSystem, SciMarking,
 };
 use crate::date::IsmDate;
 
@@ -181,24 +181,51 @@ impl PageContext {
     /// single document, the overall marking is a US classification"). The
     /// returned value is `MarkingClassification::Us(max_level)`.
     ///
-    /// For a **wholly-foreign** page (no U.S. classified portions), the most
-    /// restrictive foreign classification is returned as-is so that
-    /// `page_context_to_attrs` and similar projections preserve the
-    /// `//[trigraph] [LEVEL]` banner form required by §H.7 p126.
+    /// For a **wholly-foreign FGI** page (no U.S. or NATO/JOINT portions), a
+    /// synthetic `Fgi` is built from the max effective level and the full
+    /// rolled-up country list from [`expected_fgi_marker`]. This keeps the
+    /// returned classification consistent with `expected_fgi_marker()` on
+    /// multi-source pages — `max_by_key` on individual portions would
+    /// otherwise drop all-but-one country on tie (e.g., `//GBR SECRET` wins
+    /// over `//DEU SECRET` silently).
+    ///
+    /// For **wholly-foreign NATO/JOINT** pages the most restrictive portion
+    /// classification is returned verbatim because those marking forms are not
+    /// reducible to a synthetic FGI authority prefix.
     ///
     /// Returns `None` only if no portions have been accumulated or all
     /// portions failed to parse a classification level.
     pub fn expected_marking_classification(&self) -> Option<MarkingClassification> {
         if self.has_us_classified_portion() {
             // U.S. classification wins per §F.1 p20.
-            self.expected_classification().map(MarkingClassification::Us)
-        } else {
-            // Wholly-foreign page: preserve the most restrictive foreign type.
-            self.portions
-                .iter()
-                .filter_map(|a| a.classification.clone())
-                .max_by_key(|c| c.effective_level())
+            return self.expected_classification().map(MarkingClassification::Us);
         }
+
+        // For FGI-only pages, synthesize a single Fgi carrying the max level
+        // and the union of all countries so the result stays consistent with
+        // expected_fgi_marker(). Without this, max_by_key picks one country
+        // by tie-break and drops the others.
+        if !self.has_nato_or_joint_portion() {
+            if let Some(fgi_marker) = self.expected_fgi_marker() {
+                // `?` is intentional: if expected_fgi_marker() produced Some but
+                // expected_classification() is None, every portion had a None
+                // classification, so the fallback max_by_key below would also
+                // return None. Returning None here is equivalent and avoids
+                // synthesising a Fgi with an invalid level.
+                let level = self.expected_classification()?;
+                return Some(MarkingClassification::Fgi(FgiClassification {
+                    countries: fgi_marker.countries,
+                    level,
+                }));
+            }
+        }
+
+        // NATO/JOINT or no FGI sources: return the most restrictive foreign classification
+        // verbatim — those forms have distinct syntaxes and should not be collapsed.
+        self.portions
+            .iter()
+            .filter_map(|a| a.classification.clone())
+            .max_by_key(|c| c.effective_level())
     }
 
     /// Whether any accumulated portion uses a U.S. (or U.S.-wins Conflict)
@@ -2125,6 +2152,44 @@ mod tests {
             matches!(result, Some(MarkingClassification::Fgi(_))),
             "wholly-FGI page must return Fgi(…), got: {result:?}"
         );
+    }
+
+    #[test]
+    fn expected_marking_classification_multi_source_fgi_includes_all_countries() {
+        // Two FGI portions with different countries at the same level.
+        // expected_marking_classification() must return Fgi with BOTH
+        // countries, not just whichever wins the max_by_key tie-break.
+        use crate::attrs::{CountryCode, FgiClassification};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+                level: Classification::Secret,
+            })),
+            ..Default::default()
+        });
+        ctx.add_portion(IsmAttributes {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
+                level: Classification::Secret,
+            })),
+            ..Default::default()
+        });
+        let result = ctx.expected_marking_classification();
+        match result {
+            Some(MarkingClassification::Fgi(ref fgi)) => {
+                let codes: Vec<&str> = fgi.countries.iter().map(|c| c.as_str()).collect();
+                assert!(
+                    codes.contains(&"DEU"),
+                    "rolled-up Fgi must include DEU; got: {codes:?}"
+                );
+                assert!(
+                    codes.contains(&"GBR"),
+                    "rolled-up Fgi must include GBR; got: {codes:?}"
+                );
+            }
+            other => panic!("expected Fgi(…) with DEU+GBR, got: {other:?}"),
+        }
     }
 
     #[test]
