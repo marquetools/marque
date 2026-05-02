@@ -24,6 +24,14 @@ extend-exclude = [
   "specs/",
   "tests/fixtures/mangled/",
   "site/src/assets/*/LICENSE*",
+  # Vendored third-party bundle (CodeMirror 6 + dependencies); contains
+  # intentional identifier abbreviations and minified tokens that trigger
+  # false-positive typo hits.
+  "demo/vendor.js",
+  # Font asset directories: binary font files and their upstream LICENSE
+  # files contain axis-name codes (e.g. `wdth`) that are valid font
+  # metadata, not spelling errors.
+  "demo/assets/fonts/",
 ]
 
 [default]
