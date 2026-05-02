@@ -281,15 +281,15 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | PR | Description | Closes | Constitution check |
 |----|-------------|--------|--------------------|
 | 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex); **promote-callsite lint at `tools/promote-callsite-lint/`** (also AST-based — enforces I-15: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` only callable from the **production allow-list** (today: `Engine::fix_inner`, `Engine::apply_text_corrections`; the allow-list is sourced from `engine_promotion_token`'s doc comment in `crates/engine/src/engine.rs` so the lint and the engine stay in sync), with `#[cfg(test)]`/`tests/` carve-out per Constitution V Principle V) | (preemptive) | V, VI |
-| 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
+| 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references + fixture frontmatter `citation:` fields (per §6 Layer 4 prose-positive methodology)**. AST mechanism: rustdoc JSON for doc-comment scanning (single source of truth for the parsed comment surface, supported tooling); the lint feeds rustdoc JSON output through a §X.Y extraction pass. Source-string surfaces (`citation:`/`message:`/`constraint_label:`) parse via `syn` AST. Plain regex is the fallback for non-rustdoc surfaces only (fixture JSON frontmatter, plan-doc cross-references) — never on Rust source. **Lint also flags untagged `§10` deferrals** (any phrasing matching `deferred`, `TBD`, `out of scope`, `punt` in lattice-doc §10 that lacks `Status: scope_cut` or `Status: open_gate`), per §11.2 tag syntax. F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
 | 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
-| 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor. **`CategoryShape::Container` + `ListDelimiter` (§8.5)**: per-container delimiter tables for REL TO / DISPLAY ONLY (canonical Comma, accepts Space as common-mistake); JOINT / FGI (canonical Space, accepts Comma); SAR program lists (canonical Space, accepts Comma + `SAR-`-repeat as prior-canonical); structural subparser handles EYES / SCI; documented variants emit fix proposals to canonical delimiter (rewrite path, not silent rewrite); decoder fallback on Tier-3. Build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
+| 2 | **Declarative `CategoryShape` descriptors** (§8.4): `Vocabulary<S>::category_shape` accessor + per-category static tables (SCI control 2-3 UpperAlpha; SCI sub-comp 4-6 UpperAlphaNumeric; SAR 2/3 UpperAlpha; trigraph/tetragraph fixed-length; full table at §8.4); default `shape_admits` derived from descriptor. **`CategoryShape::Container` + `ListDelimiter` (§8.5)**: per-container delimiter tables for REL TO / DISPLAY ONLY (canonical Comma, accepts Space as common-mistake); JOINT / FGI (canonical Space, accepts Comma); SAR program lists (canonical Space, accepts Comma + `SAR-`-repeat as prior-canonical); structural subparser handles EYES / SCI; documented variants emit fix proposals to canonical delimiter (rewrite path, not silent rewrite); decoder fallback on Tier-3. Build-time fixture generator + CI lint flagging spreading `CategoryShape::Custom` use. Plus the existing PR-2 scope: parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites. **`ParseContext.source: InputSource` field** (variants `Document` (default), `WebForm`, `FreeProse`; additional variants like `Ocr`, `EmailBody` may land later as use cases surface — extending the enum is non-breaking). **Scanner-feature extension** in `marque-core`: existing scanner output extended in place (no wrapper struct) to carry coarse region confidence + surrounding-context features (whitespace before candidate, paren/`//` density nearby, paragraph boundaries, document position). Single pass through bytes preserved (Constitutions I, II); features computed as a side effect of the existing memchr scan. `WebForm` source bypasses the scanner entirely (whole buffer treated as one candidate). See §8.6 for the rationale and feature set. | #280 | I, II, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
 | 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` lands in `marque-scheme`** (not `marque-rules` — see §8.1 placement rationale; avoids a `marque-scheme → marque-rules` cycle that would otherwise form via `render_canonical`'s parameter) + **`FixReplacement<S>::Strict(FixIntent<S>) \| Decoder(Canonical<S>)` discriminant in `marque-rules`** (which already gains `marque-scheme` as a dep at this PR; the `Decoder` arm carries a sealed `Canonical<S>` because the decoder is locked out of open-vocabulary canonicalization per §8.2 and only produces `Canonical::from_cve(TokenId, Scope)` values — same closed-CVE seal as the strict path, with `TokenSource`/digest provenance retained, just a different audit-trail label) + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
-| 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve every currently-open §10 item (item 3 already resolved 2026-05-02; seven remain); **no "explicitly deferred to a tracked issue" escape valve**. Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
-| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. The transitional CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` (introduced earlier as a divergence guard while declaration order was the runtime contract) is **removed in this PR**, since after cutover the scheduler is the authoritative order and topologically-equivalent reorderings of independent rewrites must be permitted. | (regression gate) | VI |
+| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` lands in `marque-scheme`** (not `marque-rules` — see §8.1 placement rationale; avoids a `marque-scheme → marque-rules` cycle that would otherwise form via `render_canonical`'s parameter) + **`FixReplacement<S>::Strict(FixIntent<S>) \| Decoder(Canonical<S>)` discriminant in `marque-rules`** (which already gains `marque-scheme` as a dep at this PR; the `Decoder` arm carries a sealed `Canonical<S>` because the decoder is locked out of open-vocabulary canonicalization per §8.2 and only produces `Canonical::from_cve(TokenId, Scope)` values — same closed-CVE seal as the strict path, with `TokenSource`/digest provenance retained, just a different audit-trail label) + **`MarkingScheme::render_canonical(&self, &FixIntent<Self>) -> Box<str>` added to the trait** (returns bytes not `Canonical<S>` to preserve `from_render`'s `pub(crate)` seal — see §8.1 trait-additions block) + **`render_canonical` country-list contract pinned per `2026-05-01-lattice-design.md` §3 Resolution 2026-05-02** (greedy size-descending decomposable-group re-fold over expanded trigraph atoms; `country_sort_key` = `(usa_first, kind_rank, alpha)` shared with the Register-order validator at PR 7; ISMCAT membership tables schema-pinned per Constitution IV; `CountryCode::kind()` consults build-time-generated `phf::Set<&'static str>`; same algorithm reused for FGI LIST per lattice doc §6) + **`CanonicalConstructor<S>` sealed-trait impl on the engine** (the only path that wraps scheme-rendered bytes into `Canonical<S>` via `Canonical::from_render`) + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures, **all to the §3 Resolution 2026-05-02 shape** (the bar is defined in §11.1). Resolve every currently-open §10 item (item 3 already resolved 2026-05-02; seven remain); **no "explicitly deferred to a tracked issue" escape valve** for §10 gate questions (in-text scope cuts that were accepted before this plan landed remain — see §11.2 and the `scope_cut:` / `open_gate:` tag distinction). Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization, AEA exemption commingling with classification). **Author the four cross-axis adversarial fixture packs** in this PR (not deferred to PR 4) — each pack contains a `BrokenLatticeFor<Category>` synthetic-violation impl and a corresponding test that asserts the property fails against it; PR 4 reviewer runs these before sign-off as the structural prevention of the gate-as-stub failure mode. In-category laws specify shape only (≥3 fixtures per category covering each lattice law); authoring lands at PR 4 with the property tests. **Per-category review template** at `crates/capco/tests/lattice/REVIEW_TEMPLATE.md` — reviewer signs off by completing one template per category, including the adversarial-fixture run. Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
+| 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **First commit is the Option A vs Option B selection writeup** (see §11.2 caveat) — the PR opens with a commit that picks the trait change, names the criteria that drove the pick, and describes the migration path; subsequent commits implement against that decision. PR 4 reviewer signs off the writeup commit before reviewing the impl commits. **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). **Dissem-axis product shape lands** per `2026-05-01-lattice-design.md` §3 Resolution 2026-05-02: `display_only: Box<[CountryCode]>` and `eyes: Box<[Trigraph]>` fields added to `IsmAttributes`; `Lattice` impls for the `IntersectSet`-backed country-list axes (`rel_to`, `display_only`, `eyes`) with empty-set identity (banner takes most-restrictive consensus); `S006 eyes-migrates-to-rel-to` `Phase::Localized` rule registered (confidence 1.0; cite §H.8 p157; the resulting `AppliedFix` is the audit trail per Constitution V Principle V; `--preserve-historical-form` flips it to diagnostic-only); two new declarative `PageRewrite`s (`empty-rel-to-becomes-noforn` covering Table 3 rules 9/11/13/16/19/20, and `display-only-subsumes-rel-to` covering Table 3 rule 26) — `reads`/`writes` axis annotations resolved at PR 3.7 fill-in for cycle-free topo dispatch with the existing `noforn-clears-rel-to`. **Choose-and-land** the `MarkingScheme` trait change (Option A `project_with_order` or Option B `apply_rewrite`, see §11.2 caveat) so engine-driven scheduler order replaces declaration-order dispatch in the same PR — closes the "two hand-kept-consistent orders" hazard. The transitional CI assert `Engine::scheduled_rewrites == page_rewrites().iter().map(\|r\| r.id)` (introduced earlier as a divergence guard while declaration order was the runtime contract) is **removed in this PR**, since after cutover the scheduler is the authoritative order and topologically-equivalent reorderings of independent rewrites must be permitted. | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
 | 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking), and the **fix-emission-time** phase contract (sub-token vs. whole-marking span shape) — registration sees only the tag, span shape can only be checked when a `FixProposal` exists. **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). **R003 diagnostic** for phase-contract violation (rule emitted a fix span outside its declared phase). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
@@ -302,6 +302,29 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 - Original PR 11 (F.1 maturation) → renumbered to PR 10 after the fold.
 - Original PR 11.5 (rule-ID retirement) → folded into PR 3c.
 - Original PR 3.5 (gate removal) → folded into PR 3c.
+
+**PR 3a/3b/3c revert ordering.** "Independently revertable" holds
+under one specific revert sequence: **reverse-merge order only**
+(3c → 3b → 3a). Out-of-order reverts are not safe:
+
+- Reverting **3a** after 3b shipped breaks the rule collapse — 3b
+  consumed the pivot types that 3a introduced. A 3a revert must
+  follow a 3b revert.
+- Reverting **3b** after 3c shipped is mechanically possible but
+  leaves 3c's discriminant + sealed `Canonical` constructor + ID
+  retirement on top of the pre-3b rule shape, which is an
+  uninhabited state — 3c was authored against the 3b rule set.
+  A 3b revert must follow a 3c revert.
+- Reverting **3c** after only 3a+3b shipped is safe: the
+  transitional `from_parsed_unchecked` adapter remains in place
+  (its delete is a 3c deliverable); rules read `&CanonicalAttrs`
+  via the adapter; pre-3c audit schema (`marque-mvp-2`) is the
+  recorded value. This is the intended graceful-revert state if
+  3c misbehaves in-flight.
+
+Document this constraint in the PR descriptions for 3a, 3b, 3c.
+Out-of-order reverts require explicit migration, not "just revert
+the PR."
 
 **PR 12+ priority** (deferred until later phases, per user direction):
 
@@ -422,6 +445,38 @@ PRs 3c + 7). At `crates/engine/tests/fix_invariants.rs`:
 5. **I-19 reshape-aware**: pass-1 reshape (e.g., `OC → ORCON`) feeds pass-2; rule re-validates against pre-pass-1 attrs.
 6. Audit-record canary: **deterministic** scan of NDJSON output asserts no input bytes appear except inside span-offset identifiers. Replaces `core_error_isolation.rs`'s masking pin once PR 3c lands. The deterministic scan reads `Engine::fix_inner`'s emitted `Vec<AppliedFix>` only; test-fabricated records under Constitution V's carve-out are explicitly excluded.
 
+**Layer 3 negative-control discipline.** Every Layer 3 invariant
+ships with a *negative-control companion test* that asserts the
+invariant fails against a deliberately-broken implementation. A
+property test that passes today is the dominant failure mode (the
+test never exercises the predicate it claims to enforce). Pattern
+in `crates/engine/tests/two_pass_invariants.rs` and Layer 1 lattice-
+law tests:
+
+```rust
+#[cfg(test)]
+mod broken {
+    /// Synthetic-violation impl. Exists only inside #[cfg(test)];
+    /// never reachable from cfg(not(test)) code.
+    pub(super) struct BrokenLatticeForX;
+    impl Lattice for BrokenLatticeForX { /* deliberately violates assoc */ }
+}
+
+#[test]
+#[should_panic(expected = "associativity violated")]
+fn negative_control_associativity_against_broken_impl() {
+    // Same property predicate as the real test, run against the
+    // broken impl. If this test PASSES, the property predicate is
+    // the bug — not the broken impl.
+    assert_lattice_associativity::<broken::BrokenLatticeForX>();
+}
+```
+
+The negative control is the structural prevention of "we wrote a
+property test that passes vacuously." Adding an invariant means
+adding both tests in the same PR. Skipping the negative-control
+half is grounds for review block.
+
 **Layer 4 — Corpus regression sweeps** (PR 4 onward). **Five corpora** ×
 two recognizers = ten CI runs:
 
@@ -436,6 +491,42 @@ two recognizers = ten CI runs:
 Prose corpus verifies PR 8 and lifts `corpus_accuracy.rs`'s masking pin.
 `prose-positive` and `lattice` corpora are the murder-board additions —
 the original 3-corpus oracle was insufficient.
+
+**Prose-positive corpus methodology.** Recognition (decide this byte
+range is a marking) and rule firing (decide what's wrong with the
+recognized marking) are different tests. A canonical marking
+embedded in prose produces no rule diagnostic; a recognizer that
+silently misses the marking produces no diagnostic either. Without
+embedding a *defect* in the marking, the prose-positive test cannot
+distinguish "recognized correctly, nothing to fire on" from
+"missed entirely because of prose context" — so each fixture
+embeds a realistic defect, and the expected diagnostics list pins
+which rules must fire.
+
+| Decision | Choice |
+|---|---|
+| Granularity | 2–3 sentences per fixture (paragraph-shape). Enough surrounding text that "narrative, not header block" is unambiguous to a reader. One marking per fixture. |
+| Marking shape | Realistic defect (wrong delimiter, missing USA trigraph, transposed order, deprecated token, casing). Not synthetic edge cases. The kind of mistake a working-draft author would actually make. |
+| Source | (a) Hand-crafted from operational IC/DoD experience, primary. (b) CIA-corpus paragraph as scaffolding where natural — extract a prose paragraph that *talks about* classification, substitute a modern CAPCO-2016 marking into the slot. |
+| Volume | 30–50 fixtures at PR-3.7 / PR-4 fill-in time. |
+| Coverage matrix | marking-type (portion / banner / CAB) × prose-tightness (loose narrative / tight technical prose / mid). 3 × 3 = 9 cells, ~3–5 fixtures per cell. Per-rule coverage is a secondary pass once the type/tightness grid is full — aim for ≥1 fixture per CAPCO rule family that's testable in prose context. |
+| Format | `.txt` + `.expected.json` pair, same shape as `tests/corpus/invalid/`. |
+| Per-fixture frontmatter (in `.expected.json`) | `source: "Document" \| "FreeProse"` (consumed by the test harness via `ParseContext.source` per §8.6), `marking_type: "portion" \| "banner" \| "cab"`, `defect_class: <enum>`, `prose_source: "authored" \| "cia-scaffolded"`, `citation: "§X.Y pNN"` for the rule that should fire (validated by the citation-lint at PR 0.5 — the lint scope extends to fixture frontmatter). |
+
+**Why not declassified-only sourcing.** NARA reading room and FOIA
+releases are real-world, but pre-modern markings predominate (CIA
+declassified subset in particular predates portion-marking
+mandates per operational input). They're useful as scaffolding for
+prose *context shape* — substitute modern CAPCO-2016 markings into
+slots where pre-modern markings appeared — but not as direct
+fixtures for current-standard recognition tests.
+
+**`prose/` (negative) and `prose-positive/` are paired oracles.**
+Negative catches false positives (recognizer fires on prose tokens
+that look like markings). Positive catches false negatives
+(recognizer goes silent on real markings in prose context). Either
+alone is satisfiable by a degenerate recognizer; both together
+constrain the recognizer in both directions.
 
 **Layer 5 — Citation lint** (PR 0.5 skeleton + PR 10 maturation).
 `tools/citation-lint/` parses every `citation:` field, **`message:` string,
@@ -461,6 +552,18 @@ Murder-board F gap closure:
 Each bench is gated in `bench-check.sh` against the relevant baseline.
 The §3.6 measurement-gating discipline (>5% mean OR p99 regression
 backs out the change) applies uniformly.
+
+**`lint_100kb_multipage` post-cutover baseline anchor.** The PR 6
+assertion "projection ≤ baseline + 10%" uses the `PageContext`
+path as the baseline — the path PR 6 deletes. That assertion is a
+one-time anchor-shift, not a durable trend. Specify the post-
+cutover baseline explicitly: **PR 6 commit 6c (the flip-default
+commit) records the projection-mode wall-clock and stores it as
+the `lint_100kb_multipage` baseline in `bench-check.sh`. PR 7 and
+later compare against this number, not against the deleted
+`PageContext` path.** Without this anchor, future regressions in
+projection-mode have no comparison point. The anchor record is a
+deliverable of commit 6c, not a follow-up.
 
 ### Masking-pin discipline (I-16)
 
@@ -843,6 +946,18 @@ than auto-applying. This is already how the corpus-derived priors at
 PR 8 (`marque-priors-3` schema bump) work; the descriptor just makes
 the shape side of the gate auditable.
 
+**Nearest-neighbor function decision-locus.** "Layer 1 nearest-
+neighbors" begs the question of *which* distance metric — Levenshtein,
+Damerau-Levenshtein, phonetic, prefix-shared, or a combination
+weighted by the corpus prior. The choice is **PR 8 scope, not PR 2**
+— it depends on what the priors-bake at PR 8 reveals about the
+empirical distribution of typos and variants in the corpus.
+PR 2 ships the descriptor and the admission predicate; the
+suggestion function has no consumer until PR 8's priors land. Flag
+in PR 8 review with the chosen metric, the corpus evidence that
+drove the choice, and a property test asserting the metric is
+deterministic + symmetric (where applicable).
+
 **Per-category descriptors (initial CAPCO table)**:
 
 | Category | Descriptor |
@@ -1034,6 +1149,111 @@ where an old document must remain in its old form — different from
 "don't rewrite, just diagnose" — that's a multi-revision engine
 project, not a delimiter project. Flag for revisit if it appears.
 
+### 8.6 InputSource signal + scanner-emitted region features
+
+Marque's input distribution is not uniform. Three operationally
+distinct shapes cover the bulk of cases:
+
+1. **Web forms** (IC web forms with portion-marking fields): the
+   *entire input buffer* is a marking. Recognition uncertainty is
+   zero. Running candidate detection over the buffer is wasted work,
+   and a too-conservative recognizer that rejects "this doesn't look
+   marking-shaped enough" produces user-visible failure on legitimate
+   input.
+2. **Document fields** (the bulk of today's CLI / batch use): mixed
+   prose and markings. Scanner detects candidates; recognizer
+   evaluates each; rules fire on defects. The current architecture.
+3. **Free prose** (article text, narrative paragraphs that mention
+   markings): scanner detects; recognizer must be aggressively
+   null-hypothesis-aware on Tier 3 to avoid prose false positives,
+   while still catching real markings embedded in narrative shape
+   (the prose-positive recall axis — see §6 Layer 4).
+
+Three implications:
+
+- **Recognition is conditioned on input source.** What's a high-
+  confidence marking in a web form is the same byte sequence in a
+  Federalist paragraph that should not fire. The recognizer cannot
+  resolve this without a signal from the caller.
+- **The scanner's work is conditioned on input source.** Web-form
+  mode skips it; document and free-prose modes run it; free-prose
+  mode wants it more aggressively null-hypothesis-aware than
+  document mode.
+- **Region-detection-with-confidence is a Constitutional
+  performance question, not a separate-crate question.** A second
+  pass through the buffer to score "marking-likelihood per region"
+  doubles the hot-path cost (Principles I, II) and offers no
+  capability the existing memchr scan can't provide as a side
+  effect. The earlier `marque-recognize` framing (a separable
+  crate doing region detection) was overdesign; folded into the
+  scanner, the work is free.
+
+**Mechanism — `ParseContext.source: InputSource`.**
+
+```rust
+pub enum InputSource {
+    /// Mixed prose + markings; scanner runs, recognizer evaluates
+    /// candidates, decoder respects null hypothesis on Tier 3.
+    /// This is the safe default — a caller without context behaves
+    /// as the engine does today.
+    Document,
+
+    /// Whole buffer is a single marking. Scanner is bypassed; the
+    /// recognizer treats the entire buffer as one candidate.
+    /// Recognition uncertainty is structurally zero.
+    WebForm,
+
+    /// Narrative / article text where markings, when they appear,
+    /// are descriptive (referring to a marking, not bearing one).
+    /// Scanner runs; decoder weights the prose null hypothesis
+    /// more heavily on Tier 3.
+    FreeProse,
+
+    // Additional variants (Ocr, EmailBody, ...) may land later as
+    // use cases surface. Extending the enum is non-breaking.
+}
+```
+
+Default is `Document`. Callers without context get current-engine
+semantics. WASM callers, server callers, and CLI callers signal
+explicitly when they know better.
+
+**Mechanism — scanner-feature extension.** The existing scanner
+output (`Span + MarkingType`) extends in place to carry coarse
+region features computed during the existing memchr scan:
+
+| Feature | Cost during memchr pass | Notes |
+|---|---|---|
+| `preceded_by_whitespace` | Free — already inspecting the byte before each candidate | Today's `ParseContext` carries it; populated by callers; scanner takes over population |
+| Coarse region likelihood (paren density, `//` density, banner-shape density nearby) | Cheap — counters incremented during the existing memchr scan | Feeds Tier-3 decoder confidence: "this region is marking-rich" / "this region is prose" |
+| Paragraph / sentence boundaries (newlines, double-newlines) | Free — scanner already needs `\n\n\n+` for `MarkingType::PageBreak` | Reused for prose-context detection |
+| `DocumentPosition` (start / body / end) | Free — scanner sees offsets | Already on `ParseContext` as `Option`; scanner populates it |
+
+What does **not** fold into the scanner (stays in the recognizer):
+token-bag analysis (requires the candidate to exist first), corpus-
+prior posterior scoring (per-candidate, depends on token shape),
+null-hypothesis (prose) likelihood (per-candidate, depends on token
+bag). The split is principled: coarse region-level confidence is a
+free side-effect of the byte scan; fine candidate-level confidence
+is what the recognizer already computes per candidate.
+
+**Constitutional alignment:**
+- I (performance): single pass preserved; no second walk.
+- II (zero-copy, streaming): scanner output remains spans into the
+  source buffer; no new allocations.
+- III (WASM safety): no new crate; `marque-core` and `marque-scheme`
+  extend in place; both stay WASM-safe.
+- VII (crate discipline): no new dep edges; graph unchanged.
+
+**Test consequence — corpus shape.** Prose-positive corpus
+methodology (§6 Layer 4) consumes the `InputSource` field as a
+fixture-tagging mechanism: per-fixture frontmatter carries
+`source: Document` / `source: FreeProse`, and the test harness
+sets `ParseContext.source` accordingly when running each fixture.
+Without `InputSource`, the corpus could not assert that a fixture
+exercised document-mode recognition specifically (vs. web-form
+trivial-oracle behavior).
+
 ---
 
 ## 9. Pass-split semantics
@@ -1185,6 +1405,24 @@ R002 is minted by `marque-engine` alongside R001 (currently
 Centralizing the synthetic-engine-diagnostic IDs (R001, R002, …) into
 `marque-rules` is a separate refactor not in scope for this plan.
 
+**R002 severity and CLI exit-code mapping.** R002 is **`Severity::Error`**
+in both `FixMode::Apply` and `FixMode::DryRun`. "Pass-1 produced an
+unparseable buffer; we cannot validate the post-fix state" is a
+correctness-relevant signal that must not quietly degrade to a
+warning.
+
+Exit code under each mode (mapping against the table in
+`marque/src/main.rs:26-33`):
+
+| Mode | Returned bytes | Exit code | Why |
+|------|----------------|-----------|-----|
+| `Apply` | pass-1 buffer (partially-fixed document) | `EX_DIAG_ERROR` (1) | Same code as any other unfixed error post-re-lint. The partial-progress document is honest about what happened; R002 surfaces in the diagnostic stream and drives the exit. Not `EX_DATAERR` (65) — input was parseable at pass-0; the failure is on engine-generated output, not user input. |
+| `DryRun` | original source bytes (unchanged) | `EX_DIAG_ERROR` (1) | Audit log shows pass-1 fixes WOULD have been applied + R002 says "wouldn't have been able to validate the result." Same severity classification; same exit code. The dry-run contract on returned bytes is unchanged (pristine source); the diagnostic stream is the report. |
+
+Not `EX_TEMPFAIL` (75) — R002 is a deterministic engine-state
+signal, not a transient retry-eligible condition. A re-run with
+the same input and rule set will produce the same R002.
+
 ### 9.5 No rule-level dependency graph
 
 A natural follow-up question to the pass split is *"do we also need a
@@ -1332,20 +1570,64 @@ implementation begins.
 
 ### 11.1 Required deliverables
 
-For each category in `2026-05-01-lattice-design.md` §§2–8:
+**The bar is the §3 Resolution 2026-05-02 shape.** That section in
+the lattice doc is the worked model — every other category section
+must reach the same density before PR 3.7 lands. Concretely, each
+category in `2026-05-01-lattice-design.md` §§2–8 ships:
 
-1. §-citations to `crates/capco/docs/CAPCO-2016.md` covering the marking
-   grammar and any commingling / dominance / supersession rules.
-2. **Formal join semantics** — stated as a function with preconditions
-   and postconditions, not prose.
-3. **Worked examples** showing two non-trivial values joining and the
-   result, including any edge cases the §-citation calls out.
-4. **Property-test fixtures** named by file and test name covering
-   assoc/comm/idem/identity-with-bottom for the category.
-5. **Cross-axis fixtures** (new) where the category interacts with
+1. §-citations to `crates/capco/docs/CAPCO-2016.md` covering the
+   marking grammar and any commingling / dominance / supersession
+   rules. Every claim in the section traces to a §-citation; no
+   bare assertions.
+2. **Formal join semantics** — stated as a function with
+   preconditions and postconditions, not prose. The shape is "join:
+   (a, b) → c, where: <preconditions on a, b>; postconditions on c
+   are: <enumerated>." If the category has cross-axis interactions
+   (e.g., FOUO ⊥ classification), the join function names them
+   explicitly — the formal semantics include the eviction rules,
+   not just the in-category union.
+3. **Algorithmic detail** when the join is non-trivial — e.g., §3's
+   greedy size-descending decomposable-group re-fold over expanded
+   trigraph atoms. Pseudo-code or a Rust-shaped sketch acceptable;
+   prose alone is not.
+4. **Worked examples** — at minimum two non-trivial values
+   joining, with the result and any edge cases the §-citation
+   calls out. §3's REL TO / DISPLAY ONLY / EYES examples are the
+   density model.
+5. **Property-test fixtures** named by file and test name covering
+   assoc/comm/idem/identity-with-bottom for the category. The
+   in-category laws ship at PR 4 alongside the property tests; the
+   shape is specified at PR 3.7 (≥3 fixtures per category covering
+   each lattice law).
+6. **Cross-axis fixtures** where the category interacts with
    another category's dominance: FOUO eviction by classification > U
-   AND by non-FD&R dissem; FGI banner roll-up #276; SCI cross-system
-   canonicalization; AEA exemption commingling with classification.
+   AND by non-FD&R dissem; FGI banner roll-up #276; SCI cross-
+   system canonicalization; AEA exemption commingling with
+   classification. **These four cross-axis fixture packs are
+   *authored* at PR 3.7 (not deferred to PR 4)** — each pack
+   contains a `BrokenLatticeFor<Category>` synthetic-violation impl
+   in `#[cfg(test)] mod broken { ... }` plus the matching property
+   test exercising the negative control (per §6 Layer 3 negative-
+   control discipline). PR 4 reviewer runs the adversarial pack
+   before sign-off as the structural prevention of the gate-as-
+   stub failure mode.
+7. **Open-question resolution** — every §10 item with `open_gate:`
+   tag relevant to the section closes here, with §-citation and
+   explicit decision. Items tagged `scope_cut:` remain documented
+   as scope cuts, confirmed intentional.
+
+**Per-category review template** at
+`crates/capco/tests/lattice/REVIEW_TEMPLATE.md` is the structural
+artifact reviewer fills out — one filled template per category as
+part of the PR 3.7 sign-off. Sign-off is "I ran the adversarial
+fixtures and they failed against the synthetic violations as
+expected," not "I read the section."
+
+**Plus the dissem-axis product fixtures** added under
+`2026-05-01-lattice-design.md` §3 (REL TO ordering, group-code
+re-fold across decomposable + 2-char + longer codes, schema-pinned
+NATO membership, EYES audit-preserving migration) — full list at
+the lattice doc's §9 acceptance checklist.
 
 ### 11.2 Open question resolution
 
@@ -1365,6 +1647,29 @@ documented in §§2–8. PR 3.7 fill-in confirms each in-text deferral
 remains an intentional scope cut and updates §8 / §10 wording to
 make the distinction unambiguous to a future reviewer (scope cut vs.
 gate question).
+
+**Tag syntax — `scope_cut:` and `open_gate:`.** PR 3.7 fill-in adds
+an inline status tag to every deferral in the lattice doc, so the
+distinction between "accepted scope cut" and "open gate question"
+is mechanical at read time, not derivable only from ratification
+timestamps:
+
+- `Status: scope_cut (<reason>)` — accepted before this plan
+  landed, intentional. Example for §8 AEA / NATO canned-string
+  ordering: `Status: scope_cut (#266 — out of immediate scope per
+  user direction; CAB extraction blocker; see Appendix C)`.
+- `Status: open_gate (<criteria_to_close>)` — must resolve before
+  PR 4 can land. PR 3.7 fill-in closes each one with §-citation
+  and explicit decision; failure to close blocks PR 4. Example
+  for §2 cross-branch join semantics: `Status: open_gate (decide
+  refusal vs. structural combination per §A.4 / §H.3 / §H.7;
+  worked examples for each branch pair)`.
+
+Reading the tag tells a future reviewer which kind of deferral
+they're looking at. Items without a tag at read time are an
+oversight — the citation-lint is widened in PR 0.5 to flag any
+deferral-shaped phrasing (`deferred`, `TBD`, `out of scope`,
+`punt`) in §10 that lacks one of the two tag forms.
 
 §3 Q3 (`NF` clears `REL TO`: lattice op vs. `PageRewrite`) is **not an
 open question** per CLAUDE.md "Phase B": `capco/noforn-clears-rel-to` is
@@ -1704,6 +2009,227 @@ items) and where this plan addresses it.
 | `marque-rules` gains `marque-scheme` dep | system-architect #1 | Appendix D note |
 | Citation defects in production | security-engineer F4 | PR 0.6 (preemptive) |
 | Masking-pin cascade-close | security-engineer F5 | I-16 rule 4 (mandatory GitHub-API + dup chain follow) |
+
+---
+
+## Appendix F: FD&R Table 2 Warn rules (deferred pending CAB)
+
+CAPCO-2016 §B.3 Table 2 (pp 21–22) defines seven rows mapping
+`(portion content type, origination date pivot 28 Jun 2010, caveat
+status)` to a recommended FD&R marking. Some rows are mandatory for
+IC DAP and recommended ("encouraged but not required") for other IC
+information. Per `crates/capco/docs/AGENT-CONTEXT.md` §2, every
+"encouraged but not required" cell is the trigger condition for a
+Warn-class rule.
+
+**Architectural blocker.** The 28 Jun 2010 origination-date pivot
+requires `Authority::Originated` from the Classification Authority
+Block. CAB extraction is **deferred indefinitely** under #266 per
+Appendix C. Without CAB:
+
+- The Warn rule for "Classified, uncaveated, on/after 28 Jun 2010 →
+  Mark RELIDO" can fire without a fix proposal (the date
+  determination is unsafe) but cannot auto-apply.
+- The Warn rule for "Classified, caveated, on/after 28 Jun 2010 →
+  Mark NOFORN" can fire when caveat status is determinable from
+  the portion text alone (per §B.2 / §H.8 caveat list); date
+  ambiguity again precludes fix.
+- The "Classified, prior to 28 Jun 2010 → Mark NOFORN" row is
+  CAB-mandatory; cannot apply without it.
+
+A skeleton implementation that emits Warn diagnostics without fixes
+on the determinable subset is feasible pre-CAB, but the value is
+limited (the user already sees that NF/RELIDO is missing) and the
+CAB-blocked rows leave the enforcement incomplete. **Recommend
+deferring the entire appendix as a coherent unit until CAB
+extraction lands**, rather than landing a partial implementation
+that has to be revisited when CAB arrives.
+
+### Mechanism (when CAB unblocks)
+
+Three pieces, all small:
+
+1. **`Vocabulary<S>::is_caveat_token(token) -> bool`** — symmetric
+   with the `is_fdr_dissem` field added by Appendix A. Static §B.2 /
+   §H.8 caveat list (`ORCON`, `ORCON-USGOV`, `IMCON`, `PROPIN`,
+   `FISA`, `DEA SENSITIVE`, `RSEN`, `FOUO`, all non-IC dissems).
+   Build-time generated from ODNI XML; zero allocation. **PR slot
+   when CAB lands: PR 5-equivalent** (vocabulary metadata).
+2. **`Constraint::Recommend { name, label, predicate_name }`**
+   variant in `marque-scheme::constraint`. **First-class, not a
+   `Custom` subtype.** A recommendation is not a violation — it
+   produces a `Diagnostic` with a low-confidence `FixProposal`,
+   not a `ConstraintViolation`. The audit log must distinguish
+   "user broke a rule" from "user failed to take a suggestion" per
+   Constitution V Principle V; collapsing into `Custom` blurs the
+   distinction in the audit signal. **PR slot when CAB lands: PR
+   9-equivalent** (declarative `Constraint` work).
+3. **Static row table** at `crates/capco/src/fd_r_table_2.rs` plus a
+   generic `RecommendFdrMarking` rule consuming it. Cite §B.3 pp
+   21–22. **Deferred indefinitely until CAB extraction unblocks.**
+
+### Coupling with Table 3 Rule 17
+
+Table 3 Rule 17 (RELIDO + no FD&R portion → NOFORN-or-RELIDO
+depending on origination date + non-FD&R caveats) **cannot be
+implemented without the Table 2 row table** — it reads the same
+data. Implementing Rule 17 first means encoding Table 2 logic
+twice. The two land together when CAB unblocks; Appendix G's row
+17 entry references this appendix.
+
+### Authority
+
+CAPCO-2016 §B.3 Table 2 pp 21–22 (mandatory vs encouraged FD&R
+markings); §B.2 / §H.8 (caveat token list); EO 13526 (28 Jun 2010
+pivot date).
+
+---
+
+## Appendix G: Table 3 banner roll-up — full 27-row enumeration
+
+CAPCO-2016 §D.2 Table 3 (pp 28–30) defines 27 banner roll-up
+scenarios. Per Constitution Principle VIII applied to predicates,
+"many rules covered" without per-row evidence is the same defect
+class as a fabricated citation. This appendix is the **full
+enumeration** with current status and target mechanism per row.
+
+**Status legend:**
+- **A** — already covered by existing `noforn-clears-rel-to`
+  `PageRewrite` and/or `dissem_controls` `SupersessionSet`.
+- **B** — falls out of the §3 Resolution 2026-05-02 product shape
+  (lattice impls land at PR 4 with no further code).
+- **C** — new declarative `PageRewrite` declaration (PR 9 slot).
+- **E** — deferred pending CAB extraction (#266); coupled to
+  Appendix F.
+
+**Draft note.** This enumeration is a working draft for PR 3.7
+fill-in verification. The user has 18 years of IC/DoD marking
+experience; predicate-by-predicate review against §H.8 / §D.2 is
+required before PR 4 lands. Errors here are correctness defects
+per Principle VIII, not stylistic concerns.
+
+| # | Some portion(s) | Other portion(s) | Banner | Status | Mechanism |
+|---|-----------------|------------------|--------|--------|-----------|
+| 1 | NF | no FD&R | NOFORN | A | existing `noforn-clears-rel-to` + NF supersession in `dissem_controls` |
+| 2 | NF | REL TO / RELIDO / EYES / DISPLAY ONLY | NOFORN | A | same — NF clears all FD&R country-list axes via the existing rewrite |
+| 3 | NF | SBU-NF | NOFORN (IC dissem) | B | non-IC SBU-NF triggers NF injection (existing `expected_dissem_controls` step 4 logic, lifted into a `noforn-from-non-ic-split` PageRewrite at PR 4) |
+| 4 | no FD&R | SBU-NF | NOFORN (IC dissem) | B | same `noforn-from-non-ic-split` |
+| 5 | mix → NOFORN | SBU-NF | NOFORN (IC dissem) | B | same |
+| 6 | NF | LES-NF | NOFORN (IC dissem) | B | same; LES-NF participates same as SBU-NF |
+| 7 | no FD&R | LES-NF | NOFORN (IC dissem) | B | same |
+| 8 | mix → NOFORN | LES-NF | NOFORN (IC dissem) | B | same |
+| 9 | REL TO [USA, LIST] | REL TO [USA, LIST] (no common LIST) | NOFORN | B | `IntersectSet<CountryCode>` on `rel_to` axis produces empty; new `empty-rel-to-becomes-noforn` PageRewrite at PR 4 |
+| 10 | REL TO | RELIDO | NOFORN | C | new PageRewrite: REL TO + RELIDO across portions = no coherent consensus → drop both, add NF. Cite §H.8 p150–154 (RELIDO and REL TO interaction) |
+| 11 | REL TO | DISPLAY ONLY (no common LIST) | NOFORN | B | `IntersectSet` on `display_only` axis produces empty; same `empty-rel-to-becomes-noforn` generalized to display_only |
+| 12 | REL TO / RELIDO | no FD&R | NOFORN | E | "no FD&R" portions on classified content are Table-2-violating; once the implicit Table 2 NF/RELIDO is injected, NF supersession handles. Defer with Appendix F |
+| 13 | REL TO | EYES (no common LIST) | NOFORN | B | EYES post-migration is REL TO; existing `empty-rel-to-becomes-noforn` fires |
+| 14 | REL TO | SBU-NF | NOFORN (IC dissem) | B | `noforn-from-non-ic-split` injects NF, which then clears REL TO via existing `noforn-clears-rel-to` |
+| 15 | REL TO | LES-NF | NOFORN (IC dissem) | B | same |
+| 16 | REL TO | no FD&R | NOFORN | E | same as #12 — Table 2 NF injection handles |
+| 17 | RELIDO | no FD&R | NOFORN-or-RELIDO | E | Table 2 date pivot + non-FD&R-caveat detection → CAB-blocked. Defer with Appendix F |
+| 18 | RELIDO | DISPLAY ONLY | NOFORN | C | new PageRewrite: RELIDO + DISPLAY ONLY = incompatible per §H.8 p154 (RELIDO not with DISPLAY ONLY) → NF |
+| 19 | DISPLAY ONLY | no FD&R | NOFORN | E | same as #12, #16 — Table 2 NF injection handles |
+| 20 | DISPLAY ONLY | DISPLAY ONLY (no common LIST) | NOFORN | B | `IntersectSet` on `display_only` axis empty; `empty-rel-to-becomes-noforn` generalized |
+| 21 | REL TO | REL TO (with common LIST) | REL TO [USA, common LIST] | B | `IntersectSet<CountryCode>::join` produces the common LIST |
+| 22 | REL TO | EYES (with common LIST) | REL TO [USA, common LIST] | B | EYES post-migration is REL TO; standard `IntersectSet` join |
+| 23 | REL TO USA, FVEY/ACGU/TEYE | REL TO [USA, LIST] | REL TO [USA, LIST] (group expanded for common-LIST) | B | tetragraph/group decompose at insert; `IntersectSet` operates on trigraphs; `render_canonical` re-folds |
+| 24 | RELIDO | RELIDO | RELIDO | A | `dissem_controls` set union (idempotent) |
+| 25 | DISPLAY ONLY | DISPLAY ONLY (with common LIST) | DISPLAY ONLY [common LIST] | B | `IntersectSet<CountryCode>` on `display_only` axis |
+| 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] | C | new PageRewrite `display-only-subsumes-rel-to` (release implies disclosure per §H.8 p163) |
+| 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common-A] / DISPLAY ONLY [common-B] | B | per-axis `IntersectSet` joins independently — the product shape's defining win |
+
+### Implementation collapse
+
+The C-rules (10, 18, 26) and several B-rule generalizations
+(9/11/20 → one rewrite; 12/16/19 → one Table 2 injection rule) are
+collapsible:
+
+- **`empty-rel-to-becomes-noforn`** generalized over `rel_to` and
+  `display_only` axes: covers rules 9, 11, 13, 20.
+- **`fdr-incompatible-tokens-mixed`** for incompatible cross-token
+  combinations (REL TO + RELIDO; RELIDO + DISPLAY ONLY): covers
+  rules 10, 18.
+- **`display-only-subsumes-rel-to`**: rule 26 (single declaration).
+- **`noforn-from-non-ic-split`**: rules 3–8, 14, 15.
+- **Table 2 implicit NF/RELIDO injection**: rules 12, 16, 17, 19 —
+  CAB-blocked (Appendix F).
+
+Net: 17 rules (A + B) covered by lattice/product semantics
+mechanically; 5 rules (C) are 3 new `PageRewrite` declarations; 5
+rules (E) defer with Appendix F.
+
+### Per-portion access requirement
+
+Several C-rules (10, 18) and the Table 2 injection rules require
+visibility into per-portion data, not just the joined marking.
+**Open question for PR 3.7 fill-in:** does the `PageRewrite` trait
+gain per-portion access, or does `IsmAttributes` carry a derived
+"per-portion FD&R consensus" field computed at portion-add time on
+`PageContext`? Lattice doc §10 item 11 names this as a sub-question
+under the new `PageRewrite` declarations.
+
+### Authority
+
+CAPCO-2016 §D.2 Table 3 pp 28–30; §H.8 pp 145–168 for per-token
+relationship rules.
+
+---
+
+## Appendix H: Register Table 4 — within-group ordering
+
+CAPCO-2016 §G.1 (pp 36–38) and Table 4 fix the required marking
+order in banner and portion. Two distinct ordering axes:
+
+1. **Inter-category** — order across the 9 top-level groups
+   (US class → non-US → JOINT → SCI → SAP → AEA → FGI → IC dissem
+   → non-IC dissem). **Already enforced** by the `//`-separated
+   category sequence in render-canonical and the existing parser.
+   Not a gap.
+2. **Within-group** — fixed Register order for IC and non-IC
+   dissem categories (`OC/NF` correct, `NF/OC` not), ascending
+   sort (numeric-first-then-alpha) for SCI/SAP compartments,
+   USA-first / kind-then-alpha for country lists. **Currently
+   unenforced.**
+
+### Mechanism per axis
+
+| Within-group axis | Mechanism | PR slot |
+|---|---|---|
+| IC dissem (group 8) Register order | `Vocabulary<S>::register_order(token) -> u32` from §H.8 prose; build-time generated from ODNI XML; zero allocation per Phase 5 vocabulary pattern | PR 5 |
+| Non-IC dissem (group 9) Register order | same `register_order` field, populated from §H.9 prose | PR 5 |
+| SCI compartments (within control system) | custom `Ord` on `SciCompartment` / sub-compartment types (numeric first, then alpha) per §A.6 p15 | PR 4 (lattice impls; SciSet already canonical) |
+| SAR programs / compartments / sub-compartments | custom `Ord` on `SarProgram` / `SarCompartment` per §H.5 prose | PR 4 |
+| Country lists (REL TO LIST, FGI LIST, JOINT LIST, EYES LIST) | `country_sort_key` = `(usa_first, kind_rank, alpha)` per §3 Resolution 2026-05-02 of `2026-05-01-lattice-design.md`; `CountryCode::kind()` consults build-time `KNOWN_GROUP_CODES` from ISMCAT | PR 5 (table) + PR 3c (`render_canonical` consumes it) |
+
+### Render-canonical produces ordered output by construction
+
+Per the PR 3c contract: `MarkingScheme::render_canonical`
+produces Register-ordered output by construction. Authored
+portions in canonical form are unchanged; authored portions in
+non-canonical form trigger a `Phase::WholeMarking` validator that
+emits a low-severity `Diagnostic` plus a fix proposal.
+
+### Whole-marking Register-order validator
+
+New rule (PR 7 slot — `Phase::WholeMarking` lands there):
+`RegisterOrderViolation`. Reads each emitted token in the marking,
+compares against the appropriate ordering axis, emits a fix
+proposal sorting into Register order. **Reuses the same sort-key
+functions as `render_canonical`** (single source of truth — one
+bug class to track, not two).
+
+Severity: low (suggest, not error). Authored documents are not
+broken by non-canonical ordering; the marking is still parseable
+and semantically correct. The validator's purpose is canonicalization
+discipline, not correctness enforcement.
+
+### Authority
+
+CAPCO-2016 §G.1 + Table 4 pp 36–38 (Register order top-level + the
+Register prose's "follow the order in which they appear in this
+list" mandate). §H.8 / §H.9 prose for per-category dissem ordering.
+§A.5 + §A.6 for SCI/SAP within-category sort discipline. §H.8 for
+REL TO LIST / EYES LIST USA-first convention.
 
 ---
 

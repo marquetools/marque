@@ -39,6 +39,36 @@ PR 4 implementation lands. Each category section below requires:
 
 ---
 
+## 0a. Primary and secondary actors
+
+The doc serves three actors with different needs; design choices
+favor the primary.
+
+- **Primary**: a future rule author writing a new lattice predicate
+  (e.g., for a new dissem token, a new SCI sub-comp shape, a new
+  cross-axis dominance constraint). The primary actor needs each
+  category section to read as a working reference: formal join
+  semantics, worked examples covering edge cases the citation
+  calls out, fixture names that demonstrate the laws, and an
+  algorithmic sketch when the join is non-trivial. The §3
+  Resolution 2026-05-02 shape is what serves this actor — every
+  other §§2–8 section reaches that density before PR 4 can land.
+- **Secondary — PR 4 reviewer.** Needs the §9 acceptance checklist
+  + per-category review template (`crates/capco/tests/lattice/REVIEW_TEMPLATE.md`)
+  + the four cross-axis adversarial fixture packs (authored at PR 3.7) to
+  sign off PR 4 with structural confidence rather than tired-
+  reviewer pattern matching.
+- **Secondary — future scheme implementer** (`marque-cui`,
+  partner-national schemes, etc.). Reads to understand which
+  lattice constructors apply to which axis shapes, where cross-
+  axis dominance lives, what shape a `Constraint` vs.
+  `PageRewrite` takes. CAPCO-first means this actor is documented
+  but not load-bearing for this doc; the trait surface is
+  semver-unstable until scheme #2 arrives (per `2026-05-02-engine-
+  refactor-consolidated.md` §3.10).
+
+When the three actors' needs conflict, the primary actor wins.
+
 ## 0. Why this gate exists
 
 The Phase B work (`marque-scheme`, `Lattice`, `BoundedLattice`,
@@ -125,7 +155,9 @@ acceptance items.**
 ### Required content
 
 - §-citations: §H.8 (dissem-control markings, FD&R/non-FD&R
-  distinction), §F (legacy/deprecated), §H.9 (NODIS/EXDIS).
+  distinction), §F (legacy/deprecated), §H.9 (NODIS/EXDIS),
+  §H.7 + §D.2 Table 3 row 23 (tetragraph expansion in common-LIST
+  roll-up), §H.8 p157 (EYES deprecation; 1 Oct 2017 waiver expiry).
 - Join semantics: union with supersession. `SupersessionSet` from
   `marque-scheme` covers the surface; the per-token rules need
   enumeration. Examples:
@@ -141,15 +173,130 @@ acceptance items.**
   (`REL TO`, `RELIDO`, `NOFORN`, `DISPLAY ONLY`, `EYES`-deprecated)
   and assert all others as non-FD&R.
 
+### Resolution (2026-05-02): dissem axis is a product
+
+The dissem axis is **not** a flat `SupersessionSet<DissemTokenId>`
+with token-level country-list payloads. It is a **product of typed
+axes**, matching the field layout `IsmAttributes` already carries
+(`crates/ism/src/attrs.rs:55-122`):
+
+```
+DissemAxis ≅
+    SupersessionSet<DissemTokenId>      // {NF, OC, OC-USGOV, IMC, PROPIN,
+                                        //  FOUO, RELIDO, FISA, DSEN, RSEN, ...}
+  × IntersectSet<CountryCode>           // rel_to (existing field)
+  × IntersectSet<CountryCode>           // display_only (NEW field — PR 4)
+  × IntersectSet<Trigraph>              // eyes (NEW field — PR 4; deprecated;
+                                        //   restricted to Five-Eyes members)
+  × SupersessionSet<NonIcDissemTokenId> // {NODIS, EXDIS, SBU, SBU-NF,
+                                        //  LES, LES-NF, SSI, LIMDIS}
+```
+
+**Why `IntersectSet` for country lists.** The country-list axes
+order by *restrictiveness*: a smaller country list is more
+restrictive (releasable to fewer parties is the tighter
+constraint). Banner roll-up takes the most-restrictive consensus,
+which is the **intersection** across portions. `Lattice::join` on
+these axes is therefore set intersection, not union. This matches
+what `PageContext::expected_rel_to`
+(`crates/ism/src/page_context.rs:482`) already computes
+imperatively today; PR 4 promotes the math from imperative to
+lattice-owned. `IntersectSet` from `marque-scheme` is the
+constructor.
+
+**Tetragraph / group-code expansion at insert; re-fold at render.**
+The country-list axes operate on **expanded trigraph atoms**.
+Group designations (FVEY, ACGU, TEYE, NATO, EU, AUSTRALIA_GROUP,
+…) decompose to their member trigraphs at insert time using the
+membership tables in `marque-capco::vocab` (see CLAUDE.md
+"tetragraph expansion tables"). `MarkingScheme::render_canonical`
+re-folds greedily by descending membership size: when the
+post-intersection trigraph set fully contains a decomposable
+group's membership, render emits the group form. **Authority:
+§D.2 Table 3 row 23.**
+
+Group designations split into two classes per ISMCAT:
+- **Decomposable** — known trigraph membership; fold-eligible
+  (FVEY, ACGU, TEYE, NATO, EU, AUSTRALIA_GROUP, ...).
+- **Opaque** — operation-specific or shape-extensible codes
+  (KFOR, ISAF, RSMA, NATO operation codes, ...); pass through as
+  atoms, never folded into. Survive intersection only when present
+  in every portion's list.
+
+Membership tables are **schema-pinned** per Constitution Principle
+IV. ODNI ISM-v2022-DEC's NATO membership is what governs the fold,
+not contemporary real-world NATO. Schema bump = membership change
+= deliberate migration, never silent.
+
+**Country sort key (single source of truth).** `render_canonical`
+and the `Phase::WholeMarking` Register-order validator (Gap C, PR
+7) both consume:
+
+```rust
+fn country_sort_key(c: &CountryCode) -> (u8, u8, &str) {
+    if c.as_str() == "USA" { return (0, 0, "USA"); }   // §H.8: USA first
+    let kind_rank = match c.kind() {
+        CountryKind::Country => 1,                     // trigraphs
+        CountryKind::Group   => 2,                     // group designations
+    };
+    (1, kind_rank, c.as_str())
+}
+```
+
+`CountryCode::kind()` is a method on `CountryCode` consulting a
+build-time-generated `phf::Set<&'static str>` (`KNOWN_GROUP_CODES`)
+from the ISMCAT XML. **Length-based detection is wrong** — group
+designations include 2-char codes (EU) and longer (AUSTRALIA_GROUP)
+as well as 4-char codes (FVEY, NATO). Unknown codes default to
+`Country` (open-vocabulary fallback).
+
+**EYES participates as its own axis pre-migration.** EYES is
+encoded as a token in `dissem_controls` plus a separate
+`eyes: Box<[Trigraph]>` field on `IsmAttributes` (parallel to
+`rel_to`, with the type system enforcing the Five-Eyes-trigraph
+restriction per §H.8 p157). The deprecation does **not** happen at
+parse time — that would lose audit provenance.
+
+A `Phase::Localized` rule `S006 eyes-migrates-to-rel-to` fires on
+EYES token presence. Confidence = 1.0 (the 1 Oct 2017 markings
+waiver is expired; the deprecation is unambiguous). Citation
+§H.8 p157. The fix proposal: drop `EYES` from `dissem_controls`,
+clear the `eyes` axis, add `REL TO` to `dissem_controls`, copy the
+trigraphs into `rel_to`. The delimiter normalization (`/` → `, `)
+falls out of `render_canonical`. `Engine::fix_inner` promotes the
+proposal to `AppliedFix` with `original = "USA/CAN/GBR EYES ONLY"`,
+`replacement = "REL TO USA, CAN, GBR"`, classifier ID, timestamp —
+**the audit record is the historical trail**.
+
+Under `--preserve-historical-form` mode (consolidated plan PR 9),
+the rule's severity flips to diagnostic-only; the EYES axis stays
+populated; the lattice projection sees EYES as an independent axis
+with its own `IntersectSet`. Cross-axis constraints (`EYES`
+conflicts with `NOFORN` and `REL TO`, allowed with `RELIDO`) land
+as declarative `Constraint`s on `CapcoScheme`.
+
 ### Open questions
 
-1. Does `EYES` (deprecated → maps to `REL TO`) participate in the
-   lattice as `EYES` or as the post-migration `REL TO`? Migration
-   semantics intersect with lattice semantics here.
-2. `REL TO` carries trigraph payload; supersession of `REL TO USA, FVEY`
-   by `REL TO USA, FVEY, GBR` is set-extension not supersession.
-   The lattice surface needs to distinguish "supersedes the token"
-   from "extends the token's payload."
+1. ~~Does `EYES` (deprecated → maps to `REL TO`) participate in the
+   lattice as `EYES` or as the post-migration `REL TO`?~~
+   **Resolved (2026-05-02):** EYES participates as its own typed
+   `IntersectSet<Trigraph>` axis pre-migration. A `Phase::Localized`
+   rule `S006 eyes-migrates-to-rel-to` emits a 1.0-confidence
+   `FixProposal`; the resulting `AppliedFix` is the audit trail.
+   `--preserve-historical-form` flips the rule to diagnostic-only,
+   and the lattice operates on the EYES axis directly. See
+   "Resolution" block above and the §S006 entry the PR 3.7 fill-in
+   adds to `crates/capco/src/rules.rs`.
+2. ~~`REL TO` carries trigraph payload; supersession of
+   `REL TO USA, FVEY` by `REL TO USA, FVEY, GBR` is set-extension
+   not supersession. The lattice surface needs to distinguish
+   "supersedes the token" from "extends the token's payload."~~
+   **Resolved (2026-05-02):** the framing was wrong. REL TO is not
+   a token-with-payload in `dissem_controls`; it is a separate
+   `IntersectSet<CountryCode>` axis indexed by REL TO's presence in
+   the flat dissem set. There is no element-level payload to
+   extend, so the supersession-vs-extension dichotomy does not
+   arise. See "Resolution" block above for the product shape.
 3. ~~`NF` clears `REL TO` per §H.8 (it dominates). Does the in-category
    lattice handle this, or does the rewrite step before the lattice
    projection?~~ **Resolved (2026-05-02): confirm-and-document, not
@@ -230,15 +377,28 @@ acceptance items.**
 
 ### Open questions
 
-1. Tetragraph expansion (FVEY → individual trigraphs) interaction
+1. ~~Tetragraph expansion (FVEY → individual trigraphs) interaction
    with lattice join. The `marque-capco::vocab` tetragraph tables
    (per CLAUDE.md) feed render-canonical. Does the lattice operate
-   on expanded trigraphs or on tetragraph atoms?
-2. `BUILTIN_TETRAGRAPH_MEMBERS` from the 2026-04-28 ISMCAT taxonomy
+   on expanded trigraphs or on tetragraph atoms?~~
+   **Resolved (2026-05-02): operate on expanded trigraphs.** Same
+   resolution as §3's REL TO/DISPLAY ONLY/EYES axes — see §3
+   "Resolution (2026-05-02): dissem axis is a product" for the
+   algorithm (greedy size-descending re-fold of decomposable
+   groups; opaque codes pass through; schema-pinned membership
+   tables; `country_sort_key` shared with `render_canonical` and
+   the Register-order validator). FGI LIST uses the same sort key
+   and the same fold algorithm.
+2. ~~`BUILTIN_TETRAGRAPH_MEMBERS` from the 2026-04-28 ISMCAT taxonomy
    plan informs which tetragraphs are decomposable. The lattice
    shouldn't decompose at join time — it should operate on canonical
    form (which `2026-04-28-tetragraph-taxonomy-and-uncertain-reduction.md`
-   addressed for REL TO).
+   addressed for REL TO).~~
+   **Resolved (2026-05-02): folded into Q1's resolution above.**
+   The lattice operates on expanded trigraph atoms (decomposing at
+   insert time); `render_canonical` re-folds. The 2026-04-28
+   plan's `BUILTIN_TETRAGRAPH_MEMBERS` decomposable/opaque
+   distinction governs which group codes are fold-eligible.
 
 ---
 
@@ -300,7 +460,17 @@ acceptance items.**
 
 ## 9. Acceptance checklist
 
-Before PR 4 lands, this document must satisfy:
+Before PR 4 lands, this document must satisfy the criteria below.
+**The bar for §§2–8 density is the §3 Resolution 2026-05-02 shape**;
+see `2026-05-02-engine-refactor-consolidated.md` §11.1 for the
+canonical specification (formal join + algorithmic detail when non-
+trivial + worked examples + property-fixture names + cross-axis
+fixtures + open-question resolution). Reviewer signs off via the
+per-category template at `crates/capco/tests/lattice/REVIEW_TEMPLATE.md`,
+one filled template per category, including the adversarial-fixture
+run (sign-off is "I ran the four cross-axis adversarial packs and
+they failed against the synthetic violations as expected," not "I
+read the section").
 
 - [ ] Every category section (§§2–8) has §-citations to
       `crates/capco/docs/CAPCO-2016.md`.
@@ -332,14 +502,33 @@ Before PR 4 lands, this document must satisfy:
         roll-up #276** (cross-touchpoint to §6 `FgiSet`).
       - §3 (Dissem set) — **FOUO eviction by non-FD&R dissem**
         (in-category supersession; cross-touchpoint to §2 for the
-        eviction direction).
+        eviction direction). **REL TO / DISPLAY ONLY / EYES axis
+        fixtures** (per §3 Resolution 2026-05-02):
+        `rel_to_ordering_basic.json` (trigraph-before-group sort);
+        `rel_to_ordering_authored_wrong.json` (Register-order
+        validator catches author-introduced wrong order);
+        `rel_to_full_fvey_fold.json` (full-membership fold);
+        `rel_to_acgu_subset_fold.json` (greedy picks largest
+        available — FVEY can't fold without NZL, ACGU folds);
+        `rel_to_acgu_with_leftover.json` (group plus leftover
+        trigraph, sort order); `rel_to_full_nato_fold.json`
+        (schema-pinned NATO membership; fixture regenerates on
+        schema bump); `rel_to_eu_fold.json` (2-char group code,
+        confirms `kind`-based sort not length-based);
+        `rel_to_australia_group_fold.json` (longer group code);
+        `rel_to_eyes_migrates.json` (EYES → REL TO migration with
+        `AppliedFix` audit record); `rel_to_eyes_preserve_historical.json`
+        (`--preserve-historical-form` mode flips rule to
+        diagnostic-only).
       - §4 (`SciSet`) — **SCI cross-system canonicalization**
         (HCS-O / HCS-O-P / SI-G interactions; #267 Gap A).
       - §5 (`SarSet`) — no primary cross-axis fixture today; revisit
         if SAR ordering interacts with classification or dissem
         beyond what §H.5 already enumerates.
       - §6 (`FgiSet`) — **FGI banner roll-up #276** (primary site;
-        §2 cross-reference).
+        §2 cross-reference). FGI LIST tetragraph fold reuses the
+        algorithm from §3; one fixture verifies parity:
+        `fgi_list_fold_parity.json`.
       - §7 (NATO control set) — no primary cross-axis fixture in
         this round; deferred until ATOMAL/BOHEMIA work in PR 9.
       - §8 (Declassify-on / `MaxDate`) — **AEA exemption
@@ -357,18 +546,95 @@ Before PR 4 lands, this document must satisfy:
 ## 10. Open items requiring author input before fill-in
 
 Items where the doc author needs the user (or a domain reviewer)
-to make a call before the section can be filled:
+to make a call before the section can be filled. Each item carries
+a `Status:` tag making the deferral kind explicit:
+
+- `Status: open_gate (<criteria_to_close>)` — must resolve before
+  PR 4 lands. PR 3.7 fill-in closes with §-citation + explicit
+  decision. Failure to close blocks PR 4.
+- `Status: scope_cut (<reason>)` — accepted scope cut, intentional;
+  does not block PR 4. The "no escape valve" rule does not apply
+  to these.
+- `Status: resolved (YYYY-MM-DD)` — closed in this revision; left
+  in the doc for genealogy.
+
+Citation-lint at PR 0.5 flags any deferral phrasing in this section
+that lacks one of the three tag forms (per consolidated plan §11.2).
 
 1. **§2 cross-branch join semantics**: refusal vs structural combination.
-2. **§3 `EYES` lattice participation**: pre- or post-migration form.
+   `Status: open_gate (decide between Top/Error refusal vs.
+   MarkingClassification::Joint structural combination, with §A.4
+   / §H.3 / §H.7 §-citation; ship worked examples for each branch
+   pair the decision admits)`.
+2. ~~**§3 `EYES` lattice participation**: pre- or post-migration form.~~
+   `Status: resolved (2026-05-02)` — see §3 Resolution block: EYES
+   is its own typed `IntersectSet<Trigraph>` axis pre-migration;
+   the `eyes-migrates-to-rel-to` `Phase::Localized` rule produces
+   the `AppliedFix` audit trail; `--preserve-historical-form` flips
+   it to diagnostic-only.
 3. ~~**§3 `NF` clears `REL TO`**: lattice op vs `PageRewrite`.~~
-   **Resolved 2026-05-02 (see §3 above): confirm-and-document. PR 3.7
-   fill-in cites §H.8; lattice does not encode the supersession.**
-4. **§4 SCI per-system canonicalization**: lattice vs `render_canonical` boundary.
+   `Status: resolved (2026-05-02)` — confirm-and-document; PR 3.7
+   fill-in cites §H.8; lattice does not encode the supersession.
+4. **§4 SCI per-system canonicalization**: lattice vs
+   `render_canonical` boundary.
+   `Status: open_gate (cite §A.6 / §H.4 passage governing per-
+   system compartment canonicalization; decide whether HCS-O /
+   HCS-O-P / SI-G interactions live in the lattice impl or in
+   render-canonical; #267 Gap A interacts)`.
 5. **§5 SAR ordering**: lattice canonical vs render canonical.
-6. **§6 tetragraph join level**: trigraph-expanded vs tetragraph-atomic.
+   `Status: open_gate (cite §H.5 SAR ordering passage; decide
+   whether SAR sort discipline lives in Ord on SarProgram /
+   SarCompartment or in render-canonical only)`.
+6. ~~**§6 tetragraph join level**: trigraph-expanded vs tetragraph-atomic.~~
+   `Status: resolved (2026-05-02)` — see §3 Resolution block:
+   lattice operates on expanded trigraph atoms; group designations
+   decompose at insert; `render_canonical` re-folds greedily by
+   descending membership size; opaque codes pass through; schema-
+   pinned membership tables.
 7. **§7 ATOMAL/BOHEMIA combinability**: §H.3 citation needed.
+   `Status: open_gate (cite §H.3 ATOMAL / BOHEMIA passage; answer
+   whether the two combine in a single marking and what the join
+   produces; required before PR 9's NATO control-set lattice
+   work)`.
 8. **§8 mixed dates and canned strings**: §C citation needed.
+   `Status: open_gate (cite §C passage on mixed dates + canned
+   strings on same page; specify the join shape; the AEA / NATO
+   canned-string supersession ordering itself stays scope_cut
+   per the §8 in-text deferral to #266)`.
+9. **§3 `display_only` axis on `IsmAttributes`** (NEW 2026-05-02):
+   `IsmAttributes` today has `rel_to: Box<[CountryCode]>` but no
+   parallel `display_only` field. Per §3 Resolution, the dissem
+   axis is a product over `rel_to`, `display_only`, `eyes`. PR 4
+   adds the `display_only: Box<[CountryCode]>` field on
+   `IsmAttributes`.
+   `Status: open_gate (confirm field addition is a PR 4
+   deliverable, not a prerequisite earlier; recommendation per
+   2026-05-02 conferral: PR 4, since the field has no consumer
+   until lattice impls land)`.
+10. **§3 `country_sort_key` placement and `CountryCode::kind()`
+    contract** (NEW 2026-05-02): the sort key consumed by
+    `render_canonical` and the Register-order validator lives at
+    `marque-ism::country` (universal across schemes). `kind()`
+    consults a build-time-generated `phf::Set<&'static str>` of
+    known group codes from ISMCAT XML.
+    `Status: open_gate (confirm which PR generates the table;
+    recommendation: PR 5, co-locating with the rest of the
+    Vocabulary<S> build-time metadata — is_fdr_dissem,
+    is_caveat_token, register_order)`.
+11. **§3 cross-axis `PageRewrite` enumeration** (NEW 2026-05-02):
+    the §3 Resolution names two new declarative `PageRewrite`s
+    that fall out of the product shape:
+    `empty-rel-to-becomes-noforn` (Table 3 rules 9, 11, 13, 16,
+    19, 20 — `IntersectSet` produces empty common LIST → drop the
+    REL TO/DISPLAY ONLY token, add NF) and
+    `display-only-subsumes-rel-to` (Table 3 rule 26 — DISPLAY ONLY
+    + REL TO with common LIST → DISPLAY ONLY [common LIST] because
+    release implies disclosure).
+    `Status: open_gate (confirm reads/writes axis annotations
+    for the topo scheduler; cycle-free dispatch with the
+    existing noforn-clears-rel-to rewrite; PR slot: PR 9, which
+    already declares missing PageRewrites)`.
 
 These are the points where the previous attempt skimmed. The fill-in
-pass must resolve each before PR 4 implementation begins.
+pass must close every `open_gate:` before PR 4 implementation begins;
+`scope_cut:` items remain documented but do not block.
