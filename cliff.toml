@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # NOTE: SPDX identifiers at the top of a file apply only to that file.
-# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code and technical specs/plans.
 # cliff.toml — git-cliff changelog configuration
 # https://git-cliff.org/docs/configuration
 

@@ -895,7 +895,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "marque"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "marque-capco"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "insta",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "marque-config"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "marque-ism",
  "marque-rules",
@@ -950,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "marque-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "marque-ism",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "marque-engine"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "criterion",
@@ -988,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "marque-extract"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "futures",
  "marque-core",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "marque-ism"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "marque-rules"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "marque-ism",
  "serde",
