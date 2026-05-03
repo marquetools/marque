@@ -81,27 +81,27 @@ confidence-threshold = 0.93
 [[licenses.clarify]]
 crate = "marque-capco"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+license-files = [{ path = "LICENSE.md", hash = 0x7bcf31ff }]
 
 [[licenses.clarify]]
 crate = "marque-core"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+license-files = [{ path = "LICENSE.md", hash = 0x7bcf31ff }]
 
 [[licenses.clarify]]
 crate = "marque-ism"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+license-files = [{ path = "LICENSE.md", hash = 0x7bcf31ff }]
 
 [[licenses.clarify]]
 crate = "marque-rules"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+license-files = [{ path = "LICENSE.md", hash = 0x7bcf31ff }]
 
 [[licenses.clarify]]
 crate = "marque-scheme"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
+license-files = [{ path = "LICENSE.md", hash = 0x7bcf31ff }]
 
 [bans]
 multiple-versions = "warn"
