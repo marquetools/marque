@@ -8,11 +8,15 @@ on:
     branches: [ "main" ]
     paths-ignore:
       - "tools/corpus-analysis/analyze.py"
+      - "**/vendor.*"
+      - "**/vendor/**"
 
   pull_request:
     branches: [ "main" ]
     paths-ignore:
       - "tools/corpus-analysis/analyze.py"
+      - "**/vendor.*"
+      - "**/vendor/**"
   schedule:
     - cron: '20 20 * * 6'
 
