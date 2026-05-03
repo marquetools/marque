@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## v0.2.0 (2026-05-03)
 
+<csr-id-2d4614cddbb4ab57dd1516d970d19deb54056219/>
+<csr-id-fea848a13030dc19e0b6a9ae58fdb2ee7b0a5656/>
+<csr-id-f9448fa9e80951738a82d3646a5455ea856ebb3c/>
+<csr-id-ee6a4895ca2499c50d3f805b83ae5594b6d59f4a/>
+<csr-id-0ed90cadb76a43979a165e9d8698f67435116a45/>
+
 ### Documentation
 
  - <csr-id-6778c1ca14bf6c68ae71c90d151417bd1d65c707/> unify licensing under Marque License 1.0 (v1.2.0)
@@ -37,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 33 commits contributed to the release over the course of 13 calendar days.
+ - 34 commits contributed to the release over the course of 13 calendar days.
  - 11 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 29 unique issues were worked on: [#114](https://github.com/marquetools/marque/issues/114), [#116](https://github.com/marquetools/marque/issues/116), [#120](https://github.com/marquetools/marque/issues/120), [#133 PR 5](https://github.com/marquetools/marque/issues/133 PR 5), [#146](https://github.com/marquetools/marque/issues/146), [#152](https://github.com/marquetools/marque/issues/152), [#178](https://github.com/marquetools/marque/issues/178), [#220](https://github.com/marquetools/marque/issues/220), [#227](https://github.com/marquetools/marque/issues/227), [#229](https://github.com/marquetools/marque/issues/229), [#23](https://github.com/marquetools/marque/issues/23), [#230](https://github.com/marquetools/marque/issues/230), [#24](https://github.com/marquetools/marque/issues/24), [#262](https://github.com/marquetools/marque/issues/262), [#28](https://github.com/marquetools/marque/issues/28), [#35](https://github.com/marquetools/marque/issues/35), [#40](https://github.com/marquetools/marque/issues/40), [#41](https://github.com/marquetools/marque/issues/41), [#46](https://github.com/marquetools/marque/issues/46), [#47](https://github.com/marquetools/marque/issues/47), [#48](https://github.com/marquetools/marque/issues/48), [#54](https://github.com/marquetools/marque/issues/54), [#55](https://github.com/marquetools/marque/issues/55), [#61](https://github.com/marquetools/marque/issues/61), [#62](https://github.com/marquetools/marque/issues/62), [#63](https://github.com/marquetools/marque/issues/63), [#68](https://github.com/marquetools/marque/issues/68), [#69](https://github.com/marquetools/marque/issues/69), [#70](https://github.com/marquetools/marque/issues/70)
 
@@ -106,6 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#70](https://github.com/marquetools/marque/issues/70)**
     - Retire 11 hand-written rule impls via declarative wrappers ([`fea848a`](https://github.com/marquetools/marque/commit/fea848a13030dc19e0b6a9ae58fdb2ee7b0a5656))
  * **Uncategorized**
+    - Release marque-scheme v0.2.0 ([`4d00b0e`](https://github.com/marquetools/marque/commit/4d00b0e25e415c184f371fed5c21bb476c91136e))
     - Merge remote-tracking branch 'origin/main' into feat/improved-demo ([`54aef3b`](https://github.com/marquetools/marque/commit/54aef3bd5a7aebae21c7a65da40e3f72f43e3fb8))
     - Minor updates to license text, README ([`92defb3`](https://github.com/marquetools/marque/commit/92defb37e50d19a77aeb84d59919285293ca080e))
     - Merge branch 'main' into 004-constraints-decoder-vocab ([`5694315`](https://github.com/marquetools/marque/commit/56943155f3171d794005e311a57e31b3280fcb77))
