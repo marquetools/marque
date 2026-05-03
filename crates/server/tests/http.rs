@@ -86,7 +86,9 @@ async fn baseline_lint_without_override_is_ok() {
         "baseline lint should return 200"
     );
     assert_eq!(
-        resp.headers().get(axum::http::header::X_FRAME_OPTIONS).map(|v| v.to_str().unwrap()),
+        resp.headers()
+            .get(axum::http::header::X_FRAME_OPTIONS)
+            .map(|v| v.to_str().unwrap()),
         Some("DENY"),
         "200 response must contain X-Frame-Options: DENY"
     );
@@ -388,7 +390,9 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
         resp.status()
     );
     assert_eq!(
-        resp.headers().get(axum::http::header::X_FRAME_OPTIONS).map(|v| v.to_str().unwrap()),
+        resp.headers()
+            .get(axum::http::header::X_FRAME_OPTIONS)
+            .map(|v| v.to_str().unwrap()),
         Some("DENY"),
         "413 response must contain X-Frame-Options: DENY"
     );
