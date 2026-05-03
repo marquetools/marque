@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: MIT OR Apache-2.0
 NOTE: SPDX identifiers at the top of a file apply only to that file.
 The *text* of the Marque License is licensed under MIT OR Apache-2.0, copyright Knitli Inc.
-The Marque License (below) covers the project's source code and technical specs/plans.
+The Marque License (below) covers the project's source code (Rust/.rs and Python/.py files).
 -->
 
 # Marque License 1.0

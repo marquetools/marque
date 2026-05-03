@@ -85,6 +85,11 @@ async fn baseline_lint_without_override_is_ok() {
         StatusCode::OK,
         "baseline lint should return 200"
     );
+    assert_eq!(
+        resp.headers().get(axum::http::header::X_FRAME_OPTIONS).map(|v| v.to_str().unwrap()),
+        Some("DENY"),
+        "200 response must contain X-Frame-Options: DENY"
+    );
 }
 
 #[tokio::test]
@@ -381,6 +386,11 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
         "body of {} bytes against a {limit}-byte limit must return 413; got {}",
         body.len(),
         resp.status()
+    );
+    assert_eq!(
+        resp.headers().get(axum::http::header::X_FRAME_OPTIONS).map(|v| v.to_str().unwrap()),
+        Some("DENY"),
+        "413 response must contain X-Frame-Options: DENY"
     );
 }
 

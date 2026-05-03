@@ -6,20 +6,8 @@ name: "CodeQL Advanced"
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - '**/*.rs'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - 'site/src/**/*.ts'
-      - 'tools/**/*.py'
   pull_request:
     branches: [ "main" ]
-    paths:
-      - '**/*.rs'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - 'site/src/**/*.ts'
-      - 'tools/**/*.py'
   schedule:
     - cron: '20 20 * * 6'
 
@@ -68,6 +56,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@19b3a84f58f551a99396341585444cb37be03324
         with:
+          config
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: |

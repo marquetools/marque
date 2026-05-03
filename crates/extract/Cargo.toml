@@ -14,9 +14,11 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
-  "REUSE.toml",
   "src/**/*.rs",
 ]
+
+[lints]
+workspace = true
 
 [dependencies]
 futures = { workspace = true }
@@ -34,6 +36,3 @@ tracing = { workspace = true }
 [features]
 default = []
 ocr = []  # enables OCR backends via Kreuzberg when available
-
-[lints]
-workspace = true

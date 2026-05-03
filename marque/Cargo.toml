@@ -14,9 +14,11 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
-  "REUSE.toml",
   "src/**/*.rs",
 ]
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "marque"
@@ -51,12 +53,9 @@ tempfile = { workspace = true }
 # Proxying through `marque-engine/corpus-override` pulls the matching
 # gates in capco + config along with it.
 default = []
+corpus-override = ["marque-engine/corpus-override"]
 # Harness pass-throughs for convenience on the CLI crate; individual
 # harnesses are exercised from `marque-capco` and `marque-engine`
 # integration tests, not from the CLI binary itself.
 corpus-harness = ["marque-engine/corpus-harness"]
-corpus-override = ["marque-engine/corpus-override"]
 decoder-harness = ["marque-engine/decoder-harness"]
-
-[lints]
-workspace = true

@@ -801,6 +801,10 @@ pub fn build_app_with_limit(state: AppState, body_limit_bytes: usize) -> Router 
             header::X_CONTENT_TYPE_OPTIONS,
             header::HeaderValue::from_static("nosniff"),
         ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            header::X_FRAME_OPTIONS,
+            header::HeaderValue::from_static("DENY"),
+        ))
         .with_state(state)
 }
 
