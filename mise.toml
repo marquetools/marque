@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code and technical specs/plans.
+
 experimental_monorepo_root = true
 
 [tools]
@@ -39,7 +44,7 @@ experimental = true
 gpg_verify = true
 
 [monorepo]
-config_roots = ["./", "./demo", "crates/*/"]
+config_roots = ["./", "./demo", "crates/*"]
 
 [shell_alias]
 mx = "mise exec --"

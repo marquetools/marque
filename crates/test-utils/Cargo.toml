@@ -14,12 +14,13 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "REUSE.toml",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

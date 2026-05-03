@@ -14,11 +14,9 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "REUSE.toml",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 aho-corasick = { workspace = true }
@@ -45,3 +43,6 @@ serde = ["dep:serde"]
 # wide, so parallel tests inflate each other's deltas. See the header
 # docstring in `tests/alloc_budget.rs` for the full reasoning.
 count-allocs = []
+
+[lints]
+workspace = true

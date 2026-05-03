@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# NOTE: SPDX identifiers at the top of a file apply only to that file.
+# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code and technical specs/plans.
+
+[tasks]
+build-wasm = { run = """
+wasm-pack build ./ --profiling --target web &&
+wasm-opt --enable-bulk-memory-opt --enable-bulk-memory --enable-extended-const --enable-multivalue --enable-nontrapping-float-to-int --enable-reference-types --enable-sign-ext --enable-simd --enable-tail-call --generate-global-effects -O3 --monomorphize --precompute-propagate --low-memory-unused --gufa --vacuum -O3 --converge --strip-toolchain-annotations -o pkg/marque_wasm_bg.wasm &&
+rm pkg/marque_wasm_bg.wasm &&
+mv pkg/marque_wasm_bg_tmp.wasm pkg/marque_wasm_bg.wasm
+""" }
