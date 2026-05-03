@@ -6442,7 +6442,7 @@ impl Rule for FgiBannerClassificationAuthorityRule {
                     expected.countries.iter().map(|c| c.as_str()).collect();
                 let page_level = page.expected_classification();
                 if banner_countries == expected_countries
-                    && page_level.map_or(true, |l| l == fgi.level)
+                    && page_level.is_none_or(|l| l == fgi.level)
                 {
                     // Authority prefix and level already correct — nothing to fix.
                     return vec![];
