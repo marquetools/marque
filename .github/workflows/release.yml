@@ -98,6 +98,19 @@ jobs:
           fi
           if [ "${{ inputs.crates-to-bump }}" != '' ]; then
              FLAGS="$FLAGS ${{ inputs.crates-to-bump }}"
+          else
+             FLAGS="$FLAGS \
+             marque-capco \
+             marque-config \
+             marque-core \
+             marque-engine \
+             marque-extract \
+             marque-ism \
+             marque-rules \
+             marque-scheme \
+             marque marque-server \
+             marque-test-utils \
+             marque-wasm"
           fi
           cargo smart-release $FLAGS
 
