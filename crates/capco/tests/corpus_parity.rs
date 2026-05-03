@@ -113,15 +113,12 @@ fn rule_count_reflects_registration_changes() {
     // wrapper over the `capco/noforn-conflicts-rel-to` constraint
     // in CapcoScheme. §H.8 p145. Net: 58 + 1 = 59.
     //
-    // FGI banner roll-up (§H.7): added E054 (fgi-banner-rollup-commingled)
-    // + E055 (fgi-banner-classification-authority). Net: 59 + 2 = 61.
-    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        61,
+        59,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \

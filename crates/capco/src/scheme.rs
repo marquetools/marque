@@ -360,7 +360,9 @@ fn never_fires(_: &CapcoMarking) -> bool {
 fn page_context_to_attrs(ctx: &PageContext) -> IsmAttributes {
     let mut out = IsmAttributes::default();
 
-    out.classification = ctx.expected_marking_classification();
+    out.classification = ctx
+        .expected_classification()
+        .map(marque_ism::MarkingClassification::Us);
     out.sci_controls = ctx.expected_sci_controls().into_boxed_slice();
     out.sci_markings = ctx.expected_sci_markings();
     out.sar_markings = ctx.expected_sar_marking();

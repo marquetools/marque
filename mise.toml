@@ -1,22 +1,10 @@
-# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
-# SPDX-License-Identifier: MIT OR Apache-2.0
-# NOTE: SPDX identifiers at the top of a file apply only to that file.
-# The [Marque License (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code.
 experimental_monorepo_root = true
-
-[monorepo]
-config_roots = ["./", "./demo", "crates/*/"]
-
-[shell_alias]
-mx = "mise exec --"
-mr = "mise run"
 
 [tools]
 "cargo:cargo-audit" = "0.22.1"
 "cargo:cargo-deny" = "0.19.0"
 "cargo:cargo-nextest" = "0.9.29"
 "cargo:cargo-smart-release" = "0.21.10"
-
 git-cliff = "2.12.0"
 typos = "1.45.1"
 tombi = "0.9.2"
@@ -25,16 +13,34 @@ yq = "4.52.5"
 pnpm = "10.33.0"
 node = "24.14.1"
 python = "3.13.12"
+hk = "1.41.1"
+pkl = "0.31.1"
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
+"npm:sort-package-json" = "3.6.1"
+"npm:@contextlint/cli" = "0.9.4"
 
-[settings]
-auto_install = true
-experimental = true
+[env]
+MISE_TRUST = "1"
+MISE_YES = "1"
 
 [tasks]
-[tasks.build-wasm]
-run = '''
+build-wasm = { run = """
 wasm-pack build crates/wasm --profiling --target web &&
 wasm-opt --enable-bulk-memory-opt --enable-bulk-memory --enable-extended-const --enable-multivalue --enable-nontrapping-float-to-int --enable-reference-types --enable-sign-ext --enable-simd --enable-tail-call --generate-global-effects -O3 --monomorphize --precompute-propagate --low-memory-unused --gufa --vacuum -O3 --converge --strip-toolchain-annotations -o crates/wasm/pkg/marque_wasm_bg_tmp.wasm crates/wasm/pkg/marque_wasm_bg.wasm &&
 rm crates/wasm/pkg/marque_wasm_bg.wasm &&
 mv crates/wasm/pkg/marque_wasm_bg_tmp.wasm crates/wasm/pkg/marque_wasm_bg.wasm
-'''
+""" }
+
+[settings]
+auto_install = true
+experimental = true
+gpg_verify = true
+
+[monorepo]
+config_roots = ["./", "./demo", "crates/*/"]
+
+[shell_alias]
+mx = "mise exec --"
+mr = "mise run"

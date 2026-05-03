@@ -1,0 +1,16 @@
+[tools]
+pnpm = "11.0.3"
+biome = "2.4.14"
+node = "24.14.1"
+
+[deps]
+pnpm = { auto = true }
+
+[settings]
+
+
+[settings.node]
+corepack = true
+
+[settings.npm]
+package_manager = "pnpm"
