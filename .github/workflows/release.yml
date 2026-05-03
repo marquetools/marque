@@ -19,6 +19,18 @@ on:
           - minor
           - major
         default: patch
+      no-publish:
+        description: "Don't publish to crates.io?"
+        type: boolean
+        default: false
+      no-verify:
+        description: "Pass no-verify to cargo publish"
+        type: boolean
+        default: false
+      crates-to-bump:
+        description: "space-separated list of crates to bump directly, no not provided, runs smart-release with defaults."
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -66,11 +78,28 @@ jobs:
             CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          FLAGS="--bump ${{ inputs.bump }} --allow-fully-generated-changelogs --no-changelog-preview --no-bump-on-demand"
+          FLAGS="--bump ${{ inputs.bump }} \
+            --allow-fully-generated-changelogs \
+            --auto-publish-of-stable-crates \
+            --no-bump-on-demand \
+            --no-changelog-preview \
+            -d patch \
+            -u"
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run-cargo-publish"
+          else
+            FLAGS="$FLAGS -e"
           fi
-          cargo smart-release -u --execute $FLAGS
+          if [ "${{ inputs.no-publish }}" = "true" ]; then
+            FLAGS="$FLAGS --no-publish"
+          fi
+          if [ "${{ inputs.no-verify }}" = "true" ]; then
+            FLAGS="$FLAGS --dangerously-pass-no-verify"
+          fi
+          if [ "${{ inputs.crates-to-bump }}" != '' ]; then
+             FLAGS="$FLAGS ${{ inputs.crates-to-bump }}"
+          fi
+          cargo smart-release $FLAGS
 
       - name: Create workspace tag
         id: tag
