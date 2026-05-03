@@ -66,11 +66,17 @@ jobs:
             CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          FLAGS="--bump ${{ inputs.bump }} --allow-fully-generated-changelogs --no-changelog-preview --no-bump-on-demand"
+          FLAGS="--bump ${{ inputs.bump }} \
+            --allow-fully-generated-changelogs \
+            --auto-publish-of-stable-crates \
+            --no-bump-on-demand \
+            --no-changelog-preview \
+            -d patch \
+            -u"
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run-cargo-publish"
           fi
-          cargo smart-release -u --execute $FLAGS
+          cargo smart-release --execute $FLAGS
 
       - name: Create workspace tag
         id: tag
