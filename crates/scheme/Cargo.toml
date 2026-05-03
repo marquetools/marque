@@ -4,7 +4,7 @@
 
 [package]
 name = "marque-scheme"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Domain-neutral trait surface for structured marking schemes (lattice + constraints + projection + local ambiguity)."
@@ -19,12 +19,12 @@ include = [
   "src/**/*.rs",
 ]
 
-[lints]
-workspace = true
-
 [dependencies]
 serde = { workspace = true, optional = true }
 
 [features]
 default = []
 serde = ["dep:serde"]
+
+[lints]
+workspace = true
