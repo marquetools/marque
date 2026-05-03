@@ -163,7 +163,7 @@ print(data['$bench_name'].get('drift_alert_upper_ci_us', ''))
     # named bench failure. `if !` keeps the captured stderr+stdout for the
     # diagnostic.
     local bench_output time_line
-    if ! bench_output=$(cargo bench -p marque-engine --bench lint_latency -- "^${bench_name}\$" 2>&1); then
+    if ! bench_output=$(cargo bench -p marque-engine -- "^${bench_name}\$" 2>&1); then
         echo "bench-check[$bench_name]: ERROR — 'cargo bench' invocation failed"
         if [[ -n "$bench_output" ]]; then
             printf '%s\n' "$bench_output"
@@ -430,10 +430,11 @@ print(data['deadline_overhead']['max_ratio_pct'])
         return 1
     fi
 
-    if ! [[ "$max_ratio_pct" =~ ^[0-9]+$ ]]; then
-        # Regex `^[0-9]+$` accepts `0` (the tightest gate — "no
-        # overhead allowed at all") plus any positive integer; reject
-        # only non-numeric / negative / signed / decimal values.
+    if ! [[ "$max_ratio_pct" =~ ^(0|[1-9][0-9]*)$ ]]; then
+        # Regex `^(0|[1-9][0-9]*)$` accepts exactly `0` (the tightest
+        # gate — "no overhead allowed at all") or a positive integer
+        # without leading zeros; reject non-numeric / negative /
+        # signed / decimal values.
         echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a non-negative integer: ${max_ratio_pct}"
         return 1
     fi
@@ -688,28 +689,39 @@ report_fix_latency() {
 import re, sys
 
 text = sys.argv[1]
-names = (
+preferred = (
     "fix_single_e001_apply",
     "fix_single_e001_dry_run",
     "lint_single_e001_baseline",
 )
+
 pat = re.compile(
-    r"({names})\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([A-Za-z0-9_./:-]+)\s+(?:\n\s+)?time:\s+\[\s*"
     r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
     r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
-    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)".format(names="|".join(names))
+    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)"
 )
 
 found = {}
+order = []
 for m in pat.finditer(text):
-    found[m.group(1)] = (m.group(2), m.group(3), m.group(4))
+    name = m.group(1)
+    if name not in found:
+        order.append(name)
+    found[name] = (m.group(2), m.group(3), m.group(4))
 
-for name in names:
+for name in preferred:
     if name in found:
         lo, mean, hi = found[name]
         print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
     else:
         print(f"bench-check[fix_latency]: WARN — could not parse {name} timing")
+
+for name in order:
+    if name in preferred:
+        continue
+    lo, mean, hi = found[name]
+    print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
 PY
     )
     local py_exit=$?
