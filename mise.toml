@@ -5,11 +5,7 @@
 experimental_monorepo_root = true
 
 [monorepo]
-config_roots = [
-	"./",
-	"./demo",
-	"crates/*/"
-]
+config_roots = ["./", "./demo", "crates/*/"]
 
 [shell_alias]
 mx = "mise exec --"

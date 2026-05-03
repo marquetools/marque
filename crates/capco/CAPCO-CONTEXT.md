@@ -28,8 +28,9 @@ where in a banner) and the *separator alphabet*. Both are normative.
 
 ```
 ┌─ US Classification ──┬─ Non-US Classification ──┬─ Joint Classification ──┐
-│   (mutually exclusive — exactly one of these three slots is filled)       │
-└────────────────────────────────────────────────────────────────────────────┘
+│   (mutually exclusive — exactly one of these three slots is filled)      │
+│           Non-US and Joint prefixed by `//`                               │
+└───────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
               ┌─ SCI Control System ─┬─ Special Access Program ─┬─ AEA Info ─┐
@@ -52,6 +53,7 @@ the relevant dissem categories, never as a stand-alone category):
 CLASSIFICATION//SCI₁-XXX/SCI₂//SAP//AEA//FGI XXX//DISSEM₁/DISSEM₂//DISSEM
             ^^                                                       ^^^^^^
    single classification slot                              non-IC dissem
+   U.S OR Non-U.S. OR JOINT
 ```
 
 ### 1.2 Separator alphabet (identical for banner and portion)
@@ -97,12 +99,14 @@ rule that proposes the encouraged marking.**
 **Pivot date.** 28 Jun 2010 splits "caveated → NOFORN" (older) from
 "uncaveated → RELIDO" (newer). A correct rule MUST read
 `Authority::Originated` from the CAB; it cannot infer the pivot from
-the document text alone.
+the document text alone. However, in a live lint/fix situation,
+Marque can assume current date.
 
 **Caveats** (a portion is "caveated" if it bears) per §B.2 / §H.8:
-ORCON / ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO,
-or any non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF,
-SSI). NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
+ORCON / ORCON-USGOV (OC/OC-USGOV), IMCON (IMC), PROPIN (PR), FISA, 
+DEA SENSITIVE (DEA), RSEN (RS), FOUO, or any non-IC dissem 
+(LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF,SSI). 
+NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
 markings, not the upstream "caveat" trigger.
 
 **Marque encoding.** `marque-capco` SHOULD model the seven Table-2
@@ -246,6 +250,13 @@ banner. This is a candidate for a new `W###`-class rule per
 
 > Authority: CAPCO-2016 §G.1 + Table 4, pp 36–38.
 
+### 4.4 Real World 
+
+In actual practice, many portions and banners do not appear
+in Register-order. Do not assume even otherwise correctly
+marked input will follow this pattern. Marque should correct
+to it, but not expect input to conform to it.
+
 ---
 
 ## 5. Section H Per-Marking Matrix
@@ -269,13 +280,44 @@ banner". `<class>` placeholder = TS / S / C / U.
 | CONFIDENTIAL | H.1 | 50 | CONFIDENTIAL | (none) | C | OCA / EO 13526 §1.2(a) | excludes US-U/S/TS, all non-US, all JOINT | dominates U | combinable with lower class; OK with SCI/SAP/AEA/FGI/dissem |
 | UNCLASSIFIED | H.1 | 51 | UNCLASSIFIED | (none) | U | EO 13526 §1.6(c) | excludes US/non-US/JOINT C/S/TS; FD&R optional on U | rolls up only if all portions are U; FD&R rules at §B.3 govern caveated U | combinable with higher class but U does not appear in higher-class portion mark; OK with AEA/FGI/dissem |
 
-### 5.2 §H.3 JOINT Classification (pp 55–59)
+### 5.2 Non-US Control Markings (this section derived from pp 36-37)
+
+> [!NOTE]
+> Non-U.S. control markings are only described in detail in 
+> CAPCO appendices A (other Non-U.S. and FVEY) & B (NATO). We don't 
+> currently have a copy of those.
+> 
+> This information is what's available in the manual itself.
+
+#### 5.2a NATO
+
+| Marking | Banner Title | Banner Abbr | Portion |
+| COSMIC TOP SECRET | `//COSMIC TOP SECRET` | (none) | `//CTS` |
+| NATO SECRET | `//NATO SECRET` | (none) | `//NS` |
+| NATO CONFIDENTIAL | `//NATO CONFIDENTIAL` | (none) | `//NC` |
+| NATO RESTRICTED | `//NATO RESTRICTED` | (none) | `//NR` |
+| NATO UNCLASSIFIED | `//NATO UNCLASSIFIED` | (none) | `//NU` |
+
+**Special Programs** 
+
+| Marking | Banner Title | Banner Abbr | Portion | Portion Example |
+| ATOMAL |  `ATOMAL` | (none) | `ATOMAL` | `//CTS//ATOMAL//REL TO USA, NATO` |
+| BALK | `BALK` | (none) | `BALK` | `//CTS//BALK//REL TO USA, NATO` |
+| BOHEMIA | `BOHEMIA` | (none) | `BOHEMIA` | `//CTS//BOHEMIA//REL TO USA, NATO` |
+
+**Dissemination Controls**
+
+NATO has some dissemination controls, including `ORCON`.
+
+### 5.3 §H.3 JOINT Classification (pp 55–59)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
-| JOINT (US co-owner) | H.3 | 56 | `//JOINT [class] [LIST]` | (none) | `//JOINT [class] [LIST]//REL TO [USA, LIST]` (or `//REL` if list matches) | Respective countries / EO 13526 §6.1(s)(2) | TS/S/C/U only (not RESTRICTED); requires `REL TO USA, LIST`; combinable with SCI **excluding HCS**, SAP, AEA, FGI, IC + non-IC dissem **excluding NOFORN** | JOINT marking at portion stays at portion; **does not roll up** to banner in US documents — banner becomes the highest US class with FGI [LIST] + REL TO union | JOINT portions must be segregated from US portions unless ICD 206 source-citation applies; if FGI inside, see §H.7 |
+| JOINT (US co-owner) | H.3 | 56 | `//JOINT [class] [LIST]` | (none) | `//JOINT [class] [LIST]//REL TO [USA, LIST]` (or `//REL` if list matches banner) | Respective countries / EO 13526 §6.1(s)(2) | TS/S/C/U only (not RESTRICTED); requires `REL TO USA, LIST`; combinable with SCI **excluding HCS**, SAP, AEA, FGI, IC + non-IC dissem **excluding NOFORN** | JOINT marking at portion stays at portion; **does not roll up** to banner [^1] in US documents — banner becomes the highest US class with FGI [LIST] + REL TO union | JOINT portions must be segregated from US portions unless ICD 206 source-citation applies; if FGI inside, see §H.7 |
 
-### 5.3 §H.4 SCI Control Systems (pp 60–98)
+[^1]: It *can* roll up to banner, but only if the entire page is JOINT with the same membership.
+
+### 5.4 §H.4 SCI Control Systems (pp 60–98)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
@@ -299,14 +341,19 @@ banner". `<class>` placeholder = TS / S / C / U.
 | TK-KANDIK | H.4 | 95 | KANDIK | KAND | KAND | DNI / TK Policy | TS/S only; requires TK + NOFORN; KDK legacy → TK-KAND on new content | all unique SCI roll up | combinable; TK-KAND conveys in portion |
 | TK-KAND [SUB-COMPARTMENT] | H.4 | 97 | KANDIK [SUB] (≤6 alnum) | KAND [SUB] | KAND [SUB] | DNI / TK Policy | TS/S only; requires TK-KAND + NOFORN | all unique SCI roll up | combinable; TK-KAND [SUB] conveys in portion |
 
-**SCI grammar reminder.** Compartment is 2–3 alpha (SI), or 3 alnum
+**SCI grammar reminder.** 
+- **Controls** are 2-3 alpha for banner abbreviations and portion marking (published are HCS, RSV, SI, TK)
+- **Compartments** are 1-4 alpha for banner abbreviations and portion marking (e.g. HCS-P, SI-G, TK-BLFH)
+  - Multiple compartments with no intervening subcompartments are chained (e.g. HCS-O-P, SI-ECRU-G, TK-BLFH-IDIT)
+- **Subcompartments** are 4-6 alnum; SI-G are always 4 (e.g. HCS-P ROUGE, SI-G ABCD, TK-BLFH BASS)
+
 (RSV); sub-compartment is 4–6 alnum depending on system (4 for SI-G,
 ≤6 for HCS-P / TK sub-compartments). Multi-value separators per §A.5
 + §H.4 syntax (p61): `/` between control systems, `-` between control
 and compartment, ` ` between sub-compartments. Numbered values sort
 before alphabetic.
 
-### 5.4 §H.5 Special Access Program (pp 99–102)
+### 5.5 §H.5 Special Access Program (pp 99–102)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
@@ -316,9 +363,10 @@ before alphabetic.
 is 2–3 char abbreviation. Hierarchy: program → compartment → sub-
 compartment. Within a level, multi-value ascending sort (numeric
 first). Multi-program separator is `/` (no SAR- repeat). Compartment
-linker is `-`. Sub-compartment linker is space.
+linker is `-`. Sub-compartment linker is space. Like with SCI, 
+multiple compartments with no subcompartments are `-` linked
 
-### 5.5 §H.6 Atomic Energy Act Information (pp 103–121)
+### 5.6 §H.6 Atomic Energy Act Information (pp 103–121)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
@@ -331,7 +379,7 @@ linker is `-`. Sub-compartment linker is space.
 | DOE UCNI | H.6 | 118 | DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOE UCNI | UCNI | DOE / AEA §148 | U only; CUI re-evaluation candidate | rolls up on U docs; on classified docs DOE UCNI does NOT appear in banner; NOFORN must be applied if FD&R less restrictive | same as DOD UCNI: UCNI portion mark NOT used in classified portions; NF if needed |
 | TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI rolls up unless RD or FRD also present (RD/FRD wins); special "Declassify On" annotation required | RD or FRD takes precedence in portion; TFNI ideally not commingled |
 
-### 5.6 §H.7 Foreign Government Information (pp 122–130)
+### 5.7 §H.7 Foreign Government Information (pp 122–130)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
@@ -339,12 +387,12 @@ linker is `-`. Sub-compartment linker is space.
 | FGI (concealed) | H.7 | 123 | `FOREIGN GOVERNMENT INFORMATION` | `FGI` | `//FGI [non-US class]` (segregated) or `(class//FGI)` (commingled) | Respective country / EO 13526 | same as acknowledged but country list omitted; do NOT include trigraphs in portion | FGI without LIST in banner | as above |
 
 **FGI grammar reminder** (§H.7 prose). LIST = trigraph(s) +
-tetragraph(s) + NATO codes. Multi-country alphabetical, **single-
+tetragraph(s). Multi-country alphabetical, **single-
 space separated** (NOT comma-separated, even though country lists in
 REL TO are). FGI portion mark **always starts with `//`** because the
 foreign source is its own classification authority.
 
-### 5.7 §H.8 IC Dissemination Controls (pp 131–168)
+### 5.8 §H.8 IC Dissemination Controls (pp 131–168)
 
 Within-banner ordering inside this category follows the prose
 sequence below.
@@ -357,7 +405,7 @@ sequence below.
 | ORCON-USGOV | H.8 | 139 | ORIGINATOR CONTROLLED-USGOV | ORCON-USGOV | OC-USGOV | DNI / NSA-1947 | TS/S/C only; **not with ORCON / RELIDO / SI-G / SI-G [SUB] / HCS-O / HCS-P [SUB]**; OK with HCS-P (no [SUB]); OK with NOFORN/REL TO/DISPLAY ONLY | ORCON wins over ORCON-USGOV in banner | OC wins in portion when both present |
 | IMCON | H.8 | 142 | CONTROLLED IMAGERY | IMCON | IMC | DNI / NSA-1947 §103(c)(5) | TS/S only; OK with REL TO or NOFORN (NOFORN release requires SATP) | IMCON always rolls up; with NOFORN portion → `[class]//IMCON/NOFORN` | combinable; IMC conveys in portion |
 | NOFORN | H.8 | 145 | NOT RELEASABLE TO FOREIGN NATIONALS | NOFORN | NF | DNI / NSA-1947 §103(c)(5) | TS/S/C/U; **mutually exclusive with REL TO / RELIDO / EYES ONLY / DISPLAY ONLY** | per Table 3 — NOFORN dominates other FD&R | NF conveys in portion |
-| PROPIN | H.8 | 148 | CAUTION-PROPRIETARY INFORMATION INVOLVED | PROPIN | PR | DNI / 18 USC 1905 | TS/S/C/U | always rolls up; **PROPIN wins over FOUO in banner** | combinable; PR conveys in portion |
+| PROPIN | H.8 | 148 | CAUTION-PROPRIETARY INFORMATION INVOLVED | PROPIN | PR | DNI / 18 USC 1905 | TS/S/C/U | always rolls up; **PROPIN wins over FOUO in banner/portion** | combinable; PR conveys in portion |
 | REL TO | H.8 | 150 | `AUTHORIZED FOR RELEASE TO [USA, LIST]` | `REL TO [USA, LIST]` | `REL TO [USA, LIST]` (full) or `REL` (when same as banner) | DNI / NSA-1947 §103(c)(5) | TS/S/C/U; **not with NOFORN or EYES ONLY**; OK with RELIDO / DISPLAY ONLY; AEA-specific rules per §H.6 | per Table 3 (rules 21–23) | REL TO conveys only if **all** info in portion releasable to same LIST |
 | RELIDO | H.8 | 154 | RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL | RELIDO | RELIDO | DNI / NSA-1947 §103(c)(5) | TS/S/C/U; OK alone or with REL TO; **not with NOFORN / DISPLAY ONLY** | per Table 3 (rule 17 has date-pivot ambiguity) | RELIDO in portion only when all combined info carries RELIDO decision |
 | EYES ONLY | H.8 | 157 | `USA/[LIST] EYES ONLY` | (none) | EYES (or full form if portion's LIST ≠ banner's) | NSA / CSS Manual 1-52 | **NSA only, deprecated** — markings waiver expired 1 Oct 2017; TS/S/C; not with NOFORN/REL TO; OK with RELIDO; LIST = Five Eyes country trigraphs | per Table 3 | when extracting EYES portions into new docs, convert to REL TO |
@@ -365,7 +413,7 @@ sequence below.
 | FISA | H.8 | 161 | FOREIGN INTELLIGENCE SURVEILLANCE ACT | FISA | FISA | DNI / 50 USC ch.36 | TS/S/C/U | always rolls up | combinable; FISA in portion |
 | DISPLAY ONLY | H.8 | 163 | `DISPLAY ONLY [LIST]` | (none) | `DISPLAY ONLY [LIST]` | DNI / NSA-1947 | TS/S/C/U; **not with RELIDO or NOFORN**; OK with REL TO under DNI-authorized circumstances | per Table 3 (rules 25–27) | OK with REL TO if all info in portion approved through same originator FD&R channels |
 
-### 5.8 §H.9 Non-IC Dissemination Controls (pp 169–191)
+### 5.9 §H.9 Non-IC Dissemination Controls (pp 169–191)
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
