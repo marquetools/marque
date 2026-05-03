@@ -15,6 +15,7 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "REUSE.toml",
   "src/**/*.rs",
 ]
 
@@ -222,4 +223,3 @@ talc_debug = [
 
 [lints]
 workspace = true
-

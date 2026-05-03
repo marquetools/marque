@@ -14,11 +14,9 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "REUSE.toml",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 marque-ism = { workspace = true }
@@ -31,3 +29,6 @@ static_assertions = { workspace = true }
 [features]
 default = []
 serde = ["dep:serde", "marque-ism/serde"]
+
+[lints]
+workspace = true

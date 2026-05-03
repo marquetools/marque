@@ -14,11 +14,9 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
+  "REUSE.toml",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 marque-ism = { workspace = true }
@@ -45,3 +43,6 @@ tempfile = { workspace = true }
 # `marque-server` at the handler layer (FR-013 / T3 enforcement).
 default = []
 corpus-override = []
+
+[lints]
+workspace = true
