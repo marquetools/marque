@@ -2,7 +2,7 @@
 
 **Branch**: `004-constraints-decoder-vocab` | **Date**: 2026-04-20 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/004-constraints-decoder-vocab/spec.md`
-**Primary source (technical detail):** [`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`](../../docs/plans/2026-04-19-recursive-lattice-and-decoder.md) §§4–7a, 12 (Phases C, D, E)
+**Primary source (technical detail):** [`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`](../../../docs/plans/2026-04-19-recursive-lattice-and-decoder.md) §§4–7a, 12 (Phases C, D, E)
 
 ## Summary
 

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nozomi-koborinai/contextlint/main/schema.json",
+
+  "include": [
+    "README.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "CLA.md",
+    "CONTRIBUTING.md",
+    "LICENSE.md",
+    "docs/**/*.md",
+    "specs/**/*.md",
+    "benches/**/*.md",
+    "crates/*/README.md",
+    "tests/corpus/**/*.md",
+    "tests/fixtures/**/*.md",
+    ".specify/memory/**/*.md"
+  ],
+
+  "rules": [
+    {
+      "rule": "ref001",
+      "options": {
+        "exclude": [
+          "crates/capco/docs/CAPCO-2016.md",
+          "crates/capco/docs/CAPCO-v5.1-2012.md",
+          "crates/capco/docs/original-refs/**/*.md"
+        ]
+      }
+    },
+    {
+      "rule": "ref005",
+      "options": {
+        "files": "{docs,specs,benches,.specify}/**/*.md"
+      }
+    },
+    {
+      "rule": "ref006",
+      "options": {
+        "exclude": [
+          "crates/capco/docs/**",
+          "demo/assets/**",
+          "site/src/assets/**"
+        ]
+      }
+    },
+    {
+      "rule": "chk001",
+      "options": {
+        "files": "{docs/reviews,**/checklists}/**/*.md"
+      }
+    },
+    {
+      "rule": "ctx001",
+      "options": {
+        "files": "{docs,specs,benches,.specify}/**/*.md"
+      }
+    },
+    {
+      "rule": "grp002",
+      "options": {
+        "files": "{docs,specs,.specify}/**/*.md",
+        "exclude": ["**/archive/**"]
+      }
+    },
+    {
+      "rule": "grp003",
+      "options": {
+        "files": "{docs,specs}/**/*.md",
+        "entryPoints": [
+          "docs/security/WHITEPAPER.md",
+          "docs/OCR-Mangled-Resolution-Observations.md",
+          "docs/plans/2026-04-20-long-horizon-roadmap.md",
+          "docs/plans/2026-04-23-typos-evaluation-and-fuzzy-vocab-matcher.md",
+          "docs/plans/2026-04-28-tetragraph-taxonomy-and-uncertain-reduction.md",
+          "docs/plans/2026-05-01-lattice-design.md",
+          "docs/plans/2026-05-02-engine-refactor-consolidated.md",
+          "docs/plans/archive/2026-03-11-marque-design.md",
+          "docs/plans/archive/2026-04-16-probabilistic-recognition.md",
+          "docs/plans/archive/2026-04-17-marking-scheme-lattice-design.md",
+          "docs/plans/archive/vocabulary-provider-domain-notes.md",
+          "docs/plans/archive/vocabulary-provider-signal-model.md",
+          "docs/reviews/archive/phase4-review.md",
+          "docs/reviews/archive/phase5-review.md",
+          "specs/005-engine-deadlines/spec.md",
+          "specs/005-engine-deadlines/tasks.md",
+          "specs/archive/001-marque-mvp/spec.md",
+          "specs/archive/001-marque-mvp/plan.md",
+          "specs/archive/001-marque-mvp/research.md",
+          "specs/archive/001-marque-mvp/data-model.md",
+          "specs/archive/001-marque-mvp/quickstart.md",
+          "specs/archive/001-marque-mvp/tasks.md",
+          "specs/archive/001-marque-mvp/checklists/requirements.md",
+          "specs/archive/001-marque-mvp/contracts/cli.md",
+          "specs/archive/002-sar-implementation/spec.md",
+          "specs/archive/002-sar-implementation/plan.md",
+          "specs/archive/002-sar-implementation/data-model.md",
+          "specs/archive/002-sar-implementation/tasks.md",
+          "specs/archive/003-sci-compartments/spec.md",
+          "specs/archive/003-sci-compartments/plan.md",
+          "specs/archive/003-sci-compartments/data-model.md",
+          "specs/archive/003-sci-compartments/tasks.md",
+          "specs/archive/004-constraints-decoder-vocab/spec.md",
+          "specs/archive/004-constraints-decoder-vocab/plan.md",
+          "specs/archive/004-constraints-decoder-vocab/research.md",
+          "specs/archive/004-constraints-decoder-vocab/data-model.md",
+          "specs/archive/004-constraints-decoder-vocab/quickstart.md",
+          "specs/archive/004-constraints-decoder-vocab/tasks.md",
+          "specs/archive/004-constraints-decoder-vocab/checklists/requirements.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/audit-record-v2.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/codec-trait.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/constraint-evaluator.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/page-rewrite-scheduler.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/recognizer-trait.md",
+          "specs/archive/004-constraints-decoder-vocab/contracts/vocabulary-trait.md"
+        ]
+      }
+    }
+  ]
+}

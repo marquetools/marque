@@ -48,6 +48,8 @@ If you:
 
 ## Commercial and Unofficial Contributions
 
+If your contribution is not a public domain work product of the U.S. Government (covered above), the terms below apply.
+
 ## What You’re Agreeing To 📝
 
 By submitting code, docs, or anything else to Marque, you agree:
