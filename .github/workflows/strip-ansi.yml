@@ -1,0 +1,94 @@
+name: ANSI & Unicode Threat Protection
+
+on:
+  push:
+    paths: [ "**" ]
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+  issue_comment:
+    types: [ created, edited ]
+  pull_request_review_comment:
+    types: [ created, edited ]
+  pull_request_review:
+    types: [ submitted, edited ]
+
+jobs:
+
+  scan-files:
+    name: Check files
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          fetch-depth: 5
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@43de409b69c2e1c66c1291a1285ca88301e1efd6
+        with:
+          since_last_remote_commit: true
+      - name: Scan for ANSI/Unicode threats in files
+        id: scan-files
+        uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+        with:
+          files: ${{ steps.changed-files.outputs.all_changed_files }}
+          github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          on-threat: fail
+          preset: dumb
+    outputs:
+      results: ${{ steps.scan-files.outputs.results }}
+      threat-detected: ${{ steps.scan-files.outputs.threat-detected }}
+      threats: ${{ steps.scan-files.outputs.files-with-threats }}
+
+  scan-issue-comments:
+    name: Check Issue Comments
+    if: github.event_name == 'issue_comment'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          fetch-depth: 5
+      - uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+        id: issue-scan
+        name: Scan for ANSI/Unicode in Issue Comments
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          clean-pr-comments: true
+          clean-issue-comments: true
+          on-threat: strip
+          preset: dumb
+    outputs:
+      results: ${{ steps.issue-scan.outputs.comment-results }}
+      threat-detected: ${{ steps.issue-scan.outputs.comment-threat-detected }}
+      threats: ${{ steps.issue-scan.outputs.comments-with-threats }}
+
+  scan-pr-review-comments:
+    name: Check PR Review Comments
+    if: github.event_name == 'pull_request_review_comment' || github.event_name ==
+      'pull_request_review'
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          fetch-depth: 5
+      - uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+        name: Scan for ANSI/Unicode in PR Review Comments
+        id: pr-scan
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          clean-pr-comments: true
+          on-threat: strip
+          preset: dumb
+    outputs:
+      results: ${{ steps.pr-scan.outputs.comment-results }}
+      threat-detected: ${{ steps.pr-scan.outputs.comment-threat-detected }}
+      threats: ${{ steps.pr-scan.outputs.comments-with-threats }}
