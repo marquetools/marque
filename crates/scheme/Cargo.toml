@@ -16,9 +16,11 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
-  "REUSE.toml",
   "src/**/*.rs",
 ]
+
+[lints]
+workspace = true
 
 [dependencies]
 serde = { workspace = true, optional = true }
@@ -26,6 +28,3 @@ serde = { workspace = true, optional = true }
 [features]
 default = []
 serde = ["dep:serde"]
-
-[lints]
-workspace = true

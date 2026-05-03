@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: MIT OR Apache-2.0
 NOTE: SPDX identifiers at the top of a file apply only to that file.
 The *text* of the Marque License is licensed under MIT OR Apache-2.0, copyright Knitli Inc.
-The Marque License (below) covers the project's source code and technical specs/plans.
+The Marque License (below) covers the project's source code (Rust/.rs and Python/.py files).
 -->
 
 # Marque License 1.0
@@ -58,7 +58,7 @@ When using Marque internally, you must:
 Without a [commercial license](#commercial-use):
 
 - **You can't include, adapt, or integrate Marque** (or any of its components or functionality) **as part of a product, application, or service for <u>external</u> use** — meaning use by people or organizations outside your own.
-- **You can't offer Marque's functionality as a hosted or managed service to third parties.** 
+- **You can't offer Marque's functionality as a hosted or managed service to third parties.**
 - **You can't relicense, distribute, or provide Marque** (or any of its components or functionality) **to a third party outside your organization**, such as in a product or service you are building for, providing to, or selling to the Government or another organization.
 
 ---
@@ -151,4 +151,3 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 **Q: Is this FAQ part of the license?**
 
 **A:** Yes.
-

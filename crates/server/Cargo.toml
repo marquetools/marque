@@ -14,13 +14,15 @@ include = [
   "Cargo.toml",
   "LICENSE.md*",
   "README.md",
-  "REUSE.toml",
   "src/**/*.rs",
 ]
 
 [[bin]]
 name = "marque-server"
 path = "src/main.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 axum = { workspace = true }
@@ -41,6 +43,3 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-
-[lints]
-workspace = true

@@ -45,62 +45,62 @@ confidence-threshold = 0.93
 [[licenses.clarify]]
 crate = "marque"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-capco"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-config"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-core"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-engine"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-extract"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-ism"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-rules"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-scheme"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-server"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-test-utils"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [[licenses.clarify]]
 crate = "marque-wasm"
 expression = "LicenseRef-MarqueLicense-1.0"
-license-files = [{ path = "LICENSE.md", hash = 0xfa64c077 }]
+license-files = [{ path = "LICENSE.md", hash = 0x0eca321f }]
 
 [bans]
 multiple-versions = "warn"
