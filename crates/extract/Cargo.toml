@@ -4,7 +4,7 @@
 
 [package]
 name = "marque-extract"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Document text and metadata extraction via Kreuzberg (75+ formats, OCR)"
@@ -16,9 +16,6 @@ include = [
   "README.md",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 futures = { workspace = true }
@@ -36,3 +33,6 @@ tracing = { workspace = true }
 [features]
 default = []
 ocr = []  # enables OCR backends via Kreuzberg when available
+
+[lints]
+workspace = true

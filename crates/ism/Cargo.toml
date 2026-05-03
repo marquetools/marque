@@ -4,7 +4,7 @@
 
 [package]
 name = "marque-ism"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "ISM vocabulary types, generated CVE enums, and Span for marque"
@@ -29,12 +29,12 @@ include = [
   # publishing this is a no-op for upstream consumers; org forks edit
   # the file and rebuild.
   "country_extensions.toml",
-  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
   # NTK files included alongside ISM so build.rs sees the same JSON set
   # at crates.io as in the repo (build.rs reads every `*.json` under
   # CVE_ISM/ — a narrower include glob would silently drop NTK metadata
   # from the generated vocabulary tables in published builds).
   "schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json",
+  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
   "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
   # Issue #208: ISMCAT Tetragraph Taxonomy V2022-NOV. build.rs parses
   # only TetragraphTaxonomyDenormalized.xml; the canonical hierarchical
@@ -52,9 +52,6 @@ include = [
 [package.metadata.marque]
 ism-schema-version = "ISM-v2022-DEC"
 ismcat-tetra-version = "2022-NOV"
-
-[lints]
-workspace = true
 
 [dependencies]
 aho-corasick = { workspace = true }
@@ -76,3 +73,6 @@ toml = { workspace = true }
 [features]
 default = []
 serde = ["dep:serde"]
+
+[lints]
+workspace = true

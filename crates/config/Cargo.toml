@@ -4,7 +4,7 @@
 
 [package]
 name = "marque-config"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Layered configuration loading for marque"
@@ -16,9 +16,6 @@ include = [
   "README.md",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 marque-ism = { workspace = true }
@@ -45,3 +42,6 @@ tempfile = { workspace = true }
 # `marque-server` at the handler layer (FR-013 / T3 enforcement).
 default = []
 corpus-override = []
+
+[lints]
+workspace = true

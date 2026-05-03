@@ -4,7 +4,7 @@
 
 [package]
 name = "marque-core"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Format-agnostic text scanner and attribute parser — the marque engine's front end"
@@ -16,9 +16,6 @@ include = [
   "README.md",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [dependencies]
 aho-corasick = { workspace = true }
@@ -45,3 +42,6 @@ serde = ["dep:serde"]
 # wide, so parallel tests inflate each other's deltas. See the header
 # docstring in `tests/alloc_budget.rs` for the full reasoning.
 count-allocs = []
+
+[lints]
+workspace = true

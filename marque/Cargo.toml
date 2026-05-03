@@ -4,7 +4,7 @@
 
 [package]
 name = "marque"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "A fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules."
@@ -16,9 +16,6 @@ include = [
   "README.md",
   "src/**/*.rs",
 ]
-
-[lints]
-workspace = true
 
 [[bin]]
 name = "marque"
@@ -53,9 +50,12 @@ tempfile = { workspace = true }
 # Proxying through `marque-engine/corpus-override` pulls the matching
 # gates in capco + config along with it.
 default = []
-corpus-override = ["marque-engine/corpus-override"]
 # Harness pass-throughs for convenience on the CLI crate; individual
 # harnesses are exercised from `marque-capco` and `marque-engine`
 # integration tests, not from the CLI binary itself.
 corpus-harness = ["marque-engine/corpus-harness"]
+corpus-override = ["marque-engine/corpus-override"]
 decoder-harness = ["marque-engine/decoder-harness"]
+
+[lints]
+workspace = true
