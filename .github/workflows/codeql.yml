@@ -6,8 +6,13 @@ name: "CodeQL Advanced"
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "tools/corpus-analysis/analyze.py"
+
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - "tools/corpus-analysis/analyze.py"
   schedule:
     - cron: '20 20 * * 6'
 
