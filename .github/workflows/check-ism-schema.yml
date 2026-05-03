@@ -169,12 +169,12 @@ jobs:
             --state open \
             --json number \
             --jq length)
-
+          
           if [ "${EXISTING}" != "0" ]; then
             echo "Schema update issue already open (${EXISTING} open). Skipping."
             exit 0
           fi
-
+          
           BODY=$(cat <<EOF
           ## ODNI ISM Schema Update Detected
           
