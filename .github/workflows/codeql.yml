@@ -12,8 +12,6 @@ on:
       - '.github/actions/**'
       - 'site/src/**/*.ts'
       - 'tools/**/*.py'
-    paths-ignore:
-      - 'tools/corpus-analysis/analyze.py'
   pull_request:
     branches: [ "main" ]
     paths:
@@ -22,8 +20,6 @@ on:
       - '.github/actions/**'
       - 'site/src/**/*.ts'
       - 'tools/**/*.py'
-    paths-ignore:
-      - 'tools/corpus-analysis/analyze.py'
   schedule:
     - cron: '20 20 * * 6'
 
