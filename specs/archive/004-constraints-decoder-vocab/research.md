@@ -1,7 +1,7 @@
 # Phase 0 — Research: Declarative Constraints, Probabilistic Decoder, Vocabulary Metadata
 
 **Feature:** `004-constraints-decoder-vocab`
-**Primary technical source:** [`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`](../../docs/plans/2026-04-19-recursive-lattice-and-decoder.md)
+**Primary technical source:** [`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`](../../../docs/plans/2026-04-19-recursive-lattice-and-decoder.md)
 
 This document resolves the open technical questions that determine how Phases C, D, and E land. It is not a second-source design — the 2026-04-19 plan is authoritative for mechanism. Research questions here are scoped to decisions that affect the feature boundary and the Phase 1 data model.
 

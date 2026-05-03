@@ -15,7 +15,7 @@
 
 **Document version**: 0.16 · **Last amended**: 2026-04-27
 · **Authoritative companion**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md)
-· **Governing spec**: [`specs/004-constraints-decoder-vocab/`](../../specs/004-constraints-decoder-vocab/)
+· **Governing spec**: [`specs/archive/004-constraints-decoder-vocab/`](../../specs/archive/004-constraints-decoder-vocab/)
 
 ---
 
