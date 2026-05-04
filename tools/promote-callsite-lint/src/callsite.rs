@@ -223,21 +223,47 @@ struct CallSiteVisitor<'a> {
 impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
     fn visit_expr_call(&mut self, node: &'a ExprCall) {
         if let Expr::Path(ExprPath { path, .. }) = &*node.func {
-            // Suffix-match on the call path so fully-qualified forms
-            // (`marque_rules::AppliedFix::__engine_promote`,
-            // `crate::AppliedFix::__engine_promote`, etc.) are caught
-            // alongside the 2-segment form (`AppliedFix::__engine_promote`).
-            // Length-restricted matchers would let a call escape the lint
-            // just by adding a crate qualifier, which is a trivial bypass.
+            // Match on the call path's **last segment** (the function
+            // ident) for the two specifically reserved names
+            // `__engine_promote` / `__engine_construct`. Any path that
+            // ends with one of those names — qualified
+            // (`AppliedFix::__engine_promote`), fully-qualified
+            // (`marque_rules::AppliedFix::__engine_promote`),
+            // `Self::__engine_promote` inside `impl AppliedFix`, or
+            // an aliased form (`AF::__engine_promote` after
+            // `use marque_rules::AppliedFix as AF`) — is a candidate.
             //
-            // Bare (single-segment) `__engine_promote` / `__engine_construct`
-            // are intentionally NOT matched: an unrelated free function with
-            // one of those names would otherwise be falsely flagged. The
-            // FR-040 contract is about the two specific associated
-            // functions on `AppliedFix` and `EnginePromotionToken`; matching
-            // requires the type qualifier to be present in the call path.
-            if path_ends_with(path, &["AppliedFix", "__engine_promote"])
-                || path_ends_with(path, &["EnginePromotionToken", "__engine_construct"])
+            // This is a deliberate trade-off identified during the
+            // round-8 independent audit: an earlier round required a
+            // type qualifier (matching `["AppliedFix",
+            // "__engine_promote"]` only) to avoid false-positive on
+            // free functions with the same name. The audit
+            // demonstrated that requirement made the lint trivially
+            // bypassable via `use ... as ...` aliases — and the
+            // function names `__engine_promote` and
+            // `__engine_construct` are deliberately RESERVED by the
+            // project (both are `#[doc(hidden)]` engine-only seal
+            // mechanisms; they bear `__` precisely to discourage any
+            // re-use). So:
+            //
+            //   - Free function named `__engine_promote`: itself a
+            //     Constitution V Principle V violation; flagging is
+            //     correct. A contributor genuinely needing the name
+            //     for unrelated purposes can renamed or carry an
+            //     `#[allow(...)]` after explicit review.
+            //   - Aliased call (`use AppliedFix as AF; AF::__engine_promote(...)`):
+            //     correctly flagged because the last segment is
+            //     `__engine_promote`, regardless of the alias.
+            //   - Method-call form (`x.__engine_promote()`) is still NOT
+            //     matched — see `visit_expr_method_call` below.
+            //
+            // Method-call form is excluded because `__engine_promote`
+            // and `__engine_construct` are *associated* functions on
+            // `AppliedFix` / `EnginePromotionToken`; a method call
+            // with those names cannot reach the real APIs at all
+            // (the receiver type is wrong) and would fail to compile.
+            if path_ends_with(path, &["__engine_promote"])
+                || path_ends_with(path, &["__engine_construct"])
             {
                 let loc = node.span().start();
                 self.classify_and_emit(loc.line, loc.column);

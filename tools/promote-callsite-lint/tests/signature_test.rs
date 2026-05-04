@@ -303,3 +303,63 @@ pub fn canonicalize(p: ParsedAttrs) -> CanonicalAttrs {
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].code, "PRC100");
 }
+
+#[test]
+fn top_level_workspace_member_src_is_walked_and_flagged() {
+    // Regression test for Copilot R5 #2 / R8 #3: the signature pass
+    // previously only walked `crates/**`, missing top-level workspace
+    // members like `marque/`. A future
+    // `ParsedAttrs -> CanonicalAttrs` adapter added in `marque/src/`
+    // would have bypassed PRC100 entirely. Construct a top-level
+    // `<member>/Cargo.toml` + `<member>/src/lib.rs` and assert the
+    // prohibited shape is detected.
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/src/lib.rs",
+        r"
+struct ParsedAttrs;
+struct CanonicalAttrs;
+pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
+    let _ = p;
+    CanonicalAttrs
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected the top-level member's signature to be flagged, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC100");
+    assert!(
+        diags[0].file.to_string_lossy().contains("marque/src/lib.rs"),
+        "expected the diagnostic to point at the top-level member; got {:?}",
+        diags[0].file
+    );
+}
+
+#[test]
+fn top_level_workspace_member_tests_walked_too() {
+    // Companion: signature pass also walks `<member>/tests/`.
+    // A `ParsedAttrs -> CanonicalAttrs` shape declared inside a
+    // top-level integration test must still be flagged because the
+    // test-fixture carve-out is callsite-scoped (PRC001), not
+    // signature-scoped (PRC100). The shape itself is the prohibited
+    // architectural pattern regardless of test-vs-production scope.
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/tests/it.rs",
+        r"
+struct ParsedAttrs;
+struct CanonicalAttrs;
+pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
+    let _ = p;
+    CanonicalAttrs
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected the top-level member's tests/ signature to be flagged, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC100");
+}

@@ -27,10 +27,24 @@ Source-plan §6 discipline rules (verbatim from
 4. **Mandatory** GitHub-API check: tracked issue is open; follows
    `closed_as_duplicate_of` chains until terminal close;
    cascade-close-via-meta-issue is flagged.
-5. **Closure protocol**: when an issue closes, the pin is removed in
-   the same PR; the pin-removal PR includes a regression test that
-   demonstrates fix necessity (must fail on pre-fix HEAD).
-6. A third masking pin requires a team-review approval comment.
+
+**Rules 1–4 are mechanically enforced by this lint**. The rules
+below are part of the same source-plan discipline but are
+**reviewer-enforced manual checks**, NOT something this lint
+verifies — CI cannot tell from the diff alone whether a pin-removal
+PR carries a fix-demonstrating regression test, nor whether team-
+review approval was sought. They appear here for completeness and
+to make clear what the lint does NOT cover:
+
+5. **Closure protocol** (manual): when an issue closes, the pin is
+   removed in the same PR; the pin-removal PR includes a regression
+   test that demonstrates fix necessity (must fail on pre-fix
+   HEAD). Reviewer verifies the test was added; the lint only
+   verifies the pin was removed.
+6. **Third-pin escalation** (manual): a third masking pin in the
+   tree requires a team-review approval comment on the introducing
+   PR. Reviewer enforces; the lint counts MASKING-PIN markers but
+   does not block the third addition.
 
 ## Why this crate is out-of-workspace
 

@@ -212,3 +212,43 @@ fn with_recognizer_without_strict_ignored() {
     let pins = scan_workspace(dir.path()).unwrap();
     assert!(pins.is_empty(), "non-strict recognizer must not be flagged");
 }
+
+#[test]
+fn top_level_workspace_member_tests_walked() {
+    // Regression test for Copilot R3 #1 / R8 #2: the previous walker
+    // recognized only `<workspace>/tests/` and `crates/*/tests/`,
+    // missing `<member>/tests/` for top-level workspace members like
+    // the `marque/` binary crate. A masking pin under `marque/tests/`
+    // would have bypassed FR-039 entirely while CI stayed green.
+    //
+    // Construct a synthetic top-level member: a directory with both
+    // `Cargo.toml` (the marker `collect_test_roots` looks for) and a
+    // `tests/` subdirectory containing a fixture that should produce
+    // exactly one masking-pin entry.
+    let dir = TempDir::new().expect("tempdir");
+    let member = dir.path().join("marque");
+    fs::create_dir_all(member.join("tests")).unwrap();
+    fs::write(
+        member.join("Cargo.toml"),
+        "[package]\nname = \"marque\"\n",
+    )
+    .unwrap();
+    let body = "fn make() {\n\
+                    // MASKING-PIN: tracks #999 — top-level member regression test\n\
+                    foo().with_recognizer(Arc::new(StrictRecognizer::new()));\n\
+                }\n";
+    fs::write(member.join("tests").join("integration.rs"), body).unwrap();
+
+    let pins = scan_workspace(dir.path()).unwrap();
+    assert_eq!(
+        pins.len(),
+        1,
+        "expected the top-level member's pin to be detected, got {pins:#?}"
+    );
+    assert!(matches!(pins[0].kind, PinKind::Masking { issue: 999, .. }));
+    assert!(
+        pins[0].file.to_string_lossy().contains("marque/tests/integration.rs"),
+        "expected file to point at the top-level member's tests; got {:?}",
+        pins[0].file
+    );
+}

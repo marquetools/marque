@@ -79,6 +79,15 @@ async fn main() -> ExitCode {
     }
 }
 
+// `run` is a long top-level orchestrator: it sets up paths, resolves
+// unique tracked issues (the round-8 dedup pre-pass), iterates the
+// scanned pin sites for per-pin diagnostic emission, and maps the
+// final diagnostic severity vector to an exit code. Splitting the
+// body further would require threading the same set of refs (octo,
+// owner, repo, cache_dir, refresh_outcome, diagnostics) through 3-4
+// helper signatures and would obscure the linear control flow more
+// than it clarifies it. The function is one logical unit.
+#[allow(clippy::too_many_lines)]
 async fn run(cli: Cli) -> Result<ExitCode> {
     let workspace_dir = cli.workspace_dir.canonicalize().with_context(|| {
         format!(
@@ -101,6 +110,41 @@ async fn run(cli: Cli) -> Result<ExitCode> {
 
     let mut diagnostics: Vec<LintDiagnostic> = Vec::new();
     let mut refresh_outcome = RefreshOutcome::default();
+
+    // Pre-resolve every unique tracked issue ONCE before the per-pin
+    // dispatch loop. Multiple pins pointing at the same issue number
+    // (e.g. two test files both masking #258) would otherwise hit the
+    // GitHub API once per pin site and write the same cache file
+    // repeatedly, burning rate-limit budget and flushing the same
+    // state through the atomic-rename pipeline N times. Memoizing
+    // here keeps API/cache work proportional to the number of UNIQUE
+    // issues, not the number of pin sites.
+    let mut unique_issues: Vec<u32> = pins
+        .iter()
+        .filter_map(|p| match &p.kind {
+            PinKind::Masking { issue, .. } => Some(*issue),
+            _ => None,
+        })
+        .collect();
+    unique_issues.sort_unstable();
+    unique_issues.dedup();
+
+    let mut resolutions: std::collections::HashMap<u32, MemoOutcome> =
+        std::collections::HashMap::new();
+    for issue in unique_issues {
+        let memo = resolve_issue(
+            cli.mode,
+            issue,
+            &octo,
+            &owner,
+            &repo,
+            &cache_dir,
+            &mut refresh_outcome,
+            &mut diagnostics,
+        )
+        .await;
+        resolutions.insert(issue, memo);
+    }
 
     for pin in &pins {
         match (&pin.kind, cli.mode) {
@@ -136,29 +180,16 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                 // No API check required; marker syntax was validated by the scanner.
             }
             (PinKind::Masking { issue, .. }, Mode::Ci) => {
-                check_masking_pin(
-                    pin,
-                    *issue,
-                    &octo,
-                    &owner,
-                    &repo,
-                    &cache_dir,
-                    &mut diagnostics,
-                )
-                .await;
+                let memo = resolutions
+                    .get(issue)
+                    .expect("unique-issue pre-pass populates every Masking issue");
+                emit_ci_diagnostics_for_pin(pin, *issue, memo, &mut diagnostics);
             }
             (PinKind::Masking { issue, .. }, Mode::RefreshCache) => {
-                refresh_masking_pin(
-                    pin,
-                    *issue,
-                    &octo,
-                    &owner,
-                    &repo,
-                    &cache_dir,
-                    &mut diagnostics,
-                    &mut refresh_outcome,
-                )
-                .await;
+                let memo = resolutions
+                    .get(issue)
+                    .expect("unique-issue pre-pass populates every Masking issue");
+                emit_refresh_diagnostics_for_pin(pin, *issue, memo, &mut diagnostics);
             }
         }
     }
@@ -221,140 +252,201 @@ fn parse_repo(spec: &str) -> Result<(String, String)> {
     Ok((owner.to_string(), repo.to_string()))
 }
 
-/// CI-mode masking-pin handler: API-first, cache-fallback per D11.
-async fn check_masking_pin(
-    pin: &Pin,
+/// Resolution outcome for a single tracked issue, computed ONCE per
+/// unique issue regardless of how many pin sites point at it. Multiple
+/// pins sharing an issue number look up the same memo entry and emit
+/// per-pin diagnostics from it without re-hitting the API or
+/// re-persisting the cache.
+enum MemoOutcome {
+    /// API succeeded; cache-write outcome (Updated/Unchanged) and any
+    /// cache-write error were already handled in `resolve_issue` at
+    /// resolution time. The `IssueState` is shared by all pins that
+    /// point at this issue.
+    Resolved { state: IssueState },
+    /// API returned 404 — the issue doesn't exist. Per-pin emission
+    /// is a hard error.
+    NotFound { full_repo: String },
+    /// API failed with a non-404 error. CI mode falls back to cache;
+    /// refresh-cache mode treats it as a per-pin warning. The
+    /// fallback happens at resolution time so we read the cache
+    /// once, not once per pin.
+    ApiUnavailable {
+        err: String,
+        /// Cache fallback resolved at resolution time:
+        /// - `Ok(Some(entry, stale))`: cache hit; emit per-pin
+        ///   evaluation against the entry, plus a stale warning if
+        ///   `stale`.
+        /// - `Ok(None)`: cache miss; per-pin error.
+        /// - `Err(cache_read_err)`: cache I/O failed; per-pin error.
+        fallback: Result<Option<(CachedIssueState, bool)>, String>,
+    },
+}
+
+/// Resolve a single tracked issue ONCE for the whole run.
+///
+/// `Mode::Ci`: API call, persist on success, fall back to cache on error.
+/// `Mode::RefreshCache`: API call, persist on success, no fallback (the
+/// purpose of this mode IS to refresh the cache, so a cache fallback
+/// would be circular).
+///
+/// Run-level `refresh_outcome` counters and the cache-bootstrap
+/// per-issue eprintln logs are updated here at resolution time —
+/// they're per-issue concerns, not per-pin, and emitting them at the
+/// per-pin level would also produce N copies for N pins sharing an
+/// issue.
+#[allow(clippy::too_many_arguments, clippy::large_futures)]
+async fn resolve_issue(
+    mode: Mode,
     issue: u32,
     octo: &octocrab::Octocrab,
     owner: &str,
     repo: &str,
     cache_dir: &std::path::Path,
+    refresh_outcome: &mut RefreshOutcome,
     diagnostics: &mut Vec<LintDiagnostic>,
-) {
+) -> MemoOutcome {
     match check_pin(octo, owner, repo, issue).await {
         Ok(state) => {
-            // Persist fresh state. The persist helper returns
-            // `WriteOutcome::Unchanged` when the cached state-of-record
-            // already matches the live state — we don't surface that
-            // distinction here; the CI run only cares about the
-            // open/closed evaluation.
-            if let Err(err) =
-                persist(state.clone(), &format!("{owner}/{repo}"), issue, cache_dir)
-            {
-                eprintln!(
-                    "warning: failed to persist cache for #{issue}: {err:#}"
-                );
-            }
-            evaluate_issue_state(pin, issue, &state, diagnostics);
-        }
-        Err(ApiError::NotFound(n, full_repo)) => diagnostics.push(LintDiagnostic {
-            severity: Severity::Error,
-            message: format!(
-                "error: MASKING-PIN at {}:{} tracks #{n} which does not exist in {full_repo}",
-                pin.file.display(),
-                pin.line
-            ),
-        }),
-        Err(api_err) => {
-            // Fall back to cache.
-            match read_cache(cache_dir, owner, repo, issue) {
-                Ok(Some(entry)) => {
-                    let stale = is_stale(&entry);
-                    if stale {
-                        diagnostics.push(LintDiagnostic {
-                            severity: Severity::Warning,
-                            message: format!(
-                                "warning: GitHub API unavailable ({api_err}); falling back to cache for #{issue} (cache age >24h — refresh recommended)"
-                            ),
-                        });
-                    }
-                    evaluate_cached_state(pin, issue, &entry, diagnostics);
+            // Persist (once per issue). `persist` is a no-op when the
+            // cached state-of-record fields match the live state, so
+            // refresh-cache runs that confirm an unchanged issue
+            // produce no `git diff` and the daily workflow can no-op.
+            // Per-mode side effects (eprintln logs, refresh-outcome
+            // counters, refresh-mode persist-error diagnostics)
+            // happen ONCE per issue here, not per pin site.
+            match (mode, persist(state.clone(), &format!("{owner}/{repo}"), issue, cache_dir)) {
+                (Mode::Ci, Err(err)) => {
+                    eprintln!("warning: failed to persist cache for #{issue}: {err:#}");
                 }
-                Ok(None) => diagnostics.push(LintDiagnostic {
-                    severity: Severity::Error,
-                    message: format!(
-                        "error: no cached state for #{issue} and API unavailable ({api_err}); run --mode refresh-cache locally"
-                    ),
-                }),
-                Err(err) => diagnostics.push(LintDiagnostic {
-                    severity: Severity::Error,
-                    message: format!(
-                        "error: API unavailable ({api_err}) and cache read failed for #{issue}: {err:#}"
-                    ),
-                }),
+                (Mode::RefreshCache, Err(err)) => {
+                    refresh_outcome.failures += 1;
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Error,
+                        message: format!(
+                            "error: refresh-cache: failed to persist #{issue}: {err:#}"
+                        ),
+                    });
+                }
+                (Mode::RefreshCache, Ok(WriteOutcome::Updated)) => {
+                    refresh_outcome.successes += 1;
+                    eprintln!("refresh-cache: #{issue} refreshed");
+                }
+                (Mode::RefreshCache, Ok(WriteOutcome::Unchanged)) => {
+                    refresh_outcome.successes += 1;
+                    eprintln!("refresh-cache: #{issue} unchanged");
+                }
+                (Mode::Ci, Ok(_)) => {}
+            }
+            MemoOutcome::Resolved { state }
+        }
+        Err(ApiError::NotFound(_, full_repo)) => {
+            MemoOutcome::NotFound { full_repo }
+        }
+        Err(api_err) => {
+            let err_str = format!("{api_err}");
+            // CI mode falls back to cache; refresh-cache mode does NOT
+            // (refresh's purpose IS the API call).
+            let fallback = match mode {
+                Mode::Ci => match read_cache(cache_dir, owner, repo, issue) {
+                    Ok(Some(entry)) => {
+                        let stale = is_stale(&entry);
+                        Ok(Some((entry, stale)))
+                    }
+                    Ok(None) => Ok(None),
+                    Err(err) => Err(format!("{err:#}")),
+                },
+                Mode::RefreshCache => {
+                    refresh_outcome.failures += 1;
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Warning,
+                        message: format!(
+                            "warning: refresh-cache: API unavailable for #{issue}: {api_err}"
+                        ),
+                    });
+                    // No fallback in refresh-cache mode; the per-pin
+                    // emission shouldn't try to read cache.
+                    Ok(None)
+                }
+            };
+            MemoOutcome::ApiUnavailable {
+                err: err_str,
+                fallback,
             }
         }
     }
 }
 
-/// Refresh-cache handler: write fresh state on success; record API
-/// failures as warnings. The caller (`run`) tracks per-issue success
-/// vs. failure totals so a *total* outage (zero successful refreshes
-/// out of a non-empty pin set) escalates to a hard error — otherwise
-/// the daily cache-refresh workflow looks healthy while the cache
-/// silently goes stale, contradicting the D11 contract.
-//
-// `clippy::too_many_arguments` and `clippy::large_futures`: this
-// function passes the same `(octo, owner, repo, cache_dir)` quartet
-// as the sibling `check_masking_pin`. Factoring them into a struct
-// would add indirection without saving anything in a function called
-// once per pin in a CI lint binary; the future size is dominated by
-// `octocrab`'s reqwest state, not by our argument list. Both lints
-// allowed locally with this rationale; the CI gate (`-D warnings`,
-// no `pedantic`) is unaffected.
-#[allow(clippy::too_many_arguments, clippy::large_futures)]
-async fn refresh_masking_pin(
+/// Per-pin CI-mode emission given a pre-resolved issue memo. Called
+/// once per pin site (so a file/line is reported per pin), but the
+/// underlying API/cache work happened ONCE in `resolve_issue`.
+fn emit_ci_diagnostics_for_pin(
     pin: &Pin,
     issue: u32,
-    octo: &octocrab::Octocrab,
-    owner: &str,
-    repo: &str,
-    cache_dir: &std::path::Path,
+    memo: &MemoOutcome,
     diagnostics: &mut Vec<LintDiagnostic>,
-    refresh_outcome: &mut RefreshOutcome,
 ) {
-    match check_pin(octo, owner, repo, issue).await {
-        Ok(state) => match persist(state, &format!("{owner}/{repo}"), issue, cache_dir) {
-            Err(err) => {
-                refresh_outcome.failures += 1;
-                diagnostics.push(LintDiagnostic {
-                    severity: Severity::Error,
-                    message: format!(
-                        "error: refresh-cache: failed to persist #{issue}: {err:#}"
-                    ),
-                });
-            }
-            Ok(WriteOutcome::Updated) => {
-                refresh_outcome.successes += 1;
-                eprintln!(
-                    "refresh-cache: #{issue} ({}:{}) refreshed",
-                    pin.file.display(),
-                    pin.line
-                );
-            }
-            Ok(WriteOutcome::Unchanged) => {
-                // Successful probe but cached state-of-record was
-                // already current — count as a success (the daily
-                // refresh did its job) without producing a `git diff`
-                // that would otherwise spawn a churn PR.
-                refresh_outcome.successes += 1;
-                eprintln!(
-                    "refresh-cache: #{issue} ({}:{}) unchanged",
-                    pin.file.display(),
-                    pin.line
-                );
-            }
-        },
-        Err(api_err) => {
-            refresh_outcome.failures += 1;
+    match memo {
+        MemoOutcome::Resolved { state } => {
+            evaluate_issue_state(pin, issue, state, diagnostics);
+        }
+        MemoOutcome::NotFound { full_repo } => {
             diagnostics.push(LintDiagnostic {
-                severity: Severity::Warning,
+                severity: Severity::Error,
                 message: format!(
-                    "warning: refresh-cache: API unavailable for #{issue}: {api_err}"
+                    "error: MASKING-PIN at {}:{} tracks #{issue} which does not exist in {full_repo}",
+                    pin.file.display(),
+                    pin.line
                 ),
             });
         }
+        MemoOutcome::ApiUnavailable { err, fallback } => match fallback {
+            Ok(Some((entry, stale))) => {
+                if *stale {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Warning,
+                        message: format!(
+                            "warning: GitHub API unavailable ({err}); falling back to cache for #{issue} (cache age >24h — refresh recommended)"
+                        ),
+                    });
+                }
+                evaluate_cached_state(pin, issue, entry, diagnostics);
+            }
+            Ok(None) => {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!(
+                        "error: no cached state for #{issue} and API unavailable ({err}); run --mode refresh-cache locally"
+                    ),
+                });
+            }
+            Err(cache_err) => {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!(
+                        "error: API unavailable ({err}) and cache read failed for #{issue}: {cache_err}"
+                    ),
+                });
+            }
+        },
     }
+}
+
+/// Per-pin refresh-cache-mode emission given a pre-resolved issue
+/// memo. Run-level success/failure counts and per-issue eprintln
+/// logs are NOT emitted here — they're per-issue concerns and were
+/// already handled in `resolve_issue`. This function only emits
+/// per-pin diagnostics that should appear once per pin site.
+///
+/// Currently a no-op: all refresh-cache diagnostics are per-issue.
+/// Defined explicitly (rather than inlined as a no-op in the caller)
+/// so a future per-pin diagnostic can be added without restructuring
+/// the dispatch site.
+fn emit_refresh_diagnostics_for_pin(
+    _pin: &Pin,
+    _issue: u32,
+    _memo: &MemoOutcome,
+    _diagnostics: &mut [LintDiagnostic],
+) {
 }
 
 /// Per-run counters for the `RefreshCache` mode so the caller can
