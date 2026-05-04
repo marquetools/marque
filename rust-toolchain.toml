@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+# Pins the dev-environment Rust toolchain to the channel that compiles the
+# workspace today (1.89). Decision D10 in `specs/006-engine-rule-refactor/decisions.md`
+# says "pinned toolchain" without a fixed version; we choose the lowest channel
+# that satisfies the workspace's transitive dependency MSRVs:
+#
+#   * `criterion@0.8.2` requires rustc 1.86
+#   * `recoco-utils@0.2.3` requires rustc 1.89
+#
+# Workspace `Cargo.toml` still claims `rust-version = "1.85"`, which is the
+# constitution Tech-Stack floor (Constitution: "Rust ≥ 1.85"); reconciling the
+# claim with the realized MSRV (1.89) is a separate housekeeping change that
+# does NOT belong in PR 0. Pinning here at 1.89 keeps the dev environment
+# aligned with `.github/workflows/ci.yml`, which already opts into 1.89 via
+# `dtolnay/rust-toolchain` for the test/check jobs.
+
+[toolchain]
+channel = "1.89"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

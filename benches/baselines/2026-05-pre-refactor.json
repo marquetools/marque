@@ -1,0 +1,16 @@
+{
+  "_note": "Scaffold checked in at PR 0 land; bench-runner owner populates by running scripts/capture-baselines.sh on pinned hardware per D8 before any subsequent PR's bench-check gate runs against this file.",
+  "schema": "marque-bench-baseline-1.0",
+  "status": "pending",
+  "captured_at": null,
+  "git_sha": null,
+  "reference_machine": {
+    "cpu": null,
+    "profile": null,
+    "rust_version": null,
+    "criterion_version": null,
+    "host_kernel": null,
+    "bench_runner_owner": null
+  },
+  "benches": []
+}

@@ -46,6 +46,7 @@ fn make_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    // MASKING-PIN: tracks #258 — decoder prose null-hypothesis priors not yet baked (#258); pinning to strict avoids decoder mis-fires on prose corpus until PR 8 lands
     .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 

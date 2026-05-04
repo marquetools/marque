@@ -117,6 +117,7 @@ fn test_engine() -> Engine {
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: audit-trail tests pin the strict recognizer because the audit invariants tested here apply to the strict-path AppliedFix shape; decoder-path differences are exercised in decoder_diagnostic.rs
     .with_recognizer(std::sync::Arc::new(marque_engine::StrictRecognizer::new()))
 }
 
@@ -351,6 +352,7 @@ fn fabricate_leaky_fix() -> AppliedFix {
     // fabricated value is consumed inside `tests/` and never
     // commingled with engine output (see `fabricate_leaky_fix`'s
     // doc comment above).
+    // Test-fixture carve-out per Constitution V
     AppliedFix::__engine_promote(
         proposal,
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
