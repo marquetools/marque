@@ -45,6 +45,14 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("valid/", ".expected.json"),
         // prose fixtures (future)
         ("prose/", ".txt"),
+        // mangled fixtures (engine-refactor-006: SC-010 + PR 3c).
+        // `threshold.toml` is the SC-010 decision-of-record artifact
+        // landed at PR 0 (decisions.md D7); the `.txt` / `.expected.json`
+        // pair is the corpus shape per the F.1 contract once PR 3c
+        // lands the mangled fixtures.
+        ("mangled/", ".toml"),
+        ("mangled/", ".txt"),
+        ("mangled/", ".expected.json"),
     ];
 
     // Top-level files

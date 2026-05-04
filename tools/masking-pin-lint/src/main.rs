@@ -65,7 +65,12 @@ enum Mode {
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
-    match run(cli).await {
+    // `Box::pin` keeps the entry future off the (small) main task stack;
+    // the run-loop builds an octocrab client whose state plus per-pin
+    // futures push the inline future size just over clippy's 16 KB
+    // pedantic threshold. Heap-allocating the entry once is free in a
+    // CLI binary and avoids a noisy lint allow.
+    match Box::pin(run(cli)).await {
         Ok(code) => code,
         Err(err) => {
             eprintln!("error: {err:#}");
@@ -95,6 +100,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
     let octo = build_octocrab(cli.github_token.as_deref())?;
 
     let mut diagnostics: Vec<LintDiagnostic> = Vec::new();
+    let mut refresh_outcome = RefreshOutcome::default();
 
     for pin in &pins {
         match (&pin.kind, cli.mode) {
@@ -150,10 +156,28 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                     &repo,
                     &cache_dir,
                     &mut diagnostics,
+                    &mut refresh_outcome,
                 )
                 .await;
             }
         }
+    }
+
+    // Total-outage escalation for refresh-cache mode: if there were
+    // tracked-issue pins to refresh but every one failed, the daily
+    // workflow would otherwise look healthy while the cache silently
+    // goes stale. Push an error diagnostic so the run fails loudly.
+    if matches!(cli.mode, Mode::RefreshCache)
+        && refresh_outcome.failures > 0
+        && refresh_outcome.successes == 0
+    {
+        diagnostics.push(LintDiagnostic {
+            severity: Severity::Error,
+            message: format!(
+                "error: refresh-cache: total outage — {} pin(s) attempted, 0 succeeded; cache will go stale (D11)",
+                refresh_outcome.failures
+            ),
+        });
     }
 
     let mut had_error = false;
@@ -259,7 +283,22 @@ async fn check_masking_pin(
     }
 }
 
-/// Refresh-cache handler: write fresh state on success; tolerate API errors.
+/// Refresh-cache handler: write fresh state on success; record API
+/// failures as warnings. The caller (`run`) tracks per-issue success
+/// vs. failure totals so a *total* outage (zero successful refreshes
+/// out of a non-empty pin set) escalates to a hard error — otherwise
+/// the daily cache-refresh workflow looks healthy while the cache
+/// silently goes stale, contradicting the D11 contract.
+//
+// `clippy::too_many_arguments` and `clippy::large_futures`: this
+// function passes the same `(octo, owner, repo, cache_dir)` quartet
+// as the sibling `check_masking_pin`. Factoring them into a struct
+// would add indirection without saving anything in a function called
+// once per pin in a CI lint binary; the future size is dominated by
+// `octocrab`'s reqwest state, not by our argument list. Both lints
+// allowed locally with this rationale; the CI gate (`-D warnings`,
+// no `pedantic`) is unaffected.
+#[allow(clippy::too_many_arguments, clippy::large_futures)]
 async fn refresh_masking_pin(
     pin: &Pin,
     issue: u32,
@@ -268,12 +307,14 @@ async fn refresh_masking_pin(
     repo: &str,
     cache_dir: &std::path::Path,
     diagnostics: &mut Vec<LintDiagnostic>,
+    refresh_outcome: &mut RefreshOutcome,
 ) {
     match check_pin(octo, owner, repo, issue).await {
         Ok(state) => {
             if let Err(err) =
                 persist(state, &format!("{owner}/{repo}"), issue, cache_dir)
             {
+                refresh_outcome.failures += 1;
                 diagnostics.push(LintDiagnostic {
                     severity: Severity::Error,
                     message: format!(
@@ -281,6 +322,7 @@ async fn refresh_masking_pin(
                     ),
                 });
             } else {
+                refresh_outcome.successes += 1;
                 eprintln!(
                     "refresh-cache: #{issue} ({}:{}) refreshed",
                     pin.file.display(),
@@ -289,6 +331,7 @@ async fn refresh_masking_pin(
             }
         }
         Err(api_err) => {
+            refresh_outcome.failures += 1;
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Warning,
                 message: format!(
@@ -297,6 +340,15 @@ async fn refresh_masking_pin(
             });
         }
     }
+}
+
+/// Per-run counters for the `RefreshCache` mode so the caller can
+/// distinguish "individual pin failed, others succeeded" (warning)
+/// from "everything failed" (error: cache will go stale).
+#[derive(Debug, Default)]
+struct RefreshOutcome {
+    successes: u32,
+    failures: u32,
 }
 
 fn evaluate_issue_state(

@@ -80,16 +80,18 @@ jobs:
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
 
-  # FR-039 — masking-pin lint. AST scan that asserts every
-  # `#[allow(...)]` / `#[expect(...)]` / clippy-config carve-out for the
-  # masking-related lints carries a tracking issue reference, and that
-  # those tracked issues are still open. Decision D11 in
+  # FR-039 — masking-pin lint. AST scan over `tests/` and
+  # `crates/*/tests/` that locates every `with_recognizer(...StrictRecognizer...)`
+  # call site and asserts each carries either a `// MASKING-PIN: tracks #NNN`
+  # comment whose tracked GitHub issue is still open, or a
+  # `// INTENTIONAL-STRICT: <reason>` comment, within 5 lines of the
+  # method-ident position. Decision D11 in
   # `specs/006-engine-rule-refactor/decisions.md` defines the
   # cache-with-fallback design — the daily refresh-cache workflow
   # (`.github/workflows/masking-pin-cache-refresh.yml`) keeps
   # `tools/masking-pin-lint/cache/` current; this CI job runs in
-  # `--mode ci` which prefers the cached state and falls back to a
-  # GitHub API probe when the cache is missing or stale.
+  # `--mode ci` which queries the GitHub API and falls back to the
+  # cached state when the API is unreachable or rate-limited.
   masking-pin-lint:
     name: Masking-pin lint (FR-039)
     needs: check

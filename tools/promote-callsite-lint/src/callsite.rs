@@ -103,6 +103,7 @@ pub fn scan_file(
 
 fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
+
     // crates/*/src/**, crates/*/tests/**
     let crates_dir = workspace_dir.join("crates");
     if crates_dir.is_dir() {
@@ -122,11 +123,57 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             }
         }
     }
+
+    // Top-level workspace members (any directory at workspace root that
+    // contains both `Cargo.toml` and a `src/` or `tests/` subdirectory).
+    // This catches the workspace binary crate `marque/` (which lives
+    // outside `crates/`) plus any future top-level workspace member —
+    // necessary for FR-040 enforcement to be workspace-wide. Without
+    // this loop the lint silently misses call sites in `marque/src/**`,
+    // including the test-fixture pair at `marque/src/render.rs:998-1004`.
+    for entry in std::fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        // Skip directories already covered above or out of scope.
+        if matches!(
+            path.file_name().and_then(|s| s.to_str()),
+            Some(
+                "crates"
+                | "tests"
+                | "tools"
+                | "target"
+                | ".git"
+                | "site"
+                | "specs"
+                | "docs"
+                | "scripts"
+                | "benches"
+            )
+        ) {
+            continue;
+        }
+        if !path.join("Cargo.toml").is_file() {
+            continue;
+        }
+        for sub in ["src", "tests"] {
+            let sub_path = path.join(sub);
+            if sub_path.is_dir() {
+                push_rust_files(&sub_path, &mut paths);
+            }
+        }
+    }
+
     // workspace-root tests/**
     let tests_dir = workspace_dir.join("tests");
     if tests_dir.is_dir() {
         push_rust_files(&tests_dir, &mut paths);
     }
+
     Ok(paths)
 }
 

@@ -337,22 +337,37 @@ discover_bench_ids() {
     if [[ ! -d "$CRITERION_DIR" ]]; then
         die "no target/criterion/ directory; did 'cargo bench' run?"
     fi
-    # `find` walks the directory; the inner test-and-print emits the
-    # parent of any matching `new/estimates.json` whose sibling
-    # `new/sample.json` also exists.
-    find "$CRITERION_DIR" -type f -name estimates.json -path '*/new/estimates.json' -print0 \
-        | while IFS= read -r -d '' estimates_file; do
-            local new_dir bench_dir sample_file rel_path
-            new_dir="$(dirname "$estimates_file")"
-            sample_file="$new_dir/sample.json"
-            if [[ ! -f "$sample_file" ]]; then
-                continue
-            fi
-            bench_dir="$(dirname "$new_dir")"
-            rel_path="${bench_dir#"$CRITERION_DIR"/}"
-            printf '%s\n' "$rel_path"
-        done \
-        | sort -u
+    # Restrict the walk to `target/criterion/<bench-target>/...` for
+    # each `<bench-target>` in $BENCH_TARGETS — otherwise stale
+    # bench-ID directories left behind by an earlier `cargo bench` run
+    # (e.g. a removed/renamed bench, or a bench from a different
+    # branch checked out before the current one) would silently fold
+    # into the captured baseline. The script is idempotent — overwriting
+    # the JSON on each run — but the inputs to that run must come only
+    # from THIS run's `cargo bench` output, so reproducibility is
+    # branch- and timestamp-independent.
+    for bench in "${BENCH_TARGETS[@]}"; do
+        local target_root="$CRITERION_DIR/$bench"
+        if [[ ! -d "$target_root" ]]; then
+            continue
+        fi
+        # `find` walks each known bench's subtree; the inner
+        # test-and-print emits the parent of any matching
+        # `new/estimates.json` whose sibling `new/sample.json` also
+        # exists.
+        find "$target_root" -type f -name estimates.json -path '*/new/estimates.json' -print0 \
+            | while IFS= read -r -d '' estimates_file; do
+                local new_dir bench_dir sample_file rel_path
+                new_dir="$(dirname "$estimates_file")"
+                sample_file="$new_dir/sample.json"
+                if [[ ! -f "$sample_file" ]]; then
+                    continue
+                fi
+                bench_dir="$(dirname "$new_dir")"
+                rel_path="${bench_dir#"$CRITERION_DIR"/}"
+                printf '%s\n' "$rel_path"
+            done
+    done | sort -u
 }
 
 # ---------------------------------------------------------------------
