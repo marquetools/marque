@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Adam Poulemanos
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # CAPCO-2016 Agent Context Helper
 
 > **Source.** Every claim here is traceable to the vendored authoritative
