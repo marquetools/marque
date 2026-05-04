@@ -60,7 +60,7 @@ file (the scaffold itself is multiple lines before any flakes are
 added). The canonical count command is:
 
 ```sh
-grep -c '^## flake-' tools/flake-watch/issues.md
+grep -c '^## flake-' tools/flake-watch/issues.md || true
 ```
 
 This matches each top-level `## flake-YYYY-MM-DD-shortname` heading

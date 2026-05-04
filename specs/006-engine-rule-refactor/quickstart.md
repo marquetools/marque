@@ -83,9 +83,10 @@ PR 6     — Scope::Page projection drives Engine::lint; PageContext deleted;
 PR 7     — phase-tagged rules; engine re-parses between passes; R002 diagnostic;
             E003 confidence with FeatureId::PrecedingFixPenalty
 PR 8     — decoder prose null hypothesis priors (third problem class; not closure)
-PR 9     — parser separator spans; 7B dissem_us/dissem_nato; banner-validation
-            migration to ProjectedMarking; ATOMAL/BOHEMIA; NATO-portion declarative
-            Constraint
+PR 9a    — parser separator spans
+PR 9b    — 7B dissem_us/dissem_nato; banner-validation migration to
+            ProjectedMarking
+PR 9c    — ATOMAL/BOHEMIA; NATO-portion declarative Constraint
 PR 10    — F.1 corpus gate maturation; 8C vendored-source registry declarative
 ```
 

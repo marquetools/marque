@@ -41,7 +41,7 @@ promotion (I-5).
     "predicate_id": "banner.classification.usa-trigraph"
   },
 
-  "severity": "error",                // "error" | "warn" | "info" | "suggest" — see Severity::Suggest note below (FR-042)
+  "severity": "error",                // "off" | "suggest" | "info" | "warn" | "error" | "fix"
 
   "span": { "start": 1024, "end": 1037 },
 
