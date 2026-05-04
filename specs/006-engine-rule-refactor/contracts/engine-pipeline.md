@@ -166,6 +166,24 @@ Post-conditions on failure (FR-024):
 - Return shape carries the union of pass-1 `AppliedFix` and the R002
   `Diagnostic` (no `AppliedFix` for R002 — it's diagnostic-only).
 
+#### R002 surfacing semantics (consumer-surface contract — D1)
+
+§9.4 specifies engine-side semantics; this section specifies what
+each consumer surface MUST do with R002. Per **decision D1** in
+`decisions.md`:
+
+| Consumer | Surface contract |
+|----------|------------------|
+| **CLI** (`marque check` / `marque fix`) | Distinct exit code `EX_R002_PARTIAL` (numeric value chosen at PR 7 implementation; documented in `marque/src/main.rs` exit-code table). Distinct from `EX_DIAG_WARN` and from regular fix-failure. The CLI prints the R002 diagnostic on stderr with a clear "partial application" indicator. |
+| **WASM** (`marque-wasm`) | Typed return shape signaling partial application — either `LintResult { partial: true, .. }` flag or a typed `Result` variant. The binding constraint: consumers MUST be able to detect R002 without parsing NDJSON. Format choice (flag vs. typed variant) is implementer's call at PR 7. |
+| **IDE plugins** | Documented contract: plugins MUST inspect the R002 diagnostic before applying the returned buffer. The buffer is the post-pass-1 state; applying without inspection silently splices pass-1 fixes into the user's editor — destructive without consent. The IDE-plugin reference implementation MUST refuse the partial buffer or prompt the user. |
+| **`BatchEngine`** | Per-row R002 surfaces in the row's individual result. The batch exit code is **worst-row-wins**: any row hitting R002 raises the batch exit code to `EX_R002_PARTIAL`. Per-row records remain individually inspectable (`id`-correlatable per the existing completion-order contract). |
+
+Rationale: the engine's "honest about partial progress" property (§9.4)
+is meaningful only if consumers have a mechanical signal to act on. The
+IDE-plugin failure mode (silent partial-buffer application to a user's
+editor) is destructive without an explicit refuse-or-prompt contract.
+
 ### Pass 2 — `Phase::WholeMarking` rules
 
 Pre-conditions:
@@ -268,8 +286,14 @@ The refactor preserves these properties:
 
 ## Test strategy (consolidated plan §6)
 
-Five-layer property-test architecture:
+Six-layer property-test architecture (Layer 0 added per **decision D10**
+in `decisions.md`):
 
+0. **Layer 0 — type-system compile-fail tests** (PR 0 + PR 3c, gates FR-001 / FR-003 / FR-005). Run via `trybuild`. Demonstrate that:
+   - No public `Box<str> → Canonical` constructor exists for closed-CVE tokens (FR-001).
+   - `Diagnostic::message` cannot be constructed with `format!`-interpolated input bytes (FR-003).
+   - `AppliedFix::__engine_promote` cannot be called from outside `Engine::fix_inner` in `cfg(not(test))` code (FR-005, complementing the AST lint at FR-040).
+   Layer 0 runs **per-PR** (not per-save — full compile per case is slow). The workspace pins a `rust-toolchain.toml` and an exact `trybuild` version to keep expected stderr stable across compiler upgrades; MSRV bumps trigger Layer-0 maintenance as accepted cost.
 1. **Layer 1 — lattice law tests per category** (PR 4, gates I-17): assoc/comm/idem/identity at `crates/capco/tests/category_lattice_laws.rs`; cross-axis dominance at `crates/capco/tests/cross_axis_dominance.rs`.
 2. **Layer 2 — parse–render round-trip** (PR 2): strict-path round-trip at `crates/capco/tests/parse_render_roundtrip.rs`.
 3. **Layer 3 — per-pass fix invariants** (PRs 3c + 7, gates I-1, I-2, I-4, I-18, I-19): `crates/engine/tests/fix_invariants.rs`; deterministic NDJSON canary scan replaces `core_error_isolation.rs`'s masking pin once PR 3c lands.
@@ -277,4 +301,6 @@ Five-layer property-test architecture:
 5. **Layer 5 — citation lint** (PR 0.5 skeleton + PR 10 maturation).
 
 Each layer's pass condition gates the relevant FRs and SCs in the
-spec. Layer 3's canary scan is the construction-of-record for SC-001.
+spec. Layer 0 is the keystone evidence for the type-system invariants
+(sealed-construction, message-channel closure, engine-only promotion);
+Layer 3's canary scan is the construction-of-record for SC-001.

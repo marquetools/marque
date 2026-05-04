@@ -395,10 +395,15 @@ the following decision tree:
   re-curated corpus is the cleaner long-term artifact: future
   regressions on closed-vocab fixes are detectable at their own
   sharper threshold.
-- PR 3c review owns this decision per the consolidated plan §8.2 and
-  spec edge-case "Mangled-corpus accuracy baseline shifts under
-  decoder open-vocab lockout"; recording the decision in PR 3c
-  review notes is required.
+
+**Binding** (per **decision D5** in `decisions.md`): this decision
+tree is **binding**, not deferred to PR 3c review notes. The chosen
+branch and threshold value MUST be encoded in
+`tests/corpus/mangled/threshold.toml` (per D7); `tools/bench-check.sh`
+reads that file. Reviewer judgment at PR 3c merge time is limited to
+verifying the artifact reflects the measured outcome — not to
+overriding the tree. If accuracy lands <0.80 and the loss is not
+K-Option-2-attributable, PR 3a / 3b / 3c revert as a unit.
 
 **Alternatives considered**:
 - **Hold the 0.85 floor regardless**: would reject PR 3c even though
@@ -408,6 +413,140 @@ the following decision tree:
 - **Split immediately at PR 3c without measuring first**: skips the
   measurement step that distinguishes regression from intended scope
   change. Rejected.
+- **Defer the decision to reviewer judgment in PR 3c review notes**
+  (the prior posture): rejected per D5 — leaves the rollback policy
+  in reviewer judgment under merge-pressure; pre-commit makes the
+  policy mechanical.
+
+---
+
+---
+
+## R-9 — PR 9 sub-divide into 9a / 9b / 9c
+
+**Decision** (per **D9** in `decisions.md`): PR 9 splits into three
+sub-PRs, each scoped to a single correctness property and
+independently revertable per US8 discipline:
+
+- **PR 9a** — parser separator spans (#106). Includes an internal
+  acceptance test asserting the parser correctly identifies separator
+  positions (`/`, `//`, whitespace boundaries) at the parser-output
+  layer. **Closes nothing in the issue tracker** by itself
+  (infrastructure for 9b / 9c).
+- **PR 9b** — `dissem_us` / `dissem_nato` position-attributed split
+  (#271). Depends on PR 9a (separator positions delimit US-vs-NATO
+  dissem regions). Banner-validation rules migrate to consume
+  `&ProjectedMarking` here. Closes #271 (and #270 / #264 if their
+  banner-validation paths land here).
+- **PR 9c** — ATOMAL / BOHEMIA recognition via the existing
+  `Vocabulary<S>` build-time generation pipeline (#246) +
+  NATO-portion-in-US-doc declarative `Constraint` requiring
+  `REL TO USA, NATO` derivation in the banner (#265). Closes #246,
+  #251, #265.
+
+**Rationale**:
+- PR 9 currently bundles parser infrastructure (FR-045) + data-model
+  position-attribution (FR-046) + vocabulary additions (FR-047, FR-048)
+  across three distinct correctness properties. US8 (independent
+  revertability) requires sub-division when a single PR touches
+  multiple properties — the same discipline applied to PR 3 (3a/3b/3c)
+  and PR 6 (6a/6b/6c).
+- PR 9a is pure infrastructure with no rule consumer; the internal
+  acceptance test (parser-level separator-position correctness)
+  prevents 9a from shipping as "infrastructure with no consumer," a
+  smell that would invite later refactor of 9a's internals without
+  a regression-catch mechanism.
+- Sub-PR ordering is fixed by data-flow dependency (9a → 9b → 9c).
+  Bundling 9b's banner-validation migration with 9c is permissible
+  if implementer finds it cleaner (the migration depends on the data
+  model existing, not on the NATO tokens being recognized).
+
+**Alternatives considered**:
+- **Keep PR 9 monolithic**: rejected per US8 revertability discipline.
+- **Two-way split (infra+data-model / vocab+constraint)**: rejected;
+  the parser-infra → data-model dependency is real and warrants its
+  own revert point.
+
+---
+
+## R-10 — Masking-pin lint cache strategy: API-first with cache fallback
+
+**Decision** (per **D11** in `decisions.md`): the masking-pin lint
+(FR-039) calls the GitHub API at PR-time with a **5-second timeout**.
+On API failure (timeout, rate-limit, network error), the lint falls
+back to a **daily-refreshed cache** at `tools/masking-pin-lint/cache/`
+and emits a CI **warning** (not error). A scheduled CI job populates
+the cache once per day.
+
+**Rationale**:
+- **Cache-only** (the alternative) weakens the lint at exactly the
+  moment correctness most depends on it: when an issue closes, the
+  PR that should remove the pin opens, and the cache has not yet
+  refreshed — the lint sees stale "open" state and fails to flag the
+  stale pin. The lint becomes weaker precisely when it most needs to
+  be strong.
+- **API-only** (the original posture) gates every PR build on GitHub
+  availability. GitHub outages or rate-limit excursions block the
+  refactor's PR throughput entirely.
+- **Cache-with-fallback** is the standard pattern: prefer fresh,
+  accept stale on outage with a visible warning. The 24-hour
+  staleness window on cache is acceptable because the failure mode
+  (stale "open" state on a closed issue) is detected at the next
+  fresh API call.
+- Cache schema: keyed by `(repo, issue_number)`, value is
+  `{ state: "open" | "closed", closed_at, closed_as_duplicate_of:
+  Option<u64>, refreshed_at }`. Daily refresh job follows
+  `closed_as_duplicate_of` chains until terminal-close (FR-039 rule
+  4).
+
+**Alternatives considered**:
+- **Cache-only with daily refresh**: rejected per the staleness
+  failure mode above.
+- **No caching, PR-time API only**: rejected per the GitHub
+  availability dependency.
+- **In-process cache with TTL** (per CI run): no persistence across
+  runs; degenerates to API-only. Rejected.
+
+---
+
+## R-11 — `_unchecked` lint by signature shape, not name
+
+**Decision** (per **D12** in `decisions.md`): the
+`tools/promote-callsite-lint/` lint is extended (FR-040 amendment) to
+flag any function whose **signature shape** matches
+`fn(...ParsedAttrs<'_>...) -> CanonicalAttrs` outside
+`MarkingScheme::canonicalize`. The lint targets shape, not name.
+
+**Whitelist**:
+- `unsafe fn` blocks (Rust stdlib uses `_unchecked` for `unsafe` APIs:
+  `get_unchecked`, `from_utf8_unchecked`, etc.).
+- The transitional `pub(crate) fn from_parsed_unchecked` adapter in
+  `marque-engine` during the PR 3a → 3c keystone window — exempted
+  via path-based carve-out keyed on
+  `crates/engine/src/...::from_parsed_unchecked`. The carve-out
+  auto-removes when 3c lands (the function is deleted; the lint then
+  has nothing to whitelist).
+
+**Rationale**:
+- Naming-only lint (e.g., flagging `fn` whose name ends in
+  `_unchecked`) is brittle: a future contributor renaming the helper
+  to `from_parsed_raw` evades the lint without changing the failure
+  pattern.
+- Targeting signature shape catches **intent**: any
+  `ParsedAttrs → CanonicalAttrs` conversion outside the trait method
+  is the actual failure pattern the lint is meant to prevent.
+- `syn`'s AST exposes function signatures uniformly; the shape match
+  is straightforward (parse return type, parse argument types, match
+  against the prohibited shape).
+
+**Alternatives considered**:
+- **Name-suffix lint** (`*_unchecked`): rejected per the renaming
+  evasion mode.
+- **No lint, convention only**: rejected per the spec's invariant
+  philosophy — invariants enforced by convention rot under
+  contributor turnover.
+- **Macro-based check**: rejected; `syn` AST inspection is cheaper
+  and uniform across the workspace.
 
 ---
 
@@ -422,7 +561,14 @@ the following decision tree:
 | R-5 | Capture pre-refactor baselines as `benches/baselines/2026-05-pre-refactor.json` once at PR 0; subsequent PRs assert against this | PR 0 |
 | R-6 | F.1 lints existing catalog at PR 0.5 to discover defects; PR 0.6 fixes everything PR 0.5 surfaced; PR 0.6 merge-gated on catalog-empty | PR 0.5, PR 0.6 |
 | R-7 | Sealed-trait pattern for `CanonicalConstructor<S>`; engine holds the only impl; external rule crates emit `FixIntent<S>` | PR 3c |
-| R-8 | SC-010 re-anchor decision tree: measure → ≥0.85 keep / 0.80–0.85 re-curate corpus / <0.80 or non-lockout regression back out | PR 3c |
+| R-8 | SC-010 re-anchor decision tree (**binding** per D5): measure → ≥0.85 keep / 0.80–0.85 re-curate corpus / <0.80 or non-lockout regression back out 3a/3b/3c as a unit; chosen branch encoded in `tests/corpus/mangled/threshold.toml` | PR 3c |
+| R-9 | PR 9 → 9a (separator spans + internal acceptance test) → 9b (dissem_us / dissem_nato split) → 9c (ATOMAL/BOHEMIA + NATO Constraint) per D9 | PR 9 |
+| R-10 | Masking-pin lint: API-first with 5s timeout, daily-cache fallback, CI warning on fallback (per D11) | PR 0 |
+| R-11 | `_unchecked` lint targets signature shape (`fn(...ParsedAttrs<'_>...) -> CanonicalAttrs` outside `MarkingScheme::canonicalize`); `unsafe fn` whitelisted; transitional adapter exempted during 3a–3c (per D12) | PR 0 |
 
 All `[NEEDS CLARIFICATION]` markers from spec.md are resolved (none
-were emitted; no resolution required). Phase 1 design proceeds.
+were emitted; no resolution required). The 16 process / contract
+decisions surfaced in panel review are captured in
+[`decisions.md`](./decisions.md) as D1–D16; their cross-references
+into research.md are R-8 (binding amendment, D5), R-9 (D9), R-10
+(D11), and R-11 (D12). Phase 1 design proceeds.
