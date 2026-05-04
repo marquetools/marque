@@ -55,8 +55,20 @@ pub const COMMENT_LOOKBACK_LINES: usize = 5;
 /// here for the same reason: a future refactor that adds a fourth
 /// production caller has to thread through this list, making the
 /// expansion an explicit decision.
-const ENGINE_PROMOTION_FN_ALLOW_LIST: &[&str] =
-    &["fix_inner", "apply_text_corrections", "engine_promotion_token"];
+/// Engine methods on the `Engine` type permitted to call
+/// `AppliedFix::__engine_promote` / `EnginePromotionToken::__engine_construct`
+/// in production code. These names match ONLY when the enclosing
+/// `impl` block targets `Engine` — a free function with one of these
+/// names elsewhere in `crates/engine/src/**` is rejected.
+const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
+
+/// Free helper(s) in `crates/engine/src/**` that are permitted to
+/// mint an `EnginePromotionToken`. Currently exactly one — the
+/// `engine_promotion_token()` token-mint helper. Kept as a separate
+/// list (rather than commingled with [`ENGINE_METHOD_ALLOW_LIST`])
+/// so a future free function happening to use one of those names
+/// cannot bypass the lint by virtue of `impl_self_type == None`.
+const ENGINE_FREE_FN_ALLOW_LIST: &[&str] = &["engine_promotion_token"];
 
 /// Scan `<workspace_dir>` and return any callsite-lint diagnostics.
 ///
@@ -259,14 +271,29 @@ impl CallSiteVisitor<'_> {
         // `None` and the assertion is "not on a different impl block."
         if in_engine_src {
             if let Some(fr) = enclosing {
-                // `None` covers the `engine_promotion_token` free helper;
-                // `Some("Engine")` covers `fix_inner` / `apply_text_corrections`
-                // methods on `Engine`. Any other self-type carrying a name
-                // from the allow-list is rejected — a method on an
-                // unrelated type that coincidentally shares the name
-                // would otherwise pass the FR-040 production gate.
-                let self_type_ok = !matches!(fr.impl_self_type.as_deref(), Some(t) if t != "Engine");
-                if ENGINE_PROMOTION_FN_ALLOW_LIST.contains(&fr.name.as_str()) && self_type_ok {
+                // The two allow-lists are kept disjoint and matched on
+                // shape, not just name:
+                //
+                // - `ENGINE_METHOD_ALLOW_LIST` matches only when the
+                //   enclosing impl targets `Engine`. A method on
+                //   another type or a free function with one of these
+                //   names is rejected.
+                // - `ENGINE_FREE_FN_ALLOW_LIST` matches only when there
+                //   is no enclosing impl (free function). A method on
+                //   any type with the same name is rejected.
+                //
+                // Splitting the lists this way closes the bypass that
+                // a single shared list with a permissive None-allowed
+                // self-type check would have left open: a new free
+                // function in `crates/engine/src/**` named `fix_inner`
+                // or `apply_text_corrections` calling `__engine_promote`
+                // is now correctly rejected.
+                let allowed = match fr.impl_self_type.as_deref() {
+                    None => ENGINE_FREE_FN_ALLOW_LIST.contains(&fr.name.as_str()),
+                    Some("Engine") => ENGINE_METHOD_ALLOW_LIST.contains(&fr.name.as_str()),
+                    Some(_) => false,
+                };
+                if allowed {
                     return;
                 }
             }

@@ -21,8 +21,25 @@ fn write(tmp: &Path, rel: &str, contents: &str) {
 }
 
 #[test]
-fn whitelist_marking_scheme_canonicalize_is_allowed() {
+fn whitelist_marking_scheme_canonicalize_qualified_path_is_allowed() {
+    // The canonical `MarkingScheme` trait declaration lives at
+    // `crates/scheme/src/scheme.rs`; the lint recognizes that path
+    // specifically. The carve-out at `impl <Trait> for X` sites
+    // requires the fully-qualified `marque_scheme::MarkingScheme`
+    // path — bare `MarkingScheme` is rejected to close the
+    // shadow-trait bypass.
     let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/scheme/src/scheme.rs",
+        r"
+struct ParsedAttrs;
+struct CanonicalAttrs;
+pub trait MarkingScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs;
+}
+",
+    );
     write(
         tmp.path(),
         "crates/capco/src/scheme.rs",
@@ -30,6 +47,57 @@ fn whitelist_marking_scheme_canonicalize_is_allowed() {
 struct FooScheme;
 struct ParsedAttrs;
 struct CanonicalAttrs;
+impl marque_scheme::MarkingScheme for FooScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs {
+        let _ = parsed;
+        CanonicalAttrs
+    }
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+}
+
+#[test]
+fn shadow_marking_scheme_trait_in_unrelated_path_is_denied() {
+    // A trait merely *named* `MarkingScheme` declared outside
+    // `crates/scheme/src/` is suspicious — it could be a shadowing
+    // bypass attempt — and must be flagged. This is the bypass that
+    // accepting the bare single-segment trait path would have left
+    // open at the impl site (closed by `is_marking_scheme_trait_path`)
+    // and at the trait declaration site (closed by
+    // `rel_path_is_marque_scheme_src`).
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+struct ParsedAttrs;
+struct CanonicalAttrs;
+pub trait MarkingScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs;
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected exactly one PRC100, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC100");
+}
+
+#[test]
+fn impl_marking_scheme_bare_path_is_denied() {
+    // `impl MarkingScheme for X` (bare, single-segment) MUST NOT
+    // match the carve-out — see `is_marking_scheme_trait_path`.
+    // The contributor must write `impl marque_scheme::MarkingScheme`.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+struct ParsedAttrs;
+struct CanonicalAttrs;
+struct FooScheme;
 trait MarkingScheme {
     fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs;
 }
@@ -42,7 +110,13 @@ impl MarkingScheme for FooScheme {
 ",
     );
     let diags = signature::scan_workspace(tmp.path()).unwrap();
-    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+    // Expect at least the trait declaration to flag (PRC100). The
+    // impl method's signature also flags because the bare-path
+    // carve-out is rejected.
+    assert!(
+        diags.iter().any(|d| d.code == "PRC100"),
+        "expected PRC100 to flag the bare-path impl, got {diags:#?}"
+    );
 }
 
 #[test]

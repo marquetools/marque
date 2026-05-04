@@ -110,17 +110,17 @@ pub fn scan_file(
     walker.visit_items(&file.items, /* impl_trait_last = */ None);
 }
 
-/// Walk every workspace member's `src/` and `tests/` and return every
-/// `*.rs` path.
+/// Walk every workspace member's `src/` and `tests/` plus the
+/// workspace-root `tests/` directory, returning every `*.rs` path.
 ///
-/// Coverage matches the callsite pass (`callsite::collect_rust_files`):
-/// `crates/*/{src,tests}/**` plus any top-level workspace member's
-/// `src/` and `tests/` (the binary `marque/` crate today, plus any
-/// future top-level member). Restricting the signature pass to
-/// `crates/**` only — as the original implementation did — leaves
-/// the top-level `marque/` crate uncovered, so a future
-/// `ParsedAttrs → CanonicalAttrs` adapter added there would bypass
-/// PRC100 entirely.
+/// Coverage exactly mirrors the callsite pass
+/// (`callsite::collect_rust_files`): `crates/*/{src,tests}/**`, any
+/// top-level workspace member's `src/` and `tests/` (the binary
+/// `marque/` crate today, plus any future top-level member), and the
+/// workspace-root `tests/**`. Restricting the signature pass to a
+/// strict subset of those trees would let a future
+/// `ParsedAttrs → CanonicalAttrs` adapter added in the omitted scope
+/// bypass PRC100 entirely.
 ///
 /// Walk errors are surfaced rather than silently dropped: a permission
 /// error or broken directory entry would otherwise cause the
@@ -188,6 +188,12 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
         }
     }
 
+    // workspace-root tests/**
+    let tests_dir = workspace_dir.join("tests");
+    if tests_dir.is_dir() {
+        walk_rust_files(&tests_dir, &mut out)?;
+    }
+
     Ok(out)
 }
 
@@ -241,17 +247,40 @@ impl SignatureWalker<'_> {
     }
 
     fn visit_trait(&mut self, item_trait: &ItemTrait) {
-        // Build a one-segment `Path` from the trait's own ident so the
-        // shared whitelist matcher in `is_marking_scheme_trait_path`
-        // recognizes the trait declaration alongside `impl ... for ...`
-        // sites. If the trait is `MarkingScheme`, its `canonicalize`
-        // method is the legitimate definition the carve-out names.
-        let trait_path = SynPath::from(item_trait.ident.clone());
+        // The trait DECLARATION case is special: we can't tell from
+        // the AST alone whether a trait named `MarkingScheme` is the
+        // canonical `marque_scheme::MarkingScheme` or a shadow trait
+        // declared elsewhere. Use the file path as the discriminator:
+        // the canonical trait lives at `crates/scheme/src/**`, so
+        // any trait with that name there is the legitimate one.
+        // Anywhere else, a trait merely *named* `MarkingScheme` is
+        // suspicious and gets the standard PRC100 treatment with no
+        // carve-out.
+        let is_canonical_marking_scheme_decl =
+            item_trait.ident == "MarkingScheme" && self.rel_path_is_marque_scheme_src();
+        let synthesized = if is_canonical_marking_scheme_decl {
+            // Synthesize the qualified path so `is_marking_scheme_trait_path`
+            // recognizes it via the same shared matcher used at impl
+            // sites. This keeps the matcher single-source-of-truth.
+            Some(qualified_marking_scheme_path())
+        } else {
+            None
+        };
         for trait_item in &item_trait.items {
             if let TraitItem::Fn(method) = trait_item {
-                self.maybe_emit_for_signature(&method.sig, Some(&trait_path));
+                self.maybe_emit_for_signature(&method.sig, synthesized.as_ref());
             }
         }
+    }
+
+    /// True when the rel-path is under `crates/scheme/src/`, where
+    /// the canonical `marque_scheme::MarkingScheme` trait is declared.
+    fn rel_path_is_marque_scheme_src(&self) -> bool {
+        let comps: Vec<_> = self.rel_path.components().collect();
+        comps.len() >= 3
+            && comps[0].as_os_str() == "crates"
+            && comps[1].as_os_str() == "scheme"
+            && comps[2].as_os_str() == "src"
     }
 
     fn visit_mod(&mut self, item_mod: &ItemMod, impl_trait_last: Option<&str>) {
@@ -365,7 +394,7 @@ impl SignatureWalker<'_> {
 /// appear nested inside a wrapper.
 fn signature_has_prohibited_shape(sig: &Signature) -> bool {
     let any_arg_is_parsed = sig.inputs.iter().any(|arg| match arg {
-        FnArg::Typed(pat_type) => is_top_level_named_type(&pat_type.ty, PARSED_TYPE_NAME),
+        FnArg::Typed(pat_type) => is_top_level_named_type_or_ref(&pat_type.ty, PARSED_TYPE_NAME),
         FnArg::Receiver(_) => false,
     });
     if !any_arg_is_parsed {
@@ -377,11 +406,23 @@ fn signature_has_prohibited_shape(sig: &Signature) -> bool {
     return_is_canonical_or_result_canonical(ret_ty)
 }
 
-/// True when `ty`, after stripping a single leading reference / paren /
-/// group layer, is a `Type::Path` whose terminal segment is `name`.
+/// True when `ty`, after stripping any `Paren` / `Group` AST
+/// wrappers, is a `Type::Path` whose terminal segment is `name`.
+///
+/// The argument-side caller (`signature_has_prohibited_shape` for
+/// `FnArg::Typed`) wraps this matcher in a separate reference-stripper
+/// so `&ParsedAttrs<'_>` arguments are recognized — the prohibited
+/// shape on the input side is "takes ownership of OR borrows
+/// `ParsedAttrs`."
+///
+/// The return-side matcher does NOT strip references because the
+/// D12 contract is `CanonicalAttrs` or `Result<CanonicalAttrs, _>`
+/// only. A function returning `&CanonicalAttrs` is a borrow-returning
+/// helper (e.g. accessing a cached value) and is outside the
+/// prohibited-constructor shape; flagging it would block legitimate
+/// helpers.
 fn is_top_level_named_type(ty: &Type, name: &str) -> bool {
     match ty {
-        Type::Reference(r) => is_top_level_named_type(&r.elem, name),
         Type::Paren(p) => is_top_level_named_type(&p.elem, name),
         Type::Group(g) => is_top_level_named_type(&g.elem, name),
         Type::Path(type_path) => {
@@ -389,6 +430,19 @@ fn is_top_level_named_type(ty: &Type, name: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// True when `ty` is `name` directly OR a single-layer reference
+/// (`&name`, `&mut name`) to it. Used for argument-side matching
+/// where the prohibited shape covers both owned and borrowed inputs.
+fn is_top_level_named_type_or_ref(ty: &Type, name: &str) -> bool {
+    if is_top_level_named_type(ty, name) {
+        return true;
+    }
+    if let Type::Reference(r) = ty {
+        return is_top_level_named_type(&r.elem, name);
+    }
+    false
 }
 
 /// True when `ty` is `CanonicalAttrs` (or a reference to one) or
@@ -405,7 +459,7 @@ fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
     if is_top_level_named_type(ty, CANONICAL_TYPE_NAME) {
         return true;
     }
-    let inner = strip_reference_layers(ty);
+    let inner = strip_paren_group_layers(ty);
     let Type::Path(type_path) = inner else {
         return false;
     };
@@ -429,30 +483,49 @@ fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
     }).is_some_and(|ok_ty| is_top_level_named_type(ok_ty, CANONICAL_TYPE_NAME))
 }
 
-/// Strip leading `&`/`&mut`/paren/group wrappers, leaving the inner
-/// type that decides the top-level shape.
-fn strip_reference_layers(ty: &Type) -> &Type {
+/// Strip leading paren/group wrappers, leaving the inner type that
+/// decides the top-level shape. References are deliberately NOT
+/// stripped: the D12 prohibited return shape covers
+/// `CanonicalAttrs` and `Result<CanonicalAttrs, _>` only — the
+/// borrowed forms (`&CanonicalAttrs`, `&Result<CanonicalAttrs, _>`)
+/// are legitimate helper shapes outside the contract.
+fn strip_paren_group_layers(ty: &Type) -> &Type {
     match ty {
-        Type::Reference(r) => strip_reference_layers(&r.elem),
-        Type::Paren(p) => strip_reference_layers(&p.elem),
-        Type::Group(g) => strip_reference_layers(&g.elem),
+        Type::Paren(p) => strip_paren_group_layers(&p.elem),
+        Type::Group(g) => strip_paren_group_layers(&g.elem),
         _ => ty,
     }
 }
 
+/// Build the canonical fully-qualified `marque_scheme::MarkingScheme`
+/// path so the shared trait-path matcher can recognize a synthesized
+/// path coming from a trait declaration in the canonical file.
+fn qualified_marking_scheme_path() -> SynPath {
+    syn::parse_str::<SynPath>("marque_scheme::MarkingScheme")
+        .expect("static path string parses")
+}
+
 /// True when the trait path written at an `impl <Trait> for <Type>`
-/// site references the canonical `MarkingScheme` trait. Accepts:
+/// site references the canonical `MarkingScheme` trait via its
+/// fully-qualified path `marque_scheme::MarkingScheme`.
 ///
-/// - `MarkingScheme` (single segment — the `use marque_scheme::MarkingScheme;`
-///   import case)
-/// - `marque_scheme::MarkingScheme` (qualified-path case)
+/// **Bare `MarkingScheme` is deliberately NOT matched.** A crate-local
+/// trait named `MarkingScheme` (a shadowing alias, a test fixture,
+/// or a malicious bypass) is indistinguishable from the canonical
+/// trait at the AST level when written bare, so accepting the
+/// single-segment form would let a contributor whitelist an arbitrary
+/// `ParsedAttrs → CanonicalAttrs` adapter just by naming their trait
+/// `MarkingScheme`. Forcing the qualified path makes the carve-out
+/// trustworthy: the impl is unambiguously declaring the shape it
+/// claims to have.
 ///
-/// Other matchers (e.g. `crate::scheme::MarkingScheme` re-exports)
-/// are deliberately rejected — the lint requires the trait path to
-/// be either bare-imported or qualified through the canonical crate.
-/// A re-export pulls the legitimate trait through a different name
-/// path and is treated as suspicious; if a real consumer needs that
-/// form, it's a coordinated amendment to this matcher.
+/// Cost: a legitimate adapter has to write
+/// `impl marque_scheme::MarkingScheme for X` rather than relying on
+/// a top-of-file `use marque_scheme::MarkingScheme`. This is
+/// slightly verbose but consistent with the canonical-form
+/// requirement applied elsewhere in the lint surface (and the impl
+/// only happens once per scheme adapter — typically in
+/// `crates/<scheme>/src/scheme.rs`).
 fn is_marking_scheme_trait_path(path: &SynPath) -> bool {
     let segs: Vec<String> = path
         .segments
@@ -460,9 +533,6 @@ fn is_marking_scheme_trait_path(path: &SynPath) -> bool {
         .map(|s| s.ident.to_string())
         .collect();
     matches!(
-        segs.as_slice(),
-        [single] if single == "MarkingScheme",
-    ) || matches!(
         segs.as_slice(),
         [crate_name, trait_name] if crate_name == "marque_scheme" && trait_name == "MarkingScheme",
     )
