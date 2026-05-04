@@ -405,8 +405,10 @@ pub trait Vocabulary<S: MarkingScheme>: Send + Sync + 'static {
     /* existing: lookup, authority, owner, deprecation, urn, schema_version, portion_form, banner_form */
 
     /// FR-015 — admit input bytes against a category's structural shape.
-    /// Used by parser (replacing inline is_ascii_alphanumeric) and by
-    /// open-vocab Canonical construction.
+    /// Used by parser (replacing inline byte-class checks at the four
+    /// open-vocabulary admission sites — three `is_ascii_alphanumeric`
+    /// checks plus the FGI trigraph silent-skip) and by open-vocab
+    /// Canonical construction.
     fn shape_admits(category: CategoryId, bytes: &[u8]) -> bool;
 
     /// FR-010 — per-token classification of dissem markings as

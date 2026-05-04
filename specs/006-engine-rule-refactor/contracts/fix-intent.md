@@ -209,7 +209,7 @@ the engine renders them through the same path.
 The contract is type-enforced at the workspace boundary:
 
 1. **Audit-record content-ignorance (FR-002)**: `MessageArgs` field set is closed; `AppliedFix::message` is `Message`, not `String`. Compile-fail tests demonstrate that `impl From<&str> for Message` and `impl From<String> for MessageArgs` do not exist.
-2. **Audit-promotion engine-only (FR-005)**: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` are `pub #[doc(hidden)]`; the AST-based promote-callsite lint (FR-040) catches any production-code call site outside `Engine::fix_inner`. Test-fixture carve-out enumerated per call site.
+2. **Audit-promotion engine-only (FR-005)**: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` are `pub #[doc(hidden)]`; the AST-based promote-callsite lint (FR-040) catches any production-code call site outside `Engine::fix_inner`. Each test-fixture carve-out call site MUST carry an inline comment naming the carve-out (e.g., `// Test-fixture carve-out per Constitution V`); the lint verifies the comment is present within 5 lines of the call.
 3. **Open-vocab Canonical sealed (FR-001, FR-027)**: `Canonical::from_render` is `pub(crate)` to `marque-scheme`; the sealed `CanonicalConstructor<S>` trait closes the cross-crate door.
 4. **Phase span-shape (FR-021)**: enforced at `Engine::new` registration; violating rules fail to register.
 

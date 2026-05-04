@@ -111,7 +111,7 @@ crates/
 │   └── build.rs                    # No semantic change; per-token is_fdr_dissem field added (FR-010)
 │
 ├── core/                           # Scanner + parser
-│   └── src/parser.rs               # Four sites migrate from is_ascii_alphanumeric() → shape_admits (PR 2, FR-015); FGI silent-skip → None (FR-016)
+│   └── src/parser.rs               # Four open-vocab admission sites migrate to shape_admits (PR 2, FR-015): three is_ascii_alphanumeric() checks (:1453/:1481/:1493) + FGI trigraph silent-skip (:1011-1024); FGI returns None on shape failure (FR-016)
 │
 ├── rules/                          # Trait surface only
 │   └── src/

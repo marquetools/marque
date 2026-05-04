@@ -184,7 +184,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 > **Ordering note**: Phase 6 is numerically after Phases 3–5 but its PR (PR-2) ships **before** Phase 3 (PR-3a/3b/3c) per the dependency spine. Phase numbering here follows user-story priority; PR ordering follows the consolidated source plan §4. The `## Dependencies & Execution Order` section below is the authoritative implementation order.
 
-**Goal**: Migrate four parser sites from `is_ascii_alphanumeric()` to `Vocabulary<S>::shape_admits`; `parse_fgi_marker` returns `None` (not degraded `Some`) on shape failure; introduce `FgiMarker::SourceConcealed | Acknowledged` discriminant.
+**Goal**: Migrate four open-vocabulary admission sites in `parser.rs` to `Vocabulary<S>::shape_admits` — three `is_ascii_alphanumeric()` byte-class checks (`:1453`, `:1481`, `:1493`) plus the FGI trigraph silent-skip (`:1011-1024`, which uses `if token.len() == 3 { CountryCode::try_new(...) }` rather than `is_ascii_alphanumeric` but has the same fix shape); `parse_fgi_marker` returns `None` (not degraded `Some`) on shape failure; introduce `FgiMarker::SourceConcealed | Acknowledged` discriminant.
 
 **Independent Test**: `tests/parser/fgi_silent_skip_guard.rs` asserts the four parser sites return `None` on shape-admits failure (SC-011); `crates/capco/tests/parse_render_roundtrip.rs` round-trip property catches silent semantic degradation across the strict-path corpus.
 
@@ -192,7 +192,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 - [ ] T086 [US4] Extend `Vocabulary<S>` trait in `marque-scheme` with `shape_admits(category: CategoryId, bytes: &[u8]) -> bool`; total over `(CategoryId, &[u8])`; closed-CVE-only categories return `lookup(bytes).is_some()` (FR-015; PR-2)
 - [ ] T087 [US4] Implement `shape_admits` for `CapcoScheme` in `crates/capco/src/scheme.rs`; bake category-shape rules from `crates/capco/docs/CAPCO-2016.md` at build time per Phase 5 metadata-surface mechanism (FR-015; PR-2)
-- [ ] T088 [US4] Migrate `crates/core/src/parser.rs:1011-1024` (FGI prefix site) from `is_ascii_alphanumeric()` to `Vocabulary<CapcoScheme>::shape_admits` (FR-015; PR-2)
+- [ ] T088 [US4] Migrate `crates/core/src/parser.rs:1011-1024` (FGI trigraph silent-skip — currently `if token.len() == 3 { CountryCode::try_new(...) }` silently drops non-trigraph tokens; does NOT use `is_ascii_alphanumeric()` like the other three sites) to `Vocabulary<CapcoScheme>::shape_admits`-gated admission; on shape failure return `None` (per FR-016) rather than dropping the token (FR-015 + FR-016; PR-2)
 - [ ] T089 [US4] Migrate `crates/core/src/parser.rs:1453` from `is_ascii_alphanumeric()` to `shape_admits` (FR-015; PR-2)
 - [ ] T090 [US4] Migrate `crates/core/src/parser.rs:1481` from `is_ascii_alphanumeric()` to `shape_admits` (FR-015; PR-2)
 - [ ] T091 [US4] Migrate `crates/core/src/parser.rs:1493` from `is_ascii_alphanumeric()` to `shape_admits` (FR-015; PR-2)

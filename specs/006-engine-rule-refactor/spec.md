@@ -135,9 +135,10 @@ that lawful and corrupted shapes are unrepresentable as the same value.
 of marking-tool bug: marque appears to validate the input, downstream rules
 read the corrupted shape as if it were lawful source-concealed FGI, and
 the audit log records a confident validation. The user has no way to tell
-the difference. The fix is mechanical (replace `is_ascii_alphanumeric()`
-with `Vocabulary<S>::shape_admits` at the four parser sites) but removing
-the shape-collision requires a discriminant introduction in the data model.
+the difference. The fix is mechanical (route the four open-vocabulary
+admission sites in `parser.rs` through `Vocabulary<S>::shape_admits`) but
+removing the shape-collision requires a discriminant introduction in the
+data model.
 
 **Independent Test**: `tests/parser/fgi_silent_skip_guard.rs` asserts that
 the four cited parser sites (`parser.rs:1011-1024`, `:1453`, `:1481`,
@@ -317,7 +318,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **FR-002**: Audit records MUST contain no document content bytes, no input substrings, and no content-derived free-form text. Permitted identifier types: token canonicals, category IDs, span offsets, BLAKE3 digests, posterior scalars, enumerated `FeatureId` labels, enumerated `MessageTemplate` labels.
 - **FR-003**: Diagnostic messages MUST be constructed from a closed `MessageTemplate` enum plus a closed-set `MessageArgs` of permitted scalar/ID types. Arbitrary `format!`/`concat!`-style interpolation of input bytes into messages MUST be unrepresentable.
 - **FR-004**: `FixProposal::original` MUST become a `Span` (not byte content). Audit emitter resolves to BLAKE3 digest; raw input bytes never enter the audit record.
-- **FR-005**: `AppliedFix::__engine_promote` and equivalent promotion-token constructors MUST be reachable only from `Engine::fix_inner` in production code. Test-fixture construction is permitted under the Constitution V Principle V carve-out (`#[cfg(test)]` modules, `tests/` integration files, `dev-dependencies`-gated test-utility crates only; never `cfg(not(test))`-reachable; carve-out enumerated per call site).
+- **FR-005**: `AppliedFix::__engine_promote` and equivalent promotion-token constructors MUST be reachable only from `Engine::fix_inner` in production code. Test-fixture construction is permitted under the Constitution V Principle V carve-out (`#[cfg(test)]` modules, `tests/` integration files, `dev-dependencies`-gated test-utility crates only; never `cfg(not(test))`-reachable). Each carve-out call site MUST carry an inline comment naming the carve-out (e.g., `// Test-fixture carve-out per Constitution V`); FR-040's AST lint enforces presence of the comment within 5 lines of the call.
 
 #### Page-level rollup correctness
 
@@ -336,7 +337,7 @@ delete `PageContext`) each pass corpus regression independently.
 
 #### Open-vocabulary parser correctness
 
-- **FR-015**: Open-vocabulary parser slots MUST route through `Vocabulary<S>::shape_admits`. The four cited inline `is_ascii_alphanumeric()` sites in `marque-core/parser.rs` (`parser.rs:1011-1024`, `:1453`, `:1481`, `:1493`) MUST be migrated; CI grep MUST flag re-introduction.
+- **FR-015**: Open-vocabulary parser slots MUST route through `Vocabulary<S>::shape_admits`. Four open-vocabulary admission sites in `marque-core/parser.rs` MUST migrate: three inline `is_ascii_alphanumeric()` byte-class checks (`:1453`, `:1481`, `:1493`) and the FGI trigraph silent-skip at `:1011-1024` (currently `if token.len() == 3 { CountryCode::try_new(...) }` rather than `is_ascii_alphanumeric`, but with the same fix shape — `shape_admits`-gated admission; the `None` return on shape failure is the FR-016 surface). CI grep MUST flag re-introduction of inline `is_ascii_alphanumeric()` in parser open-vocab admission paths.
 - **FR-016**: `parse_fgi_marker` MUST return `None` (not `Some` with degraded structure) when post-prefix bytes fail `shape_admits`.
 - **FR-017**: `FgiMarker` MUST discriminate `SourceConcealed` (lawful per CAPCO §H.7 p126, no country trigraphs) from `Acknowledged { countries }` (one or more validated trigraphs). The post-failure shape MUST be unrepresentable. Rules currently using `countries.is_empty()` MUST be audited and migrated.
 
@@ -384,7 +385,7 @@ delete `PageContext`) each pass corpus regression independently.
 
 - **FR-038**: `Send + Sync` bounds on `Rule` and `Recognizer<S>` impls MUST be statically asserted via `static_assertions::assert_impl_all!` from `RuleSet::new()`.
 - **FR-039**: Masking-pin discipline MUST be CI-enforced (AST-based lint at `tools/masking-pin-lint/`). Every `with_recognizer(StrictRecognizer)` test pin MUST carry either `// MASKING-PIN: tracks #NNN` (with an open tracked issue, GitHub-API verified, `closed_as_duplicate_of` chains followed mandatorily) or `// INTENTIONAL-STRICT: <reason>`. Unmarked pins MUST fail CI. A masking pin MUST be removed in the same PR that closes its tracked issue, with a regression test demonstrating fix necessity.
-- **FR-040**: Promote-callsite discipline MUST be CI-enforced (AST-based lint at `tools/promote-callsite-lint/`). `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` calls MUST originate from `Engine::fix_inner` in production code; the Constitution V Principle V carve-out for test fixtures MUST be enumerated per call site.
+- **FR-040**: Promote-callsite discipline MUST be CI-enforced (AST-based lint at `tools/promote-callsite-lint/`). `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` calls MUST originate from `Engine::fix_inner` in production code. The Constitution V Principle V carve-out for test fixtures (per FR-005) requires an inline comment at each call site naming the carve-out (e.g., `// Test-fixture carve-out per Constitution V`); the AST lint MUST verify the comment is present within 5 lines of the call and reject any unmarked carve-out site.
 - **FR-041**: Synthetic engine diagnostics (R001 decoder recognition, R002 re-parse failure) MUST be minted by `marque-engine`, not by rule crates.
 - **FR-044**: Synthetic engine diagnostics MUST carry the sentinel scheme `"engine"` in `(scheme, predicate-id)` form: `("engine", "r001.decoder-recognized")` for R001, `("engine", "r002.reparse-failed")` for R002. The `"engine"` scheme is reserved at PR 3c rule-ID retirement; it is not a valid `MarkingScheme` registration target. Rationale: R001/R002 are minted by the engine, not by a `MarkingScheme` impl — inheriting an active scheme's namespace (`("capco", "engine.r001.…")`) would lie about provenance. The sentinel keeps `("capco", …)` cleanly meaning "from a CAPCO rule" and is forward-compatible with future schemes (`("cui", …)`, `("nato", …)`, etc.).
 
