@@ -437,12 +437,22 @@ impl AppliedFix {
     /// (`use AppliedFix as AF; AF::__engine_promote(...)`), or
     /// `<AppliedFix as Trait>::` UFCS forms. Defining or calling a
     /// free function or method with this exact name elsewhere will
-    /// fail the lint and require either renaming the offending fn
-    /// or carrying an explicit `#[allow(...)]` after team review.
-    /// The `__` prefix and `#[doc(hidden)]` attribute below
-    /// reinforce that the name is project-internal — anyone reading
-    /// this name in source should know they're looking at the
-    /// engine-only audit-promotion seal.
+    /// fail the lint. The lint is an external AST-walking tool —
+    /// it does NOT honor `#[allow(...)]` attributes, because Rust
+    /// attribute lints and external CI lints are separate
+    /// mechanisms. The remediation paths are: (a) rename the
+    /// offending function (the simplest answer; the `__` prefix is
+    /// project-reserved precisely so this rename is a normal cost),
+    /// (b) co-locate the fn inside the engine's allow-listed surface
+    /// (`Engine::fix_inner` / `Engine::apply_text_corrections` /
+    /// the `engine_promotion_token` helper at
+    /// `crates/engine/src/engine.rs`), or (c) extend the lint's
+    /// allow-list in `tools/promote-callsite-lint/src/callsite.rs`
+    /// after explicit team-review approval (and add a regression
+    /// test pinning the new shape). The `__` prefix and
+    /// `#[doc(hidden)]` attribute below reinforce that the name is
+    /// project-internal — anyone reading this name in source should
+    /// know they're looking at the engine-only audit-promotion seal.
     ///
     /// # Engine-only contract (production code)
     ///

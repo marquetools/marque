@@ -363,3 +363,131 @@ pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
     assert_eq!(diags.len(), 1, "expected the top-level member's tests/ signature to be flagged, got {diags:#?}");
     assert_eq!(diags[0].code, "PRC100");
 }
+
+#[test]
+fn whitelist_marking_scheme_canonicalize_bare_path_with_use_import_is_allowed() {
+    // Regression test for Copilot R9 #2: the codebase's established
+    // adapter convention is `use marque_scheme::{...};
+    // impl MarkingScheme for X { ... }` (see
+    // `crates/capco/src/scheme.rs:26 + :1267` for the canonical
+    // example). The PRC100 carve-out must accept this bare form
+    // when the file imports `MarkingScheme` from `marque_scheme`,
+    // OR PR 3a–3c's adapter rewrite would falsely flag the
+    // legitimate `canonicalize` impl. Imports-aware matching closes
+    // both the false-positive (legitimate adapter) and the
+    // shadow-trait bypass (a crate-local `trait MarkingScheme`
+    // declared in some other file would lack the use-import).
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/capco/src/scheme.rs",
+        r"
+use marque_scheme::MarkingScheme;
+struct FooScheme;
+struct ParsedAttrs;
+struct CanonicalAttrs;
+impl MarkingScheme for FooScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs {
+        let _ = parsed;
+        CanonicalAttrs
+    }
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "bare-form impl with `use marque_scheme::MarkingScheme` import should be accepted; got {diags:#?}"
+    );
+}
+
+#[test]
+fn whitelist_marking_scheme_canonicalize_bare_path_with_glob_import_is_allowed() {
+    // `use marque_scheme::*;` glob also satisfies the
+    // imports-aware bare-form acceptance.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/capco/src/scheme.rs",
+        r"
+use marque_scheme::*;
+struct FooScheme;
+struct ParsedAttrs;
+struct CanonicalAttrs;
+impl MarkingScheme for FooScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs {
+        let _ = parsed;
+        CanonicalAttrs
+    }
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "bare-form impl with `use marque_scheme::*` glob should be accepted; got {diags:#?}"
+    );
+}
+
+#[test]
+fn whitelist_marking_scheme_canonicalize_bare_path_with_group_import_is_allowed() {
+    // `use marque_scheme::{TokenId, MarkingScheme};` group also
+    // satisfies the imports-aware bare-form acceptance — this is
+    // the actual shape used in `crates/capco/src/scheme.rs:26`.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/capco/src/scheme.rs",
+        r"
+use marque_scheme::{Category, MarkingScheme, TokenId};
+struct FooScheme;
+struct ParsedAttrs;
+struct CanonicalAttrs;
+impl MarkingScheme for FooScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs {
+        let _ = parsed;
+        CanonicalAttrs
+    }
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "bare-form impl with grouped `use` import should be accepted; got {diags:#?}"
+    );
+}
+
+#[test]
+fn bare_marking_scheme_with_renamed_import_is_denied() {
+    // `use marque_scheme::MarkingScheme as Foo;` does NOT satisfy
+    // the bare-form acceptance: the local name is `Foo`, not
+    // `MarkingScheme`. A `impl MarkingScheme for X` in such a file
+    // refers to some OTHER `MarkingScheme` (likely a shadow trait),
+    // not the canonical one. The lint correctly rejects.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+use marque_scheme::MarkingScheme as MS;
+struct ParsedAttrs;
+struct CanonicalAttrs;
+struct FooScheme;
+trait MarkingScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs;
+}
+impl MarkingScheme for FooScheme {
+    fn canonicalize(&self, parsed: ParsedAttrs) -> CanonicalAttrs {
+        let _ = parsed;
+        CanonicalAttrs
+    }
+}
+",
+    );
+    let diags = signature::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.iter().any(|d| d.code == "PRC100"),
+        "rename-aliased import must NOT trigger bare-form acceptance; expected PRC100, got {diags:#?}"
+    );
+}

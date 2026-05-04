@@ -68,8 +68,25 @@ whitelisted call sites:
    audited at the call site.
 2. **`MarkingScheme::canonicalize`**: the trait method that
    *defines* the legitimate `ParsedAttrs → CanonicalAttrs`
-   transition. Detected by the enclosing `impl` block referencing
-   `MarkingScheme` and the method ident being `canonicalize`.
+   transition. Detected by the enclosing `impl` block matching
+   ONE of these specific shapes (last-segment-only matching of a
+   trait merely *named* `MarkingScheme` is rejected to close the
+   shadow-trait bypass):
+   - `impl marque_scheme::MarkingScheme for X` — the
+     fully-qualified form, accepted unconditionally.
+   - `impl MarkingScheme for X` — the bare form, accepted IFF
+     the file imports `MarkingScheme` from `marque_scheme`
+     (any of `use marque_scheme::MarkingScheme;`,
+     `use marque_scheme::{..., MarkingScheme, ...};`, or
+     `use marque_scheme::*;`). Renamed imports
+     (`use marque_scheme::MarkingScheme as Foo`) do NOT count
+     because the local name is no longer `MarkingScheme`.
+   The method ident must be `canonicalize`. The trait declaration
+   site at `crates/scheme/src/scheme.rs` is also recognized via a
+   path-based discriminator so the canonical declaration's
+   `canonicalize` signature passes PRC100; a trait merely *named*
+   `MarkingScheme` declared anywhere else fails PRC100 unless its
+   `impl` blocks satisfy the matchers above.
 3. **Transitional adapter `from_parsed_unchecked`** in
    `crates/ism/src/attrs.rs`: a path-based carve-out scoped to the
    PR 3a → PR 3c keystone window. **Auto-expires** when PR 3c
@@ -93,15 +110,15 @@ window.
 ```bash
 # Run both passes (default)
 cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
-    -- --workspace-dir /home/user/marque --all
+    -- --workspace-dir . --all
 
 # Run only the call-site origin lint
 cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
-    -- --workspace-dir /home/user/marque --callsite-only
+    -- --workspace-dir . --callsite-only
 
 # Run only the D12 signature-shape lint
 cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
-    -- --workspace-dir /home/user/marque --signature-only
+    -- --workspace-dir . --signature-only
 ```
 
 Exit code is non-zero if any error-severity diagnostic is emitted.

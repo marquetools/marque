@@ -509,20 +509,66 @@ fn evaluate_cached_state(
     entry: &CachedIssueState,
     diagnostics: &mut Vec<LintDiagnostic>,
 ) {
-    if entry.state == "open" {
-        return;
+    // Schema 1.1 preserves the structured `TerminalState` + `meta_issue_warning`
+    // alongside the coarse `state` string, so the cache-fallback path
+    // produces byte-identical diagnostics to the API-available path:
+    // a cycle-classified issue surfaces the cycle warning, a
+    // chain-of-meta-issues surfaces the cascade-close warning, and so
+    // on. The pre-1.1 fallback collapsed every non-open state into
+    // "issue is closed" with no distinction.
+    match entry.terminal_state.as_str() {
+        "Open" => {
+            // Nothing to flag for the open case directly. The
+            // chain-meta-issue warning still applies if any issue in
+            // the duplicate chain looked like a meta-issue.
+        }
+        "Cycle" => {
+            diagnostics.push(LintDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "error: cycle in closed_as_duplicate_of chain at #{issue} — manual review required (cached; chain: {:?})",
+                    entry.chain
+                ),
+            });
+        }
+        "ClosedAsCompleted" | "ClosedNotDuplicate" => {
+            let date = entry
+                .closed_at
+                .map_or_else(|| "<unknown>".to_string(), |t| t.to_rfc3339());
+            diagnostics.push(LintDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "error: MASKING-PIN at {}:{} tracks #{issue} which closed at {date} (cached); per source plan §6 rule 5, the pin must be removed in the issue-closing PR (chain: {:?})",
+                    pin.file.display(),
+                    pin.line,
+                    entry.chain
+                ),
+            });
+        }
+        other => {
+            // Unknown terminal_state value (forward-compat: a future
+            // schema bump might add new variants). Fail loudly rather
+            // than silently misclassifying as open.
+            diagnostics.push(LintDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "error: MASKING-PIN at {}:{} tracks #{issue} with unknown cached terminal_state {other:?}; refresh the cache",
+                    pin.file.display(),
+                    pin.line
+                ),
+            });
+        }
     }
-    let date = entry
-        .closed_at
-        .map_or_else(|| "<unknown>".to_string(), |t| t.to_rfc3339());
-    diagnostics.push(LintDiagnostic {
-        severity: Severity::Error,
-        message: format!(
-            "error: MASKING-PIN at {}:{} tracks #{issue} which closed at {date} (cached); per source plan §6 rule 5, the pin must be removed in the issue-closing PR",
-            pin.file.display(),
-            pin.line
-        ),
-    });
+    if entry.meta_issue_warning {
+        diagnostics.push(LintDiagnostic {
+            severity: Severity::Warning,
+            message: format!(
+                "warning: MASKING-PIN at {}:{} chain visited a meta/tracking issue (cached) — reviewer should confirm cascade-close is appropriate (FR-039 rule 4)",
+                pin.file.display(),
+                pin.line
+            ),
+        });
+    }
 }
 
 /// Persist `state` for `starting_issue` to the cache directory.
@@ -548,17 +594,32 @@ fn persist(
         TerminalState::Open => "open".to_string(),
         _ => "closed".to_string(),
     };
+    // Structured terminal-state string mirrors the enum's Debug form
+    // so the cache file's `terminal_state` field can be matched
+    // unambiguously in `evaluate_cached_state` even on API outage.
+    let new_terminal_state_str = match state.terminal_state {
+        TerminalState::Open => "Open",
+        TerminalState::ClosedAsCompleted => "ClosedAsCompleted",
+        TerminalState::ClosedNotDuplicate => "ClosedNotDuplicate",
+        TerminalState::Cycle => "Cycle",
+    }
+    .to_string();
 
     let parts: Vec<&str> = repo.splitn(2, '/').collect();
     if parts.len() == 2 {
         // Compare against the existing entry (if any) to suppress
-        // `refreshed_at`-only churn.
+        // `refreshed_at`-only churn. The state-of-record fields now
+        // include `terminal_state` and `meta_issue_warning` (schema
+        // 1.1) so a no-op write requires the structured terminal
+        // classification AND the chain-meta-issue flag to also match.
         if let Ok(Some(existing)) =
             read_cache(cache_dir, parts[0], parts[1], starting_issue)
         {
             if existing.repo == repo
                 && existing.issue_number == starting_issue
                 && existing.state == new_state_str
+                && existing.terminal_state == new_terminal_state_str
+                && existing.meta_issue_warning == state.meta_issue_warning
                 && existing.closed_at == state.closed_at
                 && existing.closed_as_duplicate_of == state.closed_as_duplicate_of
                 && existing.chain == state.chain
@@ -573,6 +634,8 @@ fn persist(
         repo: repo.to_string(),
         issue_number: starting_issue,
         state: new_state_str,
+        terminal_state: new_terminal_state_str,
+        meta_issue_warning: state.meta_issue_warning,
         closed_at: state.closed_at,
         closed_as_duplicate_of: state.closed_as_duplicate_of,
         refreshed_at: Utc::now(),

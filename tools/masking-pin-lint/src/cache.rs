@@ -18,19 +18,44 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Pinned schema identifier. Future schema bumps require coordinated CI rollout.
-pub const CACHE_SCHEMA: &str = "marque-masking-pin-cache-1.0";
+///
+/// **1.0 → 1.1 migration** (round-9 amendment): added `terminal_state` and
+/// `meta_issue_warning` fields. The previous 1.0 schema collapsed every
+/// non-open terminal classification into the string `"closed"`, so the
+/// cache-fallback path could not distinguish a duplicate-chain cycle from
+/// an ordinary closed issue, and lost the per-pin meta-issue warning that
+/// FR-039 rule 4 surfaces. Schema 1.1 preserves the full `TerminalState`
+/// enum value plus the `meta_issue_warning` bool so the API-unavailable
+/// fallback evaluation produces byte-identical diagnostics to the
+/// API-available path.
+pub const CACHE_SCHEMA: &str = "marque-masking-pin-cache-1.1";
 
 /// On-disk cached issue state. Mirrors the JSON schema 1:1.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedIssueState {
-    /// Pinned to `marque-masking-pin-cache-1.0`.
+    /// Pinned to `marque-masking-pin-cache-1.1`.
     pub schema: String,
     /// `<owner>/<name>`.
     pub repo: String,
     /// The starting issue number (the one referenced by the pin marker).
     pub issue_number: u32,
-    /// `"open"` or `"closed"`.
+    /// `"open"` or `"closed"`. Retained alongside the structured
+    /// `terminal_state` field as a coarse-grained quick check; new readers
+    /// should prefer `terminal_state` when distinguishing
+    /// open / cycle / closed-completed / closed-not-duplicate.
     pub state: String,
+    /// Structured terminal-state classification. Mirrors the
+    /// `marque_masking_pin_lint::github::TerminalState` enum:
+    /// `"Open"`, `"ClosedAsCompleted"`, `"ClosedNotDuplicate"`, `"Cycle"`.
+    /// Schema-1.1 addition. Required field on writes; on reads of a
+    /// hypothetical 1.0-shaped file the schema check below would
+    /// reject it before this field is examined.
+    pub terminal_state: String,
+    /// True if any issue traversed in the `closed_as_duplicate_of`
+    /// chain looked like a `[meta]` / "tracking" issue. FR-039 rule 4
+    /// surfaces this as a warning at the diagnostic stage. Schema-1.1
+    /// addition.
+    pub meta_issue_warning: bool,
     /// ISO-8601 timestamp of terminal close, or `None` if open.
     pub closed_at: Option<DateTime<Utc>>,
     /// Issue number this duplicates, if any.
@@ -131,6 +156,8 @@ mod tests {
             repo: "marquetools/marque".to_string(),
             issue_number: issue,
             state: "open".to_string(),
+            terminal_state: "Open".to_string(),
+            meta_issue_warning: false,
             closed_at: None,
             closed_as_duplicate_of: None,
             refreshed_at: Utc::now(),

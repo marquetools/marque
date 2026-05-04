@@ -102,9 +102,19 @@ pub fn scan_file(
         .strip_prefix(workspace_dir)
         .unwrap_or(file_path)
         .to_path_buf();
+    // Pre-compute whether this file imports `MarkingScheme` from
+    // `marque_scheme`. The bare-form `impl MarkingScheme for X` is
+    // legitimate IFF the file has a `use marque_scheme::MarkingScheme`
+    // (or a `use marque_scheme::*` glob) at the top — that's the
+    // established adapter convention in the codebase (see
+    // `crates/capco/src/scheme.rs:1267` for the canonical example).
+    // Without an import context the bare form is shadow-trait
+    // suspicious.
+    let imports_marking_scheme = file_imports_marking_scheme_from_marque_scheme(file);
     let mut walker = SignatureWalker {
         file_path,
         rel_path: rel,
+        imports_marking_scheme,
         sink,
     };
     walker.visit_items(&file.items, /* impl_trait_last = */ None);
@@ -211,6 +221,10 @@ fn walk_rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 struct SignatureWalker<'a> {
     file_path: &'a Path,
     rel_path: PathBuf,
+    /// Pre-computed flag: does the file have a `use marque_scheme::MarkingScheme`
+    /// (or a `use marque_scheme::*` glob) at the top? Drives the
+    /// bare-form acceptance for `is_marking_scheme_trait_path`.
+    imports_marking_scheme: bool,
     sink: &'a mut Vec<Diagnostic>,
 }
 
@@ -367,7 +381,9 @@ impl SignatureWalker<'_> {
         // qualified-path check (a `pub trait MarkingScheme` declared
         // inside `crates/scheme/src/scheme.rs` is the genuine one).
         if let Some(trait_path) = impl_trait_path {
-            if is_marking_scheme_trait_path(trait_path) && sig.ident == CANONICALIZE_METHOD {
+            if is_marking_scheme_trait_path(trait_path, self.imports_marking_scheme)
+                && sig.ident == CANONICALIZE_METHOD
+            {
                 return;
             }
         }
@@ -539,34 +555,102 @@ fn qualified_marking_scheme_path() -> SynPath {
 }
 
 /// True when the trait path written at an `impl <Trait> for <Type>`
-/// site references the canonical `MarkingScheme` trait via its
-/// fully-qualified path `marque_scheme::MarkingScheme`.
+/// site references the canonical `MarkingScheme` trait, accepting:
 ///
-/// **Bare `MarkingScheme` is deliberately NOT matched.** A crate-local
-/// trait named `MarkingScheme` (a shadowing alias, a test fixture,
-/// or a malicious bypass) is indistinguishable from the canonical
-/// trait at the AST level when written bare, so accepting the
-/// single-segment form would let a contributor whitelist an arbitrary
-/// `ParsedAttrs → CanonicalAttrs` adapter just by naming their trait
-/// `MarkingScheme`. Forcing the qualified path makes the carve-out
-/// trustworthy: the impl is unambiguously declaring the shape it
-/// claims to have.
+/// 1. **Fully-qualified `marque_scheme::MarkingScheme`** — always
+///    accepted; the qualifier is unambiguous regardless of file
+///    context.
+/// 2. **Bare `MarkingScheme`** — accepted IFF the file imports
+///    `MarkingScheme` from `marque_scheme` (either via
+///    `use marque_scheme::MarkingScheme`, `use marque_scheme::{..., MarkingScheme, ...}`,
+///    or `use marque_scheme::*` glob). The `imports_marking_scheme`
+///    flag is pre-computed per-file by
+///    `file_imports_marking_scheme_from_marque_scheme` and threaded
+///    through here. This matches the established adapter
+///    convention in the codebase (e.g. `crates/capco/src/scheme.rs`
+///    uses `impl MarkingScheme for CapcoScheme` after a
+///    `use marque_scheme::{...}` block at the top of the file).
 ///
-/// Cost: a legitimate adapter has to write
-/// `impl marque_scheme::MarkingScheme for X` rather than relying on
-/// a top-of-file `use marque_scheme::MarkingScheme`. This is
-/// slightly verbose but consistent with the canonical-form
-/// requirement applied elsewhere in the lint surface (and the impl
-/// only happens once per scheme adapter — typically in
-/// `crates/<scheme>/src/scheme.rs`).
-fn is_marking_scheme_trait_path(path: &SynPath) -> bool {
+/// Bare `MarkingScheme` in a file that does NOT import it from
+/// `marque_scheme` is treated as a shadow trait and rejected — a
+/// crate-local `trait MarkingScheme { ... }` defined in some other
+/// file would otherwise satisfy a single-segment matcher and
+/// whitelist arbitrary `ParsedAttrs → CanonicalAttrs` adapters.
+/// The import-aware match closes that bypass at AST level without
+/// requiring contributors to write the verbose qualified form.
+fn is_marking_scheme_trait_path(path: &SynPath, imports_marking_scheme: bool) -> bool {
     let segs: Vec<String> = path
         .segments
         .iter()
         .map(|s| s.ident.to_string())
         .collect();
-    matches!(
+    // Fully-qualified form: always accepted.
+    if matches!(
         segs.as_slice(),
         [crate_name, trait_name] if crate_name == "marque_scheme" && trait_name == "MarkingScheme",
-    )
+    ) {
+        return true;
+    }
+    // Bare form: accepted only when the file imports it from
+    // `marque_scheme` — a `use marque_scheme::MarkingScheme`,
+    // a `use marque_scheme::{..., MarkingScheme, ...}` group, or a
+    // `use marque_scheme::*` glob.
+    if imports_marking_scheme
+        && matches!(segs.as_slice(), [single] if single == "MarkingScheme")
+    {
+        return true;
+    }
+    false
+}
+
+/// Walk every `Item::Use` in the file and return `true` if the file
+/// imports `MarkingScheme` from `marque_scheme`. Three import shapes
+/// satisfy:
+///
+/// - `use marque_scheme::MarkingScheme;`
+/// - `use marque_scheme::{..., MarkingScheme, ...};` (group)
+/// - `use marque_scheme::*;` (glob — pulls in everything including
+///   `MarkingScheme`)
+///
+/// `as`-rename shapes (`use marque_scheme::MarkingScheme as Foo;`)
+/// are NOT counted: the local name is no longer `MarkingScheme`,
+/// so a `impl MarkingScheme for X` in the same file does NOT refer
+/// to the renamed import. Only the canonical local name binds.
+fn file_imports_marking_scheme_from_marque_scheme(file: &File) -> bool {
+    use syn::{UseTree, ItemUse};
+    fn tree_matches(tree: &UseTree, expecting_marque_scheme_root: bool) -> bool {
+        match tree {
+            // `marque_scheme::<...>` — descend into the right child.
+            UseTree::Path(path) => {
+                if expecting_marque_scheme_root {
+                    if path.ident == "marque_scheme" {
+                        return tree_matches(&path.tree, false);
+                    }
+                    return false;
+                }
+                // Already inside marque_scheme; we don't recurse
+                // through inner modules (`marque_scheme::sub::MarkingScheme`
+                // would be reading from a non-canonical path and is
+                // not a recognized import shape).
+                false
+            }
+            // `marque_scheme::MarkingScheme;` — terminal name match.
+            UseTree::Name(name) => !expecting_marque_scheme_root && name.ident == "MarkingScheme",
+            // `marque_scheme::*;` — glob brings in MarkingScheme.
+            UseTree::Glob(_) => !expecting_marque_scheme_root,
+            // `marque_scheme::{...}` — group; check each entry.
+            UseTree::Group(group) => {
+                if expecting_marque_scheme_root {
+                    return false;
+                }
+                group.items.iter().any(|item| tree_matches(item, false))
+            }
+            // `as`-rename: explicitly excluded (see fn doc comment).
+            UseTree::Rename(_) => false,
+        }
+    }
+    file.items.iter().any(|item| match item {
+        syn::Item::Use(ItemUse { tree, .. }) => tree_matches(tree, true),
+        _ => false,
+    })
 }

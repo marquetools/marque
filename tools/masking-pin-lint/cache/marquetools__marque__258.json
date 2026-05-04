@@ -1,8 +1,10 @@
 {
-  "schema": "marque-masking-pin-cache-1.0",
+  "schema": "marque-masking-pin-cache-1.1",
   "repo": "marquetools/marque",
   "issue_number": 258,
   "state": "open",
+  "terminal_state": "Open",
+  "meta_issue_warning": false,
   "closed_at": null,
   "closed_as_duplicate_of": null,
   "refreshed_at": "2026-05-04T18:13:57.357670841Z",
