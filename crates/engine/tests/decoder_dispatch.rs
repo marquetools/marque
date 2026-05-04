@@ -26,6 +26,7 @@ fn build_engine() -> Engine {
 }
 
 fn build_strict_engine() -> Engine {
+    // INTENTIONAL-STRICT: this helper exists specifically to construct an engine with the decoder suppressed; the test family asserts strict-path behavior in contrast to the default dispatcher
     build_engine().with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 

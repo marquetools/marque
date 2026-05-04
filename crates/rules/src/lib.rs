@@ -427,6 +427,33 @@ pub struct AppliedFix {
 impl AppliedFix {
     /// Promote a `FixProposal` to an `AppliedFix` with runtime context.
     ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// The function name `__engine_promote` is **reserved by the
+    /// marque project**. The `tools/promote-callsite-lint/` CI lint
+    /// (FR-040) flags every call expression whose path's last
+    /// segment is `__engine_promote`, regardless of the leading
+    /// qualifier — qualified, fully-qualified, `Self::`, aliased
+    /// (`use AppliedFix as AF; AF::__engine_promote(...)`), or
+    /// `<AppliedFix as Trait>::` UFCS forms. Defining or calling a
+    /// free function or method with this exact name elsewhere will
+    /// fail the lint. The lint is an external AST-walking tool —
+    /// it does NOT honor `#[allow(...)]` attributes, because Rust
+    /// attribute lints and external CI lints are separate
+    /// mechanisms. The remediation paths are: (a) rename the
+    /// offending function (the simplest answer; the `__` prefix is
+    /// project-reserved precisely so this rename is a normal cost),
+    /// (b) co-locate the fn inside the engine's allow-listed surface
+    /// (`Engine::fix_inner` / `Engine::apply_text_corrections` /
+    /// the `engine_promotion_token` helper at
+    /// `crates/engine/src/engine.rs`), or (c) extend the lint's
+    /// allow-list in `tools/promote-callsite-lint/src/callsite.rs`
+    /// after explicit team-review approval (and add a regression
+    /// test pinning the new shape). The `__` prefix and
+    /// `#[doc(hidden)]` attribute below reinforce that the name is
+    /// project-internal — anyone reading this name in source should
+    /// know they're looking at the engine-only audit-promotion seal.
+    ///
     /// # Engine-only contract (production code)
     ///
     /// This constructor exists in `marque-rules` for type co-location, but
@@ -544,6 +571,19 @@ pub struct EnginePromotionToken {
 impl EnginePromotionToken {
     /// Mint an [`EnginePromotionToken`].
     ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// As with [`AppliedFix::__engine_promote`], the function name
+    /// `__engine_construct` is reserved by the marque project. The
+    /// `tools/promote-callsite-lint/` CI lint flags every call
+    /// expression whose path's last segment is `__engine_construct`
+    /// regardless of leading qualifier (qualified, fully-qualified,
+    /// `Self::`, aliased, UFCS). Defining or calling another
+    /// function with this exact name elsewhere will fail the lint.
+    /// The `__` prefix + `#[doc(hidden)]` attribute reinforce the
+    /// reserved status; see [`AppliedFix::__engine_promote`] for the
+    /// full contract and the rationale for last-segment matching.
+    ///
     /// # Engine-only contract (production code)
     ///
     /// Only `marque-engine` may call this in production code. The
@@ -623,6 +663,17 @@ pub trait RuleSet: Send + Sync {
     fn rules(&self) -> &[Box<dyn Rule>];
     fn schema_version(&self) -> &'static str;
 }
+
+// FR-038 / T002 — `Send + Sync` for the `Rule` and `RuleSet` traits is
+// declared by the `pub trait Rule: Send + Sync` and
+// `pub trait RuleSet: Send + Sync` supertrait bounds above. The
+// trait-object dimension (`Box<dyn Rule>: Send + Sync`,
+// `Arc<dyn Rule>: Send + Sync`, plus the analogous `RuleSet` shapes)
+// is exercised by `tests/send_sync.rs`, which is the integration test
+// that fails to compile if a future bound relaxation breaks the
+// trait-object form. This file no longer carries an inline assertion;
+// the supertrait bounds plus that companion test are the load-bearing
+// guards.
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

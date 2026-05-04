@@ -9,6 +9,14 @@
 [Cc]ache/
 .[Cc]ache/
 
+# masking-pin-lint cache is intentionally tracked: D11 in
+# specs/006-engine-rule-refactor/decisions.md requires daily-refreshed
+# cache files committed to the repo so CI's cache-with-fallback path has
+# data even when GitHub's API is unreachable. The negation below carves
+# that directory out of the generic [Cc]ache/ rule above.
+!tools/masking-pin-lint/cache/
+!tools/masking-pin-lint/cache/**
+
 # Packages
 node_modules/
 .venv/

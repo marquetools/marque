@@ -219,22 +219,70 @@ The TOML schema is small and stable.
 ### D8 — Cumulative bench drift assertion
 
 **Decision**: At PR 10, re-run all per-PR bench comparisons against
-the PR-0 baseline (R-5) on **pinned bench hardware**. Per-bench
-cumulative drift ≤10% is the gate; per-PR contributions exceeding
-6% are flagged for attribution. Bench hardware is **pinned for the
-duration of the refactor** (decision recorded in PR 0).
+the PR-0 baseline (R-5). Per-bench cumulative drift ≤10% is the
+gate; per-PR contributions exceeding 6% are flagged for attribution.
+
+**Bench-runner pin** (amended PR 0 review): the marque project runs
+on standard GitHub Actions hosted runners (`ubuntu-latest`,
+currently `ubuntu-24.04` — see
+`https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md`).
+Custom or rented bare-metal runners are out of budget. Bench-runner
+"pinning" therefore degrades to:
+
+- All bench captures run on `ubuntu-latest` GitHub-hosted runners.
+- Image versions advance over the refactor's calendar window as
+  GitHub rotates the runner pool; **the project explicitly accepts
+  the resulting variance** (acknowledged by the bench-runner owner
+  in the PR-0 review thread). Pinning to a specific image SHA
+  would not eliminate variance because each build runs on a fresh
+  shared VM with different co-tenants on the same image.
+- The `bench_runner_owner` (D8 owner: `bashandbone`) is responsible
+  for re-running the PR-0 baseline capture if a runner-image
+  rotation produces clearly anomalous deltas, but is NOT obligated
+  to reconcile every percent-level drift.
+
+**Implications for FR-033 / FR-050 gates**:
+
+- **FR-033** (>5% mean OR p99 regression backs out the originating
+  change) — remains binding per-PR, with the standing caveat that a
+  PR may legitimately re-test on a fresh runner if a single CI
+  invocation produces a borderline reading. The
+  `MARQUE_BENCH_SKIP_REGRESSION=1` escape hatch already documented
+  in `scripts/bench-check.sh` is the canonical mechanism for the
+  rare case of a confirmed runner-variance false positive.
+- **FR-050** (cumulative drift ≤10% at PR 10) — the gate stays at
+  the same threshold; whether shared-runner variance produces enough
+  noise to make the gate flap or fail is empirical. The bench-runner
+  owner has observed in prior project history that drift on this
+  runner family routinely reaches 10% and "often tips into 11%" —
+  that's a known baseline-quality signal, not necessarily a runtime
+  regression. **Mitigation in the bench-runner owner's hands**:
+  capture the PR-0 baseline by sampling at multiple times of day
+  (including known-busy windows) and either (a) take the worst
+  observed run as the baseline (conservative), (b) take the median
+  across N captures (robust), or (c) take the slowest-decile
+  per-bench across N captures (adversarial). The existing
+  `scripts/capture-baselines.sh` runs ONE capture per invocation;
+  multi-capture aggregation is currently a manual procedure the
+  owner can re-run as needed. If the gate flaps in practice DESPITE
+  a robust baseline, widen the tolerance in a follow-up amendment
+  and document the runner-variance-attributed delta separately. Do
+  NOT silently relax the gate without recording the rationale.
 
 **Lands in**:
 - `plan.md` Risk section / FR-033 enforcement note.
-- PR 0 description records the chosen bench-runner commitment
-  (rented bare-metal vs. dedicated GitHub-hosted runner spec).
+- PR 0 description records the bench-runner commitment as
+  "GitHub Actions hosted `ubuntu-latest`, owner: bashandbone."
 
-**Rationale**: Hardware drift over the refactor's calendar window
+**Rationale**: hardware drift over the refactor's calendar window
 (CI runner upgrades, kernel changes, runner capacity adjustments)
-can account for several percent of baseline shift independent of
-code. Pinned hardware is the only honest comparison mechanism.
-Per-PR attribution gives diagnostic power if the cumulative gate
-fails — pinpoints which PR contributed most.
+remains a real source of baseline shift independent of code. The
+ideal mitigation is pinned hardware; the realized mitigation given
+project budget is "same runner family, accept the variance, surface
+clearly anomalous deltas via per-PR attribution." Per-PR attribution
+keeps the diagnostic power of the gate even under variance — a 6%
+single-PR contribution is detectable above runner noise; a 1% drift
+that compounds across 10 PRs may not be, but is also less actionable.
 
 ---
 

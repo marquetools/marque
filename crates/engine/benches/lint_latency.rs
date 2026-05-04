@@ -76,6 +76,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: SC-001 interactive-latency bench pins the strict recognizer to measure the latency floor; the dispatcher's decoder fallback is benchmarked separately in decoder_10kb_rel_to_invariant.rs
     .with_recognizer(Arc::new(StrictRecognizer::new()));
 
     c.bench_function("lint_10kb", |b| {

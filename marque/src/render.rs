@@ -995,13 +995,16 @@ mod tests {
         // cfg(not(test)). The token is minted via the engine-only
         // door for the same reason — the test exercises the audit
         // emitter, not the engine's promotion gate.
+        // Test-fixture carve-out per Constitution V
+        let token = EnginePromotionToken::__engine_construct();
+        // Test-fixture carve-out per Constitution V
         let applied = AppliedFix::__engine_promote(
             fix,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             Some(Arc::from("classifier-42")),
             false,
             Some(Arc::from("test.txt")),
-            EnginePromotionToken::__engine_construct(),
+            token,
         );
 
         let mut buf = Vec::new();
