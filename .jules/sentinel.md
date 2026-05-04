@@ -29,3 +29,8 @@ The year **is 2026**.
 **Vulnerability:** The `marque-server` axum REST API lacked the `X-Frame-Options: DENY` header.
 **Learning:** Without this header, the API responses could potentially be embedded in an iframe on a malicious site, enabling clickjacking attacks.
 **Prevention:** Use `tower_http::set_header::SetResponseHeaderLayer` to globally enforce `X-Frame-Options: DENY` across all axum routes in the router configuration.
+
+## 2026-05-04 - [Missing X-Frame-Options Header in Demo Server]
+**Vulnerability:** The static dev server in `demo/bin/serve.js` was missing the `X-Frame-Options` HTTP response header.
+**Learning:** Without this header, the application could be embedded in an iframe on a malicious site, potentially leading to clickjacking attacks.
+**Prevention:** Always enforce `X-Frame-Options: DENY` (or `SAMEORIGIN`) on custom Node.js HTTP servers to mitigate clickjacking.
