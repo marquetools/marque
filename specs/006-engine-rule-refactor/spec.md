@@ -87,13 +87,13 @@ produced under foreign-disclosure agreements.
 that retains foreign provenance in 100% of cases. Per **decision D15**
 in `decisions.md`, fixture references are **path globs + count
 assertions**, not single-file pins:
-- `tests/corpus/foreign/pure_foreign_*.{json,txt}` — ≥1 fixture
+- `tests/corpus/foreign/pure_foreign_*.txt` — ≥1 fixture
   demonstrates a pure-foreign-banner page.
-- `tests/corpus/foreign/fgi_banner_*.{json,txt}` — ≥1 FGI banner
+- `tests/corpus/foreign/fgi_banner_*.txt` — ≥1 FGI banner
   roll-up fixture.
-- `tests/corpus/foreign/nato_only_*.{json,txt}` — ≥1 NATO-only page
+- `tests/corpus/foreign/nato_only_*.txt` — ≥1 NATO-only page
   fixture.
-- `tests/corpus/foreign/joint_*.{json,txt}` — ≥1 JOINT US/foreign page
+- `tests/corpus/foreign/joint_*.txt` — ≥1 JOINT US/foreign page
   fixture.
 
 The `MarkingClassification::Us` hardcode is removed at the source line;
@@ -442,7 +442,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **SC-007**: Two-pass invariant property tests (`crates/engine/tests/two_pass_invariants.rs`) pass under all fix-ordering permutations: zero overlapping spans across pass-1 / pass-2 promoted fixes; reshape-aware re-validation does not produce retroactive-satisfaction false positives.
 - **SC-008**: Interactive latency budget preserved: p95 ≤ 16 ms and p99 within pre-refactor baseline + 5% on the 10 KB single-portion bench.
 - **SC-009**: Multi-page projection (`lint_100kb_multipage` Criterion bench) within `PageContext` baseline + 10%; `fix_throughput` linear scaling R² ≥ 0.9; `fix_10kb` two-pass overhead within the SC-008 budget.
-- **SC-010**: Mangled-corpus fix accuracy preserved at ≥ 0.85 OR intentionally re-anchored at PR 3c per the binding decision tree at `research.md` R-8 (decision D5 in `decisions.md`). The chosen R-8 branch and threshold value MUST be encoded in `tests/corpus/mangled/threshold.toml` (decision D7); `tools/bench-check.sh` reads that file. If post-PR-3c accuracy lands <0.80 and the loss is not K-Option-2-attributable per R-8, PR 3a / 3b / 3c revert as a unit (no reviewer-judgment carve-out at merge time).
+- **SC-010**: Mangled-corpus fix accuracy preserved at ≥ 0.85 OR intentionally re-anchored at PR 3c per the binding decision tree at `research.md` R-8 (decision D5 in `decisions.md`). The chosen R-8 branch and threshold value MUST be encoded in `tests/corpus/mangled/threshold.toml` (decision D7); `scripts/bench-check.sh` reads that file. If post-PR-3c accuracy lands <0.80 and the loss is not K-Option-2-attributable per R-8, PR 3a / 3b / 3c revert as a unit (no reviewer-judgment carve-out at merge time).
 - **SC-011**: Open-vocabulary parser failures return `None` at all four cited parser sites; no `FgiMarker { countries: [] }` collision-shape values survive in either parser output or rule input. Verified by `tests/parser/fgi_silent_skip_guard.rs` plus a `marque-capco` rule audit confirming no surviving `countries.is_empty()` patterns.
 - **SC-012**: Audit-record JSON for closed-CVE fixes is bit-for-bit reproducible from `(TokenId, Scope)` inputs (compile-fail tests demonstrate that `Box<str> → Canonical` paths do not exist for closed-CVE tokens; open-vocab fixes carry `render_call_site` provenance distinguishing them from CVE-typed canonicals).
 - **SC-013**: At the end of the refactor sequence (PR 10 merge), zero MASKING-PIN tags reference issues that have closed; the AST-based masking-pin lint passes; the AST-based promote-callsite lint passes; both `static_assertions::assert_impl_all!` checks for `Send + Sync` bounds pass at workspace build.

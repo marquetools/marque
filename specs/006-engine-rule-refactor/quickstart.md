@@ -8,7 +8,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Branch**: `006-engine-rule-refactor` | **Date**: 2026-05-03
 **For**: contributors landing PRs against this branch.
 
-The refactor lands as 14 ordered PRs (PR 0 → PR 10, with sub-letter
+The refactor lands as 18 ordered PRs (PR 0 → PR 10, with sub-letter
 splits). This quickstart orients you to where things live and what
 changes per PR. Read this before opening a PR against the branch.
 
@@ -47,7 +47,7 @@ In order:
 
 1. **`spec.md`** — the user-observable correctness properties (FRs, SCs).
 2. **`plan.md`** — Constitution check, project structure (per-crate scope of change), bench harness layout.
-3. **`research.md`** — eight tactical decisions resolved before PR 0 begins.
+3. **`research.md`** — tactical decisions resolved before PR 0 begins.
 4. **`data-model.md`** — type-system shapes for new entities.
 5. **`contracts/`** — three contracts (rule-emission API, audit-record shape, engine pipeline).
 
@@ -188,7 +188,7 @@ cited passage (FR-019, F.1 gate).
 ## How to verify a citation lints clean
 
 ```bash
-cargo run -p citation-lint -- crates/capco/src/rules.rs
+cargo run --manifest-path tools/citation-lint/Cargo.toml -- crates/capco/src/rules.rs
 ```
 
 The lint inspects `citation:` fields, `message:` strings,
@@ -221,7 +221,7 @@ cargo bench --bench fix_10kb            # PR 7+
 cargo bench --bench lint_100kb_multipage # PR 6+
 ```
 
-The CI gate at `tools/bench-check.sh` reads the baseline JSON and
+The CI gate at `scripts/bench-check.sh` reads the baseline JSON and
 fails the PR if:
 - Any bench's mean regresses > 5%.
 - Any bench's p99 regresses > 5%.

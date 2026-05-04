@@ -63,8 +63,8 @@ issue-state check (FR-039 rule 4).
 **not** as workspace members of the product graph — to avoid
 contaminating WASM-safe crate dependency closure (Constitution III) or
 the audit-record-producing dep chain (Constitution VII). They are
-invoked from CI via `cargo run -p <lint-name> -- <args>` against the
-workspace source tree.
+invoked from CI via `cargo run --manifest-path tools/<lint-name>/Cargo.toml -- <args>`
+against the workspace source tree.
 
 ---
 
@@ -255,11 +255,11 @@ reads it.
 
 **Decision**: PR 0.5 runs the F.1 corpus-fidelity gate against the
 existing rule catalog as a **discovery exercise**, emits a list of
-failures (citations whose canonical example is absent from
-`tests/fixtures/`), and PR 0.6 fixes those failures. The set of
-failures is unknown until PR 0.5 runs; the consolidated plan §4 row
-PR 0.5 acknowledges this ("F.1 runs against existing catalog as
-discovery — failures get fixed in PR 0.6").
+failures (citations whose canonical example is absent from the shared
+`tests/corpus/` tree used by rule/corpus tests), and PR 0.6 fixes
+those failures. The set of failures is unknown until PR 0.5 runs; the
+consolidated plan §4 row PR 0.5 acknowledges this ("F.1 runs against
+existing catalog as discovery — failures get fixed in PR 0.6").
 
 **Rationale**:
 - Predicting the exact set of citation defects without running the
@@ -402,7 +402,7 @@ the following decision tree:
 **Binding** (per **decision D5** in `decisions.md`): this decision
 tree is **binding**, not deferred to PR 3c review notes. The chosen
 branch and threshold value MUST be encoded in
-`tests/corpus/mangled/threshold.toml` (per D7); `tools/bench-check.sh`
+`tests/corpus/mangled/threshold.toml` (per D7); `scripts/bench-check.sh`
 reads that file. Reviewer judgment at PR 3c merge time is limited to
 verifying the artifact reflects the measured outcome — not to
 overriding the tree. If accuracy lands <0.80 and the loss is not

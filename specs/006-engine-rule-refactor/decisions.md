@@ -202,7 +202,7 @@ record any rename that happened during PR 4–10.
 ### D7 — SC-010 R-8 decision in CI artifact
 
 **Decision**: `tests/corpus/mangled/threshold.toml` (structured
-TOML, not a freeform README). `tools/bench-check.sh` reads it. The
+TOML, not a freeform README). `scripts/bench-check.sh` reads it. The
 file is created (with a documented schema) in PR 0; populated with
 the actual threshold value and the chosen R-8 branch in PR 3c.
 
@@ -392,9 +392,9 @@ use a **path glob + count assertion**, not single-file naming.
 
 Examples (replacing single-file references in current spec):
 
-- US1 AC1: `tests/corpus/mangled/sci_compartment_*.{json,txt}` +
+- US1 AC1: `tests/corpus/mangled/sci_compartment_*.txt` +
   ≥1 fixture demonstrates the scenario.
-- US2 AC1: `tests/corpus/foreign/pure_foreign_*.json` + ≥1 fixture
+- US2 AC1: `tests/corpus/foreign/pure_foreign_*.txt` + ≥1 fixture
   demonstrates the scenario.
 
 **Lands in**: `spec.md` US1 / US2 acceptance scenarios edited.
