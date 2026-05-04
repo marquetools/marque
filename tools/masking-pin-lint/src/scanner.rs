@@ -52,7 +52,7 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
                 continue;
             }
             let path = entry.path();
-            // Skip target/ and other build artefacts that may sit under tests/.
+            // Skip target/ and other build artifacts that may sit under tests/.
             if path.components().any(|c| c.as_os_str() == "target") {
                 continue;
             }
