@@ -42,9 +42,9 @@ This document resolves the open technical questions that determine how Phases C,
 
 ## R4. Audit record schema bump strategy
 
-**Decision:** Single schema version per engine build. Current schema is `marque-mvp-1`; Phase D introduces `marque-mvp-2` with the new `confidence`, `runner_up_ratio`, and `features` fields (plus `FixSource::DecoderPosterior` when applicable). Downstream consumers continue to parse `marque-mvp-1` records from pre-Phase-D builds (back-compat). One engine build emits exactly one schema version — no in-flight version toggling.
+**Decision:** Single schema version per engine build. Post-keystone schema naming is `marque-1.0`, including the Phase D audit additions (`confidence`, `runner_up_ratio`, and `features`, plus `FixSource::DecoderPosterior` when applicable). Downstream consumers may continue to parse legacy `marque-mvp-*` records from pre-keystone builds (back-compat), but new emitters use `marque-1.0`. One engine build emits exactly one schema version — no in-flight version toggling.
 
-**Rationale:** FR-014 explicitly. The single-version-per-build contract keeps the audit record format unambiguous in a given deployment; downstream compliance consumers can version-gate their ingestion without parsing heuristics. The `-mvp-N` suffix mirrors the existing naming convention in `marque-engine/src/fix.rs`. Back-compat on the downstream parser side is achieved by keeping the v1 schema as a strict subset of v2 (all v1 fields present, new fields optional — even though a v2 *emitter* always populates them).
+**Rationale:** FR-014 explicitly. The single-version-per-build contract keeps the audit record format unambiguous in a given deployment; downstream compliance consumers can version-gate their ingestion without parsing heuristics. This aligns naming with the post-keystone convention (`marque-1.0`) while preserving parser compatibility for legacy `mvp`-era records.
 
 **Alternatives considered:**
 
