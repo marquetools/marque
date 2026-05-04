@@ -99,6 +99,10 @@ fi
 # by anchored regex sidesteps that whole class of parsing fragility.
 check_one_bench() {
     local bench_name="$1"
+    # bench_target is required: it must be the Cargo bench *file* name
+    # (e.g. "lint_latency"), not the Criterion function name (bench_name).
+    # cargo bench --bench <target> only compiles/runs that one binary.
+    local bench_target="${2:?check_one_bench: bench_target (arg 2) is required — pass the bench file name, e.g. \"lint_latency\"}"
 
     # Extract baseline upper CI bound (microseconds) and absolute target.
     local baseline_upper_ci target_upper_ci drift_alert
@@ -163,7 +167,7 @@ print(data['$bench_name'].get('drift_alert_upper_ci_us', ''))
     # named bench failure. `if !` keeps the captured stderr+stdout for the
     # diagnostic.
     local bench_output time_line
-    if ! bench_output=$(cargo bench -p marque-engine --bench lint_latency -- "^${bench_name}\$" 2>&1); then
+    if ! bench_output=$(cargo bench -p marque-engine --bench "$bench_target" -- "^${bench_name}\$" 2>&1); then
         echo "bench-check[$bench_name]: ERROR — 'cargo bench' invocation failed"
         if [[ -n "$bench_output" ]]; then
             printf '%s\n' "$bench_output"
@@ -430,10 +434,11 @@ print(data['deadline_overhead']['max_ratio_pct'])
         return 1
     fi
 
-    if ! [[ "$max_ratio_pct" =~ ^[0-9]+$ ]]; then
-        # Regex `^[0-9]+$` accepts `0` (the tightest gate — "no
-        # overhead allowed at all") plus any positive integer; reject
-        # only non-numeric / negative / signed / decimal values.
+    if ! [[ "$max_ratio_pct" =~ ^(0|[1-9][0-9]*)$ ]]; then
+        # Regex `^(0|[1-9][0-9]*)$` accepts exactly `0` (the tightest
+        # gate — "no overhead allowed at all") or a positive integer
+        # without leading zeros; reject non-numeric / negative /
+        # signed / decimal values.
         echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a non-negative integer: ${max_ratio_pct}"
         return 1
     fi
@@ -682,37 +687,53 @@ report_fix_latency() {
     # Capture stdout + stderr separately so we can distinguish a Python
     # startup/crash (parser_err non-empty) from per-bench parse failures
     # (WARN lines emitted to stdout by the script itself).
-    local parser_out parser_err
+    local parser_out parser_err py_exit
     parser_err=$(mktemp)
+    # Temporarily disable set -e so a Python startup/parse failure only WARNs
+    # (advisory output) rather than terminating the whole script under
+    # `set -euo pipefail`.
+    set +e
     parser_out=$(python3 - "$bench_output" 2>"$parser_err" <<'PY'
 import re, sys
 
 text = sys.argv[1]
-names = (
+preferred = (
     "fix_single_e001_apply",
     "fix_single_e001_dry_run",
     "lint_single_e001_baseline",
 )
+
 pat = re.compile(
-    r"({names})\s+(?:\n\s+)?time:\s+\[\s*"
+    r"([A-Za-z0-9_./:-]+)\s+(?:\n\s+)?time:\s+\[\s*"
     r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
     r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
-    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)".format(names="|".join(names))
+    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)"
 )
 
 found = {}
+order = []
 for m in pat.finditer(text):
-    found[m.group(1)] = (m.group(2), m.group(3), m.group(4))
+    name = m.group(1)
+    if name not in found:
+        order.append(name)
+    found[name] = (m.group(2), m.group(3), m.group(4))
 
-for name in names:
+for name in preferred:
     if name in found:
         lo, mean, hi = found[name]
         print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
     else:
         print(f"bench-check[fix_latency]: WARN — could not parse {name} timing")
+
+for name in order:
+    if name in preferred:
+        continue
+    lo, mean, hi = found[name]
+    print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
 PY
     )
-    local py_exit=$?
+    py_exit=$?
+    set -e
     if [[ $py_exit -ne 0 ]]; then
         echo "bench-check[fix_latency]: WARN — Python parser exited with status $py_exit (advisory; not failing overall status)"
         if [[ -s "$parser_err" ]]; then
@@ -728,8 +749,8 @@ PY
 }
 
 OVERALL_STATUS=0
-check_one_bench "lint_10kb" || OVERALL_STATUS=1
-check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
+check_one_bench "lint_10kb" "lint_latency" || OVERALL_STATUS=1
+check_one_bench "decoder_10kb_one_mangled_region" "lint_latency" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
 # fix_throughput disabled while we work out the scaling bug
 # check_fix_throughput || OVERALL_STATUS=1
