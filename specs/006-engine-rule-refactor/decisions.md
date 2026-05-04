@@ -252,8 +252,20 @@ Custom or rented bare-metal runners are out of budget. Bench-runner
   rare case of a confirmed runner-variance false positive.
 - **FR-050** (cumulative drift ≤10% at PR 10) — the gate stays at
   the same threshold; whether shared-runner variance produces enough
-  noise to make the gate flap or fail is empirical. If the gate
-  flaps in practice, widen the tolerance in a follow-up amendment
+  noise to make the gate flap or fail is empirical. The bench-runner
+  owner has observed in prior project history that drift on this
+  runner family routinely reaches 10% and "often tips into 11%" —
+  that's a known baseline-quality signal, not necessarily a runtime
+  regression. **Mitigation in the bench-runner owner's hands**:
+  capture the PR-0 baseline by sampling at multiple times of day
+  (including known-busy windows) and either (a) take the worst
+  observed run as the baseline (conservative), (b) take the median
+  across N captures (robust), or (c) take the slowest-decile
+  per-bench across N captures (adversarial). The existing
+  `scripts/capture-baselines.sh` runs ONE capture per invocation;
+  multi-capture aggregation is currently a manual procedure the
+  owner can re-run as needed. If the gate flaps in practice DESPITE
+  a robust baseline, widen the tolerance in a follow-up amendment
   and document the runner-variance-attributed delta separately. Do
   NOT silently relax the gate without recording the rationale.
 

@@ -16,13 +16,43 @@
 # subsequent refactor PRs.
 #
 # Workflow:
-#   1. Bench-runner owner checks out the PR-0 commit on the pinned
-#      reference machine.
+#   1. Bench-runner owner checks out the PR-0 commit on a GitHub
+#      Actions ubuntu-latest hosted runner (per the D8 amendment;
+#      hardware pinning beyond the runner family is out of project
+#      budget).
 #   2. Runs `bash scripts/capture-baselines.sh`.
 #   3. Reviews the resulting `benches/baselines/2026-05-pre-refactor.json`
 #      and fills in any free-form `reference_machine.*` fields the
 #      script could not infer (e.g. CPU model string, host kernel).
 #   4. Commits the populated JSON in a separate, reviewed commit.
+#
+# Recommended baseline-robustness procedure (per D8 owner observation):
+#   On the marque project's GitHub-hosted runner family, observed
+#   bench drift on prior PRs has routinely reached 10% and at times
+#   tipped into 11% — a known baseline-quality signal, not a runtime
+#   regression. To capture a baseline that the FR-050 ≤10% cumulative
+#   gate can hold against, the bench-runner owner SHOULD:
+#     a. Run this script multiple times across the calendar day,
+#        including known-busy windows (e.g., US business hours when
+#        the GitHub-hosted runner pool is most contended) and quiet
+#        windows. 5–10 captures is a reasonable starting point.
+#     b. Aggregate the captures using one of:
+#          - Worst-observed (conservative — every per-bench p95 is
+#            the slowest seen across the captures).
+#          - Median across captures (robust).
+#          - Slowest-decile per-bench across captures (adversarial,
+#            biases the baseline toward the noisy upper tail).
+#        The choice of aggregation is a one-time decision; record it
+#        in the JSON's `_note` field so subsequent FR-050 evaluations
+#        compare against the same shape.
+#     c. Re-capture if a runner-image rotation produces clearly
+#        anomalous deltas (per D8).
+#   This script runs ONE capture per invocation; the multi-capture
+#   aggregation is currently a manual procedure (or a wrapper script
+#   the owner may add later). Multi-capture support is intentionally
+#   not in this script today — the choice of aggregation strategy is
+#   policy, and policy belongs in the owner's decision record (D8),
+#   not in the capture mechanism.
 #
 # What it does:
 #   * Runs each Criterion bench listed in `BENCH_TARGETS` once via
