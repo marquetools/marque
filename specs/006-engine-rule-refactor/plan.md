@@ -222,7 +222,7 @@ path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
 | D5 | SC-010 binding R-8 wording; threshold-artifact reference | `spec.md` SC-010 (landed); `research.md` R-8 (amended in this PR) |
 | D6 | FR-049 — predicate-id stability freeze begins at PR 10 merge | `spec.md` (landed) |
 | D7 | `tests/corpus/mangled/threshold.toml` scaffold (schema + empty values) | new file |
-| D8 | FR-050 — cumulative bench-drift gate at PR 10 + pinned bench hardware | `spec.md` (landed); PR 0 description records hardware pin |
+| D8 | FR-050 — cumulative bench-drift gate at PR 10. PR-0-review amendment: hardware pinning beyond `ubuntu-latest` is out of project budget; `decisions.md` D8 documents the realized constraint and the bench-runner owner (`bashandbone`) | `spec.md` (landed); `decisions.md` D8 (amended); PR 0 description records the runner-family commitment |
 | D9 | R-9 in research — PR 9 → 9a / 9b / 9c | `research.md` |
 | D10 | Layer 0 in test taxonomy + `rust-toolchain.toml` + trybuild version pin | `contracts/engine-pipeline.md`; workspace toolchain file (verify) |
 | D11 | R-10 in research — masking-pin cache-with-fallback | `research.md`; `tools/masking-pin-lint/` design note |
@@ -247,8 +247,8 @@ MUST land in the **8–18 band**. Each surviving rule MUST satisfy
 
 | Risk | Mitigation | Owner |
 |------|-----------|-------|
-| Cumulative bench drift across PR 1–10 invisibly exceeds the per-PR FR-033 envelope | FR-050 end-state assertion at PR 10 against PR-0 baseline on **pinned hardware** (D8). Per-PR contributions >6% are flagged for attribution | bench-runner owner (named in PR 0) |
-| Hardware drift between PR 0 baseline capture and PR 10 acceptance invalidates comparison | Bench hardware pinned at PR 0 (D8); rented bare-metal or dedicated runner spec is recorded in PR 0 description; same hardware used at PR 10 acceptance | bench-runner owner |
+| Cumulative bench drift across PR 1–10 invisibly exceeds the per-PR FR-033 envelope | FR-050 end-state assertion at PR 10 against PR-0 baseline. Per-PR contributions >6% are flagged for attribution. **Project explicitly accepts shared-runner variance** per the D8 amendment (no custom-runner budget); the gate stays at 10% cumulative and may need a follow-up tolerance widening if shared-runner variance makes it flap empirically | bench-runner owner (`bashandbone`) |
+| Hardware drift between PR 0 baseline capture and PR 10 acceptance invalidates comparison | Bench captures run on GitHub Actions `ubuntu-latest` hosted runners — runner-pool image rotations are not within project control. The bench-runner owner re-runs the PR-0 baseline if a rotation produces clearly anomalous deltas, but is NOT obligated to reconcile every percent-level drift. See `decisions.md` D8 for the full constraint and rationale | bench-runner owner (`bashandbone`) |
 | PR 3.7 stalls and PRs 4–10 cascade-stall | Named alternate owner (D2) with §§2–8 read-through completed before PR 3c merges; 1-week stall trigger for alternate handoff without escalation | PR 3.7 primary owner + alternate |
 | PR 3c lands but mangled-corpus accuracy regresses below 0.80 | Binding R-8 decision tree (D5); `threshold.toml` (D7) records branch taken; <0.80 + non-K-Option-2 attribution → revert 3a/3b/3c as a unit | PR 3c reviewer |
 | Test flakes accumulate silently and erode CI signal | FR-051 quarantine queue with cap=10 (D16); cap exceedance blocks merges until triage clears | flake-watch triage owner (rotating) |
