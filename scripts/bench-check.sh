@@ -99,7 +99,10 @@ fi
 # by anchored regex sidesteps that whole class of parsing fragility.
 check_one_bench() {
     local bench_name="$1"
-    local bench_target="${2:-$bench_name}"
+    # bench_target is required: it must be the Cargo bench *file* name
+    # (e.g. "lint_latency"), not the Criterion function name (bench_name).
+    # cargo bench --bench <target> only compiles/runs that one binary.
+    local bench_target="${2:?check_one_bench: bench_target (arg 2) is required — pass the bench file name, e.g. \"lint_latency\"}"
 
     # Extract baseline upper CI bound (microseconds) and absolute target.
     local baseline_upper_ci target_upper_ci drift_alert
@@ -684,8 +687,12 @@ report_fix_latency() {
     # Capture stdout + stderr separately so we can distinguish a Python
     # startup/crash (parser_err non-empty) from per-bench parse failures
     # (WARN lines emitted to stdout by the script itself).
-    local parser_out parser_err
+    local parser_out parser_err py_exit
     parser_err=$(mktemp)
+    # Temporarily disable set -e so a Python startup/parse failure only WARNs
+    # (advisory output) rather than terminating the whole script under
+    # `set -euo pipefail`.
+    set +e
     parser_out=$(python3 - "$bench_output" 2>"$parser_err" <<'PY'
 import re, sys
 
@@ -725,7 +732,8 @@ for name in order:
     print(f"bench-check[fix_latency]: {name}: mean {mean} (CI {lo} .. {hi})")
 PY
     )
-    local py_exit=$?
+    py_exit=$?
+    set -e
     if [[ $py_exit -ne 0 ]]; then
         echo "bench-check[fix_latency]: WARN — Python parser exited with status $py_exit (advisory; not failing overall status)"
         if [[ -s "$parser_err" ]]; then
