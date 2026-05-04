@@ -55,9 +55,18 @@ Other non-flakes:
 
 ## Cap exceedance gate
 
-The CI gate is straightforward: `wc -l issues.md` (or equivalent
-parsing) must show ≤10 entries. Exceedance blocks merge until triage
-clears at least one entry.
+The CI gate counts active queue entries — it MUST NOT line-count the
+file (the scaffold itself is multiple lines before any flakes are
+added). The canonical count command is:
+
+```sh
+grep -c '^## flake-' tools/flake-watch/issues.md
+```
+
+This matches each top-level `## flake-YYYY-MM-DD-shortname` heading
+exactly once. The template entry uses a blockquote (`> ##`) so it does
+not match. Cap exceedance (count > 10) MUST block PR merge until
+triage clears at least one entry.
 
 Cap-exceedance triage options:
 1. Fix the underlying flake (preferred).
@@ -108,10 +117,18 @@ flake-watch entry.
 
 ## PR 0 acceptance
 
-Lands at PR 0:
+PR 0 absorbs decision D16 in two stages:
+
+**Decision-locking PR (this scaffold)** — already landed:
 - `tools/flake-watch/README.md` (this file).
-- `tools/flake-watch/issues.md` (empty queue with template).
-- CI integration — a job that reads `issues.md`, counts non-template
-  entries, and fails the workflow if count > 10. Implementation can be
-  shell-only (e.g., `grep -c '^## flake-' issues.md`); no Rust crate
-  required for the cap check.
+- `tools/flake-watch/issues.md` (empty queue with entry template).
+
+**PR 0 implementation commits** — to land:
+- CI workflow / job that reads `issues.md`, counts headings via
+  `grep -c '^## flake-' tools/flake-watch/issues.md`, and **fails the
+  workflow if count > 10**. Implementation is shell-only — no Rust
+  crate is required for the cap check.
+
+The decision-locking PR establishes the queue's existence, schema, and
+cap; the CI workflow giving the cap teeth lands alongside the other
+PR 0 lint / static-assertion commits.

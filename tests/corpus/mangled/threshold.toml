@@ -42,20 +42,27 @@ set_by_pr = ""
 # Default 0.85 per SC-010.
 mangled_accuracy_floor = 0.85
 
-# Floor for the open-vocab partition, only set when status = "re-curated".
-# Open-vocab inputs are diagnostic-only after K-Option 2 lockout; this is
-# typically near 0.0 by design (the engine intentionally does not auto-fix).
-# Set to null when not applicable.
+# Floor for the open-vocab partition, only meaningful when
+# status = "re-curated". Open-vocab inputs are diagnostic-only after
+# K-Option 2 lockout; this is typically 0.0 by design (the engine
+# intentionally does not auto-fix open-vocab tokens, so any positive
+# floor would be unreachable).
+#
+# TOML has no `null`. When status != "re-curated", the value is
+# unused; bench-check.sh MUST gate reads on the `status` field, not
+# on a sentinel value here.
 mangled_open_vocab_floor = 0.0
 
 
 [corpus]
-# Path glob (relative to workspace root) for the corpus the floor applies to.
-# Default points at the planned consolidated location; PR 3c may add a
-# second entry for a re-curated open-vocab partition.
+# Path glob (relative to workspace root) for the corpus the closed-vocab
+# floor applies to. Default points at the planned consolidated location;
+# PR 3c may add the open_vocab_path entry for a re-curated partition.
 closed_vocab_path = "tests/corpus/mangled/**/*.{json,txt}"
 
-# Only set when status = "re-curated".
+# Only meaningful when status = "re-curated"; empty string at other
+# statuses. bench-check.sh MUST gate reads on the `status` field
+# (TOML has no `null`).
 open_vocab_path = ""
 
 

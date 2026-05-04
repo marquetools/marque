@@ -199,6 +199,20 @@ PR 0 absorbs the full decision register from
 Every entry below MUST land in PR 0 (or its directly-coupled
 sub-PR setup); none are deferred to subsequent refactor PRs.
 
+**Scope of this spec PR vs. PR 0 implementation**: this spec PR
+locks the decisions in `decisions.md` and lands the **spec / plan /
+contract / research edits** plus the **markdown scaffolds** for
+artifacts whose schema needed pinning (`tests/corpus/mangled/threshold.toml`,
+`tools/flake-watch/README.md`, `tools/flake-watch/issues.md`). The
+**operational artifacts** — Rust lint crates at `tools/masking-pin-lint/`
+/ `tools/promote-callsite-lint/` / `tools/citation-lint/`, the
+`rust-toolchain.toml` workspace pin, the `trybuild` dev-dependency, the
+flake-watch CI workflow — land in subsequent PR 0 implementation
+commits on top of these locked decisions. The "Where" column below
+distinguishes the two: entries citing a spec / plan / contract path
+(`spec.md`, `decisions.md`, etc.) land here; entries citing a tooling
+path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
+
 | # | Deliverable | Where |
 |---|-------------|-------|
 | D1 | "R002 surfacing semantics" consumer-surface contract | `contracts/engine-pipeline.md` |
