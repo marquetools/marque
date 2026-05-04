@@ -252,3 +252,81 @@ fn top_level_workspace_member_tests_walked() {
         pins[0].file
     );
 }
+
+#[test]
+fn test_utils_src_is_walked_for_pin_markers() {
+    // Regression test for the round-8 audit's test-utils carve-out
+    // asymmetry: `crates/test-utils/src/` is logically a test-fixture
+    // scope (per Constitution V Principle V's first constraint
+    // enumerating "test-utility crates gated as dev-dependencies"
+    // alongside tests/ files and #[cfg(test)] modules). A shared
+    // helper there that constructs `with_recognizer(StrictRecognizer)`
+    // must carry an FR-039 marker just like a pin under
+    // `crates/<crate>/tests/`. The prior masking-pin scanner only
+    // walked `tests/`-shaped directories, leaving this scope
+    // unscanned — a divergence from `promote-callsite-lint` that
+    // would let a future helper at `crates/test-utils/src/...` bypass
+    // FR-039 entirely.
+    let dir = TempDir::new().expect("tempdir");
+    let test_utils_src = dir.path().join("crates").join("test-utils").join("src");
+    fs::create_dir_all(&test_utils_src).unwrap();
+    let body = "fn build_strict_engine() {\n\
+                    // INTENTIONAL-STRICT: shared test helper\n\
+                    foo().with_recognizer(Arc::new(StrictRecognizer::new()));\n\
+                }\n";
+    fs::write(test_utils_src.join("helpers.rs"), body).unwrap();
+
+    let pins = scan_workspace(dir.path()).unwrap();
+    assert_eq!(
+        pins.len(),
+        1,
+        "expected the test-utils helper's pin to be detected, got {pins:#?}"
+    );
+    assert!(matches!(pins[0].kind, PinKind::IntentionalStrict { .. }));
+    assert!(
+        pins[0].file.to_string_lossy().contains("crates/test-utils/src/helpers.rs"),
+        "expected file to point at crates/test-utils/src; got {:?}",
+        pins[0].file
+    );
+}
+
+#[test]
+fn test_utils_src_unmarked_pin_fails() {
+    // Companion: a pin in test-utils WITHOUT a marker fails the lint
+    // (returns `Unmarked`), exactly like a pin in `crates/<crate>/tests/`.
+    let dir = TempDir::new().expect("tempdir");
+    let test_utils_src = dir.path().join("crates").join("test-utils").join("src");
+    fs::create_dir_all(&test_utils_src).unwrap();
+    let body = "fn build_strict_engine() {\n\
+                    foo().with_recognizer(Arc::new(StrictRecognizer::new()));\n\
+                }\n";
+    fs::write(test_utils_src.join("helpers.rs"), body).unwrap();
+
+    let pins = scan_workspace(dir.path()).unwrap();
+    assert_eq!(pins.len(), 1);
+    assert!(matches!(pins[0].kind, PinKind::Unmarked));
+}
+
+#[test]
+fn other_utils_named_crates_are_not_special_scoped() {
+    // The carve-out is scoped to the literal `test-utils` directory
+    // name, NOT to any `*-utils` crate. A future production utility
+    // crate (e.g. `format-utils`, `parse-utils`) must not
+    // accidentally inherit the test-fixture scope. Verify by placing
+    // a strict-recognizer call inside `crates/format-utils/src/` —
+    // because `src/` is NOT a registered scan root for that crate
+    // (only `tests/` is), the scanner should NOT pick up the call.
+    let dir = TempDir::new().expect("tempdir");
+    let production_utils_src = dir.path().join("crates").join("format-utils").join("src");
+    fs::create_dir_all(&production_utils_src).unwrap();
+    let body = "fn build_strict_engine() {\n\
+                    foo().with_recognizer(Arc::new(StrictRecognizer::new()));\n\
+                }\n";
+    fs::write(production_utils_src.join("lib.rs"), body).unwrap();
+
+    let pins = scan_workspace(dir.path()).unwrap();
+    assert!(
+        pins.is_empty(),
+        "expected NO pins from a non-test-utils crate's src/, got {pins:#?}"
+    );
+}

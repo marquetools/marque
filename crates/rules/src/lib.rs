@@ -427,6 +427,23 @@ pub struct AppliedFix {
 impl AppliedFix {
     /// Promote a `FixProposal` to an `AppliedFix` with runtime context.
     ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// The function name `__engine_promote` is **reserved by the
+    /// marque project**. The `tools/promote-callsite-lint/` CI lint
+    /// (FR-040) flags every call expression whose path's last
+    /// segment is `__engine_promote`, regardless of the leading
+    /// qualifier — qualified, fully-qualified, `Self::`, aliased
+    /// (`use AppliedFix as AF; AF::__engine_promote(...)`), or
+    /// `<AppliedFix as Trait>::` UFCS forms. Defining or calling a
+    /// free function or method with this exact name elsewhere will
+    /// fail the lint and require either renaming the offending fn
+    /// or carrying an explicit `#[allow(...)]` after team review.
+    /// The `__` prefix and `#[doc(hidden)]` attribute below
+    /// reinforce that the name is project-internal — anyone reading
+    /// this name in source should know they're looking at the
+    /// engine-only audit-promotion seal.
+    ///
     /// # Engine-only contract (production code)
     ///
     /// This constructor exists in `marque-rules` for type co-location, but
@@ -543,6 +560,19 @@ pub struct EnginePromotionToken {
 
 impl EnginePromotionToken {
     /// Mint an [`EnginePromotionToken`].
+    ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// As with [`AppliedFix::__engine_promote`], the function name
+    /// `__engine_construct` is reserved by the marque project. The
+    /// `tools/promote-callsite-lint/` CI lint flags every call
+    /// expression whose path's last segment is `__engine_construct`
+    /// regardless of leading qualifier (qualified, fully-qualified,
+    /// `Self::`, aliased, UFCS). Defining or calling another
+    /// function with this exact name elsewhere will fail the lint.
+    /// The `__` prefix + `#[doc(hidden)]` attribute reinforce the
+    /// reserved status; see [`AppliedFix::__engine_promote`] for the
+    /// full contract and the rationale for last-segment matching.
     ///
     /// # Engine-only contract (production code)
     ///

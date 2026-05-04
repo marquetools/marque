@@ -72,6 +72,24 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
 /// covers `crates/*/tests/`, the top-level `marque/tests/`, and any
 /// future top-level workspace member without requiring an explicit
 /// allow-list.
+///
+/// **Also includes `crates/test-utils/src/`** — the workspace's
+/// shared test-utility crate (gated as a `dev-dependency`, per
+/// Constitution V Principle V's first carve-out constraint
+/// enumerating "test-utility crates gated as dev-dependencies"
+/// alongside `tests/` files and `#[cfg(test)]` modules). A shared
+/// helper there that constructs `Engine::with_recognizer(...
+/// StrictRecognizer...)` is logically a test pin and must carry an
+/// FR-039 marker comment, just like a pin under
+/// `crates/<crate>/tests/`. Without this scope, a contributor
+/// could move a strict-recognizer helper from `crates/foo/tests/`
+/// into `crates/test-utils/src/` and silently lose the marker
+/// requirement — the same asymmetry that would let
+/// `promote-callsite-lint`'s carve-out diverge from the
+/// masking-pin lint's. Scoped to the literal `test-utils` directory
+/// so a future production utility crate cannot accidentally inherit
+/// the carve-out (mirrors the discipline used in
+/// `tools/promote-callsite-lint/src/callsite.rs::is_test_utils_src`).
 fn collect_test_roots(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut roots = Vec::new();
     let top_tests = workspace_dir.join("tests");
@@ -84,9 +102,18 @@ fn collect_test_roots(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             .with_context(|| format!("reading {}", crates_dir.display()))?
         {
             let entry = entry.with_context(|| format!("reading entry under {}", crates_dir.display()))?;
-            let crate_tests = entry.path().join("tests");
+            let crate_path = entry.path();
+            let crate_tests = crate_path.join("tests");
             if crate_tests.is_dir() {
                 roots.push(crate_tests);
+            }
+            // Special case: `crates/test-utils/src/` is also a
+            // test-fixture scope (see fn-level doc comment).
+            if crate_path.file_name().and_then(|s| s.to_str()) == Some("test-utils") {
+                let test_utils_src = crate_path.join("src");
+                if test_utils_src.is_dir() {
+                    roots.push(test_utils_src);
+                }
             }
         }
     }
