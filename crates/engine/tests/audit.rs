@@ -353,13 +353,15 @@ fn fabricate_leaky_fix() -> AppliedFix {
     // commingled with engine output (see `fabricate_leaky_fix`'s
     // doc comment above).
     // Test-fixture carve-out per Constitution V
+    let token = EnginePromotionToken::__engine_construct();
+    // Test-fixture carve-out per Constitution V
     AppliedFix::__engine_promote(
         proposal,
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),
         /* dry_run */ false,
         Some(Arc::<str>::from("-")),
-        EnginePromotionToken::__engine_construct(),
+        token,
     )
 }
 
