@@ -397,6 +397,13 @@ build_bench_entries() {
     local count=0
     : > "$entries_file"
 
+    # Per-bench failures (missing files, unparseable output) abort the
+    # capture. The baseline JSON is load-bearing: downstream regression
+    # gates compare against the entries here, and a silently-incomplete
+    # baseline means the omitted bench-IDs would have NO reference data
+    # at all in CI — drift on those IDs would never trigger a gate.
+    # Fail-loud is the only correct behavior; the bench-runner owner
+    # diagnoses the missing/unparsable result and re-captures.
     while IFS= read -r bench_id; do
         if [[ -z "$bench_id" ]]; then
             continue
@@ -406,18 +413,15 @@ build_bench_entries() {
         sample_path="$CRITERION_DIR/$bench_id/new/sample.json"
 
         if [[ ! -f "$estimates_path" || ! -f "$sample_path" ]]; then
-            info "WARN — bench-id '$bench_id': missing estimates/sample, skipping"
-            continue
+            die "bench-id '$bench_id': missing estimates.json or sample.json under $CRITERION_DIR/$bench_id/new/ — re-run cargo bench"
         fi
 
         if ! mean_us=$(read_mean_us "$estimates_path"); then
-            info "WARN — bench-id '$bench_id': failed to read mean, skipping"
-            continue
+            die "bench-id '$bench_id': failed to read mean from $estimates_path"
         fi
 
         if ! pct_line=$(compute_percentiles "$sample_path"); then
-            info "WARN — bench-id '$bench_id': failed to compute percentiles, skipping"
-            continue
+            die "bench-id '$bench_id': failed to compute percentiles from $sample_path"
         fi
 
         # pct_line is "p50<TAB>p95<TAB>p99<TAB>samples".

@@ -171,13 +171,25 @@ async fn fetch_issue(
             return Err(ApiError::Unavailable(msg));
         }
     };
+    let state = format!("{:?}", issue_data.state).to_lowercase();
     // Extract `closed_as_duplicate_of` from the timeline events. The
     // octocrab `Issue` struct does not directly expose the duplicate target
     // on stable, so fetch the timeline as a generic JSON value.
-    let dup_target = fetch_duplicate_target(octo, owner, repo, issue).await?;
+    //
+    // Skip the timeline call when the issue is open: the `closed_as_duplicate_of`
+    // field is only meaningful for closed issues, and a transient timeout
+    // or rate-limit on the secondary call would otherwise convert a
+    // perfectly clean "issue is open" probe into a cache-fallback or hard
+    // failure for no semantic gain. Open issues cannot be duplicates by
+    // GitHub's own data model.
+    let dup_target = if state == "open" {
+        None
+    } else {
+        fetch_duplicate_target(octo, owner, repo, issue).await?
+    };
     Ok(IssueProjection {
         title: issue_data.title,
-        state: format!("{:?}", issue_data.state).to_lowercase(),
+        state,
         state_reason: issue_data.state_reason.map(|r| format!("{r:?}").to_lowercase()),
         closed_at: issue_data.closed_at,
         closed_as_duplicate_of: dup_target,

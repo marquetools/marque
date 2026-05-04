@@ -161,10 +161,18 @@ impl<'a> CallSiteVisitor<'a> {
     fn new(file: &'a Path, lines: &'a [&'a str]) -> Self {
         // Compile-time-stable regexes; failing to compile is a programmer
         // error and warrants `unwrap`.
+        //
+        // The `MASKING-PIN` regex requires a non-empty rationale after
+        // the issue number — `// MASKING-PIN: tracks #123` with no
+        // reason is rejected as `BadFormat`, not silently accepted.
+        // FR-039 documents the marker shape as
+        // `// MASKING-PIN: tracks #NNN — <reason>` and the rationale
+        // is the load-bearing audit-trail content; allowing pins
+        // without a reason defeats the lint's purpose.
         let masking_re =
-            Regex::new(r"//\s*MASKING-PIN:\s*tracks\s*#(?P<n>\d+)(?:\s*[—-]\s*(?P<reason>.+))?")
+            Regex::new(r"//\s*MASKING-PIN:\s*tracks\s*#(?P<n>\d+)\s*[—-]\s*(?P<reason>\S.*)")
                 .expect("masking-pin regex compiles");
-        let intentional_re = Regex::new(r"//\s*INTENTIONAL-STRICT:\s*(?P<reason>.+)")
+        let intentional_re = Regex::new(r"//\s*INTENTIONAL-STRICT:\s*(?P<reason>\S.*)")
             .expect("intentional-strict regex compiles");
         Self {
             file,
@@ -218,12 +226,22 @@ impl<'a> CallSiteVisitor<'a> {
             }
         }
 
-        match (masking_hit, intentional_hit, bad_format) {
-            (Some(_), Some(_), _) => PinKind::BothMarkers,
-            (Some((issue, reason)), None, _) => PinKind::Masking { issue, reason },
-            (None, Some(reason), _) => PinKind::IntentionalStrict { reason },
-            (None, None, Some(line)) => PinKind::BadFormat(line),
-            (None, None, None) => PinKind::Unmarked,
+        // Bad-format precedence: a malformed marker comment in the
+        // window is itself a defect that the maintainer needs to clean
+        // up, even when a valid marker is also present. Reporting
+        // `BadFormat` regardless of any companion valid markers
+        // surfaces partially-edited or contradictory annotations
+        // instead of silently dropping them — a contributor renaming
+        // an issue or copy-pasting a stale marker would otherwise see
+        // CI stay green while leaving the broken comment in tree.
+        if let Some(line) = bad_format {
+            return PinKind::BadFormat(line);
+        }
+        match (masking_hit, intentional_hit) {
+            (Some(_), Some(_)) => PinKind::BothMarkers,
+            (Some((issue, reason)), None) => PinKind::Masking { issue, reason },
+            (None, Some(reason)) => PinKind::IntentionalStrict { reason },
+            (None, None) => PinKind::Unmarked,
         }
     }
 

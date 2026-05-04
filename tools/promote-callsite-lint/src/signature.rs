@@ -39,8 +39,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use syn::{
-    File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, Path as SynPath,
-    PathArguments, ReturnType, Signature, Type,
+    File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, ItemTrait, Path as SynPath,
+    PathArguments, ReturnType, Signature, TraitItem, Type,
 };
 use walkdir::WalkDir;
 
@@ -225,7 +225,32 @@ impl SignatureWalker<'_> {
             }
             Item::Mod(item_mod) => self.visit_mod(item_mod, impl_trait_last),
             Item::Impl(item_impl) => self.visit_impl(item_impl),
+            // Trait declarations: a `trait T { fn convert(p: ParsedAttrs) -> CanonicalAttrs; }`
+            // would otherwise reopen the prohibited shape because every
+            // downstream impl inherits the signature. Visit the trait's
+            // method signatures so a new trait declaring the prohibited
+            // shape gets flagged as PRC100. The `MarkingScheme::canonicalize`
+            // carve-out is honored at the trait-declaration site too —
+            // the trait DECLARATION of `MarkingScheme::canonicalize` is
+            // the single legitimate definition the carve-out cites, so
+            // synthesizing a one-segment trait path from the trait's
+            // own name lets `is_marking_scheme_trait_path` recognize it.
+            Item::Trait(item_trait) => self.visit_trait(item_trait),
             _ => {}
+        }
+    }
+
+    fn visit_trait(&mut self, item_trait: &ItemTrait) {
+        // Build a one-segment `Path` from the trait's own ident so the
+        // shared whitelist matcher in `is_marking_scheme_trait_path`
+        // recognizes the trait declaration alongside `impl ... for ...`
+        // sites. If the trait is `MarkingScheme`, its `canonicalize`
+        // method is the legitimate definition the carve-out names.
+        let trait_path = SynPath::from(item_trait.ident.clone());
+        for trait_item in &item_trait.items {
+            if let TraitItem::Fn(method) = trait_item {
+                self.maybe_emit_for_signature(&method.sig, Some(&trait_path));
+            }
         }
     }
 

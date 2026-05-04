@@ -32,6 +32,13 @@ pub struct FnRecord {
     /// gate. Needed for the test-fixture carve-out classification
     /// when the call site lives outside `tests/`.
     pub in_cfg_test: bool,
+    /// For methods defined in an `impl <Self>` or `impl Trait for <Self>`
+    /// block, the last path segment of the self-type (e.g. `Engine`,
+    /// `CapcoScheme`). `None` for free functions. Required by the
+    /// callsite lint's production allow-list: `fix_inner` is only an
+    /// authorized promotion site when it's a method on `Engine`, not
+    /// on some unrelated type that happens to share the name.
+    pub impl_self_type: Option<String>,
 }
 
 /// Walk the AST of `file` and return every function record.
@@ -96,6 +103,7 @@ fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 start_line: start.line,
                 end_line: end.line,
                 in_cfg_test: ctx.in_cfg_test,
+                impl_self_type: None,
             });
         }
         Item::Mod(item_mod) => visit_mod(item_mod, ctx, sink),
@@ -118,9 +126,12 @@ fn visit_mod(item_mod: &ItemMod, ctx: &Context, sink: &mut Vec<FnRecord>) {
 
 fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
     // Trait-name resolution for the D12 signature-shape lint runs
-    // directly off `ItemImpl` in `signature.rs`; we deliberately do
-    // NOT thread the trait name through `FnRecord` to keep the
-    // call-site lint and the signature lint orthogonal.
+    // directly off `ItemImpl` in `signature.rs`; we DO thread the
+    // self-type's last path segment so the callsite lint can verify
+    // a method named e.g. `fix_inner` is actually `Engine::fix_inner`
+    // and not some unrelated type's method that happens to share the
+    // name (FR-040 production allow-list integrity).
+    let self_ty_last = self_type_last_segment(&item_impl.self_ty);
     for impl_item in &item_impl.items {
         if let ImplItem::Fn(method) = impl_item {
             let span = method.span();
@@ -131,8 +142,27 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 start_line: start.line,
                 end_line: end.line,
                 in_cfg_test: ctx.in_cfg_test,
+                impl_self_type: self_ty_last.clone(),
             });
         }
+    }
+}
+
+/// Last path segment of an `impl <Self>` self-type. Returns `None`
+/// for non-path types (impls of e.g. tuples, references, etc.) — the
+/// callsite production allow-list relies on a path-typed self,
+/// matching `Engine` / `CapcoScheme` / etc.
+fn self_type_last_segment(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string()),
+        syn::Type::Reference(r) => self_type_last_segment(&r.elem),
+        syn::Type::Paren(p) => self_type_last_segment(&p.elem),
+        syn::Type::Group(g) => self_type_last_segment(&g.elem),
+        _ => None,
     }
 }
 

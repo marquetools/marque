@@ -246,19 +246,47 @@ impl CallSiteVisitor<'_> {
         let enclosing = enclosing_fn(self.fn_records, line);
         let in_engine_src = self.is_engine_src();
         let in_test_path = self.is_test_path();
+        let in_test_utils_src = self.is_test_utils_src();
         let in_cfg_test_module = enclosing.is_some_and(|r| r.in_cfg_test);
 
-        // Classification 1: production-allowed (engine src + allow-listed fn).
+        // Classification 1: production-allowed (engine src + allow-listed
+        // fn whose enclosing impl block targets the `Engine` type).
+        // Both checks are required: a free function or a method on some
+        // other type with one of the names below would otherwise pass
+        // even though FR-040 only authorizes the genuine `Engine` gate.
+        // `engine_promotion_token` is a free helper in
+        // `crates/engine/src/engine.rs`, so its `impl_self_type` is
+        // `None` and the assertion is "not on a different impl block."
         if in_engine_src {
             if let Some(fr) = enclosing {
-                if ENGINE_PROMOTION_FN_ALLOW_LIST.contains(&fr.name.as_str()) {
+                // `None` covers the `engine_promotion_token` free helper;
+                // `Some("Engine")` covers `fix_inner` / `apply_text_corrections`
+                // methods on `Engine`. Any other self-type carrying a name
+                // from the allow-list is rejected — a method on an
+                // unrelated type that coincidentally shares the name
+                // would otherwise pass the FR-040 production gate.
+                let self_type_ok = !matches!(fr.impl_self_type.as_deref(), Some(t) if t != "Engine");
+                if ENGINE_PROMOTION_FN_ALLOW_LIST.contains(&fr.name.as_str()) && self_type_ok {
                     return;
                 }
             }
         }
 
-        // Classification 2/3: test-fixture scope.
-        if in_test_path || in_cfg_test_module {
+        // Classification 2/3: test-fixture scope. Recognized scopes:
+        //
+        // - `tests/**` integration files (workspace root or any member's
+        //   tests/) — discovered via `is_test_path`.
+        // - `#[cfg(test)]` modules anywhere in the workspace.
+        // - `crates/test-utils/src/**` — a workspace-internal test
+        //   utility crate used only as a `dev-dependency` (verified by
+        //   `crates/rules/src/lib.rs` doc comment on
+        //   `AppliedFix::__engine_promote`, which explicitly enumerates
+        //   "test-utility crates gated as dev-dependencies" as part of
+        //   the Constitution V Principle V carve-out's first
+        //   constraint). Scoped to `test-utils` specifically rather than
+        //   any `*-utils` crate so a future production-utility crate
+        //   can't accidentally inherit the carve-out.
+        if in_test_path || in_cfg_test_module || in_test_utils_src {
             if self.has_carve_out_marker(line) {
                 return;
             }
@@ -319,6 +347,29 @@ impl CallSiteVisitor<'_> {
         // members to stay in sync with the walker.
         rel.components()
             .any(|c| c.as_os_str() == "tests")
+    }
+
+    /// Match `crates/test-utils/src/**`. The carve-out's first
+    /// constraint (Constitution V Principle V, restated by
+    /// `crates/rules/src/lib.rs::AppliedFix::__engine_promote`'s doc
+    /// comment) lists "test-utility crates gated as `dev-dependencies`"
+    /// as a permitted call-site scope alongside `#[cfg(test)]` modules
+    /// and `tests/` integration files. Honor that here so the lint
+    /// doesn't reject a legitimate helper added under
+    /// `crates/test-utils/src/` for `crates/*/tests/` to consume.
+    /// Scoped to `test-utils` specifically (not `*-utils`) so a
+    /// production utility crate can't accidentally inherit the
+    /// carve-out.
+    fn is_test_utils_src(&self) -> bool {
+        let rel = self
+            .file_path
+            .strip_prefix(self.workspace_dir)
+            .unwrap_or(self.file_path);
+        let comps: Vec<_> = rel.components().collect();
+        comps.len() >= 3
+            && comps[0].as_os_str() == "crates"
+            && comps[1].as_os_str() == "test-utils"
+            && comps[2].as_os_str() == "src"
     }
 
     fn has_carve_out_marker(&self, line: usize) -> bool {

@@ -162,9 +162,14 @@ cargo test --manifest-path tools/masking-pin-lint/Cargo.toml
 ```
 
 Integration tests under `tests/` exercise the AST scanner against
-synthetic Rust source files in `tests/fixtures/`. Tests that hit the
-GitHub API are gated `#[ignore]`; run them with
-`cargo test --manifest-path tools/masking-pin-lint/Cargo.toml -- --ignored`.
+synthetic Rust source files in `tests/fixtures/`. The cache and GitHub
+modules carry unit tests in `src/cache.rs` and `src/github.rs` that
+cover roundtrip serialization, schema-mismatch rejection, the meta-issue
+title heuristic, and similar pure logic — no live GitHub API calls
+happen in any test invocation. End-to-end exercise of the API path
+relies on the CI runner using the GitHub-injected `secrets.GITHUB_TOKEN`
+when the workflow at `.github/workflows/ci.yml` invokes the lint binary
+in `--mode ci`.
 
 ## References
 
