@@ -26,7 +26,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
   .with_recognizer(Arc::new(StrictRecognizer::new()))
   ```
 - **Closes at**: PR 8 (tasks.md T130 deletes the pin and adds a regression test that must fail on pre-fix HEAD).
-- **Issue state at inventory time**: `<verify before merge>` — `gh` CLI not available in the inventory sandbox; query `gh issue view 258 --repo knitli/marque -q '.state'` at PR-merge time and update.
+- **Issue state at inventory time**: `<verify before merge>` — `gh` CLI not available in the inventory sandbox; query `gh issue view 258 --repo marquetools/marque -q '.state'` at PR-merge time and update.
 - **Why this is a masking pin**: the file's `make_engine()` helper (lines 42-51) is the construction surface for SC-002 / SC-003 corpus-accuracy assertions. The strict path bypasses the prose-context decoder bug — closing the pin without #258's per-token prose null-hypothesis priors landing first would re-expose the corpus_accuracy assertion to decoder mis-fires on shapes like `Notwithstanding (s) the early prevalence` (Federalist-corpus prose), which the doc comment at lines 30-41 enumerates explicitly.
 - **FR-039 format conformance**: marker text matches the required `// MASKING-PIN: tracks #NNN — <reason>` shape.
 
@@ -43,7 +43,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
   .with_recognizer(Arc::new(StrictRecognizer::new()))
   ```
 - **Closes at**: PR 3c (tasks.md T058).
-- **Issue state at inventory time**: `<verify before merge>` — `gh` CLI not available in the inventory sandbox; query `gh issue view 257 --repo knitli/marque -q '.state'` at PR-merge time and update.
+- **Issue state at inventory time**: `<verify before merge>` — `gh` CLI not available in the inventory sandbox; query `gh issue view 257 --repo marquetools/marque -q '.state'` at PR-merge time and update.
 - **Why this is a masking pin**: the file (`test_engine()` helper at lines 85-94) gates the `CoreError`-shaped content-isolation channel. `CoreError` is produced only on the strict path (per the doc comment at lines 77-84); the decoder fallback uses a different error shape entirely. To exercise the *named* leak channel cleanly, the test pins to `StrictRecognizer` rather than letting the default dispatcher also exercise decoder-side leak channels (which are real, but separately scoped and out of this file's gate). Once #257 closes the decoder-side carve-out at PR 3c, the masking justification dissolves and the pin must come down.
 - **FR-039 format conformance**: marker text matches the required `// MASKING-PIN: tracks #NNN — <reason>` shape.
 
@@ -112,8 +112,8 @@ Expected output: zero errors. The 4 in-scope sites (2 MASKING-PIN + 2 INTENTIONA
 For the issue-state cross-check (FR-039 rule 5), each MASKING-PIN's tracked issue should be queried via the GitHub API (or the cache fallback per the lint's D11 cache rule). At PR 0 HEAD both #257 and #258 are expected to report `state=open`; verify before the PR merges:
 
 ```sh
-gh issue view 257 --repo knitli/marque -q '.state'
-gh issue view 258 --repo knitli/marque -q '.state'
+gh issue view 257 --repo marquetools/marque -q '.state'
+gh issue view 258 --repo marquetools/marque -q '.state'
 ```
 
 **Cross-reference**: FR-039 close-on-PR rule 5 binds the MASKING-PIN sites to PRs that close their tracked issues:

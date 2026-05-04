@@ -164,11 +164,12 @@ async fn run(cli: Cli) -> Result<ExitCode> {
         }
     }
 
-    if matches!(cli.mode, Mode::RefreshCache) {
-        // Refresh-cache mode is best-effort: pin-marker errors still fail,
-        // but a transient API outage during refresh is not a hard error.
-        return Ok(if had_error { ExitCode::from(1) } else { ExitCode::SUCCESS });
-    }
+    // CI mode and RefreshCache mode use the same exit-code policy: a
+    // hard error fails the run, anything else (warnings, silent success)
+    // exits zero. RefreshCache routes API errors to warnings rather than
+    // hard errors via `refresh_masking_pin`, so the policy correctly
+    // distinguishes the two modes by which diagnostics get pushed,
+    // not by how the codes are mapped here.
     Ok(if had_error { ExitCode::from(1) } else { ExitCode::SUCCESS })
 }
 

@@ -101,16 +101,23 @@ pub fn write_cache(cache_dir: &Path, entry: &CachedIssueState) -> Result<()> {
     Ok(())
 }
 
+/// Cache staleness threshold. Per decision D11
+/// (`specs/006-engine-rule-refactor/decisions.md`), CI emits a
+/// stale-cache warning when a fallback read returns an entry older
+/// than this threshold; the daily refresh job is expected to keep
+/// cache files well under it.
+pub const STALE_THRESHOLD_HOURS: i64 = 24;
+
 /// Time elapsed since a cache entry was last refreshed.
 #[must_use]
 pub fn cache_age(entry: &CachedIssueState) -> chrono::Duration {
     Utc::now().signed_duration_since(entry.refreshed_at)
 }
 
-/// Whether the cache age exceeds the 24-hour staleness threshold.
+/// Whether the cache age exceeds [`STALE_THRESHOLD_HOURS`].
 #[must_use]
 pub fn is_stale(entry: &CachedIssueState) -> bool {
-    cache_age(entry) >= chrono::Duration::hours(24)
+    cache_age(entry) >= chrono::Duration::hours(STALE_THRESHOLD_HOURS)
 }
 
 #[cfg(test)]

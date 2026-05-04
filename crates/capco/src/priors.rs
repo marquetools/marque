@@ -171,6 +171,14 @@ mod tests {
     }
 
     #[test]
+    // The `is_empty()` calls below are always-false at compile time
+    // because the tables are `&'static [_]` constants populated by
+    // `build.rs`. The assertions still earn their keep as a regression
+    // guard: if a future `build.rs` change accidentally emits an empty
+    // table, this test fires before the engine silently runs with no
+    // priors. clippy correctly identifies the constant-known operand
+    // but the cost of the redundant compile-time check is zero.
+    #[allow(clippy::const_is_empty)]
     fn tables_are_non_empty() {
         assert!(
             !TOKEN_BASE_RATES.is_empty(),

@@ -32,12 +32,6 @@ pub struct FnRecord {
     /// gate. Needed for the test-fixture carve-out classification
     /// when the call site lives outside `tests/`.
     pub in_cfg_test: bool,
-    /// If the function is inside an `impl Trait for T` block, the
-    /// final segment of the trait path (e.g. `MarkingScheme`).
-    /// `None` for free functions or inherent impls.
-    pub impl_trait_last_segment: Option<String>,
-    /// Whether the function carries the `unsafe` keyword.
-    pub is_unsafe: bool,
 }
 
 /// Walk the AST of `file` and return every function record.
@@ -89,9 +83,6 @@ pub fn span_line(loc: LineColumn) -> usize {
 struct Context {
     /// Accumulating `#[cfg(test)]` gating from outer modules.
     in_cfg_test: bool,
-    /// If we are currently inside an `impl Trait for T` block, the
-    /// trait's final path segment.
-    impl_trait_last_segment: Option<String>,
 }
 
 fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
@@ -105,8 +96,6 @@ fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 start_line: start.line,
                 end_line: end.line,
                 in_cfg_test: ctx.in_cfg_test,
-                impl_trait_last_segment: ctx.impl_trait_last_segment.clone(),
-                is_unsafe: item_fn.sig.unsafety.is_some(),
             });
         }
         Item::Mod(item_mod) => visit_mod(item_mod, ctx, sink),
@@ -119,7 +108,6 @@ fn visit_mod(item_mod: &ItemMod, ctx: &Context, sink: &mut Vec<FnRecord>) {
     let inner_in_cfg_test = ctx.in_cfg_test || has_cfg_test_attr(&item_mod.attrs);
     let inner_ctx = Context {
         in_cfg_test: inner_in_cfg_test,
-        impl_trait_last_segment: ctx.impl_trait_last_segment.clone(),
     };
     if let Some((_, items)) = &item_mod.content {
         for item in items {
@@ -129,17 +117,10 @@ fn visit_mod(item_mod: &ItemMod, ctx: &Context, sink: &mut Vec<FnRecord>) {
 }
 
 fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
-    let trait_last_segment = item_impl
-        .trait_
-        .as_ref()
-        .and_then(|(_, path, _)| path.segments.last())
-        .map(|seg| seg.ident.to_string());
-
-    let inner_ctx = Context {
-        in_cfg_test: ctx.in_cfg_test,
-        impl_trait_last_segment: trait_last_segment.clone(),
-    };
-
+    // Trait-name resolution for the D12 signature-shape lint runs
+    // directly off `ItemImpl` in `signature.rs`; we deliberately do
+    // NOT thread the trait name through `FnRecord` to keep the
+    // call-site lint and the signature lint orthogonal.
     for impl_item in &item_impl.items {
         if let ImplItem::Fn(method) = impl_item {
             let span = method.span();
@@ -149,9 +130,7 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 name: method.sig.ident.to_string(),
                 start_line: start.line,
                 end_line: end.line,
-                in_cfg_test: inner_ctx.in_cfg_test,
-                impl_trait_last_segment: inner_ctx.impl_trait_last_segment.clone(),
-                is_unsafe: method.sig.unsafety.is_some(),
+                in_cfg_test: ctx.in_cfg_test,
             });
         }
     }
