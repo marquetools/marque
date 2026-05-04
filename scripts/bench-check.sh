@@ -99,6 +99,7 @@ fi
 # by anchored regex sidesteps that whole class of parsing fragility.
 check_one_bench() {
     local bench_name="$1"
+    local bench_target="${2:-$bench_name}"
 
     # Extract baseline upper CI bound (microseconds) and absolute target.
     local baseline_upper_ci target_upper_ci drift_alert
@@ -163,7 +164,7 @@ print(data['$bench_name'].get('drift_alert_upper_ci_us', ''))
     # named bench failure. `if !` keeps the captured stderr+stdout for the
     # diagnostic.
     local bench_output time_line
-    if ! bench_output=$(cargo bench -p marque-engine -- "^${bench_name}\$" 2>&1); then
+    if ! bench_output=$(cargo bench -p marque-engine --bench "$bench_target" -- "^${bench_name}\$" 2>&1); then
         echo "bench-check[$bench_name]: ERROR — 'cargo bench' invocation failed"
         if [[ -n "$bench_output" ]]; then
             printf '%s\n' "$bench_output"
@@ -740,8 +741,8 @@ PY
 }
 
 OVERALL_STATUS=0
-check_one_bench "lint_10kb" || OVERALL_STATUS=1
-check_one_bench "decoder_10kb_one_mangled_region" || OVERALL_STATUS=1
+check_one_bench "lint_10kb" "lint_latency" || OVERALL_STATUS=1
+check_one_bench "decoder_10kb_one_mangled_region" "lint_latency" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
 # fix_throughput disabled while we work out the scaling bug
 # check_fix_throughput || OVERALL_STATUS=1
