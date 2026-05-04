@@ -15,6 +15,10 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Per-PR mapping**: each task carries the source PR (PR 0, 0.5, 0.6, 2, 3a, 3b, 3c, 3.7, 4, 5, 6a/6b/6c, 7, 8, 9, 10). The PR sequence is the dependency spine — see § Dependencies & Execution Order.
 
+**Quality gates**: two checklists govern PR review:
+- [`checklists/requirements.md`](./checklists/requirements.md) — spec-form quality (already passed).
+- [`checklists/correctness.md`](./checklists/correctness.md) — substance: lattice/rollup, two-pass apply, open-vocab parser, citation fidelity (mechanical + semantic-agreement-with-CAPCO), and known-defect coverage. **22 `[GATE]` items** MUST clear before the corresponding P1 PR (0.6 / 3a–3c / 5 / 6 / 3.7) merges. Each phase below cross-references the relevant `correctness.md` section under `**Quality gate**`.
+
 ## Format: `[ID] [P?] [Story?] Description (PR-N)`
 
 - **[P]**: parallelizable (different files, no in-PR dependency on incomplete tasks)
@@ -69,6 +73,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Goal**: Make G13 (audit-record content-ignorance) a *type invariant* rather than a carve-out enforced by comments. Pivot type splits 1→3, `Canonical<S>` seals open-vocab construction, `MessageTemplate` closes message construction, decoder open-vocab lockout, audit cutover `marque-mvp-2 → marque-1.0`.
 
 **Independent Test**: Deterministic NDJSON canary scan over the full five-corpus regression sweep (`tests/corpus/{valid,mangled,prose,prose-positive,lattice}/`) finds **zero** verbatim input bytes in any `Engine::fix_inner`-emitted `AppliedFix` JSON serialization (other than within span numerals, BLAKE3 digests, or enumerated identifier values). Test-fixture records under the Constitution V carve-out are excluded by construction. Runs at `crates/engine/tests/canary_scan.rs` (SC-001).
+
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §6 (known-defect coverage — CHK067 #257, CHK074 R001 message, CHK075 `build_decoder_diagnostic` carve-out, CHK076 `provenance.canonical_bytes`); §4 partial (CHK033 if audit-record citation surfaces). Reviewer clears all `[GATE]` items in §6 before merging PR 3c.
 
 ### PR 3a — Pivot type split (KEYSTONE-1)
 
@@ -130,6 +136,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Independent Test**: A targeted corpus fixture set at `tests/corpus/foreign/` (pure_foreign_banner.json, FGI banner roll-up, NATO-only, JOINT) lints to a banner that retains foreign provenance in **100%** of cases (SC-002).
 
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §1 (lattice/rollup — CHK001/002/003/004/006 GATE; CHK005/008/013/014); §5.1 (FD&R Tables 2/3 — CHK040 GATE; CHK041–CHK047 incl. four GATEs for §D.2 banner-precedence rules 17/23/26/27); §5.2 (Table 4 marking order — CHK048–CHK050); §6 (CHK068 #276 GATE, CHK069 #261). Reviewer clears all `[GATE]` items in §1 + §5.1 before merging PR 5 / 6.
+
 ### PR 5 — Foreign banner correctness
 
 - [ ] T059 [US2] Widen `expected_classification()` return type to `Option<MarkingClassification>` in `crates/capco/src/scheme.rs`; delete the `MarkingClassification::Us` hardcode at `:365` (FR-007; PR-5)
@@ -160,6 +168,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Independent Test**: Property tests at `crates/engine/tests/two_pass_invariants.rs` shuffle pass-1 / pass-2 fix orderings and assert: (a) no overlap in promoted spans (I-18 / FR-022); (b) reshape-aware re-validation does not produce retroactive false positives (I-19 / FR-023); (c) `fix_10kb` Criterion bench shows two-pass overhead within SC-008 budget (FR-032). SC-007.
 
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §2 (two-pass apply — CHK015 GATE, CHK018 GATE; CHK016/017/019/020/021/022/023/024). Reviewer clears CHK015 + CHK018 before merging PR 7.
+
 ### PR 7 — Phase-tagged pass split
 
 - [ ] T073 [US3] Add `phase(&self) -> Phase` to the `Rule` trait in `crates/rules/src/lib.rs`; define `enum Phase { Localized, WholeMarking }` (FR-021; PR-7)
@@ -188,6 +198,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Independent Test**: `tests/parser/fgi_silent_skip_guard.rs` asserts the four parser sites return `None` on shape-admits failure (SC-011); `crates/capco/tests/parse_render_roundtrip.rs` round-trip property catches silent semantic degradation across the strict-path corpus.
 
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §3 (open-vocab parser — CHK026 GATE, CHK028 GATE; CHK025/027/029/030/031); §5.3 (per-marking grammar — CHK051 GATE for SCI grammar, CHK059 GATE for delimiter conflation; CHK052–CHK066). Reviewer clears CHK026 + CHK028 + CHK051 + CHK059 before merging PR 2.
+
 ### PR 2 — Parser shape_admits + FgiMarker discriminant
 
 - [ ] T086 [US4] Extend `Vocabulary<S>` trait in `marque-scheme` with `shape_admits(category: CategoryId, bytes: &[u8]) -> bool`; total over `(CategoryId, &[u8])`; closed-CVE-only categories return `lookup(bytes).is_some()` (FR-015; PR-2)
@@ -214,6 +226,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Independent Test**: Citation-lint passes at 100%; F.1 corpus fixture coverage at 100% over all cited authorities; SC-005 / SC-006.
 
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §4 (citation fidelity, mechanical — CHK032 GATE, CHK077 GATE; CHK033–CHK039); §5 in full (semantic agreement with CAPCO ruleset — the citation-lint catches well-formed-but-misattributed citations, but §5 questions whether the rule TEXT actually agrees with what CAPCO says — distinct quality axis). PR 0.6 reviewer clears CHK032 + CHK077; PR 10 reviewer clears the full §4.
+
 **NOTE**: PR 0.5 / 0.6 already shipped citation-lint scaffold + preemptive defect fix in Phase 2. This phase covers the maturation work.
 
 ### PR 10 — F.1 corpus gate maturation
@@ -233,6 +247,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Goal**: Land per-category `Lattice` impls satisfying associativity, commutativity, idempotency, identity-with-bottom; cross-axis dominance fixtures (FOUO eviction by classification > U; FOUO eviction by non-FD&R dissem; FGI banner roll-up; SCI cross-system canonicalization; AEA exemption commingling). PR 3.7 fills the lattice design doc as a hard gate before PR 4.
 
 **Independent Test**: Property tests at `crates/capco/tests/category_lattice_laws.rs` (assoc/comm/idem/identity per category) and `crates/capco/tests/cross_axis_dominance.rs` pass for every category in `CapcoScheme::categories()`; `tests/corpus/lattice/` corpus regression sweep covers cross-axis fixtures end-to-end. SC-003 / SC-004.
+
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §1 (lattice algebra — CHK010 GATE for formal join semantics in §§2–8 of `2026-05-01-lattice-design.md`; CHK007/008/011/012/013/014); §5.3 (per-marking grammar quality dimensions tested against CAPCO §H — CHK051 SCI, CHK053 SAR, CHK054 AEA full eviction, CHK058–CHK066 dissem precedence). Reviewer clears CHK010 before PR 3.7 merges (the lattice §-resolution gate); PR 4 reviewer clears the rest of §1.
 
 ### PR 3.7 — Lattice §-resolution gate
 
@@ -297,6 +313,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 ## Phase 11: Polish & Cross-Cutting (PR 8 + PR 9 + final discipline)
 
 **Purpose**: Outstanding work scoped to PR 8 (priors-bake — third problem class, NOT G13 closure) and PR 9 (parser separators, dissem_us/nato split, banner-validation rule migration, ATOMAL/BOHEMIA, NATO-portion declarative Constraint), plus final discipline checks.
+
+**Quality gate**: [`checklists/correctness.md`](./checklists/correctness.md) §6 (known-defect coverage — CHK070 #271 dissem split, CHK071 #246 ATOMAL/BOHEMIA, CHK072 #265 NATO-portion `REL TO USA, NATO`, CHK073 #106 separator spans); §5.3 (CHK066 ATOMAL/BOHEMIA category consistency between FR-046 and FR-047); §7 (process discipline — CHK078 GATE, CHK079 GATE, CHK082, CHK083 for PR 10 final-polish bench drift). PR 9 reviewer clears CHK066 + CHK070–CHK073; PR 10 reviewer clears CHK078 + CHK079 (keystone revert + 3.7 stall-recovery sign-off).
 
 ### PR 8 — Decoder priors (third problem class)
 
