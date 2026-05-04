@@ -12,7 +12,7 @@
 # D8). It is intended to be run by the bench-runner owner on pinned
 # hardware (per D8) — NOT by every contributor on every push, and NOT
 # inside CI. The output JSON is the immutable baseline against which
-# `tools/bench-check.sh` (and successor regression gates) compare in
+# `scripts/bench-check.sh` (and successor regression gates) compare in
 # subsequent refactor PRs.
 #
 # Workflow:
