@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Adam Poulemanos
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+-->
+
 # CAPCO-2016 Agent Context Helper
 
 > **Source.** Every claim here is traceable to the vendored authoritative
@@ -72,7 +78,7 @@ SAR previously required `SAR-` repeated before each program (legacy);
 the modern form is `SAR-A/B/C`. Historical-batch correction must
 tolerate these.
 
-> Authority: CAPCO-2016 §A.5 p17, Figure 2.
+> Authority: CAPCO-2016 §A.6 (Formatting) pp 15–17, Figure 2 p17.
 
 ---
 
@@ -232,7 +238,7 @@ though both name the same set.
 
 For SCI / SAP, within-category multi-value ordering is
 **ascending sort** (numeric first, then alphabetic), separated per
-the §A.5 separator table (`/` for control systems, `-` for
+the §A.6 separator alphabet (`/` for control systems, `-` for
 compartments, ` ` for sub-compartments).
 
 ### 4.3 Marque gap (current, 2026-05-02)
@@ -301,7 +307,7 @@ banner". `<class>` placeholder = TS / S / C / U.
 
 **SCI grammar reminder.** Compartment is 2–3 alpha (SI), or 3 alnum
 (RSV); sub-compartment is 4–6 alnum depending on system (4 for SI-G,
-≤6 for HCS-P / TK sub-compartments). Multi-value separators per §A.5
+≤6 for HCS-P / TK sub-compartments). Multi-value separators per §A.6
 + §H.4 syntax (p61): `/` between control systems, `-` between control
 and compartment, ` ` between sub-compartments. Numbered values sort
 before alphabetic.
@@ -322,14 +328,14 @@ linker is `-`. Sub-compartment linker is space.
 
 | Marking | § | p | Banner Title | Banner Abbr | Portion | Sponsor / Basis | Relationships | Banner precedence | Commingling |
 |---|---|---|---|---|---|---|---|---|---|
-| RESTRICTED DATA | H.6 | 104 | RESTRICTED DATA | RD | RD | DOE / Atomic Energy Act §141–143 | TS/S/C only; **always with NOFORN** unless §123/§144 sharing agreement; CNWDI requires RD; SIGMA 14/15/18/20 only with TS/S RD | RD always rolls up; **if RD/FRD/TFNI all present, RD wins**; RD warning statement only | RD takes precedence over FRD/TFNI in portion; ideally RD into separate annex |
+| RESTRICTED DATA | H.6 | 104 | RESTRICTED DATA | RD | RD | DOE / Atomic Energy Act §141–143 | TS/S/C only; **always with NOFORN** unless §123/§144 sharing agreement; CNWDI requires RD; SIGMA 14/15/18/20 only with TS/S RD | If any RD portion present, RD appears in banner; **RD evicts FRD and TFNI from the banner** when all three present (same eviction rule as portion, §H.6 p104); RD warning statement only | RD takes precedence over FRD/TFNI in portion; ideally RD into separate annex |
 | CNWDI | H.6 | 106 | CRITICAL NUCLEAR WEAPON DESIGN INFORMATION | CNWDI | CNWDI | DoD / DoD 5210.2 | TS RD or S RD only; subset of RD per DoD-DOE guidance | CNWDI always rolls up to banner | CNWDI segregates from non-CNWDI portions; both RD warning + CNWDI identifying statement on first page (separate text boxes) |
 | RD-SIGMA [#] | H.6 | 108 | SIGMA [#] | (none) | SG [#] | DOE / Atomic Energy Act §141–143 | TS/S RD only; requires RD; current SIGMAs: 14, 15, 18, 20 | unique SIGMAs roll up; **RD-SIGMA wins over FRD-SIGMA** in banner; all SIGMA numbers are listed under RD-SIGMA banner regardless of source | separate annex preferred; not commingled with REL TO portion unless equivalent positive release; RD-SIGMA wins over FRD-SIGMA in portion |
-| FORMERLY RESTRICTED DATA | H.6 | 111 | FORMERLY RESTRICTED DATA | FRD | FRD | DOE + DoD / AEA §141–143 | TS/S/C only; always with NOFORN unless §123/§144 sharing | FRD rolls up unless RD also present (RD wins); RD warning if RD present | RD wins over FRD in portion; FRD into separate annex preferred |
+| FORMERLY RESTRICTED DATA | H.6 | 111 | FORMERLY RESTRICTED DATA | FRD | FRD | DOE + DoD / AEA §141–143 | TS/S/C only; always with NOFORN unless §123/§144 sharing | FRD appears in banner if no RD portion present; **fully evicted from banner if any RD portion present** (RD warning replaces FRD warning, §H.6 p104) | RD wins over FRD in portion; FRD into separate annex preferred |
 | FRD-SIGMA [#] | H.6 | 113 | SIGMA [#] | (none) | SG [#] | DOE / AEA §141–143 | TS/S FRD only; requires FRD; SIGMAs 14/15/18/20 only | unique SIGMAs roll up; RD-SIGMA wins over FRD-SIGMA in banner | separate annex preferred; FRD-SIGMA must NOT commingle with REL TO unless equivalent positive release |
 | DOD UCNI | H.6 | 116 | DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOD UCNI | DCNI | DoD / AEA | **U only**; not on classified content; CUI re-evaluation candidate (14 Nov 2016) | rolls up only on U documents; on classified docs DOD UCNI does NOT appear in banner but NOFORN must be applied if FD&R less restrictive | with classified non-UCNI: DCNI portion mark NOT used (class adequately protects); apply NF if FD&R less restrictive |
 | DOE UCNI | H.6 | 118 | DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOE UCNI | UCNI | DOE / AEA §148 | U only; CUI re-evaluation candidate | rolls up on U docs; on classified docs DOE UCNI does NOT appear in banner; NOFORN must be applied if FD&R less restrictive | same as DOD UCNI: UCNI portion mark NOT used in classified portions; NF if needed |
-| TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI rolls up unless RD or FRD also present (RD/FRD wins); special "Declassify On" annotation required | RD or FRD takes precedence in portion; TFNI ideally not commingled |
+| TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI appears in banner if no RD/FRD portion present; **fully evicted from banner if any RD or FRD portion present** (§H.6 p104); special "Declassify On" annotation required regardless | RD or FRD takes precedence in portion; TFNI ideally not commingled |
 
 ### 5.6 §H.7 Foreign Government Information (pp 122–130)
 
