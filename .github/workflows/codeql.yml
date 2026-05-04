@@ -65,7 +65,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@19b3a84f58f551a99396341585444cb37be03324
+        uses: github/codeql-action/init@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -96,6 +96,6 @@ jobs:
           exit 1
   
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@19b3a84f58f551a99396341585444cb37be03324
+        uses: github/codeql-action/analyze@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           category: "/language:${{matrix.language}}"
