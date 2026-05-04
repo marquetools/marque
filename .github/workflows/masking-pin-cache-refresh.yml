@@ -54,8 +54,17 @@ jobs:
 
       - name: Detect cache changes
         id: changes
+        # `git status --porcelain` reports both modifications to tracked
+        # files AND untracked files under the path argument. `git diff
+        # --quiet` would only catch the former — when a brand-new
+        # MASKING-PIN issue number first appears and refresh-cache
+        # creates a fresh `<owner>__<repo>__<NNN>.json` for it, the
+        # file is untracked and `git diff` silently returns success,
+        # so the PR-open step would never fire. Using `git status` here
+        # makes new-cache-file additions trigger the PR alongside
+        # tracked-file edits.
         run: |
-          if git diff --quiet tools/masking-pin-lint/cache/; then
+          if [ -z "$(git status --porcelain tools/masking-pin-lint/cache/)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"

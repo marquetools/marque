@@ -196,7 +196,22 @@ detect_criterion_version() {
 # `cargo bench` invocation. Criterion writes its estimates+sample JSON
 # to target/criterion/.../new/ as a side effect of each run; we walk
 # those after the run completes.
+#
+# Reproducibility note: Criterion writes results under the benchmark
+# *function or group name* (`criterion_group!` / `c.bench_function`),
+# not under the Cargo bench-target file name — so the bench targets
+# in `BENCH_TARGETS` are NOT a 1:1 prefix for the directory layout
+# under `target/criterion/`. To keep the captured baseline reproducible
+# from a fresh checkout (and to avoid folding in stale bench-ids from
+# an earlier branch's run), we wipe `target/criterion/` before
+# invoking `cargo bench` so the post-run walk finds *only* this run's
+# output.
 run_benches() {
+    if [[ -d "$CRITERION_DIR" ]]; then
+        info "wiping stale Criterion output at $CRITERION_DIR"
+        rm -rf "$CRITERION_DIR"
+    fi
+
     local -a cargo_args=(bench --workspace)
     local target
     for target in "${BENCH_TARGETS[@]}"; do
@@ -337,37 +352,34 @@ discover_bench_ids() {
     if [[ ! -d "$CRITERION_DIR" ]]; then
         die "no target/criterion/ directory; did 'cargo bench' run?"
     fi
-    # Restrict the walk to `target/criterion/<bench-target>/...` for
-    # each `<bench-target>` in $BENCH_TARGETS — otherwise stale
-    # bench-ID directories left behind by an earlier `cargo bench` run
-    # (e.g. a removed/renamed bench, or a bench from a different
-    # branch checked out before the current one) would silently fold
-    # into the captured baseline. The script is idempotent — overwriting
-    # the JSON on each run — but the inputs to that run must come only
-    # from THIS run's `cargo bench` output, so reproducibility is
-    # branch- and timestamp-independent.
-    for bench in "${BENCH_TARGETS[@]}"; do
-        local target_root="$CRITERION_DIR/$bench"
-        if [[ ! -d "$target_root" ]]; then
-            continue
-        fi
-        # `find` walks each known bench's subtree; the inner
-        # test-and-print emits the parent of any matching
-        # `new/estimates.json` whose sibling `new/sample.json` also
-        # exists.
-        find "$target_root" -type f -name estimates.json -path '*/new/estimates.json' -print0 \
-            | while IFS= read -r -d '' estimates_file; do
-                local new_dir bench_dir sample_file rel_path
-                new_dir="$(dirname "$estimates_file")"
-                sample_file="$new_dir/sample.json"
-                if [[ ! -f "$sample_file" ]]; then
-                    continue
-                fi
-                bench_dir="$(dirname "$new_dir")"
-                rel_path="${bench_dir#"$CRITERION_DIR"/}"
-                printf '%s\n' "$rel_path"
-            done
-    done | sort -u
+    # `run_benches` wipes `$CRITERION_DIR` before invoking `cargo bench`,
+    # so every directory under it after the run belongs to THIS capture.
+    # That lets us walk the whole tree without filtering by bench-target
+    # name — Criterion writes results under benchmark *function/group
+    # names* (e.g. `lint_10kb`, `decoder_10kb_one_mangled_region`,
+    # `fix_throughput/<bytes>`) which do NOT match the Cargo bench
+    # *target* names in `BENCH_TARGETS` (e.g. `lint_latency`,
+    # `decoder_10kb_rel_to_invariant`, `fix_throughput`). A target-name
+    # filter would silently skip every bench whose function name
+    # diverges from its target file name — see the bench-id table in
+    # `tools/`'s capture documentation.
+    #
+    # `find` walks the directory; the inner test-and-print emits the
+    # parent of any matching `new/estimates.json` whose sibling
+    # `new/sample.json` also exists.
+    find "$CRITERION_DIR" -type f -name estimates.json -path '*/new/estimates.json' -print0 \
+        | while IFS= read -r -d '' estimates_file; do
+            local new_dir bench_dir sample_file rel_path
+            new_dir="$(dirname "$estimates_file")"
+            sample_file="$new_dir/sample.json"
+            if [[ ! -f "$sample_file" ]]; then
+                continue
+            fi
+            bench_dir="$(dirname "$new_dir")"
+            rel_path="${bench_dir#"$CRITERION_DIR"/}"
+            printf '%s\n' "$rel_path"
+        done \
+        | sort -u
 }
 
 # ---------------------------------------------------------------------

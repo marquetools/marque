@@ -34,23 +34,29 @@
 //! (the types `ParsedAttrs` / `CanonicalAttrs` arrive at PR 3a).
 //! The lint is forward-looking; the whitelist is scaffolding.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use syn::{
-    File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, PathArguments, ReturnType,
-    Signature, Type,
+    File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, Path as SynPath,
+    PathArguments, ReturnType, Signature, Type,
 };
 use walkdir::WalkDir;
 
 use crate::diagnostic::{Diagnostic, Severity};
 
-/// Marker type names recognized as the source of the prohibited shape.
+/// Marker type name recognized as the source of the prohibited shape.
 const PARSED_TYPE_NAME: &str = "ParsedAttrs";
 
-/// Marker type names recognized as the target of the prohibited shape.
+/// Marker type name recognized as the target of the prohibited shape.
 const CANONICAL_TYPE_NAME: &str = "CanonicalAttrs";
+
+/// Type name accepted as a direct return-type wrapper around
+/// `CanonicalAttrs` — flagging `Result<CanonicalAttrs, _>` is part of
+/// the D12 contract because the wrapping fallible form is just as
+/// suspicious as the bare one. Adding more wrappers (e.g. `Option`)
+/// requires a deliberate amendment.
+const RESULT_TYPE_NAME: &str = "Result";
 
 /// File-relative path of the transitional whitelist site (whitelist 3).
 /// Components are joined at runtime to stay portable.
@@ -59,9 +65,9 @@ const TRANSITIONAL_WHITELIST_PATH: &[&str] = &["crates", "ism", "src", "attrs.rs
 /// Function ident of the transitional whitelist site (whitelist 3).
 const TRANSITIONAL_WHITELIST_FN: &str = "from_parsed_unchecked";
 
-/// Trait name and method that define the legitimate canonical
-/// transition (whitelist 2).
-const MARKING_SCHEME_TRAIT: &str = "MarkingScheme";
+/// Trait method that defines the legitimate canonical transition
+/// (whitelist 2). The trait path is matched separately — see
+/// [`is_marking_scheme_trait_path`].
 const CANONICALIZE_METHOD: &str = "canonicalize";
 
 /// Scan `<workspace_dir>/crates/**` and return any signature-shape
@@ -73,7 +79,7 @@ const CANONICALIZE_METHOD: &str = "canonicalize";
 /// cannot be parsed by `syn`.
 pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Diagnostic>> {
     let mut diagnostics = Vec::new();
-    for path in collect_rust_files(workspace_dir) {
+    for path in collect_rust_files(workspace_dir)? {
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
         let file = syn::parse_file(&source)
@@ -103,19 +109,26 @@ pub fn scan_file(
     walker.visit_items(&file.items, /* impl_trait_last = */ None);
 }
 
-fn collect_rust_files(workspace_dir: &Path) -> Vec<PathBuf> {
+/// Walk `<workspace_dir>/crates/**` and return every `*.rs` path.
+///
+/// Walk errors are surfaced rather than silently dropped: a permission
+/// error or broken directory entry would otherwise cause the
+/// signature pass to skip a subtree and still exit 0 — false-green for
+/// a CI enforcement tool.
+fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     let crates_dir = workspace_dir.join("crates");
     if !crates_dir.is_dir() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for entry in WalkDir::new(&crates_dir).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(&crates_dir) {
+        let entry = entry.with_context(|| format!("walking {}", crates_dir.display()))?;
         let p = entry.path();
         if p.is_file() && p.extension().is_some_and(|ext| ext == "rs") {
             out.push(p.to_path_buf());
         }
     }
-    out
+    Ok(out)
 }
 
 struct SignatureWalker<'a> {
@@ -152,15 +165,20 @@ impl SignatureWalker<'_> {
     }
 
     fn visit_impl(&mut self, item_impl: &ItemImpl) {
-        let trait_last = item_impl
-            .trait_
-            .as_ref()
-            .and_then(|(_, path, _)| path.segments.last())
-            .map(|seg| seg.ident.to_string());
+        // Whitelist 2 keys on the FULL trait path written at the impl
+        // site, accepting either the bare `MarkingScheme` form (when
+        // the file imports `marque_scheme::MarkingScheme`) or the
+        // qualified `marque_scheme::MarkingScheme` form. A crate-local
+        // trait merely *named* `MarkingScheme` cannot satisfy either
+        // matcher because at the AST level we cannot resolve trait
+        // identity, but rejecting non-bare/non-qualified forms makes
+        // accidental shadow-trait whitelisting much harder.
+        let trait_path: Option<&SynPath> =
+            item_impl.trait_.as_ref().map(|(_, path, _)| path);
 
         for impl_item in &item_impl.items {
             if let ImplItem::Fn(method) = impl_item {
-                self.maybe_emit_for_signature(&method.sig, trait_last.as_deref());
+                self.maybe_emit_for_signature(&method.sig, trait_path);
             }
         }
     }
@@ -168,27 +186,32 @@ impl SignatureWalker<'_> {
     fn maybe_emit_for_signature(
         &mut self,
         sig: &Signature,
-        impl_trait_last: Option<&str>,
+        impl_trait_path: Option<&SynPath>,
     ) {
         // Whitelist 1: any `unsafe fn`.
         if sig.unsafety.is_some() {
             return;
         }
 
-        let arg_types = collect_arg_type_idents(sig);
-        let ret_types = collect_return_type_idents(sig);
-
-        let arg_has_parsed = arg_types.contains(PARSED_TYPE_NAME);
-        let ret_has_canonical = ret_types.contains(CANONICAL_TYPE_NAME);
-        if !(arg_has_parsed && ret_has_canonical) {
+        // Top-level shape match: the prohibited shape is a function
+        // whose FIRST argument's top-level type is `ParsedAttrs`
+        // (optionally `&ParsedAttrs<'_>`) AND whose return type is
+        // `CanonicalAttrs` directly or `Result<CanonicalAttrs, _>`.
+        // Matching anywhere-in-type would flag legitimate adapters
+        // like `fn register(f: fn(ParsedAttrs) -> CanonicalAttrs)`,
+        // `fn wrap(x: Vec<ParsedAttrs>) -> Option<CanonicalAttrs>`,
+        // and similar wrappers that are not themselves performing
+        // the forbidden conversion.
+        if !signature_has_prohibited_shape(sig) {
             return;
         }
 
-        // Whitelist 2: `MarkingScheme::canonicalize`.
-        if impl_trait_last == Some(MARKING_SCHEME_TRAIT)
-            && sig.ident == CANONICALIZE_METHOD
-        {
-            return;
+        // Whitelist 2: `MarkingScheme::canonicalize` where the trait
+        // path is the canonical bare or qualified form.
+        if let Some(trait_path) = impl_trait_path {
+            if is_marking_scheme_trait_path(trait_path) && sig.ident == CANONICALIZE_METHOD {
+                return;
+            }
         }
 
         // Whitelist 3: transitional `crates/ism/src/attrs.rs::from_parsed_unchecked`.
@@ -227,78 +250,111 @@ impl SignatureWalker<'_> {
     }
 }
 
-/// Collect the set of last-segment idents appearing in any of the
-/// signature's input argument types.
+/// Returns `true` when the signature matches the prohibited
+/// `ParsedAttrs → CanonicalAttrs` shape *at the top level* of its
+/// argument and return types.
 ///
-/// References (`&T`, `&mut T`), tuples, slices, arrays, and generic
-/// arguments are unwrapped recursively so that
-/// `&ParsedAttrs<'_>` contributes `ParsedAttrs` and
-/// `Vec<ParsedAttrs<'a>>` contributes both `Vec` and `ParsedAttrs`.
-fn collect_arg_type_idents(sig: &Signature) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for arg in &sig.inputs {
-        // The receiver-pattern `self` lives in `FnArg::Receiver`; only
-        // typed arguments contribute idents to the lint match.
-        if let FnArg::Typed(pat_type) = arg {
-            collect_type_idents(&pat_type.ty, &mut out);
-        }
+/// "Top level" matters: the lint target is a function that *itself*
+/// performs the forbidden conversion, not one that incidentally
+/// mentions the types deep inside a generic. Concretely:
+///
+/// - At least one `FnArg::Typed` whose type is `ParsedAttrs` or
+///   `&ParsedAttrs` (with optional lifetime / generic-arg list).
+/// - Return type is `CanonicalAttrs`, `&CanonicalAttrs`, or
+///   `Result<CanonicalAttrs, _>` at the top level.
+///
+/// This rejects false positives like `Vec<ParsedAttrs>`,
+/// `Option<CanonicalAttrs>`, `fn(ParsedAttrs) -> CanonicalAttrs` (a
+/// function-pointer parameter), and similar shapes where the types
+/// appear nested inside a wrapper.
+fn signature_has_prohibited_shape(sig: &Signature) -> bool {
+    let any_arg_is_parsed = sig.inputs.iter().any(|arg| match arg {
+        FnArg::Typed(pat_type) => is_top_level_named_type(&pat_type.ty, PARSED_TYPE_NAME),
+        FnArg::Receiver(_) => false,
+    });
+    if !any_arg_is_parsed {
+        return false;
     }
-    out
+    let ReturnType::Type(_, ret_ty) = &sig.output else {
+        return false;
+    };
+    return_is_canonical_or_result_canonical(ret_ty)
 }
 
-/// Collect the set of last-segment idents appearing in the
-/// signature's return type. Empty for `ReturnType::Default`.
-///
-/// Crucially: a return type of `Result<CanonicalAttrs, E>` will
-/// contribute `Result`, `CanonicalAttrs`, and `E`'s last segment —
-/// the lint match condition (`CANONICAL_TYPE_NAME` present anywhere
-/// in the set) catches both bare and `Result`-wrapped shapes.
-fn collect_return_type_idents(sig: &Signature) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    if let ReturnType::Type(_, ty) = &sig.output {
-        collect_type_idents(ty, &mut out);
-    }
-    out
-}
-
-fn collect_type_idents(ty: &Type, out: &mut BTreeSet<String>) {
+/// True when `ty`, after stripping a single leading reference / paren /
+/// group layer, is a `Type::Path` whose terminal segment is `name`.
+fn is_top_level_named_type(ty: &Type, name: &str) -> bool {
     match ty {
+        Type::Reference(r) => is_top_level_named_type(&r.elem, name),
+        Type::Paren(p) => is_top_level_named_type(&p.elem, name),
+        Type::Group(g) => is_top_level_named_type(&g.elem, name),
         Type::Path(type_path) => {
-            for seg in &type_path.path.segments {
-                out.insert(seg.ident.to_string());
-                if let PathArguments::AngleBracketed(angle) = &seg.arguments {
-                    for ga in &angle.args {
-                        if let GenericArgument::Type(inner) = ga {
-                            collect_type_idents(inner, out);
-                        }
-                    }
-                }
-            }
+            type_path.path.segments.last().is_some_and(|s| s.ident == name)
         }
-        Type::Reference(r) => collect_type_idents(&r.elem, out),
-        Type::Slice(s) => collect_type_idents(&s.elem, out),
-        Type::Array(a) => collect_type_idents(&a.elem, out),
-        Type::Tuple(t) => {
-            for elem in &t.elems {
-                collect_type_idents(elem, out);
-            }
-        }
-        Type::Paren(p) => collect_type_idents(&p.elem, out),
-        Type::Group(g) => collect_type_idents(&g.elem, out),
-        Type::Ptr(p) => collect_type_idents(&p.elem, out),
-        Type::BareFn(bf) => {
-            for input in &bf.inputs {
-                collect_type_idents(&input.ty, out);
-            }
-            if let ReturnType::Type(_, ty) = &bf.output {
-                collect_type_idents(ty, out);
-            }
-        }
-        // `Type::ImplTrait` and `Type::TraitObject` are deliberately
-        // not unwrapped — the lint targets concrete `ParsedAttrs` /
-        // `CanonicalAttrs` type references. A function returning
-        // `impl Into<CanonicalAttrs>` is a different shape and a
-        // future lint extension if needed.
-        _ => {}
+        _ => false,
     }
+}
+
+/// True when `ty` is `CanonicalAttrs` (or a reference to one) or
+/// `Result<CanonicalAttrs, _>` at the top level.
+fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
+    if is_top_level_named_type(ty, CANONICAL_TYPE_NAME) {
+        return true;
+    }
+    let inner = strip_reference_layers(ty);
+    let Type::Path(type_path) = inner else {
+        return false;
+    };
+    let Some(last) = type_path.path.segments.last() else {
+        return false;
+    };
+    if last.ident != RESULT_TYPE_NAME {
+        return false;
+    }
+    let PathArguments::AngleBracketed(angle) = &last.arguments else {
+        return false;
+    };
+    angle.args.iter().any(|ga| match ga {
+        GenericArgument::Type(inner) => is_top_level_named_type(inner, CANONICAL_TYPE_NAME),
+        _ => false,
+    })
+}
+
+/// Strip leading `&`/`&mut`/paren/group wrappers, leaving the inner
+/// type that decides the top-level shape.
+fn strip_reference_layers(ty: &Type) -> &Type {
+    match ty {
+        Type::Reference(r) => strip_reference_layers(&r.elem),
+        Type::Paren(p) => strip_reference_layers(&p.elem),
+        Type::Group(g) => strip_reference_layers(&g.elem),
+        _ => ty,
+    }
+}
+
+/// True when the trait path written at an `impl <Trait> for <Type>`
+/// site references the canonical `MarkingScheme` trait. Accepts:
+///
+/// - `MarkingScheme` (single segment — the `use marque_scheme::MarkingScheme;`
+///   import case)
+/// - `marque_scheme::MarkingScheme` (qualified-path case)
+///
+/// Other matchers (e.g. `crate::scheme::MarkingScheme` re-exports)
+/// are deliberately rejected — the lint requires the trait path to
+/// be either bare-imported or qualified through the canonical crate.
+/// A re-export pulls the legitimate trait through a different name
+/// path and is treated as suspicious; if a real consumer needs that
+/// form, it's a coordinated amendment to this matcher.
+fn is_marking_scheme_trait_path(path: &SynPath) -> bool {
+    let segs: Vec<String> = path
+        .segments
+        .iter()
+        .map(|s| s.ident.to_string())
+        .collect();
+    matches!(
+        segs.as_slice(),
+        [single] if single == "MarkingScheme",
+    ) || matches!(
+        segs.as_slice(),
+        [crate_name, trait_name] if crate_name == "marque_scheme" && trait_name == "MarkingScheme",
+    )
 }

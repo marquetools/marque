@@ -120,5 +120,6 @@ Exit code is non-zero if any error-severity diagnostic is emitted.
 - `specs/006-engine-rule-refactor/spec.md` — FR-040
 - `specs/006-engine-rule-refactor/research.md` — R-11
 - `specs/006-engine-rule-refactor/decisions.md` — D12
-- `.specify/memory/constitution.md` — Principle V Principle V
-  (test-fixture carve-out scope)
+- `.specify/memory/constitution.md` — Principle V (Audit-First
+  Compliance), specifically the Principle V test-fixture carve-out
+  scope and its three-constraint definition

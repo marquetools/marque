@@ -118,7 +118,7 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             for sub in ["src", "tests"] {
                 let sub_path = crate_path.join(sub);
                 if sub_path.is_dir() {
-                    push_rust_files(&sub_path, &mut paths);
+                    push_rust_files(&sub_path, &mut paths)?;
                 }
             }
         }
@@ -128,9 +128,7 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     // contains both `Cargo.toml` and a `src/` or `tests/` subdirectory).
     // This catches the workspace binary crate `marque/` (which lives
     // outside `crates/`) plus any future top-level workspace member —
-    // necessary for FR-040 enforcement to be workspace-wide. Without
-    // this loop the lint silently misses call sites in `marque/src/**`,
-    // including the test-fixture pair at `marque/src/render.rs:998-1004`.
+    // necessary for FR-040 enforcement to be workspace-wide.
     for entry in std::fs::read_dir(workspace_dir)
         .with_context(|| format!("reading {}", workspace_dir.display()))?
     {
@@ -163,7 +161,7 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
         for sub in ["src", "tests"] {
             let sub_path = path.join(sub);
             if sub_path.is_dir() {
-                push_rust_files(&sub_path, &mut paths);
+                push_rust_files(&sub_path, &mut paths)?;
             }
         }
     }
@@ -171,19 +169,27 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     // workspace-root tests/**
     let tests_dir = workspace_dir.join("tests");
     if tests_dir.is_dir() {
-        push_rust_files(&tests_dir, &mut paths);
+        push_rust_files(&tests_dir, &mut paths)?;
     }
 
     Ok(paths)
 }
 
-fn push_rust_files(dir: &Path, paths: &mut Vec<PathBuf>) {
-    for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
+/// Walk `dir` and append every `*.rs` file path to `paths`.
+///
+/// Walk errors are surfaced rather than silently swallowed: a
+/// permission error or broken directory entry would otherwise hide
+/// call sites from PRC001/PRC002 while the lint still exited
+/// successfully — a false-green for a CI enforcement tool.
+fn push_rust_files(dir: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in WalkDir::new(dir) {
+        let entry = entry.with_context(|| format!("walking {}", dir.display()))?;
         let p = entry.path();
         if p.is_file() && p.extension().is_some_and(|ext| ext == "rs") {
             paths.push(p.to_path_buf());
         }
     }
+    Ok(())
 }
 
 struct CallSiteVisitor<'a> {
@@ -197,10 +203,16 @@ struct CallSiteVisitor<'a> {
 impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
     fn visit_expr_call(&mut self, node: &'a ExprCall) {
         if let Expr::Path(ExprPath { path, .. }) = &*node.func {
-            if path_matches(path, &["AppliedFix", "__engine_promote"])
-                || path_matches_single(path, "__engine_promote")
-                || path_matches(path, &["EnginePromotionToken", "__engine_construct"])
-                || path_matches_single(path, "__engine_construct")
+            // Suffix-match on the call path so fully-qualified forms
+            // (`marque_rules::AppliedFix::__engine_promote`,
+            // `crate::AppliedFix::__engine_promote`, etc.) are caught
+            // alongside the bare and 2-segment forms. A length-restricted
+            // matcher would let a call escape the lint just by adding a
+            // crate qualifier, which is a trivial bypass we don't want.
+            if path_ends_with(path, &["AppliedFix", "__engine_promote"])
+                || path_ends_with(path, &["__engine_promote"])
+                || path_ends_with(path, &["EnginePromotionToken", "__engine_construct"])
+                || path_ends_with(path, &["__engine_construct"])
             {
                 let loc = node.span().start();
                 self.classify_and_emit(loc.line, loc.column);
@@ -290,19 +302,17 @@ impl CallSiteVisitor<'_> {
             .file_path
             .strip_prefix(self.workspace_dir)
             .unwrap_or(self.file_path);
-        let comps: Vec<_> = rel.components().collect();
-        // `tests/**`
-        if comps.first().is_some_and(|c| c.as_os_str() == "tests") {
-            return true;
-        }
-        // `crates/*/tests/**`
-        if comps.len() >= 3
-            && comps[0].as_os_str() == "crates"
-            && comps[2].as_os_str() == "tests"
-        {
-            return true;
-        }
-        false
+        // A path emitted by `collect_rust_files` is a test path iff any
+        // of its components is `tests` (case-sensitive). The walker
+        // only emits files from workspace-member `src/` / `tests/`
+        // and the workspace-root `tests/`, so a `tests` component
+        // unambiguously identifies the integration-test surface for
+        // every covered tree (`tests/**`, `crates/*/tests/**`,
+        // `<top-level-member>/tests/**` such as `marque/tests/**`).
+        // This avoids requiring an explicit allow-list of workspace
+        // members to stay in sync with the walker.
+        rel.components()
+            .any(|c| c.as_os_str() == "tests")
     }
 
     fn has_carve_out_marker(&self, line: usize) -> bool {
@@ -320,16 +330,26 @@ impl CallSiteVisitor<'_> {
     }
 }
 
-fn path_matches(path: &SynPath, expected: &[&str]) -> bool {
-    if path.segments.len() != expected.len() {
+/// Returns `true` if the trailing segments of `path` match `expected_suffix`
+/// in order. Handles the bare, 2-segment, and fully-qualified forms uniformly:
+///
+/// - `path = ["__engine_promote"]`, suffix = `["__engine_promote"]` → true
+/// - `path = ["AppliedFix", "__engine_promote"]`, suffix = `["AppliedFix", "__engine_promote"]` → true
+/// - `path = ["marque_rules", "AppliedFix", "__engine_promote"]`,
+///   suffix = `["AppliedFix", "__engine_promote"]` → true
+///
+/// The function intentionally does NOT require an exact-length match —
+/// a length match would let a contributor bypass the lint just by
+/// fully-qualifying the type at the call site. The lint cares about
+/// "what's being called," not "from where."
+fn path_ends_with(path: &SynPath, expected_suffix: &[&str]) -> bool {
+    if path.segments.len() < expected_suffix.len() || expected_suffix.is_empty() {
         return false;
     }
+    let offset = path.segments.len() - expected_suffix.len();
     path.segments
         .iter()
-        .zip(expected.iter())
+        .skip(offset)
+        .zip(expected_suffix.iter())
         .all(|(seg, &want)| seg.ident == want)
-}
-
-fn path_matches_single(path: &SynPath, expected: &str) -> bool {
-    path.segments.len() == 1 && path.segments[0].ident == expected
 }

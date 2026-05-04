@@ -624,13 +624,16 @@ pub trait RuleSet: Send + Sync {
     fn schema_version(&self) -> &'static str;
 }
 
-// FR-038 / T002 — `Send + Sync` is pinned at the trait-definition site
-// by the `pub trait Rule: Send + Sync` and `pub trait RuleSet: Send + Sync`
-// supertrait bounds above. A future bound relaxation fails to compile
-// here. The trait-object dimension (`Box<dyn Rule>: Send + Sync`,
-// `Arc<dyn Rule>: Send + Sync`) is asserted by `tests/send_sync.rs`
-// where it can be exercised by a runtime smoke test alongside the
-// compile-time check.
+// FR-038 / T002 — `Send + Sync` for the `Rule` and `RuleSet` traits is
+// declared by the `pub trait Rule: Send + Sync` and
+// `pub trait RuleSet: Send + Sync` supertrait bounds above. The
+// trait-object dimension (`Box<dyn Rule>: Send + Sync`,
+// `Arc<dyn Rule>: Send + Sync`, plus the analogous `RuleSet` shapes)
+// is exercised by `tests/send_sync.rs`, which is the integration test
+// that fails to compile if a future bound relaxation breaks the
+// trait-object form. This file no longer carries an inline assertion;
+// the supertrait bounds plus that companion test are the load-bearing
+// guards.
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

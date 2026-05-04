@@ -233,7 +233,11 @@ async fn check_masking_pin(
 ) {
     match check_pin(octo, owner, repo, issue).await {
         Ok(state) => {
-            // Persist fresh state.
+            // Persist fresh state. The persist helper returns
+            // `WriteOutcome::Unchanged` when the cached state-of-record
+            // already matches the live state — we don't surface that
+            // distinction here; the CI run only cares about the
+            // open/closed evaluation.
             if let Err(err) =
                 persist(state.clone(), &format!("{owner}/{repo}"), issue, cache_dir)
             {
@@ -310,10 +314,8 @@ async fn refresh_masking_pin(
     refresh_outcome: &mut RefreshOutcome,
 ) {
     match check_pin(octo, owner, repo, issue).await {
-        Ok(state) => {
-            if let Err(err) =
-                persist(state, &format!("{owner}/{repo}"), issue, cache_dir)
-            {
+        Ok(state) => match persist(state, &format!("{owner}/{repo}"), issue, cache_dir) {
+            Err(err) => {
                 refresh_outcome.failures += 1;
                 diagnostics.push(LintDiagnostic {
                     severity: Severity::Error,
@@ -321,7 +323,8 @@ async fn refresh_masking_pin(
                         "error: refresh-cache: failed to persist #{issue}: {err:#}"
                     ),
                 });
-            } else {
+            }
+            Ok(WriteOutcome::Updated) => {
                 refresh_outcome.successes += 1;
                 eprintln!(
                     "refresh-cache: #{issue} ({}:{}) refreshed",
@@ -329,7 +332,19 @@ async fn refresh_masking_pin(
                     pin.line
                 );
             }
-        }
+            Ok(WriteOutcome::Unchanged) => {
+                // Successful probe but cached state-of-record was
+                // already current — count as a success (the daily
+                // refresh did its job) without producing a `git diff`
+                // that would otherwise spawn a churn PR.
+                refresh_outcome.successes += 1;
+                eprintln!(
+                    "refresh-cache: #{issue} ({}:{}) unchanged",
+                    pin.file.display(),
+                    pin.line
+                );
+            }
+        },
         Err(api_err) => {
             refresh_outcome.failures += 1;
             diagnostics.push(LintDiagnostic {
@@ -418,20 +433,54 @@ fn evaluate_cached_state(
     });
 }
 
+/// Persist `state` for `starting_issue` to the cache directory.
+///
+/// **No-op if the persisted state-of-record fields are unchanged**.
+/// The `refreshed_at` timestamp is intentionally NOT part of the
+/// state-of-record — only `state`, `closed_at`, `closed_as_duplicate_of`,
+/// and `chain` are. If the daily refresh observes that GitHub still
+/// reports the same terminal state for an issue, we leave the
+/// existing cache file alone so the scheduled-refresh workflow's
+/// `git diff` produces no churn and no PR is opened.
+///
+/// On state change, the function writes the new entry with a fresh
+/// `refreshed_at` and returns `WriteOutcome::Updated`. On no-op, it
+/// returns `WriteOutcome::Unchanged`.
 fn persist(
     state: IssueState,
     repo: &str,
     starting_issue: u32,
     cache_dir: &std::path::Path,
-) -> Result<()> {
+) -> Result<WriteOutcome> {
+    let new_state_str = match state.terminal_state {
+        TerminalState::Open => "open".to_string(),
+        _ => "closed".to_string(),
+    };
+
+    let parts: Vec<&str> = repo.splitn(2, '/').collect();
+    if parts.len() == 2 {
+        // Compare against the existing entry (if any) to suppress
+        // `refreshed_at`-only churn.
+        if let Ok(Some(existing)) =
+            read_cache(cache_dir, parts[0], parts[1], starting_issue)
+        {
+            if existing.repo == repo
+                && existing.issue_number == starting_issue
+                && existing.state == new_state_str
+                && existing.closed_at == state.closed_at
+                && existing.closed_as_duplicate_of == state.closed_as_duplicate_of
+                && existing.chain == state.chain
+            {
+                return Ok(WriteOutcome::Unchanged);
+            }
+        }
+    }
+
     let entry = CachedIssueState {
         schema: CACHE_SCHEMA.to_string(),
         repo: repo.to_string(),
         issue_number: starting_issue,
-        state: match state.terminal_state {
-            TerminalState::Open => "open".to_string(),
-            _ => "closed".to_string(),
-        },
+        state: new_state_str,
         closed_at: state.closed_at,
         closed_as_duplicate_of: state.closed_as_duplicate_of,
         refreshed_at: Utc::now(),
@@ -443,7 +492,16 @@ fn persist(
     if parts.len() == 2 {
         let _ = cache_path(cache_dir, parts[0], parts[1], starting_issue);
     }
-    Ok(())
+    Ok(WriteOutcome::Updated)
+}
+
+/// Outcome of a `persist` call. `Unchanged` means the cache file's
+/// state-of-record fields already matched the freshly-fetched state,
+/// so no write was performed (suppresses daily-refresh PR churn).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriteOutcome {
+    Updated,
+    Unchanged,
 }
 
 #[cfg(test)]
