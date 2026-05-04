@@ -431,7 +431,7 @@ on `countries: []` between lawful source-concealed FGI and parser-failure corrup
 
 ```rust
 pub enum FgiMarker {
-    /// Lawful per CAPCO §H.7 p126 — FGI without disclosed source country.
+    /// Lawful per CAPCO §H.7 p123 — FGI without disclosed source country.
     SourceConcealed,
 
     /// One or more validated country trigraphs (CAPCO §H.7).

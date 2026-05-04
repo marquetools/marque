@@ -103,7 +103,7 @@ generative:
   `parse_fgi_marker` (`parser.rs:1011-1024`) returns
   `Some(FgiMarker { countries: [] })` when post-prefix bytes fail
   `CountryCode::try_new`. The pivot can't distinguish "authentic
-  source-concealed FGI" (lawful per §H.7 p126) from "we failed to parse the
+  source-concealed FGI" (lawful per §H.7 p123) from "we failed to parse the
   trigraphs" because both shapes collide on the same `FgiMarker`.
 
 ### 1.2 The Phase-B trait surface is built but not load-bearing
@@ -292,7 +292,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 |----|-------------|--------|--------------------|
 | 0 | `static_assertions` on rule + recognizer trait bounds (`Rule: Send + Sync`, `Recognizer<S>: Send + Sync`); masking-pin lint at `tools/masking-pin-lint/` (**AST-based**, not regex); **promote-callsite lint at `tools/promote-callsite-lint/`** (also AST-based — enforces I-15: `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` only callable from `Engine::fix_inner` in production code, with `#[cfg(test)]`/`tests/` carve-out per Constitution V Principle V) | (preemptive) | V, VI |
 | 0.5 | Citation-string lint (8A) at `tools/citation-lint/` — **scope: `citation:` fields + `message:` strings + `constraint_label:` strings + doc-comment `§X.Y` references**. Lint rejects bare `§NN` (no subsection), out-of-normative-range sections (CAPCO normative is §A–H only), pages outside the vendored source's range, **AND legacy `line NNNN` citation forms** (the project retired `line NNNN` citations in commit b340bec — page numbers only). F.1 corpus-fidelity skeleton with one canonical example per existing rule. F.1 runs against existing catalog as discovery exercise; catalogues failures for PR 0.6. | (preemptive) | VIII |
-| 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings (`§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar; doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; cross-revision SIGMA archaeology at `rules.rs:4053`; HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
+| 0.6 | Preemptive citation-defect fix. Closes the four murder-board findings: (a) `§4` fabrication at `scheme.rs` lines 1734/1783/1787/1796/1814/1822/1830/1841/1850/1883 and similar — corrected target is **`§H.4`** for HCS / HCS-O / HCS-P sites (per CAPCO-2016 §H.4 pp 62–66); (b) doubled `p150–151 p151` at five sites in `rules.rs` lines 2022, 2148, 2609, 2919, 10142; (c) cross-revision SIGMA archaeology at `rules.rs:4053`; (d) HCS-P predicate at `scheme.rs:1839-1849` is **two-sided** per CAPCO-2016 §H.4 p66 — over-strict on optional `ORCON`/`ORCON-USGOV` ("may be used") AND under-strict on the missing `NOFORN` requirement ("requires NOFORN"); both sides MUST be corrected together. Plus whatever else PR 0.5's F.1 run catches. **Implementer re-greps line numbers at PR 0.6 time — file edits since the murder board may have shifted offsets; defect classes are stable, line numbers are not.** Constitution VIII satisfied across the catalog before refactor begins. | (preemptive) | VIII |
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
 | 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
@@ -1076,11 +1076,36 @@ For PR 4 / Layer 1 lattice law tests, and Layer 4 corpus regression
 
 | Marking | Valid? | Reason |
 |---------|--------|--------|
-| `(U//REL TO USA, FVEY/DISPLAY ONLY UKR//FOUO)` | ✅ | FD&R-only with FOUO |
-| `(U//NF//FOUO)` | ✅ | NF is FD&R; FOUO survives |
+| `(U//REL TO USA, FVEY/DISPLAY ONLY UKR/FOUO)` | ✅ | FD&R-only with FOUO |
+| `(U//NF/FOUO)` | ✅ | NF is FD&R; FOUO survives |
 | `(C//FOUO)` | ❌ | Classification > U evicts FOUO |
-| `(U//PR//FOUO)` | ❌ | PROPIN (non-FD&R) evicts FOUO |
-| `(U//NF/IMC//FOUO)` | ❌ | IMCON (non-FD&R) evicts FOUO; NF being FD&R doesn't save it |
+| `(U//PR/FOUO)` | ❌ | PROPIN (non-FD&R) evicts FOUO |
+| `(U//NF/IMC/FOUO)` | ❌ | IMCON (non-FD&R) evicts FOUO; NF being FD&R doesn't save it |
+
+Separator note (CAPCO §A.5 p17 + Figure 2): `//` separates *categories*
+and `/` separates *values within one category*. FOUO, NOFORN (NF),
+PROPIN (PR), IMCON (IMC), REL TO, and DISPLAY ONLY are all IC
+dissemination controls (group 8 of the Register), so they are
+`/`-separated within the dissem category. Compare the canonical
+CAPCO example `(S//NF/PR)` at §H.8 p148 and `(U//FOUO/REL TO USA, JPN)`
+in CAPCO-2016 source.
+
+Lattice-modeling note: §H.8 p134 prose ("FOUO does not convey in the
+banner line if the document is UNCLASSIFIED with FOUO and other
+dissemination control markings, excluding any FD&R markings") and
+the §H.8 p134 "Commingling Rule(s) Within a Portion" describe FOUO
+**display behavior** ("does not convey"). The lattice projection
+treats "does not convey" as "drop the token from the canonical
+form" — the canonical-form perspective makes display-eviction and
+lattice-eviction equivalent. The fixtures' `❌` outcome is therefore
+"the projected canonical form drops FOUO," not "the source portion
+is illegal CAPCO."
+
+Intra-category Register-order is a separate canonicalization concern
+handled by `render_canonical`, not by the eviction lattice. The
+fixtures above are intentionally written in user-input order
+(reflecting common drafter error patterns), not Register-canonical
+order.
 
 The last fixture is deliberately constructed to be invalid for *one*
 reason only (IMC eviction), not two — `IMC` is the portion-form
@@ -1150,7 +1175,7 @@ this is a one-field extension.
 - **`marque-audit-reader`** — explicitly NOT scheduled. No downstream
   consumers; clean break.
 - **#266** CAB Declassify On canned strings for AEA / NATO commingling
-  (§C.4, §C.5) — out of immediate scope per user direction.
+  (§E.4 AEA, §E.5 NATO) — out of immediate scope per user direction.
 
 **`FixIntent<S>` is no longer in this list** — landed in PR 3c per
 murder-board override (§3.1).

@@ -64,11 +64,17 @@ explicitly excluded.
 
 ### User Story 2 — Page-level rollup is correct for foreign and joint markings (Priority: P1)
 
-A user submits a document containing only foreign portions (e.g., a page of
-`(C//FGI DEU)` portions, a NATO-only page, or a JOINT US/UK page). The
-banner classification produced by marque retains the foreign marker —
-the page is not silently re-banner'd as a US classification, and FGI/NATO/JOINT
-provenance survives the page-level join.
+A user submits a document whose pages each carry a non-US-only provenance
+axis — e.g., a page of US-classified portions all FGI-commingled with the
+same foreign government (`(C//FGI DEU)`), a NATO-only page, or a JOINT
+US/UK page. The banner produced by marque retains the foreign-provenance
+axis (FGI / NATO / JOINT), and the US-classification axis (when present
+in the portions) is reported separately — the page is not silently
+re-banner'd as a US-only classification, and FGI/NATO/JOINT provenance
+survives the page-level join. Per CAPCO §H.7 p122–123 + §A.4 p17, FGI
+is a **separate marking category** alongside (not replacing) classification;
+JOINT (§H.3) is a classification subcategory; NATO classifications
+(§H.7 / Appendix B) form a parallel chain to US classifications.
 
 **Why this priority**: `page_context_to_attrs` at `crates/capco/src/scheme.rs:365`
 hardcodes `MarkingClassification::Us`. A foreign-only document gets a
@@ -95,7 +101,7 @@ CI greps for re-introduction.
 
 **Acceptance Scenarios**:
 
-1. **Given** a page containing only `(C//FGI DEU)` portions, **When** marque computes the expected banner, **Then** the banner retains the FGI DEU marker — `expected_classification()` returns `Some(MarkingClassification::FgiDeu)`-equivalent or `None`, never silently `MarkingClassification::Us`.
+1. **Given** a page containing only `(C//FGI DEU)` (US-classified, FGI-commingled-with-Germany) portions, **When** marque computes the expected banner, **Then** the banner retains both axes — `expected_classification()` returns `Some(MarkingClassification::Confidential)` (the US-classification axis populated from the `C` in the portions) AND the projected marking carries the `FGI DEU` axis populated separately. `expected_classification()` MUST return `None` (not silently `Some(MarkingClassification::Us)`) when invoked on a projection whose portions populate no US classification — e.g., a pure-foreign-segregated page of `(//DEU C)` portions or a NATO-only page. Per CAPCO §H.7, FGI is a separate axis on the projection, not a value of the US classification axis.
 2. **Given** a page mixing US `(S)` portions with `(C//FGI DEU)` portions, **When** marque computes the expected banner, **Then** the banner correctly captures both axes — joint provenance with the higher classification, FGI marker preserved.
 3. **Given** the rule catalog is registered, **When** the engine boots, **Then** the page-level rollup pipeline drives through the lattice projection (`Scope::Page`), not through the legacy `PageContext` accumulator (which is deleted at the merge of the cutover PR).
 
@@ -134,7 +140,7 @@ SC-001 latency budget.
 
 A user submits `(TS//FGI deu)` (lowercase trigraph — invalid). Today, the
 parser silently returns `Some(FgiMarker { countries: [] })`, which collides
-on shape with lawful source-concealed FGI per CAPCO §H.7 p126
+on shape with lawful source-concealed FGI per CAPCO §H.7 p123
 (an `FgiMarker` with no country trigraphs is the *authentic* representation
 of source-concealed FGI). After this refactor: invalid trigraph bytes
 cause the parser to return `None`, and the data model carries a
@@ -161,7 +167,7 @@ degradation across the full strict-path corpus.
 **Acceptance Scenarios**:
 
 1. **Given** input `(TS//FGI deu)`, **When** marque parses it, **Then** `parse_fgi_marker` returns `None` (rejecting the malformed trigraph) — not `Some(FgiMarker { countries: [] })`.
-2. **Given** lawful source-concealed FGI input matching CAPCO §H.7 p126, **When** marque parses it, **Then** the parser produces `FgiMarker::SourceConcealed`, distinct from any post-failure shape.
+2. **Given** lawful source-concealed FGI input matching CAPCO §H.7 p123, **When** marque parses it, **Then** the parser produces `FgiMarker::SourceConcealed`, distinct from any post-failure shape.
 3. **Given** any portion-form input across the strict-path corpus, **When** marque parses, renders, and re-parses, **Then** the second parse equals the first under the structural-equality relation that ignores `provenance.source_bytes` and confidence floats and allows whitespace/casing/ordering canonicalization.
 
 ---
@@ -238,8 +244,8 @@ has confirmed each category's worked examples by hand against the
 **Acceptance Scenarios**:
 
 1. **Given** any two values in any category's lattice, **When** their join is computed under any associativity / commutativity ordering, **Then** the result is identical (assoc/comm/idem property tests pass).
-2. **Given** a portion `(U//FOUO)` adjacent to a portion `(C)`, **When** marque rolls up to the page, **Then** FOUO is evicted (classification > U cross-axis dominance).
-3. **Given** a portion `(U//PR//FOUO)`, **When** marque validates, **Then** FOUO is evicted by PROPIN (non-FD&R dissem cross-axis dominance), per the worked-example fixtures in the consolidated plan Appendix A.
+2. **Given** a portion `(U//FOUO)` adjacent to a portion `(C)`, **When** marque rolls up to the page, **Then** FOUO is evicted from the **banner** (classification > U cross-axis dominance per CAPCO §H.8 p134 — "FOUO does not convey in the banner line if the document is classified"); the `(U//FOUO)` portion mark itself remains lawful and unmodified, and only the page-level roll-up drops FOUO. The lattice projection treats "does not convey" as "drop the token from the canonical projected form" — display-eviction and lattice-eviction are equivalent under the canonical-form perspective.
+3. **Given** a portion `(U//PR/FOUO)` (single `/` between two IC-dissem-category values per CAPCO §A.5 p17), **When** marque validates, **Then** FOUO is evicted by PROPIN (non-FD&R dissem in-category supersession per §H.8 p134 + p148), per the worked-example fixtures in the consolidated plan Appendix A.
 
 ---
 
@@ -349,13 +355,13 @@ delete `PageContext`) each pass corpus regression independently.
 
 - **FR-015**: Open-vocabulary parser slots MUST route through `Vocabulary<S>::shape_admits`. Four open-vocabulary admission sites in `marque-core/parser.rs` MUST migrate: three inline `is_ascii_alphanumeric()` byte-class checks (`:1453`, `:1481`, `:1493`) and the FGI trigraph silent-skip at `:1011-1024` (currently `if token.len() == 3 { CountryCode::try_new(...) }` rather than `is_ascii_alphanumeric`, but with the same fix shape — `shape_admits`-gated admission; the `None` return on shape failure is the FR-016 surface). CI grep MUST flag re-introduction of inline `is_ascii_alphanumeric()` in parser open-vocab admission paths.
 - **FR-016**: `parse_fgi_marker` MUST return `None` (not `Some` with degraded structure) when post-prefix bytes fail `shape_admits`.
-- **FR-017**: `FgiMarker` MUST discriminate `SourceConcealed` (lawful per CAPCO §H.7 p126, no country trigraphs) from `Acknowledged { countries }` (one or more validated trigraphs). The post-failure shape MUST be unrepresentable. Rules currently using `countries.is_empty()` MUST be audited and migrated.
+- **FR-017**: `FgiMarker` MUST discriminate `SourceConcealed` (lawful per CAPCO §H.7 p123 — "Authorized Banner Line Marking Title (when source must be concealed): FOREIGN GOVERNMENT INFORMATION", banner abbr `FGI`, no country trigraphs) from `Acknowledged { countries }` (one or more validated trigraphs per §H.7 p123 — "Authorized Banner Line Marking Title: FOREIGN GOVERNMENT INFORMATION [LIST]"). The post-failure shape MUST be unrepresentable. Rules currently using `countries.is_empty()` MUST be audited and migrated.
 
 #### Citation fidelity
 
 - **FR-018**: Every cited authority — in `citation:` struct fields, `message:` strings, `constraint_label:` strings, and doc-comment `§X.Y` references — MUST resolve to a real passage in `crates/capco/docs/CAPCO-2016.md`, in the normative range (CAPCO §A–H), with a page number that falls within the document. Bare `§NN` references (without subsection) MUST be rejected.
 - **FR-019**: Every `Constraint`/`PageRewrite`/`Rule` cited authority MUST have ≥1 corpus fixture at `crates/capco/tests/citation_fidelity.rs` exercising the predicate against the canonical example from the cited passage.
-- **FR-020**: The pre-existing four citation-defect classes (the `§4` fabrications across multiple `scheme.rs` lines; the doubled `p150–151 p151` at five sites in `rules.rs`; the SIGMA cross-revision archaeology at `rules.rs:4053`; the HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it) MUST be corrected preemptively before the keystone refactor begins. Implementer re-greps line numbers at PR 0.6 time — defect classes are stable, line numbers are not.
+- **FR-020**: The pre-existing four citation-defect classes MUST be corrected preemptively before the keystone refactor begins: (a) the `§4` fabrications across multiple `scheme.rs` lines — corrected target is **`§H.4`** for HCS / HCS-O / HCS-P sites (CAPCO-2016 §H.4 pp 62–66); (b) the doubled `p150–151 p151` at five sites in `rules.rs`; (c) the SIGMA cross-revision archaeology at `rules.rs:4053`; (d) the HCS-P predicate at `scheme.rs:1839-1849` (if F.1 surfaces it) — defect is **two-sided** per CAPCO-2016 §H.4 p66: over-strict on optional `ORCON`/`ORCON-USGOV` ("may be used") AND under-strict on the missing `NOFORN` requirement ("requires NOFORN"); both sides MUST be corrected together. Implementer re-greps line numbers at PR 0.6 time — defect classes are stable, line numbers are not.
 
 #### Two-pass apply correctness
 
@@ -406,7 +412,7 @@ delete `PageContext`) each pass corpus regression independently.
 
 - **FR-045**: Parser MUST track separator spans (`/`, `//`, whitespace boundaries) as first-class `Span` values in `ParsedAttrs<'src>` (#106). Required for the banner-validation rule reshape (FR-046) and downstream rendering. Separator spans MUST NOT carry token semantics — they are positional metadata only.
 - **FR-046**: `ParsedAttrs<'src>`, `CanonicalAttrs`, and `ProjectedMarking` MUST split the single `dissem` field into position-attributed `dissem_us: Box<[DissemControl]>` and `dissem_nato: Box<[DissemControl]>` (#271 / 7B). Banner-validation rules MUST consume the split fields. Rationale: per CAPCO §H.8 / §H.9, US dissems and NATO dissems occupy distinct positions in the marking grammar; collapsing them loses position-attribution required for correct page-rollup.
-- **FR-047**: Marque MUST recognize NATO-specific marking tokens — minimally ATOMAL and BOHEMIA (#246) — and MUST handle them as NATO-scope dissems via the FR-046 split. Closed-CVE values for these tokens land via the existing `Vocabulary<S>` build-time generation pipeline.
+- **FR-047**: Marque MUST recognize NATO-specific marking tokens — minimally ATOMAL and BOHEMIA (#246). Per CAPCO §H.7 + §I (banner-line syntax history), ATOMAL is a NATO **Atomic Energy Act** marking and BOHEMIA is a NATO **control-system** marking — both are NATO control markings, **not** NATO dissemination controls. They MUST be modeled in their CAPCO-correct categories (ATOMAL alongside AEA tokens like RD/FRD/TFNI; BOHEMIA alongside SCI/control-system tokens), **not** as `dissem_nato` values. The FR-046 `dissem_nato` field is reserved for true NATO dissemination controls. Closed-CVE values for ATOMAL/BOHEMIA land via the existing `Vocabulary<S>` build-time generation pipeline.
 - **FR-048**: A NATO portion appearing in a US-classified document MUST trigger a declarative `Constraint` requiring `REL TO USA, NATO` derivation in the banner (#265). The constraint lands as data on `CapcoScheme` per the Phase B declarative-Constraint pattern (CLAUDE.md "Two-Layer Rule Architecture") — not as a procedural rule branch.
 
 ### Key Entities
@@ -502,7 +508,7 @@ delete `PageContext`) each pass corpus regression independently.
   CAPCO-first; the trait surface is acknowledged semver-unstable until a
   second scheme attaches. The `marque-cui` placeholder at `crates/cui/`
   remains a stub through this refactor.
-- **#266 CAB Declassify On canned strings (§C.4 AEA, §C.5 NATO).**
+- **#266 CAB Declassify On canned strings (§E.4 AEA commingling, §E.5 NATO commingling).**
   Out of immediate scope per user direction; tracked separately.
 - **#258 / #260 closure.** Recognizer scoring quality is a third
   problem class. PR 8 delivers priors and folding logic but does not
