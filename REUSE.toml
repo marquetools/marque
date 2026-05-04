@@ -101,6 +101,19 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
+# masking-pin-lint cache directory (D11 in
+# specs/006-engine-rule-refactor/decisions.md). Files are JSON state
+# snapshots written by the lint tool; they accumulate one file per
+# tracked issue over time, so an annotation is preferable to per-file
+# sidecars.
+[[annotations]]
+path = [
+  "tools/masking-pin-lint/cache/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
 [[annotations]]
 path = [
   "tests/**",
