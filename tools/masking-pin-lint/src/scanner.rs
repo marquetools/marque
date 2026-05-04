@@ -200,9 +200,24 @@ impl<'a> CallSiteVisitor<'a> {
             let Some(line) = self.lines.get(idx) else {
                 continue;
             };
+            // Marker scanning runs against the line-comment body only.
+            // A bare `line.contains("MASKING-PIN")` would match the
+            // phrase inside a string literal (`let s = "MASKING-PIN: ...";`)
+            // or a non-comment ident, producing false-positive
+            // classifications. `line_comment_body` returns the text
+            // after the first `//` that's NOT inside a string literal,
+            // or `None` if no such comment exists; markers checked
+            // against that body cannot be triggered by adjacent code.
+            let Some(comment) = line_comment_body(line) else {
+                continue;
+            };
+            // The regexes themselves require the leading `//`, so we
+            // re-prepend it for the regex match. Cheaper than
+            // rewriting both regexes to match the bare body.
+            let comment_with_slashes = format!("//{comment}");
             // MASKING-PIN
-            if line.contains("MASKING-PIN") {
-                if let Some(caps) = self.masking_re.captures(line) {
+            if comment.contains("MASKING-PIN") {
+                if let Some(caps) = self.masking_re.captures(&comment_with_slashes) {
                     let issue: u32 = caps
                         .name("n")
                         .and_then(|m| m.as_str().parse().ok())
@@ -216,8 +231,8 @@ impl<'a> CallSiteVisitor<'a> {
                 }
             }
             // INTENTIONAL-STRICT
-            if line.contains("INTENTIONAL-STRICT") {
-                if let Some(caps) = self.intentional_re.captures(line) {
+            if comment.contains("INTENTIONAL-STRICT") {
+                if let Some(caps) = self.intentional_re.captures(&comment_with_slashes) {
                     let reason = caps["reason"].trim().to_string();
                     intentional_hit = Some(reason);
                 } else {
@@ -339,4 +354,94 @@ fn path_ends_with_strict_recognizer(path: &syn::Path) -> bool {
     path.segments
         .iter()
         .any(|seg| seg.ident == "StrictRecognizer")
+}
+
+/// Return the body of the first `//` line comment in `line` that's
+/// NOT inside a string literal, or `None` if no such comment exists.
+///
+/// Without this, a bare `line.contains("MASKING-PIN")` check would
+/// false-positive on a string literal or other non-comment code that
+/// happens to include the marker phrase — that's the bypass
+/// surface Copilot R7 #1/#3 identified. Scanning state covers plain
+/// `"..."` strings (with `\"` escapes), raw `r"..."` / `r#"..."#`
+/// strings, and char/lifetime `'...'` (with the same lifetime-vs-char
+/// disambiguation used in the callsite lint's parallel helper).
+fn line_comment_body(line: &str) -> Option<&str> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let mut in_str: Option<char> = None;
+    let mut raw_hashes: usize = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match in_str {
+            None => {
+                // Raw-string start: `r#*"`.
+                if b == b'r' && i + 1 < bytes.len() {
+                    let mut j = i + 1;
+                    let mut hashes = 0;
+                    while j < bytes.len() && bytes[j] == b'#' {
+                        hashes += 1;
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'"' {
+                        in_str = Some('"');
+                        raw_hashes = hashes;
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                if b == b'"' {
+                    in_str = Some('"');
+                    raw_hashes = 0;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\'' {
+                    let limit = (i + 5).min(bytes.len());
+                    let found_close = bytes[(i + 1)..limit].contains(&b'\'');
+                    if found_close {
+                        in_str = Some('\'');
+                    }
+                    i += 1;
+                    continue;
+                }
+                if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    return Some(&line[i + 2..]);
+                }
+                i += 1;
+            }
+            Some('"') => {
+                if raw_hashes == 0 {
+                    if b == b'\\' && i + 1 < bytes.len() {
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'"' {
+                        in_str = None;
+                    }
+                    i += 1;
+                } else {
+                    if b == b'"' {
+                        let close = i + 1 + raw_hashes;
+                        if close <= bytes.len()
+                            && bytes[i + 1..close].iter().all(|&h| h == b'#')
+                        {
+                            in_str = None;
+                            i = close;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+            }
+            Some('\'') => {
+                if b == b'\'' {
+                    in_str = None;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
 }

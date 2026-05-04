@@ -65,12 +65,17 @@ pub const COMMENT_LOOKBACK_LINES: usize = 5;
 /// names elsewhere in `crates/engine/src/**` is rejected.
 const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
 
-/// Free helper(s) in `crates/engine/src/**` that are permitted to
-/// mint an `EnginePromotionToken`. Currently exactly one — the
-/// `engine_promotion_token()` token-mint helper. Kept as a separate
-/// list (rather than commingled with [`ENGINE_METHOD_ALLOW_LIST`])
-/// so a future free function happening to use one of those names
-/// cannot bypass the lint by virtue of `impl_self_type == None`.
+/// Free helper(s) in `crates/engine/src/engine.rs` (the exact file)
+/// that are permitted to mint an `EnginePromotionToken`. Currently
+/// exactly one — the `engine_promotion_token()` token-mint helper.
+/// The list is matched in conjunction with
+/// [`is_engine_canonical_helper_file`] so a free fn with the same
+/// name in a different file under `crates/engine/src/**` is rejected:
+/// the FR-040 contract centralizes token-mint privilege in ONE
+/// helper, located at one specific path. A separate file-level
+/// matcher (rather than just the ident name) closes the bypass that
+/// any module under `crates/engine/src/**` could otherwise re-declare
+/// the helper and pass PRC002.
 const ENGINE_FREE_FN_ALLOW_LIST: &[&str] = &["engine_promotion_token"];
 
 /// Scan `<workspace_dir>` and return any callsite-lint diagnostics.
@@ -292,7 +297,10 @@ impl CallSiteVisitor<'_> {
                 // or `apply_text_corrections` calling `__engine_promote`
                 // is now correctly rejected.
                 let allowed = match fr.impl_self_type.as_deref() {
-                    None => ENGINE_FREE_FN_ALLOW_LIST.contains(&fr.name.as_str()),
+                    None => {
+                        ENGINE_FREE_FN_ALLOW_LIST.contains(&fr.name.as_str())
+                            && self.is_engine_canonical_helper_file()
+                    }
                     Some("Engine") => ENGINE_METHOD_ALLOW_LIST.contains(&fr.name.as_str()),
                     Some(_) => false,
                 };
@@ -408,6 +416,26 @@ impl CallSiteVisitor<'_> {
             // production module, NOT a test path.
         }
         false
+    }
+
+    /// Match the exact canonical file `crates/engine/src/engine.rs`,
+    /// where the production token-mint helper `engine_promotion_token`
+    /// lives. Used in conjunction with [`ENGINE_FREE_FN_ALLOW_LIST`]
+    /// so a free fn with the helper's name in any other file under
+    /// `crates/engine/src/**` is rejected by PRC002 — the FR-040
+    /// contract is "one helper, one place," and the lint enforces the
+    /// "one place" half here.
+    fn is_engine_canonical_helper_file(&self) -> bool {
+        let rel = self
+            .file_path
+            .strip_prefix(self.workspace_dir)
+            .unwrap_or(self.file_path);
+        let comps: Vec<_> = rel.components().collect();
+        comps.len() == 4
+            && comps[0].as_os_str() == "crates"
+            && comps[1].as_os_str() == "engine"
+            && comps[2].as_os_str() == "src"
+            && comps[3].as_os_str() == "engine.rs"
     }
 
     /// Match `crates/test-utils/src/**`. The carve-out's first

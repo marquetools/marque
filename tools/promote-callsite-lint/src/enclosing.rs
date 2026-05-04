@@ -95,6 +95,16 @@ struct Context {
 fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
     match item {
         Item::Fn(item_fn) => {
+            // `#[cfg(test)]` may be carried on the fn itself — not
+            // just on an enclosing `mod`. Honor that here so a
+            // `#[cfg(test)] fn helper(...) {}` in `src/**` is
+            // classified as test scope and the carve-out applies.
+            // The repo uses this pattern in places (see
+            // `crates/capco/src/scheme.rs`'s `#[cfg(test)] impl` block
+            // for the parallel impl-side case below); without
+            // attribute-aware propagation, legitimate test-only
+            // fixtures would PRC001/PRC002 falsely.
+            let inner_in_cfg_test = ctx.in_cfg_test || has_cfg_test_attr(&item_fn.attrs);
             let span = item_fn.span();
             let start = span.start();
             let end = span.end();
@@ -102,7 +112,7 @@ fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 name: item_fn.sig.ident.to_string(),
                 start_line: start.line,
                 end_line: end.line,
-                in_cfg_test: ctx.in_cfg_test,
+                in_cfg_test: inner_in_cfg_test,
                 impl_self_type: None,
             });
             // Recurse into the function body so block-scoped local
@@ -114,7 +124,10 @@ fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
             // fn's allow-list status, even though `helper` itself is
             // not on any allow-list. The walker descends recursively
             // through nested blocks for the same reason.
-            visit_block(&item_fn.block, ctx, sink);
+            let inner_ctx = Context {
+                in_cfg_test: inner_in_cfg_test,
+            };
+            visit_block(&item_fn.block, &inner_ctx, sink);
         }
         Item::Mod(item_mod) => visit_mod(item_mod, ctx, sink),
         Item::Impl(item_impl) => visit_impl(item_impl, ctx, sink),
@@ -156,8 +169,21 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
     // and not some unrelated type's method that happens to share the
     // name (FR-040 production allow-list integrity).
     let self_ty_last = self_type_last_segment(&item_impl.self_ty);
+    // `#[cfg(test)]` on the impl block itself propagates to every
+    // method in it — that's the pattern in
+    // `crates/capco/src/scheme.rs`'s `#[cfg(test)] impl` block for
+    // test-only methods. Without this, methods declared in such a
+    // block in `src/**` would be classified as production and PRC001
+    // would falsely reject any `__engine_promote` carve-out call
+    // they make.
+    let in_cfg_test = ctx.in_cfg_test || has_cfg_test_attr(&item_impl.attrs);
     for impl_item in &item_impl.items {
         if let ImplItem::Fn(method) = impl_item {
+            // Method-level `#[cfg(test)]` is also honored — propagating
+            // OR-style with the impl-block flag and the outer module
+            // flag. A method in a non-cfg-test impl can carry the attr
+            // itself.
+            let method_in_cfg_test = in_cfg_test || has_cfg_test_attr(&method.attrs);
             let span = method.span();
             let start = span.start();
             let end = span.end();
@@ -165,7 +191,7 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 name: method.sig.ident.to_string(),
                 start_line: start.line,
                 end_line: end.line,
-                in_cfg_test: ctx.in_cfg_test,
+                in_cfg_test: method_in_cfg_test,
                 impl_self_type: self_ty_last.clone(),
             });
             // Recurse into the method body for block-scoped local
@@ -176,8 +202,11 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
             // items in a method body do NOT get the enclosing
             // method's `impl_self_type`; they're free functions in
             // their own right (Rust resolution treats them that way).
+            // Local-fn items inherit the method's effective cfg(test)
+            // status (which already incorporates the impl-block and
+            // method-level attrs above).
             let local_ctx = Context {
-                in_cfg_test: ctx.in_cfg_test,
+                in_cfg_test: method_in_cfg_test,
             };
             visit_block(&method.block, &local_ctx, sink);
         }
