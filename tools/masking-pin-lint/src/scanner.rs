@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! AST walker that finds every `with_recognizer(...StrictRecognizer...)` call
-//! site under `<workspace>/tests/` and `<workspace>/crates/*/tests/`, and
-//! classifies the comment-marker on each.
+//! site in the workspace's test surface, and classifies the comment-marker
+//! on each.
 //!
-//! Per FR-039 the scanner intentionally does NOT walk `crates/*/benches/`;
-//! benchmark pins are out of FR-039 scope.
+//! The scanner walks `<workspace>/tests/` and the `tests/` directory of
+//! every workspace member that ships one — including the top-level
+//! `marque/` binary crate and any future top-level workspace member,
+//! not just `crates/*/tests/`. Per FR-039 the scanner intentionally
+//! does NOT walk `crates/*/benches/`; benchmark pins are out of FR-039
+//! scope.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,23 +35,19 @@ const LOOKBACK: u32 = 5;
 ///
 /// - `<workspace>/tests/**/*.rs`
 /// - `<workspace>/crates/*/tests/**/*.rs`
+/// - `<workspace>/<member>/tests/**/*.rs` for any top-level workspace
+///   member (currently the `marque/` binary crate).
 ///
-/// Errors are returned only for I/O or AST-parse failures the caller cannot
-/// recover from. Individual call-site classifications (including
-/// `Unmarked`/`BadFormat`) are encoded in the returned `Pin` values, not as
-/// errors.
+/// All errors propagate. Walk errors and `syn` parse failures are
+/// surfaced rather than logged-and-skipped because this is a CI
+/// enforcement tool: silently swallowing a failure can hide a real
+/// pin and produce a false-green run.
 pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
     let mut pins = Vec::new();
-    let test_roots = collect_test_roots(workspace_dir);
+    let test_roots = collect_test_roots(workspace_dir)?;
     for root in test_roots {
         for entry in WalkDir::new(&root).follow_links(false) {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(err) => {
-                    eprintln!("warning: walkdir error under {}: {err}", root.display());
-                    continue;
-                }
-            };
+            let entry = entry.with_context(|| format!("walking {}", root.display()))?;
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -66,41 +66,81 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
 }
 
 /// Collect the set of test directory roots beneath `workspace_dir`.
-fn collect_test_roots(workspace_dir: &Path) -> Vec<PathBuf> {
+///
+/// Returns workspace-root `tests/` plus every `<member>/tests/` for any
+/// directory at workspace root that contains a `Cargo.toml`. This
+/// covers `crates/*/tests/`, the top-level `marque/tests/`, and any
+/// future top-level workspace member without requiring an explicit
+/// allow-list.
+fn collect_test_roots(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut roots = Vec::new();
     let top_tests = workspace_dir.join("tests");
     if top_tests.is_dir() {
         roots.push(top_tests);
     }
     let crates_dir = workspace_dir.join("crates");
-    if let Ok(read) = fs::read_dir(&crates_dir) {
-        for entry in read.flatten() {
+    if crates_dir.is_dir() {
+        for entry in fs::read_dir(&crates_dir)
+            .with_context(|| format!("reading {}", crates_dir.display()))?
+        {
+            let entry = entry.with_context(|| format!("reading entry under {}", crates_dir.display()))?;
             let crate_tests = entry.path().join("tests");
             if crate_tests.is_dir() {
                 roots.push(crate_tests);
             }
         }
     }
-    roots
+    // Top-level workspace members (any directory at workspace root that
+    // contains a `Cargo.toml`). Skip directories we already cover or that
+    // are out of scope.
+    for entry in fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+    {
+        let entry = entry
+            .with_context(|| format!("reading entry under {}", workspace_dir.display()))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if matches!(
+            path.file_name().and_then(|s| s.to_str()),
+            Some(
+                "crates"
+                | "tests"
+                | "tools"
+                | "target"
+                | ".git"
+                | "site"
+                | "specs"
+                | "docs"
+                | "scripts"
+                | "benches"
+            )
+        ) {
+            continue;
+        }
+        if !path.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let member_tests = path.join("tests");
+        if member_tests.is_dir() {
+            roots.push(member_tests);
+        }
+    }
+    Ok(roots)
 }
 
 /// Parse one `.rs` file and append any pin sites found to `out`.
+///
+/// Parse failures are surfaced as errors rather than logged-and-skipped:
+/// silently dropping an unparseable test file would let a real pin in
+/// that file go unchecked while CI stayed green.
 fn scan_file(path: &Path, out: &mut Vec<Pin>) -> Result<()> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("reading {}", path.display()))?;
     let lines: Vec<&str> = source.lines().collect();
-    let parsed = match syn::parse_file(&source) {
-        Ok(f) => f,
-        Err(err) => {
-            // Don't fail the run for an unparseable test fixture.
-            // Report and move on.
-            eprintln!(
-                "warning: syn::parse_file failed for {}: {err}",
-                path.display()
-            );
-            return Ok(());
-        }
-    };
+    let parsed = syn::parse_file(&source)
+        .with_context(|| format!("parsing {}", path.display()))?;
     let mut visitor = CallSiteVisitor::new(path, &lines);
     visitor.visit_file(&parsed);
     out.append(&mut visitor.found);

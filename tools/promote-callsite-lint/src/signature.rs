@@ -34,6 +34,7 @@
 //! (the types `ParsedAttrs` / `CanonicalAttrs` arrive at PR 3a).
 //! The lint is forward-looking; the whitelist is scaffolding.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -109,26 +110,96 @@ pub fn scan_file(
     walker.visit_items(&file.items, /* impl_trait_last = */ None);
 }
 
-/// Walk `<workspace_dir>/crates/**` and return every `*.rs` path.
+/// Walk every workspace member's `src/` and `tests/` and return every
+/// `*.rs` path.
+///
+/// Coverage matches the callsite pass (`callsite::collect_rust_files`):
+/// `crates/*/{src,tests}/**` plus any top-level workspace member's
+/// `src/` and `tests/` (the binary `marque/` crate today, plus any
+/// future top-level member). Restricting the signature pass to
+/// `crates/**` only — as the original implementation did — leaves
+/// the top-level `marque/` crate uncovered, so a future
+/// `ParsedAttrs → CanonicalAttrs` adapter added there would bypass
+/// PRC100 entirely.
 ///
 /// Walk errors are surfaced rather than silently dropped: a permission
 /// error or broken directory entry would otherwise cause the
 /// signature pass to skip a subtree and still exit 0 — false-green for
 /// a CI enforcement tool.
 fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
-    let crates_dir = workspace_dir.join("crates");
-    if !crates_dir.is_dir() {
-        return Ok(Vec::new());
-    }
     let mut out = Vec::new();
-    for entry in WalkDir::new(&crates_dir) {
-        let entry = entry.with_context(|| format!("walking {}", crates_dir.display()))?;
+
+    // crates/*/{src,tests}/**
+    let crates_dir = workspace_dir.join("crates");
+    if crates_dir.is_dir() {
+        for crate_entry in fs::read_dir(&crates_dir)
+            .with_context(|| format!("reading {}", crates_dir.display()))?
+        {
+            let crate_entry = crate_entry?;
+            let crate_path = crate_entry.path();
+            if !crate_path.is_dir() {
+                continue;
+            }
+            for sub in ["src", "tests"] {
+                let sub_path = crate_path.join(sub);
+                if sub_path.is_dir() {
+                    walk_rust_files(&sub_path, &mut out)?;
+                }
+            }
+        }
+    }
+
+    // Top-level workspace members (any directory at workspace root that
+    // contains a `Cargo.toml` and a `src/` or `tests/`). Mirror the
+    // skip-list and policy in `callsite::collect_rust_files`.
+    for entry in fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if matches!(
+            path.file_name().and_then(|s| s.to_str()),
+            Some(
+                "crates"
+                | "tests"
+                | "tools"
+                | "target"
+                | ".git"
+                | "site"
+                | "specs"
+                | "docs"
+                | "scripts"
+                | "benches"
+            )
+        ) {
+            continue;
+        }
+        if !path.join("Cargo.toml").is_file() {
+            continue;
+        }
+        for sub in ["src", "tests"] {
+            let sub_path = path.join(sub);
+            if sub_path.is_dir() {
+                walk_rust_files(&sub_path, &mut out)?;
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+fn walk_rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in WalkDir::new(dir) {
+        let entry = entry.with_context(|| format!("walking {}", dir.display()))?;
         let p = entry.path();
         if p.is_file() && p.extension().is_some_and(|ext| ext == "rs") {
             out.push(p.to_path_buf());
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 struct SignatureWalker<'a> {
@@ -297,6 +368,14 @@ fn is_top_level_named_type(ty: &Type, name: &str) -> bool {
 
 /// True when `ty` is `CanonicalAttrs` (or a reference to one) or
 /// `Result<CanonicalAttrs, _>` at the top level.
+///
+/// The `Result` variant matches **only on the Ok slot** — the first
+/// generic argument. A return type like `Result<ParseError, CanonicalAttrs>`
+/// (`CanonicalAttrs` in the *Err* slot) is not the D12 forbidden shape
+/// because the function is not converting *to* `CanonicalAttrs`; it's
+/// returning `CanonicalAttrs` only on failure. Matching either generic
+/// argument was a precision bug — the rule is specifically
+/// `Result<CanonicalAttrs, _>`.
 fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
     if is_top_level_named_type(ty, CANONICAL_TYPE_NAME) {
         return true;
@@ -314,10 +393,15 @@ fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
     let PathArguments::AngleBracketed(angle) = &last.arguments else {
         return false;
     };
-    angle.args.iter().any(|ga| match ga {
-        GenericArgument::Type(inner) => is_top_level_named_type(inner, CANONICAL_TYPE_NAME),
-        _ => false,
-    })
+    // Find the FIRST type-shaped generic argument — that's the Ok
+    // slot of `Result<Ok, Err>`. (Lifetime arguments like `Result<'a,
+    // T, E>` don't exist for std `Result`, but if a contributor used
+    // a custom `Result`-named type with leading-lifetime generics we
+    // correctly skip past them.)
+    angle.args.iter().find_map(|ga| match ga {
+        GenericArgument::Type(t) => Some(t),
+        _ => None,
+    }).is_some_and(|ok_ty| is_top_level_named_type(ok_ty, CANONICAL_TYPE_NAME))
 }
 
 /// Strip leading `&`/`&mut`/paren/group wrappers, leaving the inner

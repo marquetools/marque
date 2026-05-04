@@ -206,13 +206,18 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
             // Suffix-match on the call path so fully-qualified forms
             // (`marque_rules::AppliedFix::__engine_promote`,
             // `crate::AppliedFix::__engine_promote`, etc.) are caught
-            // alongside the bare and 2-segment forms. A length-restricted
-            // matcher would let a call escape the lint just by adding a
-            // crate qualifier, which is a trivial bypass we don't want.
+            // alongside the 2-segment form (`AppliedFix::__engine_promote`).
+            // Length-restricted matchers would let a call escape the lint
+            // just by adding a crate qualifier, which is a trivial bypass.
+            //
+            // Bare (single-segment) `__engine_promote` / `__engine_construct`
+            // are intentionally NOT matched: an unrelated free function with
+            // one of those names would otherwise be falsely flagged. The
+            // FR-040 contract is about the two specific associated
+            // functions on `AppliedFix` and `EnginePromotionToken`; matching
+            // requires the type qualifier to be present in the call path.
             if path_ends_with(path, &["AppliedFix", "__engine_promote"])
-                || path_ends_with(path, &["__engine_promote"])
                 || path_ends_with(path, &["EnginePromotionToken", "__engine_construct"])
-                || path_ends_with(path, &["__engine_construct"])
             {
                 let loc = node.span().start();
                 self.classify_and_emit(loc.line, loc.column);
@@ -222,15 +227,16 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
     }
 
     fn visit_expr_method_call(&mut self, node: &'a ExprMethodCall) {
-        // Method-call form: `applied_fix.__engine_promote(...)` —
-        // unlikely in practice (the constructor is associated, not a
-        // method) but we cover it defensively in case a contributor
-        // re-shapes the API.
-        let ident = node.method.to_string();
-        if ident == "__engine_promote" || ident == "__engine_construct" {
-            let loc = node.span().start();
-            self.classify_and_emit(loc.line, loc.column);
-        }
+        // No-op classification: `AppliedFix::__engine_promote` and
+        // `EnginePromotionToken::__engine_construct` are *associated*
+        // functions, not methods. A method call like
+        // `applied_fix.__engine_promote(...)` cannot reach either API
+        // (the receiver would be of the wrong type), so flagging
+        // method-call sites with one of those names would only ever
+        // produce false positives on unrelated user code that happens
+        // to use a colliding method name. Still recurse into the
+        // expression so call-form sites *inside* the method-call
+        // argument list are discovered.
         syn::visit::visit_expr_method_call(self, node);
     }
 }
