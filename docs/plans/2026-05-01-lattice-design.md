@@ -83,7 +83,7 @@ acceptance items.**
 
 - §-citations: §A.4 (classification levels), §H.7 (FGI), §H.3 (NATO),
   §H.6 (AEA — out of scope for join math but cite for completeness),
-  §A.6 (banner roll-up rule).
+  §D.2 (banner roll-up rule + Table 3 FD&R precedence).
 - Join semantics: partial order with branches. US levels
   (`Unclassified < Confidential < Secret < TopSecret`) form one
   chain. NATO levels form another. FGI carries country trigraphs as
@@ -119,7 +119,10 @@ acceptance items.**
   `marque-scheme` covers the surface; the per-token rules need
   enumeration. Examples:
   - `NF` (NOFORN) supersedes `REL TO` (NOFORN dominates).
-  - `OC-USGOV` supersedes `OC` (USGOV is more restrictive).
+  - `OC` supersedes `OC-USGOV` per §H.8 p136 — ORCON wins over
+    ORCON-USGOV in banner; ORCON is more restrictive (requires
+    originator consent for any further dissemination) while
+    ORCON-USGOV is pre-approved for USG-wide dissemination.
   - `NODIS` supersedes `EXDIS` (per §H.9 p174).
   - Non-FD&R supersedes `FOUO` (per Appendix A of refactor doc).
 - FOUO sub-section: two eviction axes (classification > U;
@@ -128,7 +131,11 @@ acceptance items.**
   refactor doc Appendix A.
 - `is_fdr_dissem` per-token metadata: enumerate the FD&R set
   (`REL TO`, `RELIDO`, `NOFORN`, `DISPLAY ONLY`, `EYES`-deprecated)
-  and assert all others as non-FD&R.
+  and assert all others as non-FD&R. Note: the NSA waiver for new
+  `EYES ONLY` marking expired 1 Oct 2017 per §H.8 p157, so
+  post-expiry handling converts EYES portions to `REL TO` rather
+  than retaining the deprecated token (intersects with §3 Open Q 1
+  on lattice participation).
 
 ### Open questions
 
@@ -196,8 +203,13 @@ acceptance items.**
 1. SAR ordering canonicalization (alphabetic vs source order vs
    §H.5 prescribed ordering) — does the lattice produce canonical
    ordering or does `render_canonical` impose it?
-2. NF requirement on SAR per §H.5 — handled by lattice or by
-   declarative `Constraint`?
+2. FD&R-derivative-mark guidance for SAR portions (per §B.3 Table 2
+   + §H.5 p101) — handled by lattice or by declarative `Constraint`?
+   Note: §H.5 has no general "SAR requires NOFORN" rule; NOFORN
+   applies only when the SAR portion is FD&R-derivative under §B.3
+   Table 2, not as an inherent SAR property. The lattice/Constraint
+   choice should reflect the conditional-derivative shape, not a
+   blanket SAR→NF requirement.
 
 ---
 
@@ -208,9 +220,10 @@ acceptance items.**
 - §-citations: §H.7 (FGI grammar; trigraphs, source-acknowledged vs
   source-concealed semantics; tetragraph aggregation).
 - Join semantics: existing impl. Document the source-acknowledged /
-  source-concealed distinction (§H.7 p126 — the bug in #280).
+  source-concealed distinction (§H.7 p123 — banner/portion grammar
+  for source-concealed FGI; the bug in #280).
   `FgiMarker { countries: [] }` is *source-concealed FGI*, lawful
-  per §H.7; `FgiMarker` after parse-failure is *parser corruption*.
+  per §H.7 p123; `FgiMarker` after parse-failure is *parser corruption*.
   These collide on the same shape today; PR 2 returns `None` for
   the latter so the lattice never sees corrupted shape.
 - Worked example: `FGI DEU` ⊔ `FGI FRA` = `FGI DEU FRA`; redundant
@@ -264,9 +277,11 @@ acceptance items.**
 
 ### Required content
 
-- §-citations: §C (declassification authority block), §C.4
-  (AEA exemption canned strings; #266 deferred), §C.5 (NATO
-  commingling canned strings; #266 deferred).
+- §-citations: §E (Classification Authority Block), §E.4
+  (Commingling Classified NSI and Atomic Energy Act Information —
+  AEA exemption canned strings; #266 deferred), §E.5 (Commingling
+  Classified NSI and NATO Information — NATO commingling canned
+  strings; #266 deferred).
 - Join semantics: `MaxDate` for dates (latest declass date wins on
   page roll-up). For canned strings (`50X1-HUM`, etc.) the join is
   not date-comparison.
