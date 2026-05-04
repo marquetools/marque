@@ -391,7 +391,7 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
     );
     assert_eq!(
         resp.headers()
-            .get(&axum::http::header::HeaderName::from_static(
+            .get(axum::http::header::HeaderName::from_static(
                 "x-frame-options"
             ))
             .map(|v| v.to_str().unwrap()),
