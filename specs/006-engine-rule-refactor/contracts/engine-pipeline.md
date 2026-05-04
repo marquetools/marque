@@ -253,10 +253,11 @@ captured at PR 0 per R-5; subsequent PRs assert against
 
 R001 (decoder recognition) and R002 (re-parse failure) are minted by
 `marque-engine`, not by rule crates. They appear in the `Diagnostic`
-stream alongside rule-emitted diagnostics; they carry the
-`(scheme, "engine.rNNN.<descriptor>")` rule-ID form (R-3); their
-messages use closed `MessageTemplate` variants (`DecoderRecognized`,
-`ReparseFailed`).
+stream alongside rule-emitted diagnostics; they use the reserved
+top-level scheme `"engine"` with predicate IDs in `rNNN.<descriptor>`
+form (for example, `r001.decoder-recognized` and
+`r002.reparse-failed`); their messages use closed `MessageTemplate`
+variants (`DecoderRecognized`, `ReparseFailed`).
 
 R001 lands today (existing); R002 lands at PR 7 (FR-024).
 Centralizing engine-synthetic IDs into `marque-rules` is noted as a

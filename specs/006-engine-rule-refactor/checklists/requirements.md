@@ -102,7 +102,7 @@ rather than delivering user value directly.
 | Decoder constraints | FR-027..FR-028 |
 | Performance budgets preserved | FR-029..FR-033 |
 | Audit schema cutover (clean break) | FR-034..FR-037 |
-| Process and test discipline | FR-038..FR-041 |
+| Process and test discipline | FR-038..FR-051 |
 
 ## Notes
 
@@ -114,8 +114,8 @@ rather than delivering user value directly.
   SC-010: the mangled-corpus accuracy baseline may shift when the decoder
   is locked out of open-vocabulary canonicalization (PR 3c). This is
   flagged as an explicit deferral, not a hidden one — implementation-time
-  tactical decision recorded in PR 3c review notes, not a scope question
-  for this spec.
+  tactical decision with the binding baseline recorded in
+  `tests/corpus/mangled/threshold.toml`, not a scope question for this spec.
 - The spec deliberately does not enumerate every CAPCO §-citation that
   individual rules touch; that level of detail belongs to PR 3.7's lattice
   spike and PR 0.6's citation-defect fix. The spec's job is to require

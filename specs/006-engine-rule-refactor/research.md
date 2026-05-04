@@ -105,11 +105,14 @@ PR 3c source.
   cost on consumers (CLI users, IDE plugins) is real even though there
   are no external consumers — it would discard a maintenance signal.
 
-**Carry-forward**: The R001 / R002 synthetic engine diagnostics are
-*not* enumerated as `MessageTemplate` variants; they are minted by
-`marque-engine` per FR-041. The plan §9.4 notes centralizing engine-
-synthetic IDs into `marque-rules` as a separate refactor not in scope
-here. The message-template starter set is rule-emitted messages only.
+**Carry-forward**: The mechanical starter extraction remains limited
+to rule-emitted messages; it does not auto-discover engine-synthetic
+diagnostics. However, the curated `MessageTemplate` set for this spec
+still reserves the engine diagnostics `MessageTemplate::DecoderRecognized`
+and `MessageTemplate::ReparseFailed`, which correspond to the current
+R001 / R002 channel and are serialized by the audit-record contract.
+The plan §9.4 centralization of engine-synthetic IDs into
+`marque-rules` remains a separate refactor not in scope here.
 
 ---
 
@@ -127,8 +130,8 @@ Examples:
 - `("capco", "portion.dissem.noforn-supersedes-relto")`
 - `("capco", "banner.sci.system-canonicalization")`
 - `("capco", "page.fouo.evicted-by-non-fdr-dissem")`
-- `("capco", "engine.r001.decoder-recognized")` (RESERVED for engine-minted; `engine` namespace under `<surface>`)
-- `("capco", "engine.r002.reparse-failed")` (RESERVED)
+- `("engine", "r001.decoder-recognized")` (RESERVED for engine-minted sentinel scheme)
+- `("engine", "r002.reparse-failed")` (RESERVED)
 
 **Rationale**:
 - Dot-separated nested form scales: as the rule catalog adds
@@ -521,9 +524,9 @@ flag any function whose **signature shape** matches
 - `unsafe fn` blocks (Rust stdlib uses `_unchecked` for `unsafe` APIs:
   `get_unchecked`, `from_utf8_unchecked`, etc.).
 - The transitional `pub(crate) fn from_parsed_unchecked` adapter in
-  `marque-engine` during the PR 3a → 3c keystone window — exempted
+  `marque-ism` during the PR 3a → 3c keystone window — exempted
   via path-based carve-out keyed on
-  `crates/engine/src/...::from_parsed_unchecked`. The carve-out
+  `crates/ism/src/attrs.rs::from_parsed_unchecked`. The carve-out
   auto-removes when 3c lands (the function is deleted; the lint then
   has nothing to whitelist).
 

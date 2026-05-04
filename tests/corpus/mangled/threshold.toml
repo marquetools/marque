@@ -58,7 +58,7 @@ mangled_open_vocab_floor = 0.0
 # Path glob (relative to workspace root) for the corpus the closed-vocab
 # floor applies to. Default points at the planned consolidated location;
 # PR 3c may add the open_vocab_path entry for a re-curated partition.
-closed_vocab_path = "tests/corpus/mangled/**/*.{json,txt}"
+closed_vocab_path = "tests/corpus/mangled/**/*.txt"
 
 # Only meaningful when status = "re-curated"; empty string at other
 # statuses. bench-check.sh MUST gate reads on the `status` field

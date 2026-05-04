@@ -452,7 +452,7 @@ Engine-minted diagnostic class for two-pass re-parse failure.
 
 ```rust
 // In marque-engine (FR-041 — engine mints, not rule crate)
-pub const R002_RULE_ID: RuleId = RuleId("capco", "engine.r002.reparse-failed");
+pub const R002_RULE_ID: RuleId = RuleId("engine", "r002.reparse-failed");
 
 pub struct R002Diagnostic {
     pub contributing_pass1_fix_ids: SmallVec<[RuleId; 4]>,
