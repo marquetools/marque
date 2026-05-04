@@ -65,6 +65,10 @@ jobs:
       additional_context: "${{ steps.extract_command.outputs.additional_context }}"
       issue_number: "${{ github.event.pull_request.number || github.event.issue.number }}"
       github_token: "${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}"
+      gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
+      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
+      app_private_key: "${{ secrets.APP_PRIVATE_KEY }}"
+      
     steps:
       - name: "Mint identity token"
         id: "mint_identity_token"
@@ -134,12 +138,12 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
+      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-      app_private_key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+      app_id: "${{ needs.dispatch.outputs.app_id }}"
+      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
     secrets: "inherit"
 
   triage:
@@ -154,12 +158,12 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
+      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-      app_private_key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+      app_id: "${{ needs.dispatch.outputs.app_id }}"
+      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
     secrets: "inherit"
 
   invoke:
@@ -174,12 +178,12 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
+      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-      app_private_key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+      app_id: "${{ needs.dispatch.outputs.app_id }}"
+      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
     secrets: "inherit"
 
   plan-execute:
@@ -194,12 +198,12 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
+      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-      app_private_key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+      app_id: "${{ needs.dispatch.outputs.app_id }}"
+      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
     secrets: "inherit"
 
   fallthrough:
