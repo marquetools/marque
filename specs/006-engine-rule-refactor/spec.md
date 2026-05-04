@@ -12,6 +12,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Source plans**:
 - Primary: `docs/plans/2026-05-02-engine-refactor-consolidated.md`
 - Gating: `docs/plans/2026-05-01-lattice-design.md` (filled in by PR 3.7 inside the primary)
+**Companion decisions**: [`decisions.md`](./decisions.md) — 16 process / contract decisions (D1–D16) locked at PR 0; binding on subsequent PRs.
 **Constitution gates**: I (performance), III (WASM safety), IV (two-layer rules), V (audit-first / G13), VI (dataflow pipeline), VII (acyclic dependencies), VIII (citation fidelity).
 
 ## User Scenarios & Testing *(mandatory)*
@@ -76,12 +77,21 @@ matching CAPCO-2016, this is a correctness defect at the same level as
 fabricating a citation. It also blocks lawful use of marque on documents
 produced under foreign-disclosure agreements.
 
-**Independent Test**: A targeted corpus fixture set
-(`tests/corpus/foreign/pure_foreign_banner.json`, FGI banner roll-up
-fixtures, NATO-only page fixtures, JOINT page fixtures) lints to a banner
-that retains foreign provenance in 100% of cases. The
-`MarkingClassification::Us` hardcode is removed at the source line; CI
-greps for re-introduction.
+**Independent Test**: A targeted corpus fixture set lints to a banner
+that retains foreign provenance in 100% of cases. Per **decision D15**
+in `decisions.md`, fixture references are **path globs + count
+assertions**, not single-file pins:
+- `tests/corpus/foreign/pure_foreign_*.{json,txt}` — ≥1 fixture
+  demonstrates a pure-foreign-banner page.
+- `tests/corpus/foreign/fgi_banner_*.{json,txt}` — ≥1 FGI banner
+  roll-up fixture.
+- `tests/corpus/foreign/nato_only_*.{json,txt}` — ≥1 NATO-only page
+  fixture.
+- `tests/corpus/foreign/joint_*.{json,txt}` — ≥1 JOINT US/foreign page
+  fixture.
+
+The `MarkingClassification::Us` hardcode is removed at the source line;
+CI greps for re-introduction.
 
 **Acceptance Scenarios**:
 
@@ -306,7 +316,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **Issue tracked by a masking pin closes as duplicate**: Masking-pin lint follows `closed_as_duplicate_of` chains until it hits a final close (mandatory, not optional). Cascade-close-via-meta-issue is flagged at lint time so a tracked issue cannot silently disappear without the pin being removed.
 - **Pass-1 fix retroactively satisfies a pass-2 predicate**: I-19 reshape-aware re-validation. `Phase::WholeMarking` rules whose span overlaps a pass-1 fix re-validate against pre-pass-1 attributes (cached from pass-0). If the predicate held against the pre-reshape attrs, it was a real defect that pass-1 incidentally fixed; pass-2 does not re-fire. Disambiguation by `(scheme, predicate-id)` keys when multiple rules touch the same span.
 - **Rule from an external rule crate (e.g., future `marque-cui`) needs to emit a fix**: External rule crates emit `FixIntent<S>` values and never construct `Canonical<S>` directly. The engine — holding the sealed `CanonicalConstructor<S>` impl — renders `FixIntent<S>` to `Canonical<S>` on the rule's behalf. The closed-construction property holds across the workspace boundary that Constitution VII opens up for new rule-crate families.
-- **Mangled-corpus accuracy baseline shifts under decoder open-vocab lockout**: Decoder lockout reduces fix recall on inputs whose mangled tokens were previously decoder-canonicalized. Mangled-corpus baseline (this spec's SC-010; tracked as SC-004 in CLAUDE.md and the consolidated source plan §8.2) re-anchors at PR 3c implementation; the threshold may be adjusted downward to reflect intentional lockout, OR the corpus may be re-curated to exclude open-vocab cases that were never legitimately fixable. Decision deferred to PR 3c review — flagged here as an explicit deferral, not a hidden one.
+- **Mangled-corpus accuracy baseline shifts under decoder open-vocab lockout**: Decoder lockout reduces fix recall on inputs whose mangled tokens were previously decoder-canonicalized. Mangled-corpus baseline (this spec's SC-010; tracked as SC-004 in CLAUDE.md and the consolidated source plan §8.2) re-anchors at PR 3c implementation per the **binding** decision tree at `research.md` R-8 (per D5 in `decisions.md`): measure → ≥0.85 keep / 0.80–0.85 re-curate corpus into `mangled-closed-vocab/` + `mangled-open-vocab/` / <0.80 or non-lockout regression backs out PR 3a / 3b / 3c as a unit. The chosen branch is encoded in `tests/corpus/mangled/threshold.toml` (D7), not in PR 3c review notes — the artifact is the decision of record.
 
 ## Requirements *(mandatory)*
 
@@ -360,6 +370,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **FR-025**: Rules MUST emit `FixIntent<S>` values. The engine MUST be the only path that promotes intent into an `AppliedFix` record by rendering through `MarkingScheme::render_canonical`. External rule crates MUST emit `FixIntent<S>` and MUST NOT construct `Canonical<S>` directly; the engine holds the sealed `CanonicalConstructor<S>` impl.
 - **FR-026**: Rule identifiers MUST migrate from `E###`/`W###`/`S###`/`C###` to `(scheme, predicate-id)` keys (e.g., `("capco", "banner.classification.usa-trigraph")`).
 - **FR-043**: `MarkingScheme::canonicalize(parsed: ParsedAttrs<'_>) -> CanonicalAttrs` MUST be the single explicit trait-method path that converts parser output into the canonical form rules consume. PR 3a's `from_parsed_unchecked` adapter exists transitionally during the keystone window (3a → 3c) and MUST delete at PR 3c. Post-keystone, rule crates MUST consume `CanonicalAttrs` produced only via `MarkingScheme::canonicalize` — no public `ParsedAttrs → CanonicalAttrs` constructor MAY exist outside the trait. Canonicalization is a scheme decision; rule crates do not own it.
+- **FR-049**: `(scheme, predicate-id)` rule identifiers MUST be **stable within a major audit-schema version** once the stability freeze begins. Per **decision D6** in `decisions.md`, the freeze begins at **PR 10 merge** (not PR 3c). Predicate renames during PR 4–10 are permitted (the refactor reshapes predicates through cross-axis fixtures, lattice work, and banner-validation migration); renames after PR 10 require a coordinated `marque-2.0` audit-schema bump. The PR-10 merge commit MUST update `docs/refactor-006/legacy-rule-id-map.md` to record any predicate renames that occurred during PR 4–10.
 
 #### Decoder constraints
 
@@ -373,6 +384,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **FR-031**: Multi-page projection latency (PR 6's `Scope::Page` cutover, measured by `lint_100kb_multipage` Criterion bench) MUST stay within `PageContext` baseline + 10%.
 - **FR-032**: Two-pass re-parse cost (PR 7's pass split, measured by `fix_10kb` Criterion bench) MUST stay within the interactive latency budget (FR-030).
 - **FR-033**: The §3.6 measurement-gating discipline MUST apply uniformly: >5% mean OR p99 regression on any of the four benches above MUST back out the change.
+- **FR-050**: At PR 10, all per-PR bench comparisons MUST be re-run against the PR-0 baseline (per `research.md` R-5) on **pinned bench hardware** (per **decision D8** in `decisions.md`). Per-bench cumulative drift ≤10% is the end-state gate; per-PR contributions exceeding 6% MUST be flagged for attribution. Bench hardware (rented bare-metal vs. dedicated GitHub-hosted runner spec) MUST be pinned for the full duration of the refactor; the pin decision is recorded in the PR 0 description.
 
 #### Audit schema cutover (clean break)
 
@@ -385,9 +397,10 @@ delete `PageContext`) each pass corpus regression independently.
 
 - **FR-038**: `Send + Sync` bounds on `Rule` and `Recognizer<S>` impls MUST be statically asserted via `static_assertions::assert_impl_all!` from `RuleSet::new()`.
 - **FR-039**: Masking-pin discipline MUST be CI-enforced (AST-based lint at `tools/masking-pin-lint/`). Every `with_recognizer(StrictRecognizer)` test pin MUST carry either `// MASKING-PIN: tracks #NNN` (with an open tracked issue, GitHub-API verified, `closed_as_duplicate_of` chains followed mandatorily) or `// INTENTIONAL-STRICT: <reason>`. Unmarked pins MUST fail CI. A masking pin MUST be removed in the same PR that closes its tracked issue, with a regression test demonstrating fix necessity.
-- **FR-040**: Promote-callsite discipline MUST be CI-enforced (AST-based lint at `tools/promote-callsite-lint/`). `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` calls MUST originate from `Engine::fix_inner` in production code. The Constitution V Principle V carve-out for test fixtures (per FR-005) requires an inline comment at each call site naming the carve-out (e.g., `// Test-fixture carve-out per Constitution V`); the AST lint MUST verify the comment is present within 5 lines of the call and reject any unmarked carve-out site.
+- **FR-040**: Promote-callsite discipline MUST be CI-enforced (AST-based lint at `tools/promote-callsite-lint/`). `AppliedFix::__engine_promote` and `EnginePromotionToken::__engine_construct` calls MUST originate from `Engine::fix_inner` in production code. The Constitution V Principle V carve-out for test fixtures (per FR-005) requires an inline comment at each call site naming the carve-out (e.g., `// Test-fixture carve-out per Constitution V`); the AST lint MUST verify the comment is present within 5 lines of the call and reject any unmarked carve-out site. Per **decision D12** in `decisions.md`, the same lint MUST also flag any function whose **signature shape** is `fn(...ParsedAttrs<'_>...) -> CanonicalAttrs` outside `MarkingScheme::canonicalize` — name-based detection (e.g., `_unchecked` suffix) is brittle (renaming evades) and `unsafe fn` is whitelisted (Rust stdlib uses `_unchecked` for `unsafe` APIs). The transitional `from_parsed_unchecked` adapter is exempted via path-based carve-out during the PR 3a–3c keystone window; the carve-out auto-removes when 3c lands.
 - **FR-041**: Synthetic engine diagnostics (R001 decoder recognition, R002 re-parse failure) MUST be minted by `marque-engine`, not by rule crates.
 - **FR-044**: Synthetic engine diagnostics MUST carry the sentinel scheme `"engine"` in `(scheme, predicate-id)` form: `("engine", "r001.decoder-recognized")` for R001, `("engine", "r002.reparse-failed")` for R002. The `"engine"` scheme is reserved at PR 3c rule-ID retirement; it is not a valid `MarkingScheme` registration target. Rationale: R001/R002 are minted by the engine, not by a `MarkingScheme` impl — inheriting an active scheme's namespace (`("capco", "engine.r001.…")`) would lie about provenance. The sentinel keeps `("capco", …)` cleanly meaning "from a CAPCO rule" and is forward-compatible with future schemes (`("cui", …)`, `("nato", …)`, etc.).
+- **FR-051**: Flaky tests MUST be tracked via a **quarantine queue** (per **decision D16** in `decisions.md`). Tests exhibiting non-deterministic failure under unchanged code MUST be tagged `#[ignore = "FLAKE-WATCH"]` (or equivalent for non-`#[test]` harnesses) and recorded in `tools/flake-watch/issues.md`. The queue is **capped at 10 entries**; cap exceedance MUST block PR merges until triage clears entries below the cap. There is no documented flake percentage budget — the cap is the deterministic mechanism. Property tests that surface new shrunk inputs are not flakes (they are the test harness doing its job) and do not enter the queue.
 
 #### PR 9 surface (parser separator spans, dissem position attribution, NATO marking handling)
 
@@ -423,7 +436,7 @@ delete `PageContext`) each pass corpus regression independently.
 - **SC-007**: Two-pass invariant property tests (`crates/engine/tests/two_pass_invariants.rs`) pass under all fix-ordering permutations: zero overlapping spans across pass-1 / pass-2 promoted fixes; reshape-aware re-validation does not produce retroactive-satisfaction false positives.
 - **SC-008**: Interactive latency budget preserved: p95 ≤ 16 ms and p99 within pre-refactor baseline + 5% on the 10 KB single-portion bench.
 - **SC-009**: Multi-page projection (`lint_100kb_multipage` Criterion bench) within `PageContext` baseline + 10%; `fix_throughput` linear scaling R² ≥ 0.9; `fix_10kb` two-pass overhead within the SC-008 budget.
-- **SC-010**: Mangled-corpus fix accuracy preserved at ≥ 0.85 OR intentionally re-anchored at PR 3c with a documented threshold and a re-curated corpus excluding open-vocab cases that were never legitimately fixable. Decision recorded in PR 3c review notes.
+- **SC-010**: Mangled-corpus fix accuracy preserved at ≥ 0.85 OR intentionally re-anchored at PR 3c per the binding decision tree at `research.md` R-8 (decision D5 in `decisions.md`). The chosen R-8 branch and threshold value MUST be encoded in `tests/corpus/mangled/threshold.toml` (decision D7); `tools/bench-check.sh` reads that file. If post-PR-3c accuracy lands <0.80 and the loss is not K-Option-2-attributable per R-8, PR 3a / 3b / 3c revert as a unit (no reviewer-judgment carve-out at merge time).
 - **SC-011**: Open-vocabulary parser failures return `None` at all four cited parser sites; no `FgiMarker { countries: [] }` collision-shape values survive in either parser output or rule input. Verified by `tests/parser/fgi_silent_skip_guard.rs` plus a `marque-capco` rule audit confirming no surviving `countries.is_empty()` patterns.
 - **SC-012**: Audit-record JSON for closed-CVE fixes is bit-for-bit reproducible from `(TokenId, Scope)` inputs (compile-fail tests demonstrate that `Box<str> → Canonical` paths do not exist for closed-CVE tokens; open-vocab fixes carry `render_call_site` provenance distinguishing them from CVE-typed canonicals).
 - **SC-013**: At the end of the refactor sequence (PR 10 merge), zero MASKING-PIN tags reference issues that have closed; the AST-based masking-pin lint passes; the AST-based promote-callsite lint passes; both `static_assertions::assert_impl_all!` checks for `Send + Sync` bounds pass at workspace build.
@@ -440,7 +453,12 @@ delete `PageContext`) each pass corpus regression independently.
   second scheme (CUI, NATO, partner-national) does not land during this
   refactor sequence. `Vocabulary<S>`, `MarkingScheme`, and `Codec<S>`
   ship `#[doc(hidden)] pub` semver-unstable; they will change on contact
-  with scheme #2 and that is the accepted cost.
+  with scheme #2 and that is the accepted cost. Per **decision D14** in
+  `decisions.md`, the trait surfaces stabilize when **either** (a) a
+  third in-tree consumer arrives (CAPCO + scheme #2 + scheme #3), OR
+  (b) **12 months elapse post-scheme-#2-merge with zero breaking trait
+  changes**, whichever comes first. The forcing function exists so the
+  semver-unstable status does not become permanent ossification.
 - **Constitution V Principle V's test-fixture carve-out remains in
   effect.** Test code (`#[cfg(test)]` / `tests/` / `dev-dependencies`-gated
   test-utility crates) MAY call `__engine_promote` to construct synthetic
@@ -462,6 +480,14 @@ delete `PageContext`) each pass corpus regression independently.
   If PR 3.7 stalls, PRs 4–10 stall. Default owner is the consolidated-plan
   author or named successor in the PR description; default deadline is
   2 weeks from PR 3c merge; deadline slip requires explicit team review.
+  Per **decision D2** in `decisions.md`, the PR description MUST also
+  name a **named alternate owner** who has independently read §§2–8 of
+  `2026-05-01-lattice-design.md` *before PR 3c merges*. The alternate
+  takes ownership without escalation if the primary owner stalls past
+  1 week. Wave-splitting PR 3.7 was considered and rejected: PR 4
+  deletes `CapcoMarking::join`'s `PageContext` delegation with no
+  equivalence shim, which forbids partial lattice coverage; cross-axis
+  fixtures span categories and cannot wave-isolate.
 - **Build-time line-number anchors will drift.** Specific line-number
   references in `engine.rs:1369-1384`, `scheme.rs:1734/1783/1787/etc.`,
   `rules.rs:2022/2148/2609/2919/10142`, `parser.rs:1011-1024/:1453/:1481/:1493`

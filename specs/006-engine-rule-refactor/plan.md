@@ -156,11 +156,12 @@ crates/
 ```
 
 ```text
-tools/                              # NEW — three CI lint crates land in PR 0 / PR 0.5; one transient discovery script runs before PR 3c
-├── masking-pin-lint/               # PR 0 (FR-039) — AST-based; GitHub API for issue state
-├── promote-callsite-lint/          # PR 0 (FR-040) — AST-based; cfg(test) carve-out enumerated
+tools/                              # NEW — three CI lint crates land in PR 0 / PR 0.5; one transient discovery script runs before PR 3c; flake-watch + threshold artifact land in PR 0 per decisions.md
+├── masking-pin-lint/               # PR 0 (FR-039) — AST-based; GitHub API w/ 5s timeout + daily-cache fallback per D11
+├── promote-callsite-lint/          # PR 0 (FR-040) — AST-based; cfg(test) carve-out enumerated; signature-shape extension per D12 (catches ParsedAttrs→CanonicalAttrs outside MarkingScheme::canonicalize, unsafe fn whitelisted)
 ├── citation-lint/                  # PR 0.5 (FR-018) — AST-based; parses CAPCO-2016.md vendored source
-└── message-template-extract/       # PR 3c (R-2) — TRANSIENT one-shot discovery script; clusters Diagnostic::message format-arg literals to seed MessageTemplate enum; removed after PR 3c review accepts the curated enum (T030–T031)
+├── message-template-extract/       # PR 3c (R-2) — TRANSIENT one-shot discovery script; clusters Diagnostic::message format-arg literals to seed MessageTemplate enum; removed after PR 3c review accepts the curated enum (T030–T031)
+└── flake-watch/                    # PR 0 (FR-051, D16) — quarantine-queue tracker; cap=10; PR-merge gate when cap exceeded
 ```
 
 ```text
@@ -175,10 +176,11 @@ benches/
 tests/corpus/                       # Corpus regression sweep — five corpora × two recognizers
 ├── valid/                          # Existing — zero auto-applied fixes target
 ├── mangled/                        # Existing — ≥0.85 fix accuracy (SC-010 may re-anchor)
+│   └── threshold.toml              # NEW (PR 0, D7) — structured artifact encoding chosen R-8 branch + threshold value; bench-check.sh reads it
 ├── prose/                          # Existing — Gutenberg + Federalist + Wikipedia; zero diagnostics
 ├── prose-positive/                 # NEW (PR 4) — true-positive markings in prose context MUST fire
 ├── lattice/                        # NEW (PR 3.7 → PR 4) — cross-axis fixture corpus
-└── foreign/                        # NEW (PR 5) — pure_foreign_banner.json + JOINT/NATO fixtures (US2)
+└── foreign/                        # NEW (PR 5) — pure_foreign_*.{json,txt}, fgi_banner_*.*, nato_only_*.*, joint_*.* (US2; D15 glob+count)
 ```
 
 **Structure Decision**: Existing Rust workspace; refactor in place. The PR
@@ -188,6 +190,69 @@ spec via the per-crate change comments above. The keystone window (PR 3a /
 3b / 3c) is the highest-blast-radius merge; the CI matrix during that
 window runs corpus regression × {3a-only, 3a+3b, 3a+3b+3c} = 3 runs to
 verify each subsequence is independently correct (SC-014).
+
+## PR 0 Absorption (decisions D1–D16)
+
+PR 0 absorbs the full decision register from
+[`decisions.md`](./decisions.md). The original PR 0 scope (`static_assertions`
++ masking-pin lint + promote-callsite lint) expands to the union below.
+Every entry below MUST land in PR 0 (or its directly-coupled
+sub-PR setup); none are deferred to subsequent refactor PRs.
+
+**Scope of this spec PR vs. PR 0 implementation**: this spec PR
+locks the decisions in `decisions.md` and lands the **spec / plan /
+contract / research edits** plus the **markdown scaffolds** for
+artifacts whose schema needed pinning (`tests/corpus/mangled/threshold.toml`,
+`tools/flake-watch/README.md`, `tools/flake-watch/issues.md`). The
+**operational artifacts** — Rust lint crates at `tools/masking-pin-lint/`
+/ `tools/promote-callsite-lint/` / `tools/citation-lint/`, the
+`rust-toolchain.toml` workspace pin, the `trybuild` dev-dependency, the
+flake-watch CI workflow — land in subsequent PR 0 implementation
+commits on top of these locked decisions. The "Where" column below
+distinguishes the two: entries citing a spec / plan / contract path
+(`spec.md`, `decisions.md`, etc.) land here; entries citing a tooling
+path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
+
+| # | Deliverable | Where |
+|---|-------------|-------|
+| D1 | "R002 surfacing semantics" consumer-surface contract | `contracts/engine-pipeline.md` |
+| D2 | PR 3.7 alternate-owner requirement | `spec.md` Assumptions (already landed in this PR's edits) |
+| D3 | `marque --version` schema-name surfacing + cutover-changelog wording | `contracts/audit-record.md` |
+| D4 | No-consumers attestation template (used in PR 0 + PR 3c PR descriptions) | `decisions.md` D4 (template); referenced from PR 0 / PR 3c PR description templates |
+| D5 | SC-010 binding R-8 wording; threshold-artifact reference | `spec.md` SC-010 (landed); `research.md` R-8 (amended in this PR) |
+| D6 | FR-049 — predicate-id stability freeze begins at PR 10 merge | `spec.md` (landed) |
+| D7 | `tests/corpus/mangled/threshold.toml` scaffold (schema + empty values) | new file |
+| D8 | FR-050 — cumulative bench-drift gate at PR 10 + pinned bench hardware | `spec.md` (landed); PR 0 description records hardware pin |
+| D9 | R-9 in research — PR 9 → 9a / 9b / 9c | `research.md` |
+| D10 | Layer 0 in test taxonomy + `rust-toolchain.toml` + trybuild version pin | `contracts/engine-pipeline.md`; workspace toolchain file (verify) |
+| D11 | R-10 in research — masking-pin cache-with-fallback | `research.md`; `tools/masking-pin-lint/` design note |
+| D12 | R-11 in research — `_unchecked`-by-signature lint extension; FR-040 amendment | `research.md`; `spec.md` FR-040 (landed) |
+| D13 | PR 3b acceptance criteria (8–18 band + qualitative gate) | this section (below) + reviewer attestation requirement |
+| D14 | Trait stabilization forcing function in Assumptions | `spec.md` (landed) |
+| D15 | US2 Independent Test → glob+count | `spec.md` (landed) |
+| D16 | FR-051 — flake-watch quarantine queue (cap=10) | `spec.md` (landed); `tools/flake-watch/` scaffold |
+
+**PR 3b acceptance criteria addendum (D13)**: post-collapse rule count
+MUST land in the **8–18 band**. Each surviving rule MUST satisfy
+(reviewer attests in PR description):
+
+1. Single CAPCO-§ citation per rule.
+2. Predicate body has ≤3 internal branches (count `match`/`if` arms in
+   the body of the rule's `evaluate` impl; count nested `match` /
+   `if` separately).
+3. Out-of-band counts (<8 or >18) require explicit team review and
+   block merge until reviewed.
+
+**Risk register (refactor-006 specific)**:
+
+| Risk | Mitigation | Owner |
+|------|-----------|-------|
+| Cumulative bench drift across PR 1–10 invisibly exceeds the per-PR FR-033 envelope | FR-050 end-state assertion at PR 10 against PR-0 baseline on **pinned hardware** (D8). Per-PR contributions >6% are flagged for attribution | bench-runner owner (named in PR 0) |
+| Hardware drift between PR 0 baseline capture and PR 10 acceptance invalidates comparison | Bench hardware pinned at PR 0 (D8); rented bare-metal or dedicated runner spec is recorded in PR 0 description; same hardware used at PR 10 acceptance | bench-runner owner |
+| PR 3.7 stalls and PRs 4–10 cascade-stall | Named alternate owner (D2) with §§2–8 read-through completed before PR 3c merges; 1-week stall trigger for alternate handoff without escalation | PR 3.7 primary owner + alternate |
+| PR 3c lands but mangled-corpus accuracy regresses below 0.80 | Binding R-8 decision tree (D5); `threshold.toml` (D7) records branch taken; <0.80 + non-K-Option-2 attribution → revert 3a/3b/3c as a unit | PR 3c reviewer |
+| Test flakes accumulate silently and erode CI signal | FR-051 quarantine queue with cap=10 (D16); cap exceedance blocks merges until triage clears | flake-watch triage owner (rotating) |
+| External consumer attaches between PR 0 and PR 3c, invalidating clean-break Assumption | Manual attestation at PR 0 + PR 3c (D4); 60-day no-contact window in attestation template | PR-author (self-attest) |
 
 ## Complexity Tracking
 
@@ -205,7 +270,7 @@ are infrastructure, not product surface.
 
 ## Phase artifacts
 
-Phase 0 → `research.md` (tactical implementation decisions resolved).
+Phase 0 → `research.md` (tactical implementation decisions resolved); `decisions.md` (process / contract decisions D1–D16, locked at PR 0).
 Phase 1 → `data-model.md`, `contracts/{fix-intent,audit-record,engine-pipeline}.md`, `quickstart.md`.
 Agent context → CLAUDE.md updated by `.specify/scripts/bash/update-agent-context.sh claude`.
 

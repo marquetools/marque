@@ -314,6 +314,39 @@ There is none. Per FR-037:
   attach (per spec Assumptions); this refactor is the last clean-break
   window.
 
+## Schema discoverability (D3)
+
+Per **decision D3** in `decisions.md`, the active audit schema name
+MUST be discoverable by external consumers without parsing audit
+records.
+
+**Per-record discoverability** (already in place): every record's
+first field is `"schema": "marque-1.0"` (mandatory, FR-035). Streaming
+NDJSON consumers detect schema by reading the first record they see.
+
+**Per-binary discoverability** (NEW at PR 3c): `marque --version` MUST
+expose the active audit schema name in its output. Format choice
+(JSON, key/value lines, or human-readable) is implementer's call at
+PR 3c; the binding constraint is that the schema name appears such
+that:
+
+- A shell script can grep for `marque-1.0` in `marque --version`
+  output and detect schema-major changes.
+- The schema name shown matches the value baked into
+  `marque_engine::AUDIT_SCHEMA_VERSION` (FR-034) — single source of
+  truth.
+
+**Cutover changelog** (PR 3c): the changelog entry MUST explicitly
+state that the audit schema's `"schema"` field is the discriminator
+external consumers should branch on, and that pre-cutover binaries
+producing `marque-mvp-2` records are not interoperable with
+post-cutover binaries.
+
+This closes the discoverability gap left by FR-037's "no reader crate"
+posture: external consumers who do exist (per the no-consumers
+attestation in D4 — none expected) get a mechanical signal that the
+schema changed, even though no compatibility shim is provided.
+
 ---
 
 ## Schema-bump policy
