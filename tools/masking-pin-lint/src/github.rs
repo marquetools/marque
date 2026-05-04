@@ -81,6 +81,14 @@ pub async fn check_pin(
     let mut visited: HashSet<u32> = HashSet::new();
     let mut chain: Vec<u32> = Vec::new();
     let mut current = issue;
+    // Accumulate the meta-issue heuristic across every issue visited
+    // in the duplicate chain, not just the terminal one. A chain that
+    // routes through a `[meta]` / "tracking" issue and ends at a
+    // normal issue still merits the cascade-close-via-meta-issue
+    // warning per FR-039 rule 4 — the maintainer should confirm
+    // the cascade was deliberate even if the final issue itself isn't
+    // a meta-issue.
+    let mut chain_visited_meta = false;
     loop {
         if !visited.insert(current) {
             // Cycle.
@@ -88,7 +96,7 @@ pub async fn check_pin(
                 final_issue: current,
                 terminal_state: TerminalState::Cycle,
                 chain,
-                meta_issue_warning: false,
+                meta_issue_warning: chain_visited_meta,
                 closed_at: None,
                 closed_as_duplicate_of: None,
             });
@@ -96,13 +104,14 @@ pub async fn check_pin(
         chain.push(current);
         let issue_data = fetch_issue(octo, owner, repo, current).await?;
         let title_meta = title_looks_like_meta(&issue_data.title);
+        chain_visited_meta = chain_visited_meta || title_meta;
         match (issue_data.state.as_str(), issue_data.closed_as_duplicate_of) {
             ("open", _) => {
                 return Ok(IssueState {
                     final_issue: current,
                     terminal_state: TerminalState::Open,
                     chain,
-                    meta_issue_warning: title_meta,
+                    meta_issue_warning: chain_visited_meta,
                     closed_at: None,
                     closed_as_duplicate_of: None,
                 });
@@ -121,7 +130,7 @@ pub async fn check_pin(
                     final_issue: current,
                     terminal_state: terminal,
                     chain,
-                    meta_issue_warning: title_meta,
+                    meta_issue_warning: chain_visited_meta,
                     closed_at: issue_data.closed_at,
                     closed_as_duplicate_of: None,
                 });

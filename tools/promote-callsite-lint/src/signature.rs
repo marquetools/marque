@@ -39,8 +39,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use syn::{
-    File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, ItemTrait, Path as SynPath,
-    PathArguments, ReturnType, Signature, TraitItem, Type,
+    Block, File, FnArg, GenericArgument, ImplItem, Item, ItemImpl, ItemMod, ItemTrait,
+    Path as SynPath, PathArguments, ReturnType, Signature, Stmt, TraitItem, Type,
 };
 use walkdir::WalkDir;
 
@@ -228,6 +228,12 @@ impl SignatureWalker<'_> {
                     &item_fn.sig,
                     None, // not in an `impl Trait for T`
                 );
+                // Recurse into the function body so nested local
+                // `fn` items inside a fn's block are visited too.
+                // Without this, `fn outer() { fn inner(p: ParsedAttrs)
+                // -> CanonicalAttrs { ... } }` would let `inner`
+                // declare the prohibited shape invisibly to PRC100.
+                self.visit_block(&item_fn.block);
             }
             Item::Mod(item_mod) => self.visit_mod(item_mod, impl_trait_last),
             Item::Impl(item_impl) => self.visit_impl(item_impl),
@@ -257,7 +263,7 @@ impl SignatureWalker<'_> {
         // suspicious and gets the standard PRC100 treatment with no
         // carve-out.
         let is_canonical_marking_scheme_decl =
-            item_trait.ident == "MarkingScheme" && self.rel_path_is_marque_scheme_src();
+            item_trait.ident == "MarkingScheme" && self.rel_path_is_marque_scheme_decl_file();
         let synthesized = if is_canonical_marking_scheme_decl {
             // Synthesize the qualified path so `is_marking_scheme_trait_path`
             // recognizes it via the same shared matcher used at impl
@@ -273,14 +279,19 @@ impl SignatureWalker<'_> {
         }
     }
 
-    /// True when the rel-path is under `crates/scheme/src/`, where
-    /// the canonical `marque_scheme::MarkingScheme` trait is declared.
-    fn rel_path_is_marque_scheme_src(&self) -> bool {
+    /// True when the rel-path is exactly `crates/scheme/src/scheme.rs`,
+    /// where the canonical `marque_scheme::MarkingScheme` trait is
+    /// declared. Any other file under `crates/scheme/src/` could
+    /// declare a shadow trait merely *named* `MarkingScheme` and is
+    /// not a legitimate carve-out site — accepting the broader
+    /// directory match would defeat the canonical-path discipline.
+    fn rel_path_is_marque_scheme_decl_file(&self) -> bool {
         let comps: Vec<_> = self.rel_path.components().collect();
-        comps.len() >= 3
+        comps.len() == 4
             && comps[0].as_os_str() == "crates"
             && comps[1].as_os_str() == "scheme"
             && comps[2].as_os_str() == "src"
+            && comps[3].as_os_str() == "scheme.rs"
     }
 
     fn visit_mod(&mut self, item_mod: &ItemMod, impl_trait_last: Option<&str>) {
@@ -291,19 +302,35 @@ impl SignatureWalker<'_> {
 
     fn visit_impl(&mut self, item_impl: &ItemImpl) {
         // Whitelist 2 keys on the FULL trait path written at the impl
-        // site, accepting either the bare `MarkingScheme` form (when
-        // the file imports `marque_scheme::MarkingScheme`) or the
-        // qualified `marque_scheme::MarkingScheme` form. A crate-local
-        // trait merely *named* `MarkingScheme` cannot satisfy either
-        // matcher because at the AST level we cannot resolve trait
-        // identity, but rejecting non-bare/non-qualified forms makes
-        // accidental shadow-trait whitelisting much harder.
+        // site. Only the fully-qualified `marque_scheme::MarkingScheme`
+        // form is accepted; the bare single-segment form is rejected
+        // because at the AST level it could be a crate-local shadow
+        // trait. Forcing the qualified path makes the carve-out
+        // unambiguous (see `is_marking_scheme_trait_path`).
         let trait_path: Option<&SynPath> =
             item_impl.trait_.as_ref().map(|(_, path, _)| path);
 
         for impl_item in &item_impl.items {
             if let ImplItem::Fn(method) = impl_item {
                 self.maybe_emit_for_signature(&method.sig, trait_path);
+                // Recurse into the method body for block-scoped local
+                // `fn` items. Same rationale as `Item::Fn` recursion
+                // above: a `fn helper(p: ParsedAttrs) -> CanonicalAttrs`
+                // declared inside a method body would otherwise be
+                // invisible to PRC100.
+                self.visit_block(&method.block);
+            }
+        }
+    }
+
+    fn visit_block(&mut self, block: &Block) {
+        for stmt in &block.stmts {
+            if let Stmt::Item(inner_item) = stmt {
+                // Local fn inside another fn body: NOT inside any
+                // `impl <Trait> for X`, so the carve-out path arg is
+                // `None`. A nested `impl` or `trait` declaration
+                // recurses through the standard visitor.
+                self.visit_item(inner_item, None);
             }
         }
     }
@@ -332,7 +359,13 @@ impl SignatureWalker<'_> {
         }
 
         // Whitelist 2: `MarkingScheme::canonicalize` where the trait
-        // path is the canonical bare or qualified form.
+        // path is the fully-qualified `marque_scheme::MarkingScheme`
+        // form. The bare single-segment form is rejected (see
+        // `is_marking_scheme_trait_path`); for trait DECLARATIONS the
+        // canonical-file path discriminator at
+        // `rel_path_is_marque_scheme_decl_file` substitutes for the
+        // qualified-path check (a `pub trait MarkingScheme` declared
+        // inside `crates/scheme/src/scheme.rs` is the genuine one).
         if let Some(trait_path) = impl_trait_path {
             if is_marking_scheme_trait_path(trait_path) && sig.ident == CANONICALIZE_METHOD {
                 return;

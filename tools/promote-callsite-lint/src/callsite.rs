@@ -3,10 +3,13 @@
 
 //! Pass A — call-site origin lint (FR-040 base).
 //!
-//! Walk every `*.rs` file under the workspace's `crates/*/src/**`,
-//! `crates/*/tests/**`, and workspace-root `tests/**` trees; for
-//! each call to `AppliedFix::__engine_promote(...)` or
-//! `EnginePromotionToken::__engine_construct()`, classify the call
+//! Walks every `*.rs` file under the workspace's covered trees —
+//! `crates/*/src/**`, `crates/*/tests/**`, every top-level workspace
+//! member's `src/**` and `tests/**` (including the `marque/` binary
+//! crate and any future top-level member, discovered via each
+//! directory's `Cargo.toml`), plus the workspace-root `tests/**` —
+//! and for each call to `AppliedFix::__engine_promote(...)` or
+//! `EnginePromotionToken::__engine_construct()`, classifies the call
 //! site as one of:
 //!
 //! 1. **Production-allowed** — the call lives in
@@ -363,17 +366,48 @@ impl CallSiteVisitor<'_> {
             .file_path
             .strip_prefix(self.workspace_dir)
             .unwrap_or(self.file_path);
-        // A path emitted by `collect_rust_files` is a test path iff any
-        // of its components is `tests` (case-sensitive). The walker
-        // only emits files from workspace-member `src/` / `tests/`
-        // and the workspace-root `tests/`, so a `tests` component
-        // unambiguously identifies the integration-test surface for
-        // every covered tree (`tests/**`, `crates/*/tests/**`,
-        // `<top-level-member>/tests/**` such as `marque/tests/**`).
-        // This avoids requiring an explicit allow-list of workspace
-        // members to stay in sync with the walker.
-        rel.components()
-            .any(|c| c.as_os_str() == "tests")
+        let comps: Vec<_> = rel.components().collect();
+        // A path is a test path iff `tests` appears as a top-level
+        // workspace-member subdir, NOT nested inside `src/`. Three
+        // accepted shapes:
+        //
+        //   1. Workspace-root tests:           `tests/<...>`
+        //   2. Crates member tests:            `crates/<name>/tests/<...>`
+        //   3. Top-level member tests:         `<member>/tests/<...>`
+        //
+        // A production module placed under `src/tests/...` (a
+        // perfectly valid Rust file layout — `tests` is just an
+        // ordinary module name there) MUST NOT be classified as a
+        // test path; otherwise that module could call
+        // `__engine_promote` with just the carve-out comment and
+        // bypass PRC002. Honoring the path-component policy strictly
+        // closes that gap.
+        let positions: Vec<usize> = comps
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| (c.as_os_str() == "tests").then_some(i))
+            .collect();
+        for &pos in &positions {
+            // `tests` at position 0 = workspace-root `tests/<...>`.
+            if pos == 0 {
+                return true;
+            }
+            // `tests` at position 1 = `<top-level-member>/tests/<...>`,
+            // accepted iff the parent component is a workspace member
+            // (not `src` / `target` / etc.). Path component sanity
+            // assertion: `comps[0]` is the workspace-member dir name.
+            if pos == 1 {
+                return true;
+            }
+            // `tests` at position 2 = `crates/<name>/tests/<...>`.
+            if pos == 2 && comps[0].as_os_str() == "crates" {
+                return true;
+            }
+            // Any deeper position implies `tests` is nested inside
+            // `src/` (or some other intermediate dir) and is a
+            // production module, NOT a test path.
+        }
+        false
     }
 
     /// Match `crates/test-utils/src/**`. The carve-out's first
@@ -403,10 +437,19 @@ impl CallSiteVisitor<'_> {
         // Look at the `COMMENT_LOOKBACK_LINES` lines immediately
         // preceding `line`, plus `line` itself (carve-out comment on
         // the same source line as the call also satisfies).
+        //
+        // The marker MUST appear inside a `//` line comment — a raw
+        // string literal, ident, or other code containing the marker
+        // phrase does NOT satisfy the carve-out. Otherwise a hostile
+        // or accidental inclusion of the phrase elsewhere in the
+        // source would whitelist a real bypass call site. We accept
+        // either a leading-trim line that starts with `//` (line
+        // comment), or the comment's appearance after some code
+        // followed by `//` on the same line.
         let end = line.min(self.source_lines.len());
         let start = end.saturating_sub(COMMENT_LOOKBACK_LINES + 1);
         for &src_line in &self.source_lines[start..end] {
-            if src_line.contains(CARVE_OUT_MARKER) {
+            if line_comment_contains_marker(src_line, CARVE_OUT_MARKER) {
                 return true;
             }
         }
@@ -436,4 +479,107 @@ fn path_ends_with(path: &SynPath, expected_suffix: &[&str]) -> bool {
         .skip(offset)
         .zip(expected_suffix.iter())
         .all(|(seg, &want)| seg.ident == want)
+}
+
+/// True when `line` contains a `//` line comment whose body contains
+/// the literal `marker` text. A naive `line.contains(marker)` would
+/// false-positive on a string literal, raw identifier, or any other
+/// non-comment occurrence of the phrase — that's the bypass closed
+/// here.
+///
+/// The implementation handles `//`-comment detection without a full
+/// Rust tokenizer by scanning for the first `//` that is NOT inside a
+/// string literal. Strings are tracked with a small state machine
+/// covering plain `"..."`, `r"..."` / `r#"..."#` raw strings, and
+/// chars `'...'`. Block comments `/* ... */` are out of scope: line-
+/// at-a-time analysis can't track multi-line block-comment state, and
+/// the marker is documented as a `//` line comment — never a block
+/// comment — by Constitution V Principle V.
+fn line_comment_contains_marker(line: &str, marker: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let mut in_str: Option<char> = None; // `"` or `'`
+    let mut raw_hashes: usize = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match in_str {
+            None => {
+                // Detect raw-string start: `r#*"`.
+                if b == b'r' && i + 1 < bytes.len() {
+                    let mut j = i + 1;
+                    let mut hashes = 0;
+                    while j < bytes.len() && bytes[j] == b'#' {
+                        hashes += 1;
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'"' {
+                        in_str = Some('"');
+                        raw_hashes = hashes;
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                if b == b'"' {
+                    in_str = Some('"');
+                    raw_hashes = 0;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\'' {
+                    // char or lifetime; lifetimes don't terminate. To
+                    // avoid eating into a `'a` lifetime, peek for a
+                    // closing `'` in the next ~3 bytes.
+                    let limit = (i + 5).min(bytes.len());
+                    let found_close = bytes[(i + 1)..limit].contains(&b'\'');
+                    if found_close {
+                        in_str = Some('\'');
+                    }
+                    i += 1;
+                    continue;
+                }
+                if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    // Found a line comment. Search the comment body
+                    // for the marker.
+                    let comment_body = &line[i + 2..];
+                    return comment_body.contains(marker);
+                }
+                i += 1;
+            }
+            Some('"') => {
+                if raw_hashes == 0 {
+                    if b == b'\\' && i + 1 < bytes.len() {
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'"' {
+                        in_str = None;
+                        i += 1;
+                        continue;
+                    }
+                    i += 1;
+                } else {
+                    // Raw string: closes on `"` followed by exactly `raw_hashes` `#`s.
+                    if b == b'"' {
+                        let close = i + 1 + raw_hashes;
+                        if close <= bytes.len()
+                            && bytes[i + 1..close].iter().all(|&h| h == b'#')
+                        {
+                            in_str = None;
+                            i = close;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+            }
+            Some('\'') => {
+                if b == b'\'' {
+                    in_str = None;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    false
 }

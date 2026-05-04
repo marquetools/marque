@@ -16,7 +16,7 @@
 //! arise when crates use raw strings or include macros.
 
 use proc_macro2::LineColumn;
-use syn::{File, ImplItem, Item, ItemImpl, ItemMod, spanned::Spanned};
+use syn::{Block, File, ImplItem, Item, ItemImpl, ItemMod, Stmt, spanned::Spanned};
 
 /// Information about a single function discovered while walking a file.
 #[derive(Debug, Clone)]
@@ -105,10 +105,34 @@ fn visit_item(item: &Item, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 in_cfg_test: ctx.in_cfg_test,
                 impl_self_type: None,
             });
+            // Recurse into the function body so block-scoped local
+            // function items are recorded too. A `fn helper(...) { }`
+            // declared inside another function would otherwise be
+            // invisible — the `enclosing_fn` resolver would attribute
+            // a call inside `helper` to the outer fn (e.g.
+            // `Engine::fix_inner`) and silently grant it the outer
+            // fn's allow-list status, even though `helper` itself is
+            // not on any allow-list. The walker descends recursively
+            // through nested blocks for the same reason.
+            visit_block(&item_fn.block, ctx, sink);
         }
         Item::Mod(item_mod) => visit_mod(item_mod, ctx, sink),
         Item::Impl(item_impl) => visit_impl(item_impl, ctx, sink),
         _ => {}
+    }
+}
+
+fn visit_block(block: &Block, ctx: &Context, sink: &mut Vec<FnRecord>) {
+    for stmt in &block.stmts {
+        if let Stmt::Item(inner_item) = stmt {
+            visit_item(inner_item, ctx, sink);
+        }
+        // Statement expressions (`Stmt::Expr`, `Stmt::Local`, etc.)
+        // can also contain nested closures or block expressions, but
+        // closures don't produce `Item::Fn` nodes — they're
+        // `ExprClosure` and the lint targets named functions, not
+        // closures. So no recursion into expression statements is
+        // needed here.
     }
 }
 
@@ -144,6 +168,18 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
                 in_cfg_test: ctx.in_cfg_test,
                 impl_self_type: self_ty_last.clone(),
             });
+            // Recurse into the method body for block-scoped local
+            // function items. Same rationale as `visit_item`: a
+            // `fn helper(...) { }` declared inside `Engine::fix_inner`
+            // would otherwise inherit `fix_inner`'s allow-list status
+            // for any `__engine_promote` call inside it. Local-fn
+            // items in a method body do NOT get the enclosing
+            // method's `impl_self_type`; they're free functions in
+            // their own right (Rust resolution treats them that way).
+            let local_ctx = Context {
+                in_cfg_test: ctx.in_cfg_test,
+            };
+            visit_block(&method.block, &local_ctx, sink);
         }
     }
 }

@@ -7,7 +7,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Source**: `docs/plans/2026-05-02-engine-refactor-consolidated.md` § 6 (masking-pin discipline rules); `specs/006-engine-rule-refactor/spec.md` FR-039; `specs/006-engine-rule-refactor/tasks.md` T009.
 
-**Lint enforcement**: `tools/masking-pin-lint/` walks `tests/` and `crates/*/tests/` for `with_recognizer(...StrictRecognizer...)` calls and rejects any site that lacks a `// MASKING-PIN: tracks #NNN — <reason>` or `// INTENTIONAL-STRICT: <reason>` comment within 5 lines of the call.
+**Lint enforcement**: `tools/masking-pin-lint/` walks every workspace test surface — workspace-root `tests/`, `crates/*/tests/`, and every top-level workspace member's `tests/` (including `marque/tests/` and any future top-level workspace member) — for `with_recognizer(...StrictRecognizer...)` calls and rejects any site that lacks a `// MASKING-PIN: tracks #NNN — <reason>` or `// INTENTIONAL-STRICT: <reason>` comment within 5 lines of the call. The workspace-member walk uses each directory's `Cargo.toml` as a marker, so new top-level members are picked up automatically without a static allow-list.
 
 **Disposition at PR 0 HEAD**: 2 masking pins, 2 intentional-strict pins (in `tests/`), 1 documentary intentional-strict pin (in `benches/`, out of FR-039 lint scope).
 
