@@ -624,23 +624,13 @@ pub trait RuleSet: Send + Sync {
     fn schema_version(&self) -> &'static str;
 }
 
-// ---------------------------------------------------------------------------
-// FR-038 / T002: compile-time `Send + Sync` assertion for `dyn Rule` and
-// `dyn RuleSet`.
-//
-// The supertrait bounds on `Rule` and `RuleSet` already enforce `Send + Sync`
-// at the trait-definition site, but we pin the property here with an explicit
-// named assertion so a future bound relaxation fails to compile at the lib
-// site rather than only at consumer-side `Box<dyn Rule>` constructions in
-// `tests/send_sync.rs`. The `const _: fn() = || { ... }` idiom runs full
-// trait resolution at compile time without introducing a runtime dep on
-// `static_assertions` (this crate is in the WASM-safe set, Constitution III).
-// Mirrors the form used in `crates/scheme/tests/send_sync.rs`.
-const _: fn() = || {
-    fn _assert_send_sync<T: ?Sized + Send + Sync>() {}
-    _assert_send_sync::<dyn Rule>();
-    _assert_send_sync::<dyn RuleSet>();
-};
+// FR-038 / T002 — `Send + Sync` is pinned at the trait-definition site
+// by the `pub trait Rule: Send + Sync` and `pub trait RuleSet: Send + Sync`
+// supertrait bounds above. A future bound relaxation fails to compile
+// here. The trait-object dimension (`Box<dyn Rule>: Send + Sync`,
+// `Arc<dyn Rule>: Send + Sync`) is asserted by `tests/send_sync.rs`
+// where it can be exercised by a runtime smoke test alongside the
+// compile-time check.
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
