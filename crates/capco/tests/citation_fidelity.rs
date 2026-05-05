@@ -195,12 +195,20 @@ fn collect_fixture_basenames(dir: &Path) -> BTreeSet<String> {
         let path = entry.path();
         if path.is_dir() {
             out.extend(collect_fixture_basenames(&path));
-        } else if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            // Strip a `.expected` second-stem if present so we match
-            // `clean_banner_hcs_o_p.expected.json` and
-            // `clean_banner_hcs_o_p.txt` to the same logical fixture.
-            let stripped = stem.strip_suffix(".expected").unwrap_or(stem);
-            out.insert(stripped.to_lowercase());
+        } else {
+            // Per `tests/corpus/CORPUS_CONTRACT.md`, `.txt` files ARE
+            // fixture inputs; their `.expected.json` siblings are the
+            // pin-data and `.license` files are SPDX sidecars. Use only
+            // the `.txt` set as the authoritative fixture-name source.
+            // This avoids inflating coverage when (e.g.) a leftover
+            // `*.txt.license` would otherwise satisfy the proxy without
+            // the actual `.txt` fixture being present.
+            if path.extension().and_then(|s| s.to_str()) != Some("txt") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                out.insert(stem.to_lowercase());
+            }
         }
     }
     out

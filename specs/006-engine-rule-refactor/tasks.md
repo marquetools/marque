@@ -53,7 +53,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **⚠️ CRITICAL**: PR 0.6 is merge-gated on the citation-defect catalog being empty.
 
-- [X] T010 Create `tools/citation-lint/` Rust binary crate (deps: `syn` 2.x + `proc-macro2` + `pulldown-cmark` for parsing `crates/capco/docs/CAPCO-2016.md`); CLI `cargo run -p citation-lint -- <workspace-dir>` (FR-018, R-1; PR-0.5)
+- [X] T010 Create `tools/citation-lint/` Rust binary crate (deps: `syn` 2.x + `proc-macro2` + `pulldown-cmark` for parsing `crates/capco/docs/CAPCO-2016.md`); CLI `cargo run --manifest-path tools/citation-lint/Cargo.toml -- <workspace-dir>` (NOT `cargo run -p citation-lint` — the crate is out-of-workspace per Constitution III, matching the `tools/masking-pin-lint/` and `tools/promote-callsite-lint/` pattern) (FR-018, R-1; PR-0.5)
 - [X] T011 Implement citation-lint AST scanner: extract `§X.Y pNN` references from `citation:` struct fields, `message:` strings, `constraint_label:` strings, and `///`/`//!` doc-comment positions across **all `crates/*/src/**/*.rs`** (workspace-wide per source plan §4 PR-0.5 + §6 Layer 5; future-proofs for `marque-cui`, `marque-nato`, etc.) (FR-018; PR-0.5)
 - [X] T012 Implement citation-lint resolver: parse `crates/capco/docs/CAPCO-2016.md`; build `(section, page)` index; assert each cited `(section, page)` resolves to a real passage; assert `section ∈ {A,B,C,D,E,F,G,H}` (normative range); assert page falls within document; reject bare `§NN`; **reject legacy `line NNNN` citation forms** (retired in commit b340bec — page numbers only) (FR-018; PR-0.5)
 - [X] T013 Add citation-lint to CI workflow; emit defect catalog at `docs/refactor-006/citation-defect-catalog.md` on lint failure for downstream PR 0.6 consumption (FR-018; PR-0.5)
