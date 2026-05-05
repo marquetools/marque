@@ -629,10 +629,10 @@ impl PageContext {
                     FgiMarker::SourceConcealed => {
                         has_source_concealed = true;
                     }
-                    FgiMarker::Acknowledged { countries: marker_countries } => {
-                        countries.extend(
-                            marker_countries.iter().map(|c| c.as_str().to_owned()),
-                        );
+                    FgiMarker::Acknowledged {
+                        countries: marker_countries,
+                    } => {
+                        countries.extend(marker_countries.iter().map(|c| c.as_str().to_owned()));
                     }
                 }
             }

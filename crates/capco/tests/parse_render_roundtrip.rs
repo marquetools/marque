@@ -199,8 +199,14 @@ fn render_and_reparse_classification(
     // is the gap T048 closes. `effective_level()` collapses every system
     // to its `Classification` rung, which is exactly the data the
     // renderer-then-reparser pipeline preserves.
-    let level1 = attrs1.classification.as_ref().map(MarkingClassification::effective_level);
-    let level2 = attrs2.classification.as_ref().map(MarkingClassification::effective_level);
+    let level1 = attrs1
+        .classification
+        .as_ref()
+        .map(MarkingClassification::effective_level);
+    let level2 = attrs2
+        .classification
+        .as_ref()
+        .map(MarkingClassification::effective_level);
 
     assert_eq!(
         level1,
@@ -288,8 +294,14 @@ fn fr016_bare_fgi_classification_round_trips() {
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&rendered);
     assert_eq!(
-        attrs1.classification.as_ref().map(MarkingClassification::effective_level),
-        attrs2.classification.as_ref().map(MarkingClassification::effective_level),
+        attrs1
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
+        attrs2
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
         "bare FGI banner classification round-trip drift; rendered {rendered:?}",
     );
 }
@@ -302,8 +314,14 @@ fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&rendered);
     assert_eq!(
-        attrs1.classification.as_ref().map(MarkingClassification::effective_level),
-        attrs2.classification.as_ref().map(MarkingClassification::effective_level),
+        attrs1
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
+        attrs2
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
         "FGI DEU banner classification round-trip drift; rendered {rendered:?}",
     );
 }
@@ -316,8 +334,14 @@ fn fr017_acknowledged_fgi_multi_country_classification_round_trips() {
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&rendered);
     assert_eq!(
-        attrs1.classification.as_ref().map(MarkingClassification::effective_level),
-        attrs2.classification.as_ref().map(MarkingClassification::effective_level),
+        attrs1
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
+        attrs2
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
         "FGI USA GBR JPN banner classification round-trip drift; \
          rendered {rendered:?}",
     );
@@ -332,8 +356,14 @@ fn fr015_sar_program_only_classification_round_trips() {
     let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_portion(&format!("({rendered})"));
     assert_eq!(
-        attrs1.classification.as_ref().map(MarkingClassification::effective_level),
-        attrs2.classification.as_ref().map(MarkingClassification::effective_level),
+        attrs1
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
+        attrs2
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
         "SAR-BP portion classification round-trip drift; rendered {rendered:?}",
     );
 }
@@ -347,8 +377,14 @@ fn fr015_sar_program_with_compartment_classification_round_trips() {
     let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_portion(&format!("({rendered})"));
     assert_eq!(
-        attrs1.classification.as_ref().map(MarkingClassification::effective_level),
-        attrs2.classification.as_ref().map(MarkingClassification::effective_level),
+        attrs1
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
+        attrs2
+            .classification
+            .as_ref()
+            .map(MarkingClassification::effective_level),
         "SAR-BP-J12 portion classification round-trip drift; rendered {rendered:?}",
     );
 }

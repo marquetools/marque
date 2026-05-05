@@ -559,8 +559,7 @@ fn admits_closed_cve(bytes: &[u8], set: &CveFileSet) -> bool {
     // `MARKING_FORMS`, so consult `Classification::banner_str` first.
     // Then try the dissem-form table for cases like
     // "NOFORN" → "NF" (CAPCO-2016 §G.1 Table 4 pp 36-38).
-    if matches!(set, CveFileSet::UsClassification)
-        && classification_banner_to_portion(s).is_some()
+    if matches!(set, CveFileSet::UsClassification) && classification_banner_to_portion(s).is_some()
     {
         return true;
     }

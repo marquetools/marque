@@ -49,10 +49,10 @@
 //! - SC-011 (no `FgiMarker { countries: [] }` shape survives in parser output)
 
 use marque_core::Parser;
+use marque_ism::IsmAttributes;
 use marque_ism::attrs::FgiMarker;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::CapcoTokenSet;
-use marque_ism::IsmAttributes;
 
 /// Drive `Parser::parse` over `text` interpreted as a banner candidate and
 /// return the resulting `IsmAttributes`. Mirrors the engine's banner-path
@@ -188,11 +188,15 @@ fn parse_fgi_marker_mixed_trigraph_tetragraph_yields_acknowledged() {
         "FGI USA NATO must produce two-country Acknowledged; got {countries:?}",
     );
     assert!(
-        countries.iter().any(|c| c == &CountryCode::try_new(b"USA").unwrap()),
+        countries
+            .iter()
+            .any(|c| c == &CountryCode::try_new(b"USA").unwrap()),
         "USA must appear in countries; got {countries:?}",
     );
     assert!(
-        countries.iter().any(|c| c == &CountryCode::try_new(b"NATO").unwrap()),
+        countries
+            .iter()
+            .any(|c| c == &CountryCode::try_new(b"NATO").unwrap()),
         "NATO must appear in countries; got {countries:?}",
     );
 }
@@ -211,7 +215,11 @@ fn parse_fgi_marker_two_letter_eu_exception_yields_acknowledged() {
         .fgi_marker
         .expect("FGI EU must admit per ISMCAT CVEnumISMCATRelTo");
     let countries = marker.countries();
-    assert_eq!(countries.len(), 1, "FGI EU must produce single-country Acknowledged");
+    assert_eq!(
+        countries.len(),
+        1,
+        "FGI EU must produce single-country Acknowledged"
+    );
     assert_eq!(countries[0], CountryCode::try_new(b"EU").unwrap());
 }
 

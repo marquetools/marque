@@ -2028,15 +2028,7 @@ mod country_code_tests {
         // `admits_country_token` accept. Pins the strictly-broader
         // contract so a future predicate edit can't silently invert
         // the relationship.
-        for code in [
-            &b"USA"[..],
-            b"GBR",
-            b"DEU",
-            b"FRA",
-            b"JPN",
-            b"AUS",
-            b"CAN",
-        ] {
+        for code in [&b"USA"[..], b"GBR", b"DEU", b"FRA", b"JPN", b"AUS", b"CAN"] {
             assert!(CountryCode::admits_fgi_trigraph(code));
             assert!(CountryCode::admits_country_token(code));
         }
