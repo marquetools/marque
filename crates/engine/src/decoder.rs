@@ -334,11 +334,12 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //    there would double-count the features once the
             //    resolver re-adds them. Internal decoder sort /
             //    threshold decisions use the posterior.
-            let (prior, posterior) = score_candidate(&attempt, &marking);
+            let (prior, posterior, null_posterior) = score_candidate(&attempt, &marking, kind);
             scored.push(ScoredCandidate {
                 marking,
                 prior,
                 posterior,
+                null_posterior,
                 canonical_bytes: attempt.bytes.into_boxed_slice(),
                 features: attempt.features,
                 fix_source: attempt.fix_source,
@@ -384,29 +385,91 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         scored.truncate(K_MAX_CANDIDATES);
 
         // 6. Decision: top-over-runner-up log margin on the posterior.
+        //
+        // Issue #258 split this into two concerns:
+        //
+        // 1. **Dispatch decision** (Unambiguous vs Ambiguous): driven
+        //    by the marking-side runner-up only — i.e., the second-
+        //    best CAPCO candidate. Preserves the pre-#258 invariant
+        //    that a single CAPCO candidate (after strict-parse
+        //    filtering) collapses to Unambiguous regardless of how
+        //    confident the prose alternative is, as long as the prose
+        //    alternative does not outright beat the marking
+        //    interpretation (the null-wins early return below).
+        //    Applying `UNAMBIGUOUS_LOG_MARGIN` against the null
+        //    hypothesis would tighten the threshold for short fuzzy
+        //    fixes (e.g., `(SERCET//NF)`) that already cleared the
+        //    marking-vs-null comparison.
+        //
+        // 2. **Recognition score** (the user-visible confidence
+        //    flowing into `recognition_score`): driven by the
+        //    *strongest* runner-up — `max(marking_runner_up,
+        //    top.null_posterior)` — so a fix that's only marginally
+        //    more likely than the prose alternative carries
+        //    appropriate uncertainty even when the dispatch returns
+        //    Unambiguous. The null hypothesis competes for the
+        //    runner-up slot in the audit-record provenance even
+        //    when it doesn't change the dispatch decision.
+        //
+        // The null-wins early return below handles the case where
+        // prose outright beats the marking interpretation — the
+        // Federalist-corpus `(s)` regression that motivated #258. No
+        // candidates returned, no diagnostic, no auto-fix.
         let top_score = scored[0].posterior;
-        let runner_up_score = scored
+        let top_null_score = scored[0].null_posterior;
+        let marking_runner_up = scored
             .get(1)
             .map(|c| c.posterior)
             .unwrap_or(f32::NEG_INFINITY);
-        let log_margin = top_score - runner_up_score;
 
-        if scored.len() == 1 || log_margin >= UNAMBIGUOUS_LOG_MARGIN {
+        // Null hypothesis wins outright: prose-shaped input that the
+        // strict parser happened to round-trip into a CAPCO shape
+        // (e.g., `(s)` mid-sentence in Federalist 10). Return
+        // zero-candidate Ambiguous so the engine emits no diagnostic
+        // and no auto-fix. FR-015: "we see signal, can't resolve."
+        if top_null_score > top_score {
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
+
+        // Recognition runner-up: whichever of (marking-side runner-up,
+        // null hypothesis) is the strongest alternative to the top.
+        // `f32::max` would propagate NaN; we already filtered non-
+        // finite posteriors above so the inputs are well-defined.
+        let recognition_runner_up = if marking_runner_up >= top_null_score {
+            marking_runner_up
+        } else {
+            top_null_score
+        };
+        let log_margin_recognition = top_score - recognition_runner_up;
+
+        // Dispatch margin: marking-side runner-up only. When there's
+        // a single CAPCO candidate, marking_runner_up is
+        // `f32::NEG_INFINITY`, so log_margin_marking is `+∞` and
+        // the `scored.len() == 1` short-circuit fires.
+        let log_margin_marking = top_score - marking_runner_up;
+
+        if scored.len() == 1 || log_margin_marking >= UNAMBIGUOUS_LOG_MARGIN {
             // Move the top candidate out so we can hand `canonical_bytes`
             // and `features` directly to provenance without an extra
             // clone — the marking carries the heaviest payload and we
             // only need it once.
             let top = scored.swap_remove(0);
-            // `runner_up_ratio = exp(log_margin)`, but a sufficiently
-            // separated top vs. runner-up overflows `f32::exp()` to
-            // `+∞` (anything past `log_margin ≈ 88.7` saturates), and
+            // `runner_up_ratio = exp(log_margin_recognition)`. The
+            // recognition margin uses `max(marking_runner_up,
+            // top.null_posterior)` (issue #258) so the audit record
+            // reflects the strongest competing interpretation — be it
+            // a runner-up CAPCO candidate or the prose null
+            // hypothesis. A sufficiently separated top overflows
+            // `f32::exp()` to `+∞` past `log_margin ≈ 88.7`, and
             // `Confidence::validate` would then reject the resulting
-            // record as non-finite — making `FixProposal::new` panic at
-            // the audit boundary on extreme score separations. Saturate
-            // at `f32::MAX` so the audit record carries "the ratio is
-            // enormous" instead of crashing the engine.
-            let runner_up_ratio = if runner_up_score.is_finite() {
-                let ratio = log_margin.exp();
+            // record as non-finite — making `FixProposal::new` panic
+            // at the audit boundary on extreme score separations.
+            // Saturate at `f32::MAX` so the audit record carries
+            // "the ratio is enormous" instead of crashing the engine.
+            let runner_up_ratio = if recognition_runner_up.is_finite() {
+                let ratio = log_margin_recognition.exp();
                 Some(if ratio.is_finite() { ratio } else { f32::MAX })
             } else {
                 None
@@ -463,6 +526,23 @@ struct ScoredCandidate {
     /// comparisons inside the decoder; not stored in the emitted
     /// `Candidate` record.
     posterior: f32,
+    /// Prose-side null posterior (issue #258).
+    ///
+    /// Sum of [`marque_capco::priors::token_prose_log_prior`] over
+    /// the same canonical tokens used for [`Self::prior`], plus
+    /// [`marque_capco::priors::country_code_prose_log_prior`] over
+    /// the same `rel_to` codes. Carries the prose hypothesis for the
+    /// candidate's token set — `log P(tokens | prose)` evaluated
+    /// against the prose-stratum corpus.
+    ///
+    /// The dispatch logic in [`DecoderRecognizer::recognize`] §6
+    /// compares this against [`Self::posterior`] for the top
+    /// candidate. When `null_posterior > posterior` the decoder
+    /// returns zero candidates (FR-015 — prose wins the null
+    /// hypothesis competition, no fix is emitted). When
+    /// `null_posterior <= posterior` the null hypothesis becomes a
+    /// virtual runner-up that flows into `recognition_score`.
+    null_posterior: f32,
     /// Canonical byte string the strict parser accepted for this
     /// candidate. Threaded into [`DecoderProvenance::canonical_bytes`]
     /// when this candidate wins the Unambiguous collapse, so the
@@ -3714,7 +3794,7 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
-/// Returns `(prior, posterior)` where:
+/// Returns `(prior, posterior, null_posterior)` where:
 ///
 /// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
 ///   marking's canonical tokens **plus** Σ
@@ -3734,9 +3814,32 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 ///   on. The only structural penalty today is
 ///   [`HARD_SPLITTER_ABSORPTION_PENALTY`], applied when the strict
 ///   parse buries a reserved dissem-control token in a SAR/SCI slot.
+/// - `null_posterior` (issue #258) = Σ
+///   [`marque_capco::priors::token_prose_log_prior`] over the same
+///   canonical tokens **plus** Σ
+///   [`marque_capco::priors::country_code_prose_log_prior`] over the
+///   same `rel_to` country codes. This is the **prose hypothesis**
+///   for the same input — `log P(tokens | prose)` evaluated against
+///   the prose-stratum corpus. Feature deltas and structural
+///   penalties are NOT applied to `null_posterior`: those are
+///   likelihood statements about *parse* plausibility, not
+///   corpus-frequency claims, so adding them would silently bias the
+///   marking-vs-prose comparison.
 ///
-/// Splitting the two prevents the caller from writing the full
-/// posterior into `Candidate::prior_log_odds` — that would double-
+///   The decoder consumes `null_posterior` as a virtual runner-up at
+///   the dispatch layer (see [`DecoderRecognizer::recognize`] §6).
+///   When `null_posterior` exceeds `posterior` for the top candidate,
+///   the decoder returns a zero-candidate `Ambiguous` — "we see
+///   signal, can't resolve to a marking" (FR-015) — rather than
+///   emitting a fix that would auto-correct prose to a marking. When
+///   `null_posterior` is below `posterior`, it competes against the
+///   next-best CAPCO candidate as the runner-up that flows into
+///   `recognition_score`, so a candidate with a moderately strong
+///   prose alternative ends up with a lower recognition than one
+///   whose prose-side score is far below.
+///
+/// Splitting prior and posterior prevents the caller from writing the
+/// full posterior into `Candidate::prior_log_odds` — that would double-
 /// count the feature deltas once any resolver re-adds
 /// `EvidenceFeature.log_odds`. Structural penalties are deliberately
 /// folded into the posterior only (not the prior or the per-feature
@@ -3747,15 +3850,36 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// and the feature deltas are small constants (single-digit magnitude
 /// at most), so the accumulator doesn't need `f64` headroom for the
 /// K=8 candidate set.
-fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, f32) {
+fn score_candidate(
+    attempt: &CanonicalAttempt,
+    marking: &CapcoMarking,
+    kind: MarkingType,
+) -> (f32, f32, f32) {
     // Prior: sum of baked log-priors for the canonical tokens that
     // appear in the parsed marking. Tokens missing from the baked
     // table receive the floor penalty rather than a neutral 0.0
     // contribution — see the MISSING_TOKEN_LOG_PRIOR doc.
+    //
+    // Issue #258: the prose-side `null_prior` is summed in parallel
+    // over the same canonical-token set so the marking-y delta
+    // `prior - null_prior` for each token is the per-token
+    // discrimination signal `log P(token|marking) - log P(token|prose)`.
+    // Missing tokens contribute the same floor on both sides
+    // ([`MISSING_TOKEN_LOG_PRIOR`] for marking,
+    // [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] for prose) so
+    // an unknown token contributes a neutral marking-y delta of zero.
+    //
+    // The `kind` parameter (issue #258) lets `canonical_tokens_for`
+    // pick the form (portion abbrev vs banner full word) that
+    // matches the input shape, so the prose-side lookup compares
+    // the right corpus row for portion inputs like `(s)`.
     let mut prior: f32 = 0.0;
-    let tokens = canonical_tokens_for(marking);
+    let mut null_prior: f32 = 0.0;
+    let tokens = canonical_tokens_for(marking, kind);
     for token in tokens {
         prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+        null_prior += marque_capco::priors::token_prose_log_prior(token)
+            .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
     }
 
     // Country-code prior contribution (issue #233). REL TO country
@@ -3776,11 +3900,21 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     // path uses for unrecognized tokens, which is the correct
     // behavior for a candidate that resolved to a non-CVE country
     // string.
+    //
+    // Issue #258: parallel prose-side sum over the same country-code
+    // set. A standalone "(USA)" mention in prose contributes a high
+    // prose-side log-prior (USA is extremely common in prose corpora)
+    // and a comparable marking-side log-prior (USA is also common in
+    // REL TO blocks), so the marking-y delta for "(USA)" is small —
+    // the decoder pushes back on auto-fixing a proper-noun country
+    // mention to a REL-TO-style marking.
     let mut seen_rel_to_codes = BTreeSet::new();
     for country in marking.0.rel_to.iter() {
         if seen_rel_to_codes.insert(country.as_str()) {
             prior += marque_capco::priors::country_code_log_prior(country.as_str())
                 .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+            null_prior += marque_capco::priors::country_code_prose_log_prior(country.as_str())
+                .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
         }
     }
 
@@ -3792,7 +3926,13 @@ fn score_candidate(attempt: &CanonicalAttempt, marking: &CapcoMarking) -> (f32, 
     }
     posterior += custom_sci_marking_penalty(marking);
 
-    (prior, posterior)
+    // Null posterior (issue #258): the prose hypothesis. No feature
+    // deltas, no structural penalties — those bias the marking-side
+    // posterior on parse-plausibility grounds and would skew the
+    // marking-vs-prose comparison if applied here.
+    let null_posterior = null_prior;
+
+    (prior, posterior, null_posterior)
 }
 
 /// Total per-entry penalty for SCI markings whose strict parse landed
@@ -3919,15 +4059,30 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 /// Expansion work is tracked in future PRs alongside any priors
 /// regeneration that widens coverage (e.g., counting SAR indicator
 /// base rates from a larger corpus).
-fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
+fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'static str> {
     let attrs = &marking.0;
     let mut tokens: BTreeSet<&'static str> = BTreeSet::new();
 
     if let Some(class) = attrs.classification.as_ref() {
-        // Use the effective level's banner form as the classification
-        // token — this is the form the priors corpus keys on for the
-        // "common classification appears" prior.
-        tokens.insert(class.effective_level().banner_str());
+        // Pick the classification form that matches the marking
+        // shape: portions use the abbreviation (`S`, `C`, `U`, `R`,
+        // `TS`), banners and CABs use the full word (`SECRET`,
+        // `CONFIDENTIAL`, etc.). Pre-#258 this always used the
+        // banner form, which silently mismatched the input shape on
+        // portion-marking inputs and made the per-token marking-y
+        // delta `log P(token|marking) − log P(token|prose)` compare
+        // the wrong row in the priors tables — the prose-side prior
+        // for `SECRET` (very rare in prose) instead of `S` (common
+        // in prose), so the null hypothesis could never win on
+        // prose-shaped portion inputs like Federalist-corpus
+        // `Notwithstanding (s) the early prevalence`.
+        let class_token = match kind {
+            MarkingType::Portion => class.effective_level().portion_str(),
+            MarkingType::Banner | MarkingType::Cab | MarkingType::PageBreak => {
+                class.effective_level().banner_str()
+            }
+        };
+        tokens.insert(class_token);
     }
 
     for ctrl in attrs.sci_controls.iter() {
@@ -4681,7 +4836,8 @@ mod tests {
             features: features.clone(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
-        let (prior, posterior) = score_candidate(&attempt, &marking);
+        let (prior, posterior, _null_posterior) =
+            score_candidate(&attempt, &marking, MarkingType::Banner);
 
         let feature_sum: f32 = features.iter().map(|f| f.delta).sum();
         let reconstructed = prior + feature_sum;
@@ -4746,8 +4902,8 @@ mod tests {
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
-        let (prior_one, _) = score_candidate(&attempt_one, &one_marking);
-        let (prior_two, _) = score_candidate(&attempt_two, &two_marking);
+        let (prior_one, _, _) = score_candidate(&attempt_one, &one_marking, MarkingType::Banner);
+        let (prior_two, _, _) = score_candidate(&attempt_two, &two_marking, MarkingType::Banner);
 
         // GBR has a known negative log-prior, so adding it to the REL TO
         // list must make the total prior strictly more negative.
@@ -4799,8 +4955,9 @@ mod tests {
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
-        let (prior_dup, _) = score_candidate(&attempt_dup, &dup_marking);
-        let (prior_once, _) = score_candidate(&attempt_once, &once_marking);
+        let (prior_dup, _, _) = score_candidate(&attempt_dup, &dup_marking, MarkingType::Banner);
+        let (prior_once, _, _) =
+            score_candidate(&attempt_once, &once_marking, MarkingType::Banner);
 
         // Deduplication ensures the duplicate USA is only scored once, so
         // both priors must be equal (same base tokens + same single USA prior).
@@ -5273,26 +5430,37 @@ mod tests {
     }
 
     #[test]
-    fn decoder_canonicalizes_single_letter_when_preceded_by_whitespace() {
-        // Counterpart to the prose-glue test: when
-        // `preceded_by_whitespace = true` (the engine's start-of-buffer
-        // / post-whitespace convention), single-letter portions still
-        // canonicalize through the case-fold path. The heuristic only
-        // suppresses the glued-to-a-word shape; mid-prose with leading
-        // whitespace remains the decoder's responsibility (and is
-        // governed separately by future per-token null-hypothesis
-        // priors — see issue #258).
+    fn decoder_suppresses_single_letter_portion_via_null_hypothesis() {
+        // Issue #258: an isolated `(s)` (preceded by whitespace, so the
+        // prose-glue heuristic is bypassed) is the prose null-hypothesis
+        // case. The marking-side prior for `S` is the Laplace floor
+        // (zero hits in the marking-stratum corpus today) and the
+        // prose-side prior for `S` is high (~4878 hits per ~134M
+        // prose-corpus words from Enron). The decoder's per-token
+        // marking-y delta `log P("S"|marking) − log P("S"|prose)` is
+        // negative, so the null hypothesis wins the dispatch and the
+        // decoder returns zero candidates (FR-015 — "we see signal,
+        // can't resolve").
+        //
+        // This is the exact behavior that closes the SC-003a regression
+        // on Federalist-corpus `Notwithstanding (s) the early
+        // prevalence` — the decoder no longer auto-fixes prose-shaped
+        // single-letter portions to a SECRET portion. Previously the
+        // test asserted Unambiguous; the doc comment explicitly noted
+        // the change was pending issue #258.
         let rx = DecoderRecognizer::new();
         match rx.recognize(b"(s)", &deep_cx()) {
-            Parsed::Unambiguous(m) => {
-                assert_eq!(
-                    marking_classification(&m),
-                    Some(Classification::Secret),
-                    "lowercase (s) with preceded_by_whitespace=true must \
-                     canonicalize to SECRET via the case-fold path"
-                );
-            }
-            other => panic!("expected Unambiguous resolution, got {other:?}"),
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "isolated lowercase (s) must be zero-candidate (null wins), \
+                 got {} candidate(s)",
+                candidates.len()
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "isolated lowercase (s) must be suppressed by the prose null \
+                 hypothesis, got Unambiguous({:?})",
+                m.0.classification,
+            ),
         }
     }
 
@@ -5520,9 +5688,18 @@ mod tests {
     fn meets_classification_floor_rejects_below_floor() {
         // Synthesize a marking via the decoder and check the floor
         // predicate directly.
+        //
+        // Issue #258: pre-#258 this used `(U)` (portion form), but
+        // single-letter portions are now suppressed by the prose null
+        // hypothesis. Switch to `UNCLASSIFIED` (banner form) — the
+        // prose-side prior for the full word is at the Laplace floor
+        // (zero hits in 134M prose-corpus words), so the marking-y
+        // delta is huge and the candidate resolves cleanly. The unit
+        // under test is `meets_classification_floor`, not the decoder
+        // dispatch, so the choice of input shape is incidental.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(u_marking) = rx.recognize(b"(U)", &deep_cx()) else {
-            panic!("(U) should decode to unambiguous UNCLASSIFIED");
+        let Parsed::Unambiguous(u_marking) = rx.recognize(b"UNCLASSIFIED", &deep_cx()) else {
+            panic!("UNCLASSIFIED should decode to unambiguous UNCLASSIFIED");
         };
         // U below S floor → rejected.
         assert!(!meets_classification_floor(
