@@ -126,9 +126,14 @@ jobs:
       # its tests are all `#[ignore]`-marked (issue #133 root-cause
       # traces) and require an explicit `--run-ignored` invocation;
       # they intentionally do not run in this step.
-      - name: cargo nextest (Phase 4 gated suites)
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
         run: |
-          cargo nextest run --profile ci \
+          cargo test \
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
 

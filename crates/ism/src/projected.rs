@@ -2,13 +2,24 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `ProjectedMarking` — the output of `MarkingScheme::project(scope,
-//! ...)`. Defined at PR 3a, **not wired** at PR 3a; PR 6 cuts over.
+//! `ProjectedMarking` — the **intended** post-PR-6 engine-facing output
+//! of `MarkingScheme::project(Scope::Page, ...)` once the `Scope::Page`
+//! projection cutover lands. Defined at PR 3a, **not wired** at PR 3a;
+//! PR 6 wires it.
 //!
-//! At PR 3a the type exists so PR 5's `expected_classification` widening
-//! and PR 6's `Scope::Page` cutover have a stable target. No engine call
-//! site reads or writes `ProjectedMarking` here — `PageContext::expected_*`
-//! continues to drive page roll-up.
+//! Today's `MarkingScheme::project` (in `marque-scheme`) returns
+//! `Self::Marking` (scheme-specific). PR 6's cutover changes the
+//! engine-facing call path so banner-validation rules consume
+//! `&ProjectedMarking` instead of reaching through `PageContext`. PR 5
+//! widens `expected_classification` to `Option<MarkingClassification>`
+//! ahead of that wiring (FR-007). This type is defined at PR 3a so
+//! both PRs have a stable target without a separate type-system
+//! change.
+//!
+//! At PR 3a no engine call site reads or writes `ProjectedMarking` —
+//! `PageContext::expected_*` continues to drive page roll-up. The type
+//! is `pub` and its `dead_code` is suppressed only when the workspace
+//! lints flag it (Risk #6 in the PR 3a design doc).
 //!
 //! # Field shape
 //!

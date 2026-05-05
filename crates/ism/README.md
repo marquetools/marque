@@ -67,9 +67,12 @@ use marque_ism::{CanonicalAttrs, SCHEMA_VERSION};
 
 assert_eq!(SCHEMA_VERSION, "ISM-v2022-DEC");
 
-// CanonicalAttrs::default() leaves classification as None — a parser
-// failure or empty marking is the only path that lands None in
-// production; rule code matches on `Some(...)` paths.
+// CanonicalAttrs::default() leaves classification as None. Rule code
+// matches on `Some(...)` paths and treats `None` as the absent /
+// unparseable case. Several construction paths produce `None`:
+// strict-parse failure on a malformed marking, an empty marking, the
+// lattice-bottom seed for projection accumulators, etc. — the type
+// stays honest about absence rather than forcing a sentinel value.
 let attrs = CanonicalAttrs::default();
 assert!(attrs.classification.is_none());
 ```
