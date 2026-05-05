@@ -1792,10 +1792,9 @@ fn hcs_system_constraints(
             // Bare HCS — legacy per CAPCO-2016 §H.4 p62.
             out.push(marque_scheme::ConstraintViolation {
                 constraint_label: "HCS-legacy-bare",
-                message:
-                    "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO-2016 \
+                message: "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO-2016 \
                      §H.4 p62 (requires document-level analysis)."
-                        .to_owned(),
+                    .to_owned(),
                 citation,
             });
             if classification == Some(Classification::Confidential) {
@@ -1860,14 +1859,11 @@ fn hcs_system_constraints(
                     // previously fired here was over-strict; it is
                     // dropped in favor of the actually-required
                     // NOFORN predicate.
-                    let has_noforn = attrs
-                        .dissem_controls
-                        .contains(&DissemControl::Nf);
+                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
                     if !has_noforn {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-P-requires-NOFORN",
-                            message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66."
-                                .to_owned(),
+                            message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66.".to_owned(),
                             citation,
                         });
                     }
