@@ -88,7 +88,7 @@ whitelisted call sites:
    `MarkingScheme` declared anywhere else fails PRC100 unless its
    `impl` blocks satisfy the matchers above.
 3. **Transitional adapter `from_parsed_unchecked`** in
-   `crates/ism/src/attrs.rs`: a path-based carve-out scoped to the
+   `crates/ism/src/canonical.rs`: a path-based carve-out scoped to the
    PR 3a → PR 3c keystone window. **Auto-expires** when PR 3c
    lands and tasks.md T054 deletes the function — the lint then
    has nothing to whitelist (it stays as inert code, removable on

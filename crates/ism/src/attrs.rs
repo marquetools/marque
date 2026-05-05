@@ -2,25 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `IsmAttributes` — the canonical in-memory representation of a classification marking.
+//! Leaf vocabulary types for the ISM attribute model.
 //!
-//! Mirrors the IC ISM XML attribute model. Every source format (free text, XML, web forms)
-//! normalizes into this struct before rule validation.
-//!
-//! # Type design
-//! Multi-value fields use `Box<[T]>` rather than `Vec<T>` to avoid over-allocation
-//! after parsing. Most markings have 0–4 values per field.
-//!
-//! # Classification systems
-//!
-//! A marking carries exactly one classification system: US, FGI (non-US),
-//! NATO, or JOINT. This is represented by [`MarkingClassification`]. Non-US
-//! classifications start with `//` (the US classification slot is empty).
-//!
-//! When the parser encounters two classification systems in one marking
-//! (e.g., `SECRET//NATO SECRET//NOFORN`), it resolves to
-//! [`MarkingClassification::Conflict`] — US wins at the greater of the two
-//! levels, and the foreign part is preserved for rule-generated fixes.
+//! Houses the structural, generated-CVE, and classification leaf types
+//! shared by [`crate::ParsedAttrs`], [`crate::CanonicalAttrs`], and
+//! [`crate::ProjectedMarking`]. Mirrors the IC ISM XML attribute model.
 //!
 //! # Code generation
 //! CVE enum variants (`SciControl`, `DissemControl`, `DeclassExemption`) are
@@ -30,146 +16,29 @@
 //! SAR is NOT code-generated — SAR program identifiers are agency-assigned
 //! codewords, not a closed vocabulary. SAR is modeled structurally via
 //! [`SarMarking`] / [`SarProgram`] / [`SarCompartment`].
+//!
+//! # Pivot type history
+//!
+//! Pre-PR-3a a single owned struct (then named `IsmAttributes`) lived in
+//! this module and served both as the parser output and the
+//! rule-consumption form. PR 3a split that role across three types:
+//!
+//! - [`crate::ParsedAttrs`] (in `parsed.rs`) — borrowed parser output.
+//! - [`crate::CanonicalAttrs`] (in `canonical.rs`) — owned rule input.
+//! - [`crate::ProjectedMarking`] (in `projected.rs`) — page projection
+//!   output. Defined at PR 3a; PR 6 wires the engine to consume it.
+//!
+//! The `from_parsed_unchecked` adapter bridges parser output to
+//! `CanonicalAttrs` during the keystone window; PR 3c's
+//! `MarkingScheme::canonicalize` replaces it.
 
-use crate::date::IsmDate;
+use smallvec::SmallVec;
+
 use crate::generated::values;
 use crate::span::Span;
 
 // Re-export generated enum types for convenience.
 pub use values::{DeclassExemption, DissemControl, SciControl, SciControlBare};
-
-/// Canonical in-memory representation of a classification marking.
-///
-/// Produced by `marque-core::parser` from scanner candidates.
-/// Consumed by `marque-rules::Rule` implementations for validation.
-///
-/// # Block ordering (CAPCO)
-///
-/// Fields are ordered per CAPCO block sequence:
-/// Classification → SCI → SAR → FGI marker → Dissem (incl. REL TO)
-#[non_exhaustive]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct IsmAttributes {
-    /// The marking's classification system and level.
-    /// `None` means parsing failed to identify a classification.
-    pub classification: Option<MarkingClassification>,
-
-    /// SCI controls (e.g., SI, TK, HCS-P). Ordered per CAPCO block ordering.
-    ///
-    /// This is the *enum projection* populated by the parser's CVE exact-match
-    /// path. Retained for back-compat with existing rules (E010, E011). New
-    /// rules that need compartment / sub-compartment structure should read
-    /// [`IsmAttributes::sci_markings`] instead.
-    pub sci_controls: Box<[SciControl]>,
-
-    /// Structural view of SCI category-block entries.
-    ///
-    /// Each entry corresponds to one `/`-separated marking within an SCI
-    /// category block (e.g., `//SI-G/TK-BLFH//` yields two `SciMarking`
-    /// entries). Populated alongside `sci_controls`; `sci_markings` is the
-    /// authoritative source for rules that inspect compartments or
-    /// sub-compartments. See spec 003-sci-compartments.
-    pub sci_markings: Box<[SciMarking]>,
-
-    /// Special Access Required block, if present. Only one SAR block is
-    /// permitted per marking per §A.6; cardinality is `Option`, not `Vec`.
-    /// See [`SarMarking`] for the structural representation.
-    pub sar_markings: Option<SarMarking>,
-
-    /// Atomic Energy Act markings (CAPCO-2016 §H.6 pp 103–121).
-    ///
-    /// Includes RD, FRD, CNWDI, TFNI, SIGMA, and UCNI variants.
-    /// Positioned between SAR and FGI in CAPCO block ordering.
-    pub aea_markings: Box<[AeaMarking]>,
-
-    /// FGI block in US-classified markings: `FGI` or `FGI [LIST]`.
-    ///
-    /// Present when a US-classified document references foreign government
-    /// information. This is the *marker* in the banner/portion — distinct
-    /// from [`MarkingClassification::Fgi`], which means the marking IS
-    /// foreign-classified.
-    ///
-    /// `None` when no FGI marker is present.
-    pub fgi_marker: Option<FgiMarker>,
-
-    /// Dissemination controls (e.g., NOFORN, RELIDO, ORCON, FISA).
-    pub dissem_controls: Box<[DissemControl]>,
-
-    /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
-    ///
-    /// Separate authority framework (CAPCO-2016 §H.9 pp 169–191), distinct
-    /// from IC dissem controls. In classified documents these are generally portion-
-    /// only and stripped from banners, but some values propagate to the
-    /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
-    /// for the authoritative rule. On unclassified pages they propagate to
-    /// the banner. LES-NF and SBU-NF carry NOFORN treatment even when
-    /// stripped.
-    pub non_ic_dissem: Box<[NonIcDissem]>,
-
-    /// REL TO country / country-group codes. USA must be present and
-    /// first when the marking targets a US release.
-    ///
-    /// Holds the full CAPCO country-code surface — trigraphs (`USA`,
-    /// `GBR`), tetragraphs / country-group codes (`FVEY`, `ACGU`,
-    /// `NATO`, `RSMA`, …), and the longer registered codes (`EU`,
-    /// `AUSTRALIA_GROUP`). Tetragraph membership expansion (FVEY →
-    /// {AUS, CAN, GBR, NZL, USA}) happens at banner-roll-up time in
-    /// [`PageContext::expected_rel_to`], not at parse time, so this
-    /// list preserves the source vocabulary as written.
-    ///
-    /// Structurally part of the dissem block (comma-delimited), but
-    /// kept as a typed field for E002 and REL TO validation rules.
-    pub rel_to: Box<[CountryCode]>,
-
-    /// Declassification date from CAB (ISM precision-tier union).
-    ///
-    /// Typed as [`IsmDate`] to preserve the precision tier from the original
-    /// source. In CAPCO text markings the parser accepts:
-    /// - `YYYY` (4-digit year → [`IsmDate::Year`])
-    /// - `YYYYMMDD` (8-digit no-hyphen → [`IsmDate::Date`])
-    /// - ISO 8601 with hyphens (`YYYY-MM-DD`, etc.) for XML-sourced markings.
-    ///
-    /// `Year(y)` represents the entire calendar year — its end-of-span is
-    /// December 31 of year `y`, which is later than any date in that year.
-    /// Use [`IsmDate::end_cmp`] when determining the most-conservative
-    /// (furthest-out) date across portions.
-    pub declassify_on: Option<IsmDate>,
-
-    /// Free-text "Classified By" identifier from CAB.
-    pub classified_by: Option<Box<str>>,
-
-    /// Free-text "Derived From" source from CAB.
-    pub derived_from: Option<Box<str>>,
-
-    /// Declassification exemption code from CAB (e.g., 25X1, 50X1-HUM).
-    pub declass_exemption: Option<DeclassExemption>,
-
-    /// Per-token byte spans into the *original source buffer*, recorded by
-    /// the parser as it walks the marking string. Phase 3 added this so
-    /// rules can point at the exact offending byte range instead of the
-    /// whole marking. Empty for CAB markings (CAB parsing is line-structured
-    /// and doesn't go through the token-walking path).
-    ///
-    /// Indexing convention: `token_spans` is in document order. To find the
-    /// span for the Nth `DissemControl`, walk the slice and pick the Nth
-    /// entry whose `kind == TokenKind::DissemControl`.
-    pub token_spans: Box<[TokenSpan]>,
-}
-
-impl IsmAttributes {
-    /// Convenience accessor: returns the US classification level if this
-    /// marking uses the US or Conflict classification system.
-    ///
-    /// Returns `None` for pure FGI, NATO, or JOINT markings (use
-    /// `self.classification` directly for those).
-    pub fn us_classification(&self) -> Option<Classification> {
-        match self.classification {
-            Some(MarkingClassification::Us(c)) => Some(c),
-            Some(MarkingClassification::Conflict { us, .. }) => Some(us),
-            _ => None,
-        }
-    }
-}
 
 /// One parser-recognized token plus its byte span in the original source.
 ///
@@ -259,7 +128,7 @@ pub enum TokenKind {
 /// Complete SAR category block parsed from a marking.
 ///
 /// Produced by `marque-core::parser::parse_sar_category` (P2) and stored on
-/// [`IsmAttributes::sar_markings`]. Only one SAR block is permitted per
+/// [`CanonicalAttrs::sar_markings`]. Only one SAR block is permitted per
 /// marking per §A.6; multiple `//SAR-…//` blocks in the same marking yield
 /// an `E030 sar-indicator-repeat` diagnostic.
 #[non_exhaustive]
@@ -330,6 +199,185 @@ impl SarProgram {
             compartments,
         }
     }
+
+    /// SAR program identifier abbreviation shape gate: 2 or 3 ASCII
+    /// alphanumeric bytes, any case.
+    ///
+    /// This is the byte-class admission predicate for the `SAR-`
+    /// indicator form (the abbreviated, portion-mark-and-banner form).
+    /// Parser admission for the `SPECIAL ACCESS REQUIRED-` indicator
+    /// form goes through [`SarProgram::admits_program_id_full`]
+    /// instead — the full form admits a different shape (uppercase
+    /// letters with optional spaces, no length cap).
+    ///
+    /// # Single source of truth
+    ///
+    /// This predicate is the canonical SAR abbreviation shape gate.
+    /// The `Vocabulary<CapcoScheme>` adapter at
+    /// `crates/capco/src/vocabulary.rs` calls this from
+    /// `shape_admits(CAT_SAR, _)` (Phase 5 PR-2 gating); the strict
+    /// parser at `crates/core/src/parser.rs::parse_sar_program` calls
+    /// it directly to gate the `SarIndicator::Abbrev` branch
+    /// (FR-015 / FR-016, T089). Both call sites MUST go through this
+    /// function rather than inline a length-and-class check —
+    /// keeping the predicate single-sited prevents drift between
+    /// admission and parser surfaces (CHK030).
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.5 p101 ("Additional Marking Instructions: A
+    /// program identifier abbreviation is the two or three-character
+    /// designator for the program") fixes the length bound.
+    /// CAPCO-2016 §H.5 p99 ("SAR program identifiers are
+    /// alphanumeric values") fixes the character class.
+    ///
+    /// CAPCO-2016 prose does NOT explicitly require uppercase for
+    /// the abbreviation. Examples in §H.5 (`BP`, `SDA`, `XR`,
+    /// Table 7 §H.5 p100) are uppercase by Register convention. We
+    /// admit any-case ASCII alnum here and leave casing enforcement
+    /// to a downstream style rule (S###) if a project ever wants
+    /// one. This matches the existing `Vocabulary<CapcoScheme>`
+    /// `CAT_SAR` arm semantics and the sites' previous inline
+    /// behavior — the migration is byte-for-byte non-observable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::SarProgram;
+    /// // §H.5 p101 examples (Register convention: uppercase).
+    /// assert!(SarProgram::admits_program_id_abbrev(b"BP"));
+    /// assert!(SarProgram::admits_program_id_abbrev(b"SDA"));
+    /// assert!(SarProgram::admits_program_id_abbrev(b"XR"));
+    /// // §H.5 p99 — alphanumeric values (digits permitted).
+    /// assert!(SarProgram::admits_program_id_abbrev(b"99"));
+    /// assert!(SarProgram::admits_program_id_abbrev(b"A1"));
+    /// // Any-case admission (style rule, not shape rule).
+    /// assert!(SarProgram::admits_program_id_abbrev(b"bp"));
+    /// // Rejected: too short.
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"B"));
+    /// // Rejected: too long.
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"BPCD"));
+    /// // Rejected: empty.
+    /// assert!(!SarProgram::admits_program_id_abbrev(b""));
+    /// // Rejected: punctuation.
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"B-"));
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"B P"));
+    /// ```
+    #[inline]
+    pub const fn admits_program_id_abbrev(bytes: &[u8]) -> bool {
+        let len = bytes.len();
+        if len < 2 || len > 3 {
+            return false;
+        }
+        let mut i = 0;
+        while i < len {
+            if !bytes[i].is_ascii_alphanumeric() {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+
+    /// SAR full-form program identifier shape gate: one or more
+    /// ASCII bytes, each either an uppercase letter `[A-Z]` or
+    /// space, with at least one non-space byte. Hyphens and digits
+    /// are NOT permitted inside the full nickname.
+    ///
+    /// This is the byte-class admission predicate for the
+    /// `SPECIAL ACCESS REQUIRED-` indicator form (the spelled-out,
+    /// banner-only form). Parser admission for the abbreviated form
+    /// (`SAR-`) goes through
+    /// [`SarProgram::admits_program_id_abbrev`] instead.
+    ///
+    /// The hyphen exclusion is load-bearing: in the parser, the
+    /// first `-` after the indicator literal always marks the
+    /// program/compartment boundary
+    /// (CAPCO-2016 §H.5 p100). If the predicate admitted hyphens, a
+    /// nickname like `"BUTTER-POPCORN"` would parse as a program
+    /// `"BUTTER"` with compartment `"POPCORN"` — silently
+    /// reinterpreting the marking. The digit exclusion follows the
+    /// Register convention that nicknames spell out program names
+    /// (Table 7 §H.5 p100 example: `BUTTER POPCORN`); the digits
+    /// belong with the abbreviation form, not the full form.
+    ///
+    /// # Single source of truth
+    ///
+    /// The strict parser at
+    /// `crates/core/src/parser.rs::parse_sar_program` calls this to
+    /// gate the `SarIndicator::Full` branch (FR-015 closure
+    /// alongside the abbreviation predicate). The
+    /// `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm
+    /// gates the *abbreviation* shape (the most common surface
+    /// form, and the one a category-level admission predicate is
+    /// most useful for); the full form has no `CategoryId` of its
+    /// own in the current scheme, so the vocabulary surface does
+    /// not call this directly. Keeping the predicate symbolic in
+    /// `marque-ism` rather than inline at the parser site preserves
+    /// the FR-015 invariant ("admission via documented vocabulary
+    /// surface") and matches the FGI / abbreviation precedent.
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.5 p101 ("Authorized Banner Line Marking
+    /// Title: SPECIAL ACCESS REQUIRED-[program identifier]";
+    /// "Example Banner Line: TOP SECRET//SAR-BUTTER POPCORN") +
+    /// §H.5 p100 Table 7 (canonical example uses `BUTTER POPCORN`,
+    /// uppercase letters with a single interior space).
+    ///
+    /// CAPCO-2016 does not explicitly bound the full-form character
+    /// class beyond "the program's assigned nickname, codeword, or
+    /// abbreviation" (§H.5 p99). The "uppercase + spaces, no
+    /// hyphens, no digits" interpretation is a marque parser
+    /// convention rooted in Table 7's canonical example and the
+    /// hyphen-as-compartment-separator rule (§H.5 p100). This is
+    /// noted at the call site so a future revision of CAPCO can
+    /// widen or narrow the predicate intentionally rather than by
+    /// drift.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::SarProgram;
+    /// // §H.5 p101 canonical example.
+    /// assert!(SarProgram::admits_program_id_full(b"BUTTER POPCORN"));
+    /// // Single uppercase token also lawful.
+    /// assert!(SarProgram::admits_program_id_full(b"SODA"));
+    /// // Multiple interior spaces are accepted by the predicate;
+    /// // a downstream style rule may flag double-spacing.
+    /// assert!(SarProgram::admits_program_id_full(b"BUTTER  POPCORN"));
+    /// // Rejected: lowercase.
+    /// assert!(!SarProgram::admits_program_id_full(b"butter popcorn"));
+    /// // Rejected: digits — abbreviation territory.
+    /// assert!(!SarProgram::admits_program_id_full(b"123"));
+    /// // Rejected: hyphen — would silently re-parse as
+    /// // program/compartment boundary.
+    /// assert!(!SarProgram::admits_program_id_full(b"BUTTER-POPCORN"));
+    /// // Rejected: empty.
+    /// assert!(!SarProgram::admits_program_id_full(b""));
+    /// // Rejected: only spaces.
+    /// assert!(!SarProgram::admits_program_id_full(b"   "));
+    /// ```
+    #[inline]
+    pub const fn admits_program_id_full(bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return false;
+        }
+        let mut i = 0;
+        let mut has_non_space = false;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if b == b' ' {
+                // space — permitted.
+            } else if b.is_ascii_uppercase() {
+                has_non_space = true;
+            } else {
+                return false;
+            }
+            i += 1;
+        }
+        has_non_space
+    }
 }
 
 impl SarCompartment {
@@ -339,6 +387,99 @@ impl SarCompartment {
             identifier,
             sub_compartments,
         }
+    }
+
+    /// SAR compartment / sub-compartment identifier shape gate:
+    /// one or more ASCII alphanumeric bytes, any case.
+    ///
+    /// CAPCO-2016 §H.5 pp 99-100 places compartments and
+    /// sub-compartments under one rule: both are alphanumeric values
+    /// listed in ascending sort order. The grammar does not
+    /// distinguish their character class or length bounds, so a
+    /// single predicate admits both grammar positions. The parser
+    /// (`crates/core/src/parser.rs::parse_sar_program`) calls this
+    /// for both the compartment slot and the sub-compartment slot.
+    ///
+    /// # Single source of truth
+    ///
+    /// The strict parser at
+    /// `crates/core/src/parser.rs::parse_sar_program` calls this to
+    /// gate compartments (segments after the first `-`) and
+    /// sub-compartments (space-separated tokens within a
+    /// compartment segment) (FR-015, T090, T091). Both call sites
+    /// MUST go through this function rather than inline a
+    /// length-and-class check — keeping the predicate single-sited
+    /// prevents drift between admission and parser surfaces
+    /// (CHK030).
+    ///
+    /// The `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm
+    /// uses [`SarProgram::admits_program_id_abbrev`] (the
+    /// program-id-abbreviation shape) because `CAT_SAR` represents
+    /// the SAR program identifier slot in the marking grammar, not
+    /// the compartment slot. There is no `CategoryId` for SAR
+    /// compartments today; if one is added, this predicate is the
+    /// natural target for its `shape_admits` arm.
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.5 p99 ("SAR program identifiers are
+    /// alphanumeric values"; the surrounding prose at p99-100
+    /// applies the same rule to compartments and sub-compartments).
+    /// CAPCO-2016 §H.5 p100 Table 7 examples confirm the character
+    /// class spans alpha (`J12`, `K15`, `YYY`, `XRA`, `J54`, `RB`)
+    /// and digit (`456`, `689`).
+    ///
+    /// CAPCO-2016 prose does NOT specify an upper length bound for
+    /// compartments or sub-compartments — Table 7 examples are 2-3
+    /// characters but no rule pins that. We admit length ≥ 1 with
+    /// no upper bound, matching the parser's existing behavior. A
+    /// future revision of CAPCO that pins a length cap would be a
+    /// planned migration; this predicate is the lift point.
+    ///
+    /// CAPCO-2016 does NOT require uppercase for compartments or
+    /// sub-compartments — the alphanumeric rule applies to both
+    /// cases. We admit any-case ASCII alnum here and leave casing
+    /// enforcement to a downstream style rule.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::SarCompartment;
+    /// // §H.5 p100 Table 7 examples.
+    /// assert!(SarCompartment::admits_identifier(b"J12"));
+    /// assert!(SarCompartment::admits_identifier(b"K15"));
+    /// assert!(SarCompartment::admits_identifier(b"YYY"));
+    /// assert!(SarCompartment::admits_identifier(b"RB"));
+    /// // Sub-compartments use the same shape.
+    /// assert!(SarCompartment::admits_identifier(b"J54"));
+    /// assert!(SarCompartment::admits_identifier(b"456"));
+    /// assert!(SarCompartment::admits_identifier(b"689"));
+    /// // Single character is admitted (manual silent on lower bound
+    /// // beyond ≥1; marque admits length 1+).
+    /// assert!(SarCompartment::admits_identifier(b"1"));
+    /// // Any-case admission (style rule, not shape rule).
+    /// assert!(SarCompartment::admits_identifier(b"j12"));
+    /// // Rejected: empty.
+    /// assert!(!SarCompartment::admits_identifier(b""));
+    /// // Rejected: punctuation.
+    /// assert!(!SarCompartment::admits_identifier(b"J-12"));
+    /// assert!(!SarCompartment::admits_identifier(b"J 12"));
+    /// // Rejected: non-ASCII.
+    /// assert!(!SarCompartment::admits_identifier("Ĵ12".as_bytes()));
+    /// ```
+    #[inline]
+    pub const fn admits_identifier(bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return false;
+        }
+        let mut i = 0;
+        while i < bytes.len() {
+            if !bytes[i].is_ascii_alphanumeric() {
+                return false;
+            }
+            i += 1;
+        }
+        true
     }
 }
 
@@ -866,7 +1007,8 @@ impl std::fmt::Display for AeaMarking {
 // FGI marker (in US-classified markings)
 // ---------------------------------------------------------------------------
 
-/// FGI marker in a US-classified marking: `FGI` or `FGI [LIST]`.
+/// FGI marker in a US-classified marking: `FGI` (source-concealed) or
+/// `FGI [LIST]` (source-acknowledged).
 ///
 /// Appears in the FGI block (after SAR, before dissem controls) when a
 /// US-classified document references foreign government information.
@@ -875,15 +1017,113 @@ impl std::fmt::Display for AeaMarking {
 /// marking where the classification itself IS foreign. This marker says
 /// "this US-classified marking contains foreign government information."
 ///
-/// An empty `countries` list represents source-concealed FGI (no country
-/// attribution). If a document mixes source-concealed and source-acknowledged
-/// FGI portions, the banner must use the bare `FGI` form without countries
-/// to avoid compromising the concealed source.
+/// # Authoritative source
+///
+/// CAPCO-2016 §H.7 p123 defines two banner forms:
+///
+/// | Variant | Banner | Portion |
+/// |---|---|---|
+/// | Source-acknowledged | `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr `FGI [LIST]`) | with country trigraphs |
+/// | Source-concealed    | `FOREIGN GOVERNMENT INFORMATION` (abbr `FGI`)              | without country list |
+///
+/// Concealment is used when revealing the country list would compromise
+/// the foreign source. If a page mixes concealed + acknowledged portions,
+/// the banner must use the concealed form (bare `FGI`).
+///
+/// # Why an enum, not a struct with `Box<[CountryCode]>`
+///
+/// The previous shape `FgiMarker { countries: Box<[CountryCode]> }`
+/// made `countries: []` ambiguous between two meanings:
+///
+///   1. Lawful source-concealed FGI (the `FGI` banner form).
+///   2. A parser failure that silently dropped a country list — the
+///      classic open-vocabulary corruption case (issue #280).
+///
+/// FR-017 / CHK028 retire that collision by making the discriminant
+/// explicit. `Acknowledged` is constructed only via [`acknowledged`],
+/// which rejects an empty country list, so the corrupt shape is
+/// type-system-unrepresentable.
+///
+/// [`acknowledged`]: FgiMarker::acknowledged
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FgiMarker {
-    /// Countries (space-delimited in source).
-    /// Empty for source-concealed FGI.
-    pub countries: Box<[CountryCode]>,
+pub enum FgiMarker {
+    /// Source-concealed FGI per CAPCO-2016 §H.7 p123.
+    ///
+    /// Banner: `FOREIGN GOVERNMENT INFORMATION` (abbr `FGI`) with no
+    /// country list. Used when revealing the country list would
+    /// compromise the foreign source.
+    SourceConcealed,
+
+    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p123.
+    ///
+    /// Banner: `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr
+    /// `FGI [LIST]`). The country list is non-empty by construction —
+    /// see [`FgiMarker::acknowledged`] for the public constructor that
+    /// enforces the invariant.
+    ///
+    /// Marked `#[non_exhaustive]` so external crates **cannot**
+    /// construct this variant via struct-literal syntax. This is
+    /// load-bearing for FR-017 / CHK028: it forces external callers
+    /// through [`FgiMarker::acknowledged`], which rejects the empty
+    /// country list. Pattern matching from outside the crate still
+    /// works with the `..` rest pattern:
+    /// `FgiMarker::Acknowledged { countries, .. }`. Internal
+    /// (in-crate) construction is unrestricted, but only the
+    /// `acknowledged` constructor reaches the variant in this crate's
+    /// codepaths — see callsites for the audit.
+    #[non_exhaustive]
+    Acknowledged {
+        /// One or more country trigraphs/tetragraphs. Non-empty by
+        /// construction (enforced by [`FgiMarker::acknowledged`]).
+        ///
+        /// `SmallVec<[CountryCode; 4]>` keeps the typical FGI list
+        /// (≤4 codes) inline — no heap allocation on the parsing
+        /// hot path (Constitution Principle II).
+        countries: SmallVec<[CountryCode; 4]>,
+    },
+}
+
+impl FgiMarker {
+    /// Construct an acknowledged FGI marker from a non-empty list of
+    /// country codes. Returns `None` if the list is empty — at that
+    /// point the caller has either parser-failure data (return `None`
+    /// to the caller and let it surface as a diagnostic) or the source
+    /// is genuinely concealed (use [`FgiMarker::SourceConcealed`]
+    /// directly).
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 (the `FGI [LIST]` banner form
+    /// requires a non-empty `[LIST]`).
+    pub fn acknowledged<I>(countries: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = CountryCode>,
+    {
+        let countries: SmallVec<[CountryCode; 4]> = countries.into_iter().collect();
+        if countries.is_empty() {
+            None
+        } else {
+            Some(Self::Acknowledged { countries })
+        }
+    }
+
+    /// Country trigraphs for this marker.
+    ///
+    /// - `SourceConcealed` → empty slice (no countries by definition;
+    ///   distinguishable from a parse failure because the variant
+    ///   itself is the disambiguator).
+    /// - `Acknowledged { countries }` → `&countries[..]`, guaranteed
+    ///   non-empty by the [`FgiMarker::acknowledged`] constructor.
+    pub fn countries(&self) -> &[CountryCode] {
+        match self {
+            Self::SourceConcealed => &[],
+            Self::Acknowledged { countries } => countries.as_slice(),
+        }
+    }
+
+    /// `true` iff this is a source-concealed marker (the bare `FGI`
+    /// banner form, CAPCO-2016 §H.7 p123).
+    pub fn is_concealed(&self) -> bool {
+        matches!(self, Self::SourceConcealed)
+    }
 }
 
 // ===========================================================================
@@ -1081,7 +1321,7 @@ const COUNTRY_CODE_CAPACITY: usize = 16;
 /// `Copy` is preserved so the type composes in iterator chains and
 /// `BTreeSet`-based intersection without manual `.clone()` calls.
 /// The fixed-array form keeps each `CountryCode` entry inline in
-/// `IsmAttributes::rel_to` (`Box<[CountryCode]>`) on the parsing
+/// `CanonicalAttrs::rel_to` (`Box<[CountryCode]>`) on the parsing
 /// hot path — no per-code heap allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CountryCode {
@@ -1181,6 +1421,166 @@ impl CountryCode {
     #[inline]
     pub const fn is_empty(&self) -> bool {
         false
+    }
+
+    /// Annex B trigraph admission predicate: exactly 3 ASCII uppercase
+    /// letters `[A-Z]`. This is the shape building block for the
+    /// trigraph-only half of the FGI / REL TO grammar; callers that
+    /// need the *full* country-token grammar (trigraph **or**
+    /// registered tetragraph) MUST go through
+    /// [`CountryCode::admits_country_token`] instead — see Authority.
+    ///
+    /// Returns `true` iff `bytes` is a 3-byte slice whose every byte
+    /// is in `b'A'..=b'Z'`. Stricter than [`CountryCode::try_new`],
+    /// which also accepts ASCII digits (for `AX2` / `AX3`), the
+    /// underscore (for `AUSTRALIA_GROUP`), and any 2-byte through
+    /// 16-byte alphanumeric/underscore code.
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 (FGI Register Annex B trigraph
+    /// country codes) + §A.6 p16 (alphabetic order of FGI list
+    /// tokens). This predicate is the trigraph-only slice of the
+    /// admission grammar; the FGI/REL TO list grammar at §H.7 p123
+    /// and §H.8 p150 admits trigraphs *and* tetragraphs (e.g.,
+    /// `SECRET//FGI GBR JPN NATO`, where `NATO` is a four-letter
+    /// tetragraph from Register Annex A). Use
+    /// [`CountryCode::admits_country_token`] for that full surface.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::CountryCode;
+    /// assert!(CountryCode::admits_fgi_trigraph(b"USA"));
+    /// assert!(CountryCode::admits_fgi_trigraph(b"GBR"));
+    /// // Rejected: too short.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"US"));
+    /// // Rejected: too long (tetragraph — admits via
+    /// // `admits_country_token`, not this predicate).
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"NATO"));
+    /// // Rejected: lowercase.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"usa"));
+    /// // Rejected: digit.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"US1"));
+    /// // Rejected: empty.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b""));
+    /// ```
+    #[inline]
+    pub const fn admits_fgi_trigraph(bytes: &[u8]) -> bool {
+        if bytes.len() != 3 {
+            return false;
+        }
+        let mut i = 0;
+        while i < 3 {
+            if !bytes[i].is_ascii_uppercase() {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+
+    /// FGI / REL TO list-token admission predicate: 2, 3, or 4 ASCII
+    /// uppercase letters. This is the canonical shape gate for a
+    /// single token in an FGI marker list, a REL TO list, or a JOINT
+    /// `[LIST]` — wherever CAPCO's grammar admits a country trigraph,
+    /// a tetragraph, or one of the registered 2-letter exception
+    /// codes (notably `EU`, which the ISMCAT `CVEnumISMCATRelTo`
+    /// surface emits as a 2-byte code).
+    ///
+    /// Returns `true` iff `bytes.len()` is `2`, `3`, or `4` and every
+    /// byte is in `b'A'..=b'Z'`.
+    ///
+    /// Length rationale (the three accepted lengths):
+    /// - `3` — Annex B GENC trigraph country codes (the bulk of FGI
+    ///   and REL TO list tokens, e.g., `USA`, `GBR`, `DEU`).
+    /// - `4` — Annex A tetragraph codes for international
+    ///   organizations / alliances / coalitions (e.g., `NATO`,
+    ///   `ISAF`, `FVEY`, `ACGU`, `TEYE`).
+    /// - `2` — registered exception codes; `EU` is the canonical
+    ///   case shipped in the ODNI ISMCAT `CVEnumISMCATRelTo` surface.
+    ///
+    /// Strictly broader than [`CountryCode::admits_fgi_trigraph`]
+    /// (3-only), and strictly stricter than [`CountryCode::try_new`]
+    /// (which also admits digits, underscore, and 5-byte+ codes).
+    /// The 5-byte-plus codes that `try_new` admits — `AUSTRALIA_GROUP`
+    /// in particular — are out of scope for this predicate; CAPCO-2016
+    /// §H.7 calls these out as a separate surface ("unless an
+    /// exception is granted") and the strict parser does not admit
+    /// them in FGI/REL TO lists at this gate.
+    ///
+    /// Single source of truth for the shape gate at three call sites:
+    /// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)`,
+    /// `Vocabulary<CapcoScheme>::shape_admits(CAT_REL_TO, _)`, and
+    /// the strict parser at
+    /// `crates/core/src/parser.rs::parse_fgi_marker`. All three MUST
+    /// go through this function rather than inline a length-and-class
+    /// check — keeping the predicate single-sited prevents drift
+    /// between admission and parser surfaces (CHK030, CHK026).
+    ///
+    /// Registry membership (whether a 2-letter code is `EU` vs. `US`,
+    /// whether `NATO` / `FVEY` / `ABCD` is actually a registered
+    /// Annex A tetragraph) is intentionally out of scope: shape
+    /// admission ≠ registry validation. Registry membership is
+    /// enforced at the rule layer (rules walk
+    /// `marque_ism::TETRAGRAPH_MEMBERS` / `marque_ism::TRIGRAPHS`)
+    /// and the rule-layer ordering invariant (trigraphs alphabetic,
+    /// then tetragraphs alphabetic — §H.7 p123) is likewise a
+    /// separate concern. This mirrors how `admits_fgi_trigraph`
+    /// admits any 3 ASCII upper bytes, not only Annex B-registered
+    /// codes.
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph
+    /// country codes or tetragraph codes must be separated by a
+    /// single space ... A tetragraph is a four-letter code ... used
+    /// to represent an international organization, alliance, or
+    /// coalition. ... example may appear as: SECRET//FGI GBR JPN
+    /// NATO//REL TO USA, GBR, JPN, NATO.") + §H.8 p150 (REL TO list
+    /// admits the same shape) + §A.6 pp 16-17 (token-level grammar
+    /// for foreign-disclosure list slots) + ODNI ISMCAT
+    /// `CVEnumISMCATRelTo` (registered 2-byte exception codes
+    /// including `EU`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::CountryCode;
+    /// // Trigraphs admit.
+    /// assert!(CountryCode::admits_country_token(b"USA"));
+    /// assert!(CountryCode::admits_country_token(b"GBR"));
+    /// // Tetragraphs admit (the §H.7 canonical example).
+    /// assert!(CountryCode::admits_country_token(b"NATO"));
+    /// assert!(CountryCode::admits_country_token(b"FVEY"));
+    /// assert!(CountryCode::admits_country_token(b"ISAF"));
+    /// // 2-letter exception codes admit (e.g., EU).
+    /// assert!(CountryCode::admits_country_token(b"EU"));
+    /// // Rejected: single letter.
+    /// assert!(!CountryCode::admits_country_token(b"U"));
+    /// // Rejected: too long.
+    /// assert!(!CountryCode::admits_country_token(b"USAGB"));
+    /// assert!(!CountryCode::admits_country_token(b"AUSTRALIA_GROUP"));
+    /// // Rejected: lowercase trigraph, tetragraph, exception code.
+    /// assert!(!CountryCode::admits_country_token(b"usa"));
+    /// assert!(!CountryCode::admits_country_token(b"nato"));
+    /// assert!(!CountryCode::admits_country_token(b"eu"));
+    /// // Rejected: digit.
+    /// assert!(!CountryCode::admits_country_token(b"US1"));
+    /// assert!(!CountryCode::admits_country_token(b"NAT0"));
+    /// // Rejected: empty.
+    /// assert!(!CountryCode::admits_country_token(b""));
+    /// ```
+    #[inline]
+    pub const fn admits_country_token(bytes: &[u8]) -> bool {
+        let len = bytes.len();
+        if len < 2 || len > 4 {
+            return false;
+        }
+        let mut i = 0;
+        while i < len {
+            if !bytes[i].is_ascii_uppercase() {
+                return false;
+            }
+            i += 1;
+        }
+        true
     }
 }
 
@@ -1320,6 +1720,411 @@ mod country_code_tests {
         assert_eq!(CountryCode::USA.as_bytes(), runtime.as_bytes());
         assert_eq!(CountryCode::USA.len(), runtime.len());
     }
+
+    // ----------------------------------------------------------------
+    // admits_fgi_trigraph — Annex B trigraph shape predicate
+    // ----------------------------------------------------------------
+    //
+    // FR-015 / FR-016 closure: this predicate IS the documented FGI /
+    // REL-TO trigraph admission gate. Both the `Vocabulary<CapcoScheme>`
+    // adapter (`crates/capco/src/vocabulary.rs`) and the strict parser
+    // (`crates/core/src/parser.rs`) call into it. These tests pin the
+    // invariants both call sites depend on; a regression that loosens
+    // the predicate (e.g., admitting digits, lowercase, or tetragraphs)
+    // would silently broaden the accept set on both surfaces.
+
+    #[test]
+    fn admits_fgi_trigraph_accepts_three_uppercase_letters() {
+        assert!(CountryCode::admits_fgi_trigraph(b"USA"));
+        assert!(CountryCode::admits_fgi_trigraph(b"GBR"));
+        assert!(CountryCode::admits_fgi_trigraph(b"DEU"));
+        assert!(CountryCode::admits_fgi_trigraph(b"AUS"));
+        assert!(CountryCode::admits_fgi_trigraph(b"JPN"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_lowercase() {
+        assert!(!CountryCode::admits_fgi_trigraph(b"usa"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"Usa"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"USa"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_wrong_length() {
+        assert!(!CountryCode::admits_fgi_trigraph(b""));
+        assert!(!CountryCode::admits_fgi_trigraph(b"U"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"US"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"USAA"));
+        // Tetragraphs (4-letter org codes) live in the separate
+        // tetragraph table, not this trigraph predicate.
+        assert!(!CountryCode::admits_fgi_trigraph(b"NATO"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"FVEY"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"ISAF"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_digits() {
+        // `CountryCode::try_new` accepts ASCII digits (for AX2 / AX3),
+        // but the FGI trigraph predicate does not — Annex B GENC codes
+        // are alpha-only.
+        assert!(!CountryCode::admits_fgi_trigraph(b"AX2"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"123"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"US1"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_underscore() {
+        // `CountryCode::try_new` accepts underscore (for
+        // AUSTRALIA_GROUP), but the FGI trigraph predicate rejects
+        // every non-alpha byte.
+        assert!(!CountryCode::admits_fgi_trigraph(b"US_"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"_US"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_non_ascii() {
+        // 'É' is two UTF-8 bytes (0xC3 0x89); first byte is not ASCII
+        // uppercase. A 3-byte UTF-8 sequence must still fail because
+        // every byte must individually be in `b'A'..=b'Z'`.
+        let two_byte_e_acute = "ÉU".as_bytes(); // 3 bytes total
+        assert_eq!(two_byte_e_acute.len(), 3);
+        assert!(!CountryCode::admits_fgi_trigraph(two_byte_e_acute));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_implies_try_new() {
+        // Property: if `admits_fgi_trigraph` accepts, then `try_new`
+        // accepts (the trigraph predicate is strictly stronger). This
+        // is what lets the parser gate by `admits_fgi_trigraph` and
+        // construct via `try_new` without a redundant validation.
+        for code in [b"USA", b"GBR", b"DEU", b"FRA", b"JPN"] {
+            assert!(CountryCode::admits_fgi_trigraph(code));
+            assert!(CountryCode::try_new(code).is_some());
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // admits_country_token — full FGI/REL TO list-token shape predicate
+    //
+    // Per CAPCO-2016 §H.7 p123, the FGI list grammar admits BOTH 3-letter
+    // Annex B trigraphs and 4-letter Annex A tetragraphs (canonical
+    // example: `SECRET//FGI GBR JPN NATO`). The §H.8 REL TO surface
+    // accepts the same shape. These tests pin the trigraph-or-tetragraph
+    // contract so a regression to "trigraph-only" (PR #311 review
+    // finding, GH #280 fix-cousin) is caught at unit-test scope.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn admits_country_token_accepts_trigraphs() {
+        assert!(CountryCode::admits_country_token(b"USA"));
+        assert!(CountryCode::admits_country_token(b"GBR"));
+        assert!(CountryCode::admits_country_token(b"DEU"));
+        assert!(CountryCode::admits_country_token(b"AUS"));
+        assert!(CountryCode::admits_country_token(b"JPN"));
+    }
+
+    #[test]
+    fn admits_country_token_accepts_tetragraphs() {
+        // Per CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph country
+        // codes or tetragraph codes must be separated by a single
+        // space ... example may appear as: SECRET//FGI GBR JPN
+        // NATO//REL TO USA, GBR, JPN, NATO."), tetragraphs admit at
+        // the same shape gate as trigraphs.
+        assert!(CountryCode::admits_country_token(b"NATO"));
+        assert!(CountryCode::admits_country_token(b"FVEY"));
+        assert!(CountryCode::admits_country_token(b"ISAF"));
+        assert!(CountryCode::admits_country_token(b"ACGU"));
+        assert!(CountryCode::admits_country_token(b"TEYE"));
+    }
+
+    #[test]
+    fn admits_country_token_accepts_two_letter_exception() {
+        // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
+        // 2-letter exception code; pre-PR-2 REL TO admission accepted
+        // it via the union TRIGRAPHS table. The shape gate must not
+        // narrow that surface — registry membership of any 2-letter
+        // code other than `EU` is a rule-layer concern, not a
+        // shape concern.
+        assert!(CountryCode::admits_country_token(b"EU"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_lowercase() {
+        assert!(!CountryCode::admits_country_token(b"usa"));
+        assert!(!CountryCode::admits_country_token(b"nato"));
+        assert!(!CountryCode::admits_country_token(b"Nato"));
+        assert!(!CountryCode::admits_country_token(b"NaTO"));
+        assert!(!CountryCode::admits_country_token(b"eu"));
+        assert!(!CountryCode::admits_country_token(b"Eu"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_digits() {
+        assert!(!CountryCode::admits_country_token(b"US1"));
+        assert!(!CountryCode::admits_country_token(b"NAT0")); // 0 not O
+        assert!(!CountryCode::admits_country_token(b"123"));
+        assert!(!CountryCode::admits_country_token(b"1234"));
+        assert!(!CountryCode::admits_country_token(b"E1"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_wrong_length() {
+        assert!(!CountryCode::admits_country_token(b""));
+        assert!(!CountryCode::admits_country_token(b"U"));
+        // 5-letter+ codes (`AUSTRALIA_GROUP` is 15) explicitly
+        // out of scope per the predicate's "exception is granted"
+        // carve-out — these are admitted via `try_new`, not at
+        // this gate.
+        assert!(!CountryCode::admits_country_token(b"USAGB"));
+        assert!(!CountryCode::admits_country_token(b"AUSTRALIA_GROUP"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_underscore_and_punctuation() {
+        // `try_new` admits underscore; this gate does not.
+        assert!(!CountryCode::admits_country_token(b"US_"));
+        assert!(!CountryCode::admits_country_token(b"NAT_"));
+        assert!(!CountryCode::admits_country_token(b"USA "));
+        assert!(!CountryCode::admits_country_token(b"USA-"));
+        assert!(!CountryCode::admits_country_token(b"E_"));
+    }
+
+    #[test]
+    fn admits_country_token_supersets_admits_fgi_trigraph() {
+        // Property: every `admits_fgi_trigraph` accept is also an
+        // `admits_country_token` accept. Pins the strictly-broader
+        // contract so a future predicate edit can't silently invert
+        // the relationship.
+        for code in [&b"USA"[..], b"GBR", b"DEU", b"FRA", b"JPN", b"AUS", b"CAN"] {
+            assert!(CountryCode::admits_fgi_trigraph(code));
+            assert!(CountryCode::admits_country_token(code));
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod sar_shape_tests {
+    //! Shape-admission predicates for SAR program identifiers and
+    //! compartments / sub-compartments. These are the canonical
+    //! single-source-of-truth predicates that
+    //! `crates/core/src/parser.rs::parse_sar_program` calls; the
+    //! parser-side tests in `crates/core/src/parser.rs::sar_parse_tests`
+    //! exercise the full grammar through the dispatch path. These
+    //! tests focus on the predicate's accept/reject set in isolation.
+    //!
+    //! Authority: CAPCO-2016 §H.5 pp 99–101 (verified against
+    //! `crates/capco/docs/CAPCO-2016.md`).
+
+    use super::{SarCompartment, SarProgram};
+
+    // ----- SarProgram::admits_program_id_abbrev -------------------------
+
+    #[test]
+    fn abbrev_accepts_two_or_three_alnum() {
+        // §H.5 p101 register-convention examples.
+        assert!(SarProgram::admits_program_id_abbrev(b"BP"));
+        assert!(SarProgram::admits_program_id_abbrev(b"SDA"));
+        assert!(SarProgram::admits_program_id_abbrev(b"XR"));
+        // §H.5 p99 — alphanumeric values (digits permitted).
+        assert!(SarProgram::admits_program_id_abbrev(b"A1"));
+        assert!(SarProgram::admits_program_id_abbrev(b"99"));
+        assert!(SarProgram::admits_program_id_abbrev(b"1A2"));
+    }
+
+    #[test]
+    fn abbrev_rejects_wrong_length() {
+        // Length < 2: empty or 1 char.
+        assert!(!SarProgram::admits_program_id_abbrev(b""));
+        assert!(!SarProgram::admits_program_id_abbrev(b"B"));
+        // Length > 3: 4 chars or more.
+        assert!(!SarProgram::admits_program_id_abbrev(b"BPCD"));
+        assert!(!SarProgram::admits_program_id_abbrev(b"ABCDE"));
+    }
+
+    #[test]
+    fn abbrev_accepts_lowercase_letting_style_rule_decide() {
+        // §H.5 p99–101 prose says "alphanumeric values"; uppercase
+        // is a Register convention. We accept lowercase here and
+        // leave casing enforcement to a downstream style rule.
+        // Mirrors the corresponding test in
+        // `crates/capco/src/vocabulary.rs::shape_admits_tests`.
+        assert!(SarProgram::admits_program_id_abbrev(b"bp"));
+        assert!(SarProgram::admits_program_id_abbrev(b"sDa"));
+    }
+
+    #[test]
+    fn abbrev_rejects_punctuation_and_whitespace() {
+        // The hyphen is the program/compartment separator
+        // (§H.5 p100); admitting it inside the abbreviation would
+        // silently re-parse the marking.
+        assert!(!SarProgram::admits_program_id_abbrev(b"B-"));
+        assert!(!SarProgram::admits_program_id_abbrev(b"-B"));
+        // Space is the sub-compartment separator (§H.5 p100); same
+        // re-parse risk.
+        assert!(!SarProgram::admits_program_id_abbrev(b"B P"));
+        // Other punctuation has no role in the §H.5 grammar.
+        assert!(!SarProgram::admits_program_id_abbrev(b"B."));
+        assert!(!SarProgram::admits_program_id_abbrev(b"B/"));
+    }
+
+    #[test]
+    fn abbrev_rejects_non_ascii() {
+        // Non-ASCII multi-byte sequences make `bytes.len()` exceed
+        // the 2-3 char gate immediately; the alnum test would also
+        // reject them. Both gates fail loud rather than admitting
+        // a multi-byte token.
+        let two_byte_e_acute: &[u8] = "é".as_bytes();
+        assert_eq!(two_byte_e_acute.len(), 2);
+        assert!(!SarProgram::admits_program_id_abbrev(two_byte_e_acute));
+    }
+
+    // ----- SarProgram::admits_program_id_full ---------------------------
+
+    #[test]
+    fn full_accepts_uppercase_with_optional_spaces() {
+        // §H.5 p101 canonical example.
+        assert!(SarProgram::admits_program_id_full(b"BUTTER POPCORN"));
+        // Single uppercase token also lawful.
+        assert!(SarProgram::admits_program_id_full(b"SODA"));
+        assert!(SarProgram::admits_program_id_full(b"A"));
+        // Multiple-word nicknames.
+        assert!(SarProgram::admits_program_id_full(b"ALPHA BETA GAMMA"));
+    }
+
+    #[test]
+    fn full_rejects_lowercase() {
+        assert!(!SarProgram::admits_program_id_full(b"butter popcorn"));
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER popcorn"));
+        assert!(!SarProgram::admits_program_id_full(b"Butter Popcorn"));
+    }
+
+    #[test]
+    fn full_rejects_digits() {
+        // Digits are abbreviation territory — admitting them in the
+        // full form blurs the §H.5 p101 distinction between the
+        // two indicator forms.
+        assert!(!SarProgram::admits_program_id_full(b"123"));
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER1"));
+        assert!(!SarProgram::admits_program_id_full(b"BP1"));
+    }
+
+    #[test]
+    fn full_rejects_hyphen() {
+        // The first hyphen after the indicator literal always marks
+        // the program/compartment boundary (§H.5 p100). Admitting
+        // hyphens inside the nickname would silently re-parse a
+        // marking like `BUTTER-POPCORN` as
+        // `program=BUTTER, compartment=POPCORN`.
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER-POPCORN"));
+        assert!(!SarProgram::admits_program_id_full(b"-BUTTER"));
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER-"));
+    }
+
+    #[test]
+    fn full_rejects_empty_or_only_spaces() {
+        assert!(!SarProgram::admits_program_id_full(b""));
+        assert!(!SarProgram::admits_program_id_full(b" "));
+        assert!(!SarProgram::admits_program_id_full(b"   "));
+    }
+
+    #[test]
+    fn full_rejects_other_punctuation() {
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER.POPCORN"));
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER/POPCORN"));
+        assert!(!SarProgram::admits_program_id_full(b"BUTTER_POPCORN"));
+    }
+
+    // ----- SarCompartment::admits_identifier ----------------------------
+
+    #[test]
+    fn compartment_accepts_alnum_any_length_at_least_one() {
+        // §H.5 p100 Table 7 examples (compartments).
+        assert!(SarCompartment::admits_identifier(b"J12"));
+        assert!(SarCompartment::admits_identifier(b"K15"));
+        assert!(SarCompartment::admits_identifier(b"YYY"));
+        assert!(SarCompartment::admits_identifier(b"XRA"));
+        // §H.5 p100 Table 7 examples (sub-compartments — same shape).
+        assert!(SarCompartment::admits_identifier(b"J54"));
+        assert!(SarCompartment::admits_identifier(b"456"));
+        assert!(SarCompartment::admits_identifier(b"689"));
+        assert!(SarCompartment::admits_identifier(b"RB"));
+    }
+
+    #[test]
+    fn compartment_accepts_length_one() {
+        // Manual is silent on a lower bound beyond ≥1; marque admits
+        // single-character identifiers.
+        assert!(SarCompartment::admits_identifier(b"A"));
+        assert!(SarCompartment::admits_identifier(b"1"));
+    }
+
+    #[test]
+    fn compartment_accepts_long_alnum() {
+        // Manual is silent on an upper length bound; marque admits
+        // length 1+. A future revision pinning a cap is a planned
+        // migration at this predicate.
+        assert!(SarCompartment::admits_identifier(b"ABCDEFGHIJ"));
+        assert!(SarCompartment::admits_identifier(b"VERYLONGCOMPARTMENT123"));
+    }
+
+    #[test]
+    fn compartment_accepts_lowercase_letting_style_rule_decide() {
+        assert!(SarCompartment::admits_identifier(b"j12"));
+        assert!(SarCompartment::admits_identifier(b"yYy"));
+    }
+
+    #[test]
+    fn compartment_rejects_empty() {
+        assert!(!SarCompartment::admits_identifier(b""));
+    }
+
+    #[test]
+    fn compartment_rejects_punctuation_and_whitespace() {
+        // Hyphen is compartment separator (§H.5 p100), space is
+        // sub-compartment separator. Admitting either would re-parse
+        // the marking.
+        assert!(!SarCompartment::admits_identifier(b"J-12"));
+        assert!(!SarCompartment::admits_identifier(b"J 12"));
+        // Other punctuation has no role in §H.5.
+        assert!(!SarCompartment::admits_identifier(b"J.12"));
+        assert!(!SarCompartment::admits_identifier(b"J_12"));
+        assert!(!SarCompartment::admits_identifier(b"J/12"));
+    }
+
+    #[test]
+    fn compartment_rejects_non_ascii() {
+        let two_byte_e_acute: &[u8] = "é".as_bytes();
+        assert!(!SarCompartment::admits_identifier(two_byte_e_acute));
+        let three_byte_e_acute: &[u8] = "Ĵ12".as_bytes();
+        assert!(!SarCompartment::admits_identifier(three_byte_e_acute));
+    }
+
+    // ----- Cross-predicate sanity ---------------------------------------
+
+    #[test]
+    fn abbrev_implies_compartment() {
+        // Property: anything `admits_program_id_abbrev` admits is
+        // also admitted by `admits_identifier` — the abbreviation
+        // shape (2-3 alnum) is strictly within the compartment shape
+        // (1+ alnum). Useful as a sanity check that the two
+        // predicates don't drift apart on character class.
+        for input in [
+            b"BP".as_slice(),
+            b"SDA".as_slice(),
+            b"99".as_slice(),
+            b"A1".as_slice(),
+            b"bp".as_slice(),
+        ] {
+            assert!(SarProgram::admits_program_id_abbrev(input));
+            assert!(
+                SarCompartment::admits_identifier(input),
+                "compartment predicate must admit anything the \
+                 abbreviation predicate admits (input={:?})",
+                std::str::from_utf8(input).unwrap_or("<non-utf8>"),
+            );
+        }
+    }
 }
 
 // ===========================================================================
@@ -1357,7 +2162,7 @@ pub struct SciMarking {
 
 impl SciMarking {
     /// Construct a new `SciMarking`. Used by the parser (`marque-core`) to
-    /// populate [`IsmAttributes::sci_markings`].
+    /// populate [`CanonicalAttrs::sci_markings`].
     pub fn new(
         system: SciControlSystem,
         compartments: Box<[SciCompartment]>,
@@ -1416,6 +2221,7 @@ impl SciCompartment {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::canonical::CanonicalAttrs;
 
     #[test]
     fn classification_ord_is_restrictiveness() {
@@ -1476,7 +2282,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_us() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             ..Default::default()
         };
@@ -1485,7 +2291,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_none_for_nato() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
             ..Default::default()
         };
@@ -1494,7 +2300,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_resolved_for_conflict() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Conflict {
                 us: Classification::TopSecret,
                 foreign: Box::new(ForeignClassification::Nato(

@@ -4,7 +4,11 @@
 
 //! Phase 2/3: token extraction and structural parsing.
 //!
-//! Takes [`MarkingCandidate`] spans from the scanner and produces [`IsmAttributes`].
+//! Takes [`MarkingCandidate`] spans from the scanner and produces
+//! [`marque_ism::ParsedAttrs`]. The engine then runs
+//! [`marque_ism::from_parsed_unchecked`] (PR 3a transitional path) or
+//! `MarkingScheme::canonicalize` (post-PR-3c) to land owned
+//! [`marque_ism::CanonicalAttrs`] for rule consumption.
 //!
 //! # Phase 2 — Token Extraction
 //! A compile-time Aho-Corasick automaton (built from CVE token list in marque-capco)
@@ -12,7 +16,7 @@
 //! Unrecognized tokens within a candidate boundary are themselves diagnostics.
 //!
 //! # Phase 3 — Structural Parsing
-//! Token sequence → IsmAttributes. Validates ordering and block structure.
+//! Token sequence → ParsedAttrs<'src>. Validates ordering and block structure.
 //! Produces `ParseError` for structural violations; these feed into the rule engine
 //! as diagnostics with associated fixes.
 //!
@@ -22,20 +26,32 @@
 use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
-    FgiMarker, ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 use marque_ism::date::IsmDate;
 use marque_ism::is_bare_cve_value;
+use marque_ism::parsed::{
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
+    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
+    SourceOrigin,
+};
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
+use smallvec::SmallVec;
 use std::str::FromStr;
 
 /// Parse result for a single candidate.
+///
+/// Carries a borrow into the original source bytes via `attrs` (each
+/// `Parsed*<'src>` wrapper retains its source slice). Short-lived: the
+/// engine immediately canonicalizes to `CanonicalAttrs` via
+/// `marque_ism::from_parsed_unchecked` (PR 3a transitional path) or via
+/// `MarkingScheme::canonicalize` (post-PR-3c).
 #[derive(Debug)]
-pub struct ParsedMarking {
-    pub attrs: IsmAttributes,
+pub struct ParsedMarking<'src> {
+    pub attrs: ParsedAttrs<'src>,
     pub source_span: Span,
     pub kind: MarkingType,
 }
@@ -50,12 +66,12 @@ impl<'t> Parser<'t> {
         Self { tokens }
     }
 
-    /// Parse a single scanner candidate into [`IsmAttributes`].
-    pub fn parse(
+    /// Parse a single scanner candidate into [`ParsedAttrs`].
+    pub fn parse<'src>(
         &self,
         candidate: &MarkingCandidate,
-        source: &[u8],
-    ) -> Result<ParsedMarking, CoreError> {
+        source: &'src [u8],
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         let text = candidate
             .span
             .as_str(source)
@@ -74,11 +90,11 @@ impl<'t> Parser<'t> {
         }
     }
 
-    fn parse_portion(
+    fn parse_portion<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // Strip outer parentheses: "(TS//SI//NF)" -> "TS//SI//NF"
         // The inner-string offset is `candidate.span.start + 1` because
         // the leading `(` is one byte (verified ASCII by the scanner).
@@ -87,8 +103,12 @@ impl<'t> Parser<'t> {
             .and_then(|s| s.strip_suffix(')'))
             .ok_or_else(|| CoreError::MalformedMarking(text.to_owned()))?;
 
-        let attrs =
-            self.parse_marking_string(inner, MarkingType::Portion, candidate.span.start + 1)?;
+        let attrs = self.parse_marking_string(
+            inner,
+            MarkingType::Portion,
+            candidate.span.start + 1,
+            SourceOrigin::Portion,
+        )?;
         Ok(ParsedMarking {
             attrs,
             source_span: candidate.span,
@@ -96,11 +116,11 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_banner(
+    fn parse_banner<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // For banner candidates, `text` is the full line bytes from the
         // scanner. `text.trim()` may consume leading whitespace, which
         // shifts the per-token offsets. Compute the leading whitespace
@@ -112,6 +132,7 @@ impl<'t> Parser<'t> {
             trimmed,
             MarkingType::Banner,
             candidate.span.start + lead_ws,
+            SourceOrigin::Banner,
         )?;
         Ok(ParsedMarking {
             attrs,
@@ -120,58 +141,106 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_cab(
+    fn parse_cab<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // CAB is line-structured: "Classified By: ...\nDerived From: ...\nDeclassify On: ..."
-        let mut attrs = IsmAttributes::default();
+        // CAB markings borrow `&'src str` for free-text fields directly so the
+        // canonicalizer's round-trip property (FR-019) sees the bytes the
+        // parser actually consumed.
+        let mut classified_by: Option<&'src str> = None;
+        let mut derived_from: Option<&'src str> = None;
+        let mut declassify_on: Option<ParsedDeclassifyOn<'src>> = None;
+        let mut declass_exemption: Option<DeclassExemption> = None;
 
         for line in text.lines() {
             if let Some(val) = line.strip_prefix("Classified By:") {
-                attrs.classified_by = Some(val.trim().into());
+                classified_by = Some(val.trim());
             } else if let Some(val) = line.strip_prefix("Derived From:") {
-                attrs.derived_from = Some(val.trim().into());
+                derived_from = Some(val.trim());
             } else if let Some(val) = line.strip_prefix("Declassify On:") {
                 let s = val.trim();
                 if let Some(exemption) = DeclassExemption::parse(s) {
-                    attrs.declass_exemption = Some(exemption);
+                    declass_exemption = Some(exemption);
                 } else {
                     // Attempt to parse as a typed IsmDate (YYYY, YYYYMMDD,
                     // YYYY-MM-DD, etc.). Unrecognized strings are silently
                     // dropped rather than stored as raw text, since the field
                     // is now typed.
-                    attrs.declassify_on = IsmDate::from_str(s).ok();
+                    if let Ok(date) = IsmDate::from_str(s) {
+                        // `s` is the trimmed value of the `Declassify On:`
+                        // line — a subslice of `text`, the candidate's
+                        // backing `&str`. Span is full-width over `s` so
+                        // `bytes`/`span` agree and round-trip is exact.
+                        // The pointer-arithmetic offset is safe here: `s`
+                        // is borrowed from `text` and Rust guarantees
+                        // `s.as_ptr() >= text.as_ptr()` for a slice
+                        // relationship that holds by the construction
+                        // chain `text.lines() → strip_prefix → trim`.
+                        // PR 3c may switch to an offset-tracking iterator
+                        // if any consumer needs sub-line provenance; for
+                        // PR 3a the byte position is recoverable from
+                        // `bytes` itself when needed.
+                        let abs_start =
+                            candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
+                        declassify_on = Some(ParsedDeclassifyOn::new(
+                            date,
+                            s,
+                            Span::new(abs_start, abs_start + s.len()),
+                        ));
+                    }
                 }
             }
         }
 
         Ok(ParsedMarking {
-            attrs,
+            attrs: ParsedAttrs::new(
+                None,
+                Box::new([]),
+                Box::new([]),
+                None,
+                Box::new([]),
+                None,
+                Box::new([]),
+                Box::new([]),
+                Box::new([]),
+                declassify_on,
+                classified_by,
+                derived_from,
+                declass_exemption,
+                Box::new([]),
+                SourceOrigin::Cab,
+            ),
             source_span: candidate.span,
             kind: MarkingType::Cab,
         })
     }
 
-    /// Parse a marking string (without outer parentheses) into IsmAttributes.
+    /// Parse a marking string (without outer parentheses) into [`ParsedAttrs`].
     /// Handles both portion form (abbreviated) and banner form (full words).
     ///
     /// `s_offset` is the absolute byte offset of `s` within the original
     /// source buffer. Phase 3 uses it to record per-token absolute spans on
-    /// `IsmAttributes::token_spans` so rules can point at byte-precise
+    /// `ParsedAttrs::token_spans` so rules can point at byte-precise
     /// diagnostic locations.
-    fn parse_marking_string(
+    fn parse_marking_string<'src>(
         &self,
-        s: &str,
+        s: &'src str,
         context: MarkingType,
         s_offset: usize,
-    ) -> Result<IsmAttributes, CoreError> {
-        let mut attrs = IsmAttributes::default();
-
+        origin: SourceOrigin,
+    ) -> Result<ParsedAttrs<'src>, CoreError> {
         if s.is_empty() {
             return Err(CoreError::MalformedMarking(s.to_owned()));
         }
+
+        let mut classification: Option<ParsedClassification<'src>> = None;
+        let mut fgi_marker: Option<ParsedFgiMarker<'src>> = None;
+        let mut declassify_on: Option<ParsedDeclassifyOn<'src>> = None;
+        let mut declass_exemption: Option<DeclassExemption> = None;
+        let mut sar_markings: Option<ParsedSarMarking<'src>> = None;
 
         // Walk separator (`//`) positions inside `s`. Each block is the
         // substring between consecutive separators (or string ends). Track
@@ -189,16 +258,16 @@ impl<'t> Parser<'t> {
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
         let mut sci: Vec<SciControl> = Vec::new();
-        let mut sci_markings: Vec<SciMarking> = Vec::new();
+        let mut sci_markings: Vec<ParsedSciMarking<'src>> = Vec::new();
         // SAR: P2 wires the hand-written subparser. Only the FIRST SAR block
-        // encountered populates `attrs.sar_markings`; any subsequent SAR block
+        // encountered populates `sar_markings`; any subsequent SAR block
         // is emitted as `TokenKind::Unknown` so rule E030 (indicator-repeat)
         // can flag the duplicate.
         let mut sar_captured = false;
-        let mut aea: Vec<AeaMarking> = Vec::new();
-        let mut dissem: Vec<DissemControl> = Vec::new();
-        let mut non_ic: Vec<NonIcDissem> = Vec::new();
-        let mut rel_to: Vec<CountryCode> = Vec::new();
+        let mut aea: Vec<ParsedAea<'src>> = Vec::new();
+        let mut dissem: Vec<ParsedDissem<'src>> = Vec::new();
+        let mut non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
+        let mut rel_to: Vec<ParsedRelToEntry<'src>> = Vec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
@@ -220,7 +289,13 @@ impl<'t> Parser<'t> {
             // Block 0: US classification (or empty for non-US markings)
             // ---------------------------------------------------------------
             if idx == 0 && !is_non_us {
-                attrs.classification = parse_classification(trimmed).map(MarkingClassification::Us);
+                if let Some(c) = parse_classification(trimmed) {
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Us(c),
+                        trimmed,
+                        span,
+                    ));
+                }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Classification,
                     span,
@@ -233,12 +308,15 @@ impl<'t> Parser<'t> {
             // Block 1 when non-US: foreign classification
             // ---------------------------------------------------------------
             if idx == 1 && is_non_us {
-                if let Some(nato) = parse_nato_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Nato(nato));
+                let parsed_cls = if let Some(nato) = parse_nato_classification(trimmed) {
+                    Some(MarkingClassification::Nato(nato))
                 } else if let Some(joint) = parse_joint_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Joint(joint));
-                } else if let Some(fgi) = parse_fgi_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Fgi(fgi));
+                    Some(MarkingClassification::Joint(joint))
+                } else {
+                    parse_fgi_classification(trimmed).map(MarkingClassification::Fgi)
+                };
+                if let Some(value) = parsed_cls {
+                    classification = Some(ParsedClassification::new(value, trimmed, span));
                 } else {
                     // Unrecognized non-US classification block.
                     token_spans.push(TokenSpan {
@@ -276,7 +354,7 @@ impl<'t> Parser<'t> {
                     continue;
                 }
                 if let Some((marking, sar_spans)) = parse_sar_category(trimmed, abs_start) {
-                    attrs.sar_markings = Some(marking);
+                    sar_markings = Some(ParsedSarMarking::new(marking, trimmed, span));
                     token_spans.extend(sar_spans);
                     sar_captured = true;
                     continue;
@@ -330,7 +408,25 @@ impl<'t> Parser<'t> {
                         sci.push(ctrl);
                     }
                 }
-                sci_markings.extend(markings);
+                // Wrap each structural SCI marking with the source slice
+                // for the full SCI sub-block. **Known PR 3a limitation
+                // (Copilot review feedback):** when the block holds
+                // multiple `/`-separated systems (e.g. `SI-G/TK-BLFH`),
+                // every wrapper here gets the *same* `trimmed`+`span`
+                // covering the whole block, not the per-system slice.
+                // The structural subparser already records granular
+                // per-system spans inside `token_spans` (kinds
+                // `SciSystem` / `SciCompartment` / `SciSubCompartment`),
+                // so per-marking provenance is recoverable today; the
+                // wrapper-level redundancy is benign for PR 3a's
+                // byte-identical-behavior gate. PR 3c picks up
+                // per-marking byte slicing as part of FR-019 round-trip
+                // work — `parse_sci_block` will return the per-chunk
+                // slices alongside the parsed markings, and this site
+                // pairs them 1:1.
+                for marking in markings {
+                    sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
+                }
             } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
                 token_spans.push(TokenSpan {
@@ -339,11 +435,14 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if trimmed.starts_with("FGI")
-                && matches!(attrs.classification, Some(MarkingClassification::Us(_)))
+                && matches!(
+                    classification.as_ref().map(|c| &c.value),
+                    Some(MarkingClassification::Us(_))
+                )
             {
                 // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
                 if let Some(marker) = parse_fgi_marker(trimmed) {
-                    attrs.fgi_marker = Some(marker);
+                    fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
                         span,
@@ -353,35 +452,37 @@ impl<'t> Parser<'t> {
             } else if let Some(ctrl) =
                 DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
             {
-                dissem.push(ctrl);
+                dissem.push(ParsedDissem::new(ctrl, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DissemControl,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(nic) = parse_non_ic_full_form(trimmed) {
-                non_ic.push(nic);
+                non_ic.push(ParsedNonIcDissem::new(nic, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::NonIcDissem,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
-                aea.push(aea_marking);
+                aea.push(ParsedAea::new(aea_marking, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::AeaMarking,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(exemption) = DeclassExemption::parse(trimmed) {
-                attrs.declass_exemption = Some(exemption);
+                declass_exemption = Some(exemption);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassExemption,
                     span,
                     text: trimmed.into(),
                 });
             } else if is_declass_date(trimmed) {
-                attrs.declassify_on = IsmDate::from_str(trimmed).ok();
+                if let Ok(date) = IsmDate::from_str(trimmed) {
+                    declassify_on = Some(ParsedDeclassifyOn::new(date, trimmed, span));
+                }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassDate,
                     span,
@@ -390,17 +491,39 @@ impl<'t> Parser<'t> {
             } else if let Some(foreign) = try_parse_foreign_classification(trimmed) {
                 // Conflict: a foreign classification in a marking that already
                 // has a US classification. US wins at the greater of the two.
-                if let Some(MarkingClassification::Us(us_level)) = attrs.classification {
+                let prior_us = match classification.as_ref().map(|c| &c.value) {
+                    Some(MarkingClassification::Us(level)) => Some(*level),
+                    _ => None,
+                };
+                if let Some(us_level) = prior_us {
                     let foreign_equiv = match &foreign {
                         ForeignClassification::Nato(n) => n.us_equivalent(),
                         ForeignClassification::Fgi(f) => f.level,
                         ForeignClassification::Joint(j) => j.level,
                     };
                     let max_level = us_level.max(foreign_equiv);
-                    attrs.classification = Some(MarkingClassification::Conflict {
-                        us: max_level,
-                        foreign: Box::new(foreign),
-                    });
+                    // Conflict provenance choice: bytes/span point at the
+                    // FOREIGN block (`trimmed`/`span`), not the prior US
+                    // block. The conflict is detected here, when parsing
+                    // the second classification — pointing at the foreign
+                    // block makes a future diagnostic ("dual classification
+                    // — pick one") land on the offending position. The US
+                    // block's own location is still recoverable via
+                    // `token_spans` (its `TokenSpan` was pushed on the
+                    // earlier iteration). A consumer that wants the full
+                    // conflict region can compute it from
+                    // `min(us.span.start, foreign.span.start)` to
+                    // `max(us.span.end, foreign.span.end)`. PR 3c may
+                    // promote this to a Conflict-specific span shape if a
+                    // round-trip property test (FR-019) requires it.
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Conflict {
+                            us: max_level,
+                            foreign: Box::new(foreign),
+                        },
+                        trimmed,
+                        span,
+                    ));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::Classification,
                         span,
@@ -538,7 +661,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Dissem => {
-                                dissem.push(r.dissem.unwrap());
+                                dissem.push(ParsedDissem::new(r.dissem.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::DissemControl,
                                     span: r.span,
@@ -546,7 +669,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::NonIc => {
-                                non_ic.push(r.nic.unwrap());
+                                non_ic.push(ParsedNonIcDissem::new(r.nic.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::NonIcDissem,
                                     span: r.span,
@@ -554,7 +677,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Aea => {
-                                aea.push(r.aea.unwrap());
+                                aea.push(ParsedAea::new(r.aea.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::AeaMarking,
                                     span: r.span,
@@ -582,16 +705,6 @@ impl<'t> Parser<'t> {
             }
         }
 
-        attrs.sci_controls = sci.into_boxed_slice();
-        attrs.sci_markings = sci_markings.into_boxed_slice();
-        // `attrs.sar_markings` is populated inline by the SAR branch above
-        // when the first SAR category block is encountered; otherwise it
-        // defaults to `None` from `IsmAttributes::default()`. `sar_captured`
-        // is read in that branch to gate duplicate-block detection.
-        attrs.aea_markings = aea.into_boxed_slice();
-        attrs.dissem_controls = dissem.into_boxed_slice();
-        attrs.non_ic_dissem = non_ic.into_boxed_slice();
-        attrs.rel_to = rel_to.into_boxed_slice();
         // Record separator spans (Phase 3 needs them for E004). Push them
         // here alongside block tokens, then sort by start offset so the
         // final slice is in document (source) order.
@@ -603,11 +716,26 @@ impl<'t> Parser<'t> {
             });
         }
         token_spans.sort_unstable_by_key(|ts| ts.span.start);
-        attrs.token_spans = token_spans.into_boxed_slice();
 
         let _ = context; // used for future context-aware validation
 
-        Ok(attrs)
+        Ok(ParsedAttrs::new(
+            classification,
+            sci_markings.into_boxed_slice(),
+            sci.into_boxed_slice(),
+            sar_markings,
+            aea.into_boxed_slice(),
+            fgi_marker,
+            dissem.into_boxed_slice(),
+            non_ic.into_boxed_slice(),
+            rel_to.into_boxed_slice(),
+            declassify_on,
+            None,
+            None,
+            declass_exemption,
+            token_spans.into_boxed_slice(),
+            origin,
+        ))
     }
 }
 
@@ -996,32 +1124,148 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
     })
 }
 
-/// Parse an FGI marker block in a US-classified marking: `"FGI"` or `"FGI DEU"` or `"FGI DEU GBR"`.
+/// Parse an FGI marker block in a US-classified marking.
 ///
-/// This is the FGI block between SAR and dissem controls in a US-classified
-/// marking (e.g., `SECRET//FGI DEU//NOFORN`). Not to be confused with
-/// [`parse_fgi_classification`] which parses a non-US classification.
+/// This is the FGI block between SAR and dissem controls in a
+/// US-classified marking (e.g., `SECRET//FGI DEU//NOFORN`). Not to
+/// be confused with [`parse_fgi_classification`] which parses a
+/// non-US classification.
+///
+/// # Three return cases (FR-015 / FR-016 closure, GH #280)
+///
+/// Per CAPCO-2016 §H.7 p123 the FGI marker has exactly two lawful
+/// banner forms: bare `FGI` (source-concealed) and `FGI [LIST]`
+/// (source-acknowledged). Anything else is a parse failure, not a
+/// degraded lawful form. This function enforces that as three
+/// disjoint return cases:
+///
+/// | Input shape | Return |
+/// |-------------|--------|
+/// | `"FGI"` exactly (no whitespace, no suffix) | `Some(SourceConcealed)` |
+/// | `"FGI " + tokens` where every token is a 2-, 3-, or 4-letter ASCII upper code (registered exception / Annex B trigraph / Annex A tetragraph) | `Some(Acknowledged { countries })` |
+/// | Anything else (malformed prefix, any token fails the country-token shape gate, OR empty list after `"FGI "`) | `None` |
+///
+/// The third row is the FR-016 closure: a post-failure shape MUST
+/// be `None`, never a degraded `Some(SourceConcealed)`. The
+/// transitional T094 fallback (`...unwrap_or(SourceConcealed)`) was
+/// removed in T088+T093 so a parse failure surfaces honestly to the
+/// rule layer instead of being silently re-cast as lawful
+/// concealment. A diagnostic for malformed FGI input is the rule
+/// layer's job; the parser's job is to refuse to mint a misleading
+/// AST.
+///
+/// # Country-token shape gate
+///
+/// Token admission goes through
+/// [`marque_ism::CountryCode::admits_country_token`] — the canonical
+/// FGI/REL TO list-token shape predicate (3 ASCII upper letters for
+/// an Annex B trigraph **or** 4 ASCII upper letters for an Annex A
+/// tetragraph). This is the same predicate that
+/// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)` calls,
+/// so the parser admits exactly what the vocabulary surface
+/// documents. Routing both surfaces through one symbol satisfies
+/// FR-015 (admission via documented vocabulary surface) and CHK030
+/// (no inline `is_ascii_alphanumeric` byte-class checks).
+///
+/// CAPCO-2016 §H.7 p123 spells out the shape: "Multiple FGI
+/// trigraph country codes or tetragraph codes must be separated by
+/// a single space ... example may appear as: `SECRET//FGI GBR JPN
+/// NATO//REL TO USA, GBR, JPN, NATO`." The order invariant
+/// (trigraphs alphabetic, then tetragraphs alphabetic) is rule-layer,
+/// not admission — real-world inputs arrive in any order and a
+/// dedicated rule normalizes them. Registry membership (Annex A
+/// for tetragraphs, Annex B for trigraphs) is also rule-layer.
+///
+/// `CountryCode::try_new` is a strictly weaker predicate at this
+/// site (it admits 2-15 byte values including digits and underscore
+/// for `AX2` / `AX3` / `AUSTRALIA_GROUP`), so going through
+/// `admits_country_token` first guarantees the subsequent `try_new`
+/// succeeds; the construct call is therefore infallible. That
+/// ordering is what lets the parser remain zero-allocation on the
+/// failure path (Constitution Principle II): `?` returns `None`
+/// immediately on any token-shape failure, no temporary allocation
+/// needed.
+///
+/// # Edge cases
+///
+/// - `parse_fgi_marker("")` → `None` (empty input has no `FGI` prefix).
+/// - `parse_fgi_marker("FGI")` → `Some(SourceConcealed)` — the bare
+///   lawful concealed form.
+/// - `parse_fgi_marker("FGI ")` (trailing whitespace, no tokens) →
+///   `None`. The strict `"FGI "` prefix followed by zero tokens is
+///   malformed input. Bare `"FGI"` (no trailing space) is the lawful
+///   concealed form; the trailing space disambiguates the two
+///   surfaces.
+/// - `parse_fgi_marker("FGI deu")` → `None` (lowercase fails the
+///   country-token shape gate; admission requires uniform ASCII upper).
+/// - `parse_fgi_marker("FGI USA NATO")` →
+///   `Some(Acknowledged { countries: [USA, NATO] })`. NATO is a
+///   tetragraph; admitted at this site per §H.7 p123. Order
+///   normalization (trigraph-then-tetragraph) is a rule-layer
+///   concern; the parser preserves source order.
+/// - `parse_fgi_marker("FGI USAGB")` → `None` (5-byte token rejected
+///   by the shape gate; `AUSTRALIA_GROUP`-class codes are out of
+///   scope here per the §H.7 "exception is granted" carve-out).
+/// - `parse_fgi_marker("foo FGI USA")` → `None` (no `FGI ` prefix
+///   on the input).
+///
+/// # Authority
+///
+/// CAPCO-2016 §H.7 p123 (FGI banner forms — concealed vs.
+/// acknowledged; trigraph-OR-tetragraph list grammar) + §A.6 p16
+/// ("Multiple FGI trigraph country codes or tetragraph codes must
+/// be separated by a single space"). The country-token predicate's
+/// authority chain is documented at
+/// [`marque_ism::CountryCode::admits_country_token`].
 fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
+    // Case 1: bare `FGI` is the lawful source-concealed banner form.
     if s == "FGI" {
-        return Some(FgiMarker {
-            countries: Box::new([]),
-        });
+        return Some(FgiMarker::SourceConcealed);
     }
 
+    // Case 2 / Case 3 dispatch: input must start with `FGI ` (with a
+    // single space). `strip_prefix` returning `None` on missing
+    // prefix is the Case 3 short-circuit for inputs like `"FGIDEU"`,
+    // `"foo FGI USA"`, or anything else that doesn't lead with the
+    // canonical separator.
     let rest = s.strip_prefix("FGI ")?;
-    let mut countries = Vec::new();
+
+    // Build the country list directly into the inline-4
+    // `SmallVec` shape `FgiMarker::Acknowledged` carries — typical
+    // FGI lists are ≤4 codes per CAPCO §H.7, so the common cases
+    // (`FGI USA`, `FGI USA GBR`, the §H.7 canonical example
+    // `FGI GBR JPN NATO`) stay heap-free. A longer list spills to
+    // the heap in `SmallVec` itself once, matching what
+    // `FgiMarker::acknowledged` would produce; the previous
+    // intermediate `Vec` defeated the inline-storage optimization
+    // by forcing one heap allocation on every acknowledged marker
+    // before the constructor re-collected.
+    let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
     for token in rest.split_whitespace() {
-        if token.len() == 3 {
-            if let Some(t) = CountryCode::try_new(token.as_bytes()) {
-                countries.push(t);
-            }
+        // FR-015 admission: route every token through the canonical
+        // FGI/REL TO list-token shape predicate. Trigraphs (3 ASCII
+        // upper) and tetragraphs (4 ASCII upper) admit; anything
+        // else (lowercase, digits, 5+-byte codes, junk) is a parse
+        // failure that returns `None` — never silently dropped.
+        if !CountryCode::admits_country_token(token.as_bytes()) {
+            return None;
         }
-        // Skip non-trigraph tokens for now (tetragraphs like NATO)
+        // `admits_country_token` (3 or 4 ASCII upper) is strictly
+        // stronger than `try_new` (2-15 alphanumeric/underscore), so
+        // this construction cannot fail. The `?` is here only as a
+        // type-system safeguard; it is unreachable for any input
+        // that passed the shape gate above.
+        let code = CountryCode::try_new(token.as_bytes())?;
+        countries.push(code);
     }
 
-    Some(FgiMarker {
-        countries: countries.into(),
-    })
+    // Case 3 closure: `"FGI "` followed by zero shape-admitted
+    // tokens (e.g., trailing whitespace only, or input like
+    // `"FGI \t"`). `FgiMarker::acknowledged` returns `None` on an
+    // empty country list, which is exactly the FR-016 contract —
+    // propagate it directly. This is the line that retired the
+    // transitional `unwrap_or(SourceConcealed)` fallback (#280).
+    FgiMarker::acknowledged(countries)
 }
 
 /// Attempt to parse a block as a foreign classification (NATO, JOINT, or FGI).
@@ -1082,10 +1326,10 @@ fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
 /// that were appended to the last comma entry via an intra-segment `/`
 /// separator (e.g., `REL TO USA, FVEY/NF` → countries=[USA, FVEY],
 /// trailing_dissem=[NF]).
-struct RelToParseResult {
-    countries: Vec<CountryCode>,
-    trailing_dissem: Vec<DissemControl>,
-    trailing_non_ic: Vec<NonIcDissem>,
+struct RelToParseResult<'src> {
+    countries: Vec<ParsedRelToEntry<'src>>,
+    trailing_dissem: Vec<ParsedDissem<'src>>,
+    trailing_non_ic: Vec<ParsedNonIcDissem<'src>>,
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
@@ -1101,12 +1345,12 @@ struct RelToParseResult {
 ///
 /// `block_offset` is the absolute byte offset of `block` within the
 /// original source buffer.
-fn parse_rel_to_with_spans(
-    block: &str,
+fn parse_rel_to_with_spans<'src>(
+    block: &'src str,
     block_offset: usize,
     tokens: &dyn TokenSet,
     token_spans: &mut Vec<TokenSpan>,
-) -> RelToParseResult {
+) -> RelToParseResult<'src> {
     // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
     // need the offset of the *trigraph list* within `block` so that each
     // trigraph's absolute span can be computed.
@@ -1119,9 +1363,9 @@ fn parse_rel_to_with_spans(
     };
     let after_rel = &block[prefix_skip..];
 
-    let mut countries: Vec<CountryCode> = Vec::new();
-    let mut trailing_dissem: Vec<DissemControl> = Vec::new();
-    let mut trailing_non_ic: Vec<NonIcDissem> = Vec::new();
+    let mut countries: Vec<ParsedRelToEntry<'src>> = Vec::new();
+    let mut trailing_dissem: Vec<ParsedDissem<'src>> = Vec::new();
+    let mut trailing_non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
@@ -1155,10 +1399,11 @@ fn parse_rel_to_with_spans(
             if !country_part.is_empty() {
                 if tokens.is_trigraph(country_part) {
                     if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
-                        countries.push(t);
+                        let span = Span::new(abs_start, abs_start + country_part.len());
+                        countries.push(ParsedRelToEntry::new(t, country_part, span));
                         token_spans.push(TokenSpan {
                             kind: TokenKind::RelToTrigraph,
-                            span: Span::new(abs_start, abs_start + country_part.len()),
+                            span,
                             text: country_part.into(),
                         });
                     }
@@ -1185,17 +1430,19 @@ fn parse_rel_to_with_spans(
                 if let Some(ctrl) =
                     DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
                 {
-                    trailing_dissem.push(ctrl);
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_dissem.push(ParsedDissem::new(ctrl, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::DissemControl,
-                        span: Span::new(part_abs, part_abs + part.len()),
+                        span,
                         text: part.into(),
                     });
                 } else if let Some(nic) = parse_non_ic_full_form(part) {
-                    trailing_non_ic.push(nic);
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_non_ic.push(ParsedNonIcDissem::new(nic, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::NonIcDissem,
-                        span: Span::new(part_abs, part_abs + part.len()),
+                        span,
                         text: part.into(),
                     });
                 } else {
@@ -1247,10 +1494,11 @@ fn parse_rel_to_with_spans(
         let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
             continue;
         };
-        countries.push(t);
+        let span = Span::new(abs_start, abs_start + trimmed.len());
+        countries.push(ParsedRelToEntry::new(t, trimmed, span));
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
-            span: Span::new(abs_start, abs_start + trimmed.len()),
+            span,
             text: trimmed.into(),
         });
     }
@@ -1424,6 +1672,31 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
 /// BP as two compartments `J12` (with sub-compartment `J54`) and `K15`.
 /// Within one program the sequence alternates:
 ///   `PROG "-" COMP (" " SUB)* ( "-" COMP (" " SUB)* )*`
+///
+/// # Shape gates
+///
+/// Token admission goes through the documented `marque-ism`
+/// predicates rather than inline byte-class checks
+/// (FR-015 / CHK030):
+///
+/// - Program identifier (Abbrev): [`SarProgram::admits_program_id_abbrev`]
+///   — 2-3 ASCII alnum.
+/// - Program identifier (Full): [`SarProgram::admits_program_id_full`]
+///   — uppercase ASCII letters with optional spaces, must contain
+///   at least one non-space byte; hyphens and digits rejected.
+/// - Compartment identifier: [`SarCompartment::admits_identifier`]
+///   — ≥1 ASCII alnum.
+/// - Sub-compartment identifier: [`SarCompartment::admits_identifier`]
+///   (same predicate; CAPCO-2016 §H.5 pp 99-100 places both grammar
+///   positions under one rule).
+///
+/// Routing the parser through the same predicates the
+/// `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm calls
+/// pins the parser's accept set to the documented vocabulary
+/// surface. This satisfies FR-015 (admission via documented
+/// vocabulary surface) and CHK030 (no inline `is_ascii_alphanumeric`
+/// byte-class checks). The same pattern is used at
+/// [`parse_fgi_marker`] for FGI trigraph admission.
 fn parse_sar_program(
     chunk: &str,
     base: usize,
@@ -1447,17 +1720,27 @@ fn parse_sar_program(
     if prog_id.is_empty() {
         return None;
     }
+    // FR-015 admission: route the program identifier shape gate
+    // through the canonical `marque-ism` predicates, one per
+    // indicator form. Both predicates are pure / allocation-free
+    // (Constitution Principle II) and carry their CAPCO-2016 §H.5
+    // citations alongside the predicate body — keeping the gate
+    // single-sited prevents drift between the parser and the
+    // `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` admission
+    // surface (CHK030). Mirrors the FGI marker site at
+    // [`parse_fgi_marker`] which routes through
+    // [`CountryCode::admits_country_token`].
     let prog_shape_ok = match indicator {
-        // 2–3 alphanumeric chars.
-        SarIndicator::Abbrev => {
-            (2..=3).contains(&prog_id.len()) && prog_id.bytes().all(|b| b.is_ascii_alphanumeric())
-        }
-        // Uppercase ASCII letters with optional spaces; no digits, no
-        // hyphens. Must contain at least one non-space byte.
-        SarIndicator::Full => {
-            prog_id.bytes().all(|b| b == b' ' || b.is_ascii_uppercase())
-                && prog_id.bytes().any(|b| b != b' ')
-        }
+        // §H.5 p101: "A program identifier abbreviation is the two
+        // or three-character designator for the program."
+        // §H.5 p99: "SAR program identifiers are alphanumeric values."
+        SarIndicator::Abbrev => SarProgram::admits_program_id_abbrev(prog_id.as_bytes()),
+        // §H.5 p101 + Table 7 §H.5 p100: full nickname is uppercase
+        // letters with optional spaces (no digits, no hyphens). The
+        // hyphen exclusion is load-bearing — the first hyphen after
+        // the indicator literal always marks the program/compartment
+        // boundary at this parser site.
+        SarIndicator::Full => SarProgram::admits_program_id_full(prog_id.as_bytes()),
     };
     if !prog_shape_ok {
         return None;
@@ -1478,7 +1761,16 @@ fn parse_sar_program(
         // Split segment on ` ` — first token is compartment, rest are subs.
         let mut parts = split_with_offsets(seg, ' ');
         let (comp_rel_off, comp_id) = parts.remove(0);
-        if comp_id.is_empty() || !comp_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        // FR-015 admission: compartment identifier shape gated
+        // through the canonical `marque-ism` predicate.
+        // CAPCO-2016 §H.5 pp 99-100: "SAR program identifiers are
+        // alphanumeric values"; the surrounding prose applies the
+        // same rule to compartments and sub-compartments. Length
+        // bound is ≥1 (manual silent on upper bound; marque admits
+        // length 1+, with the divergence documented at the
+        // predicate). Same predicate handles the sub-compartment
+        // case below (T090 / T091).
+        if !SarCompartment::admits_identifier(comp_id.as_bytes()) {
             return None;
         }
         let comp_abs_off = seg_off + comp_rel_off;
@@ -1490,7 +1782,13 @@ fn parse_sar_program(
 
         let mut subs: Vec<Box<str>> = Vec::with_capacity(parts.len());
         for (sub_rel_off, sub_id) in parts {
-            if sub_id.is_empty() || !sub_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            // FR-015 admission: sub-compartment identifier shape
+            // gated through the same canonical predicate as the
+            // compartment slot. CAPCO-2016 §H.5 pp 99-100 places
+            // both grammar positions under one rule (alphanumeric
+            // values, no character-class or length distinction);
+            // a single predicate admits both correctly (T091).
+            if !SarCompartment::admits_identifier(sub_id.as_bytes()) {
                 return None;
             }
             let sub_abs_off = seg_off + sub_rel_off;
@@ -1529,8 +1827,35 @@ fn split_with_offsets(s: &str, delim: char) -> Vec<(usize, &str)> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use marque_ism::CanonicalAttrs;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
     use marque_ism::token_set::CapcoTokenSet;
+
+    /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
+    /// so existing assertions on the typed `attrs.classification` /
+    /// `attrs.dissem_controls` shape continue to work without per-test
+    /// edits during the PR 3a rename.
+    ///
+    /// Test-fixture carve-out per Constitution V Principle V — the
+    /// adapter is invoked here only to construct test inputs whose
+    /// shape mirrors the engine's post-recognition view.
+    pub(super) struct CanonicalParsed {
+        pub attrs: CanonicalAttrs,
+        #[allow(dead_code)] // tests inspect attrs only; kept for parity
+        pub source_span: Span,
+        #[allow(dead_code)]
+        pub kind: MarkingType,
+    }
+
+    impl<'src> From<ParsedMarking<'src>> for CanonicalParsed {
+        fn from(p: ParsedMarking<'src>) -> Self {
+            Self {
+                attrs: marque_ism::from_parsed_unchecked(p.attrs),
+                source_span: p.source_span,
+                kind: p.kind,
+            }
+        }
+    }
 
     fn make_candidate(text: &[u8], kind: MarkingType, offset: usize) -> MarkingCandidate {
         MarkingCandidate {
@@ -1539,7 +1864,7 @@ mod tests {
         }
     }
 
-    fn parse_banner(text: &str) -> ParsedMarking {
+    fn parse_banner(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -1547,9 +1872,10 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("parse should succeed")
+            .into()
     }
 
-    fn parse_portion(text: &str) -> ParsedMarking {
+    fn parse_portion(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -1557,6 +1883,7 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("parse should succeed")
+            .into()
     }
 
     // --- declass exemption in banner (E005 detection) ---
@@ -2073,12 +2400,17 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        assert_eq!(marker.countries.len(), 1);
-        assert_eq!(marker.countries[0].as_str(), "DEU");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "DEU");
+            }
+            FgiMarker::SourceConcealed => panic!("expected acknowledged variant"),
+        }
     }
 
     #[test]
-    fn fgi_marker_no_countries() {
+    fn fgi_marker_bare_is_source_concealed() {
         let parsed = parse_banner("SECRET//FGI//NOFORN");
         assert_eq!(
             parsed.attrs.classification,
@@ -2089,7 +2421,235 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        assert!(marker.countries.is_empty());
+        // CAPCO §H.7 p123: bare `FGI` is the lawful source-concealed
+        // banner form, distinct from a parser failure.
+        assert!(matches!(marker, FgiMarker::SourceConcealed));
+    }
+
+    // ---- T088 + T093: FR-015 / FR-016 closure for parse_fgi_marker ----
+    //
+    // GH #280 retired the transitional `unwrap_or(SourceConcealed)`
+    // fallback. These tests pin the three lawful cases per CAPCO-2016
+    // §H.7 p123 (the only two banner forms — concealed `FGI` and
+    // acknowledged `FGI [LIST]`) plus the negative cases that map to
+    // `None`. The parser is invoked via `parse_banner` here to
+    // exercise the same call site (`crates/core/src/parser.rs:345`)
+    // that the engine reaches in production; the public surface of
+    // `parse_fgi_marker` itself is private to this module.
+
+    #[test]
+    fn fgi_marker_multi_country_acknowledged() {
+        // Three-country list: tests that the SmallVec inline path
+        // (4 codes) covers the typical case without heap allocation,
+        // and that the parser admits each token through
+        // `CountryCode::admits_fgi_trigraph`.
+        let parsed = parse_banner("SECRET//FGI USA GBR JPN//NOFORN");
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("should have FGI marker");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 3);
+                assert_eq!(countries[0].as_str(), "USA");
+                assert_eq!(countries[1].as_str(), "GBR");
+                assert_eq!(countries[2].as_str(), "JPN");
+            }
+            FgiMarker::SourceConcealed => panic!("expected Acknowledged variant"),
+        }
+    }
+
+    #[test]
+    fn fgi_marker_lowercase_token_no_marker() {
+        // Lowercase fails `admits_fgi_trigraph`; the previous
+        // transitional behavior would have silently dropped the
+        // token, producing an empty country list and falling back to
+        // `SourceConcealed`. Post-T088: the parser returns `None`,
+        // so `attrs.fgi_marker` is unset (CAPCO §H.7 p123 disallows
+        // a degraded lawful form on shape failure).
+        let parsed = parse_banner("SECRET//FGI deu//NOFORN");
+        assert!(
+            parsed.attrs.fgi_marker.is_none(),
+            "lowercase trigraph must fail FGI marker shape gate (got {:?})",
+            parsed.attrs.fgi_marker,
+        );
+    }
+
+    #[test]
+    fn fgi_marker_tetragraph_admits_per_capco_h7() {
+        // CAPCO-2016 §H.7 p123 spells out the canonical example:
+        // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
+        // — `NATO` is a 4-letter Annex A tetragraph admitted in the
+        // same FGI list as the trigraphs. The PR #311 review caught
+        // a regression where the parser narrowed admission to
+        // `admits_fgi_trigraph` (3-only); the post-fix
+        // `admits_country_token` widens to 2/3/4 ASCII upper,
+        // matching the §H.7 grammar.
+        let parsed = parse_banner("SECRET//FGI USA NATO//NOFORN");
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("FGI USA NATO admits per §H.7 p123");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 2);
+                let names: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
+                assert!(names.contains(&"USA"), "USA must appear; got {names:?}");
+                assert!(names.contains(&"NATO"), "NATO must appear; got {names:?}");
+            }
+            FgiMarker::SourceConcealed => panic!("expected Acknowledged([USA, NATO])"),
+        }
+    }
+
+    #[test]
+    fn fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it() {
+        // `XYZ` is shape-admissible (3 ASCII upper) — `admits_fgi_trigraph`
+        // is a *shape* gate, not a registry-membership gate. The CVE
+        // table check (`is_trigraph` against the GENC trigraph
+        // registry) lives in the rule layer (S### / E###), not the
+        // parser. So `XYZ` parses as an Acknowledged country code
+        // and a downstream rule flags the unknown trigraph.
+        //
+        // This pins the boundary: shape vs. registry. The earlier
+        // (pre-T088) implementation also accepted `XYZ` because
+        // `CountryCode::try_new` succeeds on 3 ASCII upper, so this
+        // is not a regression — it's a confirmation that the gate's
+        // semantics are scoped correctly.
+        let parsed = parse_banner("SECRET//FGI XYZ//NOFORN");
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("XYZ is shape-admissible; rule layer flags registry membership");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "XYZ");
+            }
+            FgiMarker::SourceConcealed => panic!("expected Acknowledged variant"),
+        }
+    }
+
+    #[test]
+    fn fgi_marker_direct_three_cases() {
+        // Direct exercise of `parse_fgi_marker` at the same module
+        // level, covering the three lawful return cases without the
+        // banner wrapper. Pins behavior the public `parse_banner`
+        // tests above route through indirectly.
+
+        // Case 1: bare "FGI" → Some(SourceConcealed)
+        assert!(matches!(
+            parse_fgi_marker("FGI"),
+            Some(FgiMarker::SourceConcealed),
+        ));
+
+        // Case 2: "FGI <trigraph>" → Some(Acknowledged)
+        match parse_fgi_marker("FGI USA") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "USA");
+            }
+            other => panic!("expected Acknowledged([USA]), got {other:?}"),
+        }
+
+        // Case 2 (multi): up to and beyond SmallVec inline capacity
+        match parse_fgi_marker("FGI USA GBR DEU JPN FRA") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 5);
+                let names: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
+                assert_eq!(names, ["USA", "GBR", "DEU", "JPN", "FRA"]);
+            }
+            other => panic!("expected 5-country Acknowledged, got {other:?}"),
+        }
+
+        // Case 3: empty input → None
+        assert!(parse_fgi_marker("").is_none());
+
+        // Case 3: lowercase token → None (FR-016 closure)
+        assert!(parse_fgi_marker("FGI deu").is_none());
+
+        // Case 2 (mixed shapes per §H.7 p123): trigraph + tetragraph
+        // → Some(Acknowledged) with both countries. PR #311 review
+        // caught the prior trigraph-only narrowing; post-fix
+        // admission accepts the spec-canonical example.
+        match parse_fgi_marker("FGI GBR JPN NATO") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 3);
+                let names: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
+                assert_eq!(names, ["GBR", "JPN", "NATO"]);
+            }
+            other => panic!("expected 3-country Acknowledged([GBR, JPN, NATO]), got {other:?}"),
+        }
+
+        // Case 2 (2-letter EU exception per ISMCAT
+        // CVEnumISMCATRelTo): bare `FGI EU` admits.
+        match parse_fgi_marker("FGI EU") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "EU");
+            }
+            other => panic!("expected Acknowledged([EU]), got {other:?}"),
+        }
+
+        // Case 2 (registry-unrecognized but shape-admissible
+        // tetragraph): `ABCD` admits at the shape gate; rule layer
+        // is responsible for flagging registry membership. Same
+        // policy as `XYZ` for trigraphs (see
+        // `fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it`).
+        match parse_fgi_marker("FGI ABCD") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "ABCD");
+            }
+            other => panic!("expected Acknowledged([ABCD]), got {other:?}"),
+        }
+
+        // Case 3: empty input → None
+        assert!(parse_fgi_marker("").is_none());
+
+        // Case 3: lowercase token → None (FR-016 closure)
+        assert!(parse_fgi_marker("FGI deu").is_none());
+        assert!(parse_fgi_marker("FGI nato").is_none());
+
+        // Case 3: 5+-byte token rejects (out-of-scope of
+        // `admits_country_token`; the §H.7 "exception is granted"
+        // surface for AUSTRALIA_GROUP-class codes is not handled
+        // at this gate).
+        assert!(parse_fgi_marker("FGI USAGB").is_none());
+        assert!(parse_fgi_marker("FGI AUSTRALIA_GROUP").is_none());
+
+        // Case 3: trailing whitespace with no tokens → None
+        assert!(parse_fgi_marker("FGI ").is_none());
+
+        // Case 3: malformed prefix → None
+        assert!(parse_fgi_marker("foo FGI USA").is_none());
+        assert!(parse_fgi_marker("FGIDEU").is_none()); // no separator
+
+        // Case 3: digits in any list-token slot → None
+        assert!(parse_fgi_marker("FGI US1").is_none());
+        assert!(parse_fgi_marker("FGI 123").is_none());
+        assert!(parse_fgi_marker("FGI NAT0").is_none()); // 0 not O
+    }
+
+    #[test]
+    fn fgi_marker_double_space_tolerated() {
+        // CAPCO §A.6 p16 specifies "single space" as the canonical
+        // separator, but `split_whitespace` in the parser
+        // tolerates multi-space and tab between tokens. A separate
+        // style rule (S###) can flag the non-canonical separator
+        // if the project ever wants one; the parser's job is
+        // admission, not style enforcement. Pin the tolerance so
+        // a future split-on-single-space rewrite is forced to
+        // notice this contract.
+        match parse_fgi_marker("FGI  USA") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "USA");
+            }
+            other => panic!("expected Acknowledged([USA]) for double-space input, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2574,7 +3134,7 @@ mod tests {
     // CAB date parsing (parse_cab Declassify On: path)
     // -----------------------------------------------------------------------
 
-    fn parse_cab_text(text: &str) -> ParsedMarking {
+    fn parse_cab_text(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -2582,6 +3142,7 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("CAB parse should succeed")
+            .into()
     }
 
     #[test]
@@ -2724,6 +3285,7 @@ mod sar_parse_tests {
     //! Direct unit tests for [`parse_sar_category`] plus integration-level
     //! tests that exercise the dispatch from `parse_marking_string`.
 
+    use super::tests::CanonicalParsed;
     use super::*;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
     use marque_ism::token_set::CapcoTokenSet;
@@ -2951,10 +3513,153 @@ mod sar_parse_tests {
     }
 
     // ---------------------------------------------------------------------
+    // T089 / T090 / T091: FR-015 closure for parse_sar_program
+    //
+    // The parser-side admission for SAR program identifiers,
+    // compartments, and sub-compartments routes through the
+    // `marque-ism` predicates `SarProgram::admits_program_id_abbrev`,
+    // `SarProgram::admits_program_id_full`, and
+    // `SarCompartment::admits_identifier`. These tests pin the
+    // accept/reject boundary at the parser dispatch level —
+    // catching any future drift between the parser and the
+    // single-source-of-truth predicates in `marque-ism::attrs`.
+    // The predicates' own accept/reject sets are exhaustively
+    // tested in `marque_ism::attrs::sar_shape_tests`; these tests
+    // verify the parser actually calls them.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn t089_program_id_abbrev_length_boundary() {
+        // FR-015 / T089 regression. The 2-3 alnum gate is the
+        // most observable boundary; if the parser ever falls back
+        // to a length-only or class-only check (a pre-T089 bug
+        // mode), one of these assertions will fail.
+
+        // Length 1 (below the 2-char minimum) — must reject.
+        assert!(
+            parse_sar_category("SAR-X", 0).is_none(),
+            "single-char program id must reject (below the §H.5 p101 \
+             2-3 char bound)",
+        );
+
+        // Length 2 (the lower bound) — must accept and produce a
+        // single program with the abbreviated identifier.
+        let (marking, _spans) = parse_sar_category("SAR-XY", 0)
+            .expect("2-char abbrev program id must accept (§H.5 p101 lower bound)");
+        assert_eq!(marking.indicator, SarIndicator::Abbrev);
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(&*marking.programs[0].identifier, "XY");
+
+        // Length 3 (the upper bound) — must accept.
+        let (marking, _spans) =
+            parse_sar_category("SAR-XYZ", 0).expect("3-char abbrev program id must accept");
+        assert_eq!(&*marking.programs[0].identifier, "XYZ");
+
+        // Length 4 (above the 3-char maximum) — must reject.
+        assert!(
+            parse_sar_category("SAR-XYZW", 0).is_none(),
+            "4-char program id must reject (above the §H.5 p101 \
+             2-3 char bound)",
+        );
+
+        // Lower-case alnum and digits remain admitted by the
+        // predicate (style rule, not shape rule), matching the
+        // predicate's documented behavior.
+        let (marking, _spans) = parse_sar_category("SAR-bp", 0)
+            .expect("lowercase abbrev program id must accept (style, not shape)");
+        assert_eq!(&*marking.programs[0].identifier, "bp");
+        let (marking, _spans) =
+            parse_sar_category("SAR-99", 0).expect("digit-only abbrev id must accept");
+        assert_eq!(&*marking.programs[0].identifier, "99");
+    }
+
+    #[test]
+    fn t090_compartment_identifier_admission() {
+        // FR-015 / T090 regression. `parse_sar_program` must
+        // delegate compartment admission to
+        // `SarCompartment::admits_identifier`, not an inline
+        // length-and-class check. The accept set is "≥1 ASCII
+        // alnum"; the reject set covers the empty-segment and
+        // punctuation cases.
+
+        // Empty compartment after the program/compartment hyphen
+        // — `SAR-BP-` produces an empty trailing segment that must
+        // reject (mirrors `parse_sar_program`'s segment-empty guard
+        // even though `admits_identifier(b"")` would also reject).
+        assert!(
+            parse_sar_category("SAR-BP-", 0).is_none(),
+            "trailing hyphen with empty compartment must reject",
+        );
+
+        // Single-character compartment — manual silent on lower
+        // bound beyond ≥1; marque admits length 1+. Pins the
+        // marque interpretation noted in the predicate's doc
+        // comment.
+        let (marking, _spans) = parse_sar_category("SAR-BP-1", 0)
+            .expect("single-char compartment id must accept (marque interpretation of §H.5 p99)");
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(marking.programs[0].compartments.len(), 1);
+        assert_eq!(&*marking.programs[0].compartments[0].identifier, "1");
+
+        // Multi-char alnum compartment — Table 7 §H.5 p100 examples.
+        let (marking, _spans) =
+            parse_sar_category("SAR-BP-J12", 0).expect("alnum compartment id must accept");
+        assert_eq!(&*marking.programs[0].compartments[0].identifier, "J12");
+    }
+
+    #[test]
+    fn t091_sub_compartment_identifier_admission() {
+        // FR-015 / T091 regression. Sub-compartment admission goes
+        // through the same `SarCompartment::admits_identifier`
+        // predicate as the compartment slot — the manual places
+        // both grammar positions under one rule
+        // (CAPCO-2016 §H.5 pp 99-100).
+
+        // Trailing space with no sub-compartment token — empty
+        // sub-compartment must reject. `split_with_offsets(seg, ' ')`
+        // produces an empty trailing token; `admits_identifier(b"")`
+        // catches it.
+        assert!(
+            parse_sar_category("SAR-BP-J12 ", 0).is_none(),
+            "trailing space with no sub-compartment token must reject",
+        );
+
+        // Single-char sub-compartment — admitted by the same
+        // length-1+ rule.
+        let (marking, _spans) = parse_sar_category("SAR-BP-J12 1", 0)
+            .expect("single-char sub-compartment id must accept");
+        let comp = &marking.programs[0].compartments[0];
+        assert_eq!(comp.sub_compartments.len(), 1);
+        assert_eq!(&*comp.sub_compartments[0], "1");
+
+        // Multi-char alnum sub-compartment — Table 7 §H.5 p100.
+        let (marking, _spans) =
+            parse_sar_category("SAR-BP-J12 J54", 0).expect("alnum sub-compartment id must accept");
+        let comp = &marking.programs[0].compartments[0];
+        assert_eq!(&*comp.sub_compartments[0], "J54");
+
+        // Punctuation in sub-compartment — must reject. The
+        // grammar separators `-`, `/`, and ` ` cannot be tested
+        // here: `-` and `/` are consumed at the compartment /
+        // program level before sub-compartment admission runs,
+        // and ` ` is itself the sub-compartment separator. Any
+        // other punctuation byte has no role in §H.5 and reaches
+        // `admits_identifier`, where it is rejected.
+        assert!(
+            parse_sar_category("SAR-BP-J12 J.54", 0).is_none(),
+            "punctuation (`.`) in sub-compartment must reject",
+        );
+        assert!(
+            parse_sar_category("SAR-BP-J12 J_54", 0).is_none(),
+            "punctuation (`_`) in sub-compartment must reject",
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // Dispatch tests (through `parse_marking_string`)
     // ---------------------------------------------------------------------
 
-    fn make_banner(text: &str) -> ParsedMarking {
+    fn make_banner(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -2962,7 +3667,10 @@ mod sar_parse_tests {
             span: Span::new(0, source.len()),
             kind: MarkingType::Banner,
         };
-        parser.parse(&candidate, source).expect("parse succeeds")
+        parser
+            .parse(&candidate, source)
+            .expect("parse succeeds")
+            .into()
     }
 
     #[test]

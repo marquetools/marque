@@ -48,8 +48,11 @@ for candidate in Scanner::scan(source) {
 ```
 
 `Scanner::scan` is an associated function (no instance needed). `Parser`
-borrows its `TokenSet` for the duration of parsing. The pivot attribute type
-is `IsmAttributes` (re-exported from `marque-ism`). Spans are byte offsets
+borrows its `TokenSet` for the duration of parsing. The parser produces
+`ParsedMarking<'src> { attrs: ParsedAttrs<'src>, ... }` (re-exported from
+`marque-ism`); the engine immediately runs `marque_ism::from_parsed_unchecked`
+(PR 3a transitional path) or `MarkingScheme::canonicalize` (post-PR-3c) to
+land owned `CanonicalAttrs` for rule consumption. Spans are byte offsets
 into the original buffer; rule crates read them without allocating.
 
 ## Features

@@ -956,6 +956,7 @@ dependencies = [
  "marque-ism",
  "memchr",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 
@@ -1005,11 +1006,13 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "jiff",
+ "marque-scheme",
  "memchr",
  "proptest",
  "quick-xml",
  "serde",
  "serde_json",
+ "smallvec",
  "toml",
  "xmloxide",
 ]

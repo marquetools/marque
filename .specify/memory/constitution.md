@@ -7,6 +7,36 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+
+==================
 Version change: 1.3.0 → 1.3.1
 
 Bump type: PATCH
@@ -437,31 +467,52 @@ The workspace dependency graph MUST be one-directional and acyclic.
 - The canonical dependency graph is:
 
   ```text
-  marque-ism    ←── marque-core ────────────────────┐
-  marque-ism    ←── marque-rules ←── marque-capco ──┤
-  marque-scheme ←──────────────────  marque-capco ──┤
-                                                    ↓
-                                              marque-engine ←── marque-config
-                                                    ↑
-                                              marque-wasm
-                                                    ↑
-                                marque-extract (non-WASM only)
-                                                    ↑
-                                              marque-server
-                                                    ↑
-                                               marque (CLI)
+  marque-scheme ←── marque-ism ←── marque-core ─────────────────────┐
+                    marque-ism ←── marque-rules ←── marque-capco ──┤
+                    marque-scheme ←─────────────────  marque-capco ──┤
+                                                                    ↓
+                                                              marque-engine ←── marque-config
+                                                                    ↑
+                                                              marque-wasm
+                                                                    ↑
+                                              marque-extract (non-WASM only)
+                                                                    ↑
+                                                              marque-server
+                                                                    ↑
+                                                               marque (CLI)
   ```
 
-  Read `A ←── B` as "`B` depends on `A`". `marque-ism` is the pivot crate
-  (vocabulary, generated CVE enums, `Span`, `IsmAttributes`) and sits at the
-  bottom of every WASM-safe chain. `marque-core` and `marque-rules` are
-  parallel consumers of `marque-ism`; `marque-rules` does **not** depend on
-  `marque-core`. `marque-scheme` is the domain-neutral trait surface for
-  structured marking schemes and has zero runtime dependencies (it does not
-  depend on `marque-ism`, `marque-core`, or `marque-rules`). `marque-capco`
-  consumes `marque-ism`, `marque-rules`, and `marque-scheme` — but **not**
-  `marque-core`. `marque-engine` is the convergence point that consumes all
-  of `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`, and
+  Read `A ←── B` as "`B` depends on `A`".
+
+  **`marque-scheme` is the only true graph leaf.** It is the domain-neutral
+  trait surface for structured marking schemes — `Lattice`, `MarkingScheme`,
+  `Constraint`, `Scope`, `PageRewrite`, the built-in lattice constructors —
+  and MUST NOT depend on `marque-ism`, `marque-core`, `marque-rules`, or any
+  domain crate. This keeps the scheme trait surface reusable across schemes
+  (CAPCO today, CUI / NATO / partner-national tomorrow) without inheriting
+  ODNI-specific vocabulary.
+
+  **`marque-ism` is the foundational vocabulary crate** — ODNI-generated
+  CVE enums, `Span`, the pivot type triple (`ParsedAttrs<'src>` /
+  `CanonicalAttrs` / `ProjectedMarking`). It MAY depend on `marque-scheme`
+  (e.g., `ProjectedMarking::scope: Scope`); this is the sole permitted
+  edge from `marque-ism` and was anticipated by the engine + rule
+  architecture refactor consolidated plan (Appendix D, "PR 3c
+  dependency-graph shift"). `marque-ism` MUST NOT depend on `marque-core`,
+  `marque-rules`, or any domain crate.
+
+  **`marque-core` and `marque-rules` are parallel consumers** of
+  `marque-ism` (and transitively of `marque-scheme`). `marque-rules` does
+  **not** depend on `marque-core`. As of PR 3c (`FixIntent<S>`),
+  `marque-rules` also depends on `marque-scheme` directly so rule-emission
+  values can reference scheme types without going through `marque-ism`;
+  the graph stays acyclic because `marque-scheme` is still leaf-only.
+
+  **`marque-capco`** (the CAPCO domain rule crate) consumes `marque-ism`,
+  `marque-rules`, and `marque-scheme` — but **not** `marque-core`.
+
+  **`marque-engine`** is the convergence point that consumes all of
+  `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`, and
   `marque-config`; this is the only crate that pulls both the
   scanner/parser chain (via `marque-core`) and the rule chain (via
   `marque-capco`) together.
@@ -488,6 +539,17 @@ excludes `marque-extract`). Discipline here prevents architectural debt that
 cannot be refactored cheaply. The `marque-ism` / `marque-scheme` split
 specifically exists so a second marking domain (CUI, NATO, etc.) can reuse
 the scheme trait surface without picking up ODNI-specific vocabulary.
+
+The directionality rule —
+`marque-ism` MAY depend on `marque-scheme` but not vice versa — is the
+sharp edge that makes that property hold. `marque-scheme` is the leaf
+both schemes share; `marque-ism` is the leaf the CAPCO/ISM scheme adds
+on top. A future `marque-cui` crate would sit alongside `marque-ism` (a
+peer foundation, not below it). Earlier wording described both as "peer
+leaves," which was a useful pre-refactor approximation; the keystone
+work (PR 3a / 3c of the engine + rule architecture refactor) makes the
+asymmetry explicit so type definitions like `ProjectedMarking::scope:
+Scope` and `FixIntent<S>` can land without contortion.
 
 ### VIII. Authoritative Source Fidelity
 
@@ -679,4 +741,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.3.1 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-27
+**Version**: 1.4.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-05

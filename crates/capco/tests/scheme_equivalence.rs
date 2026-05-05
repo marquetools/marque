@@ -15,7 +15,7 @@
 
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_ism::{
-    Classification, CountryCode, DissemControl, IsmAttributes, JointClassification,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, JointClassification,
     MarkingClassification, PageContext, SciControl,
 };
 use marque_scheme::MarkingScheme;
@@ -24,13 +24,13 @@ use marque_scheme::MarkingScheme;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn portion(c: Classification) -> IsmAttributes {
-    let mut a = IsmAttributes::default();
+fn portion(c: Classification) -> CanonicalAttrs {
+    let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(c));
     a
 }
 
-fn wrap(attrs: IsmAttributes) -> CapcoMarking {
+fn wrap(attrs: CanonicalAttrs) -> CapcoMarking {
     CapcoMarking::new(attrs)
 }
 
@@ -242,9 +242,9 @@ fn constraint_noforn_rel_to_conflict_is_silent_when_separate() {
 //   - HCS-P requires NOFORN; ORCON or ORCON-USGOV may be used (§H.4 p66).
 //   - HCS-O / HCS-P are only authorized for SECRET and TOP SECRET.
 //
-// Helper: build an IsmAttributes with a single structural SCI marking
+// Helper: build an CanonicalAttrs with a single structural SCI marking
 // `HCS-{compartment}` at the requested classification.
-fn hcs_structural(level: Classification, compartment: Option<&str>) -> IsmAttributes {
+fn hcs_structural(level: Classification, compartment: Option<&str>) -> CanonicalAttrs {
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
 
     let mut attrs = portion(level);
@@ -565,7 +565,7 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
     // missing USA (contrived — the parser disallows this at grammar
     // level, but the constraint still has teeth for programmatically
     // constructed markings).
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -606,7 +606,7 @@ fn e021_does_not_fire_on_u_ucni() {
     // fire on UCNI; the T035 catalog must match that behavior.
     use marque_ism::AeaMarking;
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Us(Classification::Unclassified));
     attrs.aea_markings = vec![AeaMarking::DoeUcni].into();
 
@@ -626,7 +626,7 @@ fn e021_fires_on_s_rd_without_noforn() {
     // NOFORN MUST fire E021.
     use marque_ism::{AeaMarking, RdBlock};
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
     attrs.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
 
@@ -651,7 +651,7 @@ fn e015_does_not_fire_on_dual_classification() {
     // marking that lacks dissem.
     use marque_ism::ForeignClassification;
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Conflict {
         us: Classification::Secret,
         foreign: Box::new(ForeignClassification::Joint(JointClassification {
@@ -696,7 +696,7 @@ fn e015_does_not_fire_on_dual_classification() {
 fn e036_fires_on_joint_with_bare_hcs() {
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -724,7 +724,7 @@ fn e036_fires_on_joint_with_bare_hcs() {
 fn e036_fires_on_joint_with_hcs_p() {
     // §H.3 line 4146 "HCS markings" is plural — covers HCS-P/HCS-O
     // too. `TOK_HCS` in satisfies_attrs matches Hcs|HcsO|HcsP.
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -744,7 +744,7 @@ fn e036_fires_on_joint_with_hcs_p() {
 
 #[test]
 fn e036_does_not_fire_on_joint_without_hcs() {
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -769,7 +769,7 @@ fn e036_does_not_fire_on_non_joint_with_hcs() {
     // US TS//HCS-P is valid. E036 is JOINT-specific.
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     attrs.sci_markings = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Hcs),
@@ -810,7 +810,7 @@ fn no_legacy_e017_e018_e019_constraints_in_catalog() {
 
 #[test]
 fn constraint_joint_requires_usa_silent_when_usa_present_everywhere() {
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -901,8 +901,8 @@ fn project_portion_scope_empty_returns_bottom() {
 
     let scheme = CapcoScheme::new();
     let out = scheme.project(Scope::Portion, &[]);
-    // Bottom is the default `IsmAttributes`.
-    assert_eq!(out.0, marque_ism::IsmAttributes::default());
+    // Bottom is the default `CanonicalAttrs`.
+    assert_eq!(out.0, marque_ism::CanonicalAttrs::default());
 }
 
 #[test]
@@ -1104,7 +1104,7 @@ fn capco_marking_meet_with_missing_classification_is_none() {
     use marque_scheme::Lattice;
 
     // One side has no classification → meet.classification = None.
-    let a = IsmAttributes::default();
+    let a = CanonicalAttrs::default();
     let mut b = portion(Classification::Secret);
     b.sci_controls = vec![SciControl::Si].into();
 
@@ -1123,8 +1123,8 @@ fn render_portion_and_render_banner_use_classification() {
 #[test]
 fn render_portion_and_banner_empty_without_classification() {
     let s = CapcoScheme::new();
-    let p = wrap(IsmAttributes::default());
-    // IsmAttributes::default has classification = None.
+    let p = wrap(CanonicalAttrs::default());
+    // CanonicalAttrs::default has classification = None.
     assert_eq!(s.render_portion(&p), "");
     assert_eq!(s.render_banner(&p), "");
 }
@@ -1135,7 +1135,7 @@ fn render_banner_with_joint_classification_falls_back_to_level() {
 
     // effective_level() is US-level for Joint/FGI/NATO too, so
     // render_banner should still produce a real string.
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -1182,7 +1182,7 @@ fn constraint_joint_without_usa_in_reltop_violates() {
     // JOINT ⇒ USA must be in both classification countries and REL TO.
     // Build a Joint marking with USA in the country list but MISSING
     // from REL TO.
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
@@ -1202,7 +1202,7 @@ fn constraint_joint_without_usa_in_reltop_violates() {
 fn constraint_joint_with_usa_everywhere_is_silent() {
     use marque_ism::{JointClassification, MarkingClassification};
 
-    let mut attrs = IsmAttributes::default();
+    let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
         countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),

@@ -40,7 +40,7 @@ fn deep_cx() -> ParseContext {
     }
 }
 
-fn same_meaning(a: &marque_ism::IsmAttributes, b: &marque_ism::IsmAttributes) -> bool {
+fn same_meaning(a: &marque_ism::CanonicalAttrs, b: &marque_ism::CanonicalAttrs) -> bool {
     let mut a = a.clone();
     let mut b = b.clone();
     a.token_spans = Box::new([]);
@@ -62,7 +62,7 @@ fn parse_strict_attrs(input: &[u8]) -> Option<CapcoMarking> {
     }
 }
 
-fn token_summary(attrs: &marque_ism::IsmAttributes) -> String {
+fn token_summary(attrs: &marque_ism::CanonicalAttrs) -> String {
     let mut counts = std::collections::BTreeMap::new();
     for span in attrs.token_spans.iter() {
         *counts.entry(format!("{:?}", span.kind)).or_insert(0) += 1;
@@ -74,7 +74,7 @@ fn token_summary(attrs: &marque_ism::IsmAttributes) -> String {
         .join(", ")
 }
 
-fn unknown_token_text(input: &[u8], attrs: &marque_ism::IsmAttributes) -> Vec<String> {
+fn unknown_token_text(input: &[u8], attrs: &marque_ism::CanonicalAttrs) -> Vec<String> {
     attrs
         .token_spans
         .iter()
@@ -196,7 +196,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     }
 }
 
-fn attrs_summary(attrs: &marque_ism::IsmAttributes) -> String {
+fn attrs_summary(attrs: &marque_ism::CanonicalAttrs) -> String {
     format!(
         "cls={:?} sci={} sar={} dissem={} rel_to={} declass={:?}",
         attrs.classification,

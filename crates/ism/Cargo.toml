@@ -56,7 +56,17 @@ ismcat-tetra-version = "2022-NOV"
 [dependencies]
 aho-corasick = { workspace = true }
 jiff = { workspace = true }
+# `marque-scheme` provides `Scope`, which `ProjectedMarking::scope`
+# carries. The consolidated plan (`docs/plans/2026-05-02-engine-refactor-consolidated.md`
+# Appendix D) anticipated an `marque-ism` ↔ `marque-scheme` edge as part
+# of the PR-3a/3c keystone work. Both crates remain WASM-safe; the dep
+# graph stays acyclic because `marque-scheme` does NOT depend on
+# `marque-ism` (it stays a domain-neutral trait surface). The PR-3c
+# `FixIntent<S>` work will land its own dep changes (`marque-rules →
+# marque-scheme`) without re-routing this edge.
+marque-scheme = { workspace = true }
 serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

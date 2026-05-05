@@ -4,13 +4,13 @@
 
 //! Property-based tests for `PageContext` roll-up monotonicity.
 //!
-//! Generates small vecs of `IsmAttributes` (1–5 portions), feeds them to
+//! Generates small vecs of `CanonicalAttrs` (1–5 portions), feeds them to
 //! `PageContext::add_portion`, and asserts the structural invariants of the
 //! roll-up: classification monotonicity, dissem-control union superset,
 //! REL-TO intersection subset, and empty-page sentinel.
 
 use marque_ism::{
-    Classification, CountryCode, DissemControl, IsmAttributes, MarkingClassification, PageContext,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification, PageContext,
 };
 use proptest::prelude::*;
 use proptest::sample::subsequence;
@@ -69,7 +69,7 @@ fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
     ]
 }
 
-fn arb_ism_attrs() -> impl Strategy<Value = IsmAttributes> {
+fn arb_ism_attrs() -> impl Strategy<Value = CanonicalAttrs> {
     (
         prop_oneof![
             Just(None),
@@ -79,8 +79,8 @@ fn arb_ism_attrs() -> impl Strategy<Value = IsmAttributes> {
         arb_rel_to(),
     )
         .prop_map(|(classification, dissem_controls, rel_to)| {
-            // IsmAttributes is #[non_exhaustive] so use Default + field mutation.
-            let mut attrs = IsmAttributes::default();
+            // CanonicalAttrs is #[non_exhaustive] so use Default + field mutation.
+            let mut attrs = CanonicalAttrs::default();
             attrs.classification = classification;
             attrs.dissem_controls = dissem_controls.into_boxed_slice();
             attrs.rel_to = rel_to.into_boxed_slice();
@@ -88,7 +88,7 @@ fn arb_ism_attrs() -> impl Strategy<Value = IsmAttributes> {
         })
 }
 
-fn arb_portions() -> impl Strategy<Value = Vec<IsmAttributes>> {
+fn arb_portions() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
     proptest::collection::vec(arb_ism_attrs(), 1..=5)
 }
 

@@ -96,7 +96,7 @@ use std::path::{Path, PathBuf};
 
 use marque_capco::CapcoMarking;
 use marque_engine::{DecoderRecognizer, StrictRecognizer};
-use marque_ism::IsmAttributes;
+use marque_ism::CanonicalAttrs;
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use serde::Deserialize;
@@ -388,7 +388,7 @@ fn parse_expected(strict: &StrictRecognizer, expected: &str) -> Option<CapcoMark
 /// canonical marking") asks whether the *meaning* matches, not
 /// whether the source-byte-offset table round-trips. Token spans
 /// are diagnostic-presentation metadata, not identity.
-fn same_meaning(a: &IsmAttributes, b: &IsmAttributes) -> bool {
+fn same_meaning(a: &CanonicalAttrs, b: &CanonicalAttrs) -> bool {
     let mut left = a.clone();
     let mut right = b.clone();
     left.token_spans = Box::new([]);

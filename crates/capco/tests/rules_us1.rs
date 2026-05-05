@@ -44,8 +44,12 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
+        // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
+        // PageContext / Rule::check consume CanonicalAttrs.
+        // Test-fixture carve-out per Constitution V Principle V.
+        let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
-            page_context.add_portion(parsed.attrs.clone());
+            page_context.add_portion(attrs.clone());
             page_context_arc = None;
         }
         let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
@@ -65,7 +69,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
             corrections: None,
         };
         for rule in rule_set.rules() {
-            for d in rule.check(&parsed.attrs, &ctx) {
+            for d in rule.check(&attrs, &ctx) {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
             }
         }

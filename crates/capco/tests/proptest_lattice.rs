@@ -138,9 +138,14 @@ fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
             let mut deduped = countries;
             deduped.sort_by_key(|c| c.as_str().to_owned());
             deduped.dedup_by_key(|c| c.as_str().to_owned());
-            FgiSet::from_marker(Some(&FgiMarker {
-                countries: deduped.into_boxed_slice(),
-            }))
+            // The 0-length sample is the lawful source-concealed FGI banner
+            // form (CAPCO §H.7 p123); non-empty samples are source-
+            // acknowledged. Post-FR-017 these are distinct enum variants,
+            // not a shared shape, so the lattice strategy reflects that.
+            match FgiMarker::acknowledged(deduped) {
+                Some(m) => FgiSet::from_marker(Some(&m)),
+                None => FgiSet::from_marker(Some(&FgiMarker::SourceConcealed)),
+            }
         }),
         Just(FgiSet::Present {
             concealed: true,
