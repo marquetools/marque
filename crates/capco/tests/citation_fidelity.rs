@@ -139,7 +139,23 @@ fn corpus_contains_fixture_for_each_cited_authority() {
         // PR 10 (F.1 maturation) tightens this to a hard failure once
         // the keyword-based proxy is replaced with a real
         // rule-citation→fixture index.
-        eprintln!("{msg}");
+        //
+        // **Output channel.** `cargo nextest` suppresses test stdout/stderr
+        // for *passing* tests by default, so a plain `eprintln!` here is
+        // invisible in CI logs. Emit the gap as a GitHub Actions warning
+        // annotation when running under CI (env var `GITHUB_ACTIONS=true`),
+        // which surfaces in the PR Checks UI without failing the test.
+        // Outside CI we still print to stderr so local `cargo test
+        // --nocapture` shows the gap.
+        if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+            // Single-line GHA annotation. Newlines in the body are
+            // escaped per https://github.com/actions/toolkit/issues/193 —
+            // `%0A` is the encoded newline.
+            let escaped = msg.replace('\n', "%0A");
+            println!("::warning title=F.1 fixture coverage gap::{escaped}");
+        } else {
+            eprintln!("{msg}");
+        }
     }
 }
 

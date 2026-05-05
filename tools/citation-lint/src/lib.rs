@@ -139,7 +139,11 @@ pub fn lint_workspace(workspace_dir: &Path) -> Result<Vec<Defect>> {
 
 /// Specificity ordering for source kinds — more specific kinds win
 /// during dedup. Citation field > Message field > Constraint label >
-/// Doc comment > String literal.
+/// Doc comment > String literal > Raw text. `RawText` is least
+/// specific because it represents pre-AST raw-line scans (e.g., the
+/// legacy-line-form detector) that cannot disambiguate between line
+/// comments, doc comments, and string literals. AST-derived kinds
+/// always win when both surface the same defect.
 fn source_kind_specificity(kind: SourceKind) -> u8 {
     match kind {
         SourceKind::CitationField => 0,
@@ -147,5 +151,6 @@ fn source_kind_specificity(kind: SourceKind) -> u8 {
         SourceKind::ConstraintLabel => 2,
         SourceKind::DocComment => 3,
         SourceKind::StringLiteral => 4,
+        SourceKind::RawText => 5,
     }
 }

@@ -135,13 +135,23 @@ fn resolve_letter_only_pages(
 /// best-effort hint; the lint does not commit to its accuracy. The
 /// PR 0.6 implementer is expected to re-verify against the source.
 ///
-/// Currently handles two suggestion classes:
+/// Handles four `DefectClass` variants in two suggestion strategies:
 ///
-/// 1. `BareSection` and `UnknownSection { letter }` where a unique
-///    normative section's page range covers the cited page —
-///    suggest that section.
-/// 2. `PageOutOfRange` where the cited page IS inside some other
-///    subsection of the document — suggest that subsection.
+/// 1. **Section-shape defects** (`BareSection`, `UnknownSection`,
+///    `NonNormativeSection`) — when a page anchor is present, find
+///    the unique normative subsection whose page range covers the
+///    cited page and suggest that subsection.
+/// 2. **`PageOutOfRange`** — find the subsection whose page range
+///    actually contains the cited pages, regardless of which
+///    subsection the author wrote, and suggest it.
+///
+/// All four variants share the same lookup primitive
+/// (`find_unique_containing_subsection`); the doc previously
+/// described "two suggestion classes" — the distinction is two
+/// strategies over four `DefectClass` variants. Other variants
+/// (`LegacyLineForm`, doubled-page-anchor synthetic) deliberately
+/// return `None` here; their guidance is encoded directly at the
+/// scanner emission site.
 pub fn suggest_correction(
     citation: &Citation,
     class: &DefectClass,

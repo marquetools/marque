@@ -174,7 +174,7 @@ fn find_legacy_line_form(path: &Path, source: &str, out: &mut Vec<Defect>) {
                         file: path.to_path_buf(),
                         line: (idx + 1) as u32,
                         column: (i + 1) as u32,
-                        source_kind: SourceKind::DocComment,
+                        source_kind: SourceKind::RawText,
                         raw: raw.to_string(),
                         class: DefectClass::LegacyLineForm {
                             line_form: raw.to_string(),
@@ -259,16 +259,20 @@ impl CitationVisitor {
                 find,
             });
         }
-        // Also detect doubled page-anchor form here. The pattern is:
-        // `pNN-MM pMM` or `pNN–MM pMM` or `pp NN-MM pMM`. We detect
-        // it textually because it's a textual artifact (a tracked
-        // FR-020 known defect class) rather than a structural
-        // mis-resolution.
-        if let Some(suspect) = find_doubled_page_anchor(text) {
-            let column = u32::try_from(span.start().column)
-                .unwrap_or(0)
-                .saturating_add(1);
-            let line = u32::try_from(span.start().line).unwrap_or(0);
+        // Also detect doubled page-anchor form here. The pattern is
+        // `p<digits>(-|–)<digits> p<digits>` where the trailing page
+        // matches the second page in the range — the FR-020 known
+        // defect (`p150–151 p151`). We detect it textually because
+        // it's a textual artifact rather than a structural
+        // mis-resolution. The `pp NN-MM pMM` form is NOT currently in
+        // scope; if it appears in a future catalog, extend
+        // `find_doubled_page_anchor` to cover it.
+        if let Some((match_offset, suspect)) = find_doubled_page_anchor(text) {
+            // Use compute_line_col so the diagnostic points at the
+            // start of the matched substring, not the start of the
+            // enclosing literal — the catalog is more useful when the
+            // column lands on the actual `pNN-MM pMM` text.
+            let (line, column) = compute_line_col(span, match_offset, text);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -277,7 +281,7 @@ impl CitationVisitor {
                 // Re-encode as a synthetic "find" that the resolver
                 // ignores; the catalog emitter will surface it.
                 find: CitationFind::BareSection {
-                    offset: 0,
+                    offset: match_offset,
                     raw: format!("__doubled_page_anchor__:{suspect}"),
                 },
             });
@@ -407,14 +411,17 @@ fn compute_line_col(span: Span, offset: usize, text: &str) -> (u32, u32) {
 }
 
 /// Detect a doubled page anchor of the shape `pNN-MM pMM` /
-/// `pNN–MM pMM` / `pp NN-MM pMM`. Returns the matched substring on
-/// success.
+/// `pNN–MM pMM`. Returns `(start_offset, matched_substring)` on
+/// success — the offset is the byte index of the leading `p` in
+/// `text`, suitable for `compute_line_col`. Returns `None` if no
+/// match is found.
 #[allow(clippy::many_single_char_names)]
-fn find_doubled_page_anchor(text: &str) -> Option<String> {
+fn find_doubled_page_anchor(text: &str) -> Option<(usize, String)> {
     // We look for: `p` <digits>+ <dash> <digits>+ <whitespace>+ `p`
     // <digits>+, where the trailing page is identical to the second
     // page in the range OR is otherwise redundant. The narrow form
-    // matches FR-020's specific pattern (`p150–151 p151`).
+    // matches FR-020's specific pattern (`p150–151 p151`). The
+    // `pp NN-MM pMM` form is NOT in scope.
     let bytes = text.as_bytes();
     if bytes.len() < 8 {
         return None;
@@ -463,7 +470,7 @@ fn find_doubled_page_anchor(text: &str) -> Option<String> {
                 if t > trailing_digit_start {
                     let trailing = &text[trailing_digit_start..t];
                     if trailing == second_page {
-                        return Some(text[p1_start..t].to_string());
+                        return Some((p1_start, text[p1_start..t].to_string()));
                     }
                 }
             }
@@ -539,14 +546,20 @@ mod tests {
     #[test]
     fn detects_doubled_page_anchor() {
         let s = "§H.8 p150-151 p151";
-        let found = find_doubled_page_anchor(s).unwrap();
+        let (offset, found) = find_doubled_page_anchor(s).unwrap();
         assert!(found.contains("p150"), "got {found:?}");
+        // Offset must point at the leading `p` of the matched
+        // substring (byte index 5 in this fixture: `§` is 2 bytes,
+        // `H.8 ` is 4 bytes, totaling 6 — but the literal `§` is 2
+        // bytes UTF-8, `H.8 ` adds 4 ASCII bytes = 6, so the leading
+        // `p` is at byte index 6). Re-verify if the fixture changes.
+        assert_eq!(offset, 6, "offset should point at leading `p` of match");
     }
 
     #[test]
     fn detects_doubled_page_anchor_with_en_dash() {
         let s = "§H.8 p150–151 p151";
-        let found = find_doubled_page_anchor(s).unwrap();
+        let (_offset, found) = find_doubled_page_anchor(s).unwrap();
         assert!(found.contains("p150"), "got {found:?}");
     }
 
