@@ -626,19 +626,30 @@ fn shape_trigraph(bytes: &[u8]) -> bool {
     marque_ism::CountryCode::admits_fgi_trigraph(bytes)
 }
 
-/// SAR program identifier abbreviation: 2-3 ASCII alphanumeric
-/// characters. CAPCO-2016 §H.5 p101 lists "two or three-character
-/// designator for the program" under SPECIAL ACCESS REQUIRED's
-/// "Additional Marking Instructions"; §H.5 p99 ("SAR program
-/// identifiers are alphanumeric values") fixes the character class.
-/// CAPCO-2016 does not explicitly require uppercase — examples like
-/// `BP`, `SDA`, `XR` are uppercase by convention but the prose
-/// allows alphanumeric. We accept ASCII alphanumeric (any case)
-/// here and let a downstream style rule (S###) flag lowercase if
-/// the project ever wants one.
+/// SAR program identifier abbreviation: delegates to
+/// [`marque_ism::SarProgram::admits_program_id_abbrev`], the single
+/// source of truth for the 2-3 ASCII alphanumeric shape gate
+/// (CAPCO-2016 §H.5 p99 + §H.5 p101).
+///
+/// Keeping this function as a thin wrapper rather than calling
+/// `SarProgram::admits_program_id_abbrev` inline at the
+/// `shape_admits` `CAT_SAR` arm is a readability convenience that
+/// matches the [`shape_trigraph`] pattern: `shape_sar_program_id(bytes)`
+/// reads cleanly in the dispatch table, and a future shape change
+/// (e.g., narrowing to uppercase only or pinning a length cap) is
+/// a single-line edit at the canonical definition in `marque-ism`
+/// rather than a per-call-site change.
+///
+/// The strict parser at
+/// `crates/core/src/parser.rs::parse_sar_program` calls into the
+/// same `marque_ism::SarProgram::admits_program_id_abbrev` directly
+/// (it cannot reach this private wrapper across the `marque-capco`
+/// boundary without violating Constitution VII), so both surfaces
+/// are pinned to the same canonical predicate by depending on the
+/// same exported symbol — mirroring the FGI trigraph routing.
 #[inline]
 fn shape_sar_program_id(bytes: &[u8]) -> bool {
-    matches!(bytes.len(), 2 | 3) && bytes.iter().all(u8::is_ascii_alphanumeric)
+    marque_ism::SarProgram::admits_program_id_abbrev(bytes)
 }
 
 /// SCI compartment / sub-compartment shape: 2-3 ASCII alphanumeric

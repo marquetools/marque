@@ -1522,6 +1522,31 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
 /// BP as two compartments `J12` (with sub-compartment `J54`) and `K15`.
 /// Within one program the sequence alternates:
 ///   `PROG "-" COMP (" " SUB)* ( "-" COMP (" " SUB)* )*`
+///
+/// # Shape gates
+///
+/// Token admission goes through the documented `marque-ism`
+/// predicates rather than inline byte-class checks
+/// (FR-015 / CHK030):
+///
+/// - Program identifier (Abbrev): [`SarProgram::admits_program_id_abbrev`]
+///   — 2-3 ASCII alnum.
+/// - Program identifier (Full): [`SarProgram::admits_program_id_full`]
+///   — uppercase ASCII letters with optional spaces, must contain
+///   at least one non-space byte; hyphens and digits rejected.
+/// - Compartment identifier: [`SarCompartment::admits_identifier`]
+///   — ≥1 ASCII alnum.
+/// - Sub-compartment identifier: [`SarCompartment::admits_identifier`]
+///   (same predicate; CAPCO-2016 §H.5 pp 99-100 places both grammar
+///   positions under one rule).
+///
+/// Routing the parser through the same predicates the
+/// `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm calls
+/// pins the parser's accept set to the documented vocabulary
+/// surface. This satisfies FR-015 (admission via documented
+/// vocabulary surface) and CHK030 (no inline `is_ascii_alphanumeric`
+/// byte-class checks). The same pattern is used at
+/// [`parse_fgi_marker`] for FGI trigraph admission.
 fn parse_sar_program(
     chunk: &str,
     base: usize,
@@ -1545,17 +1570,27 @@ fn parse_sar_program(
     if prog_id.is_empty() {
         return None;
     }
+    // FR-015 admission: route the program identifier shape gate
+    // through the canonical `marque-ism` predicates, one per
+    // indicator form. Both predicates are pure / allocation-free
+    // (Constitution Principle II) and carry their CAPCO-2016 §H.5
+    // citations alongside the predicate body — keeping the gate
+    // single-sited prevents drift between the parser and the
+    // `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` admission
+    // surface (CHK030). Mirrors the FGI marker site at
+    // [`parse_fgi_marker`] which routes through
+    // [`CountryCode::admits_fgi_trigraph`].
     let prog_shape_ok = match indicator {
-        // 2–3 alphanumeric chars.
-        SarIndicator::Abbrev => {
-            (2..=3).contains(&prog_id.len()) && prog_id.bytes().all(|b| b.is_ascii_alphanumeric())
-        }
-        // Uppercase ASCII letters with optional spaces; no digits, no
-        // hyphens. Must contain at least one non-space byte.
-        SarIndicator::Full => {
-            prog_id.bytes().all(|b| b == b' ' || b.is_ascii_uppercase())
-                && prog_id.bytes().any(|b| b != b' ')
-        }
+        // §H.5 p101: "A program identifier abbreviation is the two
+        // or three-character designator for the program."
+        // §H.5 p99: "SAR program identifiers are alphanumeric values."
+        SarIndicator::Abbrev => SarProgram::admits_program_id_abbrev(prog_id.as_bytes()),
+        // §H.5 p101 + Table 7 §H.5 p100: full nickname is uppercase
+        // letters with optional spaces (no digits, no hyphens). The
+        // hyphen exclusion is load-bearing — the first hyphen after
+        // the indicator literal always marks the program/compartment
+        // boundary at this parser site.
+        SarIndicator::Full => SarProgram::admits_program_id_full(prog_id.as_bytes()),
     };
     if !prog_shape_ok {
         return None;
@@ -1576,7 +1611,16 @@ fn parse_sar_program(
         // Split segment on ` ` — first token is compartment, rest are subs.
         let mut parts = split_with_offsets(seg, ' ');
         let (comp_rel_off, comp_id) = parts.remove(0);
-        if comp_id.is_empty() || !comp_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        // FR-015 admission: compartment identifier shape gated
+        // through the canonical `marque-ism` predicate.
+        // CAPCO-2016 §H.5 pp 99-100: "SAR program identifiers are
+        // alphanumeric values"; the surrounding prose applies the
+        // same rule to compartments and sub-compartments. Length
+        // bound is ≥1 (manual silent on upper bound; marque admits
+        // length 1+, with the divergence documented at the
+        // predicate). Same predicate handles the sub-compartment
+        // case below (T090 / T091).
+        if !SarCompartment::admits_identifier(comp_id.as_bytes()) {
             return None;
         }
         let comp_abs_off = seg_off + comp_rel_off;
@@ -1588,7 +1632,13 @@ fn parse_sar_program(
 
         let mut subs: Vec<Box<str>> = Vec::with_capacity(parts.len());
         for (sub_rel_off, sub_id) in parts {
-            if sub_id.is_empty() || !sub_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            // FR-015 admission: sub-compartment identifier shape
+            // gated through the same canonical predicate as the
+            // compartment slot. CAPCO-2016 §H.5 pp 99-100 places
+            // both grammar positions under one rule (alphanumeric
+            // values, no character-class or length distinction);
+            // a single predicate admits both correctly (T091).
+            if !SarCompartment::admits_identifier(sub_id.as_bytes()) {
                 return None;
             }
             let sub_abs_off = seg_off + sub_rel_off;
@@ -3226,6 +3276,149 @@ mod sar_parse_tests {
         assert!(parse_sar_category("SAR-B", 0).is_none());
         // Four-char program id.
         assert!(parse_sar_category("SAR-BPCD", 0).is_none());
+    }
+
+    // ---------------------------------------------------------------------
+    // T089 / T090 / T091: FR-015 closure for parse_sar_program
+    //
+    // The parser-side admission for SAR program identifiers,
+    // compartments, and sub-compartments routes through the
+    // `marque-ism` predicates `SarProgram::admits_program_id_abbrev`,
+    // `SarProgram::admits_program_id_full`, and
+    // `SarCompartment::admits_identifier`. These tests pin the
+    // accept/reject boundary at the parser dispatch level —
+    // catching any future drift between the parser and the
+    // single-source-of-truth predicates in `marque-ism::attrs`.
+    // The predicates' own accept/reject sets are exhaustively
+    // tested in `marque_ism::attrs::sar_shape_tests`; these tests
+    // verify the parser actually calls them.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn t089_program_id_abbrev_length_boundary() {
+        // FR-015 / T089 regression. The 2-3 alnum gate is the
+        // most observable boundary; if the parser ever falls back
+        // to a length-only or class-only check (a pre-T089 bug
+        // mode), one of these assertions will fail.
+
+        // Length 1 (below the 2-char minimum) — must reject.
+        assert!(
+            parse_sar_category("SAR-X", 0).is_none(),
+            "single-char program id must reject (below the §H.5 p101 \
+             2-3 char bound)",
+        );
+
+        // Length 2 (the lower bound) — must accept and produce a
+        // single program with the abbreviated identifier.
+        let (marking, _spans) = parse_sar_category("SAR-XY", 0)
+            .expect("2-char abbrev program id must accept (§H.5 p101 lower bound)");
+        assert_eq!(marking.indicator, SarIndicator::Abbrev);
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(&*marking.programs[0].identifier, "XY");
+
+        // Length 3 (the upper bound) — must accept.
+        let (marking, _spans) =
+            parse_sar_category("SAR-XYZ", 0).expect("3-char abbrev program id must accept");
+        assert_eq!(&*marking.programs[0].identifier, "XYZ");
+
+        // Length 4 (above the 3-char maximum) — must reject.
+        assert!(
+            parse_sar_category("SAR-XYZW", 0).is_none(),
+            "4-char program id must reject (above the §H.5 p101 \
+             2-3 char bound)",
+        );
+
+        // Lower-case alnum and digits remain admitted by the
+        // predicate (style rule, not shape rule), matching the
+        // predicate's documented behavior.
+        let (marking, _spans) = parse_sar_category("SAR-bp", 0)
+            .expect("lowercase abbrev program id must accept (style, not shape)");
+        assert_eq!(&*marking.programs[0].identifier, "bp");
+        let (marking, _spans) =
+            parse_sar_category("SAR-99", 0).expect("digit-only abbrev id must accept");
+        assert_eq!(&*marking.programs[0].identifier, "99");
+    }
+
+    #[test]
+    fn t090_compartment_identifier_admission() {
+        // FR-015 / T090 regression. `parse_sar_program` must
+        // delegate compartment admission to
+        // `SarCompartment::admits_identifier`, not an inline
+        // length-and-class check. The accept set is "≥1 ASCII
+        // alnum"; the reject set covers the empty-segment and
+        // punctuation cases.
+
+        // Empty compartment after the program/compartment hyphen
+        // — `SAR-BP-` produces an empty trailing segment that must
+        // reject (mirrors `parse_sar_program`'s segment-empty guard
+        // even though `admits_identifier(b"")` would also reject).
+        assert!(
+            parse_sar_category("SAR-BP-", 0).is_none(),
+            "trailing hyphen with empty compartment must reject",
+        );
+
+        // Single-character compartment — manual silent on lower
+        // bound beyond ≥1; marque admits length 1+. Pins the
+        // marque interpretation noted in the predicate's doc
+        // comment.
+        let (marking, _spans) = parse_sar_category("SAR-BP-1", 0)
+            .expect("single-char compartment id must accept (marque interpretation of §H.5 p99)");
+        assert_eq!(marking.programs.len(), 1);
+        assert_eq!(marking.programs[0].compartments.len(), 1);
+        assert_eq!(&*marking.programs[0].compartments[0].identifier, "1");
+
+        // Multi-char alnum compartment — Table 7 §H.5 p100 examples.
+        let (marking, _spans) =
+            parse_sar_category("SAR-BP-J12", 0).expect("alnum compartment id must accept");
+        assert_eq!(&*marking.programs[0].compartments[0].identifier, "J12");
+    }
+
+    #[test]
+    fn t091_sub_compartment_identifier_admission() {
+        // FR-015 / T091 regression. Sub-compartment admission goes
+        // through the same `SarCompartment::admits_identifier`
+        // predicate as the compartment slot — the manual places
+        // both grammar positions under one rule
+        // (CAPCO-2016 §H.5 pp 99-100).
+
+        // Trailing space with no sub-compartment token — empty
+        // sub-compartment must reject. `split_with_offsets(seg, ' ')`
+        // produces an empty trailing token; `admits_identifier(b"")`
+        // catches it.
+        assert!(
+            parse_sar_category("SAR-BP-J12 ", 0).is_none(),
+            "trailing space with no sub-compartment token must reject",
+        );
+
+        // Single-char sub-compartment — admitted by the same
+        // length-1+ rule.
+        let (marking, _spans) = parse_sar_category("SAR-BP-J12 1", 0)
+            .expect("single-char sub-compartment id must accept");
+        let comp = &marking.programs[0].compartments[0];
+        assert_eq!(comp.sub_compartments.len(), 1);
+        assert_eq!(&*comp.sub_compartments[0], "1");
+
+        // Multi-char alnum sub-compartment — Table 7 §H.5 p100.
+        let (marking, _spans) =
+            parse_sar_category("SAR-BP-J12 J54", 0).expect("alnum sub-compartment id must accept");
+        let comp = &marking.programs[0].compartments[0];
+        assert_eq!(&*comp.sub_compartments[0], "J54");
+
+        // Punctuation in sub-compartment — must reject. The
+        // grammar separators `-`, `/`, and ` ` cannot be tested
+        // here: `-` and `/` are consumed at the compartment /
+        // program level before sub-compartment admission runs,
+        // and ` ` is itself the sub-compartment separator. Any
+        // other punctuation byte has no role in §H.5 and reaches
+        // `admits_identifier`, where it is rejected.
+        assert!(
+            parse_sar_category("SAR-BP-J12 J.54", 0).is_none(),
+            "punctuation (`.`) in sub-compartment must reject",
+        );
+        assert!(
+            parse_sar_category("SAR-BP-J12 J_54", 0).is_none(),
+            "punctuation (`_`) in sub-compartment must reject",
+        );
     }
 
     // ---------------------------------------------------------------------
