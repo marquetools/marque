@@ -1283,6 +1283,75 @@ impl CountryCode {
     pub const fn is_empty(&self) -> bool {
         false
     }
+
+    /// Annex B trigraph admission predicate: exactly 3 ASCII uppercase
+    /// letters `[A-Z]`. This is the shape gate for FGI markers and
+    /// REL TO trigraph slots — categories that authoritatively pull
+    /// from the GENC trigraph register.
+    ///
+    /// Returns `true` iff `bytes` is a 3-byte slice whose every byte
+    /// is in `b'A'..=b'Z'`. Stricter than [`CountryCode::try_new`],
+    /// which also accepts ASCII digits (for `AX2` / `AX3`), the
+    /// underscore (for `AUSTRALIA_GROUP`), and any 2-byte through
+    /// 16-byte alphanumeric/underscore code (for tetragraphs and
+    /// long codes).
+    ///
+    /// This predicate is the single source of truth for the FGI /
+    /// REL-TO trigraph shape gate. The `Vocabulary<CapcoScheme>`
+    /// adapter at `crates/capco/src/vocabulary.rs` calls this from
+    /// `shape_admits(CAT_FGI_MARKER, _)` and `shape_admits(CAT_REL_TO, _)`
+    /// (Phase 5 PR-2 gating); the strict parser at
+    /// `crates/core/src/parser.rs::parse_fgi_marker` calls it
+    /// directly to gate FGI marker country tokens (FR-015 / FR-016).
+    /// Both call sites MUST go through this function rather than
+    /// inline a length-and-class check — keeping the predicate single-
+    /// sited prevents drift between admission and parser surfaces
+    /// (CHK030).
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 ("FOREIGN GOVERNMENT
+    /// INFORMATION [LIST]" — country trigraphs from Register Annex
+    /// B) + §A.6 p16 ("Multiple FGI trigraph country codes or
+    /// tetragraph codes must be separated by a single space.
+    /// Trigraph codes used with the FGI marking must be listed
+    /// first in ascending alphabetic sort order, followed by
+    /// tetragraph codes ..."). GENC Annex B publishes only 3-letter
+    /// alpha codes; tetragraphs (4-letter org/coalition codes such
+    /// as `NATO`, `ISAF`, `FVEY`) live in Register Annex A and
+    /// route through a separate vocabulary surface
+    /// (`marque_capco::vocab` tetragraph table) that is intentionally
+    /// not folded into this trigraph-only predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::CountryCode;
+    /// assert!(CountryCode::admits_fgi_trigraph(b"USA"));
+    /// assert!(CountryCode::admits_fgi_trigraph(b"GBR"));
+    /// // Rejected: too short.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"US"));
+    /// // Rejected: too long (tetragraph).
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"NATO"));
+    /// // Rejected: lowercase.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"usa"));
+    /// // Rejected: digit.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b"US1"));
+    /// // Rejected: empty.
+    /// assert!(!CountryCode::admits_fgi_trigraph(b""));
+    /// ```
+    #[inline]
+    pub const fn admits_fgi_trigraph(bytes: &[u8]) -> bool {
+        if bytes.len() != 3 {
+            return false;
+        }
+        let mut i = 0;
+        while i < 3 {
+            if !bytes[i].is_ascii_uppercase() {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
 }
 
 impl std::fmt::Display for CountryCode {
@@ -1420,6 +1489,88 @@ mod country_code_tests {
         assert_eq!(CountryCode::USA, runtime);
         assert_eq!(CountryCode::USA.as_bytes(), runtime.as_bytes());
         assert_eq!(CountryCode::USA.len(), runtime.len());
+    }
+
+    // ----------------------------------------------------------------
+    // admits_fgi_trigraph — Annex B trigraph shape predicate
+    // ----------------------------------------------------------------
+    //
+    // FR-015 / FR-016 closure: this predicate IS the documented FGI /
+    // REL-TO trigraph admission gate. Both the `Vocabulary<CapcoScheme>`
+    // adapter (`crates/capco/src/vocabulary.rs`) and the strict parser
+    // (`crates/core/src/parser.rs`) call into it. These tests pin the
+    // invariants both call sites depend on; a regression that loosens
+    // the predicate (e.g., admitting digits, lowercase, or tetragraphs)
+    // would silently broaden the accept set on both surfaces.
+
+    #[test]
+    fn admits_fgi_trigraph_accepts_three_uppercase_letters() {
+        assert!(CountryCode::admits_fgi_trigraph(b"USA"));
+        assert!(CountryCode::admits_fgi_trigraph(b"GBR"));
+        assert!(CountryCode::admits_fgi_trigraph(b"DEU"));
+        assert!(CountryCode::admits_fgi_trigraph(b"AUS"));
+        assert!(CountryCode::admits_fgi_trigraph(b"JPN"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_lowercase() {
+        assert!(!CountryCode::admits_fgi_trigraph(b"usa"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"Usa"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"USa"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_wrong_length() {
+        assert!(!CountryCode::admits_fgi_trigraph(b""));
+        assert!(!CountryCode::admits_fgi_trigraph(b"U"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"US"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"USAA"));
+        // Tetragraphs (4-letter org codes) live in the separate
+        // tetragraph table, not this trigraph predicate.
+        assert!(!CountryCode::admits_fgi_trigraph(b"NATO"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"FVEY"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"ISAF"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_digits() {
+        // `CountryCode::try_new` accepts ASCII digits (for AX2 / AX3),
+        // but the FGI trigraph predicate does not — Annex B GENC codes
+        // are alpha-only.
+        assert!(!CountryCode::admits_fgi_trigraph(b"AX2"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"123"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"US1"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_underscore() {
+        // `CountryCode::try_new` accepts underscore (for
+        // AUSTRALIA_GROUP), but the FGI trigraph predicate rejects
+        // every non-alpha byte.
+        assert!(!CountryCode::admits_fgi_trigraph(b"US_"));
+        assert!(!CountryCode::admits_fgi_trigraph(b"_US"));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_rejects_non_ascii() {
+        // 'É' is two UTF-8 bytes (0xC3 0x89); first byte is not ASCII
+        // uppercase. A 3-byte UTF-8 sequence must still fail because
+        // every byte must individually be in `b'A'..=b'Z'`.
+        let two_byte_e_acute = "ÉU".as_bytes(); // 3 bytes total
+        assert_eq!(two_byte_e_acute.len(), 3);
+        assert!(!CountryCode::admits_fgi_trigraph(two_byte_e_acute));
+    }
+
+    #[test]
+    fn admits_fgi_trigraph_implies_try_new() {
+        // Property: if `admits_fgi_trigraph` accepts, then `try_new`
+        // accepts (the trigraph predicate is strictly stronger). This
+        // is what lets the parser gate by `admits_fgi_trigraph` and
+        // construct via `try_new` without a redundant validation.
+        for code in [b"USA", b"GBR", b"DEU", b"FRA", b"JPN"] {
+            assert!(CountryCode::admits_fgi_trigraph(code));
+            assert!(CountryCode::try_new(code).is_some());
+        }
     }
 }
 

@@ -594,18 +594,36 @@ fn classification_banner_to_portion(s: &str) -> Option<&'static str> {
     }
 }
 
-/// FGI / REL-TO / JOINT country trigraph: exactly 3 ASCII uppercase
-/// letters [A-Z]. CAPCO uses GENC trigraphs (Annex B Trigraph
-/// Country Codes) which are always 3 alpha. Tetragraph admission
-/// (4-letter codes for organizations / coalitions) is intentionally
-/// NOT folded in here because the existing parser routes tetragraphs
+/// FGI / REL-TO / JOINT country trigraph admission: delegates to
+/// [`marque_ism::CountryCode::admits_fgi_trigraph`], which is the
+/// single source of truth for the Annex B GENC trigraph shape
+/// predicate (3 ASCII uppercase letters).
+///
+/// Keeping this function as a thin wrapper rather than calling
+/// `CountryCode::admits_fgi_trigraph` inline at every match arm is a
+/// readability convenience: `shape_trigraph(bytes)` reads cleanly in
+/// the dispatch table below, and a future widening (e.g., admitting
+/// the GENC numeric subset) is a single-line edit at the canonical
+/// definition in `marque-ism` rather than a per-call-site change.
+///
+/// Tetragraph admission (4-letter codes for organizations /
+/// coalitions like `NATO`, `ISAF`, `FVEY`) is intentionally NOT
+/// folded in here because the existing parser routes tetragraphs
 /// through a separate `vocab` lookup (see `marque_capco::vocab`); a
 /// future PR can extend this predicate to admit `len == 4` against
 /// the tetragraph table when the parser's tetragraph admission site
 /// is migrated.
+///
+/// The strict parser at
+/// `crates/core/src/parser.rs::parse_fgi_marker` calls into the same
+/// `marque_ism::CountryCode::admits_fgi_trigraph` directly (it cannot
+/// reach this private wrapper across the `marque-capco` boundary
+/// without violating Constitution VII), so both surfaces are pinned
+/// to the same canonical predicate by depending on the same exported
+/// symbol.
 #[inline]
 fn shape_trigraph(bytes: &[u8]) -> bool {
-    bytes.len() == 3 && bytes.iter().all(u8::is_ascii_uppercase)
+    marque_ism::CountryCode::admits_fgi_trigraph(bytes)
 }
 
 /// SAR program identifier abbreviation: 2-3 ASCII alphanumeric
