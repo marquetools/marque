@@ -180,15 +180,22 @@ fn dissem_first_banner_decodes_to_canonical_order() {
 
 #[test]
 fn unclassified_candidate_rejected_below_secret_floor() {
-    // `(U)` decodes to UNCLASSIFIED at 1.0 when no floor is set. With
-    // a SECRET floor, the candidate is below the floor and must be
-    // dropped — decoder returns zero-candidate Ambiguous.
+    // `UNCLASSIFIED` (banner form) decodes to UNCLASSIFIED when no
+    // floor is set. With a SECRET floor, the candidate is below the
+    // floor and must be dropped — decoder returns zero-candidate
+    // Ambiguous.
+    //
+    // Issue #258: pre-#258 this used `(U)` (portion form), but
+    // single-letter portions are now suppressed by the prose null
+    // hypothesis (`U` has high prose frequency). Switch to the
+    // banner form so the underlying floor predicate is what gets
+    // tested, not the dispatch interaction with the null hypothesis.
     let rx = DecoderRecognizer::new();
     let floored = ParseContext {
         classification_floor: Some(Classification::Secret as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"(U)", &floored) {
+    match rx.recognize(b"UNCLASSIFIED", &floored) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
             "UNCLASSIFIED below SECRET floor must zero-out candidates, got {}",
@@ -203,47 +210,57 @@ fn unclassified_candidate_rejected_below_secret_floor() {
 
 #[test]
 fn floor_at_equal_level_accepts_candidate() {
-    // `(S)` with a SECRET floor passes — equal clears the floor.
+    // `SECRET` (banner form) with a SECRET floor passes — equal
+    // clears the floor. Issue #258: pre-#258 this used `(S)`
+    // (portion form), but single-letter portions now lose to the
+    // prose null hypothesis. The unit under test is the floor
+    // predicate, not the portion-vs-banner dispatch.
     let rx = DecoderRecognizer::new();
     let floored = ParseContext {
         classification_floor: Some(Classification::Secret as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"(S)", &floored) {
+    match rx.recognize(b"SECRET", &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::Secret));
         }
-        other => panic!("(S) at SECRET floor should decode unambiguously, got {other:?}"),
+        other => panic!("SECRET at SECRET floor should decode unambiguously, got {other:?}"),
     }
 }
 
 #[test]
 fn floor_below_candidate_accepts_higher_level() {
-    // `(TS)` with a CONFIDENTIAL floor passes — TopSecret exceeds
-    // Confidential.
+    // `TOP SECRET` (banner form) with a CONFIDENTIAL floor passes —
+    // TopSecret exceeds Confidential. Issue #258: pre-#258 this used
+    // `(TS)` (portion form); the banner form is more discriminative
+    // against the prose null hypothesis.
     let rx = DecoderRecognizer::new();
     let floored = ParseContext {
         classification_floor: Some(Classification::Confidential as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"(TS)", &floored) {
+    match rx.recognize(b"TOP SECRET", &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
         }
-        other => panic!("(TS) above CONFIDENTIAL floor should decode, got {other:?}"),
+        other => panic!("TOP SECRET above CONFIDENTIAL floor should decode, got {other:?}"),
     }
 }
 
 #[test]
 fn no_floor_accepts_any_classification() {
     // With `classification_floor: None` the floor is inactive —
-    // any classification passes through.
+    // any classification passes through. Issue #258: pre-#258 this
+    // used portion forms (`(U)`, `(C)`, `(S)`, `(TS)`); the banner
+    // forms are more discriminative against the prose null
+    // hypothesis (the full words are exceedingly rare in prose) so
+    // each input still decodes unambiguously.
     let rx = DecoderRecognizer::new();
     for (input, expected) in [
-        (b"(U)".as_slice(), Classification::Unclassified),
-        (b"(C)".as_slice(), Classification::Confidential),
-        (b"(S)".as_slice(), Classification::Secret),
-        (b"(TS)".as_slice(), Classification::TopSecret),
+        (b"UNCLASSIFIED".as_slice(), Classification::Unclassified),
+        (b"CONFIDENTIAL".as_slice(), Classification::Confidential),
+        (b"SECRET".as_slice(), Classification::Secret),
+        (b"TOP SECRET".as_slice(), Classification::TopSecret),
     ] {
         match rx.recognize(input, &deep_cx()) {
             Parsed::Unambiguous(marking) => {

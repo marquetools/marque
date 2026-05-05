@@ -125,6 +125,45 @@ fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
     engine.fix(source, FixMode::Apply)
 }
 
+/// Build an engine with `confidence_threshold = 0.80` so decoder-
+/// path fixes land in `result.applied` even when the prose null-
+/// hypothesis runner-up has shrunk `recognition_score` below the
+/// default 0.95.
+///
+/// Issue #258 added a per-token prose null hypothesis to the decoder's
+/// dispatch — the marking-side score now competes against
+/// `log P(tokens|prose)` for the same canonical-token set. For
+/// inputs like `(SERCET//NF)` the marking interpretation still wins
+/// the dispatch (positive log-margin against null), but the runner-up
+/// is no longer `f32::NEG_INFINITY` (no other marking candidate) —
+/// it's the prose null-hypothesis score, so the resulting
+/// `runner_up_ratio` is finite and `recognition` lands around 0.83
+/// for short portion-form fuzzy fixes instead of `SOLO_RECOGNITION =
+/// 0.999999`. That's correct decoder behavior — a fuzzy
+/// edit-distance-1 fix on a two-portion-token input (`S` + `NF`)
+/// carries appropriate uncertainty when `S` has high prose-side
+/// frequency — but it pushes the fix below the default
+/// `confidence_threshold = 0.95`, and the lint phase's eager
+/// `Severity::Fix → Severity::Suggest` downgrade
+/// (`crates/engine/src/engine.rs:748`) consults the engine's
+/// `Config::confidence_threshold`, NOT the per-call
+/// `threshold_override` from `fix_with_threshold`. So the override
+/// does not undo the lint downgrade — we have to lower the config
+/// threshold itself.
+fn deep_scan_engine_relaxed() -> Engine {
+    let mut config = Config::default();
+    config
+        .set_confidence_threshold(0.80)
+        .expect("0.80 is a valid confidence threshold");
+    Engine::with_clock(
+        config,
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+        Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+}
+
 /// Panic if any prose sentinel appears in the given string.
 ///
 /// Panic includes the rule ID and span so a failure points directly at
@@ -628,6 +667,15 @@ fn v1_records_parse_in_v2_consumer() {
 // would indicate the deep-scan dispatcher never invoked the decoder
 // at all — silently weakening the assertion.
 
+// Default-threshold deep-scan engine helper. Pre-#258 this was used
+// by `decoder_path_record_shape`, but the prose null-hypothesis
+// runner-up shrinks recognition for short fuzzy fixes below the
+// default 0.95 gate, so the test now uses `deep_scan_engine_relaxed`
+// (config threshold 0.80). Kept for documentation and as a
+// scaffolding handle if a future test needs the default threshold;
+// `#[allow(dead_code)]` suppresses the unused-function warning rather
+// than deleting the helper outright.
+#[allow(dead_code)]
 fn deep_scan_engine() -> Engine {
     // The decoder fallback is the engine default (`Engine::new` /
     // `Engine::with_clock` install `StrictOrDecoderRecognizer`); no
@@ -645,7 +693,11 @@ fn deep_scan_engine() -> Engine {
 fn decoder_path_record_shape() {
     use marque_rules::FeatureId;
 
-    let engine = deep_scan_engine();
+    // Use a relaxed-threshold engine — the prose null-hypothesis
+    // runner-up (issue #258) shrinks recognition for short fuzzy
+    // fixes below the default 0.95 gate. See
+    // `deep_scan_engine_relaxed` for the rationale.
+    let engine = deep_scan_engine_relaxed();
 
     // Mangled portion candidate: leading `(` makes the scanner emit
     // a portion candidate; SERCET inside is edit-distance-1 from
