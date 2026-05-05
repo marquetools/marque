@@ -61,7 +61,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [X] T015 Run citation-lint + F.1 against existing rule catalog; capture defect catalog at `docs/refactor-006/citation-defect-catalog.md` (R-6 discovery exercise; PR-0.5)
 - [X] T016 Fix the four pre-identified citation-defect classes in `crates/capco/src/scheme.rs` and `rules.rs`: (a) `§4` fabrications across multiple `scheme.rs` lines; (b) doubled `p150–151 p151` at five sites in `rules.rs`; (c) SIGMA cross-revision archaeology at `rules.rs:4053`; (d) HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it (FR-020; PR-0.6)
 - [X] T017 Address every additional defect surfaced by PR 0.5's citation-defect catalog; add corpus fixtures for any newly-cited authority lacking one; update citations per FR-018 rules (FR-019, FR-020; PR-0.6)
-- [X] T018 Verify PR 0.6 merge gate: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0; F.1 corpus fixture coverage is 100% over current rule catalog (FR-018, FR-019; PR-0.6)
+- [X] T018 Verify PR 0.6 merge gate: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 (the crate is out-of-workspace per Constitution III; `-p citation-lint` does NOT work from the repo root); F.1 corpus fixture coverage is 100% over current rule catalog (FR-018, FR-019; PR-0.6)
 - [ ] T019 Verify single-pass forward splice (PR #277 / #278 already landed): run `fix_throughput` Criterion bench; confirm R² ≥ 0.9 against PR-0 baseline (FR-029; PR-1)
 
 **Checkpoint**: Citation-lint green workspace-wide; F.1 corpus fixture coverage 100% over current rules; splice perf gate green; ready to begin keystone work.
@@ -235,7 +235,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T099 [US5] Extend F.1 corpus fixture coverage at `crates/capco/tests/citation_fidelity.rs` to require ≥1 fixture per cited authority (not just per existing rule); audit every `Constraint`/`PageRewrite`/`Rule` citation (FR-019, SC-006; PR-10)
 - [ ] T100 [US5] Add corpus fixtures for cited authorities lacking one (the set is unknown until Phase 7 audit runs; expect a long tail) (FR-019; PR-10)
 - [ ] T101 [US5] Land 8C vendored-source registry declarative — formalize the `AuthoritativeSource::Capco2016` mapping table; pin `crates/capco/docs/CAPCO-2016.md` BLAKE3 digest at build time; CI fails on digest mismatch (FR-018; PR-10)
-- [ ] T102 [P] [US5] Verify citation-lint clean across the post-refactor codebase (every PR-introduced citation passes); `cargo run -p citation-lint -- .` exits 0 (SC-005; PR-10)
+- [ ] T102 [P] [US5] Verify citation-lint clean across the post-refactor codebase (every PR-introduced citation passes); `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 (the crate is out-of-workspace per Constitution III; `-p citation-lint` does NOT work from the repo root) (SC-005; PR-10)
 - [ ] T103 [P] [US5] Verify F.1 100% coverage; document any remaining gaps in `docs/refactor-006/citation-coverage-report.md` (SC-006; PR-10)
 
 **Checkpoint**: 100% citation-lint pass, 100% F.1 coverage; vendored-source pinning enforced.
@@ -272,8 +272,11 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T117 [P] [US6] Cross-axis dominance fixture tests at `crates/capco/tests/cross_axis_dominance.rs` covering the five fixture classes from T109 (FR-012, SC-003; PR-4)
 - [ ] T118 [P] [US6] Create `tests/corpus/lattice/` corpus regression fixtures from PR 3.7's worked examples; end-to-end coverage of cross-axis behavior (FR-012; PR-4)
 - [ ] T119 [P] [US6] Create `tests/corpus/prose-positive/` corpus fixtures: true-positive markings in prose context that MUST fire (US6 acceptance; PR-4)
+- [ ] T119a [US6] **Predicate coverage catalog (#307)** — implement Groups B (FD&R Table 2 defaults: FGI/uncaveated/caveated → NOFORN/RELIDO with date-pivot context) and E (cross-axis dominance / requires: SI-G requires ORCON, SI requires class C/S/TS, SI-[comp] requires TS, TK requires TS/S, TK-{BLUEFISH/IDITAROD/KANDIK} require NOFORN+TS, RSEN requires TK, RSEN TS/S only, RD requires TS/S/C, RD requires NOFORN with §123/§144 WARN exception, CNWDI/RD-SG/FRD-SG require TS/S, TFNI requires TS/S/C, RD/FRD dominates TFNI, classified dominates DOD/DOE UCNI, ORCON dominates ORCON-USGOV, IMCON requires TS/S, OC/OC-USGOV ejects RELIDO, DISPLAY ONLY dominates RELIDO, classified dominates FOUO/LIMDIS, PROPIN/DSEN/FISA dominate FOUO, classified dominates non-IC dissem set) as declarative `Constraint` data on `CapcoScheme`; verify each citation at point of implementation per Constitution VIII. SAP-requires-class (E2.1) ALSO lands here. (#307 Groups B + E.1–E.5; PR-4)
+- [ ] T119b [P] [US6] **Predicate coverage catalog (#307) Group A — required-pair fixes** — separable small PR landing BEFORE T119a if helpful: HCS-O / EXDIS / NODIS / SBU-NF / LES-NF require NOFORN (mirror of HCS-P fix from PR #303); declarative `Constraint::requires` + scheme_equivalence.rs pinning tests; closes #304 (#307 Group A; can land as own PR, or fold into T119a)
+- [ ] T119c [US6] **Predicate coverage catalog (#307) Group C — Table 3 rollup gaps** — cross-references existing CAPCO-CONTEXT §3.2 gap list: Rule 17 RELIDO date-pivot (depends on B group); Rule 23 TEYE/ACGU/FVEY tetragraph expansion using `marque-capco::vocab` tables; Rule 26 REL TO + DISPLAY ONLY → DISPLAY ONLY; Rule 27 dual-channel composition. Land as `PageRewrite` declarations, NOT procedural. (#307 Group C; PR-4 or PR-5)
 
-**Checkpoint**: Lattice laws + cross-axis dominance fixtures pass 100%; `PageContext` delegation deleted; lattice corpus regression green.
+**Checkpoint**: Lattice laws + cross-axis dominance fixtures pass 100%; `PageContext` delegation deleted; lattice corpus regression green; #307 Groups A/B/C/E predicate catalog covered (Group D handled in PR 9 — see T135a).
 
 ---
 
@@ -330,6 +333,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T133 Migrate banner-validation rules to consume `&ProjectedMarking` (post PR 6 cutover; before PR 9 they consume the post-projection shape via shim) (FR-006; PR-9)
 - [ ] T134 [P] Add ATOMAL / BOHEMIA NATO-specific marking handling — closed-CVE values land via the `Vocabulary<S>` build-time generation pipeline; tokens routed to `dissem_nato` per FR-046 (FR-047, #246; PR-9)
 - [ ] T135 [P] Implement NATO-portion-in-US-document declarative `Constraint` requiring `REL TO USA, NATO` derivation in the banner; replaces procedural NATO-rule branches (FR-048, #265; PR-9)
+- [ ] T135a [P] **Predicate coverage catalog (#307) Group D — token canonicalization** in the parser/recognizer layer. Uniform deprecation pattern (legacy long-form → abbreviation per §H.4): `HUMINT` → `HCS`; `HUMINT CONTROL SYSTEM` → `HCS`; `COMINT` → `SI`; `SPECIAL INTELLIGENCE` → `SI`; `ECI` / `EXCEPTIONALLY CONTROLLED INFORMATION` (with/without comp) → `SI`. Other recognizer-layer normalizations: `EL` / `ENDSEAL` (with/without comp) → `SI`; `KDK` / `KLONDIKE` (with/without comp) → `TK`; bare `HCS` → suggest HCS-O/HCS-P/HCS-O-P (S/TS only; bare HCS at C is legacy → suggest contact originator); bare `RSV` (require 3-alnum compartment, S/TS only); `EYES` / `EYES ONLY` `/`-delimited country list → `REL TO ` comma-delimited list (collision with dissem-category separator per CAPCO-CONTEXT §1.2). NOTE: `TALENT KEYHOLE` and `TK` are BOTH accepted (no canonicalization). Recognizer-layer normalization, NOT constraint layer. (#307 Group D; PR-9)
 
 ### Final polish
 
