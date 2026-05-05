@@ -594,36 +594,39 @@ fn classification_banner_to_portion(s: &str) -> Option<&'static str> {
     }
 }
 
-/// FGI / REL-TO / JOINT country trigraph admission: delegates to
-/// [`marque_ism::CountryCode::admits_fgi_trigraph`], which is the
-/// single source of truth for the Annex B GENC trigraph shape
-/// predicate (3 ASCII uppercase letters).
+/// FGI / REL TO / JOINT country list-token admission: delegates to
+/// [`marque_ism::CountryCode::admits_country_token`], the single
+/// source of truth for the FGI/REL TO list shape gate — a 3-letter
+/// Annex B trigraph **or** a 4-letter Annex A tetragraph (both ASCII
+/// uppercase).
 ///
-/// Keeping this function as a thin wrapper rather than calling
-/// `CountryCode::admits_fgi_trigraph` inline at every match arm is a
-/// readability convenience: `shape_trigraph(bytes)` reads cleanly in
-/// the dispatch table below, and a future widening (e.g., admitting
-/// the GENC numeric subset) is a single-line edit at the canonical
-/// definition in `marque-ism` rather than a per-call-site change.
+/// Per CAPCO-2016 §H.7 p123, a lawful FGI list mixes trigraphs and
+/// tetragraphs (canonical example: `SECRET//FGI GBR JPN
+/// NATO//REL TO USA, GBR, JPN, NATO`). §H.8 p150 admits the same
+/// shape on REL TO. Restricting this predicate to trigraphs would
+/// silently reject lawful inputs; that bug was the PR #311 review
+/// finding. Use `admits_country_token` to widen admission to both
+/// trigraphs and tetragraphs.
 ///
-/// Tetragraph admission (4-letter codes for organizations /
-/// coalitions like `NATO`, `ISAF`, `FVEY`) is intentionally NOT
-/// folded in here because the existing parser routes tetragraphs
-/// through a separate `vocab` lookup (see `marque_capco::vocab`); a
-/// future PR can extend this predicate to admit `len == 4` against
-/// the tetragraph table when the parser's tetragraph admission site
-/// is migrated.
+/// Registry membership (whether `NATO` is a registered Annex A
+/// tetragraph) is intentionally out of scope for the shape gate —
+/// it's the rule-layer's responsibility (rules walk
+/// `marque_ism::TETRAGRAPH_MEMBERS` / `marque_ism::TRIGRAPHS`). The
+/// shape gate's job is to refuse to mint malformed AST nodes; the
+/// rule layer's job is to flag in-shape-but-out-of-registry tokens
+/// with a diagnostic. Same separation as `admits_fgi_trigraph` ↔
+/// Annex B membership.
 ///
 /// The strict parser at
 /// `crates/core/src/parser.rs::parse_fgi_marker` calls into the same
-/// `marque_ism::CountryCode::admits_fgi_trigraph` directly (it cannot
-/// reach this private wrapper across the `marque-capco` boundary
-/// without violating Constitution VII), so both surfaces are pinned
-/// to the same canonical predicate by depending on the same exported
-/// symbol.
+/// `marque_ism::CountryCode::admits_country_token` directly (it
+/// cannot reach this private wrapper across the `marque-capco`
+/// boundary without violating Constitution VII), so both surfaces
+/// are pinned to the same canonical predicate by depending on the
+/// same exported symbol.
 #[inline]
-fn shape_trigraph(bytes: &[u8]) -> bool {
-    marque_ism::CountryCode::admits_fgi_trigraph(bytes)
+fn shape_country_token(bytes: &[u8]) -> bool {
+    marque_ism::CountryCode::admits_country_token(bytes)
 }
 
 /// SAR program identifier abbreviation: delegates to
@@ -802,24 +805,28 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             // category lattice).
             CAT_AEA => admits_closed_cve(bytes, &CveFileSet::AtomicEnergy),
 
-            // FGI marker (country trigraph in lawful position):
-            // 3 ASCII uppercase letters per Annex B (GENC trigraph
-            // country codes).
-            // CAPCO-2016 §H.7 p122 ("Annex B trigraph country
-            // codes") + §A.6 p16 ("Multiple FGI trigraph country
-            // codes or tetragraph codes must be separated by a
-            // single space").
-            CAT_FGI_MARKER => shape_trigraph(bytes),
+            // FGI marker list-token: 3 ASCII upper (Annex B
+            // trigraph) OR 4 ASCII upper (Annex A tetragraph).
+            // CAPCO-2016 §H.7 p123 admits both shapes in a single
+            // FGI list ("Multiple FGI trigraph country codes or
+            // tetragraph codes must be separated by a single
+            // space ... example may appear as: SECRET//FGI GBR
+            // JPN NATO//REL TO USA, GBR, JPN, NATO."). The
+            // canonical-order invariant (trigraphs alphabetic,
+            // then tetragraphs alphabetic) is rule-layer, not
+            // admission. Registry membership (whether the
+            // tetragraph appears in Annex A / `TETRAGRAPH_MEMBERS`)
+            // is also rule-layer.
+            CAT_FGI_MARKER => shape_country_token(bytes),
 
-            // REL TO trigraph: same Annex B trigraph format as
-            // FGI markers. Tetragraph admission (FVEY, NATO, ...)
-            // routes through `marque_capco::vocab`'s tetragraph
-            // table, not this predicate.
-            // CAPCO-2016 §A.6 p17 ("'USA' trigraph code must be
-            // listed first, followed by trigraph codes listed in
-            // ascending alphabetic sort order") + §H.8 p150 (REL
-            // TO entry).
-            CAT_REL_TO => shape_trigraph(bytes),
+            // REL TO list-token: same trigraph-or-tetragraph
+            // shape as CAT_FGI_MARKER per CAPCO-2016 §H.8 p150 +
+            // §A.6 p17 ("'USA' trigraph code must be listed
+            // first, followed by trigraph codes listed in
+            // ascending alphabetic sort order, then tetragraph
+            // codes ..."). The list-token shape gate is identical;
+            // the USA-first ordering invariant is rule-layer.
+            CAT_REL_TO => shape_country_token(bytes),
 
             // Dissemination controls: closed CVE set spanning IC
             // (NF, OC, REL, RELIDO, FOUO, ...) and non-IC
@@ -860,10 +867,18 @@ mod shape_admits_tests {
         CapcoScheme::new()
     }
 
-    // -------- FGI / REL TO trigraph (open vocab — 3 ASCII upper) ----
+    // -------- FGI / REL TO list-token (open vocab — 3 OR 4 ASCII upper) -
+    //
+    // Per CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph country codes
+    // or tetragraph codes must be separated by a single space ...
+    // example may appear as: SECRET//FGI GBR JPN NATO//REL TO USA,
+    // GBR, JPN, NATO."), FGI lists admit BOTH 3-letter Annex B
+    // trigraphs AND 4-letter Annex A tetragraphs. §H.8 p150 admits
+    // the same shape on REL TO. These tests pin that contract so a
+    // future "trigraph-only" regression is caught here.
 
     #[test]
-    fn fgi_trigraph_admits_three_uppercase_letters() {
+    fn fgi_country_token_admits_trigraphs() {
         let v = vocab();
         assert!(v.shape_admits(CAT_FGI_MARKER, b"USA"));
         assert!(v.shape_admits(CAT_FGI_MARKER, b"GBR"));
@@ -871,35 +886,78 @@ mod shape_admits_tests {
     }
 
     #[test]
-    fn fgi_trigraph_rejects_lowercase() {
+    fn fgi_country_token_admits_tetragraphs() {
+        // Per CAPCO-2016 §H.7 p123, the FGI list grammar admits
+        // tetragraphs (e.g., NATO, FVEY, ISAF). Registry membership
+        // is rule-layer; this gate is pure shape.
+        let v = vocab();
+        assert!(v.shape_admits(CAT_FGI_MARKER, b"NATO"));
+        assert!(v.shape_admits(CAT_FGI_MARKER, b"FVEY"));
+        assert!(v.shape_admits(CAT_FGI_MARKER, b"ISAF"));
+        assert!(v.shape_admits(CAT_FGI_MARKER, b"ACGU"));
+    }
+
+    #[test]
+    fn fgi_country_token_admits_two_letter_exception() {
+        // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
+        // 2-letter exception code admitted in FGI/REL TO list slots.
+        // Pre-PR-2 admission accepted it via the union TRIGRAPHS
+        // table; the shape gate must not narrow that surface.
+        let v = vocab();
+        assert!(v.shape_admits(CAT_FGI_MARKER, b"EU"));
+    }
+
+    #[test]
+    fn fgi_country_token_rejects_lowercase() {
         let v = vocab();
         assert!(!v.shape_admits(CAT_FGI_MARKER, b"usa"));
         assert!(!v.shape_admits(CAT_FGI_MARKER, b"Usa"));
+        // Tetragraph case must reject lowercase too — admission is
+        // shape, and the shape requires uniform ASCII upper.
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"nato"));
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"NaTO"));
+        // Same for the 2-letter exception.
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"eu"));
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"Eu"));
     }
 
     #[test]
-    fn fgi_trigraph_rejects_wrong_length() {
+    fn fgi_country_token_rejects_wrong_length() {
         let v = vocab();
         assert!(!v.shape_admits(CAT_FGI_MARKER, b""));
-        assert!(!v.shape_admits(CAT_FGI_MARKER, b"US"));
-        assert!(!v.shape_admits(CAT_FGI_MARKER, b"USAA"));
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"U")); // single letter
+        // 5+ bytes (e.g., `AUSTRALIA_GROUP`) explicitly out of
+        // scope at this gate — admitted via `try_new` for a
+        // separate non-FGI/REL-TO admission path.
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"USAGB"));
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"AUSTRALIA_GROUP"));
     }
 
     #[test]
-    fn fgi_trigraph_rejects_digits() {
+    fn fgi_country_token_rejects_digits() {
         let v = vocab();
         assert!(!v.shape_admits(CAT_FGI_MARKER, b"123"));
         assert!(!v.shape_admits(CAT_FGI_MARKER, b"US1"));
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"NAT0")); // 0 not O
     }
 
     #[test]
-    fn rel_to_uses_same_trigraph_shape_as_fgi() {
+    fn rel_to_uses_same_country_token_shape_as_fgi() {
         let v = vocab();
+        // Trigraph + tetragraph + 2-letter EU exception admit
+        // symmetrically across CAT_FGI_MARKER and CAT_REL_TO.
         assert!(v.shape_admits(CAT_REL_TO, b"USA"));
         assert!(v.shape_admits(CAT_REL_TO, b"GBR"));
+        assert!(v.shape_admits(CAT_REL_TO, b"NATO"));
+        assert!(v.shape_admits(CAT_REL_TO, b"FVEY"));
+        assert!(v.shape_admits(CAT_REL_TO, b"EU"));
+        // Same-shape rejections.
         assert!(!v.shape_admits(CAT_REL_TO, b"usa"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"nato"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"eu"));
         assert!(!v.shape_admits(CAT_REL_TO, b"123"));
-        assert!(!v.shape_admits(CAT_REL_TO, b"US"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"U")); // single letter
+        assert!(!v.shape_admits(CAT_REL_TO, b"USAGB"));
     }
 
     // -------- SAR program identifier (open vocab — 2-3 ASCII alnum) -

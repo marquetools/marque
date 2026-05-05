@@ -1557,41 +1557,26 @@ impl CountryCode {
     }
 
     /// Annex B trigraph admission predicate: exactly 3 ASCII uppercase
-    /// letters `[A-Z]`. This is the shape gate for FGI markers and
-    /// REL TO trigraph slots — categories that authoritatively pull
-    /// from the GENC trigraph register.
+    /// letters `[A-Z]`. This is the shape building block for the
+    /// trigraph-only half of the FGI / REL TO grammar; callers that
+    /// need the *full* country-token grammar (trigraph **or**
+    /// registered tetragraph) MUST go through
+    /// [`CountryCode::admits_country_token`] instead — see Authority.
     ///
     /// Returns `true` iff `bytes` is a 3-byte slice whose every byte
     /// is in `b'A'..=b'Z'`. Stricter than [`CountryCode::try_new`],
     /// which also accepts ASCII digits (for `AX2` / `AX3`), the
     /// underscore (for `AUSTRALIA_GROUP`), and any 2-byte through
-    /// 16-byte alphanumeric/underscore code (for tetragraphs and
-    /// long codes).
+    /// 16-byte alphanumeric/underscore code.
     ///
-    /// This predicate is the single source of truth for the FGI /
-    /// REL-TO trigraph shape gate. The `Vocabulary<CapcoScheme>`
-    /// adapter at `crates/capco/src/vocabulary.rs` calls this from
-    /// `shape_admits(CAT_FGI_MARKER, _)` and `shape_admits(CAT_REL_TO, _)`
-    /// (Phase 5 PR-2 gating); the strict parser at
-    /// `crates/core/src/parser.rs::parse_fgi_marker` calls it
-    /// directly to gate FGI marker country tokens (FR-015 / FR-016).
-    /// Both call sites MUST go through this function rather than
-    /// inline a length-and-class check — keeping the predicate single-
-    /// sited prevents drift between admission and parser surfaces
-    /// (CHK030).
-    ///
-    /// Authority: CAPCO-2016 §H.7 p123 ("FOREIGN GOVERNMENT
-    /// INFORMATION [LIST]" — country trigraphs from Register Annex
-    /// B) + §A.6 p16 ("Multiple FGI trigraph country codes or
-    /// tetragraph codes must be separated by a single space.
-    /// Trigraph codes used with the FGI marking must be listed
-    /// first in ascending alphabetic sort order, followed by
-    /// tetragraph codes ..."). GENC Annex B publishes only 3-letter
-    /// alpha codes; tetragraphs (4-letter org/coalition codes such
-    /// as `NATO`, `ISAF`, `FVEY`) live in Register Annex A and
-    /// route through a separate vocabulary surface
-    /// (`marque_capco::vocab` tetragraph table) that is intentionally
-    /// not folded into this trigraph-only predicate.
+    /// Authority: CAPCO-2016 §H.7 p123 (FGI Register Annex B trigraph
+    /// country codes) + §A.6 p16 (alphabetic order of FGI list
+    /// tokens). This predicate is the trigraph-only slice of the
+    /// admission grammar; the FGI/REL TO list grammar at §H.7 p123
+    /// and §H.8 p150 admits trigraphs *and* tetragraphs (e.g.,
+    /// `SECRET//FGI GBR JPN NATO`, where `NATO` is a four-letter
+    /// tetragraph from Register Annex A). Use
+    /// [`CountryCode::admits_country_token`] for that full surface.
     ///
     /// # Examples
     ///
@@ -1601,7 +1586,8 @@ impl CountryCode {
     /// assert!(CountryCode::admits_fgi_trigraph(b"GBR"));
     /// // Rejected: too short.
     /// assert!(!CountryCode::admits_fgi_trigraph(b"US"));
-    /// // Rejected: too long (tetragraph).
+    /// // Rejected: too long (tetragraph — admits via
+    /// // `admits_country_token`, not this predicate).
     /// assert!(!CountryCode::admits_fgi_trigraph(b"NATO"));
     /// // Rejected: lowercase.
     /// assert!(!CountryCode::admits_fgi_trigraph(b"usa"));
@@ -1617,6 +1603,111 @@ impl CountryCode {
         }
         let mut i = 0;
         while i < 3 {
+            if !bytes[i].is_ascii_uppercase() {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+
+    /// FGI / REL TO list-token admission predicate: 2, 3, or 4 ASCII
+    /// uppercase letters. This is the canonical shape gate for a
+    /// single token in an FGI marker list, a REL TO list, or a JOINT
+    /// `[LIST]` — wherever CAPCO's grammar admits a country trigraph,
+    /// a tetragraph, or one of the registered 2-letter exception
+    /// codes (notably `EU`, which the ISMCAT `CVEnumISMCATRelTo`
+    /// surface emits as a 2-byte code).
+    ///
+    /// Returns `true` iff `bytes.len()` is `2`, `3`, or `4` and every
+    /// byte is in `b'A'..=b'Z'`.
+    ///
+    /// Length rationale (the three accepted lengths):
+    /// - `3` — Annex B GENC trigraph country codes (the bulk of FGI
+    ///   and REL TO list tokens, e.g., `USA`, `GBR`, `DEU`).
+    /// - `4` — Annex A tetragraph codes for international
+    ///   organizations / alliances / coalitions (e.g., `NATO`,
+    ///   `ISAF`, `FVEY`, `ACGU`, `TEYE`).
+    /// - `2` — registered exception codes; `EU` is the canonical
+    ///   case shipped in the ODNI ISMCAT `CVEnumISMCATRelTo` surface.
+    ///
+    /// Strictly broader than [`CountryCode::admits_fgi_trigraph`]
+    /// (3-only), and strictly stricter than [`CountryCode::try_new`]
+    /// (which also admits digits, underscore, and 5-byte+ codes).
+    /// The 5-byte-plus codes that `try_new` admits — `AUSTRALIA_GROUP`
+    /// in particular — are out of scope for this predicate; CAPCO-2016
+    /// §H.7 calls these out as a separate surface ("unless an
+    /// exception is granted") and the strict parser does not admit
+    /// them in FGI/REL TO lists at this gate.
+    ///
+    /// Single source of truth for the shape gate at three call sites:
+    /// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)`,
+    /// `Vocabulary<CapcoScheme>::shape_admits(CAT_REL_TO, _)`, and
+    /// the strict parser at
+    /// `crates/core/src/parser.rs::parse_fgi_marker`. All three MUST
+    /// go through this function rather than inline a length-and-class
+    /// check — keeping the predicate single-sited prevents drift
+    /// between admission and parser surfaces (CHK030, CHK026).
+    ///
+    /// Registry membership (whether a 2-letter code is `EU` vs. `US`,
+    /// whether `NATO` / `FVEY` / `ABCD` is actually a registered
+    /// Annex A tetragraph) is intentionally out of scope: shape
+    /// admission ≠ registry validation. Registry membership is
+    /// enforced at the rule layer (rules walk
+    /// `marque_ism::TETRAGRAPH_MEMBERS` / `marque_ism::TRIGRAPHS`)
+    /// and the rule-layer ordering invariant (trigraphs alphabetic,
+    /// then tetragraphs alphabetic — §H.7 p123) is likewise a
+    /// separate concern. This mirrors how `admits_fgi_trigraph`
+    /// admits any 3 ASCII upper bytes, not only Annex B-registered
+    /// codes.
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph
+    /// country codes or tetragraph codes must be separated by a
+    /// single space ... A tetragraph is a four-letter code ... used
+    /// to represent an international organization, alliance, or
+    /// coalition. ... example may appear as: SECRET//FGI GBR JPN
+    /// NATO//REL TO USA, GBR, JPN, NATO.") + §H.8 p150 (REL TO list
+    /// admits the same shape) + §A.6 pp 16-17 (token-level grammar
+    /// for foreign-disclosure list slots) + ODNI ISMCAT
+    /// `CVEnumISMCATRelTo` (registered 2-byte exception codes
+    /// including `EU`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::CountryCode;
+    /// // Trigraphs admit.
+    /// assert!(CountryCode::admits_country_token(b"USA"));
+    /// assert!(CountryCode::admits_country_token(b"GBR"));
+    /// // Tetragraphs admit (the §H.7 canonical example).
+    /// assert!(CountryCode::admits_country_token(b"NATO"));
+    /// assert!(CountryCode::admits_country_token(b"FVEY"));
+    /// assert!(CountryCode::admits_country_token(b"ISAF"));
+    /// // 2-letter exception codes admit (e.g., EU).
+    /// assert!(CountryCode::admits_country_token(b"EU"));
+    /// // Rejected: single letter.
+    /// assert!(!CountryCode::admits_country_token(b"U"));
+    /// // Rejected: too long.
+    /// assert!(!CountryCode::admits_country_token(b"USAGB"));
+    /// assert!(!CountryCode::admits_country_token(b"AUSTRALIA_GROUP"));
+    /// // Rejected: lowercase trigraph, tetragraph, exception code.
+    /// assert!(!CountryCode::admits_country_token(b"usa"));
+    /// assert!(!CountryCode::admits_country_token(b"nato"));
+    /// assert!(!CountryCode::admits_country_token(b"eu"));
+    /// // Rejected: digit.
+    /// assert!(!CountryCode::admits_country_token(b"US1"));
+    /// assert!(!CountryCode::admits_country_token(b"NAT0"));
+    /// // Rejected: empty.
+    /// assert!(!CountryCode::admits_country_token(b""));
+    /// ```
+    #[inline]
+    pub const fn admits_country_token(bytes: &[u8]) -> bool {
+        let len = bytes.len();
+        if len < 2 || len > 4 {
+            return false;
+        }
+        let mut i = 0;
+        while i < len {
             if !bytes[i].is_ascii_uppercase() {
                 return false;
             }
@@ -1842,6 +1933,112 @@ mod country_code_tests {
         for code in [b"USA", b"GBR", b"DEU", b"FRA", b"JPN"] {
             assert!(CountryCode::admits_fgi_trigraph(code));
             assert!(CountryCode::try_new(code).is_some());
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // admits_country_token — full FGI/REL TO list-token shape predicate
+    //
+    // Per CAPCO-2016 §H.7 p123, the FGI list grammar admits BOTH 3-letter
+    // Annex B trigraphs and 4-letter Annex A tetragraphs (canonical
+    // example: `SECRET//FGI GBR JPN NATO`). The §H.8 REL TO surface
+    // accepts the same shape. These tests pin the trigraph-or-tetragraph
+    // contract so a regression to "trigraph-only" (PR #311 review
+    // finding, GH #280 fix-cousin) is caught at unit-test scope.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn admits_country_token_accepts_trigraphs() {
+        assert!(CountryCode::admits_country_token(b"USA"));
+        assert!(CountryCode::admits_country_token(b"GBR"));
+        assert!(CountryCode::admits_country_token(b"DEU"));
+        assert!(CountryCode::admits_country_token(b"AUS"));
+        assert!(CountryCode::admits_country_token(b"JPN"));
+    }
+
+    #[test]
+    fn admits_country_token_accepts_tetragraphs() {
+        // Per CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph country
+        // codes or tetragraph codes must be separated by a single
+        // space ... example may appear as: SECRET//FGI GBR JPN
+        // NATO//REL TO USA, GBR, JPN, NATO."), tetragraphs admit at
+        // the same shape gate as trigraphs.
+        assert!(CountryCode::admits_country_token(b"NATO"));
+        assert!(CountryCode::admits_country_token(b"FVEY"));
+        assert!(CountryCode::admits_country_token(b"ISAF"));
+        assert!(CountryCode::admits_country_token(b"ACGU"));
+        assert!(CountryCode::admits_country_token(b"TEYE"));
+    }
+
+    #[test]
+    fn admits_country_token_accepts_two_letter_exception() {
+        // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
+        // 2-letter exception code; pre-PR-2 REL TO admission accepted
+        // it via the union TRIGRAPHS table. The shape gate must not
+        // narrow that surface — registry membership of any 2-letter
+        // code other than `EU` is a rule-layer concern, not a
+        // shape concern.
+        assert!(CountryCode::admits_country_token(b"EU"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_lowercase() {
+        assert!(!CountryCode::admits_country_token(b"usa"));
+        assert!(!CountryCode::admits_country_token(b"nato"));
+        assert!(!CountryCode::admits_country_token(b"Nato"));
+        assert!(!CountryCode::admits_country_token(b"NaTO"));
+        assert!(!CountryCode::admits_country_token(b"eu"));
+        assert!(!CountryCode::admits_country_token(b"Eu"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_digits() {
+        assert!(!CountryCode::admits_country_token(b"US1"));
+        assert!(!CountryCode::admits_country_token(b"NAT0")); // 0 not O
+        assert!(!CountryCode::admits_country_token(b"123"));
+        assert!(!CountryCode::admits_country_token(b"1234"));
+        assert!(!CountryCode::admits_country_token(b"E1"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_wrong_length() {
+        assert!(!CountryCode::admits_country_token(b""));
+        assert!(!CountryCode::admits_country_token(b"U"));
+        // 5-letter+ codes (`AUSTRALIA_GROUP` is 15) explicitly
+        // out of scope per the predicate's "exception is granted"
+        // carve-out — these are admitted via `try_new`, not at
+        // this gate.
+        assert!(!CountryCode::admits_country_token(b"USAGB"));
+        assert!(!CountryCode::admits_country_token(b"AUSTRALIA_GROUP"));
+    }
+
+    #[test]
+    fn admits_country_token_rejects_underscore_and_punctuation() {
+        // `try_new` admits underscore; this gate does not.
+        assert!(!CountryCode::admits_country_token(b"US_"));
+        assert!(!CountryCode::admits_country_token(b"NAT_"));
+        assert!(!CountryCode::admits_country_token(b"USA "));
+        assert!(!CountryCode::admits_country_token(b"USA-"));
+        assert!(!CountryCode::admits_country_token(b"E_"));
+    }
+
+    #[test]
+    fn admits_country_token_supersets_admits_fgi_trigraph() {
+        // Property: every `admits_fgi_trigraph` accept is also an
+        // `admits_country_token` accept. Pins the strictly-broader
+        // contract so a future predicate edit can't silently invert
+        // the relationship.
+        for code in [
+            &b"USA"[..],
+            b"GBR",
+            b"DEU",
+            b"FRA",
+            b"JPN",
+            b"AUS",
+            b"CAN",
+        ] {
+            assert!(CountryCode::admits_fgi_trigraph(code));
+            assert!(CountryCode::admits_country_token(code));
         }
     }
 }

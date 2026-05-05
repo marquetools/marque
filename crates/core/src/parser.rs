@@ -1014,8 +1014,8 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// | Input shape | Return |
 /// |-------------|--------|
 /// | `"FGI"` exactly (no whitespace, no suffix) | `Some(SourceConcealed)` |
-/// | `"FGI " + tokens` where every token is an Annex B trigraph (3 ASCII upper) | `Some(Acknowledged { countries })` |
-/// | Anything else (malformed prefix, any token fails the trigraph shape gate, OR empty trigraph list after `"FGI "`) | `None` |
+/// | `"FGI " + tokens` where every token is a 3-letter trigraph or 4-letter tetragraph (ASCII upper) | `Some(Acknowledged { countries })` |
+/// | Anything else (malformed prefix, any token fails the country-token shape gate, OR empty list after `"FGI "`) | `None` |
 ///
 /// The third row is the FR-016 closure: a post-failure shape MUST
 /// be `None`, never a degraded `Some(SourceConcealed)`. The
@@ -1026,26 +1026,37 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// layer's job; the parser's job is to refuse to mint a misleading
 /// AST.
 ///
-/// # Trigraph shape gate
+/// # Country-token shape gate
 ///
 /// Token admission goes through
-/// [`marque_ism::CountryCode::admits_fgi_trigraph`] — the canonical
-/// Annex B trigraph shape predicate (3 ASCII uppercase letters).
-/// This is the same predicate that
+/// [`marque_ism::CountryCode::admits_country_token`] — the canonical
+/// FGI/REL TO list-token shape predicate (3 ASCII upper letters for
+/// an Annex B trigraph **or** 4 ASCII upper letters for an Annex A
+/// tetragraph). This is the same predicate that
 /// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)` calls,
 /// so the parser admits exactly what the vocabulary surface
 /// documents. Routing both surfaces through one symbol satisfies
 /// FR-015 (admission via documented vocabulary surface) and CHK030
 /// (no inline `is_ascii_alphanumeric` byte-class checks).
 ///
-/// `CountryCode::try_new` is a strictly weaker predicate (it admits
-/// 2-15 byte values including digits and underscore for AX2 / AX3
-/// / AUSTRALIA_GROUP), so going through `admits_fgi_trigraph` first
-/// guarantees the subsequent `try_new` succeeds; the construct call
-/// is therefore infallible at this site. That ordering is what lets
-/// the parser remain zero-allocation on the failure path
-/// (Constitution Principle II): `?` returns `None` immediately on
-/// any token-shape failure, no temporary allocation needed.
+/// CAPCO-2016 §H.7 p123 spells out the shape: "Multiple FGI
+/// trigraph country codes or tetragraph codes must be separated by
+/// a single space ... example may appear as: `SECRET//FGI GBR JPN
+/// NATO//REL TO USA, GBR, JPN, NATO`." The order invariant
+/// (trigraphs alphabetic, then tetragraphs alphabetic) is rule-layer,
+/// not admission — real-world inputs arrive in any order and a
+/// dedicated rule normalizes them. Registry membership (Annex A
+/// for tetragraphs, Annex B for trigraphs) is also rule-layer.
+///
+/// `CountryCode::try_new` is a strictly weaker predicate at this
+/// site (it admits 2-15 byte values including digits and underscore
+/// for `AX2` / `AX3` / `AUSTRALIA_GROUP`), so going through
+/// `admits_country_token` first guarantees the subsequent `try_new`
+/// succeeds; the construct call is therefore infallible. That
+/// ordering is what lets the parser remain zero-allocation on the
+/// failure path (Constitution Principle II): `?` returns `None`
+/// immediately on any token-shape failure, no temporary allocation
+/// needed.
 ///
 /// # Edge cases
 ///
@@ -1058,22 +1069,26 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///   concealed form; the trailing space disambiguates the two
 ///   surfaces.
 /// - `parse_fgi_marker("FGI deu")` → `None` (lowercase fails the
-///   trigraph shape gate).
-/// - `parse_fgi_marker("FGI USA NATO")` → `None` (NATO is a
-///   tetragraph, fails the trigraph-only gate at this site).
-///   Tetragraph admission is a separate site
-///   (`marque_capco::vocab`); folding it in here would silently
-///   broaden the parser's accept set beyond `shape_admits`.
+///   country-token shape gate; admission requires uniform ASCII upper).
+/// - `parse_fgi_marker("FGI USA NATO")` →
+///   `Some(Acknowledged { countries: [USA, NATO] })`. NATO is a
+///   tetragraph; admitted at this site per §H.7 p123. Order
+///   normalization (trigraph-then-tetragraph) is a rule-layer
+///   concern; the parser preserves source order.
+/// - `parse_fgi_marker("FGI USAGB")` → `None` (5-byte token rejected
+///   by the shape gate; `AUSTRALIA_GROUP`-class codes are out of
+///   scope here per the §H.7 "exception is granted" carve-out).
 /// - `parse_fgi_marker("foo FGI USA")` → `None` (no `FGI ` prefix
 ///   on the input).
 ///
 /// # Authority
 ///
 /// CAPCO-2016 §H.7 p123 (FGI banner forms — concealed vs.
-/// acknowledged) + §A.6 p16 ("Multiple FGI trigraph country codes
-/// or tetragraph codes must be separated by a single space"). The
-/// trigraph predicate's authority chain is documented at
-/// [`marque_ism::CountryCode::admits_fgi_trigraph`].
+/// acknowledged; trigraph-OR-tetragraph list grammar) + §A.6 p16
+/// ("Multiple FGI trigraph country codes or tetragraph codes must
+/// be separated by a single space"). The country-token predicate's
+/// authority chain is documented at
+/// [`marque_ism::CountryCode::admits_country_token`].
 fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     // Case 1: bare `FGI` is the lawful source-concealed banner form.
     if s == "FGI" {
@@ -1098,15 +1113,16 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     let mut countries: Vec<CountryCode> = Vec::new();
     for token in rest.split_whitespace() {
         // FR-015 admission: route every token through the canonical
-        // FGI trigraph shape predicate. Anything else (lowercase,
-        // digits, tetragraphs, junk) is a parse failure that
-        // returns `None` — never silently dropped.
-        if !CountryCode::admits_fgi_trigraph(token.as_bytes()) {
+        // FGI/REL TO list-token shape predicate. Trigraphs (3 ASCII
+        // upper) and tetragraphs (4 ASCII upper) admit; anything
+        // else (lowercase, digits, 5+-byte codes, junk) is a parse
+        // failure that returns `None` — never silently dropped.
+        if !CountryCode::admits_country_token(token.as_bytes()) {
             return None;
         }
-        // `admits_fgi_trigraph` is strictly stronger than `try_new`
-        // (3 ASCII upper ⊂ 2-15 alphanumeric/underscore), so this
-        // construction cannot fail. The `?` is here only as a
+        // `admits_country_token` (3 or 4 ASCII upper) is strictly
+        // stronger than `try_new` (2-15 alphanumeric/underscore), so
+        // this construction cannot fail. The `?` is here only as a
         // type-system safeguard; it is unreachable for any input
         // that passed the shape gate above.
         let code = CountryCode::try_new(token.as_bytes())?;
@@ -2298,22 +2314,30 @@ mod tests {
     }
 
     #[test]
-    fn fgi_marker_tetragraph_no_marker() {
-        // `NATO` is shape-admissible as a tetragraph (4 letters),
-        // but `admits_fgi_trigraph` is trigraph-only at this gate.
-        // CAPCO §A.6 p16 allows tetragraphs in FGI lists, but they
-        // route through a separate vocabulary surface
-        // (`marque_capco::vocab`). At this parser site we admit
-        // trigraphs only and reject the rest as `None` rather than
-        // silently dropping; a future PR can extend admission to the
-        // tetragraph table without changing this fallback policy.
+    fn fgi_marker_tetragraph_admits_per_capco_h7() {
+        // CAPCO-2016 §H.7 p123 spells out the canonical example:
+        // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
+        // — `NATO` is a 4-letter Annex A tetragraph admitted in the
+        // same FGI list as the trigraphs. The PR #311 review caught
+        // a regression where the parser narrowed admission to
+        // `admits_fgi_trigraph` (3-only); the post-fix
+        // `admits_country_token` widens to 2/3/4 ASCII upper,
+        // matching the §H.7 grammar.
         let parsed = parse_banner("SECRET//FGI USA NATO//NOFORN");
-        assert!(
-            parsed.attrs.fgi_marker.is_none(),
-            "mixed trigraph + tetragraph FGI list must fail admission \
-             at this gate (got {:?})",
-            parsed.attrs.fgi_marker,
-        );
+        let marker = parsed
+            .attrs
+            .fgi_marker
+            .as_ref()
+            .expect("FGI USA NATO admits per §H.7 p123");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 2);
+                let names: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
+                assert!(names.contains(&"USA"), "USA must appear; got {names:?}");
+                assert!(names.contains(&"NATO"), "NATO must appear; got {names:?}");
+            }
+            FgiMarker::SourceConcealed => panic!("expected Acknowledged([USA, NATO])"),
+        }
     }
 
     #[test]
@@ -2383,11 +2407,55 @@ mod tests {
         // Case 3: lowercase token → None (FR-016 closure)
         assert!(parse_fgi_marker("FGI deu").is_none());
 
-        // Case 3: shape-admissible but registry-unrecognized
-        // tetragraph (4 letters) → None at this gate. Note `XYZ`
-        // (3 letters, shape-admissible, registry-unknown) DOES
-        // parse — see `fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it`.
-        assert!(parse_fgi_marker("FGI ABCD").is_none());
+        // Case 2 (mixed shapes per §H.7 p123): trigraph + tetragraph
+        // → Some(Acknowledged) with both countries. PR #311 review
+        // caught the prior trigraph-only narrowing; post-fix
+        // admission accepts the spec-canonical example.
+        match parse_fgi_marker("FGI GBR JPN NATO") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 3);
+                let names: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
+                assert_eq!(names, ["GBR", "JPN", "NATO"]);
+            }
+            other => panic!("expected 3-country Acknowledged([GBR, JPN, NATO]), got {other:?}"),
+        }
+
+        // Case 2 (2-letter EU exception per ISMCAT
+        // CVEnumISMCATRelTo): bare `FGI EU` admits.
+        match parse_fgi_marker("FGI EU") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "EU");
+            }
+            other => panic!("expected Acknowledged([EU]), got {other:?}"),
+        }
+
+        // Case 2 (registry-unrecognized but shape-admissible
+        // tetragraph): `ABCD` admits at the shape gate; rule layer
+        // is responsible for flagging registry membership. Same
+        // policy as `XYZ` for trigraphs (see
+        // `fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it`).
+        match parse_fgi_marker("FGI ABCD") {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "ABCD");
+            }
+            other => panic!("expected Acknowledged([ABCD]), got {other:?}"),
+        }
+
+        // Case 3: empty input → None
+        assert!(parse_fgi_marker("").is_none());
+
+        // Case 3: lowercase token → None (FR-016 closure)
+        assert!(parse_fgi_marker("FGI deu").is_none());
+        assert!(parse_fgi_marker("FGI nato").is_none());
+
+        // Case 3: 5+-byte token rejects (out-of-scope of
+        // `admits_country_token`; the §H.7 "exception is granted"
+        // surface for AUSTRALIA_GROUP-class codes is not handled
+        // at this gate).
+        assert!(parse_fgi_marker("FGI USAGB").is_none());
+        assert!(parse_fgi_marker("FGI AUSTRALIA_GROUP").is_none());
 
         // Case 3: trailing whitespace with no tokens → None
         assert!(parse_fgi_marker("FGI ").is_none());
@@ -2396,9 +2464,10 @@ mod tests {
         assert!(parse_fgi_marker("foo FGI USA").is_none());
         assert!(parse_fgi_marker("FGIDEU").is_none()); // no separator
 
-        // Case 3: digits in trigraph slot → None
+        // Case 3: digits in any list-token slot → None
         assert!(parse_fgi_marker("FGI US1").is_none());
         assert!(parse_fgi_marker("FGI 123").is_none());
+        assert!(parse_fgi_marker("FGI NAT0").is_none()); // 0 not O
     }
 
     #[test]

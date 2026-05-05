@@ -7,7 +7,10 @@
 //! Closure of the four open-vocabulary parser admission sites migrated in
 //! PR 2 of the engine-rule refactor (specs/006-engine-rule-refactor):
 //!
-//! 1. `parse_fgi_marker` → `CountryCode::admits_fgi_trigraph`
+//! 1. `parse_fgi_marker` → `CountryCode::admits_country_token`
+//!    (3-letter Annex B trigraph OR 4-letter Annex A tetragraph OR
+//!    2-letter registered exception code per §H.7 p123 + ISMCAT
+//!    CVEnumISMCATRelTo)
 //! 2. SAR program identifier (abbrev) → `SarProgram::admits_program_id_abbrev`
 //! 3. SAR compartment identifier → `SarCompartment::admits_identifier`
 //! 4. SAR sub-compartment identifier → `SarCompartment::admits_identifier`
@@ -138,7 +141,7 @@ fn parse_fgi_marker_acknowledged_yields_countries() {
             assert_eq!(
                 countries[0].as_str(),
                 "DEU",
-                "country trigraph round-trips through admits_fgi_trigraph",
+                "country trigraph round-trips through admits_country_token",
             );
         }
         FgiMarker::SourceConcealed => panic!("expected Acknowledged variant, got SourceConcealed"),
@@ -151,9 +154,9 @@ fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
     // not silently drop the lowercase token and fall back to a degraded
     // `SourceConcealed` (which was the pre-FR-016 surface).
     //
-    // CAPCO §H.7 p123 + §A.6 p16 require trigraph country codes; the
-    // GENC trigraph registry is uppercase-canonical. Lowercase fails
-    // `CountryCode::admits_fgi_trigraph` at the parser admission gate.
+    // CAPCO §H.7 p123 + §A.6 p16 require trigraph or tetragraph country
+    // codes; both registries are uppercase-canonical. Lowercase fails
+    // `CountryCode::admits_country_token` at the parser admission gate.
     let attrs = parse_banner_attrs("SECRET//FGI deu//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
@@ -164,20 +167,66 @@ fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
 }
 
 #[test]
-fn parse_fgi_marker_tetragraph_yields_no_marker() {
-    // CAPCO §A.6 p16 admits tetragraphs in FGI lists, but at the parser
-    // admission site the gate is `admits_fgi_trigraph` (3 ASCII upper) —
-    // tetragraphs route through a separate vocabulary surface
-    // (`marque_capco::vocab`). The parser MUST reject the whole list as
-    // `None` rather than silently drop `NATO` and accept the trigraph
-    // partial (which would be a degraded shape FR-016 closes).
-    //
-    // A future PR can broaden this admission to the tetragraph table; until
-    // then, this test pins the trigraph-only contract at this gate.
+fn parse_fgi_marker_mixed_trigraph_tetragraph_yields_acknowledged() {
+    // CAPCO-2016 §H.7 p123 spells out the canonical example:
+    // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
+    // — `NATO` is a 4-letter Annex A tetragraph admitted in the same
+    // FGI list as the 3-letter trigraphs. The PR #311 review caught
+    // that the prior `admits_fgi_trigraph`-only gate silently
+    // rejected this lawful spec example; this test pins the
+    // post-fix `admits_country_token` contract (3 OR 4 ASCII upper
+    // admit) so a future narrowing regression is caught here.
+    use marque_ism::CountryCode;
     let attrs = parse_banner_attrs("SECRET//FGI USA NATO//NOFORN");
+    let marker = attrs
+        .fgi_marker
+        .expect("mixed trigraph + tetragraph FGI list must admit per §H.7 p123");
+    let countries = marker.countries();
+    assert_eq!(
+        countries.len(),
+        2,
+        "FGI USA NATO must produce two-country Acknowledged; got {countries:?}",
+    );
+    assert!(
+        countries.iter().any(|c| c == &CountryCode::try_new(b"USA").unwrap()),
+        "USA must appear in countries; got {countries:?}",
+    );
+    assert!(
+        countries.iter().any(|c| c == &CountryCode::try_new(b"NATO").unwrap()),
+        "NATO must appear in countries; got {countries:?}",
+    );
+}
+
+#[test]
+fn parse_fgi_marker_two_letter_eu_exception_yields_acknowledged() {
+    // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
+    // 2-letter exception code; pre-PR-2 admission accepted it via the
+    // union TRIGRAPHS table and the new `admits_country_token`
+    // surface preserves that. This test pins the EU-as-2-letter
+    // contract so a future narrowing regression (e.g., back to
+    // 3-or-4-only) is caught here.
+    use marque_ism::CountryCode;
+    let attrs = parse_banner_attrs("SECRET//FGI EU//NOFORN");
+    let marker = attrs
+        .fgi_marker
+        .expect("FGI EU must admit per ISMCAT CVEnumISMCATRelTo");
+    let countries = marker.countries();
+    assert_eq!(countries.len(), 1, "FGI EU must produce single-country Acknowledged");
+    assert_eq!(countries[0], CountryCode::try_new(b"EU").unwrap());
+}
+
+#[test]
+fn parse_fgi_marker_5_letter_token_yields_no_marker() {
+    // The shape gate accepts 2-4 ASCII upper bytes only; 5+-byte
+    // codes (the `AUSTRALIA_GROUP`-class "exception is granted"
+    // surface per CAPCO §H.7 p123) are out of scope at this gate.
+    // `USAGB` fails because it's 5 bytes; the whole FGI marker
+    // rejects per the FR-016 closure ("one bad token taints the
+    // list"), not silent partial acceptance.
+    let attrs = parse_banner_attrs("SECRET//FGI USAGB//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
-        "mixed trigraph + tetragraph FGI list must yield None at this \
+        "5-byte token must yield None at the country-token shape \
          gate (FR-016); got {:?}",
         attrs.fgi_marker,
     );
@@ -185,15 +234,16 @@ fn parse_fgi_marker_tetragraph_yields_no_marker() {
 
 #[test]
 fn parse_fgi_marker_digit_token_yields_no_marker() {
-    // Digits in the trigraph slot fail `admits_fgi_trigraph` (which requires
-    // 3 ASCII *upper* bytes). The pre-FR-016 surface would silently drop
-    // `U23` and produce `Some(SourceConcealed)` once the country list went
+    // Digits in any list-token slot fail `admits_country_token`
+    // (which requires uniform ASCII upper letters across 2/3/4
+    // bytes). The pre-FR-016 surface would silently drop `U23` and
+    // produce `Some(SourceConcealed)` once the country list went
     // empty; FR-016 + FR-017 close that channel.
     let attrs = parse_banner_attrs("SECRET//FGI U23//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
-        "digit-bearing trigraph candidate must yield None (FR-016); got \
-         {:?}",
+        "digit-bearing list-token candidate must yield None \
+         (FR-016); got {:?}",
         attrs.fgi_marker,
     );
 }
@@ -205,7 +255,7 @@ fn parse_fgi_marker_one_invalid_token_taints_whole_list() {
     // accept the valid prefix and silently drop the invalid suffix.
     //
     // `USA` is shape-admissible; `xyz` is lowercase and fails
-    // `admits_fgi_trigraph`. The pre-FR-016 surface would produce a
+    // `admits_country_token`. The pre-FR-016 surface would produce a
     // single-country `Acknowledged([USA])`; the post-FR-016 surface returns
     // `None`.
     let attrs = parse_banner_attrs("SECRET//FGI USA xyz//NOFORN");
@@ -213,6 +263,23 @@ fn parse_fgi_marker_one_invalid_token_taints_whole_list() {
         attrs.fgi_marker.is_none(),
         "one shape-failing token must reject the entire marker (FR-016); \
          got {:?}",
+        attrs.fgi_marker,
+    );
+}
+
+#[test]
+fn parse_fgi_marker_lowercase_tetragraph_yields_no_marker() {
+    // The country-token shape gate is uniform ASCII upper across
+    // ALL admitted lengths — a 4-byte lowercase candidate (e.g.
+    // `nato`) fails the same way a 3-byte lowercase candidate does.
+    // This test pins the symmetric admission contract; if a future
+    // edit accidentally case-folded only the trigraph branch, the
+    // tetragraph branch must catch it.
+    let attrs = parse_banner_attrs("SECRET//FGI USA nato//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "lowercase tetragraph candidate must yield None at the \
+         country-token shape gate (FR-016); got {:?}",
         attrs.fgi_marker,
     );
 }
