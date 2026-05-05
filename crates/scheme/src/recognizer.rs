@@ -16,7 +16,7 @@
 //! The trait is deliberately **domain-neutral**: it depends only on
 //! the scheme's `Marking` type plus the `Parsed` / `Candidate` /
 //! `EvidenceFeature` primitives already in [`crate::ambiguity`]. No
-//! ISM-specific structures (`IsmAttributes`, `Span`, etc.) leak
+//! ISM-specific structures (`CanonicalAttrs`, `Span`, etc.) leak
 //! through. Scheme adapters wrap their concrete parsers as
 //! `impl Recognizer<S>` (Phase 4 / task T058 for `StrictRecognizer`
 //! and T061 for `DecoderRecognizer`).

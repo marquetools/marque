@@ -4,7 +4,11 @@
 
 //! Phase 2/3: token extraction and structural parsing.
 //!
-//! Takes [`MarkingCandidate`] spans from the scanner and produces [`IsmAttributes`].
+//! Takes [`MarkingCandidate`] spans from the scanner and produces
+//! [`marque_ism::ParsedAttrs`]. The engine then runs
+//! [`marque_ism::from_parsed_unchecked`] (PR 3a transitional path) or
+//! `MarkingScheme::canonicalize` (post-PR-3c) to land owned
+//! [`marque_ism::CanonicalAttrs`] for rule consumption.
 //!
 //! # Phase 2 — Token Extraction
 //! A compile-time Aho-Corasick automaton (built from CVE token list in marque-capco)
@@ -12,7 +16,7 @@
 //! Unrecognized tokens within a candidate boundary are themselves diagnostics.
 //!
 //! # Phase 3 — Structural Parsing
-//! Token sequence → IsmAttributes. Validates ordering and block structure.
+//! Token sequence → ParsedAttrs<'src>. Validates ordering and block structure.
 //! Produces `ParseError` for structural violations; these feed into the rule engine
 //! as diagnostics with associated fixes.
 //!

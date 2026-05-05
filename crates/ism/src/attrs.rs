@@ -2,25 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `IsmAttributes` — the canonical in-memory representation of a classification marking.
+//! Leaf vocabulary types for the ISM attribute model.
 //!
-//! Mirrors the IC ISM XML attribute model. Every source format (free text, XML, web forms)
-//! normalizes into this struct before rule validation.
-//!
-//! # Type design
-//! Multi-value fields use `Box<[T]>` rather than `Vec<T>` to avoid over-allocation
-//! after parsing. Most markings have 0–4 values per field.
-//!
-//! # Classification systems
-//!
-//! A marking carries exactly one classification system: US, FGI (non-US),
-//! NATO, or JOINT. This is represented by [`MarkingClassification`]. Non-US
-//! classifications start with `//` (the US classification slot is empty).
-//!
-//! When the parser encounters two classification systems in one marking
-//! (e.g., `SECRET//NATO SECRET//NOFORN`), it resolves to
-//! [`MarkingClassification::Conflict`] — US wins at the greater of the two
-//! levels, and the foreign part is preserved for rule-generated fixes.
+//! Houses the structural, generated-CVE, and classification leaf types
+//! shared by [`crate::ParsedAttrs`], [`crate::CanonicalAttrs`], and
+//! [`crate::ProjectedMarking`]. Mirrors the IC ISM XML attribute model.
 //!
 //! # Code generation
 //! CVE enum variants (`SciControl`, `DissemControl`, `DeclassExemption`) are
@@ -30,146 +16,27 @@
 //! SAR is NOT code-generated — SAR program identifiers are agency-assigned
 //! codewords, not a closed vocabulary. SAR is modeled structurally via
 //! [`SarMarking`] / [`SarProgram`] / [`SarCompartment`].
+//!
+//! # Pivot type history
+//!
+//! Pre-PR-3a a single owned struct (then named `IsmAttributes`) lived in
+//! this module and served both as the parser output and the
+//! rule-consumption form. PR 3a split that role across three types:
+//!
+//! - [`crate::ParsedAttrs`] (in `parsed.rs`) — borrowed parser output.
+//! - [`crate::CanonicalAttrs`] (in `canonical.rs`) — owned rule input.
+//! - [`crate::ProjectedMarking`] (in `projected.rs`) — page projection.
+//!
+//! The `from_parsed_unchecked` adapter bridges parser output to
+//! `CanonicalAttrs` during the keystone window; PR 3c's
+//! `MarkingScheme::canonicalize` replaces it.
 
-use crate::date::IsmDate;
-use crate::generated::values;
 use crate::span::Span;
 
 // Re-export generated enum types for convenience.
 pub use values::{DeclassExemption, DissemControl, SciControl, SciControlBare};
 
-/// Canonical in-memory representation of a classification marking.
-///
-/// Produced by `marque-core::parser` from scanner candidates.
-/// Consumed by `marque-rules::Rule` implementations for validation.
-///
-/// # Block ordering (CAPCO)
-///
-/// Fields are ordered per CAPCO block sequence:
-/// Classification → SCI → SAR → FGI marker → Dissem (incl. REL TO)
-#[non_exhaustive]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct IsmAttributes {
-    /// The marking's classification system and level.
-    /// `None` means parsing failed to identify a classification.
-    pub classification: Option<MarkingClassification>,
-
-    /// SCI controls (e.g., SI, TK, HCS-P). Ordered per CAPCO block ordering.
-    ///
-    /// This is the *enum projection* populated by the parser's CVE exact-match
-    /// path. Retained for back-compat with existing rules (E010, E011). New
-    /// rules that need compartment / sub-compartment structure should read
-    /// [`IsmAttributes::sci_markings`] instead.
-    pub sci_controls: Box<[SciControl]>,
-
-    /// Structural view of SCI category-block entries.
-    ///
-    /// Each entry corresponds to one `/`-separated marking within an SCI
-    /// category block (e.g., `//SI-G/TK-BLFH//` yields two `SciMarking`
-    /// entries). Populated alongside `sci_controls`; `sci_markings` is the
-    /// authoritative source for rules that inspect compartments or
-    /// sub-compartments. See spec 003-sci-compartments.
-    pub sci_markings: Box<[SciMarking]>,
-
-    /// Special Access Required block, if present. Only one SAR block is
-    /// permitted per marking per §A.6; cardinality is `Option`, not `Vec`.
-    /// See [`SarMarking`] for the structural representation.
-    pub sar_markings: Option<SarMarking>,
-
-    /// Atomic Energy Act markings (CAPCO-2016 §H.6 pp 103–121).
-    ///
-    /// Includes RD, FRD, CNWDI, TFNI, SIGMA, and UCNI variants.
-    /// Positioned between SAR and FGI in CAPCO block ordering.
-    pub aea_markings: Box<[AeaMarking]>,
-
-    /// FGI block in US-classified markings: `FGI` or `FGI [LIST]`.
-    ///
-    /// Present when a US-classified document references foreign government
-    /// information. This is the *marker* in the banner/portion — distinct
-    /// from [`MarkingClassification::Fgi`], which means the marking IS
-    /// foreign-classified.
-    ///
-    /// `None` when no FGI marker is present.
-    pub fgi_marker: Option<FgiMarker>,
-
-    /// Dissemination controls (e.g., NOFORN, RELIDO, ORCON, FISA).
-    pub dissem_controls: Box<[DissemControl]>,
-
-    /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
-    ///
-    /// Separate authority framework (CAPCO-2016 §H.9 pp 169–191), distinct
-    /// from IC dissem controls. In classified documents these are generally portion-
-    /// only and stripped from banners, but some values propagate to the
-    /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
-    /// for the authoritative rule. On unclassified pages they propagate to
-    /// the banner. LES-NF and SBU-NF carry NOFORN treatment even when
-    /// stripped.
-    pub non_ic_dissem: Box<[NonIcDissem]>,
-
-    /// REL TO country / country-group codes. USA must be present and
-    /// first when the marking targets a US release.
-    ///
-    /// Holds the full CAPCO country-code surface — trigraphs (`USA`,
-    /// `GBR`), tetragraphs / country-group codes (`FVEY`, `ACGU`,
-    /// `NATO`, `RSMA`, …), and the longer registered codes (`EU`,
-    /// `AUSTRALIA_GROUP`). Tetragraph membership expansion (FVEY →
-    /// {AUS, CAN, GBR, NZL, USA}) happens at banner-roll-up time in
-    /// [`PageContext::expected_rel_to`], not at parse time, so this
-    /// list preserves the source vocabulary as written.
-    ///
-    /// Structurally part of the dissem block (comma-delimited), but
-    /// kept as a typed field for E002 and REL TO validation rules.
-    pub rel_to: Box<[CountryCode]>,
-
-    /// Declassification date from CAB (ISM precision-tier union).
-    ///
-    /// Typed as [`IsmDate`] to preserve the precision tier from the original
-    /// source. In CAPCO text markings the parser accepts:
-    /// - `YYYY` (4-digit year → [`IsmDate::Year`])
-    /// - `YYYYMMDD` (8-digit no-hyphen → [`IsmDate::Date`])
-    /// - ISO 8601 with hyphens (`YYYY-MM-DD`, etc.) for XML-sourced markings.
-    ///
-    /// `Year(y)` represents the entire calendar year — its end-of-span is
-    /// December 31 of year `y`, which is later than any date in that year.
-    /// Use [`IsmDate::end_cmp`] when determining the most-conservative
-    /// (furthest-out) date across portions.
-    pub declassify_on: Option<IsmDate>,
-
-    /// Free-text "Classified By" identifier from CAB.
-    pub classified_by: Option<Box<str>>,
-
-    /// Free-text "Derived From" source from CAB.
-    pub derived_from: Option<Box<str>>,
-
-    /// Declassification exemption code from CAB (e.g., 25X1, 50X1-HUM).
-    pub declass_exemption: Option<DeclassExemption>,
-
-    /// Per-token byte spans into the *original source buffer*, recorded by
-    /// the parser as it walks the marking string. Phase 3 added this so
-    /// rules can point at the exact offending byte range instead of the
-    /// whole marking. Empty for CAB markings (CAB parsing is line-structured
-    /// and doesn't go through the token-walking path).
-    ///
-    /// Indexing convention: `token_spans` is in document order. To find the
-    /// span for the Nth `DissemControl`, walk the slice and pick the Nth
-    /// entry whose `kind == TokenKind::DissemControl`.
-    pub token_spans: Box<[TokenSpan]>,
-}
-
-impl IsmAttributes {
-    /// Convenience accessor: returns the US classification level if this
-    /// marking uses the US or Conflict classification system.
-    ///
-    /// Returns `None` for pure FGI, NATO, or JOINT markings (use
-    /// `self.classification` directly for those).
-    pub fn us_classification(&self) -> Option<Classification> {
-        match self.classification {
-            Some(MarkingClassification::Us(c)) => Some(c),
-            Some(MarkingClassification::Conflict { us, .. }) => Some(us),
-            _ => None,
-        }
-    }
-}
+use crate::generated::values;
 
 /// One parser-recognized token plus its byte span in the original source.
 ///
@@ -259,7 +126,7 @@ pub enum TokenKind {
 /// Complete SAR category block parsed from a marking.
 ///
 /// Produced by `marque-core::parser::parse_sar_category` (P2) and stored on
-/// [`IsmAttributes::sar_markings`]. Only one SAR block is permitted per
+/// [`CanonicalAttrs::sar_markings`]. Only one SAR block is permitted per
 /// marking per §A.6; multiple `//SAR-…//` blocks in the same marking yield
 /// an `E030 sar-indicator-repeat` diagnostic.
 #[non_exhaustive]
@@ -1081,7 +948,7 @@ const COUNTRY_CODE_CAPACITY: usize = 16;
 /// `Copy` is preserved so the type composes in iterator chains and
 /// `BTreeSet`-based intersection without manual `.clone()` calls.
 /// The fixed-array form keeps each `CountryCode` entry inline in
-/// `IsmAttributes::rel_to` (`Box<[CountryCode]>`) on the parsing
+/// `CanonicalAttrs::rel_to` (`Box<[CountryCode]>`) on the parsing
 /// hot path — no per-code heap allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CountryCode {
@@ -1357,7 +1224,7 @@ pub struct SciMarking {
 
 impl SciMarking {
     /// Construct a new `SciMarking`. Used by the parser (`marque-core`) to
-    /// populate [`IsmAttributes::sci_markings`].
+    /// populate [`CanonicalAttrs::sci_markings`].
     pub fn new(
         system: SciControlSystem,
         compartments: Box<[SciCompartment]>,
@@ -1416,6 +1283,7 @@ impl SciCompartment {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::canonical::CanonicalAttrs;
 
     #[test]
     fn classification_ord_is_restrictiveness() {
@@ -1476,7 +1344,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_us() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             ..Default::default()
         };
@@ -1485,7 +1353,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_none_for_nato() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
             ..Default::default()
         };
@@ -1494,7 +1362,7 @@ mod tests {
 
     #[test]
     fn us_classification_convenience_returns_resolved_for_conflict() {
-        let attrs = IsmAttributes {
+        let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Conflict {
                 us: Classification::TopSecret,
                 foreign: Box::new(ForeignClassification::Nato(

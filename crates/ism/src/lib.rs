@@ -7,9 +7,11 @@
 
 //! marque-ism — ISM vocabulary types, generated CVE enums, and core spans.
 //!
-//! This crate is the leaf dependency in the marque workspace. It owns:
+//! This crate is a leaf dependency in the marque workspace. It owns:
 //! - `Span` and scanner candidate types (zero-copy position tracking)
-//! - `IsmAttributes` (the canonical parsed marking representation)
+//! - The pivot type triple ([`ParsedAttrs<'src>`], [`CanonicalAttrs`],
+//!   [`ProjectedMarking`]) and the `from_parsed_unchecked` transitional
+//!   adapter that bridges parser output to rule input.
 //! - `TokenSet` trait and `CapcoTokenSet` (Aho-Corasick CVE token matching)
 //! - Generated code from ODNI ISM schemas (CVE enums, validators, migrations)
 //!
@@ -29,10 +31,10 @@ pub mod token_set;
 // Re-export primary types at crate root for convenience.
 pub use attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
-    FgiMarker, ForeignClassification, FrdBlock, IsmAttributes, JointClassification,
-    MarkingClassification, NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarCompartment,
-    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl, SciControlBare,
-    SciControlSystem, SciMarking, TokenKind, TokenSpan,
+    FgiMarker, ForeignClassification, FrdBlock, JointClassification, MarkingClassification,
+    NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarCompartment, SarIndicator, SarMarking,
+    SarProgram, SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking,
+    TokenKind, TokenSpan,
 };
 pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
 pub use parsed::{

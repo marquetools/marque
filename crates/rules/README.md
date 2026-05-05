@@ -44,7 +44,7 @@ chooses to register. Rule crates depend only on `marque-rules` and
 A minimal rule:
 
 ```rust
-use marque_ism::{IsmAttributes, Span};
+use marque_ism::{CanonicalAttrs, Span};
 use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, Severity};
 
 struct AlwaysFire;
@@ -54,7 +54,7 @@ impl Rule for AlwaysFire {
     fn name(&self) -> &'static str { "always-fire" }
     fn default_severity(&self) -> Severity { Severity::Warn }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         vec![Diagnostic::new(
             self.id(),
             Severity::Warn,
