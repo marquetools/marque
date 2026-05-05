@@ -406,6 +406,16 @@ jobs:
       # The other CI jobs (build, test, clippy, etc.) stay pinned to
       # the stable Rust toolchain in `rust-toolchain.toml`. Nightly
       # appears here ONLY for coverage instrumentation.
+      #
+      # **Toolchain-override discipline.** The workspace ships a
+      # `rust-toolchain.toml` at the repo root that pins
+      # `channel = "1.89"`. rustup respects that file automatically,
+      # so even after `dtolnay/rust-toolchain` installs nightly,
+      # plain `cargo` invocations from inside the workspace would
+      # still resolve to stable 1.89 (and stable rejects the
+      # `feature(coverage_attribute)` gate with E0554). The fix is to
+      # invoke cargo with the `+nightly` channel-prefix below, which
+      # is a hard rustup-level override that beats the file pin.
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "nightly"
@@ -424,9 +434,15 @@ jobs:
         # the coverage report. cargo-llvm-cov merges this RUSTFLAGS
         # value with its own instrumentation flags rather than
         # overriding it.
+        #
+        # `cargo +nightly` (note the `+` prefix) forces the nightly
+        # toolchain even though `rust-toolchain.toml` pins 1.89 at
+        # the workspace level. Without `+nightly`, rustup resolves
+        # the toolchain from the file and stable 1.89 fails with
+        # E0554 on the `feature(coverage_attribute)` gate.
         env:
           RUSTFLAGS: "--cfg coverage_nightly"
-        run: cargo llvm-cov --workspace --codecov --output-path codecov.json
+        run: cargo +nightly llvm-cov --workspace --codecov --output-path codecov.json
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
