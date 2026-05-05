@@ -16,10 +16,13 @@
 //! **WASM-safe**: no I/O, no format dependencies, no platform-specific code.
 
 pub mod attrs;
+pub mod canonical;
 pub mod date;
 pub mod generated;
 pub mod marking_forms;
 pub mod page_context;
+pub mod parsed;
+pub mod projected;
 pub mod span;
 pub mod token_set;
 
@@ -31,6 +34,13 @@ pub use attrs::{
     SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl, SciControlBare,
     SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
+pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
+pub use parsed::{
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
+    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
+    SourceOrigin,
+};
+pub use projected::{ProjectedMarking, ProjectionProvenance};
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,

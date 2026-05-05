@@ -56,6 +56,12 @@ ismcat-tetra-version = "2022-NOV"
 [dependencies]
 aho-corasick = { workspace = true }
 jiff = { workspace = true }
+# `marque-scheme` is dependency-free (Constitution VII WASM-safe leaf), so
+# pulling it into `marque-ism` does not introduce a runtime-dep edge into
+# `marque-ism`. Needed by `crates/ism/src/projected.rs` for the `Scope`
+# enum that `ProjectedMarking` carries — the type lands at PR 3a so PR 6's
+# `Scope::Page` cutover does not require a separate type-system change.
+marque-scheme = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

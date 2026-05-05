@@ -1,0 +1,253 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! `ParsedAttrs<'src>` — parser output that retains a borrow into the
+//! original source bytes for every parsed token.
+//!
+//! `marque-core::parser` produces a `ParsedAttrs<'src>` per scanner
+//! candidate. The engine (via the recognizer) immediately canonicalizes
+//! via `MarkingScheme::canonicalize` (post-PR-3c) or
+//! `marque_ism::from_parsed_unchecked` (PR 3a transitional path).
+//! Rules consume the resulting `CanonicalAttrs`, never `ParsedAttrs`.
+//!
+//! # Lifecycle
+//!
+//! Short-lived. `ParsedAttrs<'src>` exists only between Phase 2 (parser
+//! emits) and the immediate canonicalization step. It MUST NOT outlive
+//! the input byte buffer it borrows from. Storing one in `RuleContext`,
+//! `PageContext`, or any cross-document structure is a misuse — those
+//! consumers want `CanonicalAttrs` (owned).
+//!
+//! # Why a borrowed type at this layer
+//!
+//! Constitution II ("Zero-Copy, Streaming Core") makes the parser
+//! responsible for not duplicating input. `ParsedAttrs<'src>` is the
+//! type-level enforcement: every parsed token retains a `&'src str`
+//! pointer into the source, so a developer cannot accidentally allocate
+//! a `Box<str>` on the parser hot path. The owning `CanonicalAttrs`
+//! materializes only when canonicalization is explicitly invoked.
+
+use crate::attrs::{
+    AeaMarking, CountryCode, DeclassExemption, DissemControl, FgiMarker, MarkingClassification,
+    NonIcDissem, SarMarking, SciControl, SciMarking, TokenSpan,
+};
+use crate::date::IsmDate;
+use crate::span::Span;
+
+/// Where in the document the parser ran.
+///
+/// Threaded onto `ParsedAttrs<'src>` so the canonicalizer (PR 3c) and
+/// the engine can route per-origin rule subsets. Today the parser sets
+/// this from `MarkingType` (`Banner` / `Portion` / `Cab`); the
+/// `PageBreak` variant is unrepresentable here because page-break
+/// candidates do not produce `ParsedAttrs` (the parser short-circuits).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceOrigin {
+    /// `(TS//SI//NF)` style — parenthesized inline marking.
+    Portion,
+    /// `TOP SECRET//SI//NOFORN` standalone line.
+    Banner,
+    /// Multi-line CAB block.
+    Cab,
+}
+
+/// Parser output for one marking candidate.
+///
+/// Each `Parsed*<'src>` field retains a `&'src str` slice over the
+/// source bytes the parser interpreted as that token, so the
+/// canonicalizer (PR 3c) can compute round-trip properties (FR-019)
+/// without re-borrowing the input. `token_spans` carries the
+/// pre-existing per-token span array unchanged.
+///
+/// `non_ic_dissem`, `rel_to`, `classified_by`, `derived_from`, and
+/// `declass_exemption` are owned because their parser output is not a
+/// 1:1 byte-slice — `parse_fgi_classification` expands country codes,
+/// non-IC parsers normalize abbreviations to enum variants, etc. PR 3c
+/// can refine this if a use case appears; PR 3a does not introduce
+/// borrows where the parser doesn't already preserve them.
+///
+/// # Invariants
+///
+/// - Every populated `Parsed*<'src>` borrows from the same `'src` —
+///   the byte buffer the candidate was extracted from. This is a
+///   discipline contract, not a type-system bound; the parser is the
+///   sole constructor and must enforce it.
+/// - `source_bytes_origin` reflects which scanner-emitted candidate
+///   produced this `ParsedAttrs`. Page-break candidates do not produce
+///   one; the engine short-circuits before reaching the parser.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAttrs<'src> {
+    /// US/FGI/NATO/JOINT classification. `None` when the parser failed
+    /// to identify a classification (e.g., empty marking content).
+    pub classification: Option<ParsedClassification<'src>>,
+
+    /// Structural SCI markings (the source of truth for compartments
+    /// + sub-compartments per CAPCO §A.6).
+    pub sci_markings: Box<[ParsedSciMarking<'src>]>,
+
+    /// CVE-projection of `sci_markings` when the bare control or
+    /// `{ctrl}-{first_comp}` matches a CVE atom and no
+    /// sub-compartments are present. Retained verbatim from
+    /// `IsmAttributes::sci_controls` because rules currently read it
+    /// (CLAUDE.md: "compatibility view scheduled for removal in Phase
+    /// C or D"). PR 3a does not remove it.
+    pub sci_controls: Box<[SciControl]>,
+
+    /// SAR block, if present. CAPCO §A.6 caps SAR at one block per
+    /// marking, so cardinality is `Option`, not `Box<[]>`.
+    ///
+    /// Field name preserves the existing `IsmAttributes::sar_markings`
+    /// (plural) form so the rename layer is purely structural —
+    /// renaming to singular is deferred to PR 3c when shape narrowing
+    /// happens.
+    pub sar_markings: Option<ParsedSarMarking<'src>>,
+
+    /// AEA markings (RD/FRD/CNWDI/SIGMA/UCNI/TFNI) per CAPCO §H.6.
+    /// Multiple permitted in one block per §H.6.
+    pub aea_markings: Box<[ParsedAea<'src>]>,
+
+    /// FGI marker in a US-classified marking (`FGI` or `FGI [LIST]`)
+    /// per CAPCO §H.7. Distinct from `MarkingClassification::Fgi`,
+    /// which means the marking IS foreign-classified.
+    pub fgi_marker: Option<ParsedFgiMarker<'src>>,
+
+    /// IC dissemination controls (NOFORN, ORCON, RELIDO, FOUO, ...).
+    /// Single field at PR 3a; PR 9 (FR-046) splits into `dissem_us`
+    /// and `dissem_nato` once the parser tracks separator spans
+    /// (#106). Until then, every dissem token lands here.
+    pub dissem_controls: Box<[ParsedDissem<'src>]>,
+
+    /// Non-IC dissemination controls (LIMDIS/LES/SBU/SSI/...).
+    /// Separate authority framework per CAPCO §H.9 (pp 169–191).
+    pub non_ic_dissem: Box<[ParsedNonIcDissem<'src>]>,
+
+    /// REL TO country / country-group codes. USA must be present and
+    /// first when the marking targets a US release (E002 enforces).
+    /// Each entry retains its source byte slice.
+    pub rel_to: Box<[ParsedRelToEntry<'src>]>,
+
+    /// Declassification date (YYYY, YYYYMMDD, or ISO 8601). Holds an
+    /// `IsmDate` (typed precision tier) plus the source-bytes slice.
+    pub declassify_on: Option<ParsedDeclassifyOn<'src>>,
+
+    /// Free-text "Classified By" identifier from CAB. Borrows from
+    /// the source line.
+    pub classified_by: Option<&'src str>,
+
+    /// Free-text "Derived From" source from CAB.
+    pub derived_from: Option<&'src str>,
+
+    /// Declassification exemption code from CAB (25X1, 50X1-HUM, ...).
+    /// CVE enum, no source-byte borrow needed.
+    pub declass_exemption: Option<DeclassExemption>,
+
+    /// Per-token byte spans into the original source buffer. Reused
+    /// verbatim from `IsmAttributes::token_spans`.
+    pub token_spans: Box<[TokenSpan]>,
+
+    /// Which candidate-shape produced this parse. Set by the parser at
+    /// `parse_portion` / `parse_banner` / `parse_cab` dispatch; never
+    /// `PageBreak` (page-break candidates short-circuit before parsing).
+    pub source_bytes_origin: SourceOrigin,
+}
+
+// ---------------------------------------------------------------------
+// Parsed*<'src> thin wrappers
+//
+// Each wrapper pairs the parser-produced typed value with the
+// source-bytes slice the parser identified as that token. The slice is
+// stored as `&'src str` rather than `&'src [u8]` because the parser
+// already validated UTF-8 at candidate ingest (per `Span::as_str` +
+// `MarkingType::Portion` strip-paren path); deferring re-validation
+// here would be wasted work.
+//
+// All wrappers derive `Debug + Clone + PartialEq + Eq` because each
+// inner field already does.
+// ---------------------------------------------------------------------
+
+/// Classification with its source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedClassification<'src> {
+    pub value: MarkingClassification,
+    /// Source bytes the parser interpreted as this classification.
+    /// E.g., `"TOP SECRET"`, `"S"`, `"COSMIC TOP SECRET-BOHEMIA"`.
+    pub bytes: &'src str,
+    /// Span of `bytes` within the original source buffer.
+    pub span: Span,
+}
+
+/// Structural SCI marking + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSciMarking<'src> {
+    pub value: SciMarking,
+    /// Source bytes for the full SCI sub-block (e.g., `"SI-G ABCD"`).
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// SAR block + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSarMarking<'src> {
+    pub value: SarMarking,
+    /// Full SAR block source (e.g., `"SAR-BP-J12 J54"`).
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// FGI marker + source bytes.
+///
+/// PR 3a does NOT introduce the `FgiMarker::SourceConcealed |
+/// Acknowledged` discriminant — that's PR 2 (FR-017). The current
+/// `FgiMarker { countries: Box<[CountryCode]> }` shape is preserved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedFgiMarker<'src> {
+    pub value: FgiMarker,
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// One IC dissem control + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDissem<'src> {
+    pub value: DissemControl,
+    /// E.g., `"NF"`, `"NOFORN"`, `"OC"`, `"ORCON"`.
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// One non-IC dissem control + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedNonIcDissem<'src> {
+    pub value: NonIcDissem,
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// One REL TO country / country-group entry + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedRelToEntry<'src> {
+    pub value: CountryCode,
+    /// E.g., `"USA"`, `"FVEY"`, `"AUSTRALIA_GROUP"`.
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// Declassification date + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDeclassifyOn<'src> {
+    pub value: IsmDate,
+    /// Source representation, e.g., `"20351231"` or `"2035-12-31"`.
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+/// One AEA block + source bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAea<'src> {
+    pub value: AeaMarking,
+    /// Full AEA block (e.g., `"RD-CNWDI-SIGMA 18 20"`).
+    pub bytes: &'src str,
+    pub span: Span,
+}
