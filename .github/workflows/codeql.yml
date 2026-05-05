@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Set up environment
-        uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
+        uses: jdx/mise-action@c6a35e2d7dc8cf1493e7465af7460b4748cd4806
         with:
           install: true
           experimental: true
@@ -65,7 +65,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@19b3a84f58f551a99396341585444cb37be03324
+        uses: github/codeql-action/init@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -96,6 +96,6 @@ jobs:
           exit 1
   
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@19b3a84f58f551a99396341585444cb37be03324
+        uses: github/codeql-action/analyze@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           category: "/language:${{matrix.language}}"

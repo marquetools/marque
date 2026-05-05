@@ -62,7 +62,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
 
       - name: Install release tooling
         run: cargo install cargo-smart-release git-cliff --locked
@@ -71,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: rust-lang/crates-io-auth-action@4c854e89b5a69306bb9a1abf09660d9cdb3a1e16
+      - uses: rust-lang/crates-io-auth-action@92ec0602aa002521f5e2b1084cae1fba4aee6b55
         id: auth
       - name: Publish crates
         env:
