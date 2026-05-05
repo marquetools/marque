@@ -146,6 +146,57 @@ jobs:
           cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release -- \
               --workspace-dir . --all
 
+  # FR-018 — citation-lint. AST scan over `crates/*/src/**/*.rs` that
+  # extracts every `§X.Y pNN` reference (in `citation:`/`message:`/
+  # `constraint_label:` struct fields, doc-comment attributes, and
+  # generic string literals containing `§`) and validates each
+  # against `crates/capco/docs/CAPCO-2016.md`. Defects include bare
+  # `§NN` forms, non-normative-section citations (§I/§J/§K), page
+  # anchors outside the cited subsection's span, the FR-020 doubled-
+  # page-anchor pattern, and the retired `line NNNN` form.
+  #
+  # PR 0.5 lands the lint and the defect catalog at
+  # `docs/refactor-006/citation-defect-catalog.md`. This job is
+  # **expected to fail on PR 0.5** — that's the merge gate input for
+  # PR 0.6, which fixes the cataloged defects. From PR 0.6 forward,
+  # this job stays green; new defects fail CI immediately.
+  citation-lint:
+    name: Citation lint (FR-018)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/citation-lint
+
+      - name: Run citation lint
+        # PR 0.5 lands the lint plus the catalog of pre-existing
+        # defects; the lint binary exits non-zero whenever the catalog
+        # is non-empty, which is the entire point of the catalog.
+        #
+        # **Green-by-design.** `continue-on-error: true` on this step
+        # is deliberate: the JOB conclusion stays green so PR 0.5 is
+        # mergeable while shipping the catalog. The step's failure
+        # outcome is still preserved in the workflow log (visible in
+        # the PR Checks UI as a yellow-bang annotation on the step,
+        # next to the green check on the job). The PR description's
+        # phrase "expected to fail on PR 0.5" refers to the STEP
+        # outcome, not the job conclusion.
+        #
+        # PR 0.6 (which closes the catalog) MUST remove this carve-out
+        # as part of its T018 merge-gate verification — at that point
+        # any non-empty catalog becomes a hard CI failure.
+        continue-on-error: true
+        run: |
+          cargo run --manifest-path tools/citation-lint/Cargo.toml --release -- \
+              "$GITHUB_WORKSPACE"
+
   # FR-051 / decision D16 — flake-watch cap check. Counts active
   # `## flake-NNN` headers in `tools/flake-watch/issues.md` and fails
   # the workflow when the count exceeds 10. The template entry uses a
@@ -341,9 +392,33 @@ jobs:
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
+      # Coverage runs on nightly so that the existing
+      # `#[cfg_attr(coverage_nightly, coverage(off))]` annotations on
+      # `mod tests { ... }` blocks across the workspace activate. The
+      # annotations require `#![feature(coverage_attribute)]` (set at
+      # crate root via `#![cfg_attr(coverage_nightly, feature(...))]`),
+      # which is nightly-only on stable Rust 1.85+. Without nightly +
+      # the cfg flag below, every `mod tests` block lands in coverage
+      # data with hundreds of `assert!`-message-continuation lines
+      # marked as missed — pure tooling noise that gates `codecov/
+      # patch` on PRs without measuring real coverage.
+      #
+      # The other CI jobs (build, test, clippy, etc.) stay pinned to
+      # the stable Rust toolchain in `rust-toolchain.toml`. Nightly
+      # appears here ONLY for coverage instrumentation.
+      #
+      # **Toolchain-override discipline.** The workspace ships a
+      # `rust-toolchain.toml` at the repo root that pins
+      # `channel = "1.89"`. rustup respects that file automatically,
+      # so even after `dtolnay/rust-toolchain` installs nightly,
+      # plain `cargo` invocations from inside the workspace would
+      # still resolve to stable 1.89 (and stable rejects the
+      # `feature(coverage_attribute)` gate with E0554). The fix is to
+      # invoke cargo with the `+nightly` channel-prefix below, which
+      # is a hard rustup-level override that beats the file pin.
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          toolchain: "1.89"
+          toolchain: "nightly"
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
@@ -352,7 +427,22 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Generate coverage
-        run: cargo llvm-cov --workspace --codecov --output-path codecov.json
+        # `--cfg coverage_nightly` activates the source-tree
+        # `#[cfg_attr(coverage_nightly, coverage(off))]` markers on
+        # `mod tests` blocks (≈30 sites across the workspace) so test
+        # functions and their `assert!` continuations don't pollute
+        # the coverage report. cargo-llvm-cov merges this RUSTFLAGS
+        # value with its own instrumentation flags rather than
+        # overriding it.
+        #
+        # `cargo +nightly` (note the `+` prefix) forces the nightly
+        # toolchain even though `rust-toolchain.toml` pins 1.89 at
+        # the workspace level. Without `+nightly`, rustup resolves
+        # the toolchain from the file and stable 1.89 fails with
+        # E0554 on the `feature(coverage_attribute)` gate.
+        env:
+          RUSTFLAGS: "--cfg coverage_nightly"
+        run: cargo +nightly llvm-cov --workspace --codecov --output-path codecov.json
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2

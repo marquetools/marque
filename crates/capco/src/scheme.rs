@@ -417,12 +417,14 @@ impl CapcoScheme {
     ///
     /// 1. **`capco/noforn-clears-rel-to`** — when NOFORN is present in
     ///    the aggregated dissem category, the REL TO category clears.
-    ///    Cite §F.2 p43.
+    ///    Cite §D.2 Table 3 pp 28–30 (FD&R Precedence rules 1–2:
+    ///    NOFORN dominates other FD&R markings).
     /// 2. **`capco/joint-promotion`** — JOINT-country lists promote
     ///    into REL TO. Subsumes the E014 `JointRelToRule` requirement
-    ///    logic. Cite §K.2.
+    ///    logic. Cite §H.3 p56 (JOINT requires `REL TO USA, LIST`).
     /// 3. **`capco/fgi-absorption`** — FGI tokens roll up from
-    ///    portions into the banner-level FGI category. Cite §K p61.
+    ///    portions into the banner-level FGI category.
+    ///    Cite §H.7 pp 122–130 (FGI banner roll-up).
     ///
     /// Actions are expressed declaratively
     /// ([`CategoryAction::Clear`] / [`Promote`]). Two of the three
@@ -753,17 +755,16 @@ impl CapcoScheme {
         //
         // T035b audit (2026-04-21): E017, E018, and E019 were
         // retired as over-restrictive relative to CAPCO-2016 §H.3
-        // lines 4140-4146:
+        // pp 56–57:
         //
-        // - §H.3 line 4140 lists "FGI, IC and Non-IC dissemination
+        // - §H.3 p57 lists "FGI, IC and Non-IC dissemination
         //   control markings (excluding NOFORN)" among markings
         //   JOINT "may be used with, as appropriate"
-        // - §H.3 line 4146 names only two explicit exclusions:
+        // - §H.3 p57 names only two explicit exclusions:
         //   HCS markings and NOFORN markings
-        // - §H.3 lines 4163-4164 cross-reference §H.7 for FGI
-        //   content marker syntax on JOINT documents — FGI marker
-        //   presence is a content indicator, not a competing
-        //   classification type
+        // - §H.3 p57 cross-references §H.7 for FGI content marker
+        //   syntax on JOINT documents — FGI marker presence is a
+        //   content indicator, not a competing classification type
         //
         // The JOINT+NOFORN exclusion is caught indirectly: E014
         // requires JOINT to carry REL TO, and
@@ -785,7 +786,7 @@ impl CapcoScheme {
             },
             // ---- E012: dual classification (CAPCO-2016 §H.3 p55) -
             //
-            // §H.3 line 4017-4018: "The US, non-US, and JOINT
+            // §H.3 p55: "The US, non-US, and JOINT
             // classification markings are mutually exclusive – a
             // banner line or portion mark may contain only one type
             // and value for the classification marking."
@@ -812,18 +813,20 @@ impl CapcoScheme {
             // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
             //
             // FGI markings require explicit foreign release per
-            // §H.7 lines 8254-8268 and §B.3.d (line 1025-1032);
-            // JOINT requires REL TO per §H.3 line 4139. The
-            // simplified dyadic predicate "non-US classification +
-            // empty dissem" captures the common-case violation. The
-            // narrower per-system requirements (FGI-specific,
-            // JOINT-specific) are separately enforced by E014 and
-            // by the existing hand-written rules.
+            // §H.7 pp 122–123 (FGI marking template + sharing-
+            // agreement basis) and §B.3 p20 paragraph d (FD&R
+            // markings on FGI in IC DAPs); JOINT requires REL TO
+            // per §H.3 p57. The simplified dyadic predicate
+            // "non-US classification + empty dissem" captures the
+            // common-case violation. The narrower per-system
+            // requirements (FGI-specific, JOINT-specific) are
+            // separately enforced by E014 and by the existing
+            // hand-written rules.
             Constraint::Requires {
                 name: "E015/non-us-requires-dissem",
                 left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
                 right: TokenRef::AnyInCategory(CAT_DISSEM),
-                label: "CAPCO-2016 §H.7 + §B.3.d",
+                label: "CAPCO-2016 §H.7 p122 + §B.3 p20",
             },
             // ---- E016: JOINT conflicts RESTRICTED (§H.3 p56) -----
             //
@@ -866,13 +869,15 @@ impl CapcoScheme {
             },
             // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
             //
-            // §H.6 RD entry line 6811: "Is always used with NOFORN
+            // §H.6 RD entry p104: "Is always used with NOFORN
             // unless a sharing agreement has been established per
-            // the Atomic Energy Act. (Ref. Sections 123 and 144...)".
+            // the Atomic Energy Act. (Ref. Sections 123 and 144 of
+            // the Atomic Energy Act, and DoD Instruction 5030.14.)".
             // The "always used with NOFORN" requirement applies to
-            // RD, FRD, and TFNI specifically — not UCNI (DOD/DOE
-            // UCNI §H.6 lines 7706+ carry no such requirement) and
-            // not to any future AEA entry added to the category.
+            // RD, FRD (§H.6 p111), and TFNI (§H.6 p120) — not UCNI
+            // (DOD UCNI §H.6 p116, DOE UCNI §H.6 p118 carry no such
+            // requirement) and not to any future AEA entry added to
+            // the category.
             // Custom (not `Requires { left: AnyInCategory(CAT_AEA) }`)
             // because that dyadic shape would sweep UCNI in: a valid
             // `U//UCNI` marking would incorrectly require NOFORN.
@@ -882,7 +887,7 @@ impl CapcoScheme {
             },
             // ---- E022: CNWDI classification floor (§H.6 p106) ----
             //
-            // §H.6 CNWDI entry line 6963 / 6967: "Applicable only to
+            // §H.6 CNWDI entry p106: "Applicable only to
             // Top Secret or Secret RD information" / "May only be
             // used with TOP SECRET RD or SECRET RD." Custom because
             // the floor predicate ("classification ≥ S") is a level
@@ -893,7 +898,7 @@ impl CapcoScheme {
             },
             // ---- E024: RD precedence (§H.6 p104) -----------------
             //
-            // §H.6 RD entry line 6825-6826: "If RD, FRD, and TFNI
+            // §H.6 RD entry p104: "If RD, FRD, and TFNI
             // portions are in a document, the RD takes precedence
             // and is conveyed in the banner line." Custom (not
             // Supersedes) because Supersedes is a banner-rollup
@@ -908,7 +913,7 @@ impl CapcoScheme {
             },
             // ---- E025: UCNI conflicts classification (§H.6 p116) -
             //
-            // §H.6 DOD UCNI entry line 7706 / 7710: "Applicable only
+            // §H.6 DOD UCNI entry p116: "Applicable only
             // to unclassified information" / "May only be used with
             // UNCLASSIFIED." Custom (not Conflicts) because the
             // predicate distinguishes UNCLASSIFIED (allowed) from
@@ -920,7 +925,7 @@ impl CapcoScheme {
             },
             // ---- W002: US + FGI commingling (§H.7 p124) ----------
             //
-            // §H.7 lines 8254-8268: documents not marked per ICD 206
+            // §H.7 p124: documents not marked per ICD 206
             // "must segregate the FGI from US portions." Custom (not
             // Conflicts) because the rule is portion-only — the
             // wrapper filters by `RuleContext::marking_type` after
@@ -931,7 +936,7 @@ impl CapcoScheme {
             },
             // ---- capco/noforn-conflicts-rel-to (§H.8 p145) -------
             //
-            // §H.8 NOFORN entry line 9482: "Cannot be used with
+            // §H.8 NOFORN entry p145: "Cannot be used with
             // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY." This is
             // the portion-level exclusion; the page-rewrite that
             // clears REL TO when NOFORN is present at page scope is
@@ -944,10 +949,10 @@ impl CapcoScheme {
             },
             // ---- capco/joint-requires-usa (§H.3 p55) -------------
             //
-            // §H.3 line 4025-4026: "USA is always included in the
+            // §H.3 p55: "USA is always included in the
             // JOINT marking [LIST], as USA is always a
             // co-owner/producer." Plus REL TO must include USA per
-            // §H.3 line 4139. Custom (not Requires) because USA
+            // §H.3 p57 (REL TO USA, LIST requirement). Custom (not Requires) because USA
             // must appear in BOTH `joint.countries` AND `rel_to` —
             // a coupled predicate that doesn't decompose cleanly
             // into a single TokenRef pair.
@@ -1457,7 +1462,8 @@ impl MarkingScheme for CapcoScheme {
 
 /// E012 — `MarkingClassification::Conflict` indicates the parser saw a US
 /// classification AND a foreign classification in the same marking. CAPCO
-/// §H.3 line 4017-4018 forbids this.
+/// §H.3 p55 forbids this ("The US, non-US, and JOINT classification
+/// markings are mutually exclusive").
 fn e012_dual_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     if let Some(marque_ism::MarkingClassification::Conflict { us, foreign }) = &attrs.classification
     {
@@ -1532,10 +1538,10 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
     }]
 }
 
-/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement per
-/// AEA §123/§144 exists). CAPCO §H.6 line 6811. Intentionally narrower
-/// than `AnyInCategory(CAT_AEA)` — UCNI variants do not carry the NOFORN
-/// requirement (CAPCO §H.6 lines 7706+).
+/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement under
+/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104.
+/// Intentionally narrower than `AnyInCategory(CAT_AEA)` — UCNI variants
+/// do not carry the NOFORN requirement (CAPCO §H.6 p116 / p118).
 fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
         matches!(
@@ -1592,7 +1598,7 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Con
     }]
 }
 
-/// E022 — CNWDI requires TS or S classification. CAPCO §H.6 line 6963/6967.
+/// E022 — CNWDI requires TS or S classification. CAPCO §H.6 p106.
 fn e022_cnwdi_floor(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_cnwdi = attrs
         .aea_markings
@@ -1624,7 +1630,7 @@ fn e022_cnwdi_floor(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolatio
 /// (FRD, TFNI) are present. The wrapper enumerates per-element to emit one
 /// `Diagnostic` per offending marking with byte-precise spans; this helper
 /// emits ONE `ConstraintViolation` whose presence signals the wrapper to do
-/// that work. CAPCO §H.6 line 6825-6826.
+/// that work. CAPCO §H.6 p104.
 fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let has_rd = attrs
         .aea_markings
@@ -1652,7 +1658,7 @@ fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
 
 /// E025 — UCNI may only be used with UNCLASSIFIED. Fires when DOD/DOE UCNI
 /// is present AND the classification level is above UNCLASSIFIED.
-/// CAPCO §H.6 line 7706/7710.
+/// CAPCO §H.6 p116 (DOD UCNI) / p118 (DOE UCNI).
 ///
 /// Note on T035 refactor: the Phase 3 catalog entry was
 /// `Conflicts { left: TOK_UCNI, right: AnyInCategory(CAT_CLASSIFICATION) }`.
@@ -1705,7 +1711,8 @@ fn w002_us_commingled_with_fgi(attrs: &marque_ism::IsmAttributes) -> Vec<Constra
 }
 
 /// `capco/joint-requires-usa` — JOINT classifications must list USA in BOTH
-/// `joint.countries` AND `rel_to`. CAPCO §H.3 line 4025-4026 / line 4139.
+/// `joint.countries` AND `rel_to`. CAPCO §H.3 p55 (USA always included in
+/// JOINT [LIST]) + §H.3 p57 (Requires REL TO USA, LIST).
 fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
@@ -1721,28 +1728,30 @@ fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
         message: "JOINT classifications must list USA in both the \
                   classification countries and REL TO"
             .to_owned(),
-        citation: "CAPCO-2016 §H.3 p55",
+        citation: "CAPCO-2016 §H.3 pp 55–57",
     }]
 }
 
 // ---------------------------------------------------------------------------
-// HCS constraint handler (CAPCO-2016 §H.4 p61-62)
+// HCS constraint handler (CAPCO-2016 §H.4 pp 62–66)
 // ---------------------------------------------------------------------------
 
 /// Evaluate the `Constraint::Custom("HCS-system-constraints")` sample.
 ///
-/// CAPCO 2016 §4 (p62) defines four interlocking HCS rules:
+/// CAPCO-2016 §H.4 (pp 62–66) defines the interlocking HCS rules:
 ///
-/// 1. **Bare `HCS` (no compartment)** is a legacy form. It must be
-///    remarked to `HCS-P`, `HCS-O`, or `HCS-O-P`, which requires
+/// 1. **Bare `HCS` (no compartment)** is a legacy form (§H.4 p62). It
+///    must be remarked to `HCS-P`, `HCS-O`, or `HCS-O-P`, which requires
 ///    document-level analysis (the correct variant depends on whether
 ///    the content is HUMINT product, operations, or both). Legacy
-///    `C//HCS` (CONFIDENTIAL with bare HCS -- no compartment) must additionally be
-///    identified to the originator for correction.
-/// 2. **`HCS-O`** requires ORCON and must **not** include ORCON-USGOV (banner would drop -USGOV).
-/// 3. **`HCS-P`** requires **either** ORCON or ORCON-USGOV.
+///    `C//HCS` (CONFIDENTIAL with bare HCS -- no compartment) must
+///    additionally be identified to the originator for correction.
+/// 2. **`HCS-O`** (§H.4 p64) **requires ORCON and NOFORN** and must
+///    **not** include ORCON-USGOV (banner would drop -USGOV).
+/// 3. **`HCS-P`** (§H.4 p66) **requires NOFORN**; ORCON or ORCON-USGOV
+///    **may** be used (permitted, not required).
 /// 4. **`HCS-O` / `HCS-P`** are only authorized for SECRET and TOP
-///    SECRET classifications.
+///    SECRET classifications (§H.4 p64 / p66).
 ///
 /// This helper inspects both `sci_controls` (the CVE-projection for
 /// legacy-shape bare HCS tokens) and `sci_markings` (the structural
@@ -1780,20 +1789,19 @@ fn hcs_system_constraints(
         }
 
         if marking.compartments.is_empty() {
-            // Bare HCS — legacy per CAPCO 2016 §4 p62.
+            // Bare HCS — legacy per CAPCO-2016 §H.4 p62.
             out.push(marque_scheme::ConstraintViolation {
                 constraint_label: "HCS-legacy-bare",
-                message:
-                    "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
-                     p62 (requires document-level analysis)."
-                        .to_owned(),
+                message: "Bare HCS is legacy; remark to HCS-P, HCS-O, or HCS-O-P per CAPCO-2016 \
+                     §H.4 p62 (requires document-level analysis)."
+                    .to_owned(),
                 citation,
             });
             if classification == Some(Classification::Confidential) {
                 out.push(marque_scheme::ConstraintViolation {
                     constraint_label: "HCS-legacy-confidential",
                     message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction \
-                              per CAPCO 2016 §4."
+                              per CAPCO-2016 §H.4 p62."
                         .to_owned(),
                     citation,
                 });
@@ -1811,7 +1819,7 @@ fn hcs_system_constraints(
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-O-classification-floor",
                             message: "HCS-O is only authorized for SECRET and TOP SECRET per \
-                                      CAPCO 2016 §4."
+                                      CAPCO-2016 §H.4 p64."
                                 .to_owned(),
                             citation,
                         });
@@ -1819,16 +1827,30 @@ fn hcs_system_constraints(
                     if !has_orcon {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-O-requires-ORCON",
-                            message: "HCS-O requires ORCON per CAPCO 2016 §4.".to_owned(),
+                            message: "HCS-O requires ORCON per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
                         });
                     }
                     if has_orcon_usgov {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-O-forbids-ORCON-USGOV",
-                            message: "HCS-O must not be used with ORCON-USGOV per CAPCO \
-                                      2016 §4."
+                            message: "HCS-O must not be used with ORCON-USGOV per CAPCO-2016 \
+                                      §H.4 p64."
                                 .to_owned(),
+                            citation,
+                        });
+                    }
+                    // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
+                    // ("Relationship(s) to Other Markings: ... Requires
+                    // ORCON and NOFORN"). The ORCON side is enforced
+                    // above; NOFORN is the second mandatory side. Same
+                    // shape as the HCS-P NOFORN-required predicate
+                    // below; tracked-and-resolved per #304.
+                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+                    if !has_noforn {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-O-requires-NOFORN",
+                            message: "HCS-O requires NOFORN per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
                         });
                     }
@@ -1838,17 +1860,24 @@ fn hcs_system_constraints(
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-P-classification-floor",
                             message: "HCS-P is only authorized for SECRET and TOP SECRET per \
-                                      CAPCO 2016 §4."
+                                      CAPCO-2016 §H.4 p66."
                                 .to_owned(),
                             citation,
                         });
                     }
-                    if !has_orcon && !has_orcon_usgov {
+                    // HCS-P requires NOFORN per CAPCO-2016 §H.4 p66
+                    // ("Relationship(s) to Other Markings: ... Requires
+                    // NOFORN"). ORCON / ORCON-USGOV are permitted but
+                    // not required ("ORCON or ORCON-USGOV may be
+                    // used."), so the ORCON-required predicate that
+                    // previously fired here was over-strict; it is
+                    // dropped in favor of the actually-required
+                    // NOFORN predicate.
+                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+                    if !has_noforn {
                         out.push(marque_scheme::ConstraintViolation {
-                            constraint_label: "HCS-P-requires-ORCON-or-ORCON-USGOV",
-                            message: "HCS-P requires either ORCON or ORCON-USGOV per CAPCO \
-                                      2016 §4."
-                                .to_owned(),
+                            constraint_label: "HCS-P-requires-NOFORN",
+                            message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66.".to_owned(),
                             citation,
                         });
                     }
@@ -1880,8 +1909,8 @@ fn hcs_system_constraints(
         out.push(marque_scheme::ConstraintViolation {
             constraint_label: "HCS-legacy-bare",
             // suggested fix should be HCS-P but we should expose a default override path for users in the HCS-O environment
-            message: "HCS requires a compartment (O or P); remark to HCS-P, HCS-O, or HCS-O-P per CAPCO 2016 §4 \
-                 p62 (requires document-level analysis)."
+            message: "HCS requires a compartment (O or P); remark to HCS-P, HCS-O, or HCS-O-P \
+                 per CAPCO-2016 §H.4 p62 (requires document-level analysis)."
                 .to_owned(),
             citation,
         });
@@ -1889,7 +1918,7 @@ fn hcs_system_constraints(
             out.push(marque_scheme::ConstraintViolation {
                 constraint_label: "HCS-legacy-confidential",
                 message: "Legacy CONFIDENTIAL//HCS: identify to originator for correction per \
-                          CAPCO 2016 §4."
+                          CAPCO-2016 §H.4 p62."
                     .to_owned(),
                 citation,
             });

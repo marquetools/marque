@@ -16,7 +16,7 @@
 //! those are the ones E001 (banner uses portion abbreviation) and E009 (portion
 //! uses banner expansion) need to detect and correct.
 //!
-//! Per CAPCO-2016 §A.6 line 317, a banner line may spell out the Marking Title
+//! Per CAPCO-2016 §D.1 p27, a banner line may spell out the Marking Title
 //! OR use the Authorized Abbreviation — both are valid. Detection of the long
 //! title in a banner is driven by the [`MarkingForm::title`] field and owned
 //! by the S001 `prefer-banner-abbreviation` style rule. `title == banner` when
@@ -163,7 +163,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         portion: "RS",
     },
     MarkingForm {
-        // §G.1 Table 4 line 831: `| DEA SENSITIVE | None | DSEN |`. No
+        // §G.1 Table 4 p36: `| DEA SENSITIVE | None | DSEN |`. No
         // distinct banner abbreviation — `title == banner`. S001 must
         // skip this row (no substitution possible).
         title: "DEA SENSITIVE",
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn title_lookups_return_none_for_dea_sensitive() {
-        // CAPCO-2016 §G.1 Table 4 line 831: DEA SENSITIVE has no
+        // CAPCO-2016 §G.1 Table 4 p36: DEA SENSITIVE has no
         // distinct banner abbreviation (`| DEA SENSITIVE | None | DSEN |`).
         // The `title == banner` guard in the lookups must skip this row
         // so S001 does not propose a no-op substitution and the parser
@@ -536,7 +536,7 @@ mod tests {
             same_form,
             vec!["DEA SENSITIVE"],
             "only DEA SENSITIVE should have `title == banner` today \
-             (CAPCO-2016 §G.1 Table 4 line 831). If this fails, a new \
+             (CAPCO-2016 §G.1 Table 4 p36). If this fails, a new \
              row without a distinct abbreviation has been added — \
              update S001 tests accordingly."
         );

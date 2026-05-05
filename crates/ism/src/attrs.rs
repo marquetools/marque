@@ -76,7 +76,7 @@ pub struct IsmAttributes {
     /// See [`SarMarking`] for the structural representation.
     pub sar_markings: Option<SarMarking>,
 
-    /// Atomic Energy Act markings (CAPCO Register §6).
+    /// Atomic Energy Act markings (CAPCO-2016 §H.6 pp 103–121).
     ///
     /// Includes RD, FRD, CNWDI, TFNI, SIGMA, and UCNI variants.
     /// Positioned between SAR and FGI in CAPCO block ordering.
@@ -97,8 +97,8 @@ pub struct IsmAttributes {
 
     /// Non-IC dissemination controls (e.g., LIMDIS, SBU, LES, SSI).
     ///
-    /// Separate authority framework (CAPCO Register §9), distinct from IC
-    /// dissem controls. In classified documents these are generally portion-
+    /// Separate authority framework (CAPCO-2016 §H.9 pp 169–191), distinct
+    /// from IC dissem controls. In classified documents these are generally portion-
     /// only and stripped from banners, but some values propagate to the
     /// classified banner; see [`NonIcDissem::propagates_to_classified_banner`]
     /// for the authoritative rule. On unclassified pages they propagate to
@@ -618,7 +618,7 @@ pub struct JointClassification {
 // Atomic Energy Act markings
 // ---------------------------------------------------------------------------
 
-/// Atomic Energy Act information markings (CAPCO Register §6).
+/// Atomic Energy Act information markings (CAPCO-2016 §H.6 pp 103–121).
 ///
 /// AEA markings appear as a single `//`-delimited block in the marking string,
 /// using hyphen separators for compound forms:
@@ -890,7 +890,7 @@ pub struct FgiMarker {
 // Non-IC dissemination controls
 // ===========================================================================
 
-/// Non-Intelligence Community dissemination control markings (CAPCO Register §9).
+/// Non-Intelligence Community dissemination control markings (CAPCO-2016 §H.9 pp 169–191).
 ///
 /// These operate under a separate authority framework from IC dissem controls.
 /// In classified documents, most non-IC dissem controls appear **only in portion
@@ -988,18 +988,18 @@ impl NonIcDissem {
     ///
     /// | Marking  | Propagates | Source (CAPCO-2016 §H.9)                                                                                            |
     /// |----------|------------|----------------------------------------------------------------------------------------------------------------------|
-    /// | LIMDIS   | no         | line 4180: "When a document contains LIMDIS and classified portions, LIMDIS is not used in the banner line."         |
-    /// | EXDIS    | yes        | line 4240: "If EXDIS is contained in any portion … EXDIS must appear in the banner line." Example banner: `SECRET//NOFORN//EXDIS` |
-    /// | NODIS    | yes        | line 4300: "If NODIS is contained in any portion of a document, it must appear in the banner line." Example banner: `SECRET//NOFORN//NODIS` |
-    /// | SBU      | no         | line 4358: "When a document contains SBU and classified portions, SBU is not used in the banner line."               |
-    /// | SBU-NF   | no (†)     | line 4408: SBU NOFORN "Applicable only to unclassified information." (The §H.9 notional example on p179 shows a `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF absent from banner.) |
-    /// | LES      | yes        | line 4479: "The LES marking always appears in the banner line if contained in any portion, regardless of classification level." |
-    /// | LES-NF   | yes (*)    | line 4557: "The LES marking always appears in the banner line if LES information (either LES or LES NOFORN) is contained in the document, regardless of the document's classification level." |
-    /// | SSI      | yes        | line 4651: "If the SSI marking is contained in any portion of a document it must appear in the banner line, regardless of the document's overall classification level." |
+    /// | LIMDIS   | no         | §H.9 p170: "When a document contains LIMDIS and classified portions, LIMDIS is not used in the banner line."         |
+    /// | EXDIS    | yes        | §H.9 p172: "If EXDIS is contained in any portion … EXDIS must appear in the banner line." Example banner: `SECRET//NOFORN//EXDIS` |
+    /// | NODIS    | yes        | §H.9 p174: "If NODIS is contained in any portion of a document, it must appear in the banner line." Example banner: `SECRET//NOFORN//NODIS` |
+    /// | SBU      | no         | §H.9 p176: "When a document contains SBU and classified portions, SBU is not used in the banner line."               |
+    /// | SBU-NF   | no (†)     | §H.9 p178: SBU NOFORN "Applicable only to unclassified information." (The §H.9 notional example on p179 shows a `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF absent from banner.) |
+    /// | LES      | yes        | §H.9 p181: "The LES marking always appears in the banner line if contained in any portion, regardless of classification level." |
+    /// | LES-NF   | yes (*)    | §H.9 p185: "The LES marking always appears in the banner line if LES information (either LES or LES NOFORN) is contained in the document, regardless of the document's classification level." |
+    /// | SSI      | yes        | §H.9 p189: "If the SSI marking is contained in any portion of a document it must appear in the banner line, regardless of the document's overall classification level." |
     ///
     /// (*) LES-NF carries a §H.9 canonicalization that is **not modeled
     ///     here**: in classified docs, `LES NOFORN` → `LES` at the banner
-    ///     with NOFORN split into the dissem block (line 4558: "the 'LES'
+    ///     with NOFORN split into the dissem block (§H.9 p185: "the 'LES'
     ///     marking is used in the banner line and the NOFORN marking is
     ///     applied as a Dissemination Control Marking. For example:
     ///     `SECRET//NOFORN//LES`."). The split itself is handled by
@@ -1012,7 +1012,7 @@ impl NonIcDissem {
     ///
     /// (†) "Does not propagate" for SBU-NF refers to the **SBU** half of
     ///     the marking — the literal `SBU NOFORN` banner form is
-    ///     non-canonical in a classified document per §H.9 line 4408
+    ///     non-canonical in a classified document per §H.9 p178
     ///     ("applicable only to unclassified information"). The **NOFORN
     ///     half does propagate** via
     ///     [`crate::PageContext::expected_non_ic_dissem`], which splits a

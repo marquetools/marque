@@ -955,7 +955,8 @@ pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
 /// - Fullwidth slash variants (`∕∕`, `/ /`, ` / / `, spaced `//`) all
 ///   collapse to `//`.
 /// - ASCII alphabetic characters are upper-cased; the CAPCO grammar
-///   is case-sensitive uppercase (§B).
+///   is case-sensitive uppercase (§D.1 p27 — banner line uppercase
+///   syntax rule, applied uniformly to portions per §C.1 p25).
 /// - Leading `(` and trailing `)` are preserved so portion detection
 ///   still works.
 ///

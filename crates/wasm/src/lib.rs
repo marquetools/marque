@@ -1134,8 +1134,9 @@ pub fn compute_banner(text: &str) -> Result<String, JsValue> {
 /// 1. If an explicit `declassify_on` date or `declass_exemption` is found in a
 ///    parsed marking in `text`, that value is used verbatim.
 /// 2. Otherwise, the default is **25 years from the current year** per
-///    EO 13526 § 1.5(a) (the CAPCO default for NSI when no other instruction
-///    is present).
+///    EO 13526, section 1.5(a) (the default duration of original
+///    classification when no other instruction is present, restated in
+///    CAPCO-2016 §E.1 p31).
 /// 3. If the document computes as UNCLASSIFIED (with or without dissem
 ///    controls), returns an **empty string** — no CAB is required for
 ///    UNCLASSIFIED documents.

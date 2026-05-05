@@ -88,7 +88,10 @@ const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
 /// fuzzy-corrected `COSMIC` / `BOHEMIA` / `ATOMAL` / `BALK` token lands
 /// on the correct classification after strict parsing.
 ///
-/// Authority: CAPCO-2016 §H.7 p147–148 (NATO classification markings).
+/// Authority: CAPCO-2016 §H.2 p55 (Non-US Protective Markings,
+/// referring to Manual Appendix B for NATO Protective Markings).
+/// Vocabulary anchor: §G.1 Table 4 p36, COSMIC TOP SECRET / ATOMAL /
+/// BOHEMIA rows under category "2. Non-US Protective Markings".
 const NATO_CLASSIFICATION_KEYWORDS: &[&str] = &["ATOMAL", "BALK", "BOHEMIA", "COSMIC"];
 
 /// SAR structural keywords (CAPCO-2016 §H.5 p100, "SAR-" indicator and
@@ -327,7 +330,7 @@ mod tests {
         // ODNI's `CVEnumISMDissem.xml` is a UNION enum bundling IC
         // dissem controls (CAPCO source 1) with the ISOO CUI Registry
         // caveat tail (AC, AWP, DL_ONLY, FED_ONLY, FEDCON, NOCON) and
-        // the DOD-SAP `WAIVED` entry. CAPCO-2016 line 283 explicitly
+        // the DOD-SAP `WAIVED` entry. CAPCO-2016 §A.3 p13 explicitly
         // disclaims caveats from its scope. The `build.rs` of
         // `marque-ism` deny-lists those seven tokens so they never
         // enter the IC `DissemControl` enum or `ALL_CVE_TOKENS`. This
@@ -345,7 +348,7 @@ mod tests {
             assert!(
                 vocab.binary_search(forbidden).is_err(),
                 "correction_vocab MUST NOT contain {forbidden:?} — \
-                 it is a non-IC caveat (CAPCO-2016 line 283 \
+                 it is a non-IC caveat (CAPCO-2016 §A.3 p13 \
                  disclaimer) that should be filtered by build.rs's \
                  NON_IC_DISSEM_DENY_LIST"
             );
