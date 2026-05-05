@@ -43,7 +43,7 @@
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
 use marque_ism::{
-    CapcoTokenSet, Classification, CanonicalAttrs, MarkingClassification,
+    CanonicalAttrs, CapcoTokenSet, Classification, MarkingClassification,
     span::{MarkingCandidate, MarkingType, Span},
 };
 use marque_scheme::ambiguity::Parsed;

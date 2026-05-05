@@ -16,7 +16,7 @@
 
 use marque_capco::vocab::{expand_tetragraph, is_decomposable_tetragraph};
 use marque_ism::{
-    Classification, CountryCode, CanonicalAttrs, MarkingClassification, PageContext,
+    CanonicalAttrs, Classification, CountryCode, MarkingClassification, PageContext,
     TETRAGRAPH_MEMBERS, is_decomposable, lookup_tetragraph_members,
 };
 

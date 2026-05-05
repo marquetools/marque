@@ -15,7 +15,7 @@
 
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_ism::{
-    Classification, CountryCode, DissemControl, CanonicalAttrs, JointClassification,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, JointClassification,
     MarkingClassification, PageContext, SciControl,
 };
 use marque_scheme::MarkingScheme;

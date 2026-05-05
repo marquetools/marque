@@ -22,7 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{Classification, CountryCode, CanonicalAttrs, PageContext};
+use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext};
 use marque_scheme::{
     AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
     Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
@@ -1962,7 +1962,7 @@ impl CapcoScheme {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_ism::{CountryCode, DissemControl, CanonicalAttrs, MarkingClassification};
+    use marque_ism::{CanonicalAttrs, CountryCode, DissemControl, MarkingClassification};
 
     fn mk_attrs() -> CanonicalAttrs {
         let mut a = CanonicalAttrs::default();

@@ -56,7 +56,7 @@
 //! remove the SCI marking.
 
 use marque_ism::{
-    Classification, DissemControl, CanonicalAttrs, MarkingClassification, MarkingType,
+    CanonicalAttrs, Classification, DissemControl, MarkingClassification, MarkingType,
     SciControlBare, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
 };
 use marque_rules::{

@@ -10,7 +10,7 @@
 //! REL-TO intersection subset, and empty-page sentinel.
 
 use marque_ism::{
-    Classification, CountryCode, DissemControl, CanonicalAttrs, MarkingClassification, PageContext,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification, PageContext,
 };
 use proptest::prelude::*;
 use proptest::sample::subsequence;

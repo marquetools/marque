@@ -61,8 +61,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    CanonicalAttrs, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
-    sar_sort_key,
+    CanonicalAttrs, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind,
+    TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -7820,7 +7820,7 @@ mod tests {
         // tetragraph-expanded entries differently), the rule must
         // skip the misaligned entries instead of producing a
         // diagnostic with the wrong span.
-        use marque_ism::{CountryCode, CanonicalAttrs};
+        use marque_ism::{CanonicalAttrs, CountryCode};
         use marque_rules::{MarkingType, RuleContext};
 
         let mut attrs = CanonicalAttrs::default();

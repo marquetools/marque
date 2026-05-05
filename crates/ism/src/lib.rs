@@ -37,17 +37,17 @@ pub use attrs::{
     TokenKind, TokenSpan,
 };
 pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
-pub use parsed::{
-    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
-    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
-    SourceOrigin,
-};
-pub use projected::{ProjectedMarking, ProjectionProvenance};
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,
     is_bare_cve_value, is_decomposable, lookup_tetragraph_members, lookup_tetragraph_provenance,
 };
 pub use page_context::{PageContext, sar_sort_key};
+pub use parsed::{
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
+    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
+    SourceOrigin,
+};
+pub use projected::{ProjectedMarking, ProjectionProvenance};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
 pub use token_set::{CapcoTokenSet, TokenSet};

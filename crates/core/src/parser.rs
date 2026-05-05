@@ -174,8 +174,8 @@ impl<'t> Parser<'t> {
                         // for CAB content; record a zero-width placeholder
                         // anchored at the line start so the byte slice is
                         // still recoverable from `bytes`.
-                        let abs_start = candidate.span.start
-                            + (s.as_ptr() as usize - text.as_ptr() as usize);
+                        let abs_start =
+                            candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
                         declassify_on = Some(ParsedDeclassifyOn {
                             value: date,
                             bytes: s,
@@ -514,10 +514,7 @@ impl<'t> Parser<'t> {
                         ForeignClassification::Joint(j) => j.level,
                     };
                     let max_level = us_level.max(foreign_equiv);
-                    let prior_bytes = classification
-                        .as_ref()
-                        .map(|c| c.bytes)
-                        .unwrap_or(trimmed);
+                    let prior_bytes = classification.as_ref().map(|c| c.bytes).unwrap_or(trimmed);
                     let prior_span = classification.as_ref().map(|c| c.span).unwrap_or(span);
                     classification = Some(ParsedClassification {
                         value: MarkingClassification::Conflict {
@@ -2917,8 +2914,8 @@ mod sar_parse_tests {
     //! Direct unit tests for [`parse_sar_category`] plus integration-level
     //! tests that exercise the dispatch from `parse_marking_string`.
 
-    use super::*;
     use super::tests::CanonicalParsed;
+    use super::*;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
     use marque_ism::token_set::CapcoTokenSet;
 
@@ -3156,7 +3153,10 @@ mod sar_parse_tests {
             span: Span::new(0, source.len()),
             kind: MarkingType::Banner,
         };
-        parser.parse(&candidate, source).expect("parse succeeds").into()
+        parser
+            .parse(&candidate, source)
+            .expect("parse succeeds")
+            .into()
     }
 
     #[test]
