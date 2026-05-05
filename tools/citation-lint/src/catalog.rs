@@ -1,0 +1,170 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Defect catalog file generator.
+//!
+//! Produces `docs/refactor-006/citation-defect-catalog.md` —
+//! consumed by PR 0.6 as the input list of citations to fix. The
+//! file's format is documented in its own header so a future
+//! reviewer can read the catalog without diving into this source.
+//!
+//! **Output is deterministic.** Defects are pre-sorted by
+//! `diagnostic::sort` before this module sees them, so two runs over
+//! the same input produce byte-identical files. Determinism is the
+//! reason this lives outside `diagnostic.rs` — the catalog format is
+//! a separate contract from the wire-format JSON, and bundling them
+//! would tempt future implementers to change one and forget the
+//! other.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::path::Path;
+
+use anyhow::{Context, Result};
+
+use crate::diagnostic::{Defect, DefectClass};
+
+/// Render the catalog as a Markdown document and write it to
+/// `path`. Creates parent directories as needed.
+pub fn write_catalog(path: &Path, defects: &[Defect], workspace_root: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating parent directory {}", parent.display()))?;
+    }
+    let body = render(defects, workspace_root);
+    std::fs::write(path, body).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Render the catalog body. Pure — no I/O.
+fn render(defects: &[Defect], workspace_root: &Path) -> String {
+    let mut s = String::new();
+    s.push_str(HEADER);
+    if defects.is_empty() {
+        s.push_str("\n## Catalog\n\nNo defects detected. Citation-lint is clean.\n");
+        return s;
+    }
+    let _ = writeln!(s, "\n## Summary\n");
+    let _ = writeln!(s, "Total defects: **{}**\n", defects.len());
+    // Class breakdown.
+    let mut by_class: BTreeMap<&'static str, u32> = BTreeMap::new();
+    for d in defects {
+        *by_class.entry(d.class.class_id()).or_default() += 1;
+    }
+    let _ = writeln!(s, "| Class | Count |");
+    let _ = writeln!(s, "|-------|-------|");
+    for (class, count) in &by_class {
+        let _ = writeln!(s, "| `{class}` | {count} |");
+    }
+    s.push_str("\n## Catalog\n\n");
+    // Group by file for readability; defects within a file are
+    // already sorted by line/column.
+    let mut current_file: Option<&Path> = None;
+    for d in defects {
+        let display_path = match d.file.strip_prefix(workspace_root) {
+            Ok(p) => p,
+            Err(_) => d.file.as_path(),
+        };
+        if Some(display_path) != current_file {
+            if current_file.is_some() {
+                s.push('\n');
+            }
+            let _ = writeln!(s, "### `{}`\n", display_path.display());
+            current_file = Some(display_path);
+        }
+        let _ = writeln!(
+            s,
+            "- **{}:{}** — `{}`",
+            d.line,
+            d.column,
+            d.class.class_id()
+        );
+        let _ = writeln!(s, "  - **Source kind**: `{:?}`", d.source_kind);
+        let _ = writeln!(s, "  - **Raw**: `{}`", escape_inline(&d.raw));
+        let _ = writeln!(s, "  - **Defect**: {}", d.class.summary());
+        if let Some(rec) = &d.recommended {
+            let _ = writeln!(s, "  - **Recommended**: {rec}");
+        }
+        match &d.class {
+            DefectClass::PageOutOfRange {
+                section_start,
+                section_end,
+                cited_start,
+                cited_end,
+            } => {
+                let _ = writeln!(
+                    s,
+                    "  - **Section spans**: pp {section_start}–{section_end}; **citation cites**: pp {cited_start}–{cited_end}"
+                );
+            }
+            DefectClass::PageOutOfDocument {
+                max_page,
+                cited_page,
+            } => {
+                let _ = writeln!(
+                    s,
+                    "  - **Document max page**: p{max_page}; **citation cites**: p{cited_page}"
+                );
+            }
+            _ => {}
+        }
+    }
+    s
+}
+
+/// Escape backticks in a markdown inline-code context. We render the
+/// raw citation text inside a `` `...` `` span; if the text contains
+/// a backtick, the span breaks. The catalog values are short
+/// citation snippets, so we just double-up the backticks (Markdown
+/// lets you escape a backtick inside an inline code span by using a
+/// double-backtick fence — but for catalog readability we keep it
+/// simple and substitute U+02CB).
+fn escape_inline(s: &str) -> String {
+    s.replace('`', "\u{02CB}")
+}
+
+const HEADER: &str = "<!--\nSPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>\nSPDX-License-Identifier: LicenseRef-MarqueLicense-1.0\n-->\n\n# Citation defect catalog\n\nGenerated by `tools/citation-lint/`. Do **not** edit by hand —\n`tools/citation-lint/Cargo.toml` regenerates this file on every CI\nrun (PR 0.5).\n\nThis catalog enumerates every citation in the marque source code\nthat fails to resolve against `crates/capco/docs/CAPCO-2016.md` per\nFR-018 (Constitution Principle VIII — Authoritative Source\nFidelity). The PR 0.6 implementer fixes each entry and re-runs the\nlint until the catalog is empty; thereafter, CI keeps it empty by\nfailing any PR that introduces a new citation defect.\n\n## Defect classes\n\n| Class | Meaning |\n|-------|---------|\n| `bare-section` | `§NN` form without subsection letter (FR-018 rejected) |\n| `letter-only-needs-subsection` | `§X` for a section that has numbered subsections |\n| `non-normative-section` | Cites §I, §J, or §K — non-normative, not a citation target (CHK036) |\n| `unknown-section` | Section letter not present in the document |\n| `unknown-subsection` | Subsection number does not resolve in source TOC |\n| `page-out-of-range` | Page anchor falls outside the cited subsection's span (CHK038) |\n| `page-out-of-document` | Page anchor exceeds the document's page range |\n| `doubled-page-anchor` | `p150–151 p151` form; FR-020 known defect |\n| `legacy-line-form` | Retired `line NNNN` citation form (commit b340bec) |\n";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn defect(class: DefectClass) -> Defect {
+        Defect {
+            file: PathBuf::from("/repo/crates/capco/src/scheme.rs"),
+            line: 100,
+            column: 5,
+            source_kind: crate::diagnostic::SourceKind::CitationField,
+            raw: "§4 p99".into(),
+            class,
+            recommended: Some("§H.4 p64".into()),
+        }
+    }
+
+    #[test]
+    fn empty_catalog_renders_clean() {
+        let s = render(&[], Path::new("/repo"));
+        assert!(s.contains("No defects detected"));
+    }
+
+    #[test]
+    fn catalog_with_defects_lists_them() {
+        let d = defect(DefectClass::BareSection);
+        let s = render(std::slice::from_ref(&d), Path::new("/repo"));
+        assert!(s.contains("Total defects"));
+        assert!(s.contains("bare-section"));
+        assert!(s.contains("crates/capco/src/scheme.rs"));
+    }
+
+    #[test]
+    fn determinism() {
+        let defects = vec![
+            defect(DefectClass::BareSection),
+            defect(DefectClass::NonNormativeSection { letter: 'I' }),
+        ];
+        let a = render(&defects, Path::new("/repo"));
+        let b = render(&defects, Path::new("/repo"));
+        assert_eq!(a, b);
+    }
+}
