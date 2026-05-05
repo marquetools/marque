@@ -1,6 +1,6 @@
 {
   "schema_version": "marque-priors-3",
-  "generated_at": "2026-05-05T19:54:31.197514+00:00",
+  "generated_at": "2026-05-05T20:39:55.926260+00:00",
   "token_base_rates": {
     "U": {
       "count": 1,
@@ -875,104 +875,104 @@
   },
   "country_code_prose_base_rates": {
     "USA": {
-      "count": 14471,
-      "log_prior": -0.261535
+      "count": 14434,
+      "log_prior": -0.534147
     },
     "GBR": {
       "count": 4,
-      "log_prior": -8.232068
+      "log_prior": -8.50212
     },
     "CAN": {
       "count": 1758,
-      "log_prior": -2.369005
+      "log_prior": -2.639057
     },
     "AUS": {
       "count": 399,
-      "log_prior": -3.850041
+      "log_prior": -4.120094
     },
     "NZL": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "FVEY": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "ACGU": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "NATO": {
       "count": 195,
-      "log_prior": -4.563391
+      "log_prior": -4.833443
     },
     "EU": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 5692,
+      "log_prior": -1.464565
     },
     "DEU": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "FRA": {
       "count": 417,
-      "log_prior": -3.806024
+      "log_prior": -4.076077
     },
     "NLD": {
       "count": 9,
-      "log_prior": -7.538921
+      "log_prior": -7.808973
     },
     "NOR": {
       "count": 98,
-      "log_prior": -5.246386
+      "log_prior": -5.516438
     },
     "DNK": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "ITA": {
       "count": 70,
-      "log_prior": -5.578826
+      "log_prior": -5.848878
     },
     "ESP": {
-      "count": 1311,
-      "log_prior": -2.662198
+      "count": 1307,
+      "log_prior": -2.935304
     },
     "BEL": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 27,
+      "log_prior": -6.779354
     },
     "POL": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 12,
+      "log_prior": -7.546609
     },
     "TUR": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 22,
+      "log_prior": -6.976064
     },
     "JPN": {
       "count": 33,
-      "log_prior": -6.315145
+      "log_prior": -6.585198
     },
     "KOR": {
       "count": 8,
-      "log_prior": -7.644281
+      "log_prior": -7.914333
     },
     "ISR": {
       "count": 0,
-      "log_prior": -9.841506
+      "log_prior": -10.111558
     },
     "AUT": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 2,
+      "log_prior": -9.012946
     },
     "UZB": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 1,
+      "log_prior": -9.418411
     },
     "ASM": {
-      "count": 0,
-      "log_prior": -9.841506
+      "count": 113,
+      "log_prior": -5.37536
     }
   },
   "strict_context_priors": {

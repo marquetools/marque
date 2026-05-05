@@ -236,6 +236,25 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
             priors_path.display()
         );
     }
+    // Same defense as the country-code prose check below: `derive_priors`
+    // materializes one prose row per vocabulary token (93 today), so the
+    // table is structurally always non-empty even when the prose stratum
+    // contributed zero documents — the .is_empty() check would silently
+    // pass on a fully-zeroed prose table. Validate that at least one
+    // prose row carries an actual observation, which is what the
+    // null-hypothesis pipeline needs.
+    let prose_token_total: u64 = token_prose_rows.iter().map(|(_, c, _)| *c).sum();
+    if prose_token_total == 0 {
+        panic!(
+            "[marque-capco build.rs] priors.json token_prose_base_rates has every \
+             row at count 0 — the prose corpus contributed no token observations \
+             and the marking-y delta `log P(token|marking) - log P(token|prose)` \
+             collapses to a flat baseline (the null hypothesis silently disappears). \
+             Likely cause: the priors regenerator ran with no prose corpus path, \
+             or the prose corpus directory is empty. Regenerate priors.json with a \
+             populated prose stratum.",
+        );
+    }
     token_prose_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut country_code_prose_rows: Vec<(String, u64, f64)> = country_code_prose_base_rates
