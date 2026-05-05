@@ -109,7 +109,7 @@ pub struct Engine {
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
-    /// an `CanonicalAttrs`. Held behind `Arc<dyn Recognizer>` so callers
+    /// a `CanonicalAttrs`. Held behind `Arc<dyn Recognizer>` so callers
     /// can override the default via [`Engine::with_recognizer`] without
     /// touching the lint loop. Shared across threads unchanged — the
     /// recognizer trait is `Send + Sync` and `BatchEngine` workers hold

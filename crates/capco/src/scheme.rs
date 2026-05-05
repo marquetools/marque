@@ -351,7 +351,7 @@ fn never_fires(_: &CapcoMarking) -> bool {
     false
 }
 
-/// Build an `CanonicalAttrs` banner projection from the `expected_*`
+/// Build a `CanonicalAttrs` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
 /// fields exercised by Phase A's equivalence tests. Other fields land
 /// at their defaults, which matches Phase B's goal of handing

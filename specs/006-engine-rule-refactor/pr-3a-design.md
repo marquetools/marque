@@ -10,17 +10,41 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Status**: Approved-for-implementation
 **Audience**: implementer-of-record for PR 3a
 
-> **Post-implementation amendment (T022 deferred).** §3.4's
-> `ProjectedMarking` type was deferred from PR 3a to PR 5/6 after
-> implementation. Reason: `MarkingScheme::project` (in `marque-scheme`)
-> currently returns `Self::Marking`, not a separate `ProjectedMarking` —
-> so the type had no consumer at PR 3a. Defining it in `marque-ism`
-> required a `marque-ism → marque-scheme` dep edge that violates
-> Constitution VII's peer-leaf placement of `marque-ism`
-> ("`marque-ism` ... sits at the bottom of every WASM-safe chain").
-> The type will land in PR 5/6 alongside the `Scope::Page` projection
-> cutover that consumes it. PR 3a delivers T020 / T021 / T023 / T024 /
-> T025 only; T022 moves to PR 5/6.
+> **Post-implementation amendments.**
+>
+> - **T022 deferred.** §3.4's `ProjectedMarking` type was deferred from
+>   PR 3a to PR 5/6. Reason: `MarkingScheme::project` (in
+>   `marque-scheme`) currently returns `Self::Marking`, not a separate
+>   `ProjectedMarking` — so the type had no consumer at PR 3a. Defining
+>   it in `marque-ism` required a `marque-ism → marque-scheme` dep
+>   edge that violates Constitution VII's peer-leaf placement of
+>   `marque-ism` ("`marque-ism` ... sits at the bottom of every
+>   WASM-safe chain"). The type will land in PR 5/6 alongside the
+>   `Scope::Page` projection cutover that consumes it. PR 3a delivers
+>   T020 / T021 / T023 / T024 / T025 only; T022 moves to PR 5/6.
+> - **§3.1 wrapper count corrected: 9, not 8.** A
+>   `ParsedRelToEntry<'src>` wrapper for REL TO country trigraphs is
+>   required and was implemented; it was omitted from the §3.1 listing.
+>   The full set is `ParsedClassification`, `ParsedSciMarking`,
+>   `ParsedSarMarking`, `ParsedFgiMarker`, `ParsedDissem`,
+>   `ParsedNonIcDissem`, `ParsedRelToEntry`, `ParsedDeclassifyOn`, and
+>   `ParsedAea` — all `#[non_exhaustive]` with `pub fn new(value, bytes,
+>   span)` constructors so the parser (in `marque-core`) can construct
+>   them across the crate boundary.
+> - **§3.1/§3.2 `sar_markings` plural retained.** The design said
+>   `sar_marking` (singular) but the existing `IsmAttributes` field is
+>   `sar_markings` (plural). Per Decision #5 ("retain existing field
+>   names"), implementation kept plural. Shape narrowing to singular,
+>   if desired, is PR 3c's job.
+> - **WASM call sites of `from_parsed_unchecked` retained.** Two
+>   production WASM helpers (`compute_banner_native`,
+>   `generate_cab_native` in `crates/wasm/src/lib.rs`) call
+>   `from_parsed_unchecked` directly. They are documented as "Does NOT
+>   run the rules engine" — banner/CAB generation outside the rule
+>   pipeline. The "engine-owned adapter" principle is a guideline, not
+>   an architectural requirement; the WASM sites are explicit known
+>   exceptions and carry inline carve-out comments naming PR 3c as the
+>   migration target. FR-040 lint whitelists the call sites.
 
 PR 3a is structural-rename + transitional-adapter. **No rule semantics
 change. No discriminant change. No schema bump. No new fields.** Output

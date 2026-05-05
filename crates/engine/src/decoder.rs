@@ -273,7 +273,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             let marking = CapcoMarking::new(attrs);
 
             // 3c. The strict parser is lenient — it accepts any
-            //     `BYTES//BYTES` shape and emits an `CanonicalAttrs`
+            //     `BYTES//BYTES` shape and emits a `CanonicalAttrs`
             //     with empty fields when nothing is recognized. Drop
             //     such trivial parses so the decoder doesn't
             //     fabricate a marking for prose like `FROBNITZ//WIBBLE`.

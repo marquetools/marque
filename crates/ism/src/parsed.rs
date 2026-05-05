@@ -42,6 +42,7 @@ use crate::span::Span;
 /// this from `MarkingType` (`Banner` / `Portion` / `Cab`); the
 /// `PageBreak` variant is unrepresentable here because page-break
 /// candidates do not produce `ParsedAttrs` (the parser short-circuits).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceOrigin {
     /// `(TS//SI//NF)` style — parenthesized inline marking.
@@ -220,6 +221,7 @@ impl<'src> ParsedAttrs<'src> {
 // ---------------------------------------------------------------------
 
 /// Classification with its source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedClassification<'src> {
     pub value: MarkingClassification,
@@ -230,7 +232,17 @@ pub struct ParsedClassification<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedClassification<'src> {
+    /// Constructor — required because `#[non_exhaustive]` blocks
+    /// brace-construction across crate boundaries (the parser lives
+    /// in `marque-core`, not `marque-ism`).
+    pub fn new(value: MarkingClassification, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// Structural SCI marking + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedSciMarking<'src> {
     pub value: SciMarking,
@@ -239,7 +251,14 @@ pub struct ParsedSciMarking<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedSciMarking<'src> {
+    pub fn new(value: SciMarking, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// SAR block + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedSarMarking<'src> {
     pub value: SarMarking,
@@ -248,11 +267,18 @@ pub struct ParsedSarMarking<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedSarMarking<'src> {
+    pub fn new(value: SarMarking, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// FGI marker + source bytes.
 ///
 /// PR 3a does NOT introduce the `FgiMarker::SourceConcealed |
 /// Acknowledged` discriminant — that's PR 2 (FR-017). The current
 /// `FgiMarker { countries: Box<[CountryCode]> }` shape is preserved.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedFgiMarker<'src> {
     pub value: FgiMarker,
@@ -260,7 +286,14 @@ pub struct ParsedFgiMarker<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedFgiMarker<'src> {
+    pub fn new(value: FgiMarker, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// One IC dissem control + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedDissem<'src> {
     pub value: DissemControl,
@@ -269,7 +302,14 @@ pub struct ParsedDissem<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedDissem<'src> {
+    pub fn new(value: DissemControl, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// One non-IC dissem control + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedNonIcDissem<'src> {
     pub value: NonIcDissem,
@@ -277,7 +317,14 @@ pub struct ParsedNonIcDissem<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedNonIcDissem<'src> {
+    pub fn new(value: NonIcDissem, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// One REL TO country / country-group entry + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedRelToEntry<'src> {
     pub value: CountryCode,
@@ -286,7 +333,14 @@ pub struct ParsedRelToEntry<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedRelToEntry<'src> {
+    pub fn new(value: CountryCode, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// Declassification date + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedDeclassifyOn<'src> {
     pub value: IsmDate,
@@ -295,11 +349,24 @@ pub struct ParsedDeclassifyOn<'src> {
     pub span: Span,
 }
 
+impl<'src> ParsedDeclassifyOn<'src> {
+    pub fn new(value: IsmDate, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
 /// One AEA block + source bytes.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedAea<'src> {
     pub value: AeaMarking,
     /// Full AEA block (e.g., `"RD-CNWDI-SIGMA 18 20"`).
     pub bytes: &'src str,
     pub span: Span,
+}
+
+impl<'src> ParsedAea<'src> {
+    pub fn new(value: AeaMarking, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
 }

@@ -176,11 +176,11 @@ impl<'t> Parser<'t> {
                         // still recoverable from `bytes`.
                         let abs_start =
                             candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
-                        declassify_on = Some(ParsedDeclassifyOn {
-                            value: date,
-                            bytes: s,
-                            span: Span::new(abs_start, abs_start + s.len()),
-                        });
+                        declassify_on = Some(ParsedDeclassifyOn::new(
+                            date,
+                            s,
+                            Span::new(abs_start, abs_start + s.len()),
+                        ));
                     }
                 }
             }
@@ -281,11 +281,11 @@ impl<'t> Parser<'t> {
             // ---------------------------------------------------------------
             if idx == 0 && !is_non_us {
                 if let Some(c) = parse_classification(trimmed) {
-                    classification = Some(ParsedClassification {
-                        value: MarkingClassification::Us(c),
-                        bytes: trimmed,
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Us(c),
+                        trimmed,
                         span,
-                    });
+                    ));
                 }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Classification,
@@ -307,11 +307,7 @@ impl<'t> Parser<'t> {
                     parse_fgi_classification(trimmed).map(MarkingClassification::Fgi)
                 };
                 if let Some(value) = parsed_cls {
-                    classification = Some(ParsedClassification {
-                        value,
-                        bytes: trimmed,
-                        span,
-                    });
+                    classification = Some(ParsedClassification::new(value, trimmed, span));
                 } else {
                     // Unrecognized non-US classification block.
                     token_spans.push(TokenSpan {
@@ -349,11 +345,7 @@ impl<'t> Parser<'t> {
                     continue;
                 }
                 if let Some((marking, sar_spans)) = parse_sar_category(trimmed, abs_start) {
-                    sar_markings = Some(ParsedSarMarking {
-                        value: marking,
-                        bytes: trimmed,
-                        span,
-                    });
+                    sar_markings = Some(ParsedSarMarking::new(marking, trimmed, span));
                     token_spans.extend(sar_spans);
                     sar_captured = true;
                     continue;
@@ -413,11 +405,7 @@ impl<'t> Parser<'t> {
                 // `token_spans`; the wrapper's `bytes` carries the whole
                 // block as the parser saw it.
                 for marking in markings {
-                    sci_markings.push(ParsedSciMarking {
-                        value: marking,
-                        bytes: trimmed,
-                        span,
-                    });
+                    sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
                 }
             } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
@@ -434,11 +422,7 @@ impl<'t> Parser<'t> {
             {
                 // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
                 if let Some(marker) = parse_fgi_marker(trimmed) {
-                    fgi_marker = Some(ParsedFgiMarker {
-                        value: marker,
-                        bytes: trimmed,
-                        span,
-                    });
+                    fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
                         span,
@@ -448,33 +432,21 @@ impl<'t> Parser<'t> {
             } else if let Some(ctrl) =
                 DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
             {
-                dissem.push(ParsedDissem {
-                    value: ctrl,
-                    bytes: trimmed,
-                    span,
-                });
+                dissem.push(ParsedDissem::new(ctrl, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DissemControl,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(nic) = parse_non_ic_full_form(trimmed) {
-                non_ic.push(ParsedNonIcDissem {
-                    value: nic,
-                    bytes: trimmed,
-                    span,
-                });
+                non_ic.push(ParsedNonIcDissem::new(nic, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::NonIcDissem,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
-                aea.push(ParsedAea {
-                    value: aea_marking,
-                    bytes: trimmed,
-                    span,
-                });
+                aea.push(ParsedAea::new(aea_marking, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::AeaMarking,
                     span,
@@ -489,11 +461,7 @@ impl<'t> Parser<'t> {
                 });
             } else if is_declass_date(trimmed) {
                 if let Ok(date) = IsmDate::from_str(trimmed) {
-                    declassify_on = Some(ParsedDeclassifyOn {
-                        value: date,
-                        bytes: trimmed,
-                        span,
-                    });
+                    declassify_on = Some(ParsedDeclassifyOn::new(date, trimmed, span));
                 }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassDate,
@@ -516,14 +484,14 @@ impl<'t> Parser<'t> {
                     let max_level = us_level.max(foreign_equiv);
                     let prior_bytes = classification.as_ref().map(|c| c.bytes).unwrap_or(trimmed);
                     let prior_span = classification.as_ref().map(|c| c.span).unwrap_or(span);
-                    classification = Some(ParsedClassification {
-                        value: MarkingClassification::Conflict {
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Conflict {
                             us: max_level,
                             foreign: Box::new(foreign),
                         },
-                        bytes: prior_bytes,
-                        span: prior_span,
-                    });
+                        prior_bytes,
+                        prior_span,
+                    ));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::Classification,
                         span,
@@ -661,11 +629,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Dissem => {
-                                dissem.push(ParsedDissem {
-                                    value: r.dissem.unwrap(),
-                                    bytes: r.tok,
-                                    span: r.span,
-                                });
+                                dissem.push(ParsedDissem::new(r.dissem.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::DissemControl,
                                     span: r.span,
@@ -673,11 +637,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::NonIc => {
-                                non_ic.push(ParsedNonIcDissem {
-                                    value: r.nic.unwrap(),
-                                    bytes: r.tok,
-                                    span: r.span,
-                                });
+                                non_ic.push(ParsedNonIcDissem::new(r.nic.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::NonIcDissem,
                                     span: r.span,
@@ -685,11 +645,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Aea => {
-                                aea.push(ParsedAea {
-                                    value: r.aea.unwrap(),
-                                    bytes: r.tok,
-                                    span: r.span,
-                                });
+                                aea.push(ParsedAea::new(r.aea.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::AeaMarking,
                                     span: r.span,
@@ -1296,11 +1252,7 @@ fn parse_rel_to_with_spans<'src>(
                 if tokens.is_trigraph(country_part) {
                     if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
                         let span = Span::new(abs_start, abs_start + country_part.len());
-                        countries.push(ParsedRelToEntry {
-                            value: t,
-                            bytes: country_part,
-                            span,
-                        });
+                        countries.push(ParsedRelToEntry::new(t, country_part, span));
                         token_spans.push(TokenSpan {
                             kind: TokenKind::RelToTrigraph,
                             span,
@@ -1331,11 +1283,7 @@ fn parse_rel_to_with_spans<'src>(
                     DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
                 {
                     let span = Span::new(part_abs, part_abs + part.len());
-                    trailing_dissem.push(ParsedDissem {
-                        value: ctrl,
-                        bytes: part,
-                        span,
-                    });
+                    trailing_dissem.push(ParsedDissem::new(ctrl, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::DissemControl,
                         span,
@@ -1343,11 +1291,7 @@ fn parse_rel_to_with_spans<'src>(
                     });
                 } else if let Some(nic) = parse_non_ic_full_form(part) {
                     let span = Span::new(part_abs, part_abs + part.len());
-                    trailing_non_ic.push(ParsedNonIcDissem {
-                        value: nic,
-                        bytes: part,
-                        span,
-                    });
+                    trailing_non_ic.push(ParsedNonIcDissem::new(nic, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::NonIcDissem,
                         span,
@@ -1403,11 +1347,7 @@ fn parse_rel_to_with_spans<'src>(
             continue;
         };
         let span = Span::new(abs_start, abs_start + trimmed.len());
-        countries.push(ParsedRelToEntry {
-            value: t,
-            bytes: trimmed,
-            span,
-        });
+        countries.push(ParsedRelToEntry::new(t, trimmed, span));
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
             span,

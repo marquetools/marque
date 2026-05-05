@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ISM vocabulary types and generated CVE enums for marque.
 
-This crate is a leaf dependency in the marque workspace. It owns the pivot-type triple (`ParsedAttrs<'src>`, `CanonicalAttrs`, `ProjectedMarking`), zero-copy position types (`Span`), page-level aggregation (`PageContext`), and the closed Rust enums generated at build time from ODNI ISM schemas.
+This crate is a leaf dependency in the marque workspace. It owns the pivot-type pair (`ParsedAttrs<'src>` and `CanonicalAttrs`), zero-copy position types (`Span`), page-level aggregation (`PageContext`), and the closed Rust enums generated at build time from ODNI ISM schemas. (`ProjectedMarking` — the third leg of the data-model.md split — lands at PR 5/6 where its consumer lives; placing it here would force a `marque-scheme` dep and break Constitution VII's peer-leaf placement of `marque-ism`.)
 
 This crate implements the ISM vocabulary model *for* the marque rule engine. For the engine itself, see `marque-engine`. For the CAPCO rule implementations that consume this vocabulary, see `marque-capco`.
 
@@ -51,7 +51,6 @@ The active schema version is pinned in `Cargo.toml` under `[package.metadata.mar
 |------|---------|
 | `ParsedAttrs<'src>` | Borrowed parser output. Each token retains a `&'src str` slice into the source buffer for FR-019 round-trip. |
 | `CanonicalAttrs` | Owned post-canonical pivot. What rules consume. Fields use `Box<[T]>` to avoid over-allocation. |
-| `ProjectedMarking` | Output of `MarkingScheme::project(scope, ...)`. The page-rollup target. |
 | `from_parsed_unchecked` | `#[doc(hidden)]` transitional adapter that converts `ParsedAttrs<'_>` → `CanonicalAttrs` by structural rename only. PR 3c replaces this with `MarkingScheme::canonicalize`. |
 | `Span` | Byte offset range into the original source buffer. Never copies. |
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
@@ -87,13 +86,12 @@ WASM-safe. No runtime I/O. All schema work runs in `build.rs` on the host.
 
 ## Migration Notes
 
-### PR 3a: `IsmAttributes` → pivot-type triple
+### PR 3a: `IsmAttributes` → pivot-type pair
 
-Pre-PR-3a a single owned struct named `IsmAttributes` lived in `attrs.rs` and served both as the parser output and the rule-consumption form. PR 3a split that role across three types:
+Pre-PR-3a a single owned struct named `IsmAttributes` lived in `attrs.rs` and served both as the parser output and the rule-consumption form. PR 3a split that role across two types (the third leg, `ProjectedMarking`, was deferred to PR 5/6 — defining it here would require a `marque-scheme` dep that breaks Constitution VII's peer-leaf placement; the type lands when its `Scope::Page` projection consumer lands):
 
-- `ParsedAttrs<'src>` (in `parsed.rs`) — borrowed parser output. Eight thin `Parsed*<'src>` wrappers retain `&'src str` slices into the source buffer so the canonicalizer (PR 3c) can compute round-trip properties (FR-019) without re-borrowing.
+- `ParsedAttrs<'src>` (in `parsed.rs`) — borrowed parser output. Nine thin `Parsed*<'src>` wrappers (`ParsedClassification`, `ParsedSciMarking`, `ParsedSarMarking`, `ParsedFgiMarker`, `ParsedDissem`, `ParsedNonIcDissem`, `ParsedRelToEntry`, `ParsedDeclassifyOn`, `ParsedAea`) retain `&'src str` slices into the source buffer so the canonicalizer (PR 3c) can compute round-trip properties (FR-019) without re-borrowing.
 - `CanonicalAttrs` (in `canonical.rs`) — owned post-canonical pivot type rules consume. Field shape mirrors the prior `IsmAttributes` exactly.
-- `ProjectedMarking` (in `projected.rs`) — output of `MarkingScheme::project(scope, ...)`. Defined now so PR 6's page-projection cutover does not require a separate type-system change.
 
 The `from_parsed_unchecked(ParsedAttrs<'_>) -> CanonicalAttrs` adapter is the transitional bridge through the keystone window; PR 3c replaces it with `MarkingScheme::canonicalize`.
 
