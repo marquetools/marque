@@ -392,9 +392,23 @@ jobs:
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
+      # Coverage runs on nightly so that the existing
+      # `#[cfg_attr(coverage_nightly, coverage(off))]` annotations on
+      # `mod tests { ... }` blocks across the workspace activate. The
+      # annotations require `#![feature(coverage_attribute)]` (set at
+      # crate root via `#![cfg_attr(coverage_nightly, feature(...))]`),
+      # which is nightly-only on stable Rust 1.85+. Without nightly +
+      # the cfg flag below, every `mod tests` block lands in coverage
+      # data with hundreds of `assert!`-message-continuation lines
+      # marked as missed — pure tooling noise that gates `codecov/
+      # patch` on PRs without measuring real coverage.
+      #
+      # The other CI jobs (build, test, clippy, etc.) stay pinned to
+      # the stable Rust toolchain in `rust-toolchain.toml`. Nightly
+      # appears here ONLY for coverage instrumentation.
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          toolchain: "1.89"
+          toolchain: "nightly"
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
@@ -403,6 +417,15 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Generate coverage
+        # `--cfg coverage_nightly` activates the source-tree
+        # `#[cfg_attr(coverage_nightly, coverage(off))]` markers on
+        # `mod tests` blocks (≈30 sites across the workspace) so test
+        # functions and their `assert!` continuations don't pollute
+        # the coverage report. cargo-llvm-cov merges this RUSTFLAGS
+        # value with its own instrumentation flags rather than
+        # overriding it.
+        env:
+          RUSTFLAGS: "--cfg coverage_nightly"
         run: cargo llvm-cov --workspace --codecov --output-path codecov.json
 
       - name: Upload to Codecov

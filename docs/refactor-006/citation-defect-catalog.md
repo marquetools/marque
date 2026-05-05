@@ -30,6 +30,23 @@ failing any PR that introduces a new citation defect.
 | `doubled-page-anchor` | `p150–151 p151` form; FR-020 known defect |
 | `legacy-line-form` | Retired `line NNNN` citation form (commit b340bec) |
 
+<<<<<<< feat/refactor-006-pr-0.6-citation-defect-fix
+=======
+## Summary
+
+Total defects: **93**
+
+| Class | Count |
+|-------|-------|
+| `bare-section` | 19 |
+| `doubled-page-anchor` | 3 |
+| `legacy-line-form` | 54 |
+| `letter-only-needs-subsection` | 4 |
+| `non-normative-section` | 5 |
+| `page-out-of-range` | 7 |
+| `unknown-subsection` | 1 |
+
+>>>>>>> staging
 ## Catalog
 
 ### `crates/capco/src/rules.rs`
