@@ -12,7 +12,10 @@
     "upper_ci_us": 828,
     "unit": "microseconds",
     "_note": "Values are Criterion 95% confidence-interval bounds. **2026-05-05 widening (D8 amendment).** The original 2026-04-26 baseline (lower 746 / mean 749 / upper 753) flapped repeatedly on shared GHA `ubuntu-latest` runners — observed `lint_10kb` measurements consistently landed in the 770–840µs range across PR #301 / #302 / #303 over several days, indicating the original capture was an exception rather than the rule. Per the D8 `decisions.md` amendment (\"if the gate flaps in practice DESPITE a robust baseline, widen the tolerance in a follow-up amendment and document the runner-variance-attributed delta separately\"), the bench-runner owner approved a uniform +10% widening of the lint_10kb CI envelope (746→821, 749→824, 753→828) so the threshold (`upper_ci_us * 1.10`) lands at ~911µs and the gate stops blocking PRs over runner variance. The SC-001 16ms absolute target remains the load-bearing constitution gate; this widening is invisible to the SC-001 ceiling.",
-    "target_upper_ci_us": 16000
+    "target_upper_ci_us": 16000,
+    "p99_us": 1346,
+    "target_p99_us": 16000,
+    "_p99_note": "T098 / FR-030 / SC-008 tail-percentile gate. Pins p99 cost of the `Arc<dyn Vocabulary<S>>::shape_admits` indirect call introduced in PR 2; vtable misses surface at the tail, not in the mean. **2026-05-05 capture context.** `p99_us` is a single-shot capture taken locally on the PR-2 worktree (WSL2 dev host, mean 841µs / p99 1223µs across 100 samples) plus the same uniform +10% widening D8 applies to the `upper_ci_us` envelope (1223 → 1346) to keep the regression-tolerance shape consistent across both gates. The gate is the more conservative of two: drift (p99_us * 1.05 ≈ 1414µs) per FR-030 / SC-008 (`p99 ≤ baseline + 5%`), and the absolute target_p99_us = 16000µs (the SC-001 16ms constitutional ceiling, applied to p99 specifically). GHA-runner p99 may sit higher than this WSL2 capture due to shared-runner contention; a GHA-runner re-capture is the follow-up before this gate switches from worktree-only to CI-required."
   },
   "decoder_10kb_one_mangled_region": {
     "lower_ci_us": 1009,
