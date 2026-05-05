@@ -269,19 +269,26 @@ else:
     # raw Criterion sample data) and compared against two thresholds:
     #
     #   - drift gate: `p99_us` (baseline) * 1.05 per FR-030 / SC-008
-    #     (post-refactor `p99 ≤ baseline + 5%`).
+    #     (post-refactor `p99 ≤ baseline + 5%`). REQUIRES `p99_us`
+    #     captured on the same hardware as the rest of the baseline
+    #     (`reference_machine.profile`); a cross-hardware baseline
+    #     (e.g. WSL2 capture loaded on `ubuntu-latest`) would turn
+    #     this into runner-noise flake.
     #   - absolute gate: `target_p99_us` (the SC-001 16ms ceiling
-    #     applied to p99 specifically).
+    #     applied to p99 specifically). Hardware-independent — always
+    #     enforced when present.
     #
-    # Both fields are OPTIONAL in `benches/baseline.json`. Absence
-    # disables this gate for the bench (backward-compatible — existing
-    # benches without a captured p99 baseline keep the previous
-    # mean / upper-CI gates only). When BOTH are present, both are
-    # enforced and the gate fails on whichever threshold is exceeded
-    # first. `MARQUE_BENCH_SKIP_REGRESSION=1` skips the drift gate the
-    # same way it skips the upper-CI drift gate above; the absolute
-    # `target_p99_us` ceiling is always enforced. Per-bench skip
-    # parallels the upper-CI policy so a single env var suffices.
+    # Three valid baseline states:
+    #   1. Both `p99_us` and `target_p99_us` present → both gates run.
+    #   2. Only `target_p99_us` present → absolute gate runs, drift
+    #      gate skips (the partial-activation state used while a
+    #      same-hardware drift baseline is being captured).
+    #   3. Both absent → both gates skip (backward-compatible default
+    #      for benches with no captured p99 baseline).
+    # `MARQUE_BENCH_SKIP_REGRESSION=1` independently skips the drift
+    # gate even when (1) is the configured state, mirroring the
+    # upper-CI gate above. The absolute target is never skipped by
+    # that env var — it's the constitutional ceiling.
     local baseline_p99 target_p99
     baseline_p99=$(python3 -c "
 import json
@@ -296,15 +303,23 @@ with open('$BASELINE') as f:
 print(data['$bench_name'].get('target_p99_us', ''))
 " 2>/dev/null || echo "")
 
-    # Field absent → skip the gate silently. Re-capture the baseline to
-    # opt the bench in.
-    if [[ -z "$baseline_p99" || -z "$target_p99" ]]; then
+    # Both absent → state (3): skip the gate entirely.
+    if [[ -z "$baseline_p99" && -z "$target_p99" ]]; then
         return 0
+    fi
+
+    # `p99_us` without `target_p99_us` is malformed — the absolute
+    # ceiling is the load-bearing gate; the drift baseline is an
+    # extension. Fail loudly rather than silently dropping the
+    # absolute check.
+    if [[ -n "$baseline_p99" && -z "$target_p99" ]]; then
+        echo "bench-check[$bench_name]: ERROR — p99_us baseline present but target_p99_us missing; the absolute SC-001 ceiling is required when any p99 baseline is configured"
+        return 1
     fi
 
     # Validate types (positive integers, same shape as upper_ci_us /
     # target_upper_ci_us).
-    if ! [[ "$baseline_p99" =~ ^[0-9]+$ ]]; then
+    if [[ -n "$baseline_p99" ]] && ! [[ "$baseline_p99" =~ ^[0-9]+$ ]]; then
         echo "bench-check[$bench_name]: ERROR — p99_us is not a positive integer: ${baseline_p99}"
         return 1
     fi
@@ -349,10 +364,15 @@ PY
         return 1
     fi
 
-    # Drift gate: baseline + 5% (FR-030 / SC-008). Skipped when
-    # MARQUE_BENCH_SKIP_REGRESSION=1, same as the upper-CI gate above.
+    # Drift gate: baseline + 5% (FR-030 / SC-008). Computed only if
+    # `p99_us` is present (state 1) AND MARQUE_BENCH_SKIP_REGRESSION
+    # isn't set. State 2 (target-only) and SKIP_REGRESSION both fall
+    # through to the absolute-only branch.
     local p99_threshold p99_threshold_label
-    if [[ "$SKIP_REGRESSION" == "1" ]]; then
+    if [[ -z "$baseline_p99" ]]; then
+        p99_threshold=""
+        p99_threshold_label="p99 baseline + 5% (no p99_us baseline configured for this bench)"
+    elif [[ "$SKIP_REGRESSION" == "1" ]]; then
         p99_threshold=""
         p99_threshold_label="p99 baseline + 5% (skipped via MARQUE_BENCH_SKIP_REGRESSION=1)"
     else
@@ -367,10 +387,12 @@ PY
             return 1
         fi
     else
-        echo "bench-check[$bench_name]: measured p99 = ${current_p99} µs (drift gate skipped; absolute target ${target_p99} µs)"
+        echo "bench-check[$bench_name]: measured p99 = ${current_p99} µs (drift gate skipped: ${p99_threshold_label}; absolute target ${target_p99} µs)"
     fi
 
-    # Absolute p99 ceiling (SC-001 16ms applied at the tail).
+    # Absolute p99 ceiling (SC-001 16ms applied at the tail). Always
+    # enforced when target_p99_us is configured, regardless of drift-
+    # gate state — this is the constitutional invariant.
     if [[ "$current_p99" -gt "$target_p99" ]]; then
         echo "bench-check[$bench_name]: FAIL — p99 absolute target exceeded: ${current_p99} µs > ${target_p99} µs"
         return 1

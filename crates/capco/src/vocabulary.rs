@@ -595,17 +595,19 @@ fn classification_banner_to_portion(s: &str) -> Option<&'static str> {
 
 /// FGI / REL TO / JOINT country list-token admission: delegates to
 /// [`marque_ism::CountryCode::admits_country_token`], the single
-/// source of truth for the FGI/REL TO list shape gate — a 3-letter
-/// Annex B trigraph **or** a 4-letter Annex A tetragraph (both ASCII
-/// uppercase).
+/// source of truth for the FGI/REL TO list shape gate — 2, 3, or 4
+/// ASCII uppercase letters (registered 2-letter exception code,
+/// Annex B trigraph, or Annex A tetragraph respectively).
 ///
 /// Per CAPCO-2016 §H.7 p123, a lawful FGI list mixes trigraphs and
 /// tetragraphs (canonical example: `SECRET//FGI GBR JPN
 /// NATO//REL TO USA, GBR, JPN, NATO`). §H.8 p150 admits the same
-/// shape on REL TO. Restricting this predicate to trigraphs would
-/// silently reject lawful inputs; that bug was the PR #311 review
-/// finding. Use `admits_country_token` to widen admission to both
-/// trigraphs and tetragraphs.
+/// shape on REL TO. The 2-letter exception (notably `EU`, shipped
+/// in ODNI ISMCAT `CVEnumISMCATRelTo`) admits at the same gate.
+/// Restricting this predicate to trigraphs alone would silently
+/// reject lawful inputs; that bug was the PR #311 review finding.
+/// See [`marque_ism::CountryCode::admits_country_token`] for the
+/// authority chain.
 ///
 /// Registry membership (whether `NATO` is a registered Annex A
 /// tetragraph) is intentionally out of scope for the shape gate —

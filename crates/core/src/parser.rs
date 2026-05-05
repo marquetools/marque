@@ -1014,7 +1014,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// | Input shape | Return |
 /// |-------------|--------|
 /// | `"FGI"` exactly (no whitespace, no suffix) | `Some(SourceConcealed)` |
-/// | `"FGI " + tokens` where every token is a 3-letter trigraph or 4-letter tetragraph (ASCII upper) | `Some(Acknowledged { countries })` |
+/// | `"FGI " + tokens` where every token is a 2-, 3-, or 4-letter ASCII upper code (registered exception / Annex B trigraph / Annex A tetragraph) | `Some(Acknowledged { countries })` |
 /// | Anything else (malformed prefix, any token fails the country-token shape gate, OR empty list after `"FGI "`) | `None` |
 ///
 /// The third row is the FR-016 closure: a post-failure shape MUST
@@ -2373,7 +2373,7 @@ mod tests {
     fn fgi_marker_direct_three_cases() {
         // Direct exercise of `parse_fgi_marker` at the same module
         // level, covering the three lawful return cases without the
-        // banner wrapper. Pins behaviour the public `parse_banner`
+        // banner wrapper. Pins behavior the public `parse_banner`
         // tests above route through indirectly.
 
         // Case 1: bare "FGI" → Some(SourceConcealed)
