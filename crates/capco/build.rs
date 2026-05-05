@@ -100,8 +100,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // prose, not a marking" hypothesis and saturates at the
     // ``SOLO_RECOGNITION = 0.999999`` floor for any single-CAPCO-
     // candidate input — the regression that motivated #258.
-    let token_prose_base_rates =
-        require_object(parsed, "token_prose_base_rates", priors_path);
+    let token_prose_base_rates = require_object(parsed, "token_prose_base_rates", priors_path);
     let template_base_rates = require_object(parsed, "template_base_rates", priors_path);
     // Country-code base rates land in marque-priors-2 (issue #233). Same
     // shape as token_base_rates: ``{token, count, log_prior}``. The
@@ -247,16 +246,35 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
             (name.clone(), count, log_prior)
         })
         .collect();
-    // Empty COUNTRY_CODE_PROSE_BASE_RATES would silently re-open the
-    // same channel as an empty TOKEN_PROSE_BASE_RATES on the country-
-    // code side: standalone "(USA)" in prose would fall back to
-    // MISSING_TOKEN_LOG_PRIOR on the prose side and lose the null-
-    // hypothesis competition for a proper-noun country mention.
+    // An all-zero-count COUNTRY_CODE_PROSE_BASE_RATES would silently
+    // re-open the same channel as an empty TOKEN_PROSE_BASE_RATES on
+    // the country-code side: standalone "(USA)" in prose would fall
+    // back to a Laplace-smoothed zero on the prose side and the
+    // marking-y delta against the high-count marking-side prior
+    // would never narrow enough to suppress a proper-noun country
+    // mention. The .is_empty() check is insufficient — the table is
+    // pre-seeded with the country-code vocabulary on the producer
+    // side so it always has rows; what matters is that at least one
+    // row reflects an actual prose observation. Validate both: the
+    // table must be non-empty, AND the total observed count across
+    // all rows must be > 0.
     if country_code_prose_rows.is_empty() {
         panic!(
             "[marque-capco build.rs] priors.json country_code_prose_base_rates is empty. \
              {} must contain at least one prose-stratum country code (issue #258).",
             priors_path.display()
+        );
+    }
+    let prose_country_total: u64 = country_code_prose_rows.iter().map(|(_, c, _)| *c).sum();
+    if prose_country_total == 0 {
+        panic!(
+            "[marque-capco build.rs] priors.json country_code_prose_base_rates has \
+             every row at count 0 — the prose corpus contributed no country-code \
+             observations and the marking-y delta will collapse to a flat baseline. \
+             Likely cause: the analyzer derived prose country counts from \
+             `rel_to_trigraph_hits` (which only fires inside REL TO blocks) instead \
+             of the prose stratum's general token table. Regenerate priors.json with \
+             a fixed generator.",
         );
     }
     country_code_prose_rows.sort_by(|a, b| a.0.cmp(&b.0));

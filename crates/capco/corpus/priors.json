@@ -1,378 +1,378 @@
 {
   "schema_version": "marque-priors-3",
-  "generated_at": "2026-05-05T18:26:25.866190+00:00",
+  "generated_at": "2026-05-05T19:54:31.197514+00:00",
   "token_base_rates": {
     "U": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 1,
+      "log_prior": -4.658711
     },
     "C": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 1,
+      "log_prior": -4.658711
     },
     "S": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 3,
+      "log_prior": -3.965564
     },
     "TS": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 7,
+      "log_prior": -3.272417
     },
     "R": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "UNCLASSIFIED": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 1,
+      "log_prior": -4.658711
     },
     "CONFIDENTIAL": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 1,
+      "log_prior": -4.658711
     },
     "SECRET": {
-      "count": 12,
-      "log_prior": -2.528801
+      "count": 16,
+      "log_prior": -2.518645
     },
     "TOP SECRET": {
       "count": 9,
-      "log_prior": -2.791165
+      "log_prior": -3.049273
     },
     "RESTRICTED": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "SI": {
-      "count": 5,
-      "log_prior": -3.301991
+      "count": 10,
+      "log_prior": -2.953963
     },
     "TK": {
-      "count": 1,
-      "log_prior": -4.400603
+      "count": 3,
+      "log_prior": -3.965564
     },
     "G": {
-      "count": 1,
-      "log_prior": -4.400603
+      "count": 2,
+      "log_prior": -4.253246
     },
     "HCS": {
-      "count": 2,
-      "log_prior": -3.995138
+      "count": 3,
+      "log_prior": -3.965564
     },
     "KLM": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "RSV": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "BUR": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "MVL": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "SI-G": {
-      "count": 2,
-      "log_prior": -3.995138
+      "count": 3,
+      "log_prior": -3.965564
     },
     "SI-EU": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "SI-NK": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "TK-BLFH": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "TK-IDIT": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "TK-KAND": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "HCS-O": {
-      "count": 1,
-      "log_prior": -4.400603
+      "count": 2,
+      "log_prior": -4.253246
     },
     "HCS-P": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "HCS-X": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "KLM-R": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "BUR-BLG": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "BUR-DTP": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "BUR-WRG": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "NF": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 7,
+      "log_prior": -3.272417
     },
     "NOFORN": {
-      "count": 11,
-      "log_prior": -2.608844
+      "count": 12,
+      "log_prior": -2.786909
     },
     "REL": {
-      "count": 3,
-      "log_prior": -3.707456
+      "count": 4,
+      "log_prior": -3.74242
     },
     "REL TO": {
-      "count": 3,
-      "log_prior": -3.707456
+      "count": 4,
+      "log_prior": -3.74242
     },
     "RELIDO": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FOUO": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "OC": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 3,
+      "log_prior": -3.965564
     },
     "ORCON": {
-      "count": 4,
-      "log_prior": -3.484312
+      "count": 6,
+      "log_prior": -3.405948
     },
     "IMC": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "IMCON": {
-      "count": 0,
-      "log_prior": -5.09375
+      "count": 1,
+      "log_prior": -4.658711
     },
     "PR": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "PROPIN": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "RSEN": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "RS": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "DSEN": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FISA": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "RAWFISA": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "DISPLAYONLY": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "EYES": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "EYES ONLY": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "NOCON": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "AC": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "AWP": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "DL_ONLY": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FED_ONLY": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FEDCON": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "OC-USGOV": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "WAIVED": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "SAR": {
-      "count": 2,
-      "log_prior": -3.995138
+      "count": 3,
+      "log_prior": -3.965564
     },
     "25X1": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "25X2": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X3": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X4": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X5": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X6": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X7": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X8": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "25X9": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "50X1": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "50X1-HUM": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "50X2": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "50X2-WMD": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "AEA": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "//": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "USA": {
-      "count": 3,
-      "log_prior": -3.707456
+      "count": 4,
+      "log_prior": -3.74242
     },
     "GBR": {
-      "count": 1,
-      "log_prior": -4.400603
+      "count": 2,
+      "log_prior": -4.253246
     },
     "CAN": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "AUS": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "NZL": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FVEY": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "NATO": {
       "count": 1,
-      "log_prior": -4.400603
+      "log_prior": -4.658711
     },
     "ACGU": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "DEU": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "FRA": {
       "count": 2,
-      "log_prior": -3.995138
+      "log_prior": -4.253246
     },
     "NOR": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "NLD": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "DNK": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "ITA": {
       "count": 2,
-      "log_prior": -3.995138
+      "log_prior": -4.253246
     },
     "ESP": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "JPN": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "KOR": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     },
     "ISR": {
       "count": 0,
-      "log_prior": -5.09375
+      "log_prior": -5.351858
     }
   },
   "token_prose_base_rates": {
@@ -751,228 +751,228 @@
   },
   "template_base_rates": {
     "classification": {
-      "count": 23,
-      "log_prior": -1.927892
+      "count": 41,
+      "log_prior": -1.759499
     },
     "classification//dissem": {
-      "count": 27,
-      "log_prior": -1.773741
+      "count": 48,
+      "log_prior": -1.605348
     },
     "classification//sci-block//dissem": {
-      "count": 47,
-      "log_prior": -1.234744
+      "count": 64,
+      "log_prior": -1.322781
     },
     "classification//dissem//rel-to": {
-      "count": 35,
-      "log_prior": -1.522427
+      "count": 48,
+      "log_prior": -1.605348
     },
     "classification//sci-block": {
-      "count": 28,
-      "log_prior": -1.73865
+      "count": 38,
+      "log_prior": -1.833607
     }
   },
   "country_code_base_rates": {
     "USA": {
-      "count": 10003,
-      "log_prior": -1.276052
+      "count": 10004,
+      "log_prior": -1.276008
     },
     "GBR": {
-      "count": 4001,
-      "log_prior": -2.192242
+      "count": 4002,
+      "log_prior": -2.192048
     },
     "CAN": {
       "count": 4000,
-      "log_prior": -2.192492
+      "log_prior": -2.192548
     },
     "AUS": {
       "count": 4001,
-      "log_prior": -2.192242
+      "log_prior": -2.192298
     },
     "NZL": {
       "count": 3500,
-      "log_prior": -2.325988
+      "log_prior": -2.326044
     },
     "FVEY": {
       "count": 1500,
-      "log_prior": -3.172905
+      "log_prior": -3.172961
     },
     "ACGU": {
       "count": 800,
-      "log_prior": -3.800931
+      "log_prior": -3.800987
     },
     "NATO": {
       "count": 1201,
-      "log_prior": -3.39505
+      "log_prior": -3.395106
     },
     "EU": {
       "count": 800,
-      "log_prior": -3.800931
+      "log_prior": -3.800987
     },
     "DEU": {
       "count": 600,
-      "log_prior": -4.088197
+      "log_prior": -4.088253
     },
     "FRA": {
       "count": 601,
-      "log_prior": -4.086535
+      "log_prior": -4.08659
     },
     "NLD": {
       "count": 500,
-      "log_prior": -4.270186
+      "log_prior": -4.270242
     },
     "NOR": {
       "count": 500,
-      "log_prior": -4.270186
+      "log_prior": -4.270242
     },
     "DNK": {
       "count": 400,
-      "log_prior": -4.492831
+      "log_prior": -4.492886
     },
     "ITA": {
       "count": 401,
-      "log_prior": -4.49034
+      "log_prior": -4.490396
     },
     "ESP": {
       "count": 300,
-      "log_prior": -4.779682
+      "log_prior": -4.779738
     },
     "BEL": {
       "count": 300,
-      "log_prior": -4.779682
+      "log_prior": -4.779738
     },
     "POL": {
       "count": 300,
-      "log_prior": -4.779682
+      "log_prior": -4.779738
     },
     "TUR": {
       "count": 250,
-      "log_prior": -4.961339
+      "log_prior": -4.961395
     },
     "JPN": {
       "count": 700,
-      "log_prior": -3.934284
+      "log_prior": -3.93434
     },
     "KOR": {
       "count": 600,
-      "log_prior": -4.088197
+      "log_prior": -4.088253
     },
     "ISR": {
       "count": 500,
-      "log_prior": -4.270186
+      "log_prior": -4.270242
     },
     "AUT": {
       "count": 50,
-      "log_prior": -6.554966
+      "log_prior": -6.555022
     },
     "UZB": {
       "count": 5,
-      "log_prior": -8.695032
+      "log_prior": -8.695088
     },
     "ASM": {
       "count": 1,
-      "log_prior": -9.793645
+      "log_prior": -9.793701
     }
   },
   "country_code_prose_base_rates": {
     "USA": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 14471,
+      "log_prior": -0.261535
     },
     "GBR": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 4,
+      "log_prior": -8.232068
     },
     "CAN": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 1758,
+      "log_prior": -2.369005
     },
     "AUS": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 399,
+      "log_prior": -3.850041
     },
     "NZL": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "FVEY": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "ACGU": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "NATO": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 195,
+      "log_prior": -4.563391
     },
     "EU": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "DEU": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "FRA": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 417,
+      "log_prior": -3.806024
     },
     "NLD": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 9,
+      "log_prior": -7.538921
     },
     "NOR": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 98,
+      "log_prior": -5.246386
     },
     "DNK": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "ITA": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 70,
+      "log_prior": -5.578826
     },
     "ESP": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 1311,
+      "log_prior": -2.662198
     },
     "BEL": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "POL": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "TUR": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "JPN": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 33,
+      "log_prior": -6.315145
     },
     "KOR": {
-      "count": 0,
-      "log_prior": -3.218876
+      "count": 8,
+      "log_prior": -7.644281
     },
     "ISR": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "AUT": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "UZB": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     },
     "ASM": {
       "count": 0,
-      "log_prior": -3.218876
+      "log_prior": -9.841506
     }
   },
   "strict_context_priors": {
@@ -984,12 +984,12 @@
   "marking_corpus_fingerprint": "sha512:df8af03aebf711f5a2d384af7e7da639a1d7c026701974bc4612f37b9e945f325be08b13224cf74ea5351f690ccf881b09a5b276edc306c644c9fd0a8c337657",
   "prose_corpus_fingerprint": "sha512:193c58b22bdb64535e3970ee4ef654cfc38cc889d5f5bd46049c057fa1f2580983e96d557d8df2cfec693d0590fc3f92fc1e274ed154e6527fe4f16abe32e94b",
   "metadata": {
-    "vocabulary_file": "/home/knitli/marque/.worktrees/feat-decoder-null-priors/tools/corpus-analysis/tokens/capco.json",
+    "vocabulary_file": "tools/corpus-analysis/tokens/capco.json",
     "marking_corpus_paths": [
-      "/home/knitli/marque/.worktrees/feat-decoder-null-priors/tests/corpus/valid"
+      "tests/corpus/valid"
     ],
     "prose_corpus_paths": [
-      "/home/knitli/marque/.worktrees/feat-decoder-null-priors/tools/corpus-analysis/.cache/enron_mail"
+      "enron_mail"
     ],
     "token_count": 93,
     "category_count": 9
