@@ -24,7 +24,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_ism::IsmAttributes;
+use marque_ism::CanonicalAttrs;
 use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, RuleSet, Severity};
 
 /// A rule that always panics in `check()`.
@@ -51,7 +51,7 @@ impl Rule for AlwaysPanicsRule {
         Severity::Error
     }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         panic!("FixProposal invalid confidence: simulated rule defect (Z001 panic-isolation test)");
     }
 }
@@ -77,7 +77,7 @@ impl Rule for AlwaysFiresRule {
         Severity::Info
     }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Build a Diagnostic without a fix — we just need to prove
         // this rule's output reaches the LintResult after a sibling
         // rule panics.
@@ -244,7 +244,7 @@ impl Rule for InvalidConfidenceRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // `Confidence::strict(2.0)` is out of `[0.0, 1.0]` and
         // `validate()` rejects it. `FixProposal::new` then panics.
         // The wrapper must catch it.

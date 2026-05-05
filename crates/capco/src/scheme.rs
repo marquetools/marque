@@ -6,7 +6,7 @@
 //!
 //! This is the Phase A proof that CAPCO's hand-written aggregation in
 //! [`PageContext`] falls out of the generic `marque-scheme` abstraction.
-//! The adapter wraps `IsmAttributes` as `CapcoMarking`, implements
+//! The adapter wraps `CanonicalAttrs` as `CapcoMarking`, implements
 //! [`Lattice`] by delegating the join to `PageContext`'s existing
 //! rollup, and exposes a minimal three-constraint sample to validate
 //! that declarative constraints can reproduce existing rule behavior.
@@ -22,7 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{Classification, CountryCode, IsmAttributes, PageContext};
+use marque_ism::{Classification, CountryCode, CanonicalAttrs, PageContext};
 use marque_scheme::{
     AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
     Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
@@ -87,11 +87,11 @@ pub const TOK_NODIS: TokenId = TokenId(122);
 pub const TOK_EXDIS: TokenId = TokenId(123);
 
 // ---------------------------------------------------------------------------
-// CapcoMarking — newtype over IsmAttributes implementing Lattice
+// CapcoMarking — newtype over CanonicalAttrs implementing Lattice
 // ---------------------------------------------------------------------------
 
 /// CAPCO marking as viewed through the `marque-scheme` lens. A thin
-/// newtype around [`IsmAttributes`] so we can hang trait impls on it
+/// newtype around [`CanonicalAttrs`] so we can hang trait impls on it
 /// without orphan-rule problems.
 ///
 /// # ⚠️ Phase A scaffolding — do not use in production
@@ -120,7 +120,7 @@ pub const TOK_EXDIS: TokenId = TokenId(123);
 /// provenance traces compare equal.
 #[derive(Debug, Clone)]
 pub struct CapcoMarking(
-    pub IsmAttributes,
+    pub CanonicalAttrs,
     pub Option<crate::provenance::DecoderProvenance>,
 );
 
@@ -136,9 +136,9 @@ impl PartialEq for CapcoMarking {
 
 impl Eq for CapcoMarking {}
 
-impl From<IsmAttributes> for CapcoMarking {
+impl From<CanonicalAttrs> for CapcoMarking {
     #[inline]
-    fn from(attrs: IsmAttributes) -> Self {
+    fn from(attrs: CanonicalAttrs) -> Self {
         Self(attrs, None)
     }
 }
@@ -152,7 +152,7 @@ impl CapcoMarking {
     /// setting tuple-position 1 directly when it has provenance to
     /// attach.
     #[inline]
-    pub fn new(attrs: IsmAttributes) -> Self {
+    pub fn new(attrs: CanonicalAttrs) -> Self {
         Self(attrs, None)
     }
 }
@@ -239,7 +239,7 @@ impl Lattice for CapcoMarking {
             .copied()
             .collect();
 
-        let mut out = IsmAttributes::default();
+        let mut out = CanonicalAttrs::default();
         out.classification = classification;
         out.sci_controls = sci.into_boxed_slice();
         out.dissem_controls = dissem.into_boxed_slice();
@@ -351,14 +351,14 @@ fn never_fires(_: &CapcoMarking) -> bool {
     false
 }
 
-/// Build an `IsmAttributes` banner projection from the `expected_*`
+/// Build an `CanonicalAttrs` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
 /// fields exercised by Phase A's equivalence tests. Other fields land
 /// at their defaults, which matches Phase B's goal of handing
 /// everything off to scheme-driven aggregation.
 #[inline]
-fn page_context_to_attrs(ctx: &PageContext) -> IsmAttributes {
-    let mut out = IsmAttributes::default();
+fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
+    let mut out = CanonicalAttrs::default();
 
     out.classification = ctx
         .expected_classification()
@@ -463,7 +463,7 @@ impl CapcoScheme {
         // dropped.
         //
         // (REL TO appearing as its own category — rather than as a
-        // dissem-control subtype — is an artifact of `IsmAttributes`
+        // dissem-control subtype — is an artifact of `CanonicalAttrs`
         // modeling country-list resolution separately; the rewrite
         // semantics treat it as a first-class category that
         // producers can write.)
@@ -704,7 +704,7 @@ impl CapcoScheme {
                 expansion: None,
             },
             // NOTE: REL TO is not its own category; it's a dissemination control.
-            // IsmAttributes models it as a separate field because it's a list of countries that must be compared as a set for supersession and conflict rules.
+            // CanonicalAttrs models it as a separate field because it's a list of countries that must be compared as a set for supersession and conflict rules.
             // The list is comma delimited and may consist of country trigraphs or organizational/operational tetragraphs (e.g. FVEY, NATO).
             // USA **must** always be present and first, other entries are alphabetical.
             Category {
@@ -1021,7 +1021,7 @@ pub enum CapcoParseError {
 // ---------------------------------------------------------------------------
 //
 // `satisfies_attrs` and `evaluate_custom_by_attrs` are the source of
-// truth for CAPCO's constraint semantics. They take `&IsmAttributes`
+// truth for CAPCO's constraint semantics. They take `&CanonicalAttrs`
 // directly to avoid forcing callers on the fast path to wrap in
 // `CapcoMarking` (which would require cloning the attributes). The
 // trait impls on `CapcoScheme` delegate to them, and the fast-path
@@ -1029,7 +1029,7 @@ pub enum CapcoParseError {
 // directly to dispatch a single named constraint without walking
 // the whole catalog.
 
-/// Resolve a [`TokenRef`] against raw [`marque_ism::IsmAttributes`].
+/// Resolve a [`TokenRef`] against raw [`marque_ism::CanonicalAttrs`].
 ///
 /// **Token-presence semantics** (T035):
 /// - [`TokenRef::Token(id)`] returns true when the marking carries
@@ -1048,7 +1048,7 @@ pub enum CapcoParseError {
 /// Sentinel `TokenId`s not used by the current catalog
 /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`;
 /// they are declared for future T035b consumption.
-fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> bool {
+fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> bool {
     use marque_ism::{
         AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
         SciControlSystem,
@@ -1165,7 +1165,7 @@ fn satisfies_attrs(attrs: &marque_ism::IsmAttributes, token_ref: &TokenRef) -> b
 /// predicate helper. Returns an empty `Vec` for unknown names
 /// (forward-compat with future catalog entries).
 fn evaluate_custom_by_attrs(
-    attrs: &marque_ism::IsmAttributes,
+    attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
     match name {
@@ -1185,12 +1185,12 @@ fn evaluate_custom_by_attrs(
 
 impl CapcoScheme {
     /// Evaluate a single constraint by `name` against raw
-    /// `IsmAttributes`. Fast path for rule wrappers that want "did
+    /// `CanonicalAttrs`. Fast path for rule wrappers that want "did
     /// this specific predicate fire?" without the overhead of a
     /// full `MarkingScheme::validate()` call.
     ///
     /// Compared to `scheme.validate(&CapcoMarking::new(attrs.clone()))`:
-    /// - **No `IsmAttributes` clone** — works on the borrow directly
+    /// - **No `CanonicalAttrs` clone** — works on the borrow directly
     /// - **No full catalog walk** — linear `find` by `name` over the
     ///   ~13 catalog entries, then single dispatch. O(1) effectively;
     ///   the filter step that the wrappers previously did after
@@ -1211,7 +1211,7 @@ impl CapcoScheme {
     /// text, not the scheme.
     pub(crate) fn evaluate_named_constraint(
         &self,
-        attrs: &marque_ism::IsmAttributes,
+        attrs: &marque_ism::CanonicalAttrs,
         name: &'static str,
     ) -> Vec<ConstraintViolation> {
         let Some(c) = self.constraints.iter().find(|c| c.name() == name) else {
@@ -1356,7 +1356,7 @@ impl MarkingScheme for CapcoScheme {
                 markings
                     .first()
                     .cloned()
-                    .unwrap_or_else(|| CapcoMarking::new(IsmAttributes::default()))
+                    .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
             Scope::Page | Scope::Document | Scope::Diff => {
                 // Page / Document rollup: drive through the existing
@@ -1448,7 +1448,7 @@ impl MarkingScheme for CapcoScheme {
 //
 // Each helper is the predicate body for a `Constraint::Custom` entry in
 // `build_constraints`. The helpers do NOT reference `RuleContext` — only
-// `IsmAttributes`. Per-context filtering (e.g., W002 portion-only) lives in
+// `CanonicalAttrs`. Per-context filtering (e.g., W002 portion-only) lives in
 // the wrapper layer (`crate::rules_declarative`); the catalog represents
 // "this marking is structurally inconsistent" without regard to where the
 // marking appears.
@@ -1464,7 +1464,7 @@ impl MarkingScheme for CapcoScheme {
 /// classification AND a foreign classification in the same marking. CAPCO
 /// §H.3 p55 forbids this ("The US, non-US, and JOINT classification
 /// markings are mutually exclusive").
-fn e012_dual_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e012_dual_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     if let Some(marque_ism::MarkingClassification::Conflict { us, foreign }) = &attrs.classification
     {
         let foreign_desc = match foreign.as_ref() {
@@ -1514,7 +1514,7 @@ pub(crate) fn rel_to_covers(rel_to: &[marque_ism::CountryCode], trigraph: &str) 
 /// CAPCO §H.3 p57 ("Requires REL TO USA, LIST" relationship statement).
 /// Tetragraphs in REL TO expand to their constituent trigraphs: a participant
 /// covered by a tetragraph (e.g., GBR via FVEY) is considered present.
-fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
         _ => return Vec::new(),
@@ -1542,7 +1542,7 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
 /// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104.
 /// Intentionally narrower than `AnyInCategory(CAT_AEA)` — UCNI variants
 /// do not carry the NOFORN requirement (CAPCO §H.6 p116 / p118).
-fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
         matches!(
             a,
@@ -1574,7 +1574,7 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
 /// (EXDIS: "Requires NOFORN") and p174 (NODIS: "Requires NOFORN").
 /// Emits a single ConstraintViolation when the marking carries NODIS
 /// or EXDIS without NOFORN present.
-fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
         matches!(
             d,
@@ -1599,7 +1599,7 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<Con
 }
 
 /// E022 — CNWDI requires TS or S classification. CAPCO §H.6 p106.
-fn e022_cnwdi_floor(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e022_cnwdi_floor(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let has_cnwdi = attrs
         .aea_markings
         .iter()
@@ -1631,7 +1631,7 @@ fn e022_cnwdi_floor(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolatio
 /// `Diagnostic` per offending marking with byte-precise spans; this helper
 /// emits ONE `ConstraintViolation` whose presence signals the wrapper to do
 /// that work. CAPCO §H.6 p104.
-fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let has_rd = attrs
         .aea_markings
         .iter()
@@ -1671,7 +1671,7 @@ fn e024_rd_precedence(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
 /// `Conflicts` variant but passes the hand-written predicate. This
 /// helper matches the hand-written predicate exactly (early-return
 /// on `Some(Unclassified)`).
-fn e025_ucni_classification(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn e025_ucni_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let has_ucni = attrs.aea_markings.iter().any(|a| {
         matches!(
             a,
@@ -1697,7 +1697,7 @@ fn e025_ucni_classification(attrs: &marque_ism::IsmAttributes) -> Vec<Constraint
 /// W002 — US classification + FGI marker is commingling. Always fires when
 /// both are present; the wrapper filters by `RuleContext::marking_type ==
 /// Portion`. CAPCO §H.7 lines 8254-8268.
-fn w002_us_commingled_with_fgi(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn w002_us_commingled_with_fgi(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
         return Vec::new();
     }
@@ -1713,7 +1713,7 @@ fn w002_us_commingled_with_fgi(attrs: &marque_ism::IsmAttributes) -> Vec<Constra
 /// `capco/joint-requires-usa` — JOINT classifications must list USA in BOTH
 /// `joint.countries` AND `rel_to`. CAPCO §H.3 p55 (USA always included in
 /// JOINT [LIST]) + §H.3 p57 (Requires REL TO USA, LIST).
-fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
+fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
         _ => return Vec::new(),
@@ -1762,7 +1762,7 @@ fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
 /// HCS-O (Operations) is rarely encountered outside of CIA's walls.
 /// But for users in that environment, they may encounter all three variants routinely.
 fn hcs_system_constraints(
-    attrs: &marque_ism::IsmAttributes,
+    attrs: &marque_ism::CanonicalAttrs,
     citation: &'static str,
 ) -> Vec<marque_scheme::ConstraintViolation> {
     use marque_ism::{DissemControl, SciControl, SciControlBare, SciControlSystem};
@@ -1895,7 +1895,7 @@ fn hcs_system_constraints(
     // entry in every test path. Treat a bare `SciControl::Hcs` in the
     // projection but no corresponding `sci_markings` entry as legacy
     // bare HCS too. This keeps the handler robust to the two-path
-    // storage (CVE enum vs structural) that `IsmAttributes` carries
+    // storage (CVE enum vs structural) that `CanonicalAttrs` carries
     // for back-compat — see crate-level docs on the hybrid SCI model.
     let structural_has_hcs = attrs
         .sci_markings
@@ -1934,7 +1934,7 @@ fn hcs_system_constraints(
 
 impl CapcoMarking {
     /// The effective US classification level, if any. Thin shim over
-    /// `IsmAttributes::us_classification` for test readability.
+    /// `CanonicalAttrs::us_classification` for test readability.
     #[inline]
     pub fn classification(&self) -> Option<Classification> {
         self.0.us_classification()
@@ -1962,10 +1962,10 @@ impl CapcoScheme {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_ism::{CountryCode, DissemControl, IsmAttributes, MarkingClassification};
+    use marque_ism::{CountryCode, DissemControl, CanonicalAttrs, MarkingClassification};
 
-    fn mk_attrs() -> IsmAttributes {
-        let mut a = IsmAttributes::default();
+    fn mk_attrs() -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
         a.classification = Some(MarkingClassification::Us(Classification::Secret));
         a
     }
@@ -2105,7 +2105,7 @@ mod tests {
 
     #[test]
     fn category_replace_rel_to_copies_from_source() {
-        let mut src_attrs = IsmAttributes::default();
+        let mut src_attrs = CanonicalAttrs::default();
         src_attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
         let src = CapcoMarking::new(src_attrs);
 
@@ -2116,7 +2116,7 @@ mod tests {
 
     #[test]
     fn category_replace_dissem_copies_from_source() {
-        let mut src_attrs = IsmAttributes::default();
+        let mut src_attrs = CanonicalAttrs::default();
         src_attrs.dissem_controls = vec![DissemControl::Nf].into();
         let src = CapcoMarking::new(src_attrs);
 
@@ -2178,7 +2178,7 @@ mod tests {
         // An Empty trigger on an unhandled category (returns false, so
         // rewrite does NOT fire). Verify a Replace action is reachable
         // via a trigger that DOES fire.
-        let mut replacement = IsmAttributes::default();
+        let mut replacement = CanonicalAttrs::default();
         replacement.dissem_controls = vec![DissemControl::Nf].into();
 
         let rewrites = vec![PageRewrite {

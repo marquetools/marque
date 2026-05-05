@@ -217,7 +217,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 span: Span::new(0, attempt.bytes.len()),
                 ..synthetic_candidate
             };
-            let Ok(mut parsed) = parser.parse(&candidate, &attempt.bytes) else {
+            let Ok(parsed) = parser.parse(&candidate, &attempt.bytes) else {
                 continue;
             };
 
@@ -243,7 +243,13 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 3b. Span-offset contract: `IsmAttributes::token_spans`
+            // PR-3a transitional adapter: collapse the borrowed
+            // `ParsedAttrs<'src>` to owned `CanonicalAttrs` before the
+            // marking leaves this scope. Post-PR-3c this becomes
+            // `MarkingScheme::canonicalize(parsed.attrs)`.
+            let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+
+            // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
             //     returned by the strict parser carry offsets into
             //     `attempt.bytes` (the canonicalized buffer), NOT the
             //     original `bytes` slice the caller passed to
@@ -263,11 +269,11 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //     above — we need the spans to filter partial
             //     canonicalizations, but must drop them before the
             //     marking leaves the decoder.
-            parsed.attrs.token_spans = Box::new([]);
-            let marking = CapcoMarking::new(parsed.attrs);
+            attrs.token_spans = Box::new([]);
+            let marking = CapcoMarking::new(attrs);
 
             // 3c. The strict parser is lenient — it accepts any
-            //     `BYTES//BYTES` shape and emits an `IsmAttributes`
+            //     `BYTES//BYTES` shape and emits an `CanonicalAttrs`
             //     with empty fields when nothing is recognized. Drop
             //     such trivial parses so the decoder doesn't
             //     fabricate a marking for prose like `FROBNITZ//WIBBLE`.
@@ -3887,7 +3893,7 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 /// `&'static str` representation suitable for
 /// [`marque_capco::priors::TOKEN_BASE_RATES`] lookup.
 ///
-/// Scored token families, by `IsmAttributes` field:
+/// Scored token families, by `CanonicalAttrs` field:
 ///
 /// - `classification` — effective level's banner string
 ///   (`SECRET`, `TOP SECRET`, ...).
@@ -3983,7 +3989,7 @@ fn canonical_tokens_for(marking: &CapcoMarking) -> Vec<&'static str> {
 ///   no FGI, etc.). The trivial-Unambiguous case matters because
 ///   `marque_core::Parser` is lenient: it accepts arbitrary
 ///   `BYTES//BYTES` shapes and returns `Ok` with an empty
-///   `IsmAttributes` when nothing in the input is a recognized CVE
+///   `CanonicalAttrs` when nothing in the input is a recognized CVE
 ///   token. Treating such a result as a successful parse would leave
 ///   the decoder dormant on exactly the mangled inputs it exists to
 ///   recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …). Strict is
@@ -4668,7 +4674,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"SECRET//NOFORN")
             .expect("SECRET//NOFORN must parse");
-        let marking = CapcoMarking::new(parsed.attrs);
+        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
 
         let features = vec![
             FeatureEntry {
@@ -4724,7 +4730,7 @@ mod tests {
         let one_parsed = parser
             .parse(&one_candidate, b"SECRET//REL TO USA")
             .expect("SECRET//REL TO USA must parse");
-        let one_marking = CapcoMarking::new(one_parsed.attrs);
+        let one_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(one_parsed.attrs));
 
         let two_candidate = MarkingCandidate {
             span: Span::new(0, 23),
@@ -4733,7 +4739,7 @@ mod tests {
         let two_parsed = parser
             .parse(&two_candidate, b"SECRET//REL TO USA, GBR")
             .expect("SECRET//REL TO USA, GBR must parse");
-        let two_marking = CapcoMarking::new(two_parsed.attrs);
+        let two_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(two_parsed.attrs));
 
         let no_features: Vec<FeatureEntry> = vec![];
         let attempt_one = CanonicalAttempt {
@@ -4777,7 +4783,7 @@ mod tests {
         let dup_parsed = parser
             .parse(&dup_candidate, b"SECRET//REL TO USA, USA")
             .expect("SECRET//REL TO USA, USA must parse leniently");
-        let dup_marking = CapcoMarking::new(dup_parsed.attrs);
+        let dup_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(dup_parsed.attrs));
 
         let once_candidate = MarkingCandidate {
             span: Span::new(0, 18),
@@ -4786,7 +4792,7 @@ mod tests {
         let once_parsed = parser
             .parse(&once_candidate, b"SECRET//REL TO USA")
             .expect("SECRET//REL TO USA must parse");
-        let once_marking = CapcoMarking::new(once_parsed.attrs);
+        let once_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(once_parsed.attrs));
 
         let no_features: Vec<FeatureEntry> = vec![];
         let attempt_dup = CanonicalAttempt {
@@ -4901,7 +4907,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(SERCET//NOFORN)")
             .expect("strict parser should accept (SERCET//NOFORN) leniently");
-        let marking = CapcoMarking::new(parsed.attrs);
+        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
         assert!(
             is_nontrivial_marking(&marking),
             "NOFORN survives as a dissem control → marking is nontrivial"
@@ -4925,7 +4931,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//NF)")
             .expect("canonical portion must strict-parse");
-        let marking = CapcoMarking::new(parsed.attrs);
+        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
         assert!(
             strict_parse_is_complete(&marking, MarkingType::Portion),
             "canonical (S//NF) must be accepted as complete; attrs = {:?}",
@@ -4948,7 +4954,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//FRBN)")
             .expect("strict parser accepts (S//FRBN) leniently");
-        let marking = CapcoMarking::new(parsed.attrs);
+        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
         // `S` resolved, so classification is Some — but the
         // Unknown-tail check still fires.
         assert!(
@@ -4984,7 +4990,7 @@ mod tests {
         // identifier `"BUTTER POPCORN NOFORN"` (multi-word nickname,
         // NOFORN absorbed as the trailing word). Pinned to ensure the
         // per-word check in `contains_hard_splitter_word` keeps firing.
-        use marque_ism::{IsmAttributes, SarIndicator, SarMarking, SarProgram};
+        use marque_ism::{CanonicalAttrs, SarIndicator, SarMarking, SarProgram};
         let sar = SarMarking::new(
             SarIndicator::Full,
             Box::new([SarProgram::new(
@@ -4992,7 +4998,7 @@ mod tests {
                 Box::new([]),
             )]),
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sar_markings = Some(sar);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5008,7 +5014,7 @@ mod tests {
         // shape produced by `SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/
         // XR-XRA RB NOFORN` when the strict parser absorbs NOFORN at
         // the SAR-block tail.
-        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        use marque_ism::{CanonicalAttrs, SarCompartment, SarIndicator, SarMarking, SarProgram};
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
@@ -5019,7 +5025,7 @@ mod tests {
                 )]),
             )]),
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sar_markings = Some(sar);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5037,7 +5043,7 @@ mod tests {
         // than a sub-compartment leaf — e.g., a `SAR-BP NOFORN` shape
         // where the strict parser emits `BP` as the program and
         // `NOFORN` as a bare compartment with no sub-compartments.
-        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        use marque_ism::{CanonicalAttrs, SarCompartment, SarIndicator, SarMarking, SarProgram};
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
@@ -5045,7 +5051,7 @@ mod tests {
                 Box::new([SarCompartment::new(Box::from("NOFORN"), Box::new([]))]),
             )]),
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sar_markings = Some(sar);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5059,7 +5065,7 @@ mod tests {
         // Negative case: a SAR with realistic identifiers (`BP`, `J12`,
         // `RB`) and no hard-splitter token anywhere. Must NOT trigger
         // the penalty.
-        use marque_ism::{IsmAttributes, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        use marque_ism::{CanonicalAttrs, SarCompartment, SarIndicator, SarMarking, SarProgram};
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
@@ -5070,7 +5076,7 @@ mod tests {
                 )]),
             )]),
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sar_markings = Some(sar);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5087,7 +5093,7 @@ mod tests {
         // change that loosens SCI compartment shape could let a hard
         // splitter through. Pinned so the penalty stays defensive.
         use marque_ism::{
-            IsmAttributes, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+            CanonicalAttrs, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
         };
         let sci = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
@@ -5097,7 +5103,7 @@ mod tests {
             )]),
             None,
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sci_markings = Box::new([sci]);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5116,14 +5122,14 @@ mod tests {
         // splitter through as the compartment id needs the penalty
         // active.
         use marque_ism::{
-            IsmAttributes, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+            CanonicalAttrs, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
         };
         let sci = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
             Box::new([SciCompartment::new(Box::from("ORCON"), Box::new([]))]),
             None,
         );
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         attrs.sci_markings = Box::new([sci]);
         let marking = CapcoMarking::new(attrs);
         assert!(
@@ -5136,8 +5142,8 @@ mod tests {
     fn absorbs_hard_splitter_negative_on_empty_marking() {
         // Sanity floor: a marking with neither SAR nor SCI never
         // triggers the penalty.
-        use marque_ism::IsmAttributes;
-        let attrs = IsmAttributes::default();
+        use marque_ism::CanonicalAttrs;
+        let attrs = CanonicalAttrs::default();
         let marking = CapcoMarking::new(attrs);
         assert!(
             !absorbs_hard_splitter_in_sar_or_sci(&marking),
@@ -5198,7 +5204,7 @@ mod tests {
     #[test]
     fn decoder_rejects_trivial_strict_parse() {
         // The strict parser is lenient: it accepts `FROBNITZ//WIBBLE`
-        // and emits an IsmAttributes with classification=None,
+        // and emits an CanonicalAttrs with classification=None,
         // dissem_controls=[], sci_controls=[]. The decoder must treat
         // that as "no real parse" and drop the candidate — otherwise
         // it would fabricate an empty marking for arbitrary prose.
@@ -5211,7 +5217,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"FROBNITZ//WIBBLE")
             .expect("strict parser should accept arbitrary bytes");
-        let marking = CapcoMarking::new(parsed.attrs);
+        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
         assert!(
             !is_nontrivial_marking(&marking),
             "empty marking must be filtered"

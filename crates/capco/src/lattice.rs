@@ -32,7 +32,7 @@
 //! # SCI storage canonicalization
 //!
 //! Post-Phase-B, [`SciSet`] is the **canonical** page-context storage
-//! for SCI. [`marque_ism::IsmAttributes::sci_controls`] (the flat CVE
+//! for SCI. [`marque_ism::CanonicalAttrs::sci_controls`] (the flat CVE
 //! enum projection) stays populated for rules that currently read it
 //! but is a compatibility view scheduled for removal once no rule
 //! references it (Phase C or D). New rules read `sci_markings` /

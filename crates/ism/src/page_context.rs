@@ -7,7 +7,7 @@
 //! In CAPCO, a banner marking must reflect the **most restrictive union** of all
 //! portion markings on a given page (or, for non-paginated material, across all
 //! portions in the logical unit). This module provides [`PageContext`], which
-//! accumulates portion [`IsmAttributes`] as the engine processes candidates and
+//! accumulates portion [`CanonicalAttrs`] as the engine processes candidates and
 //! exposes helpers that derive the expected classification, controls, and
 //! declassification date from that aggregate.
 //!
@@ -44,9 +44,10 @@
 
 use crate::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
-    IsmAttributes, MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking,
-    SarProgram, SciCompartment, SciControl, SciControlSystem, SciMarking,
+    MarkingClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    SciCompartment, SciControl, SciControlSystem, SciMarking,
 };
+use crate::canonical::CanonicalAttrs;
 use crate::date::IsmDate;
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
@@ -107,7 +108,7 @@ pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
 #[derive(Debug, Clone, Default)]
 pub struct PageContext {
     /// Accumulated portion attributes, in document order.
-    portions: Vec<IsmAttributes>,
+    portions: Vec<CanonicalAttrs>,
 }
 
 impl PageContext {
@@ -118,7 +119,7 @@ impl PageContext {
 
     /// Record a newly-parsed portion marking. Must be called in document order
     /// before banner rules are checked.
-    pub fn add_portion(&mut self, attrs: IsmAttributes) {
+    pub fn add_portion(&mut self, attrs: CanonicalAttrs) {
         self.portions.push(attrs);
     }
 
@@ -152,7 +153,7 @@ impl PageContext {
     /// `portions()` only when per-portion membership genuinely matters;
     /// every additional caller is one more place that has to keep up
     /// with the lattice / aggregation contracts the helpers encode.
-    pub fn portions(&self) -> &[IsmAttributes] {
+    pub fn portions(&self) -> &[CanonicalAttrs] {
         &self.portions
     }
 
@@ -958,8 +959,8 @@ mod tests {
     use crate::attrs::{Classification, MarkingClassification};
     use crate::date::IsmDate;
 
-    fn attrs_with_classification(c: Classification) -> IsmAttributes {
-        IsmAttributes {
+    fn attrs_with_classification(c: Classification) -> CanonicalAttrs {
+        CanonicalAttrs {
             classification: Some(MarkingClassification::Us(c)),
             ..Default::default()
         }
@@ -984,7 +985,7 @@ mod tests {
         use crate::attrs::NatoClassification::NatoSecret;
         let mut ctx = PageContext::new();
         ctx.add_portion(attrs_with_classification(Classification::Confidential));
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Nato(NatoSecret)),
             ..Default::default()
         });
@@ -1001,7 +1002,7 @@ mod tests {
         use crate::attrs::{CountryCode, FgiClassification};
         let mut ctx = PageContext::new();
         ctx.add_portion(attrs_with_classification(Classification::Confidential));
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
@@ -1020,7 +1021,7 @@ mod tests {
         use crate::attrs::JointClassification;
         let mut ctx = PageContext::new();
         ctx.add_portion(attrs_with_classification(Classification::Confidential));
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Joint(JointClassification {
                 level: Classification::Secret,
                 countries: Box::new([]),
@@ -1038,11 +1039,11 @@ mod tests {
     fn expected_sci_controls_union() {
         use crate::attrs::SciControl;
         let mut ctx = PageContext::new();
-        let a1 = IsmAttributes {
+        let a1 = CanonicalAttrs {
             sci_controls: vec![SciControl::Si].into_boxed_slice(),
             ..Default::default()
         };
-        let a2 = IsmAttributes {
+        let a2 = CanonicalAttrs {
             sci_controls: vec![SciControl::Tk].into_boxed_slice(),
             ..Default::default()
         };
@@ -1058,12 +1059,12 @@ mod tests {
     fn expected_rel_to_intersection() {
         use crate::attrs::CountryCode;
         let mut ctx = PageContext::new();
-        let a1 = IsmAttributes {
+        let a1 = CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
                 .into_boxed_slice(),
             ..Default::default()
         };
-        let a2 = IsmAttributes {
+        let a2 = CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"DEU").unwrap()]
                 .into_boxed_slice(),
             ..Default::default()
@@ -1080,13 +1081,13 @@ mod tests {
         use crate::attrs::{CountryCode, DissemControl};
         let mut ctx = PageContext::new();
         // Portion 1: REL TO USA, GBR
-        let a1 = IsmAttributes {
+        let a1 = CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
                 .into_boxed_slice(),
             ..Default::default()
         };
         // Portion 2: NOFORN
-        let a2 = IsmAttributes {
+        let a2 = CanonicalAttrs {
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         };
@@ -1098,11 +1099,11 @@ mod tests {
 
     #[test]
     fn expected_declassify_on_max() {
-        let a1 = IsmAttributes {
+        let a1 = CanonicalAttrs {
             declassify_on: Some(IsmDate::Date(2035, 1, 1)),
             ..Default::default()
         };
-        let a2 = IsmAttributes {
+        let a2 = CanonicalAttrs {
             declassify_on: Some(IsmDate::Date(2048, 12, 31)),
             ..Default::default()
         };
@@ -1137,12 +1138,12 @@ mod tests {
     fn aea_rd_union_across_portions() {
         use crate::attrs::{AeaMarking, RdBlock};
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             aea_markings: vec![AeaMarking::Rd(RdBlock::default())].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             aea_markings: vec![AeaMarking::Rd(RdBlock {
                 cnwdi: false,
@@ -1166,7 +1167,7 @@ mod tests {
     fn aea_sigma_aggregated_sorted() {
         use crate::attrs::{AeaMarking, RdBlock};
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             aea_markings: vec![AeaMarking::Rd(RdBlock {
                 cnwdi: false,
@@ -1175,7 +1176,7 @@ mod tests {
             .into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             aea_markings: vec![AeaMarking::Rd(RdBlock {
                 cnwdi: false,
@@ -1198,7 +1199,7 @@ mod tests {
     fn aea_ucni_drops_in_classified() {
         use crate::attrs::AeaMarking;
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             aea_markings: vec![AeaMarking::DodUcni].into(),
             ..Default::default()
@@ -1212,7 +1213,7 @@ mod tests {
     fn aea_ucni_kept_in_unclassified() {
         use crate::attrs::AeaMarking;
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             aea_markings: vec![AeaMarking::DodUcni].into(),
             ..Default::default()
@@ -1227,7 +1228,7 @@ mod tests {
     #[test]
     fn non_ic_sbu_nf_splits_in_classified() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
             ..Default::default()
@@ -1242,7 +1243,7 @@ mod tests {
     #[test]
     fn non_ic_sbu_nf_kept_in_unclassified() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
             ..Default::default()
@@ -1258,14 +1259,14 @@ mod tests {
     fn fgi_source_concealed_supersedes_open() {
         let mut ctx = PageContext::new();
         // One portion with source-concealed FGI.
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             fgi_marker: Some(FgiMarker {
                 countries: Box::new([]),
             }),
             ..Default::default()
         });
         // Another with source-acknowledged FGI.
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             fgi_marker: Some(FgiMarker {
                 countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
             }),
@@ -1283,13 +1284,13 @@ mod tests {
     #[test]
     fn fgi_open_union_of_countries() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             fgi_marker: Some(FgiMarker {
                 countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
             }),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             fgi_marker: Some(FgiMarker {
                 countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
             }),
@@ -1315,7 +1316,7 @@ mod tests {
         // (and peers) above; the `expand_tetragraph` helper itself
         // is tested in `crates/capco/src/vocab.rs`.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![
                 CountryCode::USA,
                 CountryCode::try_new(b"AUS").unwrap(),
@@ -1326,7 +1327,7 @@ mod tests {
             .into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![
                 CountryCode::USA,
                 CountryCode::try_new(b"AUS").unwrap(),
@@ -1347,11 +1348,11 @@ mod tests {
         // REL TO USA, AUS + REL TO USA, GBR → no common (just USA)
         // Wait, USA is common. Let's test non-overlapping non-USA countries.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"AUS").unwrap()].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
             ..Default::default()
         });
@@ -1374,11 +1375,11 @@ mod tests {
         // Portion 2: REL TO USA, NZL   → atoms     {NZL, USA}
         // Intersection: {NZL, USA} → banner: USA first, NZL alphabetical.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"FVEY").unwrap()].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"NZL").unwrap()].into(),
             ..Default::default()
         });
@@ -1401,11 +1402,11 @@ mod tests {
         // decomposable=Yes with 30 trigraph members, so KFOR (still
         // an atom-by-authority code) is the canonical replacement.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
             ..Default::default()
         });
@@ -1425,11 +1426,11 @@ mod tests {
         // Pre-issue-208 this test used NATO; see the sibling test
         // above for the same NATO → KFOR rationale.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"KFOR").unwrap()].into(),
             ..Default::default()
         });
@@ -1446,11 +1447,11 @@ mod tests {
         // ACGU-as-tetragraph itself never appears because it expanded
         // into its members on portion 2 before intersection.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"FVEY").unwrap()].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             rel_to: vec![CountryCode::USA, CountryCode::try_new(b"ACGU").unwrap()].into(),
             ..Default::default()
         });
@@ -1506,7 +1507,7 @@ mod tests {
     #[test]
     fn dissem_fouo_drops_in_classified() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             dissem_controls: vec![DissemControl::Fouo].into(),
             ..Default::default()
@@ -1521,7 +1522,7 @@ mod tests {
     #[test]
     fn dissem_fouo_kept_in_unclassified() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             dissem_controls: vec![DissemControl::Fouo].into(),
             ..Default::default()
@@ -1537,7 +1538,7 @@ mod tests {
     fn dissem_fouo_drops_when_dsen_present_unclassified() {
         // DSEN overrides FOUO even on an unclassified page.
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             dissem_controls: vec![DissemControl::Dsen, DissemControl::Fouo].into(),
             ..Default::default()
@@ -1557,12 +1558,12 @@ mod tests {
     fn dissem_oc_usgov_drops_when_not_on_all_oc_portions() {
         let mut ctx = PageContext::new();
         // Two OC portions, only one has OC-USGOV.
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             dissem_controls: vec![DissemControl::Oc, DissemControl::OcUsgov].into(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             dissem_controls: vec![DissemControl::Oc].into(),
             ..Default::default()
@@ -1578,7 +1579,7 @@ mod tests {
     #[test]
     fn dissem_nf_injected_from_sbu_nf_split() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
             ..Default::default()
@@ -1603,7 +1604,7 @@ mod tests {
         // SI and TK are both SCI controls → one block `/`-joined
         // NOFORN is a dissem control → its own block
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
@@ -1619,18 +1620,18 @@ mod tests {
     fn render_banner_rollup_from_multiple_portions() {
         // (TS//SI/TK//NF) + (S//NF) + (U) → TOP SECRET//SI/TK//NOFORN
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             ..Default::default()
         });
@@ -1643,7 +1644,7 @@ mod tests {
     #[test]
     fn render_banner_secret_noforn() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
@@ -1657,7 +1658,7 @@ mod tests {
     #[test]
     fn render_banner_unclassified_with_no_dissem() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
             ..Default::default()
         });
@@ -1690,8 +1691,8 @@ mod tests {
         SciCompartment::new(id.to_owned().into_boxed_str(), sub_box)
     }
 
-    fn attrs_with_sci_markings(markings: Vec<SciMarking>) -> IsmAttributes {
-        IsmAttributes {
+    fn attrs_with_sci_markings(markings: Vec<SciMarking>) -> CanonicalAttrs {
+        CanonicalAttrs {
             sci_markings: markings.into_boxed_slice(),
             ..Default::default()
         }
@@ -1714,8 +1715,8 @@ mod tests {
         SarCompartment::new(id.into(), subs)
     }
 
-    fn attrs_with_sar(sar: SarMarking) -> IsmAttributes {
-        IsmAttributes {
+    fn attrs_with_sar(sar: SarMarking) -> CanonicalAttrs {
+        CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sar_markings: Some(sar),
             ..Default::default()
@@ -1838,7 +1839,7 @@ mod tests {
     #[test]
     fn render_banner_uses_structural_sci_block_bare() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_markings: vec![SciMarking::new(
                 sci_sys_pub(SciControlBare::Si),
@@ -1857,7 +1858,7 @@ mod tests {
     #[test]
     fn render_banner_uses_structural_sci_block_with_compartments() {
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_markings: vec![SciMarking::new(
                 sci_sys_pub(SciControlBare::Si),
@@ -1877,7 +1878,7 @@ mod tests {
     fn render_banner_structural_sci_multi_compartment() {
         // §A.6 p16 canonical decomposition: SI-G ABCD DEFG-MMM AACD
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_markings: vec![SciMarking::new(
                 sci_sys_pub(SciControlBare::Si),
@@ -1991,7 +1992,7 @@ mod tests {
         // (AEA is omitted here). Category separator is `//`.
         use crate::attrs::{DissemControl, SciControl};
         let mut ctx = PageContext::new();
-        ctx.add_portion(IsmAttributes {
+        ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_controls: vec![SciControl::Si].into_boxed_slice(),
             sar_markings: Some(SarMarking::new(

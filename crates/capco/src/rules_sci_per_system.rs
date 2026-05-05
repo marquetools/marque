@@ -56,7 +56,7 @@
 //! remove the SCI marking.
 
 use marque_ism::{
-    Classification, DissemControl, IsmAttributes, MarkingClassification, MarkingType,
+    Classification, DissemControl, CanonicalAttrs, MarkingClassification, MarkingType,
     SciControlBare, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
 };
 use marque_rules::{
@@ -98,7 +98,7 @@ fn is_tk_noforn_compartment(m: &SciMarking) -> bool {
 /// Find the first SCI-system/SCI-control token span in document order.
 /// Used as the diagnostic pointer when the rule fires on a portion's
 /// SCI block.
-fn first_sci_span(attrs: &IsmAttributes) -> Option<Span> {
+fn first_sci_span(attrs: &CanonicalAttrs) -> Option<Span> {
     attrs
         .token_spans
         .iter()
@@ -117,7 +117,7 @@ fn first_sci_span(attrs: &IsmAttributes) -> Option<Span> {
 /// Observed US classification level, if any. Returns `None` for pure
 /// foreign classifications (FGI/NATO/JOINT) — SCI-on-foreign is out of
 /// §H.4's scope and handled by the foreign-classification rule cluster.
-fn us_level(attrs: &IsmAttributes) -> Option<Classification> {
+fn us_level(attrs: &CanonicalAttrs) -> Option<Classification> {
     match attrs.classification {
         Some(MarkingClassification::Us(c)) => Some(c),
         Some(MarkingClassification::Conflict { us, .. }) => Some(us),
@@ -126,7 +126,7 @@ fn us_level(attrs: &IsmAttributes) -> Option<Classification> {
 }
 
 /// Classification-token span + current text, if present.
-fn classification_token(attrs: &IsmAttributes) -> Option<&TokenSpan> {
+fn classification_token(attrs: &CanonicalAttrs) -> Option<&TokenSpan> {
     attrs
         .token_spans
         .iter()
@@ -135,7 +135,7 @@ fn classification_token(attrs: &IsmAttributes) -> Option<&TokenSpan> {
 
 /// Last token span of the IC dissem block (to anchor zero-width
 /// insertions). Returns `None` when no IC dissem token exists.
-fn last_dissem_span(attrs: &IsmAttributes) -> Option<Span> {
+fn last_dissem_span(attrs: &CanonicalAttrs) -> Option<Span> {
     attrs
         .token_spans
         .iter()
@@ -146,7 +146,7 @@ fn last_dissem_span(attrs: &IsmAttributes) -> Option<Span> {
 
 /// Find the span of a specific `DissemControl` token (used when a rule
 /// needs to replace e.g. `OC-USGOV` with `OC`).
-fn dissem_token_span(attrs: &IsmAttributes, target: DissemControl) -> Option<(Span, &str)> {
+fn dissem_token_span(attrs: &CanonicalAttrs, target: DissemControl) -> Option<(Span, &str)> {
     for (dissem_idx, d) in attrs.dissem_controls.iter().enumerate() {
         if *d == target {
             // Walk token_spans to find the Nth DissemControl.
@@ -165,7 +165,7 @@ fn dissem_token_span(attrs: &IsmAttributes, target: DissemControl) -> Option<(Sp
 /// on this marking. The parser populates `text.as_ref()` with whatever
 /// the user wrote, so inserting in matching form avoids a surprise
 /// mixed-form output.
-fn infer_companion_form(attrs: &IsmAttributes) -> CompanionForm {
+fn infer_companion_form(attrs: &CanonicalAttrs) -> CompanionForm {
     // Peek at the first dissem token's text: if it's a short-form
     // (e.g., "NF", "OC"), the portion is written in abbrev style.
     let first = attrs
@@ -204,7 +204,7 @@ impl CompanionForm {
 /// `marking_type`. Returns `None` when the classification token is
 /// missing (no class to upgrade) or already at target.
 fn build_class_upgrade_fix(
-    attrs: &IsmAttributes,
+    attrs: &CanonicalAttrs,
     ctx: &RuleContext,
     target: Classification,
 ) -> Option<(Span, String, String)> {
@@ -251,7 +251,7 @@ impl Rule for HcsOCompanionsRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // §H.4 per-SCI-system constraints are scoped to US
         // classifications. SCI-on-foreign (pure FGI/NATO/JOINT) is out
         // of scope; inserting NOFORN on a JOINT marking would in fact
@@ -355,7 +355,7 @@ impl Rule for HcsPRequiresNofornRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Scope guard: §H.4 applies only to US classifications. Skip
         // pure FGI/NATO/JOINT where a NOFORN insertion would be wrong
         // (JOINT in particular forbids NOFORN per §H.8).
@@ -422,7 +422,7 @@ impl Rule for HcsPSubcompartmentTsOnlyRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         // Scope guard: §H.4 applies only to US classifications. Pure
         // FGI/NATO/JOINT with HCS-P sub is out of scope — both the
         // class-upgrade path and the ORCON / no-ORCON-USGOV companion
@@ -539,7 +539,7 @@ impl Rule for HcsClassificationCeilingRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Pre-empt HCS-P-with-sub-compartment: E044 will emit the
         // unambiguous TS-only upgrade. Firing E045 here too would be
         // redundant no-fix noise on top of an actionable fix.
@@ -611,7 +611,7 @@ impl Rule for SiCompartmentTopSecretRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         let has_si_comp = attrs
             .sci_markings
             .iter()
@@ -674,7 +674,7 @@ impl Rule for SiGammaCompanionsRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Scope guard: §H.4 applies only to US classifications. SI-G
         // on pure FGI/NATO/JOINT is out of scope.
         if us_level(attrs).is_none() {
@@ -754,7 +754,7 @@ impl Rule for RsvClassificationCeilingRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let has_rsv = attrs
             .sci_markings
             .iter()
@@ -811,7 +811,7 @@ impl Rule for TkClassificationCeilingRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Pre-empt TK-BLFH: E050 emits the actionable TS-only upgrade.
         // A TK marking with BLFH at below-SECRET is by construction also
         // below TS, so E050 covers the actual violation; E049 would
@@ -870,7 +870,7 @@ impl Rule for TkBlfhTopSecretRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         let has_blfh = attrs
             .sci_markings
             .iter()
@@ -936,7 +936,7 @@ impl Rule for TkCompartmentRequiresNofornRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Scope guard: §H.4 applies only to US classifications. Pure
         // FGI/NATO/JOINT is out of scope — inserting NOFORN on JOINT
         // would violate §H.8 (JOINT forbids NOFORN).

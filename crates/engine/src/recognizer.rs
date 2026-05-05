@@ -43,7 +43,7 @@
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
 use marque_ism::{
-    CapcoTokenSet, Classification, IsmAttributes, MarkingClassification,
+    CapcoTokenSet, Classification, CanonicalAttrs, MarkingClassification,
     span::{MarkingCandidate, MarkingType, Span},
 };
 use marque_scheme::ambiguity::Parsed;
@@ -88,11 +88,17 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
             kind,
         };
         match parser.parse(&candidate, parse_bytes) {
-            Ok(mut parsed) => {
+            Ok(parsed) => {
+                // Run the PR-3a transitional adapter immediately: the
+                // recognizer is the canonicalization seam between the
+                // borrowed parser output and the owned form rules
+                // consume. Post-PR-3c this becomes
+                // `MarkingScheme::canonicalize(parsed.attrs)`.
+                let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
                 if leading_ws != 0 {
-                    shift_token_spans(&mut parsed.attrs, leading_ws);
+                    shift_token_spans(&mut attrs, leading_ws);
                 }
-                let marking = CapcoMarking::new(parsed.attrs);
+                let marking = CapcoMarking::new(attrs);
                 // Reject `Us(Restricted)` markings. RESTRICTED is by
                 // definition a non-US classification level — see
                 // [`is_us_restricted`] for the full rationale and
@@ -155,7 +161,7 @@ pub(crate) fn is_us_restricted(marking: &CapcoMarking) -> bool {
 /// by a [`Recognizer`] (which sees only the candidate's slice of the
 /// source) back to the full-source coordinates rules expect.
 ///
-/// Only `IsmAttributes::token_spans` carries offsets today; if later
+/// Only `CanonicalAttrs::token_spans` carries offsets today; if later
 /// structural fields (SCI / SAR marker spans) start recording source
 /// offsets, add the shift here — there is no alternative code path to
 /// keep in sync.
@@ -163,9 +169,9 @@ pub(crate) fn is_us_restricted(marking: &CapcoMarking) -> bool {
 /// Crate-visibility only: this is an engine-internal seam. The engine
 /// is the only caller (PR-3's `DecoderRecognizer` will live in this
 /// same crate and call it the same way). Exposing it outside the
-/// crate would lock in an API surface before the `IsmAttributes`
+/// crate would lock in an API surface before the `CanonicalAttrs`
 /// span story is finished.
-pub(crate) fn shift_token_spans(attrs: &mut IsmAttributes, delta: usize) {
+pub(crate) fn shift_token_spans(attrs: &mut CanonicalAttrs, delta: usize) {
     if delta == 0 {
         return;
     }

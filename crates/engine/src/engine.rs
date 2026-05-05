@@ -109,7 +109,7 @@ pub struct Engine {
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
-    /// an `IsmAttributes`. Held behind `Arc<dyn Recognizer>` so callers
+    /// an `CanonicalAttrs`. Held behind `Arc<dyn Recognizer>` so callers
     /// can override the default via [`Engine::with_recognizer`] without
     /// touching the lint loop. Shared across threads unchanged — the
     /// recognizer trait is `Send + Sync` and `BatchEngine` workers hold
@@ -496,7 +496,7 @@ impl Engine {
             };
             shift_token_spans(&mut marking.0, start);
             // Capture the decoder-provenance side channel before
-            // collapsing the marking onto its `IsmAttributes` payload.
+            // collapsing the marking onto its `CanonicalAttrs` payload.
             // Strict-path recognizers leave this `None`; the decoder
             // populates it with the canonical bytes / posterior /
             // features the engine needs to mint a
@@ -1664,7 +1664,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 mod tests {
     use super::*;
     use crate::clock::FixedClock;
-    use marque_ism::IsmAttributes;
+    use marque_ism::CanonicalAttrs;
     use marque_rules::{
         Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
     };
@@ -1722,7 +1722,7 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Fix
         }
-        fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
             self.proposals
                 .iter()
                 .map(|p| {
@@ -1979,7 +1979,7 @@ mod tests {
             fn default_severity(&self) -> Severity {
                 Severity::Fix
             }
-            fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+            fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
                 vec![Diagnostic::new(
                     RuleId::new("E997"),
                     Severity::Fix,
@@ -2032,7 +2032,7 @@ mod tests {
             fn default_severity(&self) -> Severity {
                 Severity::Suggest
             }
-            fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+            fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
                 let proposal = FixProposal::new(
                     RuleId::new("S999"),
                     FixSource::BuiltinRule,
@@ -2158,7 +2158,7 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Warn
         }
-        fn check(&self, _attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
             let count = ctx
                 .page_context
                 .as_ref()
@@ -2329,7 +2329,7 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Warn
         }
-        fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
             vec![]
         }
     }

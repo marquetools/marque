@@ -15,7 +15,7 @@
 //! user-visible emission shape.
 //!
 //! `evaluate_named_constraint` is the inherent fast path on
-//! `CapcoScheme` that takes `&IsmAttributes` directly and dispatches
+//! `CapcoScheme` that takes `&CanonicalAttrs` directly and dispatches
 //! only the single named predicate — no `CapcoMarking` wrap, no full
 //! catalog walk. The trait-path `scheme.validate()` + post-hoc
 //! filtering that an earlier revision used iterated all ~13 catalog
@@ -27,7 +27,7 @@
 //!
 //! `ConstraintViolation` carries `constraint_label`, `message`, and
 //! `citation` but **not** a `Span` — the scheme has no access to the
-//! `TokenSpan` slice the parser attaches to `IsmAttributes`. Widening
+//! `TokenSpan` slice the parser attaches to `CanonicalAttrs`. Widening
 //! `ConstraintViolation` to carry spans would couple the scheme layer
 //! to ISM's token-span model, which lives in `marque-ism` and is
 //! CAPCO-specific. Trigger-only dispatch keeps the scheme layer
@@ -83,7 +83,7 @@
 
 use std::sync::LazyLock;
 
-use marque_ism::{IsmAttributes, Span, TokenKind, TokenSpan};
+use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
 use marque_scheme::ConstraintViolation;
 
@@ -111,7 +111,7 @@ static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 /// **No clone, no catalog walk.** This is the key perf-difference
 /// from the earlier `validate()`-plus-filter pattern:
 ///
-/// - `evaluate_named_constraint` takes `&IsmAttributes` directly, so
+/// - `evaluate_named_constraint` takes `&CanonicalAttrs` directly, so
 ///   the wrapper doesn't have to `CapcoMarking::new(attrs.clone())` to
 ///   cross the trait boundary.
 /// - It finds the constraint by name (linear scan of ~13 entries)
@@ -122,14 +122,14 @@ static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 ///
 /// The wrapper struct + its `check()` signature stay unchanged;
 /// this is a pure perf path swap.
-fn violations_for(attrs: &IsmAttributes, name: &'static str) -> Vec<ConstraintViolation> {
+fn violations_for(attrs: &CanonicalAttrs, name: &'static str) -> Vec<ConstraintViolation> {
     SCHEME.evaluate_named_constraint(attrs, name)
 }
 
 /// Return the `Span` of the first token in `attrs.token_spans` whose
 /// kind matches `kind`, or `(0, 0)` if none is present. Matches the
 /// span-selection idiom used by the retired hand-written rules.
-fn first_span_of(attrs: &IsmAttributes, kind: TokenKind) -> Span {
+fn first_span_of(attrs: &CanonicalAttrs, kind: TokenKind) -> Span {
     attrs
         .token_spans
         .iter()
@@ -139,7 +139,7 @@ fn first_span_of(attrs: &IsmAttributes, kind: TokenKind) -> Span {
 }
 
 /// Collect all token spans of a given kind in document order.
-fn spans_of_kind(attrs: &IsmAttributes, kind: TokenKind) -> Vec<&TokenSpan> {
+fn spans_of_kind(attrs: &CanonicalAttrs, kind: TokenKind) -> Vec<&TokenSpan> {
     attrs
         .token_spans
         .iter()
@@ -174,7 +174,7 @@ impl Rule for DeclarativeBareHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::SciControl;
 
         let violations = violations_for(attrs, "E010/HCS-system-constraints");
@@ -260,7 +260,7 @@ impl Rule for DeclarativeDualClassificationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
         if violations_for(attrs, "E012/dual-classification").is_empty() {
@@ -355,7 +355,7 @@ impl Rule for DeclarativeJointRelToRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingClassification;
 
         if violations_for(attrs, "E014/joint-requires-rel-to-coverage").is_empty() {
@@ -410,7 +410,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
         }
@@ -450,7 +450,7 @@ impl Rule for DeclarativeJointRestrictedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
             return vec![];
         }
@@ -497,7 +497,7 @@ impl Rule for DeclarativeJointHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
         }
@@ -547,7 +547,7 @@ impl Rule for DeclarativeAeaNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
         }
@@ -584,7 +584,7 @@ impl Rule for DeclarativeCnwdiConstraintRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E022/CNWDI-classification-floor").is_empty() {
             return vec![];
         }
@@ -624,7 +624,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::AeaMarking;
 
         if violations_for(attrs, "E024/rd-precedence").is_empty() {
@@ -676,7 +676,7 @@ impl Rule for DeclarativeUcniClassificationRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E025/ucni-conflicts-classification").is_empty() {
             return vec![];
         }
@@ -711,7 +711,7 @@ impl Rule for DeclarativeCominglingWarningRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         // Portion-only filter: the catalog predicate fires on any
         // US+FGI presence; user-facing diagnostic is portion-only per
@@ -767,7 +767,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
             return vec![];
         }
@@ -817,7 +817,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
             return vec![];
         }
@@ -853,7 +853,7 @@ impl Rule for DeclarativeNofornRelToConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if violations_for(attrs, "capco/noforn-conflicts-rel-to").is_empty() {
             return vec![];
         }

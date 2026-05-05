@@ -16,7 +16,7 @@
 
 use marque_capco::vocab::{expand_tetragraph, is_decomposable_tetragraph};
 use marque_ism::{
-    Classification, CountryCode, IsmAttributes, MarkingClassification, PageContext,
+    Classification, CountryCode, CanonicalAttrs, MarkingClassification, PageContext,
     TETRAGRAPH_MEMBERS, is_decomposable, lookup_tetragraph_members,
 };
 
@@ -204,11 +204,11 @@ fn rel_to_intersection_d_table_3_rule_23_round_trip() {
     // hand-curated BUILTIN_TETRAGRAPH_MEMBERS. Issue #208 sources the
     // same row from the ODNI taxonomy; this test pins that the
     // round-trip is preserved across the source change.
-    let mut p1 = IsmAttributes::default();
+    let mut p1 = CanonicalAttrs::default();
     p1.classification = Some(MarkingClassification::Us(Classification::Secret));
     p1.rel_to = vec![cc("USA"), cc("FVEY")].into_boxed_slice();
 
-    let mut p2 = IsmAttributes::default();
+    let mut p2 = CanonicalAttrs::default();
     p2.classification = Some(MarkingClassification::Us(Classification::Secret));
     p2.rel_to = vec![cc("USA"), cc("GBR")].into_boxed_slice();
 
