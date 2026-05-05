@@ -74,13 +74,19 @@ const CITED_AUTHORITIES: &[(&str, &[&str])] = &[
     ("CAPCO-2016 §D.1", &["banner", "syntax"]),
     ("CAPCO-2016 §D.2", &["banner", "rollup"]),
     ("CAPCO-2016 §F", &["legacy"]),
-    ("CAPCO-2016 §H.1", &["classification", "secret", "topsecret"]),
+    (
+        "CAPCO-2016 §H.1",
+        &["classification", "secret", "topsecret"],
+    ),
     ("CAPCO-2016 §H.3", &["joint"]),
     ("CAPCO-2016 §H.4", &["sci", "hcs", "si", "tk"]),
     ("CAPCO-2016 §H.5", &["sar"]),
     ("CAPCO-2016 §H.6", &["aea", "sigma", "rd", "frd", "tfni"]),
     ("CAPCO-2016 §H.7", &["fgi"]),
-    ("CAPCO-2016 §H.8", &["dissem", "noforn", "rel_to", "orcon", "fouo"]),
+    (
+        "CAPCO-2016 §H.8",
+        &["dissem", "noforn", "rel_to", "orcon", "fouo"],
+    ),
     ("CAPCO-2016 §H.9", &["nodis", "exdis", "limdis", "sbu"]),
 ];
 
@@ -97,11 +103,9 @@ fn corpus_contains_fixture_for_each_cited_authority() {
 
     let mut missing: Vec<&'static str> = Vec::new();
     for (citation, keywords) in CITED_AUTHORITIES {
-        let has_match = keywords.iter().any(|kw| {
-            fixture_names
-                .iter()
-                .any(|name| name.contains(kw))
-        });
+        let has_match = keywords
+            .iter()
+            .any(|kw| fixture_names.iter().any(|name| name.contains(kw)));
         if !has_match {
             missing.push(citation);
         }
