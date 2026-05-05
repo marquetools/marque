@@ -164,6 +164,13 @@ jobs:
     name: Citation lint (FR-018)
     needs: check
     runs-on: ubuntu-latest
+    # PR 0.5 lands the lint plus the catalog of pre-existing defects;
+    # the lint binary exits non-zero whenever the catalog is non-empty,
+    # which is the entire point of the catalog. continue-on-error keeps
+    # PR 0.5 mergeable while making the failure visible. PR 0.6 (which
+    # closes the catalog) MUST remove this carve-out as part of its
+    # merge-gate verification (T018).
+    continue-on-error: true
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
