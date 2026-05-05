@@ -139,7 +139,41 @@ fn corpus_contains_fixture_for_each_cited_authority() {
         // PR 10 (F.1 maturation) tightens this to a hard failure once
         // the keyword-based proxy is replaced with a real
         // rule-citation→fixture index.
-        eprintln!("{msg}");
+        //
+        // **Output channel.** Surfacing the gap from a *passing* test
+        // is harder than it looks:
+        //
+        // - `eprintln!` / `println!` are suppressed by the repo's
+        //   nextest config (`.config/nextest.toml` sets
+        //   `success-output = "never"`).
+        // - `::warning` GHA workflow commands written to stdout are
+        //   suppressed by the same nextest setting before GitHub
+        //   Actions ever sees them.
+        //
+        // The reliable channel is `$GITHUB_STEP_SUMMARY`, a file path
+        // GitHub Actions sets in the runner env. Anything appended to
+        // it surfaces in the workflow run summary independently of
+        // test stdout/stderr capture. Local `cargo test --nocapture`
+        // still uses `eprintln!` so the gap shows during dev iteration.
+        if let Ok(summary_path) = std::env::var("GITHUB_STEP_SUMMARY") {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&summary_path)
+            {
+                // Markdown-formatted summary block. Newlines are kept
+                // verbatim because step-summary is markdown, not a
+                // GHA workflow command.
+                let _ = writeln!(
+                    f,
+                    "\n### F.1 fixture coverage gap\n\n```text\n{}\n```\n",
+                    msg.trim()
+                );
+            }
+        } else {
+            eprintln!("{msg}");
+        }
     }
 }
 

@@ -65,19 +65,61 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<(Vec<Occurrence>, Vec<Defe
             workspace_dir.display()
         );
     }
-    // Walk every crate; for each, scan the `src/` subtree only.
-    // Tests under `crates/*/tests/` are NOT in scope for citation
-    // lint — citations belong in rule sources, not in test fixtures.
-    let mut crate_dirs: Vec<PathBuf> = fs::read_dir(&crates_dir)
+    // Build the candidate member-directory set: every entry under
+    // `crates/` plus every top-level workspace-root sibling dir that
+    // contains a `Cargo.toml` (e.g., `marque/` for the CLI binary,
+    // and any future top-level workspace member). We then scan each
+    // member's `src/` subtree.
+    //
+    // Tests under `<member>/tests/` are NOT in scope for citation
+    // lint — citations belong in rule sources, not test fixtures.
+    //
+    // Out-of-scope by construction:
+    // - `tools/` — out-of-workspace per Constitution III; contains
+    //   the citation-lint binary itself plus other dev tooling.
+    // - Hidden dirs (`.git/`, `.worktrees/`), `target/`, `node_modules/`,
+    //   build artifacts.
+    let mut member_dirs: Vec<PathBuf> = Vec::new();
+    // Two-level: every entry under `crates/`.
+    for entry in fs::read_dir(&crates_dir)
         .with_context(|| format!("reading {}", crates_dir.display()))?
         .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
+    {
+        let p = entry.path();
+        if p.is_dir() {
+            member_dirs.push(p);
+        }
+    }
+    // One-level: every workspace-root sibling that has a Cargo.toml
+    // and is not a known out-of-scope path. We deliberately do NOT
+    // parse `[workspace.members]` from the root Cargo.toml here —
+    // the directory-presence check is sufficient and avoids dragging
+    // a TOML parser into this binary for something the filesystem
+    // already tells us.
+    let skip_top_level: &[&str] = &["crates", "tools", "target", "docs", "site", "tests", "benches"];
+    for entry in fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+        .filter_map(Result::ok)
+    {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let name = match p.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        if name.starts_with('.') || skip_top_level.contains(&name) {
+            continue;
+        }
+        if p.join("Cargo.toml").is_file() {
+            member_dirs.push(p);
+        }
+    }
     // Sort for reproducible output.
-    crate_dirs.sort();
-    for crate_dir in crate_dirs {
-        let src_dir = crate_dir.join("src");
+    member_dirs.sort();
+    for member_dir in member_dirs {
+        let src_dir = member_dir.join("src");
         if !src_dir.is_dir() {
             continue;
         }
@@ -137,11 +179,17 @@ fn scan_file(
 /// Detect retired `line NNNN` citation form. Looks for the literal
 /// pattern in source content (comments and string literals alike,
 /// since the AST strips line comments). The pattern is intentionally
-/// narrow: requires the word `line` followed by 3+ digits with at
-/// most one space between, and that the match is adjacent to a
-/// citation context (`§` symbol or `CAPCO-2016` token within the
-/// same line). Without the adjacency check, every reference to
-/// "line 245" in unrelated prose comments would false-positive.
+/// narrow: requires the literal `line ` (the word `line` followed by
+/// exactly one space) followed by 3+ digits, and that the match is
+/// adjacent to a citation context (`§` symbol or `CAPCO-2016` token
+/// within the same line). Without the adjacency check, every
+/// reference to "line 245" in unrelated prose comments would
+/// false-positive.
+///
+/// We do not normalize whitespace before matching — the retired form
+/// in the codebase always used a single space, and matching on
+/// `\s+` would surface false positives where formatter wrap-points
+/// land between `line` and the digit run in unrelated prose.
 fn find_legacy_line_form(path: &Path, source: &str, out: &mut Vec<Defect>) {
     for (idx, line) in source.lines().enumerate() {
         // Cheap pre-filter: must contain a citation context anchor.
@@ -174,7 +222,7 @@ fn find_legacy_line_form(path: &Path, source: &str, out: &mut Vec<Defect>) {
                         file: path.to_path_buf(),
                         line: (idx + 1) as u32,
                         column: (i + 1) as u32,
-                        source_kind: SourceKind::DocComment,
+                        source_kind: SourceKind::RawText,
                         raw: raw.to_string(),
                         class: DefectClass::LegacyLineForm {
                             line_form: raw.to_string(),
@@ -259,16 +307,20 @@ impl CitationVisitor {
                 find,
             });
         }
-        // Also detect doubled page-anchor form here. The pattern is:
-        // `pNN-MM pMM` or `pNN–MM pMM` or `pp NN-MM pMM`. We detect
-        // it textually because it's a textual artifact (a tracked
-        // FR-020 known defect class) rather than a structural
-        // mis-resolution.
-        if let Some(suspect) = find_doubled_page_anchor(text) {
-            let column = u32::try_from(span.start().column)
-                .unwrap_or(0)
-                .saturating_add(1);
-            let line = u32::try_from(span.start().line).unwrap_or(0);
+        // Also detect doubled page-anchor form here. The pattern is
+        // `p<digits>(-|–)<digits> p<digits>` where the trailing page
+        // matches the second page in the range — the FR-020 known
+        // defect (`p150–151 p151`). We detect it textually because
+        // it's a textual artifact rather than a structural
+        // mis-resolution. The `pp NN-MM pMM` form is NOT currently in
+        // scope; if it appears in a future catalog, extend
+        // `find_doubled_page_anchor` to cover it.
+        if let Some((match_offset, suspect)) = find_doubled_page_anchor(text) {
+            // Use compute_line_col so the diagnostic points at the
+            // start of the matched substring, not the start of the
+            // enclosing literal — the catalog is more useful when the
+            // column lands on the actual `pNN-MM pMM` text.
+            let (line, column) = compute_line_col(span, match_offset, text);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -277,7 +329,7 @@ impl CitationVisitor {
                 // Re-encode as a synthetic "find" that the resolver
                 // ignores; the catalog emitter will surface it.
                 find: CitationFind::BareSection {
-                    offset: 0,
+                    offset: match_offset,
                     raw: format!("__doubled_page_anchor__:{suspect}"),
                 },
             });
@@ -407,14 +459,17 @@ fn compute_line_col(span: Span, offset: usize, text: &str) -> (u32, u32) {
 }
 
 /// Detect a doubled page anchor of the shape `pNN-MM pMM` /
-/// `pNN–MM pMM` / `pp NN-MM pMM`. Returns the matched substring on
-/// success.
+/// `pNN–MM pMM`. Returns `(start_offset, matched_substring)` on
+/// success — the offset is the byte index of the leading `p` in
+/// `text`, suitable for `compute_line_col`. Returns `None` if no
+/// match is found.
 #[allow(clippy::many_single_char_names)]
-fn find_doubled_page_anchor(text: &str) -> Option<String> {
+fn find_doubled_page_anchor(text: &str) -> Option<(usize, String)> {
     // We look for: `p` <digits>+ <dash> <digits>+ <whitespace>+ `p`
     // <digits>+, where the trailing page is identical to the second
     // page in the range OR is otherwise redundant. The narrow form
-    // matches FR-020's specific pattern (`p150–151 p151`).
+    // matches FR-020's specific pattern (`p150–151 p151`). The
+    // `pp NN-MM pMM` form is NOT in scope.
     let bytes = text.as_bytes();
     if bytes.len() < 8 {
         return None;
@@ -463,7 +518,7 @@ fn find_doubled_page_anchor(text: &str) -> Option<String> {
                 if t > trailing_digit_start {
                     let trailing = &text[trailing_digit_start..t];
                     if trailing == second_page {
-                        return Some(text[p1_start..t].to_string());
+                        return Some((p1_start, text[p1_start..t].to_string()));
                     }
                 }
             }
@@ -539,14 +594,20 @@ mod tests {
     #[test]
     fn detects_doubled_page_anchor() {
         let s = "§H.8 p150-151 p151";
-        let found = find_doubled_page_anchor(s).unwrap();
+        let (offset, found) = find_doubled_page_anchor(s).unwrap();
         assert!(found.contains("p150"), "got {found:?}");
+        // Offset must point at the leading `p` of the matched
+        // substring (byte index 5 in this fixture: `§` is 2 bytes,
+        // `H.8 ` is 4 bytes, totaling 6 — but the literal `§` is 2
+        // bytes UTF-8, `H.8 ` adds 4 ASCII bytes = 6, so the leading
+        // `p` is at byte index 6). Re-verify if the fixture changes.
+        assert_eq!(offset, 6, "offset should point at leading `p` of match");
     }
 
     #[test]
     fn detects_doubled_page_anchor_with_en_dash() {
         let s = "§H.8 p150–151 p151";
-        let found = find_doubled_page_anchor(s).unwrap();
+        let (_offset, found) = find_doubled_page_anchor(s).unwrap();
         assert!(found.contains("p150"), "got {found:?}");
     }
 

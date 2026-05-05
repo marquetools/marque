@@ -60,6 +60,15 @@ pub enum SourceKind {
     /// String literal anywhere else (used for any other top-level
     /// strings the scanner picks up).
     StringLiteral,
+    /// Raw-source-line scan that runs BEFORE AST parsing. The
+    /// legacy-line-form detector (`find_legacy_line_form`) operates on
+    /// `source.lines()` because the AST strips line comments before
+    /// `syn::parse_file`; matches can land in any source surface
+    /// (line comment, doc comment, string literal, attribute), so this
+    /// kind deliberately abstracts the surface away. Reviewers who need
+    /// the precise origin should consult the file at `line:column` —
+    /// the diagnostic's exact location is what matters for the catalog.
+    RawText,
 }
 
 /// Closed classification of citation defects.

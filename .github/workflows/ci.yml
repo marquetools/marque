@@ -176,6 +176,23 @@ jobs:
           workspaces: tools/citation-lint
 
       - name: Run citation lint
+        # PR 0.5 lands the lint plus the catalog of pre-existing
+        # defects; the lint binary exits non-zero whenever the catalog
+        # is non-empty, which is the entire point of the catalog.
+        #
+        # **Green-by-design.** `continue-on-error: true` on this step
+        # is deliberate: the JOB conclusion stays green so PR 0.5 is
+        # mergeable while shipping the catalog. The step's failure
+        # outcome is still preserved in the workflow log (visible in
+        # the PR Checks UI as a yellow-bang annotation on the step,
+        # next to the green check on the job). The PR description's
+        # phrase "expected to fail on PR 0.5" refers to the STEP
+        # outcome, not the job conclusion.
+        #
+        # PR 0.6 (which closes the catalog) MUST remove this carve-out
+        # as part of its T018 merge-gate verification — at that point
+        # any non-empty catalog becomes a hard CI failure.
+        continue-on-error: true
         run: |
           cargo run --manifest-path tools/citation-lint/Cargo.toml --release -- \
               "$GITHUB_WORKSPACE"

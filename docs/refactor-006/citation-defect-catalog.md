@@ -32,4 +32,470 @@ failing any PR that introduces a new citation defect.
 
 ## Catalog
 
-No defects detected. Citation-lint is clean.
+### `crates/capco/src/rules.rs`
+
+- **34:58** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§H.3 p169`
+  - **Defect**: page out of section range (section spans pp 55–60, citation cites pp 169–169)
+  - **Section spans**: pp 55–60; **citation cites**: pp 169–169
+- **35:58** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§H.3 p169`
+  - **Defect**: page out of section range (section spans pp 55–60, citation cites pp 169–169)
+  - **Section spans**: pp 55–60; **citation cites**: pp 169–169
+- **36:58** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§H.3 p169`
+  - **Defect**: page out of section range (section spans pp 55–60, citation cites pp 169–169)
+  - **Section spans**: pp 55–60; **citation cites**: pp 169–169
+- **741:27** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§A.6 p36`
+  - **Defect**: page out of section range (section spans pp 15–17, citation cites pp 36–36)
+  - **Section spans**: pp 15–17; **citation cites**: pp 36–36
+- **741:53** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§A.6 p36`
+  - **Defect**: page out of section range (section spans pp 15–17, citation cites pp 36–36)
+  - **Section spans**: pp 15–17; **citation cites**: pp 36–36
+- **742:43** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§A.6 p36`
+  - **Defect**: page out of section range (section spans pp 15–17, citation cites pp 36–36)
+  - **Section spans**: pp 15–17; **citation cites**: pp 36–36
+- **1392:67** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 748`
+  - **Defect**: retired `line NNNN` citation form: "line 748"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1612:41** — `letter-only-needs-subsection`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§H`
+  - **Defect**: §H cited without subsection number; §H has numbered subsections, so a specific subsection must be cited
+- **2032:25** — `doubled-page-anchor`
+  - **Source kind**: `DocComment`
+  - **Raw**: `p150–151 p151`
+  - **Defect**: doubled page anchor: "p150–151 p151"
+  - **Recommended**: remove the trailing `pNN` — `pp NN-MM` already covers both pages
+- **2619:22** — `doubled-page-anchor`
+  - **Source kind**: `DocComment`
+  - **Raw**: `p150–151 p151`
+  - **Defect**: doubled page anchor: "p150–151 p151"
+  - **Recommended**: remove the trailing `pNN` — `pp NN-MM` already covers both pages
+- **2929:22** — `doubled-page-anchor`
+  - **Source kind**: `DocComment`
+  - **Raw**: `p150–151 p151`
+  - **Defect**: doubled page anchor: "p150–151 p151"
+  - **Recommended**: remove the trailing `pNN` — `pp NN-MM` already covers both pages
+- **4061:22** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§7`
+  - **Defect**: bare section without subsection letter
+- **4184:44** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 2454`
+  - **Defect**: retired `line NNNN` citation form: "line 2454"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **4588:51** — `non-normative-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§I`
+  - **Defect**: non-normative §I (history/examples/acronyms — not a citation target)
+- **4593:10** — `non-normative-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§I`
+  - **Defect**: non-normative §I (history/examples/acronyms — not a citation target)
+- **4593:15** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4713`
+  - **Defect**: retired `line NNNN` citation form: "line 4713"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **4595:51** — `non-normative-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§I`
+  - **Defect**: non-normative §I (history/examples/acronyms — not a citation target)
+- **4876:35** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 2402`
+  - **Defect**: retired `line NNNN` citation form: "line 2402"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **5015:19** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 1342`
+  - **Defect**: retired `line NNNN` citation form: "line 1342"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **5604:48** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 1397`
+  - **Defect**: retired `line NNNN` citation form: "line 1397"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **6809:18** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 319`
+  - **Defect**: retired `line NNNN` citation form: "line 319"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **7381:80** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 831`
+  - **Defect**: retired `line NNNN` citation form: "line 831"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **7436:58** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 831`
+  - **Defect**: retired `line NNNN` citation form: "line 831"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9057:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4180`
+  - **Defect**: retired `line NNNN` citation form: "line 4180"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9068:67** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4180`
+  - **Defect**: retired `line NNNN` citation form: "line 4180"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9075:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4240`
+  - **Defect**: retired `line NNNN` citation form: "line 4240"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9084:63** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4240`
+  - **Defect**: retired `line NNNN` citation form: "line 4240"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9090:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4300`
+  - **Defect**: retired `line NNNN` citation form: "line 4300"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9098:63** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4300`
+  - **Defect**: retired `line NNNN` citation form: "line 4300"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9104:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4408`
+  - **Defect**: retired `line NNNN` citation form: "line 4408"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9119:75** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4408`
+  - **Defect**: retired `line NNNN` citation form: "line 4408"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9125:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4479`
+  - **Defect**: retired `line NNNN` citation form: "line 4479"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9132:61** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4479`
+  - **Defect**: retired `line NNNN` citation form: "line 4479"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9138:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4557`
+  - **Defect**: retired `line NNNN` citation form: "line 4557"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9149:64** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4557`
+  - **Defect**: retired `line NNNN` citation form: "line 4557"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9155:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4651`
+  - **Defect**: retired `line NNNN` citation form: "line 4651"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9163:61** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4651`
+  - **Defect**: retired `line NNNN` citation form: "line 4651"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9222:27** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4140`
+  - **Defect**: retired `line NNNN` citation form: "line 4140"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **9273:33** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4140`
+  - **Defect**: retired `line NNNN` citation form: "line 4140"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **10639:17** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 2460`
+  - **Defect**: retired `line NNNN` citation form: "line 2460"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+
+### `crates/capco/src/scheme.rs`
+
+- **420:16** — `unknown-subsection`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§F.2 p43`
+  - **Defect**: unknown subsection §F.2
+- **423:23** — `non-normative-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§K.2`
+  - **Defect**: non-normative §K (history/examples/acronyms — not a citation target)
+- **425:61** — `non-normative-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§K p61`
+  - **Defect**: non-normative §K (history/examples/acronyms — not a citation target)
+  - **Recommended**: §H.4 pp 60–99
+- **758:20** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4140`
+  - **Defect**: retired `line NNNN` citation form: "line 4140"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **761:20** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4146`
+  - **Defect**: retired `line NNNN` citation form: "line 4146"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **788:22** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4017`
+  - **Defect**: retired `line NNNN` citation form: "line 4017"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **815:51** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 1025`
+  - **Defect**: retired `line NNNN` citation form: "line 1025"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **816:48** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4139`
+  - **Defect**: retired `line NNNN` citation form: "line 4139"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **869:31** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6811`
+  - **Defect**: retired `line NNNN` citation form: "line 6811"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **885:34** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6963`
+  - **Defect**: retired `line NNNN` citation form: "line 6963"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **896:31** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6825`
+  - **Defect**: retired `line NNNN` citation form: "line 6825"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **911:37** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 7706`
+  - **Defect**: retired `line NNNN` citation form: "line 7706"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **934:35** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 9482`
+  - **Defect**: retired `line NNNN` citation form: "line 9482"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **947:22** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4025`
+  - **Defect**: retired `line NNNN` citation form: "line 4025"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **950:22** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4139`
+  - **Defect**: retired `line NNNN` citation form: "line 4139"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1460:11** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4017`
+  - **Defect**: retired `line NNNN` citation form: "line 4017"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1536:8** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§123`
+  - **Defect**: bare section without subsection letter
+- **1536:14** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§144`
+  - **Defect**: bare section without subsection letter
+- **1536:42** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6811`
+  - **Defect**: retired `line NNNN` citation form: "line 6811"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1595:65** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6963`
+  - **Defect**: retired `line NNNN` citation form: "line 6963"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1627:28** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 6825`
+  - **Defect**: retired `line NNNN` citation form: "line 6825"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1655:17** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 7706`
+  - **Defect**: retired `line NNNN` citation form: "line 7706"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1708:49** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4025`
+  - **Defect**: retired `line NNNN` citation form: "line 4025"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1708:66** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4139`
+  - **Defect**: retired `line NNNN` citation form: "line 4139"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1734:15** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1787:93** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1795:111** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1813:106** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1822:76** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1829:95** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1840:106** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1849:98** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1883:111** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **1891:107** — `bare-section`
+  - **Source kind**: `StringLiteral`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+
+### `crates/core/src/parser.rs`
+
+- **1056:29** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 317`
+  - **Defect**: retired `line NNNN` citation form: "line 317"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+
+### `crates/engine/src/decoder.rs`
+
+- **958:35** — `letter-only-needs-subsection`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§B`
+  - **Defect**: §B cited without subsection number; §B has numbered subsections, so a specific subsection must be cited
+
+### `crates/engine/src/recognizer.rs`
+
+- **195:53** — `letter-only-needs-subsection`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§E`
+  - **Defect**: §E cited without subsection number; §E has numbered subsections, so a specific subsection must be cited
+- **200:63** — `letter-only-needs-subsection`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§E`
+  - **Defect**: §E cited without subsection number; §E has numbered subsections, so a specific subsection must be cited
+
+### `crates/ism/src/attrs.rs`
+
+- **79:51** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§6`
+  - **Defect**: bare section without subsection letter
+- **100:53** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§9`
+  - **Defect**: bare section without subsection letter
+- **621:59** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§6`
+  - **Defect**: bare section without subsection letter
+- **893:78** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§9`
+  - **Defect**: bare section without subsection letter
+- **995:37** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4408`
+  - **Defect**: retired `line NNNN` citation form: "line 4408"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **1015:62** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 4408`
+  - **Defect**: retired `line NNNN` citation form: "line 4408"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+
+### `crates/ism/src/marking_forms.rs`
+
+- **19:26** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 317`
+  - **Defect**: retired `line NNNN` citation form: "line 317"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **166:26** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 831`
+  - **Defect**: retired `line NNNN` citation form: "line 831"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **495:37** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 831`
+  - **Defect**: retired `line NNNN` citation form: "line 831"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **539:40** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 831`
+  - **Defect**: retired `line NNNN` citation form: "line 831"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+
+### `crates/ism/src/token_set.rs`
+
+- **91:26** — `page-out-of-range`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§H.7 p147`
+  - **Defect**: page out of section range (section spans pp 122–131, citation cites pp 147–147)
+  - **Recommended**: §H.8 pp 131–169
+  - **Section spans**: pp 122–131; **citation cites**: pp 147–147
+- **330:51** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 283`
+  - **Defect**: retired `line NNNN` citation form: "line 283"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+- **348:52** — `legacy-line-form`
+  - **Source kind**: `RawText`
+  - **Raw**: `line 283`
+  - **Defect**: retired `line NNNN` citation form: "line 283"
+  - **Recommended**: use page anchor `pNN` instead — line numbers retired in commit b340bec
+
+### `crates/scheme/src/page_rewrite.rs`
+
+- **539:29** — `bare-section`
+  - **Source kind**: `CitationField`
+  - **Raw**: `§1`
+  - **Defect**: bare section without subsection letter
+
+### `crates/wasm/src/lib.rs`
+
+- **1137:16** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§1`
+  - **Defect**: bare section without subsection letter
