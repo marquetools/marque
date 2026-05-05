@@ -93,25 +93,25 @@ jobs:
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       # Corpus regression tests live in `crates/{capco,engine}/tests/`
-      # and `marque/tests/`. The integration-test wildcard
-      # (`--test '*corpus*'`) picks up every binary whose file name
-      # contains "corpus", which today covers the three suites
-      # currently tracked in CI:
-      #   - crates/capco/tests/corpus_parity.rs
-      #   - crates/engine/tests/corpus_accuracy.rs
-      #   - marque/tests/corpus_provenance.rs
+      # and `marque/tests/`. `cargo test --test` does NOT accept a glob
+      # pattern (Copilot review feedback on PR #315) — `--test` matches
+      # an exact integration-test target name. We invoke each corpus
+      # binary explicitly:
+      #   - corpus_parity     (crates/capco/tests/corpus_parity.rs)
+      #   - corpus_accuracy   (crates/engine/tests/corpus_accuracy.rs)
+      #   - corpus_provenance (marque/tests/corpus_provenance.rs)
       #
-      # The wildcard is intentional: future corpus regression tests
-      # (e.g., a corpus_overhead benchmark harness) will land here
-      # automatically without a CI-config change. `--features
-      # marque-engine/corpus-override` enables the SC-002 decoder
-      # accuracy gate that lives behind the same feature flag as the
-      # corpus override audit-trail tests.
-      - name: cargo test --test '*corpus*'
+      # When new corpus suites land, add them here in the same shape.
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
         run: |
           cargo test --workspace \
             --features marque-engine/corpus-override \
-            --test '*corpus*'
+            --test corpus_parity \
+            --test corpus_accuracy \
+            --test corpus_provenance
 
       # Phase 4 (US2) regression suites are file-level gated on
       # `decoder-harness` and `corpus-override` features that are NOT

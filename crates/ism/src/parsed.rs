@@ -61,12 +61,16 @@ pub enum SourceOrigin {
 /// without re-borrowing the input. `token_spans` carries the
 /// pre-existing per-token span array unchanged.
 ///
-/// `non_ic_dissem`, `rel_to`, `classified_by`, `derived_from`, and
-/// `declass_exemption` are owned because their parser output is not a
-/// 1:1 byte-slice — `parse_fgi_classification` expands country codes,
-/// non-IC parsers normalize abbreviations to enum variants, etc. PR 3c
-/// can refine this if a use case appears; PR 3a does not introduce
-/// borrows where the parser doesn't already preserve them.
+/// **Borrow / own split.** Most fields wrap their typed value in a
+/// `Parsed*<'src>` struct that carries a `&'src str` source-bytes slice
+/// and a `Span` (e.g., `ParsedDissem`, `ParsedSciMarking`). The CAB
+/// free-text fields `classified_by` and `derived_from` are
+/// `Option<&'src str>` directly — they are simple borrows that do not
+/// need a typed value alongside. `declass_exemption` is owned
+/// (`Option<DeclassExemption>`, a closed CVE enum, no byte slice
+/// needed). `non_ic_dissem` and `rel_to` are wrapped in
+/// `ParsedNonIcDissem<'src>` / `ParsedRelToEntry<'src>` like the other
+/// dissem categories.
 ///
 /// # Invariants
 ///
@@ -162,8 +166,10 @@ impl<'src> ParsedAttrs<'src> {
     /// parser in `marque-core` is the sole constructor and lives in a
     /// different crate. The constructor accepts every field by value
     /// so the parser does not have to thread `..Default::default()` —
-    /// the type does not derive `Default` because of the `'src`
-    /// lifetime parameter.
+    /// the type deliberately does not derive `Default` so every
+    /// construction site has to name `source_bytes_origin` explicitly
+    /// (the parser would otherwise lose the dispatch signal silently
+    /// on a typo).
     ///
     /// Argument order mirrors the field declaration order so a future
     /// field addition can be slotted in deterministically (and the

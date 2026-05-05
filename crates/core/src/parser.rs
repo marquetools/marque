@@ -169,11 +169,19 @@ impl<'t> Parser<'t> {
                     // dropped rather than stored as raw text, since the field
                     // is now typed.
                     if let Ok(date) = IsmDate::from_str(s) {
-                        // Span is computed from the offset of `s` within
-                        // `text`. Sub-line spans are not currently surfaced
-                        // for CAB content; record a zero-width placeholder
-                        // anchored at the line start so the byte slice is
-                        // still recoverable from `bytes`.
+                        // `s` is the trimmed value of the `Declassify On:`
+                        // line — a subslice of `text`, the candidate's
+                        // backing `&str`. Span is full-width over `s` so
+                        // `bytes`/`span` agree and round-trip is exact.
+                        // The pointer-arithmetic offset is safe here: `s`
+                        // is borrowed from `text` and Rust guarantees
+                        // `s.as_ptr() >= text.as_ptr()` for a slice
+                        // relationship that holds by the construction
+                        // chain `text.lines() → strip_prefix → trim`.
+                        // PR 3c may switch to an offset-tracking iterator
+                        // if any consumer needs sub-line provenance; for
+                        // PR 3a the byte position is recoverable from
+                        // `bytes` itself when needed.
                         let abs_start =
                             candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
                         declassify_on = Some(ParsedDeclassifyOn::new(
@@ -400,10 +408,21 @@ impl<'t> Parser<'t> {
                     }
                 }
                 // Wrap each structural SCI marking with the source slice
-                // for the full SCI sub-block. The structural subparser
-                // already records granular per-system spans inside
-                // `token_spans`; the wrapper's `bytes` carries the whole
-                // block as the parser saw it.
+                // for the full SCI sub-block. **Known PR 3a limitation
+                // (Copilot review feedback):** when the block holds
+                // multiple `/`-separated systems (e.g. `SI-G/TK-BLFH`),
+                // every wrapper here gets the *same* `trimmed`+`span`
+                // covering the whole block, not the per-system slice.
+                // The structural subparser already records granular
+                // per-system spans inside `token_spans` (kinds
+                // `SciSystem` / `SciCompartment` / `SciSubCompartment`),
+                // so per-marking provenance is recoverable today; the
+                // wrapper-level redundancy is benign for PR 3a's
+                // byte-identical-behavior gate. PR 3c picks up
+                // per-marking byte slicing as part of FR-019 round-trip
+                // work — `parse_sci_block` will return the per-chunk
+                // slices alongside the parsed markings, and this site
+                // pairs them 1:1.
                 for marking in markings {
                     sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
                 }
