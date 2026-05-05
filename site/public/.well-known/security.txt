@@ -1,0 +1,17 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+
+Contact: mailto:security@knitli.com
+Encryption: https://knitli.com/.well-known/pgp-key.txt
+Expires: 2028-12-30T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/marquetools/.github/blob/main/SECURITY.md
+
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQRcbwHlyoSODQkmWWF39TNC/G7MZwUCaflfXQAKCRB39TNC/G7M
+ZwqMAP41+t66FcZMGPd1tpLK32ld2A/sVpFmJWkC4endWZSfzwD+KRVSPWH83W9r
+3/i5GJLPJPHYjyDidivKLBMGsRXCgQ0=
+=/s65
+-----END PGP SIGNATURE-----

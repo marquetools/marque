@@ -34,11 +34,11 @@ Knitli grants you a free, worldwide, permanent license to use, copy, modify, and
 Your routine business within your organization. Specifically:
 
 - **For U.S. Government agencies**, "internal" means the whole of the U.S. Government. One agency may provide Marque-based services to another agency without a commercial license.
-- **For corporations**, "internal" includes the corporation and its wholly owned subsidiaries.
-- **For contractors providing direct support** to an organization that uses Marque (such as on a services contract, or for work that requires use of systems that integrate Marque), use of Marque in the course of that support is considered internal use of the supported organization.
+- **For corporations**, "internal" means the corporation and its wholly owned subsidiaries. The parent corporation **must have 100% ownership of a subsidiary** for it to be "internal". Any joint venture, partnership, consortium, or separately held entity is not "internal" (unless 100% owned by the parent corporation). 
+- **For contractors providing direct support** to an organization that uses Marque (such as on a services contract, or for work that requires use of systems that integrate Marque), use of Marque in the course of that support is considered internal use of the supported organization. Developing a product that includes Marque is not "internal use".
 - **For personal use**, you may use, study, modify, and build on Marque for your own non-commercial purposes. The [modification-tracking requirement](#requirements) does not apply to personal use.
 - **For foreign governments**, similar to the U.S. Government, "internal" means a country's entire national government.
-- **For international organizations**, "internal" means within the organization's routine business. For example, NATO may use, modify, or integrate Marque on NATO systems for internal business. NATO members and contractors may use those internal Marque implementations on NATO systems as part of routine NATO business. "Internal" does not extend to systems the organization doesn't control, and doesn't include member nations' own systems.
+- **For international organizations**, "internal" means within the organization's routine business. For example, NATO may use, modify, or integrate Marque on NATO systems for internal business. NATO members and contractors may use those internal Marque implementations on NATO systems as part of routine NATO business. "Internal" does not extend to systems the organization doesn't control, and doesn't include member nations' own systems. 
 
 ---
 
@@ -58,14 +58,14 @@ When using Marque internally, you must:
 Without a [commercial license](#commercial-use):
 
 - **You can't include, adapt, or integrate Marque** (or any of its components or functionality) **as part of a product, application, or service for <u>external</u> use** — meaning use by people or organizations outside your own.
-- **You can't offer Marque's functionality as a hosted or managed service to third parties.**
+- **You can't offer Marque's functionality as a hosted or managed service to third parties.** 
 - **You can't relicense, distribute, or provide Marque** (or any of its components or functionality) **to a third party outside your organization**, such as in a product or service you are building for, providing to, or selling to the Government or another organization.
 
 ---
 
 ## Patent Rights
 
-If any part of Marque is covered by patents that Knitli owns or controls, Knitli grants you a free, worldwide, permanent patent license to make, use, and import Marque — but only for uses that this license permits. This patent license, and all other rights under the Marque License, ends immediately if you bring a patent lawsuit against Knitli or any Marque user claiming that Marque infringes a patent.
+If Knitli patents cover any part of Marque, Knitli grants you a free, worldwide, permanent patent license to make, use, and import Marque (if allowed by export control laws)— but only for uses that this license permits. Your patent license and all other rights under the Marque License will end immediately and without notice if you bring a patent lawsuit against Knitli or any Marque user claiming Marque or a user's use of Marque infringes on a patent. 
 
 ---
 
@@ -84,7 +84,17 @@ You can get your license back after you identify or learn of the violation, **if
 1. Immediately [contact Knitli](mailto:license_violations@knitli.com) and tell us what happened.
 2. Fix it within 30 days. If this isn't enough time, describe why and request an extension from Knitli. Knitli may grant or deny extensions for any reason.
 
-If it's your first violation and you fix it within the period, your license is automatically and immediately reinstated. If it's not your first violation, your license ends until Knitli explicitly grants you a new license, which may not be on the same terms.
+If it's your first violation and you inform Knitli and fix it within the period, your license is automatically and immediately reinstated. 
+
+### Repeat Violations
+
+**If it's not your first violation, your license ends immediately until explicitly reinstated by Knitli in writing.**
+
+Knitli may choose to reinstate your terminated license or require different terms provisionally or permanently, or it may decline to provide you another license. All reinstatement decisions are at Knitli's discretion and can happen on any timeline or not at all.
+
+### Forgiving a Violation
+
+In situations where you made a good faith effort to comply with the Marque License, you may appeal to Knitli to officially clear a violation so it does not count against you as either a first or second violation (i.e. expunge the record). Knitli may grant or deny such requests on a case-by-case basis and without consideration for precedent or its response to similar cases.
 
 ---
 
@@ -108,9 +118,21 @@ We're not responsible for any costs or damages you incur from your use of Marque
 
 ## Commercial Use
 
-If you want to use Marque as part of a product, service, or application for external use — such as a product you're building for the Government, a service for other organizations, or a hosted offering — you need a commercial license.
+If you want **to use Marque as part of a product, service, or application for external use**, you need **a commercial license**.
+
+Under the Marque License, **you can't use, give, or include any part of Marque, its features or source code to an external organization**, such as another government, organization or company outside the definition of [internal use](#internal-use) above, including:
+
+- In a product for sale.
+- In a contract deliverable, even if the external organization is the only customer, or the contract is sole-source.
+- As a managed service or hosted offering for external consumption or delivery.
+
+**All** of these **require a commercial license** and are not allowed under the Marque License.
 
 Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendly, and our commercial terms are straightforward.
+
+## Export Controls
+
+You are responsible for complying with all applicable export control and economic sanctions laws, including the U.S. Export Administration Regulations (EAR) administered by the Department of Commerce, the International Traffic in Arms Regulations (ITAR) administered by the Department of State, and sanctions administered by the U.S. Department of the Treasury's Office of Foreign Assets Control (OFAC). The Marque License does not authorize export, re-export, or transfer of Marque, related technical data, or any derivative work in violation of those laws.
 
 ---
 
@@ -122,7 +144,7 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: My company is building a product for a Government agency, and we want to include Marque in it. Do we need a commercial license?**
 
-**A:** Yes. If Marque is part of something you're delivering to someone else — even the Government — that's external use. Contact [licensing@knitli.com](mailto:licensing@knitli.com).
+**A:** Yes. If Marque is part of something you're delivering to someone else — even the Government — that's external use. This restriction applies even if the government or organization is the only end user, or if the contract is single source. Put simply: including Marque in a contract deliverable always requires a commercial license. Contact [licensing@knitli.com](mailto:licensing@knitli.com).
 
 **Q: Can I use Marque for personal projects?**
 
@@ -130,11 +152,11 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: I work for a cloud provider. Can we offer Marque as a managed service or as part of a service?**
 
-**A:** You need a commercial license from Knitli. Contact [licensing@knitli.com](mailto:licensing@knitli.com).
+**A:** Not under the Marque License. You absolutely can with a commercial license from Knitli, please contact us: [licensing@knitli.com](mailto:licensing@knitli.com).
 
 **Q: Can allies or NATO use Marque?**
 
-**A:** Yes, for internal use — same as the U.S. Government.
+**A:** Yes, for [internal use](#what-does-internal-use-mean) under the Marque License — same as the U.S. Government. Subject to any applicable [export control](#export-controls) restrictions.
 
 **Q: My government agency wants to use Marque as part of a combined application with a foreign government. Do we need a commercial license?**
 
@@ -142,7 +164,7 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: Can I fork Marque?**
 
-**A:** You can modify Marque for your own internal use. You can't distribute a fork externally or offer it as a product or service without a commercial license.
+**A:** You can fork and modify Marque for your own internal use. You can't distribute a fork externally or offer it as a product or service without a commercial license.
 
 **Q: What if I'm not sure whether my use is internal or external?**
 
@@ -150,4 +172,4 @@ Contact us at [licensing@knitli.com](mailto:licensing@knitli.com). We're friendl
 
 **Q: Is this FAQ part of the license?**
 
-**A:** Yes.
+**A:** Yes. Marque brings clarity to complex rule systems, and our license does too.
