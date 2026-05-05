@@ -43,7 +43,9 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         Confidence::strict(1.0),
         None,
     );
+    // Test-fixture carve-out per Constitution V
     let token = EnginePromotionToken::__engine_construct();
+    // Test-fixture carve-out per Constitution V
     let applied = AppliedFix::__engine_promote(
         proposal,
         UNIX_EPOCH + Duration::from_secs(0),

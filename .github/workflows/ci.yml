@@ -56,7 +56,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
-      - uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a
+      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
         with:
           tool: cargo-nextest
 
@@ -79,6 +79,96 @@ jobs:
           cargo nextest run --profile ci \
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
+  # FR-039 — masking-pin lint. AST scan over `tests/` and
+  # `crates/*/tests/` that locates every `with_recognizer(...StrictRecognizer...)`
+  # call site and asserts each carries either a `// MASKING-PIN: tracks #NNN`
+  # comment whose tracked GitHub issue is still open, or a
+  # `// INTENTIONAL-STRICT: <reason>` comment, within 5 lines of the
+  # method-ident position. Decision D11 in
+  # `specs/006-engine-rule-refactor/decisions.md` defines the
+  # cache-with-fallback design — the daily refresh-cache workflow
+  # (`.github/workflows/masking-pin-cache-refresh.yml`) keeps
+  # `tools/masking-pin-lint/cache/` current; this CI job runs in
+  # `--mode ci` which queries the GitHub API and falls back to the
+  # cached state when the API is unreachable or rate-limited.
+  masking-pin-lint:
+    name: Masking-pin lint (FR-039)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/masking-pin-lint
+
+      # `--release` matters: the lint crate pulls a non-trivial dep tree
+      # (octocrab → reqwest/tokio); release builds run faster and match
+      # the daily cache-refresh workflow. `GITHUB_TOKEN` is the
+      # ephemeral read-only token GitHub injects on every PR build; the
+      # lint crate reads it via the `--github-token` flag's
+      # `env = "GITHUB_TOKEN"` fallback.
+      - name: Run masking-pin lint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo run --manifest-path tools/masking-pin-lint/Cargo.toml --release -- \
+              --workspace-dir . --mode ci
+
+  # FR-040 + decision D12 — promote-callsite lint. AST scan that asserts
+  # every production-code call site of `AppliedFix::__engine_promote`
+  # lives inside `Engine::fix_inner` (Constitution V invariant: only the
+  # engine may promote a `FixProposal` to an `AppliedFix`). Test code is
+  # exempt under the test-fixture carve-out; the lint encodes that
+  # exemption per D12.
+  promote-callsite-lint:
+    name: Promote-callsite lint (FR-040 + D12)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/promote-callsite-lint
+
+      - name: Run promote-callsite lint
+        run: |
+          cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release -- \
+              --workspace-dir . --all
+
+  # FR-051 / decision D16 — flake-watch cap check. Counts active
+  # `## flake-NNN` headers in `tools/flake-watch/issues.md` and fails
+  # the workflow when the count exceeds 10. The template entry uses a
+  # blockquote (`> ##`) so it does not count; see
+  # `tools/flake-watch/README.md` for the full convention. Shell-only
+  # by design (no Rust toolchain needed).
+  flake-watch-cap:
+    name: flake-watch cap (FR-051 / D16)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      # `|| true` handles the zero-match case — `grep -c` exits 1 when
+      # nothing matches, which would otherwise fail the step before the
+      # cap comparison runs.
+      - name: Cap check
+        run: |
+          count=$(grep -c '^## flake-' tools/flake-watch/issues.md || true)
+          echo "flake-watch active count: $count / 10"
+          if [ "$count" -gt 10 ]; then
+            echo "::error::flake-watch queue exceeds cap of 10 (count=$count) per D16"
+            exit 1
+          fi
 
   wasm:
     name: WASM build
@@ -183,7 +273,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a
+      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
         with:
           tool: cargo-deny
 
@@ -257,7 +347,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
-      - uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a
+      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
         with:
           tool: cargo-llvm-cov
 

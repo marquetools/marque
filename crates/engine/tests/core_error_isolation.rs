@@ -89,6 +89,7 @@ fn test_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    // MASKING-PIN: tracks #257 — decoder canonicalization leaks input bytes into AppliedFix (#257); strict path isolates the test from that leak channel until PR 3c closes the carve-out
     .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 

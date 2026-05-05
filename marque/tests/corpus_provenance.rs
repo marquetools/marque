@@ -35,6 +35,21 @@ fn walkdir(dir: &Path) -> Vec<PathBuf> {
 
 /// Registered path patterns for files under tests/corpus/.
 fn is_registered_pattern(relative: &str) -> bool {
+    // Specific (not pattern-based) files registered by exact relative
+    // path. Used for one-off decision-of-record artifacts that
+    // wouldn't fit a generic prefix/suffix glob.
+    let exact_files = [
+        // engine-refactor-006: SC-010 + decisions.md D7. The threshold
+        // artifact is one specific TOML file, not "any TOML under
+        // mangled/" — accepting the broader pattern would silently
+        // pass an accidental sibling metadata file as if it were
+        // registered corpus.
+        "mangled/threshold.toml",
+    ];
+    if exact_files.contains(&relative) {
+        return true;
+    }
+
     let patterns = [
         // invalid fixtures
         ("invalid/", ".txt"),
@@ -45,6 +60,11 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("valid/", ".expected.json"),
         // prose fixtures (future)
         ("prose/", ".txt"),
+        // mangled fixtures (engine-refactor-006: PR 3c). The
+        // `.txt` / `.expected.json` pair is the corpus shape per
+        // the F.1 contract once PR 3c lands the mangled fixtures.
+        ("mangled/", ".txt"),
+        ("mangled/", ".expected.json"),
     ];
 
     // Top-level files

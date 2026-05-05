@@ -1,0 +1,474 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! AST walker that finds every `with_recognizer(...StrictRecognizer...)` call
+//! site in the workspace's test surface, and classifies the comment-marker
+//! on each.
+//!
+//! The scanner walks `<workspace>/tests/` and the `tests/` directory of
+//! every workspace member that ships one — including the top-level
+//! `marque/` binary crate and any future top-level workspace member,
+//! not just `crates/*/tests/`. Per FR-039 the scanner intentionally
+//! does NOT walk `crates/*/benches/`; benchmark pins are out of FR-039
+//! scope.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use proc_macro2::Span;
+use regex::Regex;
+use syn::visit::Visit;
+use walkdir::WalkDir;
+
+use crate::pin::{Pin, PinKind};
+
+/// Maximum distance, in lines, between a marker comment and its associated
+/// call site. Per source-plan §6 rules 1–2 ("within 5 lines"), the inclusive
+/// window is `[call_line - LOOKBACK ..= call_line]` — so the marker may
+/// appear up to 5 lines *above* the call (a window of 6 source lines total).
+const LOOKBACK: u32 = 5;
+
+/// Walk the workspace and return every pin site found in test files.
+///
+/// `workspace_dir` is the marque repo root. Test files searched:
+///
+/// - `<workspace>/tests/**/*.rs`
+/// - `<workspace>/crates/*/tests/**/*.rs`
+/// - `<workspace>/<member>/tests/**/*.rs` for any top-level workspace
+///   member (currently the `marque/` binary crate).
+///
+/// All errors propagate. Walk errors and `syn` parse failures are
+/// surfaced rather than logged-and-skipped because this is a CI
+/// enforcement tool: silently swallowing a failure can hide a real
+/// pin and produce a false-green run.
+pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
+    let mut pins = Vec::new();
+    let test_roots = collect_test_roots(workspace_dir)?;
+    for root in test_roots {
+        for entry in WalkDir::new(&root).follow_links(false) {
+            let entry = entry.with_context(|| format!("walking {}", root.display()))?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            // Skip target/ and other build artifacts that may sit under tests/.
+            if path.components().any(|c| c.as_os_str() == "target") {
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            scan_file(path, &mut pins)?;
+        }
+    }
+    Ok(pins)
+}
+
+/// Collect the set of test directory roots beneath `workspace_dir`.
+///
+/// Returns workspace-root `tests/` plus every `<member>/tests/` for any
+/// directory at workspace root that contains a `Cargo.toml`. This
+/// covers `crates/*/tests/`, the top-level `marque/tests/`, and any
+/// future top-level workspace member without requiring an explicit
+/// allow-list.
+///
+/// **Also includes `crates/test-utils/src/`** — the workspace's
+/// shared test-utility crate (gated as a `dev-dependency`, per
+/// Constitution V Principle V's first carve-out constraint
+/// enumerating "test-utility crates gated as dev-dependencies"
+/// alongside `tests/` files and `#[cfg(test)]` modules). A shared
+/// helper there that constructs `Engine::with_recognizer(...
+/// StrictRecognizer...)` is logically a test pin and must carry an
+/// FR-039 marker comment, just like a pin under
+/// `crates/<crate>/tests/`. Without this scope, a contributor
+/// could move a strict-recognizer helper from `crates/foo/tests/`
+/// into `crates/test-utils/src/` and silently lose the marker
+/// requirement — the same asymmetry that would let
+/// `promote-callsite-lint`'s carve-out diverge from the
+/// masking-pin lint's. Scoped to the literal `test-utils` directory
+/// so a future production utility crate cannot accidentally inherit
+/// the carve-out (mirrors the discipline used in
+/// `tools/promote-callsite-lint/src/callsite.rs::is_test_utils_src`).
+fn collect_test_roots(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut roots = Vec::new();
+    let top_tests = workspace_dir.join("tests");
+    if top_tests.is_dir() {
+        roots.push(top_tests);
+    }
+    let crates_dir = workspace_dir.join("crates");
+    if crates_dir.is_dir() {
+        for entry in fs::read_dir(&crates_dir)
+            .with_context(|| format!("reading {}", crates_dir.display()))?
+        {
+            let entry = entry.with_context(|| format!("reading entry under {}", crates_dir.display()))?;
+            let crate_path = entry.path();
+            let crate_tests = crate_path.join("tests");
+            if crate_tests.is_dir() {
+                roots.push(crate_tests);
+            }
+            // Special case: `crates/test-utils/src/` is also a
+            // test-fixture scope (see fn-level doc comment).
+            if crate_path.file_name().and_then(|s| s.to_str()) == Some("test-utils") {
+                let test_utils_src = crate_path.join("src");
+                if test_utils_src.is_dir() {
+                    roots.push(test_utils_src);
+                }
+            }
+        }
+    }
+    // Top-level workspace members (any directory at workspace root that
+    // contains a `Cargo.toml`). Skip directories we already cover or that
+    // are out of scope.
+    for entry in fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+    {
+        let entry = entry
+            .with_context(|| format!("reading entry under {}", workspace_dir.display()))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if matches!(
+            path.file_name().and_then(|s| s.to_str()),
+            Some(
+                "crates"
+                | "tests"
+                | "tools"
+                | "target"
+                | ".git"
+                | "site"
+                | "specs"
+                | "docs"
+                | "scripts"
+                | "benches"
+            )
+        ) {
+            continue;
+        }
+        if !path.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let member_tests = path.join("tests");
+        if member_tests.is_dir() {
+            roots.push(member_tests);
+        }
+    }
+    Ok(roots)
+}
+
+/// Parse one `.rs` file and append any pin sites found to `out`.
+///
+/// Parse failures are surfaced as errors rather than logged-and-skipped:
+/// silently dropping an unparseable test file would let a real pin in
+/// that file go unchecked while CI stayed green.
+fn scan_file(path: &Path, out: &mut Vec<Pin>) -> Result<()> {
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let lines: Vec<&str> = source.lines().collect();
+    let parsed = syn::parse_file(&source)
+        .with_context(|| format!("parsing {}", path.display()))?;
+    let mut visitor = CallSiteVisitor::new(path, &lines);
+    visitor.visit_file(&parsed);
+    out.append(&mut visitor.found);
+    Ok(())
+}
+
+/// AST visitor that records every method-call expression matching
+/// `expr.with_recognizer( <something containing StrictRecognizer> )`.
+struct CallSiteVisitor<'a> {
+    file: &'a Path,
+    lines: &'a [&'a str],
+    found: Vec<Pin>,
+    masking_re: Regex,
+    intentional_re: Regex,
+}
+
+impl<'a> CallSiteVisitor<'a> {
+    fn new(file: &'a Path, lines: &'a [&'a str]) -> Self {
+        // Compile-time-stable regexes; failing to compile is a programmer
+        // error and warrants `unwrap`.
+        //
+        // The `MASKING-PIN` regex requires a non-empty rationale after
+        // the issue number — `// MASKING-PIN: tracks #123` with no
+        // reason is rejected as `BadFormat`, not silently accepted.
+        // FR-039 documents the marker shape as
+        // `// MASKING-PIN: tracks #NNN — <reason>` and the rationale
+        // is the load-bearing audit-trail content; allowing pins
+        // without a reason defeats the lint's purpose.
+        let masking_re =
+            Regex::new(r"//\s*MASKING-PIN:\s*tracks\s*#(?P<n>\d+)\s*[—-]\s*(?P<reason>\S.*)")
+                .expect("masking-pin regex compiles");
+        let intentional_re = Regex::new(r"//\s*INTENTIONAL-STRICT:\s*(?P<reason>\S.*)")
+            .expect("intentional-strict regex compiles");
+        Self {
+            file,
+            lines,
+            found: Vec::new(),
+            masking_re,
+            intentional_re,
+        }
+    }
+
+    /// Classify the 5-line lookback window (inclusive of the call-site line)
+    /// for marker presence.
+    fn classify_window(&self, call_line: u32) -> PinKind {
+        // Inclusive window: lines [call_line - LOOKBACK ..= call_line].
+        // 1-indexed: line N is index N-1. Per source-plan §6, "within 5
+        // lines" means the marker may appear up to 5 lines above the call.
+        let start = call_line.saturating_sub(LOOKBACK).max(1);
+        let end = call_line;
+        let mut masking_hit: Option<(u32, String)> = None;
+        let mut intentional_hit: Option<String> = None;
+        let mut bad_format: Option<String> = None;
+
+        for ln in start..=end {
+            let idx = ln.saturating_sub(1) as usize;
+            let Some(line) = self.lines.get(idx) else {
+                continue;
+            };
+            // Marker scanning runs against the line-comment body only.
+            // A bare `line.contains("MASKING-PIN")` would match the
+            // phrase inside a string literal (`let s = "MASKING-PIN: ...";`)
+            // or a non-comment ident, producing false-positive
+            // classifications. `line_comment_body` returns the text
+            // after the first `//` that's NOT inside a string literal,
+            // or `None` if no such comment exists; markers checked
+            // against that body cannot be triggered by adjacent code.
+            let Some(comment) = line_comment_body(line) else {
+                continue;
+            };
+            // The regexes themselves require the leading `//`, so we
+            // re-prepend it for the regex match. Cheaper than
+            // rewriting both regexes to match the bare body.
+            let comment_with_slashes = format!("//{comment}");
+            // MASKING-PIN
+            if comment.contains("MASKING-PIN") {
+                if let Some(caps) = self.masking_re.captures(&comment_with_slashes) {
+                    let issue: u32 = caps
+                        .name("n")
+                        .and_then(|m| m.as_str().parse().ok())
+                        .unwrap_or(0);
+                    let reason = caps
+                        .name("reason")
+                        .map_or_else(String::new, |m| m.as_str().trim().to_string());
+                    masking_hit = Some((issue, reason));
+                } else {
+                    bad_format = Some((*line).to_string());
+                }
+            }
+            // INTENTIONAL-STRICT
+            if comment.contains("INTENTIONAL-STRICT") {
+                if let Some(caps) = self.intentional_re.captures(&comment_with_slashes) {
+                    let reason = caps["reason"].trim().to_string();
+                    intentional_hit = Some(reason);
+                } else {
+                    bad_format = Some((*line).to_string());
+                }
+            }
+        }
+
+        // Bad-format precedence: a malformed marker comment in the
+        // window is itself a defect that the maintainer needs to clean
+        // up, even when a valid marker is also present. Reporting
+        // `BadFormat` regardless of any companion valid markers
+        // surfaces partially-edited or contradictory annotations
+        // instead of silently dropping them — a contributor renaming
+        // an issue or copy-pasting a stale marker would otherwise see
+        // CI stay green while leaving the broken comment in tree.
+        if let Some(line) = bad_format {
+            return PinKind::BadFormat(line);
+        }
+        match (masking_hit, intentional_hit) {
+            (Some(_), Some(_)) => PinKind::BothMarkers,
+            (Some((issue, reason)), None) => PinKind::Masking { issue, reason },
+            (None, Some(reason)) => PinKind::IntentionalStrict { reason },
+            (None, None) => PinKind::Unmarked,
+        }
+    }
+
+    fn record(&mut self, span: Span) {
+        let start = span.start();
+        // proc-macro2 line/column are 1-indexed line, 0-indexed column.
+        let line = u32::try_from(start.line).unwrap_or(0);
+        let column = u32::try_from(start.column).unwrap_or(0).saturating_add(1);
+        let kind = self.classify_window(line);
+        self.found.push(Pin {
+            file: self.file.to_path_buf(),
+            line,
+            column,
+            kind,
+        });
+    }
+}
+
+impl<'ast> Visit<'ast> for CallSiteVisitor<'_> {
+    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        if node.method == "with_recognizer" {
+            // Single-arg or multi-arg: search every argument expression for
+            // a path whose terminal segment is `StrictRecognizer`.
+            let any_strict = node.args.iter().any(expr_contains_strict_recognizer);
+            if any_strict {
+                // Record the position of the `with_recognizer` ident itself,
+                // not the start of the receiver expression. Chained builders
+                // like `Engine::new(...).with_recognizer(...)` would otherwise
+                // report the line where `Engine::new` starts, several lines
+                // above the actual `.with_recognizer` call — a developer
+                // placing the marker comment immediately above
+                // `.with_recognizer` would then fall outside the 5-line
+                // proximity window. Using `node.method.span()` matches
+                // intuition.
+                self.record(node.method.span());
+            }
+        }
+        // Continue visiting nested expressions even after a hit so that
+        // nested method-call chains are still discovered.
+        syn::visit::visit_expr_method_call(self, node);
+    }
+}
+
+/// Recursively check whether `expr` mentions a path ending in `StrictRecognizer`.
+///
+/// Handles the call shapes that show up in real test files:
+///
+/// - `StrictRecognizer::new()`
+/// - `Arc::new(StrictRecognizer::new())`
+/// - `Box::new(StrictRecognizer::new())`
+/// - `std::sync::Arc::new(marque_engine::StrictRecognizer::new())`
+/// - `(StrictRecognizer::new())` (parenthesized)
+/// - `&StrictRecognizer::new()` (reference)
+fn expr_contains_strict_recognizer(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Path(p) => path_ends_with_strict_recognizer(&p.path),
+        syn::Expr::Call(c) => {
+            if let syn::Expr::Path(p) = &*c.func
+                && path_ends_with_strict_recognizer(&p.path)
+            {
+                return true;
+            }
+            // Also descend into the function expr (rare) and arguments.
+            expr_contains_strict_recognizer(&c.func)
+                || c.args.iter().any(expr_contains_strict_recognizer)
+        }
+        syn::Expr::MethodCall(m) => {
+            expr_contains_strict_recognizer(&m.receiver)
+                || m.args.iter().any(expr_contains_strict_recognizer)
+        }
+        syn::Expr::Reference(r) => expr_contains_strict_recognizer(&r.expr),
+        syn::Expr::Group(g) => expr_contains_strict_recognizer(&g.expr),
+        syn::Expr::Paren(p) => expr_contains_strict_recognizer(&p.expr),
+        syn::Expr::Block(b) => b
+            .block
+            .stmts
+            .iter()
+            .any(|s| matches!(s, syn::Stmt::Expr(e, _) if expr_contains_strict_recognizer(e))),
+        syn::Expr::Cast(c) => expr_contains_strict_recognizer(&c.expr),
+        syn::Expr::Try(t) => expr_contains_strict_recognizer(&t.expr),
+        syn::Expr::Await(a) => expr_contains_strict_recognizer(&a.base),
+        syn::Expr::Field(f) => expr_contains_strict_recognizer(&f.base),
+        _ => false,
+    }
+}
+
+/// Returns true if any segment of `path` is `StrictRecognizer`.
+///
+/// Both the type-as-value form (`StrictRecognizer`) and the constructor-call
+/// form (`StrictRecognizer::new`) match — and so do fully-qualified variants
+/// (`marque_engine::StrictRecognizer::new`). Other type names ending in
+/// the same suffix (`MyStrictRecognizer`) are not matched because the
+/// segment ident equality is exact.
+fn path_ends_with_strict_recognizer(path: &syn::Path) -> bool {
+    path.segments
+        .iter()
+        .any(|seg| seg.ident == "StrictRecognizer")
+}
+
+/// Return the body of the first `//` line comment in `line` that's
+/// NOT inside a string literal, or `None` if no such comment exists.
+///
+/// Without this, a bare `line.contains("MASKING-PIN")` check would
+/// false-positive on a string literal or other non-comment code that
+/// happens to include the marker phrase — that's the bypass
+/// surface Copilot R7 #1/#3 identified. Scanning state covers plain
+/// `"..."` strings (with `\"` escapes), raw `r"..."` / `r#"..."#`
+/// strings, and char/lifetime `'...'` (with the same lifetime-vs-char
+/// disambiguation used in the callsite lint's parallel helper).
+fn line_comment_body(line: &str) -> Option<&str> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let mut in_str: Option<char> = None;
+    let mut raw_hashes: usize = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match in_str {
+            None => {
+                // Raw-string start: `r#*"`.
+                if b == b'r' && i + 1 < bytes.len() {
+                    let mut j = i + 1;
+                    let mut hashes = 0;
+                    while j < bytes.len() && bytes[j] == b'#' {
+                        hashes += 1;
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'"' {
+                        in_str = Some('"');
+                        raw_hashes = hashes;
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                if b == b'"' {
+                    in_str = Some('"');
+                    raw_hashes = 0;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\'' {
+                    let limit = (i + 5).min(bytes.len());
+                    let found_close = bytes[(i + 1)..limit].contains(&b'\'');
+                    if found_close {
+                        in_str = Some('\'');
+                    }
+                    i += 1;
+                    continue;
+                }
+                if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    return Some(&line[i + 2..]);
+                }
+                i += 1;
+            }
+            Some('"') => {
+                if raw_hashes == 0 {
+                    if b == b'\\' && i + 1 < bytes.len() {
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'"' {
+                        in_str = None;
+                    }
+                    i += 1;
+                } else {
+                    if b == b'"' {
+                        let close = i + 1 + raw_hashes;
+                        if close <= bytes.len()
+                            && bytes[i + 1..close].iter().all(|&h| h == b'#')
+                        {
+                            in_str = None;
+                            i = close;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+            }
+            Some('\'') => {
+                if b == b'\'' {
+                    in_str = None;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
