@@ -173,7 +173,7 @@
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62 line 1397, SI p74 line 1819, TK p85 line 2250) + §D.2 p28 (general banner/portion consistency). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85) + §D.2 p28 (general banner/portion consistency). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",

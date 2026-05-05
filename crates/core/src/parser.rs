@@ -1053,7 +1053,7 @@ fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
 fn parse_dissem_full_form(s: &str) -> Option<DissemControl> {
     // Accept both the Banner Line Abbreviation (e.g., "NOFORN") and the
     // long Marking Title (e.g., "NOT RELEASABLE TO FOREIGN NATIONALS")
-    // per CAPCO-2016 §A.6 line 317: "Any control markings in the banner
+    // per CAPCO-2016 §D.1 p27: "Any control markings in the banner
     // line may be spelled out per the 'Marking Title' ... or abbreviated
     // as per the 'Authorized Abbreviation' ... in accordance with the
     // Register". Long-title acceptance is what lets the S001 style rule

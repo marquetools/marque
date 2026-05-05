@@ -31,9 +31,9 @@
 //!           no authoritative bucket for a warning-severity rule)
 //!   W002 = US + FGI comingling in portion
 //!   E016 = RESTRICTED not allowed with JOINT
-//!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 p169)
-//!   E018 = retired in T035b (over-restrictive per CAPCO §H.3 p169)
-//!   E019 = retired in T035b (over-restrictive per CAPCO §H.3 p169)
+//!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
+//!   E018 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
+//!   E019 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
 //!   E020 = country code list ordering (alphabetical after USA)
 //!   E021 = RD/FRD requires NOFORN (configurable to warn)
 //!   E022 = CNWDI only with TS or S RD
@@ -123,7 +123,7 @@ impl CapcoRuleSet {
                 // T035b: E017/E018/E019 retired entirely (over-
                 // restrictive per CAPCO §H.3 lines 4140-4146).
                 // Replacement: E036 `joint-hcs` (the only specific
-                // JOINT exclusion §H.3 p169 actually names).
+                // JOINT exclusion §H.3 p57 actually names).
                 Box::new(DeclarativeBareHcsRule),
                 Box::new(MissingNonUsPrefix),
                 Box::new(DeclarativeDualClassificationRule),
@@ -738,8 +738,8 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 ///
 /// Within each block, tokens preserve their document order. REL TO trigraphs
 /// are reassembled into a single `REL TO ...` block. AEA markings (RD, FRD,
-/// TFNI, UCNI) appear per §A.6 p36; FGI tokens per §A.6 p36.
-/// Non-IC dissem controls appear last per §A.6 p36. Returns `None` if
+/// TFNI, UCNI) appear per §A.6 p16; FGI tokens per §A.6 p16.
+/// Non-IC dissem controls appear last per §A.6 p16. Returns `None` if
 /// there is nothing meaningful to reorder (no classification recorded).
 ///
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
@@ -1389,7 +1389,7 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 /// FR-012: any token inside a marking candidate boundary that the parser
 /// could not classify is reported as an error with no fix offered.
 ///
-/// Authority: CAPCO-2016 §G.1 (Register of Authorized Markings, line 748):
+/// Authority: CAPCO-2016 §G.1 (Register of Authorized Markings, p36):
 /// "All markings used in a banner line and portion mark must be in
 /// accordance with the values listed in the Register, unless a waiver
 /// has been obtained from P&S/IMD in accordance with ICD 710 and
@@ -1609,9 +1609,11 @@ impl Rule for CorrectionsMapRule {
 ///
 /// Authority chain: CAPCO-2016 §G.1 p36 ("All markings used in a
 /// banner line and portion mark must be in accordance with the values
-/// listed in the Register") + Table 4 / §H per-template entries, which
-/// list three forms per marking (Banner Line Marking Title, Banner Line
-/// Abbreviation, Authorized Portion Mark). This rule specifically
+/// listed in the Register") + §G.1 Table 4 pp 36–38 (the three-column
+/// Register listing) + the per-marking templates in section H
+/// (§H.1 p47 through §H.9 p189), which list three forms per marking
+/// (Banner Line Marking Title, Banner Line Abbreviation, Authorized
+/// Portion Mark). This rule specifically
 /// detects portion text matching banner-form classification strings
 /// (for US classifications the title and banner abbreviation coincide,
 /// e.g., `SECRET`) or banner-form dissem abbreviations (e.g., `NOFORN`,
@@ -2029,7 +2031,7 @@ impl Rule for BannerConsistentFormRule {
 /// E020's JOINT path to pure alpha.
 ///
 /// However, every other US-authored country list **does** lead with
-/// USA — REL TO §H.8 p150–151 p151 is explicit ("After 'USA',
+/// USA — REL TO §H.8 pp 150–151 is explicit ("After 'USA',
 /// list the required one or more trigraph country codes..."). The IC
 /// practice of rendering USA first in JOINT lists is a widespread
 /// convention that extends this REL-TO pattern across all
@@ -2155,7 +2157,7 @@ impl Rule for JointUsaFirstRule {
                 "IC convention (not CAPCO mandate) — §H.3 p56 ",
                 "prescribes pure alphabetical for JOINT with no USA-first ",
                 "carve-out; S003 encodes the convention observed in REL TO ",
-                "§H.8 p150–151 p151 across all US-authored country ",
+                "§H.8 pp 150–151 across all US-authored country ",
                 "lists. Style rule; configure S003 = \"off\" for strict ",
                 "§H.3 conformance.",
             ),
@@ -2616,7 +2618,7 @@ fn looks_like_fgi_classification(s: &str) -> bool {
 ///
 /// - **JOINT, §H.3 p56**: "Multiple codes are separated by a
 ///   single space."
-/// - **REL TO, §H.8 p150–151 p151**: "Each code is separated by a
+/// - **REL TO, §H.8 pp 150–151**: "Each code is separated by a
 ///   comma and a space."
 ///
 /// The global formatting passage §A.6 p15–16 (rendered inline in the
@@ -2926,7 +2928,7 @@ impl Rule for NonIcInClassifiedBannerRule {
 ///
 /// # Authority (per-template)
 ///
-/// - **REL TO, §H.8 p150–151 p151**: "After 'USA', list the
+/// - **REL TO, §H.8 pp 150–151**: "After 'USA', list the
 ///   required one or more trigraph country codes in alphabetical
 ///   order followed by tetragraph codes listed in alphabetical
 ///   order." REL TO elevates USA to the front.
@@ -4056,19 +4058,19 @@ fn check_trigraph_ordering(
 /// SIGMA compartment numbers must be from the currently authorized set
 /// (14, 15, 18, 20) and listed in numerical order.
 ///
-/// # Historical SIGMA range
+/// # Authorized SIGMA values
 ///
-/// CAPCO v1.2 (2008) §7 documented SIGMA as ranging from 1 to 99
-/// (`crates/capco/docs/original-refs/CAPCO_v1.2_(2008).pdf`, p14 entry for
-/// `-SIGMA [#]`). CAPCO v5.1 (2012) §H.6 and CAPCO 2016 §H.6 p108 both narrow this to "SIGMA # currently represents one or more of
-/// the following numbers: 14, 15, 18, and 20." Neither manual enumerates
-/// which specific values outside the current set were formally obsoleted —
-/// only that the current set is the narrow four. An earlier revision of
-/// this rule asserted that values `1..=5 | 9..=13` were "obsolete" while
-/// `6..=8 | 16..=17 | 19 | 21..=99` were "invalid"; that bifurcation was
-/// project inference, not backed by CAPCO source text. The unified
-/// "not in current authorized set" message below matches what the source
-/// actually says.
+/// CAPCO-2016 §H.6 p108 (RD-SIGMA marking template) narrows the
+/// authorized SIGMA set to the four numbers currently in active use:
+/// "SIGMA # currently represents one or more of the following numbers:
+/// 14, 15, 18, and 20." CAPCO-2016 does not enumerate which specific
+/// values outside this set were formally obsoleted — only that the
+/// current authorized set is these four. An earlier revision of this
+/// rule asserted that values `1..=5 | 9..=13` were "obsolete" while
+/// `6..=8 | 16..=17 | 19 | 21..=99` were "invalid"; that bifurcation
+/// was project inference and not backed by CAPCO-2016 source text.
+/// The unified "not in current authorized set" message below matches
+/// what the source actually says.
 struct SigmaValidationRule;
 
 impl Rule for SigmaValidationRule {
@@ -4176,14 +4178,13 @@ impl Rule for SigmaValidationRule {
 ///
 /// Authority: CAPCO-2016 §H.5 p101 — "Authorized Portion
 /// Mark: SAR-[program identifier abbreviation]". The banner may use
-/// either the full `SPECIAL ACCESS REQUIRED-` (line 2428) or the
-/// abbreviation (line 2430); the portion entry lists the abbreviation
-/// only.
+/// either the full `SPECIAL ACCESS REQUIRED-` form or the
+/// abbreviation; the portion entry lists the abbreviation only.
 ///
 /// When all program identifiers are already abbrev-shaped (2–3
-/// alphanumeric characters per §H.5 p101 line 2454 — "A program
-/// identifier abbreviation is the two or three-character designator
-/// for the program"), a low-confidence (0.35) suggestion is proposed
+/// alphanumeric characters per §H.5 p101 — "A program identifier
+/// abbreviation is the two or three-character designator for the
+/// program"), a low-confidence (0.35) suggestion is proposed
 /// to replace the full indicator with the `SAR-` prefix. Otherwise no
 /// fix is proposed — abbreviating an arbitrary program nickname (e.g.,
 /// `BUTTER POPCORN` → `BP`) requires a registry lookup the engine
@@ -4568,7 +4569,7 @@ impl Rule for SarCompartmentOrderRule {
 /// Authority: CAPCO-2016 §H.5 p100 (Syntax Rules bullet 5)
 /// — "The SAP category indicator must not be repeated if multiple
 /// SAP programs are applicable." Program separator is prescribed in
-/// adjacent bullet 4 at line 2402: "separated by a single forward
+/// adjacent bullet 4 (§H.5 p100): "separated by a single forward
 /// slash (`/`) without interjected spaces."
 ///
 /// §A.6 governs SCI ordering and is NOT a valid citation target for
@@ -4584,21 +4585,14 @@ impl Rule for SarCompartmentOrderRule {
 ///
 /// # Historical note
 ///
-/// Repeated `SAR-` indicators were permitted until **December 2011**,
-/// when CAPCO removed the requirement (CAPCO-2016 §I Banner Line
-/// Syntax History, p192 line 4700: "Removed repeating `SAR-` for
-/// multiple SAR markings in the SAP category"). An earlier revision
-/// of this doc said "prior to roughly 2003" — that conflated the
-/// December-2011 repeat-rule change with the October 2003 category
-/// move (§I line 4713: "Moved Special Access Required (SAR) from
-/// Non-Intelligence Community Dissemination Control Markings to a
-/// new category"). The two changes are unrelated. §I is historical
-/// background rather than a valid predicate-citation target, but is
-/// cited here for documentation context only.
-///
-/// Repeated indicators in modern documents are therefore an error
-/// this rule must surface, even though older corpus material
-/// (pre-2011) may legitimately contain them.
+/// CAPCO-2016 §H.5 p101 ("Authorized Portion Mark:
+/// SAR-[program identifier abbreviation]") and the §H.5 prose at
+/// p100 (multi-program form `SAR-[A]/[B]/[C]`, no `SAR-` repeat per
+/// program) prescribe a single `SAR-` indicator per category, with
+/// programs separated by `/`. Older corpus material may legitimately
+/// contain repeated `SAR-` indicators because earlier CAPCO
+/// revisions permitted that form; the present rule treats them as
+/// errors against the CAPCO-2016 grammar regardless.
 ///
 /// # No-fix diagnostic paths
 ///
@@ -4873,7 +4867,7 @@ impl Rule for SarBannerRollupRule {
                 let insertion_span = Span::new(block.end, block.end);
                 // Replacement: `/PROG1/PROG2` — leading slash separates
                 // the inserted run from the last existing program
-                // per §H.5 p100 line 2402 bullet 4 (`/` between
+                // per §H.5 p100 bullet 4 (`/` between
                 // program identifiers, no interjected spaces).
                 let replacement = format!("/{}", sorted_missing.join("/"));
 
@@ -5011,8 +5005,8 @@ fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
 /// system markings must be listed in ascending sort order with numbered
 /// values first followed by alphabetic values separated by a single
 /// forward slash with no interjected space (`/`)."* The general §A.6
-/// p15 line 319 restates the same mandate across all three hierarchical
-/// levels; §H.4 line 1342 is the narrower per-level citation.
+/// p15 restates the same mandate across all three hierarchical
+/// levels; §H.4 p61 is the narrower per-level citation.
 ///
 /// This is a mandate — "must." Unlike SAR (§H.5 p101, which
 /// makes banner hierarchy depiction optional), §H.4 contains NO
@@ -5601,15 +5595,15 @@ impl Rule for SciBannerRollupRule {
 /// Citation string for E035 — shared between the with-fix and no-fix
 /// emission paths so they cannot silently diverge. References the
 /// per-system "Precedence Rules for Banner Line Guidance" template
-/// that appears in every §H.4 entry (HCS p62 line 1397 is one of 18
-/// identical instances) plus §D.2 p28 for the general banner/portion
+/// that appears in every §H.4 entry (HCS p62 is one of 18 identical
+/// instances) plus §D.2 p28 for the general banner/portion
 /// consistency invariant.
 const E035_CITATION: &str = concat!(
     "CAPCO-2016 §H.4 per-system \"Precedence Rules for Banner Line ",
-    "Guidance\" (e.g. HCS p62 line 1397, SI p74 line 1819, TK p85 line ",
-    "2250) + §D.2 p28 (general banner/portion consistency). All unique ",
-    "SCI markings in portions must appear in the banner line; unlike ",
-    "SAR, SCI has no hierarchy-optional carve-out.",
+    "Guidance\" (e.g. HCS p62, SI p74, TK p85) + §D.2 p28 (general ",
+    "banner/portion consistency). All unique SCI markings in portions ",
+    "must appear in the banner line; unlike SAR, SCI has no ",
+    "hierarchy-optional carve-out.",
 );
 
 // ---------------------------------------------------------------------------
@@ -6207,7 +6201,7 @@ mod tests {
         assert!(ids.contains(&"W002"));
         assert!(ids.contains(&"E016"));
         // E017/E018/E019 retired in T035b (over-restrictive vs
-        // CAPCO §H.3 p169). Replacement: E036.
+        // CAPCO §H.3 p57). Replacement: E036.
         assert!(!ids.contains(&"E017"), "E017 retired in T035b");
         assert!(!ids.contains(&"E018"), "E018 retired in T035b");
         assert!(!ids.contains(&"E019"), "E019 retired in T035b");
@@ -6806,7 +6800,7 @@ mod tests {
     #[test]
     fn e004_does_not_fire_on_hyphen_connected_sci_compartment() {
         // `SI-G` is SI with compartment G, connected by hyphen per
-        // §A.6 line 319. No `//` exists between SI and G, so E004 has
+        // §A.6 p15. No `//` exists between SI and G, so E004 has
         // no separator to fire on. This pins down that E004 does not
         // misread the hyphen as a category boundary or otherwise
         // double-fire with the SCI structural parser.
@@ -7378,7 +7372,7 @@ mod tests {
         let diags = lint_banner("SECRET//DEA SENSITIVE");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "S001"),
-            "S001 must not fire on DEA SENSITIVE (no distinct abbrev per §G.1 line 831): {diags:?}"
+            "S001 must not fire on DEA SENSITIVE (no distinct abbrev per §G.1 p36): {diags:?}"
         );
     }
 
@@ -7433,7 +7427,7 @@ mod tests {
 
     #[test]
     fn s002_does_not_fire_on_dea_sensitive_plus_abbrev() {
-        // DEA SENSITIVE has `title == banner` per §G.1 line 831 — it
+        // DEA SENSITIVE has `title == banner` per §G.1 p36 — it
         // does NOT count as either title-form or abbrev-form for the
         // mix scoring. A banner of DEA SENSITIVE + NOFORN is not mixed.
         let diags = lint_banner("SECRET//NOFORN/DEA SENSITIVE");
@@ -7588,9 +7582,10 @@ mod tests {
              (pure alpha); got: {citation:?}"
         );
         assert!(
-            citation.contains("§H.8 p150"),
+            citation.contains("§H.8 pp 150"),
             "S003 citation must reference the REL TO USA-first source \
-             that establishes the convention; got: {citation:?}"
+             at §H.8 pp 150–151 that establishes the convention; got: \
+             {citation:?}"
         );
     }
 
@@ -9054,7 +9049,7 @@ mod tests {
 
     #[test]
     fn w003_fires_on_limdis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4180: "When a document contains LIMDIS
+        // CAPCO-2016 §H.9 p170: "When a document contains LIMDIS
         // and classified portions, LIMDIS is not used in the banner
         // line." Prior impl incorrectly placed LIMDIS in the
         // propagating set on a paraphrased "NGA Title 10" justification;
@@ -9065,14 +9060,14 @@ mod tests {
         assert_eq!(
             w003.len(),
             1,
-            "W003 must fire on LIMDIS in classified banner (§H.9 line 4180): {diags:?}"
+            "W003 must fire on LIMDIS in classified banner (§H.9 p170): {diags:?}"
         );
         assert!(w003[0].message.contains("LIMDIS"));
     }
 
     #[test]
     fn w003_does_not_fire_on_exdis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4240: "If EXDIS is contained in any
+        // CAPCO-2016 §H.9 p172: "If EXDIS is contained in any
         // portion of a document that does not contain one or more NODIS
         // portions, EXDIS must appear in the banner line." Example
         // banner on p173: SECRET//NOFORN//EXDIS. Prior impl excluded
@@ -9081,13 +9076,13 @@ mod tests {
         let diags = lint_banner("SECRET//NOFORN//EXDIS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "EXDIS propagates to classified banners per §H.9 line 4240: {diags:?}"
+            "EXDIS propagates to classified banners per §H.9 p172: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_nodis_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4300: "If NODIS is contained in any
+        // CAPCO-2016 §H.9 p174: "If NODIS is contained in any
         // portion of a document, it must appear in the banner line."
         // Example banner on p174: SECRET//NOFORN//NODIS. Prior impl
         // excluded NODIS from the propagating set; the §H.9 rule is
@@ -9095,13 +9090,13 @@ mod tests {
         let diags = lint_banner("SECRET//NOFORN//NODIS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "NODIS propagates to classified banners per §H.9 line 4300: {diags:?}"
+            "NODIS propagates to classified banners per §H.9 p174: {diags:?}"
         );
     }
 
     #[test]
     fn w003_fires_on_sbu_nf_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4408: SBU NOFORN "Applicable only to
+        // CAPCO-2016 §H.9 p178: SBU NOFORN "Applicable only to
         // unclassified information." p179 example 2 shows a
         // `SECRET//NOFORN` banner with a `(U//SBU-NF)` portion — SBU-NF
         // absent from banner. The NOFORN half of SBU-NF *does*
@@ -9116,43 +9111,43 @@ mod tests {
         assert_eq!(
             w003.len(),
             1,
-            "W003 must fire on literal SBU-NF in classified banner (§H.9 line 4408): {diags:?}"
+            "W003 must fire on literal SBU-NF in classified banner (§H.9 p178): {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_les_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4479: "The LES marking always appears in
+        // CAPCO-2016 §H.9 p181: "The LES marking always appears in
         // the banner line if contained in any portion, regardless of
         // classification level." Example banners on p183: SECRET//REL
         // TO USA, FVEY//LES, SECRET//NOFORN//LES.
         let diags = lint_banner("SECRET//LES");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LES propagates to classified banners per §H.9 line 4479: {diags:?}"
+            "LES propagates to classified banners per §H.9 p181: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_les_nf_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4557: "The LES marking always appears
+        // CAPCO-2016 §H.9 p185: "The LES marking always appears
         // in the banner line if LES information (either LES or LES
         // NOFORN) is contained in the document, regardless of the
         // document's classification level." The §H.9 canonical form
         // in classified docs is "LES" at banner with NOFORN split into
-        // the dissem block (line 4558), but `LES NOFORN` in a
+        // the dissem block (§H.9 p185), but `LES NOFORN` in a
         // classified banner is not a W003 concern — the canonicalization
         // is a separate page-rewrite concern.
         let diags = lint_banner("SECRET//LES NOFORN");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "LES-NF propagates to classified banners per §H.9 line 4557: {diags:?}"
+            "LES-NF propagates to classified banners per §H.9 p185: {diags:?}"
         );
     }
 
     #[test]
     fn w003_does_not_fire_on_ssi_in_classified_banner() {
-        // CAPCO-2016 §H.9 line 4651: "If the SSI marking is contained
+        // CAPCO-2016 §H.9 p189: "If the SSI marking is contained
         // in any portion of a document it must appear in the banner
         // line, regardless of the document's overall classification
         // level." Example banner on p191: SECRET//REL TO USA,
@@ -9160,7 +9155,7 @@ mod tests {
         let diags = lint_banner("SECRET//SSI");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "W003"),
-            "SSI propagates to classified banners per §H.9 line 4651: {diags:?}"
+            "SSI propagates to classified banners per §H.9 p189: {diags:?}"
         );
     }
 
@@ -9219,8 +9214,8 @@ mod tests {
     //
     // These tests pin the retirement: markings that the legacy
     // rules wrongly flagged must NOT emit those rule IDs after
-    // T035b. CAPCO §H.3 line 4140 permits JOINT with IC and non-IC
-    // dissem (excluding only NOFORN and HCS per line 4146) and with
+    // T035b. CAPCO §H.3 p57 permits JOINT with IC and non-IC
+    // dissem (excluding only NOFORN and HCS per §H.3 p57) and with
     // FGI (cross-ref §H.7). Any reintroduction of E017/E018/E019
     // diagnostics would regress CAPCO-2016 fidelity.
 
@@ -9245,7 +9240,7 @@ mod tests {
     #[test]
     fn e018_does_not_fire_on_joint_with_noforn() {
         // Pre-T035b: E018 flagged JOINT + NOFORN as "IC dissem other
-        // than REL TO". CAPCO §H.3 p169 does exclude NOFORN
+        // than REL TO". CAPCO §H.3 p57 does exclude NOFORN
         // from JOINT, but that's caught indirectly via
         // `capco/noforn-conflicts-rel-to` + E014 (REL TO required).
         // E018 itself must not fire.
@@ -9270,7 +9265,7 @@ mod tests {
     #[test]
     fn e019_does_not_fire_on_joint_with_limdis() {
         // Pre-T035b: E019 flagged JOINT + LIMDIS as "JOINT + non-IC
-        // dissem". CAPCO §H.3 line 4140 explicitly permits non-IC
+        // dissem". CAPCO §H.3 p57 explicitly permits non-IC
         // dissem with JOINT "as appropriate". Retired entirely.
         let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR//LIMDIS");
         assert!(
@@ -9283,7 +9278,7 @@ mod tests {
 
     #[test]
     fn legacy_joint_hcs_rules_do_not_fire_on_parser_path() {
-        // §H.3 p169: "May not be used with the HCS markings".
+        // §H.3 p57: "May not be used with the HCS markings".
         // This parser-driven test does not reliably provide positive
         // E036 coverage because the grammar may not surface HCS in
         // a JOINT banner at this point. What it *does* verify is
@@ -10149,7 +10144,7 @@ mod tests {
     #[test]
     fn e020_rel_to_cites_section_h8() {
         // T035c-18: REL TO's ordering rule is authoritatively in
-        // §H.8 p150–151 p151. Previously cited as bare `§H.8`.
+        // §H.8 pp 150–151. Previously cited as bare `§H.8`.
         // Lock the tightened pointer so a regression to a whole-section
         // citation fails here rather than silently drifting.
         let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
@@ -10191,7 +10186,7 @@ mod tests {
         // The multi-block no-fix path builds its diagnostic directly
         // rather than going through `check_trigraph_ordering`, so it
         // has a separate citation-emission site that must also carry
-        // the tightened §H.8 p150–151 p151 pointer.
+        // the tightened §H.8 pp 150–151 pointer.
         let diags = lint_banner("SECRET//REL TO USA, GBR//NF//REL TO AUS");
         let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
         assert_eq!(e020.len(), 1);
@@ -10636,7 +10631,7 @@ mod tests {
         // compartment G); banner has bare `SI` (no compartment shown).
         // E035 MUST fire. This is the exact shape that E031 (SAR)
         // deliberately does NOT fire on after T035c-19 PR-C — §H.5
-        // p101 line 2460 makes SAR hierarchy optional. §H.4 contains
+        // p101 makes SAR hierarchy optional. §H.4 contains
         // no equivalent carve-out for SCI, so E035 enforces full
         // hierarchy roll-up. Flipping this test would break the
         // source-level semantic distinction.
@@ -11098,7 +11093,7 @@ mod tests {
             diags.iter().all(|d| d.rule.as_str() != "E031"),
             "E031 must NOT fire on optional-hierarchy banner \
              (portion has BP-J12, banner has bare BP — §H.5 p101 \
-             line 2460 permits): {diags:?}"
+             permits): {diags:?}"
         );
     }
 

@@ -536,7 +536,7 @@ mod tests {
         // Exercise the PageRewrite struct itself — store, read back.
         let rw: PageRewrite<FakeScheme> = PageRewrite {
             id: "test/r1",
-            citation: "doc §1",
+            citation: "doc test-fixture",
             trigger: CategoryPredicate::Empty {
                 category: crate::category::CategoryId(1),
             },
@@ -547,7 +547,7 @@ mod tests {
             writes: &[crate::category::CategoryId(1)],
         };
         assert_eq!(rw.id, "test/r1");
-        assert_eq!(rw.citation, "doc §1");
+        assert_eq!(rw.citation, "doc test-fixture");
         assert_eq!(rw.reads, &[crate::category::CategoryId(1)]);
         assert_eq!(rw.writes, &[crate::category::CategoryId(1)]);
         // Trigger / action reachable through pattern match.
