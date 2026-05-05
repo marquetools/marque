@@ -500,12 +500,32 @@ def download_crest_corpus(
     return out_dir
 
 
-def iter_corpus_texts(corpus_path: Path, max_docs: Optional[int] = None):
+def iter_corpus_texts(
+    corpus_path: Path,
+    max_docs: Optional[int] = None,
+    min_length: int = 20,
+):
     """
     Yield (doc_id, text) tuples from a corpus directory.
 
     Handles both raw text files and RFC 2822 email files (Enron format).
+
+    *min_length* is a stripped-text minimum below which documents are
+    dropped. Defaults to 20 (filters near-empty Enron mail bodies and
+    HTML wrappers); the marking-stratum caller of `run_analysis`
+    overrides to 1 because canonical CAPCO portions and short banners
+    legitimately fit in fewer than 20 bytes (`(S)`, `SECRET//NF`,
+    `S//NF` are all valid marking fixtures and must contribute to
+    `token_base_rates`).
+
+    *max_docs* is treated with `is not None` semantics: a literal `0`
+    means "yield zero documents" (used by the priors-mode budget
+    arithmetic when the marking stratum has already consumed the
+    full ``--max-docs`` budget). A truthiness check (`if max_docs`)
+    would treat 0 as falsy and yield the entire corpus uncapped.
     """
+    if max_docs is not None and max_docs <= 0:
+        return
     count = 0
     for root, _dirs, files in os.walk(corpus_path):
         for fname in files:
@@ -515,11 +535,11 @@ def iter_corpus_texts(corpus_path: Path, max_docs: Optional[int] = None):
             try:
                 raw = fpath.read_bytes()
                 text = extract_body(raw)
-                if text and len(text.strip()) > 20:
+                if text and len(text.strip()) >= min_length:
                     doc_id = str(fpath.relative_to(corpus_path))
                     yield doc_id, text
                     count += 1
-                    if max_docs and count >= max_docs:
+                    if max_docs is not None and count >= max_docs:
                         return
             except (UnicodeDecodeError, OSError):
                 continue
@@ -531,6 +551,7 @@ def iter_corpus_texts(corpus_path: Path, max_docs: Optional[int] = None):
 def iter_corpus_texts_multi(
     corpus_paths: list[Path],
     max_docs: Optional[int] = None,
+    min_length: int = 20,
 ) -> Generator:
     """
     Yield ``(doc_id, text)`` pairs from multiple corpus directories in order.
@@ -538,13 +559,22 @@ def iter_corpus_texts_multi(
     Applies *max_docs* as a global cap across all sources combined, not
     per-source, so a small *max_docs* will be drawn entirely from the first
     source.  Pass ``None`` (default) to iterate all documents in all sources.
+
+    *max_docs* uses `is not None` semantics: a literal `0` short-
+    circuits with no docs yielded. A truthiness check would
+    silently treat 0 as "unlimited" and scan the whole corpus.
+
+    *min_length* is forwarded to ``iter_corpus_texts``; see that
+    function's docstring for the marking-vs-prose stratum tradeoff.
     """
+    if max_docs is not None and max_docs <= 0:
+        return
     count = 0
     for corpus_path in corpus_paths:
-        for doc_id, text in iter_corpus_texts(corpus_path):
+        for doc_id, text in iter_corpus_texts(corpus_path, min_length=min_length):
             yield doc_id, text
             count += 1
-            if max_docs and count >= max_docs:
+            if max_docs is not None and count >= max_docs:
                 return
 
 
@@ -880,8 +910,17 @@ def run_analysis(
     corpus_paths: list[Path],
     tokens_by_category: dict,
     max_docs: Optional[int] = None,
+    min_length: int = 20,
 ) -> dict:
-    """Run the full analysis over one or more corpora. Returns the frequency table."""
+    """Run the full analysis over one or more corpora. Returns the frequency table.
+
+    *min_length* is the per-document stripped-text floor used by
+    ``iter_corpus_texts``. Marking-stratum callers should pass
+    ``min_length=1`` so canonical short fixtures
+    (``(S)``, ``SECRET//NF``, single-portion lines) contribute to
+    the marking-side counts; the prose stratum keeps the default
+    ``20`` to filter near-empty Enron mail bodies and HTML
+    wrappers."""
     token_list = all_tokens_flat(tokens_by_category)
     token_set = set(token_list)
 
@@ -905,10 +944,40 @@ def run_analysis(
     # forms (``AUSTRALIA_GROUP`` etc.) are deliberately excluded — see
     # the regex comment for the prose-absorption rationale.
     rel_to_trigraph_hits = Counter()
+    # Per-country-code occurrence counts at any position in the
+    # document — independent of REL TO context. The prose stratum
+    # needs these so ``country_code_prose_base_rates`` reflects the
+    # actual frequency of country-code spellings in prose (proper-
+    # noun "(USA)", "GBR", etc.), not just inside REL TO blocks
+    # (which prose corpora effectively never contain).
+    # ``rel_to_trigraph_hits`` above stays REL TO-scoped because the
+    # marking-side use case is "how often does this code appear *as*
+    # a REL TO entry" — that's the discriminator between USA-as-
+    # country-code vs USA-as-prose-mention. The token counter for
+    # capco.json vocabulary picks up canonical country-code codes
+    # that ARE in the vocab (USA, GBR, AUS, etc.), but the
+    # ``_REL_TO_COUNTRY_CODE_BASELINE`` baseline includes codes
+    # outside the vocab (EU, BEL, POL, TUR, AUT, UZB, ASM, …)
+    # which would otherwise get a hard-coded zero in the prose
+    # table — flagged in PR #312 review.
+    country_code_global_hits = Counter()
+    _country_code_re = re.compile(
+        r"\b(?:" + "|".join(re.escape(c) for c in _REL_TO_COUNTRY_CODE_BASELINE) + r")\b"
+    )
+    # ``//`` (CAPCO category-separator) statistics. These feed the
+    # template_base_rates table downstream — `total_dslash` (non-URL
+    # occurrences) is the count attributed to the
+    # ``classification//dissem`` template shape. The counters were
+    # previously referenced without initialization, which would crash
+    # on the first document containing ``//``; initialize explicitly.
+    docs_with_dslash = 0
+    total_dslash = 0
+    dslash_in_url = 0
+    dslash_not_url = 0
 
     print("Analyzing corpus...", file=sys.stderr)
 
-    for doc_id, text in iter_corpus_texts_multi(corpus_paths, max_docs):
+    for doc_id, text in iter_corpus_texts_multi(corpus_paths, max_docs, min_length=min_length):
         total_docs += 1
 
         if total_docs % 10000 == 0:
@@ -957,6 +1026,14 @@ def run_analysis(
         # distance alone.
         for trigraph in _extract_rel_to_trigraphs(text):
             rel_to_trigraph_hits[trigraph] += 1
+
+        # Global country-code scan — counts every BASELINE country
+        # code at any word-boundary position in the document. Used
+        # by the prose stratum to populate
+        # `country_code_prose_base_rates` for codes outside the
+        # canonical-token vocabulary (issue #258 review fix).
+        for m in _country_code_re.finditer(text):
+            country_code_global_hits[m.group(0)] += 1
 
     print(f"Done. {total_docs} documents, {total_words} words.", file=sys.stderr)
 
@@ -1013,6 +1090,12 @@ def run_analysis(
         # baker re-sorts anyway, but a deterministic intermediate keeps
         # the analyzer's JSON diff-clean under VCS).
         "rel_to_trigraph_hits": dict(sorted(rel_to_trigraph_hits.items())),
+        # Issue #258: per-country-code hit counts at any document
+        # position (not REL TO-scoped). Consumed by `derive_priors`
+        # for prose-stratum `country_code_prose_base_rates` so codes
+        # outside the canonical-token vocabulary still get real
+        # prose-side counts.
+        "country_code_global_hits": dict(sorted(country_code_global_hits.items())),
     }
 
     return output
@@ -1022,7 +1105,7 @@ def run_analysis(
 # Phase D: corpus-derived priors output
 # ---------------------------------------------------------------------------
 
-PRIORS_SCHEMA_VERSION = "marque-priors-2"
+PRIORS_SCHEMA_VERSION = "marque-priors-3"
 
 # REL TO trigraph baseline counts, in REL TO blocks per million such
 # blocks. The Phase-D decoder uses these to break fuzzy ties between
@@ -1138,48 +1221,100 @@ def _corpus_fingerprint(corpus_path: Path) -> str:
 # consumed downstream.
 
 
-def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
+def _laplace_log_prior_table(token_counts: dict[str, int]) -> dict[str, dict]:
     """
-    Reshape a baseline analysis result into the priors.json schema.
+    Build a ``{token: {count, log_prior}}`` table from raw counts using
+    Laplace smoothing so zero-count tokens map to a finite log-prior.
 
-    The baseline analysis gives per-token raw counts and contextual
-    signals. The priors schema needs: token base rates (with precomputed
-    log-priors), template base rates, and strict-context priors.
+    ``log_prior = log((hits + 1) / (total + |V|))``
 
-    Token log-prior: ``log_prior = log((hits + 1) / (total_tokens + |V|))``
-    Laplace-smoothed so zero-count tokens don't map to ``-inf``. The
-    smoothing constant matches what the Rust decoder assumes at scoring
-    time; changing it here requires changing it there in lockstep.
+    The smoothing constant matches what the Rust decoder assumes at
+    scoring time; changing it here requires changing it there in
+    lockstep.
     """
-    tokens = analysis["tokens"]
-    total_hits = sum(t.get("raw_count", 0) for t in tokens.values())
-    vocab_size = max(1, len(tokens))
-
-    # Laplace smoothing: prior = (hits + 1) / (total + |V|)
+    total_hits = sum(token_counts.values())
+    vocab_size = max(1, len(token_counts))
     denom = float(total_hits + vocab_size)
 
-    token_base_rates = {}
-    for token, data in tokens.items():
-        hits = int(data.get("raw_count", 0))
-        numerator = float(hits + 1)
-        log_prior = math.log(numerator / denom)
-        token_base_rates[token] = {
-            "count": hits,
+    table: dict[str, dict] = {}
+    for token, hits in token_counts.items():
+        log_prior = math.log(float(int(hits) + 1) / denom)
+        table[token] = {
+            "count": int(hits),
             "log_prior": round(log_prior, 6),
         }
+    return table
 
-    # Template base rates: we approximate by counting co-occurrence
-    # patterns. The exact template detection is CAPCO-specific and will
-    # be refined by the Rust decoder at scoring time; priors here give
-    # the base rates a generic-enough shape for build.rs to consume.
-    total_dslash = analysis["corpus_stats"]["double_slash"]["not_in_urls"]
-    cooccurrences = analysis.get("cooccurrence_pairs", {})
+
+def derive_priors(
+    marking_analysis: dict,
+    prose_analysis: dict,
+    tokens_by_category: dict,
+) -> dict:
+    """
+    Reshape stratified analysis results into the priors.json schema.
+
+    Issue #258 split the corpus into two strata: marking-bearing
+    material (``tests/corpus/valid/`` plus future mock-classified
+    fixtures) and prose-only material (Enron, CIA CREST declassified,
+    Congressional Record, GAO reports — all confirmed prose-dominant
+    with effectively zero portion-marking hits per project owner). The
+    decoder needs both halves to compute the per-token "marking-y"
+    score ``log P(token|marking) − log P(token|prose)`` that lets a
+    null hypothesis ("this isn't a marking, it's prose") compete
+    against CAPCO interpretations during recognition.
+
+    ``token_base_rates`` is derived from the marking stratum only —
+    previously this was a mixture distribution because the analyzer
+    aggregated all sources into one global counter, which silently
+    treated the marking-side prior as if it were P(token|marking)
+    when it was closer to P(token). With the split, the marking-side
+    prior is now a clean P(token|marking).
+
+    ``token_prose_base_rates`` is derived from the prose stratum only,
+    giving the decoder its first explicit P(token|prose) signal.
+
+    ``country_code_base_rates`` continues to mix the marking-stratum
+    REL TO trigraph hits with ``_REL_TO_COUNTRY_CODE_BASELINE`` so
+    FVEY partners always score above the noise floor regardless of
+    corpus coverage. ``country_code_prose_base_rates`` is derived
+    from the prose stratum only with no baseline mixin — country
+    codes that show up in prose (proper-noun mentions of "USA",
+    "GBR", etc.) are exactly what we need to push back against
+    over-confident REL TO recovery.
+
+    ``template_base_rates`` is derived from the marking stratum only
+    (templates by definition only appear in marking-bearing text).
+
+    ``strict_context_priors`` are heuristic defaults independent of
+    the stratum split.
+    """
+    marking_tokens = marking_analysis["tokens"]
+    prose_tokens = prose_analysis["tokens"]
+
+    # Token base rates — marking stratum (clean P(token|marking))
+    token_base_rates = _laplace_log_prior_table(
+        {token: int(data.get("raw_count", 0)) for token, data in marking_tokens.items()}
+    )
+
+    # Token prose base rates — prose stratum (P(token|prose))
+    token_prose_base_rates = _laplace_log_prior_table(
+        {token: int(data.get("raw_count", 0)) for token, data in prose_tokens.items()}
+    )
+
+    # Template base rates: approximate by counting co-occurrence
+    # patterns from the marking stratum. The exact template detection
+    # is CAPCO-specific and refined by the Rust decoder at scoring
+    # time; priors here give the base rates a generic-enough shape
+    # for build.rs to consume.
+    total_dslash = marking_analysis["corpus_stats"]["double_slash"]["not_in_urls"]
+    cooccurrences = marking_analysis.get("cooccurrence_pairs", {})
     total_cooc = sum(cooccurrences.values()) or 1
 
     template_base_rates = {
         "classification": {
             "count": sum(
-                tokens.get(t, {}).get("raw_count", 0)
+                marking_tokens.get(t, {}).get("raw_count", 0)
                 for t in tokens_by_category.get("classification_abbrev", [])
                 + tokens_by_category.get("classification_full", [])
             ),
@@ -1207,38 +1342,60 @@ def derive_priors(analysis: dict, tokens_by_category: dict) -> dict:
     }
 
     # Country-code base rates (issue #233). Counts come from REL TO
-    # blocks observed in the corpus, summed with the baseline ratios
-    # in ``_REL_TO_COUNTRY_CODE_BASELINE`` so the decoder always has a
-    # finite log-prior for FVEY partners and known fuzzy lookalikes.
-    # The emitted table covers all CAPCO country-code shapes — 2-char
-    # codes (``EU``), 3-char trigraphs, 4-char tetragraphs (``FVEY``,
-    # ``ACGU``, ``NATO``), and group codes — even though the legacy
-    # baseline name still says "trigraph". Smoothing follows the same
-    # Laplace formula as the token table so the two are directly
-    # comparable inside the decoder's ``score_candidate``:
-    # ``log_prior(USA) - log_prior(UZB)`` swamps a single
-    # edit-distance-1 advantage when USA's hit count exceeds UZB's by
-    # orders of magnitude.
-    raw_country_code_hits = analysis.get("rel_to_trigraph_hits", {}) or {}
+    # blocks observed in the marking stratum, summed with the baseline
+    # ratios in ``_REL_TO_COUNTRY_CODE_BASELINE`` so the decoder always
+    # has a finite log-prior for FVEY partners and known fuzzy
+    # lookalikes. The emitted table covers all CAPCO country-code
+    # shapes — 2-char codes (``EU``), 3-char trigraphs, 4-char
+    # tetragraphs (``FVEY``, ``ACGU``, ``NATO``), and group codes —
+    # even though the legacy baseline name still says "trigraph".
+    # Smoothing follows the same Laplace formula as the token table so
+    # the two are directly comparable inside the decoder's
+    # ``score_candidate``: ``log_prior(USA) - log_prior(UZB)`` swamps a
+    # single edit-distance-1 advantage when USA's hit count exceeds
+    # UZB's by orders of magnitude.
+    marking_country_hits = marking_analysis.get("rel_to_trigraph_hits", {}) or {}
     country_code_counts = Counter(_REL_TO_COUNTRY_CODE_BASELINE)
-    country_code_counts.update(raw_country_code_hits)
-    total_country_code_hits = sum(country_code_counts.values())
-    country_code_vocab_size = max(1, len(country_code_counts))
-    country_code_denom = float(total_country_code_hits + country_code_vocab_size)
-    country_code_base_rates = {}
-    for tok, hits in country_code_counts.items():
-        log_prior = math.log(float(hits + 1) / country_code_denom)
-        country_code_base_rates[tok] = {
-            "count": int(hits),
-            "log_prior": round(log_prior, 6),
-        }
+    country_code_counts.update(marking_country_hits)
+    country_code_base_rates = _laplace_log_prior_table(dict(country_code_counts))
+
+    # Country-code prose base rates (issue #258). Counts come from
+    # the prose stratum's `country_code_global_hits` counter — a
+    # word-boundary scan over every code in
+    # `_REL_TO_COUNTRY_CODE_BASELINE`, regardless of whether the
+    # code is also in the canonical-token vocabulary
+    # (`tools/corpus-analysis/tokens/capco.json`). Codes like EU,
+    # BEL, POL, TUR, AUT, UZB, ASM are *not* in the canonical
+    # vocabulary, so the previous `prose_tokens`-based fix
+    # (review-1) silently emitted them at count 0 even when the
+    # corpus actually contained them — flagged in PR #312 review-2.
+    #
+    # Restricting to the BASELINE keys (rather than scanning all
+    # alphabetic word boundaries) keeps the regex bounded and
+    # focuses on codes the decoder actually consults at score time.
+    # No `_REL_TO_COUNTRY_CODE_BASELINE` count mixin: the baseline
+    # encodes marking-side frequency *ratios* that would corrupt
+    # the prose-side signal. Codes the prose corpus never observed
+    # get the Laplace-smoothed zero-count log-prior, which
+    # correctly says "we never saw this in prose."
+    prose_country_global = (
+        prose_analysis.get("country_code_global_hits", {}) or {}
+    )
+    prose_country_counts: Counter[str] = Counter()
+    for code in _REL_TO_COUNTRY_CODE_BASELINE:
+        prose_country_counts[code] = int(prose_country_global.get(code, 0))
+    country_code_prose_base_rates = _laplace_log_prior_table(
+        dict(prose_country_counts)
+    )
 
     return {
         "schema_version": PRIORS_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "token_base_rates": token_base_rates,
+        "token_prose_base_rates": token_prose_base_rates,
         "template_base_rates": template_base_rates,
         "country_code_base_rates": country_code_base_rates,
+        "country_code_prose_base_rates": country_code_prose_base_rates,
         "strict_context_priors": strict_context_priors,
     }
 
@@ -1867,7 +2024,12 @@ def main():
     corpus_group = parser.add_argument_group(
         "corpus sources",
         "Specify a custom corpus path or one or more named sources to auto-download.\n"
-        "--corpus takes precedence over --corpus-source.",
+        "Issue #258 introduced the marking/prose stratum split — --mode priors\n"
+        "now requires both strata. --corpus defaults to the marking stratum;\n"
+        "named sources (--corpus-source enron|...) are all prose-dominant per\n"
+        "issue #258 confirmation and go in the prose stratum. Use\n"
+        "--marking-corpus / --prose-corpus to add stratum-tagged paths\n"
+        "explicitly.",
     )
     corpus_group.add_argument(
         "--corpus",
@@ -1877,7 +2039,42 @@ def main():
             "Path to a corpus directory of text files.  "
             "Accepts Enron maildir trees, GovInfo extracted directories, "
             "or any directory of plain-text files.  "
-            "Overrides --corpus-source."
+            "Stratum defaults to 'marking' (override via --corpus-stratum). "
+            "Overrides --corpus-source for the same stratum slot."
+        ),
+    )
+    corpus_group.add_argument(
+        "--corpus-stratum",
+        choices=("marking", "prose"),
+        default="marking",
+        help=(
+            "Stratum tag for --corpus (default: marking). The natural use "
+            "case for --corpus is pointing at the marking-bearing fixtures "
+            "in tests/corpus/valid/, so 'marking' is the default. Use "
+            "'prose' for an external prose corpus."
+        ),
+    )
+    corpus_group.add_argument(
+        "--marking-corpus",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "Add a marking-bearing corpus path (repeatable). The marking "
+            "stratum supplies token_base_rates / country_code_base_rates."
+        ),
+    )
+    corpus_group.add_argument(
+        "--prose-corpus",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "Add a prose-only corpus path (repeatable). The prose stratum "
+            "supplies token_prose_base_rates / country_code_prose_base_rates "
+            "(issue #258 — the null hypothesis for decoder recognition)."
         ),
     )
     corpus_group.add_argument(
@@ -1896,7 +2093,11 @@ def main():
             "Named corpus to auto-download and include in the analysis. "
             "May be specified multiple times to combine sources. "
             "Choices: enron, congressional-record, gao, crest, all. "
-            "Default when neither --corpus nor --corpus-source is given: enron. "
+            "All four named sources are prose-dominant (per issue #258 "
+            "owner confirmation: effectively zero portion-marking hits) "
+            "and go in the prose stratum. "
+            "Default for --mode priors when no source given: "
+            "tests/corpus/valid/ (marking) + Enron (prose). "
             "crest: CIA CREST declassified documents from Internet Archive — "
             "recommended for --mode mangled (real classification marking artifacts)."
         ),
@@ -2015,16 +2216,43 @@ def main():
     )
 
     # ---------------------------------------------------------------------------
-    # Resolve corpus paths
+    # Resolve corpus paths (stratified per issue #258)
     # ---------------------------------------------------------------------------
-    # Priority: --corpus (explicit path) > --corpus-source (named download) > Enron default.
-    # --corpus-source may be repeated; "all" expands to all three named sources.
-    # Mangled mode uses only the first resolved path (single-source semantics).
-    corpus_paths: list[Path] = []
+    # The marking stratum supplies P(token|marking); the prose stratum
+    # supplies P(token|prose). --mode priors needs both. Other modes
+    # (baseline, mangled, heuristic-frequency) operate on a single
+    # combined path list and are stratum-agnostic.
+    #
+    # Priority for stratum tagging:
+    #   1. --marking-corpus / --prose-corpus (explicit per-stratum paths,
+    #      repeatable)
+    #   2. --corpus + --corpus-stratum (single path with stratum tag,
+    #      defaults to marking)
+    #   3. --corpus-source (named auto-download — all prose stratum per
+    #      issue #258 owner confirmation that all four sources are
+    #      prose-dominant with effectively zero portion-marking hits)
+    #   4. Default for --mode priors: tests/corpus/valid/ (marking) +
+    #      Enron (prose) so a developer regen does not require flags.
+    marking_paths: list[Path] = list(args.marking_corpus)
+    prose_paths: list[Path] = list(args.prose_corpus)
 
+    # Track which strata received an explicit `--corpus` path so we
+    # can preserve the pre-stratification precedence rule "--corpus
+    # takes precedence over --corpus-source" on a per-stratum basis.
+    # Otherwise `--corpus /tmp/prose --corpus-stratum prose
+    # --corpus-source enron` would silently mix `/tmp/prose` and
+    # Enron into the prose stratum instead of letting the explicit
+    # path override the named source for that stratum.
+    explicit_corpus_strata: set[str] = set()
     if args.corpus:
-        corpus_paths = [args.corpus]
-    elif args.corpus_sources:
+        if args.corpus_stratum == "marking":
+            marking_paths.append(args.corpus)
+            explicit_corpus_strata.add("marking")
+        else:
+            prose_paths.append(args.corpus)
+            explicit_corpus_strata.add("prose")
+
+    if args.corpus_sources:
         gao_years_parsed = [int(y.strip()) for y in args.gao_years.split(",") if y.strip()]
         sources: set[str] = set()
         for s in args.corpus_sources:
@@ -2032,60 +2260,201 @@ def main():
                 sources.update({"enron", "congressional-record", "gao", "crest"})
             else:
                 sources.add(s)
-        if "enron" in sources:
-            corpus_paths.append(download_enron())
-        if "congressional-record" in sources:
-            corpus_paths.append(
-                download_congressional_record(
-                    year=args.crec_year,
-                    max_packages=args.crec_max_packages,
-                )
+        # All four named sources are prose-dominant (issue #258 owner
+        # confirmation): Enron is corporate prose, CIA CREST documents
+        # are post-classification text with markings stripped, and the
+        # Congressional Record / GAO Reports surfaced effectively zero
+        # portion-marking hits in prior analysis runs. They contribute
+        # to the prose stratum unless the user has already supplied an
+        # explicit `--corpus` for that stratum (in which case the
+        # explicit path wins per the documented precedence).
+        if "prose" in explicit_corpus_strata:
+            print(
+                "Note: --corpus targets the prose stratum and takes precedence "
+                "over --corpus-source for that stratum; named prose sources "
+                f"{sorted(sources)} ignored.",
+                file=sys.stderr,
             )
-        if "gao" in sources:
-            corpus_paths.append(
-                download_gao_reports(
-                    years=gao_years_parsed,
-                    max_reports=args.gao_max_reports,
+        else:
+            if "enron" in sources:
+                prose_paths.append(download_enron())
+            if "congressional-record" in sources:
+                prose_paths.append(
+                    download_congressional_record(
+                        year=args.crec_year,
+                        max_packages=args.crec_max_packages,
+                    )
                 )
-            )
-        if "crest" in sources:
-            corpus_paths.append(
-                download_crest_corpus(
-                    max_documents=args.crest_max_docs,
+            if "gao" in sources:
+                prose_paths.append(
+                    download_gao_reports(
+                        years=gao_years_parsed,
+                        max_reports=args.gao_max_reports,
+                    )
                 )
-            )
-    else:
-        corpus_paths = [download_enron()]
+            if "crest" in sources:
+                prose_paths.append(
+                    download_crest_corpus(
+                        max_documents=args.crest_max_docs,
+                    )
+                )
 
+    # Per-mode defaults when no source flags are supplied:
+    # - `--mode priors` needs both strata, so it pulls the marking
+    #   stratum from `tests/corpus/valid/` and the prose stratum
+    #   from Enron.
+    # - `--mode baseline` / `mangled` / `heuristic-frequency` keep
+    #   their legacy single-path Enron default (the stratum tag is
+    #   irrelevant for these modes — they iterate `corpus_paths`,
+    #   the combined list, and don't separate marking from prose).
+    repo_root = Path(__file__).resolve().parents[2]
+    default_marking = repo_root / "tests" / "corpus" / "valid"
+    if not marking_paths and not prose_paths and not args.corpus_sources and not args.corpus:
+        if args.mode == "priors":
+            if default_marking.exists():
+                marking_paths.append(default_marking)
+            prose_paths.append(download_enron())
+        else:
+            # baseline / mangled / heuristic-frequency
+            prose_paths.append(download_enron())
+
+    corpus_paths: list[Path] = list(marking_paths) + list(prose_paths)
     missing = [p for p in corpus_paths if not p.exists()]
     if missing:
         print(f"Error: corpus paths do not exist: {missing}", file=sys.stderr)
         sys.exit(1)
 
-    if args.mode in ("baseline", "priors"):
+    def _combined_fp(paths: list[Path]) -> str:
+        if not paths:
+            return "sha512:" + ("0" * 128)
+        if len(paths) == 1:
+            return _corpus_fingerprint(paths[0])
+        return (
+            "sha512:"
+            + hashlib.sha512(
+                "\n".join(_corpus_fingerprint(p) for p in paths).encode()
+            ).hexdigest()
+        )
+
+    if args.mode == "priors":
+        if not marking_paths or not prose_paths:
+            print(
+                "Error: --mode priors requires both marking and prose "
+                "corpus sources (issue #258).\n"
+                "  Provide --marking-corpus PATH and --prose-corpus PATH, or\n"
+                "  --corpus PATH (defaults to marking) plus a prose source\n"
+                "  via --corpus-source enron|congressional-record|gao|crest, or\n"
+                "  run with no source args to use tests/corpus/valid/ + Enron.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # `--max-docs` is documented as a total document cap. With
+        # the per-stratum `run_analysis` calls below, applying the
+        # raw `args.max_docs` to each call would double the actual
+        # cap (a `--max-docs 1000` invocation could process 2000
+        # docs total). Honor the contract by capping the marking
+        # stratum at the full budget, then giving the prose stratum
+        # `--max-docs - actual_marking_docs` so the total stays
+        # bounded — and crucially using the *actual* count of
+        # processed documents from `marking_results`, not a
+        # heuristic file count (which undercounts on
+        # custom marking corpora that use Enron-shaped or HTML-
+        # wrapped inputs without a `.txt` extension and would let
+        # the total exceed the budget).
+        marking_max = args.max_docs
+
+        # Marking stratum: drop the default 20-byte minimum so short
+        # canonical fixtures (`(S)`, `SECRET//NF`, single-portion
+        # lines) contribute to the marking-side counts. Without this
+        # the regenerated priors emit `UNCLASSIFIED`, `SECRET`, and
+        # other short banner-form fixtures at count 0 even though
+        # they exist on disk — flagged in PR #312 review.
+        marking_results = run_analysis(
+            marking_paths, tokens_by_category, marking_max, min_length=1
+        )
+
+        # Compute the prose budget from the actual marking document
+        # count. `0` is a meaningful value (means "marking already
+        # consumed the budget, prose gets nothing") — see the
+        # `is not None` handling in `iter_corpus_texts*` above which
+        # treats 0 as a hard zero rather than falsy/unlimited.
+        if args.max_docs is None:
+            prose_max = None
+        else:
+            marking_doc_count = int(
+                marking_results.get("corpus_stats", {}).get("document_count", 0)
+            )
+            prose_max = max(0, args.max_docs - marking_doc_count)
+            if prose_max == 0:
+                print(
+                    f"Note: --max-docs={args.max_docs} consumed entirely by the "
+                    f"marking stratum ({marking_doc_count} docs); prose stratum "
+                    "will be skipped. The build-time fail-closed check in "
+                    "crates/capco/build.rs will reject the resulting priors.json. "
+                    "Raise --max-docs to give prose a non-zero budget.",
+                    file=sys.stderr,
+                )
+
+        prose_results = run_analysis(prose_paths, tokens_by_category, prose_max)
+
+        priors = derive_priors(marking_results, prose_results, tokens_by_category)
+        priors["corpus_fingerprint"] = _combined_fp(corpus_paths)
+        priors["marking_corpus_fingerprint"] = _combined_fp(marking_paths)
+        priors["prose_corpus_fingerprint"] = _combined_fp(prose_paths)
+        # Path metadata is relativized to repo root so the committed
+        # `priors.json` is mechanically reproducible across worktrees
+        # and developers — flagged in PR #312 review. Repo-relative
+        # paths still identify which corpus directories produced this
+        # artifact (e.g., `tests/corpus/valid` for the marking
+        # stratum) without leaking absolute filesystem paths like
+        # `/home/<user>/...`. The download-cache paths used by the
+        # named sources (Enron / GovInfo / GAO / CREST under
+        # `tools/corpus-analysis/.cache/`) live below the repo root
+        # by construction, so they relativize cleanly too.
+        repo_root = Path(__file__).resolve().parents[2]
+
+        def _rel_path(p: Path) -> str:
+            try:
+                return str(p.resolve().relative_to(repo_root))
+            except ValueError:
+                # Path lies outside the repo (e.g., a developer-
+                # supplied --marking-corpus pointing elsewhere). Fall
+                # back to the basename rather than leaking the
+                # absolute path; the corpus_fingerprint still
+                # identifies the input precisely.
+                return p.name
+
+        priors["metadata"] = {
+            "vocabulary_file": _rel_path(args.tokens),
+            "marking_corpus_paths": [_rel_path(p) for p in marking_paths],
+            "prose_corpus_paths": [_rel_path(p) for p in prose_paths],
+            "token_count": len(flat_tokens),
+            "category_count": len(tokens_by_category),
+        }
+        payload = priors
+
+        output_json = json.dumps(payload, indent=2)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(output_json)
+            print(f"Results written to {args.output}", file=sys.stderr)
+        else:
+            print(output_json)
+        return
+
+    if args.mode == "baseline":
         results = run_analysis(corpus_paths, tokens_by_category, args.max_docs)
         results["metadata"] = {
             "vocabulary_file": str(args.tokens),
             "corpus_paths": [str(p) for p in corpus_paths],
+            "marking_corpus_paths": [str(p) for p in marking_paths],
+            "prose_corpus_paths": [str(p) for p in prose_paths],
             "token_count": len(flat_tokens),
             "category_count": len(tokens_by_category),
         }
 
-        if args.mode == "priors":
-            priors = derive_priors(results, tokens_by_category)
-            # Fingerprint all corpus directories together for the priors record.
-            combined_fp = _corpus_fingerprint(corpus_paths[0]) if len(corpus_paths) == 1 else (
-                "sha512:"
-                + hashlib.sha512(
-                    "\n".join(_corpus_fingerprint(p) for p in corpus_paths).encode()
-                ).hexdigest()
-            )
-            priors["corpus_fingerprint"] = combined_fp
-            payload = priors
-        else:
-            payload = results
-
-        output_json = json.dumps(payload, indent=2)
+        output_json = json.dumps(results, indent=2)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(output_json)

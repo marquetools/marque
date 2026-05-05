@@ -60,11 +60,10 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("valid/", ".expected.json"),
         // prose fixtures (future)
         ("prose/", ".txt"),
-        // mangled fixtures (engine-refactor-006: PR 3c). The
-        // `.txt` / `.expected.json` pair is the corpus shape per
-        // the F.1 contract once PR 3c lands the mangled fixtures.
-        ("mangled/", ".txt"),
-        ("mangled/", ".expected.json"),
+        // mangled-fixture configuration (commit f99dbdab added
+        // tests/corpus/mangled/threshold.toml; the registered-
+        // pattern check was not updated in the same commit)
+        ("mangled/", ".toml"),
     ];
 
     // Top-level files
