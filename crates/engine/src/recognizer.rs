@@ -192,13 +192,14 @@ fn infer_marking_type(bytes: &[u8]) -> Option<MarkingType> {
     Some(MarkingType::Banner)
 }
 
-/// CAB detection: the three line-initial CAPCO-2016 §E authority
-/// heads. Rough but sufficient — the scanner already filtered out
-/// anything that doesn't look like a classification region, so
-/// byte-prefix matching on the known heads is reliable here.
+/// CAB detection: the three line-initial CAPCO-2016 §E.1 / §E.2
+/// authority heads. Rough but sufficient — the scanner already
+/// filtered out anything that doesn't look like a classification
+/// region, so byte-prefix matching on the known heads is reliable
+/// here.
 ///
-/// Heads recognized (with trailing colon, matching CAPCO-2016 §E
-/// labels exactly):
+/// Heads recognized (with trailing colon, matching CAPCO-2016 §E.1 p31
+/// and §E.2 p32 labels exactly):
 ///
 /// - `Classified By:` — §E.1 p31 (Original) and §E.2 p32 (Derivative);
 ///   always the first line of a CAB, and what the `marque-core`
