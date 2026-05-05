@@ -248,18 +248,16 @@ fn trigraph(s: &[u8; 3]) -> CountryCode {
 fn fgi_samples() -> Vec<FgiSet> {
     vec![
         FgiSet::None,
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"GBR")]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"DEU"), trigraph(b"GBR")]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"CAN")]),
-        })),
+        FgiSet::from_marker(Some(&FgiMarker::SourceConcealed)),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"GBR")]).expect("non-empty"),
+        )),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"DEU"), trigraph(b"GBR")]).expect("non-empty"),
+        )),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"CAN")]).expect("non-empty"),
+        )),
     ]
 }
 

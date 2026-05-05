@@ -49,6 +49,12 @@ aho-corasick = "1.1.4"
 # Text processing / scanning
 memchr = "2.8.0"
 
+# Inline-capable small vector (FgiMarker::Acknowledged.countries — most FGI
+# lists are <= 4 codes, so we keep them inline instead of heap-allocating).
+# MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
+# Constitution Principle III.
+smallvec = "1"
+
 anyhow = "1.0.102"
 # Error handling
 thiserror = "2.0.18"

@@ -2956,7 +2956,9 @@ impl Rule for NonIcInClassifiedBannerRule {
 /// when it is `MarkingClassification::Joint`). Does NOT currently
 /// cover:
 ///
-/// - **FGI ordering** (`attrs.fgi_marker.countries`) — §A.6 p15-16
+/// - **FGI ordering** (`attrs.fgi_marker`, specifically the
+///   `FgiMarker::Acknowledged { countries }` variant — the
+///   `SourceConcealed` variant has no list to order) — §A.6 p15-16
 ///   line 332 establishes the same trigraph-then-tetragraph alpha
 ///   rule for FGI, but extending E020 to cover it is a future
 ///   follow-up; no FGI-ordering test fixtures exist today.
