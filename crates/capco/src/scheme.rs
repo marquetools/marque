@@ -1746,8 +1746,8 @@ fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
 ///    the content is HUMINT product, operations, or both). Legacy
 ///    `C//HCS` (CONFIDENTIAL with bare HCS -- no compartment) must
 ///    additionally be identified to the originator for correction.
-/// 2. **`HCS-O`** (§H.4 p64) requires ORCON and must **not** include
-///    ORCON-USGOV (banner would drop -USGOV).
+/// 2. **`HCS-O`** (§H.4 p64) **requires ORCON and NOFORN** and must
+///    **not** include ORCON-USGOV (banner would drop -USGOV).
 /// 3. **`HCS-P`** (§H.4 p66) **requires NOFORN**; ORCON or ORCON-USGOV
 ///    **may** be used (permitted, not required).
 /// 4. **`HCS-O` / `HCS-P`** are only authorized for SECRET and TOP
@@ -1837,6 +1837,20 @@ fn hcs_system_constraints(
                             message: "HCS-O must not be used with ORCON-USGOV per CAPCO-2016 \
                                       §H.4 p64."
                                 .to_owned(),
+                            citation,
+                        });
+                    }
+                    // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
+                    // ("Relationship(s) to Other Markings: ... Requires
+                    // ORCON and NOFORN"). The ORCON side is enforced
+                    // above; NOFORN is the second mandatory side. Same
+                    // shape as the HCS-P NOFORN-required predicate
+                    // below; tracked-and-resolved per #304.
+                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+                    if !has_noforn {
+                        out.push(marque_scheme::ConstraintViolation {
+                            constraint_label: "HCS-O-requires-NOFORN",
+                            message: "HCS-O requires NOFORN per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
                         });
                     }

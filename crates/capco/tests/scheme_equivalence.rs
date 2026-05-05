@@ -382,11 +382,12 @@ fn hcs_o_on_confidential_fires_classification_floor() {
 }
 
 #[test]
-fn hcs_o_with_orcon_on_top_secret_is_silent() {
+fn hcs_o_with_orcon_and_noforn_on_top_secret_is_silent() {
     // All HCS-O rules satisfied: TS classification, ORCON present, no
-    // ORCON-USGOV.
+    // ORCON-USGOV, NOFORN present. Per CAPCO-2016 §H.4 p64 HCS-O
+    // requires BOTH ORCON and NOFORN.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Oc].into();
+    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -397,6 +398,47 @@ fn hcs_o_with_orcon_on_top_secret_is_silent() {
     assert!(
         hcs_violations.is_empty(),
         "no HCS violations expected: {hcs_violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_without_noforn_fires() {
+    // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
+    // ("Relationship(s) to Other Markings: ... Requires ORCON and
+    // NOFORN"). ORCON-only at TS without NOFORN must fire
+    // HCS-O-requires-NOFORN. This was the gap captured by #304 and
+    // resolved by this PR.
+    let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
+    attrs.dissem_controls = vec![DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-O requires NOFORN")),
+        "expected HCS-O-requires-NOFORN: {violations:?}"
+    );
+}
+
+#[test]
+fn hcs_o_with_noforn_only_fires_for_missing_orcon() {
+    // HCS-O with NOFORN but no ORCON: must still fire HCS-O-requires-
+    // ORCON. Regression guard ensuring the new HCS-O-requires-NOFORN
+    // constraint did not silently dilute the pre-existing
+    // HCS-O-requires-ORCON predicate.
+    let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
+    attrs.dissem_controls = vec![DissemControl::Nf].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "E010/HCS-system-constraints"
+                && v.message.contains("HCS-O requires ORCON")),
+        "expected HCS-O-requires-ORCON even with NOFORN present: {violations:?}"
     );
 }
 
