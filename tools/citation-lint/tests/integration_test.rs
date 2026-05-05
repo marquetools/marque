@@ -351,3 +351,40 @@ fn fr020_known_defect_classes_all_detected() {
         "missing legacy-line-form: {defects:#?}"
     );
 }
+
+#[test]
+fn scan_workspace_includes_top_level_marque_crate() {
+    // Regression guard for Copilot PR-0.5 round-3 finding: previously
+    // `scan_workspace` only walked `crates/*/src/**`, which silently
+    // missed citations in the top-level `marque/` CLI binary crate
+    // (and any future top-level workspace member). Verify the
+    // widened logic now picks up marque/ by checking that at least
+    // one occurrence has a path containing `marque/src/`.
+    use std::path::PathBuf;
+    let workspace_root: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent() // tools/
+        .and_then(|p| p.parent()) // workspace root
+        .unwrap()
+        .to_path_buf();
+    // Skip if the marque/ dir is not present (e.g., partial checkout).
+    if !workspace_root.join("marque").join("src").is_dir() {
+        eprintln!(
+            "skipping: workspace_root {:?} has no marque/src/",
+            workspace_root
+        );
+        return;
+    }
+    let (occurrences, _legacy) =
+        citation_lint::scan_workspace(&workspace_root).expect("scan_workspace");
+    let marque_paths: Vec<_> = occurrences
+        .iter()
+        .filter(|o| o.file.components().any(|c| c.as_os_str() == "marque"))
+        .collect();
+    assert!(
+        !marque_paths.is_empty(),
+        "expected at least one scanned occurrence under marque/src/; \
+         scan_workspace must include top-level workspace members, not just \
+         crates/*. Total occurrences: {}",
+        occurrences.len()
+    );
+}

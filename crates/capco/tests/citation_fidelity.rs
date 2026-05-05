@@ -140,19 +140,37 @@ fn corpus_contains_fixture_for_each_cited_authority() {
         // the keyword-based proxy is replaced with a real
         // rule-citation→fixture index.
         //
-        // **Output channel.** `cargo nextest` suppresses test stdout/stderr
-        // for *passing* tests by default, so a plain `eprintln!` here is
-        // invisible in CI logs. Emit the gap as a GitHub Actions warning
-        // annotation when running under CI (env var `GITHUB_ACTIONS=true`),
-        // which surfaces in the PR Checks UI without failing the test.
-        // Outside CI we still print to stderr so local `cargo test
-        // --nocapture` shows the gap.
-        if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
-            // Single-line GHA annotation. Newlines in the body are
-            // escaped per https://github.com/actions/toolkit/issues/193 —
-            // `%0A` is the encoded newline.
-            let escaped = msg.replace('\n', "%0A");
-            println!("::warning title=F.1 fixture coverage gap::{escaped}");
+        // **Output channel.** Surfacing the gap from a *passing* test
+        // is harder than it looks:
+        //
+        // - `eprintln!` / `println!` are suppressed by the repo's
+        //   nextest config (`.config/nextest.toml` sets
+        //   `success-output = "never"`).
+        // - `::warning` GHA workflow commands written to stdout are
+        //   suppressed by the same nextest setting before GitHub
+        //   Actions ever sees them.
+        //
+        // The reliable channel is `$GITHUB_STEP_SUMMARY`, a file path
+        // GitHub Actions sets in the runner env. Anything appended to
+        // it surfaces in the workflow run summary independently of
+        // test stdout/stderr capture. Local `cargo test --nocapture`
+        // still uses `eprintln!` so the gap shows during dev iteration.
+        if let Ok(summary_path) = std::env::var("GITHUB_STEP_SUMMARY") {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&summary_path)
+            {
+                // Markdown-formatted summary block. Newlines are kept
+                // verbatim because step-summary is markdown, not a
+                // GHA workflow command.
+                let _ = writeln!(
+                    f,
+                    "\n### F.1 fixture coverage gap\n\n```text\n{}\n```\n",
+                    msg.trim()
+                );
+            }
         } else {
             eprintln!("{msg}");
         }

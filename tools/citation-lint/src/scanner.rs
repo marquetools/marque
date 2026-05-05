@@ -65,19 +65,61 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<(Vec<Occurrence>, Vec<Defe
             workspace_dir.display()
         );
     }
-    // Walk every crate; for each, scan the `src/` subtree only.
-    // Tests under `crates/*/tests/` are NOT in scope for citation
-    // lint — citations belong in rule sources, not in test fixtures.
-    let mut crate_dirs: Vec<PathBuf> = fs::read_dir(&crates_dir)
+    // Build the candidate member-directory set: every entry under
+    // `crates/` plus every top-level workspace-root sibling dir that
+    // contains a `Cargo.toml` (e.g., `marque/` for the CLI binary,
+    // and any future top-level workspace member). We then scan each
+    // member's `src/` subtree.
+    //
+    // Tests under `<member>/tests/` are NOT in scope for citation
+    // lint — citations belong in rule sources, not test fixtures.
+    //
+    // Out-of-scope by construction:
+    // - `tools/` — out-of-workspace per Constitution III; contains
+    //   the citation-lint binary itself plus other dev tooling.
+    // - Hidden dirs (`.git/`, `.worktrees/`), `target/`, `node_modules/`,
+    //   build artifacts.
+    let mut member_dirs: Vec<PathBuf> = Vec::new();
+    // Two-level: every entry under `crates/`.
+    for entry in fs::read_dir(&crates_dir)
         .with_context(|| format!("reading {}", crates_dir.display()))?
         .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
+    {
+        let p = entry.path();
+        if p.is_dir() {
+            member_dirs.push(p);
+        }
+    }
+    // One-level: every workspace-root sibling that has a Cargo.toml
+    // and is not a known out-of-scope path. We deliberately do NOT
+    // parse `[workspace.members]` from the root Cargo.toml here —
+    // the directory-presence check is sufficient and avoids dragging
+    // a TOML parser into this binary for something the filesystem
+    // already tells us.
+    let skip_top_level: &[&str] = &["crates", "tools", "target", "docs", "site", "tests", "benches"];
+    for entry in fs::read_dir(workspace_dir)
+        .with_context(|| format!("reading {}", workspace_dir.display()))?
+        .filter_map(Result::ok)
+    {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let name = match p.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        if name.starts_with('.') || skip_top_level.contains(&name) {
+            continue;
+        }
+        if p.join("Cargo.toml").is_file() {
+            member_dirs.push(p);
+        }
+    }
     // Sort for reproducible output.
-    crate_dirs.sort();
-    for crate_dir in crate_dirs {
-        let src_dir = crate_dir.join("src");
+    member_dirs.sort();
+    for member_dir in member_dirs {
+        let src_dir = member_dir.join("src");
         if !src_dir.is_dir() {
             continue;
         }
@@ -137,11 +179,17 @@ fn scan_file(
 /// Detect retired `line NNNN` citation form. Looks for the literal
 /// pattern in source content (comments and string literals alike,
 /// since the AST strips line comments). The pattern is intentionally
-/// narrow: requires the word `line` followed by 3+ digits with at
-/// most one space between, and that the match is adjacent to a
-/// citation context (`§` symbol or `CAPCO-2016` token within the
-/// same line). Without the adjacency check, every reference to
-/// "line 245" in unrelated prose comments would false-positive.
+/// narrow: requires the literal `line ` (the word `line` followed by
+/// exactly one space) followed by 3+ digits, and that the match is
+/// adjacent to a citation context (`§` symbol or `CAPCO-2016` token
+/// within the same line). Without the adjacency check, every
+/// reference to "line 245" in unrelated prose comments would
+/// false-positive.
+///
+/// We do not normalize whitespace before matching — the retired form
+/// in the codebase always used a single space, and matching on
+/// `\s+` would surface false positives where formatter wrap-points
+/// land between `line` and the digit run in unrelated prose.
 fn find_legacy_line_form(path: &Path, source: &str, out: &mut Vec<Defect>) {
     for (idx, line) in source.lines().enumerate() {
         // Cheap pre-filter: must contain a citation context anchor.
