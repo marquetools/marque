@@ -7,7 +7,12 @@
 
 //! marque-ism — ISM vocabulary types, generated CVE enums, and core spans.
 //!
-//! This crate is a leaf dependency in the marque workspace. It owns:
+//! This crate is the foundational vocabulary crate of the marque
+//! workspace. It depends on `marque-scheme` (one-way edge —
+//! `ProjectedMarking::scope` carries `marque_scheme::Scope`) and is
+//! depended on by `marque-core` / `marque-rules` / `marque-capco` /
+//! `marque-engine`. See Constitution VII v1.4.0 for the canonical
+//! dep-graph diagram. It owns:
 //! - `Span` and scanner candidate types (zero-copy position tracking)
 //! - The pivot type triple ([`ParsedAttrs<'src>`], [`CanonicalAttrs`],
 //!   [`ProjectedMarking`]) and the `from_parsed_unchecked` transitional

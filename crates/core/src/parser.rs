@@ -502,15 +502,27 @@ impl<'t> Parser<'t> {
                         ForeignClassification::Joint(j) => j.level,
                     };
                     let max_level = us_level.max(foreign_equiv);
-                    let prior_bytes = classification.as_ref().map(|c| c.bytes).unwrap_or(trimmed);
-                    let prior_span = classification.as_ref().map(|c| c.span).unwrap_or(span);
+                    // Conflict provenance choice: bytes/span point at the
+                    // FOREIGN block (`trimmed`/`span`), not the prior US
+                    // block. The conflict is detected here, when parsing
+                    // the second classification — pointing at the foreign
+                    // block makes a future diagnostic ("dual classification
+                    // — pick one") land on the offending position. The US
+                    // block's own location is still recoverable via
+                    // `token_spans` (its `TokenSpan` was pushed on the
+                    // earlier iteration). A consumer that wants the full
+                    // conflict region can compute it from
+                    // `min(us.span.start, foreign.span.start)` to
+                    // `max(us.span.end, foreign.span.end)`. PR 3c may
+                    // promote this to a Conflict-specific span shape if a
+                    // round-trip property test (FR-019) requires it.
                     classification = Some(ParsedClassification::new(
                         MarkingClassification::Conflict {
                             us: max_level,
                             foreign: Box::new(foreign),
                         },
-                        prior_bytes,
-                        prior_span,
+                        trimmed,
+                        span,
                     ));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::Classification,

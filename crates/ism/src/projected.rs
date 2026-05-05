@@ -61,8 +61,11 @@ pub struct ProjectedMarking {
     /// Structural SCI markings (compartments + sub-compartments).
     pub sci_markings: Box<[SciMarking]>,
 
-    /// SAR block, at most one per banner per §A.6.
-    pub sar_marking: Option<SarMarking>,
+    /// SAR block, at most one per banner per §A.6. Field name aligns
+    /// with `CanonicalAttrs::sar_markings` (plural form preserved from
+    /// the pre-PR-3a `IsmAttributes` shape) so PR 6's projection
+    /// wiring does not need name-mapping glue.
+    pub sar_markings: Option<SarMarking>,
 
     /// AEA markings.
     pub aea_markings: Box<[AeaMarking]>,
