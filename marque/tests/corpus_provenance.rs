@@ -45,6 +45,10 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("valid/", ".expected.json"),
         // prose fixtures (future)
         ("prose/", ".txt"),
+        // mangled-fixture configuration (commit f99dbdab added
+        // tests/corpus/mangled/threshold.toml; the registered-
+        // pattern check was not updated in the same commit)
+        ("mangled/", ".toml"),
     ];
 
     // Top-level files

@@ -47,7 +47,7 @@
       "name": "corrections_map_typo_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//ORCON//REL TO USA, GBER\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":37},\"message\":\"decoder-recognized canonical form: \\\"CONFIDENTIAL//ORCON//REL TO USA, GBR\\\"\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"replacement\":\"CONFIDENTIAL//ORCON//REL TO USA, GBR\",\"confidence\":0.9639867,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":37},\"message\":\"decoder-recognized canonical form: \\\"CONFIDENTIAL//ORCON//REL TO USA, GBR\\\"\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"replacement\":\"CONFIDENTIAL//ORCON//REL TO USA, GBR\",\"confidence\":0.96399546,\"migration_ref\":null}}\n"
     },
     {
       "name": "declass_in_banner.txt",

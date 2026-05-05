@@ -70,7 +70,7 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 ///
 /// `build.rs` already rejects any `schema_version` mismatch on the
 /// producer side (see `crates/capco/build.rs:73-82` — it accepts only
-/// the single `marque-priors-2` value today). This const block is the
+/// the single `marque-priors-3` value today). This const block is the
 /// consumer-side counterpart kept as an explicit source pin and
 /// defense-in-depth check that the generated `SCHEMA_VERSION` still
 /// matches the version this crate is wired to consume — the value
@@ -79,16 +79,23 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 /// It also forces the consumer-side expectation to be a visible source
 /// declaration, so a future PR that bumps `build.rs` to accept a new
 /// schema version has to update this pin in the same edit.
+///
+/// `marque-priors-3` (issue #258) added the `token_prose_base_rates`
+/// and `country_code_prose_base_rates` tables alongside the existing
+/// marking-side rates so the decoder can compute the per-token
+/// "marking-y" score `log P(token|marking) − log P(token|prose)` and
+/// surface a null hypothesis ("this isn't a marking, it's prose")
+/// during recognition.
 const _: () = {
     let actual = SCHEMA_VERSION.as_bytes();
-    let expected = b"marque-priors-2";
+    let expected = b"marque-priors-3";
     if actual.len() != expected.len() {
-        panic!("SCHEMA_VERSION length does not match \"marque-priors-2\"");
+        panic!("SCHEMA_VERSION length does not match \"marque-priors-3\"");
     }
     let mut i = 0;
     while i < actual.len() {
         if actual[i] != expected[i] {
-            panic!("SCHEMA_VERSION does not equal \"marque-priors-2\"");
+            panic!("SCHEMA_VERSION does not equal \"marque-priors-3\"");
         }
         i += 1;
     }
@@ -147,6 +154,64 @@ pub fn country_code_log_prior(token: &str) -> Option<f32> {
         .map(|i| COUNTRY_CODE_BASE_RATES[i].log_prior)
 }
 
+/// Log-prior floor for tokens absent from the prose-stratum priors
+/// table (issue #258).
+///
+/// Mirrors the marking-side `MISSING_TOKEN_LOG_PRIOR` constant in
+/// `crates/engine/src/decoder.rs`. Used by the decoder when summing
+/// the prose-side of the per-token marking-y score
+/// `log P(token|marking) − log P(token|prose)` and the prose-side
+/// table has no entry for the token.
+///
+/// The value matches the marking-side floor on purpose: an unknown
+/// token contributes the same penalty on both sides, so the marking-y
+/// delta for unknown tokens is exactly zero (neutral signal). Picking
+/// a different value would silently bias every unknown-token candidate
+/// toward "marking" or "prose" without corpus evidence.
+pub const MISSING_PROSE_LOG_PRIOR: f32 = -12.0;
+
+/// Look up a token's prose-stratum log-prior by exact canonical form
+/// (issue #258).
+///
+/// The prose-stratum priors are derived from a corpus stratum that
+/// contains only prose-bearing material (Enron email, CIA CREST
+/// declassified records, Congressional Record, GAO reports — all
+/// confirmed prose-dominant per issue #258 owner confirmation). The
+/// decoder consumes this in parallel with [`token_log_prior`] to
+/// compute the per-token "marking-y" score
+/// `log P(token|marking) − log P(token|prose)`.
+///
+/// Returns `None` for tokens the prose-stratum corpus did not surface.
+/// Decoder code should fall back to [`MISSING_PROSE_LOG_PRIOR`] in
+/// that case so the marking-y delta for an unknown token is neutral.
+///
+/// Same sort-invariant-backed binary search as [`token_log_prior`].
+pub fn token_prose_log_prior(token: &str) -> Option<f32> {
+    TOKEN_PROSE_BASE_RATES
+        .binary_search_by_key(&token, |t| t.token)
+        .ok()
+        .map(|i| TOKEN_PROSE_BASE_RATES[i].log_prior)
+}
+
+/// Look up a country code's prose-stratum log-prior (issue #258).
+///
+/// Mirrors [`country_code_log_prior`] on the prose stratum. The prose-
+/// side log-prior for high-frequency country codes (USA, GBR, AUS,
+/// FVEY, …) must be high enough that an isolated REL-TO-style mention
+/// in prose — e.g., a proper-noun "(USA)" in a Federalist Papers
+/// passage — does not auto-fix; the marking-y delta for those codes
+/// shrinks toward zero in prose-shaped contexts.
+///
+/// Returns `None` for codes the prose-stratum corpus did not surface.
+/// Decoder code falls back to [`MISSING_PROSE_LOG_PRIOR`] in that
+/// case.
+pub fn country_code_prose_log_prior(token: &str) -> Option<f32> {
+    COUNTRY_CODE_PROSE_BASE_RATES
+        .binary_search_by_key(&token, |t| t.token)
+        .ok()
+        .map(|i| COUNTRY_CODE_PROSE_BASE_RATES[i].log_prior)
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -159,7 +224,7 @@ mod tests {
         // serves as a redundant tripwire that surfaces the problem in
         // test reports too (a build failure can be missed by a CI lane
         // that doesn't compile this crate; the test suite always does).
-        assert_eq!(SCHEMA_VERSION, "marque-priors-2");
+        assert_eq!(SCHEMA_VERSION, "marque-priors-3");
     }
 
     #[test]
@@ -183,6 +248,14 @@ mod tests {
         assert!(
             !COUNTRY_CODE_BASE_RATES.is_empty(),
             "country-code base rates must be populated (issue #233)"
+        );
+        assert!(
+            !TOKEN_PROSE_BASE_RATES.is_empty(),
+            "token prose base rates must be populated (issue #258)"
+        );
+        assert!(
+            !COUNTRY_CODE_PROSE_BASE_RATES.is_empty(),
+            "country-code prose base rates must be populated (issue #258)"
         );
     }
 
@@ -208,6 +281,22 @@ mod tests {
             assert!(
                 pair[0].token <= pair[1].token,
                 "country-code table not sorted: {:?} before {:?}",
+                pair[0].token,
+                pair[1].token,
+            );
+        }
+        for pair in TOKEN_PROSE_BASE_RATES.windows(2) {
+            assert!(
+                pair[0].token <= pair[1].token,
+                "token prose table not sorted: {:?} before {:?}",
+                pair[0].token,
+                pair[1].token,
+            );
+        }
+        for pair in COUNTRY_CODE_PROSE_BASE_RATES.windows(2) {
+            assert!(
+                pair[0].token <= pair[1].token,
+                "country-code prose table not sorted: {:?} before {:?}",
                 pair[0].token,
                 pair[1].token,
             );
@@ -321,6 +410,22 @@ mod tests {
                 t.log_prior,
             );
         }
+        for t in TOKEN_PROSE_BASE_RATES {
+            assert!(
+                t.log_prior.is_finite() && t.log_prior <= 0.0,
+                "prose token {:?} has invalid log_prior {}",
+                t.token,
+                t.log_prior,
+            );
+        }
+        for t in COUNTRY_CODE_PROSE_BASE_RATES {
+            assert!(
+                t.log_prior.is_finite() && t.log_prior <= 0.0,
+                "prose country code {:?} has invalid log_prior {}",
+                t.token,
+                t.log_prior,
+            );
+        }
     }
 
     #[test]
@@ -354,6 +459,41 @@ mod tests {
             country_code_log_prior("this-country-code-does-not-exist"),
             None
         );
+    }
+
+    #[test]
+    fn token_prose_log_prior_lookup_works() {
+        let first = TOKEN_PROSE_BASE_RATES
+            .first()
+            .expect("table must be non-empty per tables_are_non_empty");
+        let lookup = token_prose_log_prior(first.token);
+        assert_eq!(lookup, Some(first.log_prior));
+        assert_eq!(token_prose_log_prior("this-token-does-not-exist"), None);
+    }
+
+    #[test]
+    fn country_code_prose_log_prior_lookup_works() {
+        let first = COUNTRY_CODE_PROSE_BASE_RATES
+            .first()
+            .expect("table must be non-empty per tables_are_non_empty");
+        let lookup = country_code_prose_log_prior(first.token);
+        assert_eq!(lookup, Some(first.log_prior));
+        assert_eq!(
+            country_code_prose_log_prior("this-country-code-does-not-exist"),
+            None,
+        );
+    }
+
+    #[test]
+    fn missing_prose_log_prior_matches_marking_floor() {
+        // The marking-side floor lives in
+        // ``crates/engine/src/decoder.rs::MISSING_TOKEN_LOG_PRIOR``.
+        // Keep this assertion in sync if the marking-side constant
+        // moves; the contract is that an unknown token contributes a
+        // neutral marking-y delta (zero) — picking different floors
+        // would silently bias every unknown-token candidate without
+        // corpus evidence.
+        assert_eq!(MISSING_PROSE_LOG_PRIOR, -12.0_f32);
     }
 
     #[test]
