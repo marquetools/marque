@@ -49,7 +49,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ## Phase 2: Foundational (PR 0.5 + PR 0.6 + PR 1)
 
-**Purpose**: Citation-lint infrastructure (PR 0.5) + preemptive citation-defect fix (PR 0.6) + verification of already-landed splice (PR 1). All three must complete before keystone work because the keystone touches every rule body — citation hygiene needs to be enforced as we go.
+**Purpose**: Citation-lint infrastructure (PR 0.5) + preemptive citation-defect fix (PR 0.6) + verification of already-landed splice (PR 1). **All three PRs must land before keystone work** because the keystone touches every rule body — citation hygiene needs to be enforced as we go. (T019's `fix_throughput` R² ≥ 0.9 perf-gate verification is a separable concern — see the checkpoint note + #306 — and explicitly does NOT block keystone.)
 
 **⚠️ CRITICAL**: PR 0.6 is merge-gated on the citation-defect catalog being empty.
 
@@ -62,9 +62,9 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [X] T016 Fix the four pre-identified citation-defect classes in `crates/capco/src/scheme.rs` and `rules.rs`: (a) `§4` fabrications across multiple `scheme.rs` lines; (b) doubled `p150–151 p151` at five sites in `rules.rs`; (c) SIGMA cross-revision archaeology at `rules.rs:4053`; (d) HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it (FR-020; PR-0.6)
 - [X] T017 Address every additional defect surfaced by PR 0.5's citation-defect catalog; add corpus fixtures for any newly-cited authority lacking one; update citations per FR-018 rules (FR-019, FR-020; PR-0.6)
 - [X] T018 Verify PR 0.6 merge gate: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 (the crate is out-of-workspace per Constitution III; `-p citation-lint` does NOT work from the repo root); F.1 corpus fixture coverage is 100% over current rule catalog (FR-018, FR-019; PR-0.6)
-- [X] T019 Verify single-pass forward splice (PR #277 / #278 already landed): run `fix_throughput` Criterion bench; confirm R² ≥ 0.9 against PR-0 baseline (FR-029; PR-1)
+- [X] T019 Verify single-pass forward splice (PR #277 / #278 already landed): splice-correctness verified via tests + corpus regression (commit `9d5e3112` merged 2026-05-02). The `fix_throughput` Criterion R² ≥ 0.9 gate verification is **deferred** because `scripts/bench-check.sh::check_fix_throughput` was disabled in commit `bd5b84de` (2026-05-03) "until we resolve the underlying issue" — verification awaits the gate re-enable tracked at #306. Full deferral rationale + scope boundary in [`docs/refactor-006/pr-1-verification.md`](../../docs/refactor-006/pr-1-verification.md). (FR-029; PR-1)
 
-**Checkpoint**: Citation-lint green workspace-wide; F.1 corpus fixture coverage 100% over current rules; splice landed (T019 splice-correctness verified) but the `fix_throughput` R² ≥ 0.9 gate enforcement is deferred per [`docs/refactor-006/pr-1-verification.md`](../../docs/refactor-006/pr-1-verification.md) — gate-disable in commit `bd5b84de` is tracked separately; the keystone (PR 3a/3b/3c) does not depend on the gate being re-enabled, so this checkpoint does not block keystone work.
+**Checkpoint**: Citation-lint green workspace-wide; F.1 corpus fixture coverage 100% over current rules; splice landed and splice-correctness verified. The `fix_throughput` R² ≥ 0.9 gate enforcement is deferred per [`docs/refactor-006/pr-1-verification.md`](../../docs/refactor-006/pr-1-verification.md) — gate-disable in commit `bd5b84de` is tracked at **#306** (issue: `scripts/bench-check.sh: re-enable check_fix_throughput after underlying scaling bug is fixed`). The keystone (PR 3a/3b/3c) does NOT depend on the gate being re-enabled, so this checkpoint does not block keystone work; #306 is a separable post-keystone hygiene item.
 
 ---
 
