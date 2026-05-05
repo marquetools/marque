@@ -1010,6 +1010,7 @@ dependencies = [
  "quick-xml",
  "serde",
  "serde_json",
+ "smallvec",
  "toml",
  "xmloxide",
 ]

@@ -625,14 +625,24 @@ impl PageContext {
             // Explicit FGI markers on portions.
             if let Some(marker) = &attrs.fgi_marker {
                 has_any_fgi = true;
-                if marker.countries.is_empty() {
-                    has_source_concealed = true;
-                } else {
-                    countries.extend(marker.countries.iter().map(|c| c.as_str().to_owned()));
+                match marker {
+                    FgiMarker::SourceConcealed => {
+                        has_source_concealed = true;
+                    }
+                    FgiMarker::Acknowledged { countries: marker_countries } => {
+                        countries.extend(
+                            marker_countries.iter().map(|c| c.as_str().to_owned()),
+                        );
+                    }
                 }
             }
 
             // Non-US classification systems contribute to FGI in banner.
+            // Note: `MarkingClassification::Fgi` carries `FgiClassification`
+            // (a separate type with its own `countries: Box<[CountryCode]>`
+            // shape), not `FgiMarker`. The shape-collision retirement for
+            // that type is tracked separately; this branch keeps the
+            // existing semantics.
             match &attrs.classification {
                 Some(MarkingClassification::Fgi(fgi)) => {
                     has_any_fgi = true;
@@ -664,11 +674,9 @@ impl PageContext {
             return None;
         }
 
-        // Source-concealed supersedes all open sources.
+        // Source-concealed supersedes all open sources (CAPCO §H.7 p123).
         if has_source_concealed {
-            return Some(FgiMarker {
-                countries: Box::new([]),
-            });
+            return Some(FgiMarker::SourceConcealed);
         }
 
         // Convert country strings back to typed codes. Every entry
@@ -676,14 +684,18 @@ impl PageContext {
         // `try_new` is infallible in practice; `filter_map` is
         // defensive for any future refactor that lets non-CountryCode
         // entries into the `countries` set.
-        let codes: Vec<CountryCode> = countries
+        //
+        // If every code fails to round-trip (which would imply the
+        // upstream string set was corrupt), `acknowledged` returns
+        // `None`. We surface that as `None` here too rather than
+        // fabricating `SourceConcealed` — a banner with a corrupted
+        // country set is not lawful concealment, and the caller should
+        // treat it as "no FGI rollup" so the diagnostic surface stays
+        // honest.
+        let codes = countries
             .iter()
-            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
-            .collect();
-
-        Some(FgiMarker {
-            countries: codes.into(),
-        })
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()));
+        FgiMarker::acknowledged(codes)
     }
 
     // -----------------------------------------------------------------------
@@ -1259,24 +1271,20 @@ mod tests {
         let mut ctx = PageContext::new();
         // One portion with source-concealed FGI.
         ctx.add_portion(IsmAttributes {
-            fgi_marker: Some(FgiMarker {
-                countries: Box::new([]),
-            }),
+            fgi_marker: Some(FgiMarker::SourceConcealed),
             ..Default::default()
         });
         // Another with source-acknowledged FGI.
         ctx.add_portion(IsmAttributes {
-            fgi_marker: Some(FgiMarker {
-                countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
-            }),
+            fgi_marker: FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]),
             ..Default::default()
         });
         let marker = ctx.expected_fgi_marker().expect("should have FGI marker");
-        // Source-concealed wins → no countries.
+        // Source-concealed wins → bare FGI (no country list).
         assert!(
-            marker.countries.is_empty(),
-            "source-concealed should supersede: {:?}",
-            marker.countries,
+            matches!(marker, FgiMarker::SourceConcealed),
+            "source-concealed should supersede: got {:?}",
+            marker,
         );
     }
 
@@ -1284,19 +1292,18 @@ mod tests {
     fn fgi_open_union_of_countries() {
         let mut ctx = PageContext::new();
         ctx.add_portion(IsmAttributes {
-            fgi_marker: Some(FgiMarker {
-                countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
-            }),
+            fgi_marker: FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]),
             ..Default::default()
         });
         ctx.add_portion(IsmAttributes {
-            fgi_marker: Some(FgiMarker {
-                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
-            }),
+            fgi_marker: FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]),
             ..Default::default()
         });
         let marker = ctx.expected_fgi_marker().unwrap();
-        assert_eq!(marker.countries.len(), 2);
+        match marker {
+            FgiMarker::Acknowledged { countries } => assert_eq!(countries.len(), 2),
+            FgiMarker::SourceConcealed => panic!("expected acknowledged variant"),
+        }
     }
 
     // --- REL TO with FVEY expansion ---

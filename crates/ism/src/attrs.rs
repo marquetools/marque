@@ -31,6 +31,8 @@
 //! codewords, not a closed vocabulary. SAR is modeled structurally via
 //! [`SarMarking`] / [`SarProgram`] / [`SarCompartment`].
 
+use smallvec::SmallVec;
+
 use crate::date::IsmDate;
 use crate::generated::values;
 use crate::span::Span;
@@ -866,7 +868,8 @@ impl std::fmt::Display for AeaMarking {
 // FGI marker (in US-classified markings)
 // ---------------------------------------------------------------------------
 
-/// FGI marker in a US-classified marking: `FGI` or `FGI [LIST]`.
+/// FGI marker in a US-classified marking: `FGI` (source-concealed) or
+/// `FGI [LIST]` (source-acknowledged).
 ///
 /// Appears in the FGI block (after SAR, before dissem controls) when a
 /// US-classified document references foreign government information.
@@ -875,15 +878,113 @@ impl std::fmt::Display for AeaMarking {
 /// marking where the classification itself IS foreign. This marker says
 /// "this US-classified marking contains foreign government information."
 ///
-/// An empty `countries` list represents source-concealed FGI (no country
-/// attribution). If a document mixes source-concealed and source-acknowledged
-/// FGI portions, the banner must use the bare `FGI` form without countries
-/// to avoid compromising the concealed source.
+/// # Authoritative source
+///
+/// CAPCO-2016 §H.7 p123 defines two banner forms:
+///
+/// | Variant | Banner | Portion |
+/// |---|---|---|
+/// | Source-acknowledged | `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr `FGI [LIST]`) | with country trigraphs |
+/// | Source-concealed    | `FOREIGN GOVERNMENT INFORMATION` (abbr `FGI`)              | without country list |
+///
+/// Concealment is used when revealing the country list would compromise
+/// the foreign source. If a page mixes concealed + acknowledged portions,
+/// the banner must use the concealed form (bare `FGI`).
+///
+/// # Why an enum, not a struct with `Box<[CountryCode]>`
+///
+/// The previous shape `FgiMarker { countries: Box<[CountryCode]> }`
+/// made `countries: []` ambiguous between two meanings:
+///
+///   1. Lawful source-concealed FGI (the `FGI` banner form).
+///   2. A parser failure that silently dropped a country list — the
+///      classic open-vocabulary corruption case (issue #280).
+///
+/// FR-017 / CHK028 retire that collision by making the discriminant
+/// explicit. `Acknowledged` is constructed only via [`acknowledged`],
+/// which rejects an empty country list, so the corrupt shape is
+/// type-system-unrepresentable.
+///
+/// [`acknowledged`]: FgiMarker::acknowledged
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FgiMarker {
-    /// Countries (space-delimited in source).
-    /// Empty for source-concealed FGI.
-    pub countries: Box<[CountryCode]>,
+pub enum FgiMarker {
+    /// Source-concealed FGI per CAPCO-2016 §H.7 p123.
+    ///
+    /// Banner: `FOREIGN GOVERNMENT INFORMATION` (abbr `FGI`) with no
+    /// country list. Used when revealing the country list would
+    /// compromise the foreign source.
+    SourceConcealed,
+
+    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p123.
+    ///
+    /// Banner: `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr
+    /// `FGI [LIST]`). The country list is non-empty by construction —
+    /// see [`FgiMarker::acknowledged`] for the public constructor that
+    /// enforces the invariant.
+    ///
+    /// Marked `#[non_exhaustive]` so external crates **cannot**
+    /// construct this variant via struct-literal syntax. This is
+    /// load-bearing for FR-017 / CHK028: it forces external callers
+    /// through [`FgiMarker::acknowledged`], which rejects the empty
+    /// country list. Pattern matching from outside the crate still
+    /// works with the `..` rest pattern:
+    /// `FgiMarker::Acknowledged { countries, .. }`. Internal
+    /// (in-crate) construction is unrestricted, but only the
+    /// `acknowledged` constructor reaches the variant in this crate's
+    /// codepaths — see callsites for the audit.
+    #[non_exhaustive]
+    Acknowledged {
+        /// One or more country trigraphs/tetragraphs. Non-empty by
+        /// construction (enforced by [`FgiMarker::acknowledged`]).
+        ///
+        /// `SmallVec<[CountryCode; 4]>` keeps the typical FGI list
+        /// (≤4 codes) inline — no heap allocation on the parsing
+        /// hot path (Constitution Principle II).
+        countries: SmallVec<[CountryCode; 4]>,
+    },
+}
+
+impl FgiMarker {
+    /// Construct an acknowledged FGI marker from a non-empty list of
+    /// country codes. Returns `None` if the list is empty — at that
+    /// point the caller has either parser-failure data (return `None`
+    /// to the caller and let it surface as a diagnostic) or the source
+    /// is genuinely concealed (use [`FgiMarker::SourceConcealed`]
+    /// directly).
+    ///
+    /// Authority: CAPCO-2016 §H.7 p123 (the `FGI [LIST]` banner form
+    /// requires a non-empty `[LIST]`).
+    pub fn acknowledged<I>(countries: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = CountryCode>,
+    {
+        let countries: SmallVec<[CountryCode; 4]> = countries.into_iter().collect();
+        if countries.is_empty() {
+            None
+        } else {
+            Some(Self::Acknowledged { countries })
+        }
+    }
+
+    /// Country trigraphs for this marker.
+    ///
+    /// - `SourceConcealed` → empty slice (no countries by definition;
+    ///   distinguishable from a parse failure because the variant
+    ///   itself is the disambiguator).
+    /// - `Acknowledged { countries }` → `&countries[..]`, guaranteed
+    ///   non-empty by the [`FgiMarker::acknowledged`] constructor.
+    pub fn countries(&self) -> &[CountryCode] {
+        match self {
+            Self::SourceConcealed => &[],
+            Self::Acknowledged { countries } => countries.as_slice(),
+        }
+    }
+
+    /// `true` iff this is a source-concealed marker (the bare `FGI`
+    /// banner form, CAPCO-2016 §H.7 p123).
+    pub fn is_concealed(&self) -> bool {
+        matches!(self, Self::SourceConcealed)
+    }
 }
 
 // ===========================================================================

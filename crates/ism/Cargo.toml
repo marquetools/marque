@@ -57,6 +57,7 @@ ismcat-tetra-version = "2022-NOV"
 aho-corasick = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

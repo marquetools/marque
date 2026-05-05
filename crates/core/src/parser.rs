@@ -1001,15 +1001,34 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// This is the FGI block between SAR and dissem controls in a US-classified
 /// marking (e.g., `SECRET//FGI DEU//NOFORN`). Not to be confused with
 /// [`parse_fgi_classification`] which parses a non-US classification.
+///
+/// # Variant selection
+///
+/// Authority: CAPCO-2016 §H.7 p123 (two banner forms: `FGI` source-concealed
+/// vs. `FGI [LIST]` source-acknowledged).
+///
+/// - Bare `"FGI"` → [`FgiMarker::SourceConcealed`].
+/// - `"FGI <trigraphs>"` with at least one valid trigraph →
+///   [`FgiMarker::Acknowledged`].
+///
+/// # Behavior on shape failure (T094 transitional)
+///
+/// Today, when the trigraph-collection path produces zero codes (the
+/// caller wrote `FGI <garbage>` and no token survived `CountryCode::try_new`),
+/// this fallback returns `SourceConcealed` so the rule layer sees the same
+/// observable behavior as the pre-T094 struct shape. That preserves
+/// behavior under T094 (a pure type-shape refactor) but is **not** the
+/// long-term semantic — issue #280 / T088+T093 will replace this fallback
+/// with `None`, so a parse failure surfaces honestly instead of being
+/// silently re-cast as lawful concealment. Track that follow-up and do
+/// not extend this fallback.
 fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     if s == "FGI" {
-        return Some(FgiMarker {
-            countries: Box::new([]),
-        });
+        return Some(FgiMarker::SourceConcealed);
     }
 
     let rest = s.strip_prefix("FGI ")?;
-    let mut countries = Vec::new();
+    let mut countries: Vec<CountryCode> = Vec::new();
     for token in rest.split_whitespace() {
         if token.len() == 3 {
             if let Some(t) = CountryCode::try_new(token.as_bytes()) {
@@ -1019,9 +1038,10 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
         // Skip non-trigraph tokens for now (tetragraphs like NATO)
     }
 
-    Some(FgiMarker {
-        countries: countries.into(),
-    })
+    // T094 transitional: see fn doc-comment. Empty country list after
+    // collection falls back to SourceConcealed to preserve current
+    // observable behavior; T088+T093 will return `None` here instead.
+    Some(FgiMarker::acknowledged(countries).unwrap_or(FgiMarker::SourceConcealed))
 }
 
 /// Attempt to parse a block as a foreign classification (NATO, JOINT, or FGI).
@@ -2073,12 +2093,17 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        assert_eq!(marker.countries.len(), 1);
-        assert_eq!(marker.countries[0].as_str(), "DEU");
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => {
+                assert_eq!(countries.len(), 1);
+                assert_eq!(countries[0].as_str(), "DEU");
+            }
+            FgiMarker::SourceConcealed => panic!("expected acknowledged variant"),
+        }
     }
 
     #[test]
-    fn fgi_marker_no_countries() {
+    fn fgi_marker_bare_is_source_concealed() {
         let parsed = parse_banner("SECRET//FGI//NOFORN");
         assert_eq!(
             parsed.attrs.classification,
@@ -2089,7 +2114,9 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        assert!(marker.countries.is_empty());
+        // CAPCO §H.7 p123: bare `FGI` is the lawful source-concealed
+        // banner form, distinct from a parser failure.
+        assert!(matches!(marker, FgiMarker::SourceConcealed));
     }
 
     #[test]

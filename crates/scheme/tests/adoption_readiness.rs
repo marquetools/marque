@@ -292,6 +292,14 @@ impl Vocabulary<StubScheme> for StubScheme {
     fn metadata(&self, _token: &TokenId) -> &'static TokenMetadataFull<TokenId> {
         &STUB_METADATA
     }
+    fn shape_admits(&self, _category: CategoryId, _bytes: &[u8]) -> bool {
+        // Stub scheme has no admissible bytes — returning `false`
+        // unconditionally satisfies the totality contract and
+        // demonstrates the trait surface compiles for a second
+        // scheme without dragging in CAPCO-specific machinery
+        // (SC-010 deferred-verifiable check).
+        false
+    }
 }
 
 // ---------------------------------------------------------------------------
