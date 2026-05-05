@@ -956,6 +956,7 @@ dependencies = [
  "marque-ism",
  "memchr",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 
@@ -1010,6 +1011,7 @@ dependencies = [
  "quick-xml",
  "serde",
  "serde_json",
+ "smallvec",
  "toml",
  "xmloxide",
 ]

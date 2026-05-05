@@ -271,6 +271,25 @@ jobs:
             exit 1
           fi
 
+  # FR-015 / CHK030 — regression-grep guards. Pattern-anchored guards
+  # against forbidden source-code shapes that PR 2 (and future PRs)
+  # migrated to documented vocabulary surfaces. Currently enforces:
+  #   - no inline `is_ascii_alphanumeric()` in `crates/core/src/parser.rs`
+  #     (PR 2 routed admission through `Vocabulary<S>::shape_admits` and
+  #     the lifted `marque-ism` predicates).
+  # See `tools/regression-grep/README.md` for the active guard list and
+  # the contract for adding a new guard.
+  # Shell-only by design (no Rust toolchain needed); also runnable
+  # locally via `./tools/regression-grep/regression-grep.sh`.
+  regression-grep:
+    name: regression-grep (FR-015 / CHK030)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - name: Run regression-grep guards
+        run: ./tools/regression-grep/regression-grep.sh
+
   wasm:
     name: WASM build
     needs: check

@@ -439,19 +439,16 @@ impl FgiSet {
     }
 
     pub fn from_marker(marker: Option<&FgiMarker>) -> Self {
-        let Some(m) = marker else {
-            return Self::None;
-        };
-        if m.countries.is_empty() {
-            Self::Present {
+        match marker {
+            None => Self::None,
+            Some(FgiMarker::SourceConcealed) => Self::Present {
                 concealed: true,
                 countries: BTreeSet::new(),
-            }
-        } else {
-            Self::Present {
+            },
+            Some(FgiMarker::Acknowledged { countries, .. }) => Self::Present {
                 concealed: false,
-                countries: m.countries.iter().copied().collect(),
-            }
+                countries: countries.iter().copied().collect(),
+            },
         }
     }
 
@@ -463,17 +460,20 @@ impl FgiSet {
                 countries,
             } => {
                 if *concealed {
-                    Some(FgiMarker {
-                        countries: Box::new([]),
-                    })
+                    Some(FgiMarker::SourceConcealed)
                 } else {
-                    Some(FgiMarker {
-                        countries: countries
-                            .iter()
-                            .copied()
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice(),
-                    })
+                    // `Present { concealed: false, countries }` is
+                    // produced only by lattice operations that either
+                    // carry over a non-empty input set or intersect to
+                    // a non-empty result (the meet collapses to `None`
+                    // when the intersection is empty — see `meet`
+                    // below). So `acknowledged(...)` should always
+                    // yield `Some` here in practice; if a future
+                    // refactor produces a `Present` with an empty
+                    // open-source set, we surface `None` rather than
+                    // fabricating `SourceConcealed`, which would be a
+                    // semantic lie about the source.
+                    FgiMarker::acknowledged(countries.iter().copied())
                 }
             }
         }
@@ -1124,10 +1124,8 @@ mod tests {
     }
 
     #[test]
-    fn fgi_set_from_marker_empty_countries_is_concealed() {
-        let m = FgiMarker {
-            countries: Box::new([]),
-        };
+    fn fgi_set_from_marker_source_concealed_is_concealed() {
+        let m = FgiMarker::SourceConcealed;
         let set = FgiSet::from_marker(Some(&m));
         assert!(matches!(
             set,
@@ -1139,10 +1137,9 @@ mod tests {
     }
 
     #[test]
-    fn fgi_set_from_marker_populated_countries_is_open() {
-        let m = FgiMarker {
-            countries: vec![CountryCode::try_new(b"GBR").unwrap()].into_boxed_slice(),
-        };
+    fn fgi_set_from_marker_acknowledged_is_open() {
+        let m = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()])
+            .expect("non-empty country list");
         let set = FgiSet::from_marker(Some(&m));
         match set {
             FgiSet::Present {
@@ -1157,18 +1154,26 @@ mod tests {
     }
 
     #[test]
+    fn fgi_marker_acknowledged_rejects_empty_list() {
+        // FR-017 / CHK028: the empty-Acknowledged shape MUST be
+        // type-system-unrepresentable from the public surface.
+        let empty: Vec<CountryCode> = Vec::new();
+        assert!(FgiMarker::acknowledged(empty).is_none());
+    }
+
+    #[test]
     fn fgi_set_to_marker_none_for_none() {
         assert!(FgiSet::None.to_marker().is_none());
     }
 
     #[test]
-    fn fgi_set_to_marker_concealed_emits_empty_countries() {
+    fn fgi_set_to_marker_concealed_emits_source_concealed_variant() {
         let set = FgiSet::Present {
             concealed: true,
             countries: BTreeSet::new(),
         };
         let marker = set.to_marker().expect("Some");
-        assert!(marker.countries.is_empty());
+        assert!(matches!(marker, FgiMarker::SourceConcealed));
     }
 
     #[test]
@@ -1181,7 +1186,10 @@ mod tests {
             countries,
         };
         let marker = set.to_marker().expect("Some");
-        assert_eq!(marker.countries.len(), 2);
+        match marker {
+            FgiMarker::Acknowledged { countries, .. } => assert_eq!(countries.len(), 2),
+            FgiMarker::SourceConcealed => panic!("expected acknowledged variant"),
+        }
     }
 
     #[test]

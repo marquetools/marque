@@ -260,19 +260,15 @@ fn fgi_concealed_supersedes_open() {
     let mut ctx = PageContext::new();
 
     let mut p1 = CanonicalAttrs::default();
-    p1.fgi_marker = Some(FgiMarker {
-        countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
-    });
+    p1.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]);
     ctx.add_portion(p1);
 
     let mut p2 = CanonicalAttrs::default();
-    p2.fgi_marker = Some(FgiMarker {
-        countries: Box::new([]),
-    });
+    p2.fgi_marker = Some(FgiMarker::SourceConcealed);
     ctx.add_portion(p2);
 
     let fgi = ctx.expected_fgi_marker().unwrap();
-    assert!(fgi.countries.is_empty());
+    assert!(matches!(fgi, FgiMarker::SourceConcealed));
 }
 
 /// FGI open countries union
@@ -281,19 +277,18 @@ fn fgi_open_union() {
     let mut ctx = PageContext::new();
 
     let mut p1 = CanonicalAttrs::default();
-    p1.fgi_marker = Some(FgiMarker {
-        countries: vec![CountryCode::try_new(b"GBR").unwrap()].into(),
-    });
+    p1.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
     ctx.add_portion(p1);
 
     let mut p2 = CanonicalAttrs::default();
-    p2.fgi_marker = Some(FgiMarker {
-        countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
-    });
+    p2.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]);
     ctx.add_portion(p2);
 
     let fgi = ctx.expected_fgi_marker().unwrap();
-    assert_eq!(fgi.countries.len(), 2);
+    match fgi {
+        FgiMarker::Acknowledged { countries, .. } => assert_eq!(countries.len(), 2),
+        FgiMarker::SourceConcealed => panic!("expected acknowledged variant"),
+    }
 }
 
 // =========================================================================

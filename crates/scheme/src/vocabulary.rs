@@ -22,6 +22,7 @@
 //! - The FOUO → CUI migration is absent from the migration table
 //!   (FR-020): FOUO remains an active valid dissemination control.
 
+use crate::category::CategoryId;
 use crate::scheme::MarkingScheme;
 
 /// Authority under which a token is published.
@@ -203,4 +204,48 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// need one field, but the full record is the authoritative
     /// view.
     fn metadata(&self, token: &S::Token) -> &'static TokenMetadataFull<S::Token>;
+
+    /// Test whether `bytes` is admissible as a token in `category`.
+    ///
+    /// Admission is the union of two predicates depending on the
+    /// category's vocabulary shape:
+    ///
+    /// - **Closed-CVE categories** (e.g., U.S. classification, IC
+    ///   dissemination controls, AEA, non-US classification, joint
+    ///   classification, non-IC dissemination): admission is exactly
+    ///   *vocabulary membership*. Implementations should resolve
+    ///   `bytes` against the canonical token table for the category
+    ///   and return `true` iff the lookup succeeds. Schemes MAY
+    ///   accept either the portion form or the banner form when
+    ///   both are defined for a token (e.g., `b"SECRET"` and `b"S"`
+    ///   should both admit for a US-classification category whose
+    ///   tokens have distinct portion / banner forms).
+    ///
+    /// - **Open-vocabulary categories** (e.g., FGI/REL-TO country
+    ///   trigraphs, SAR program identifiers, SCI compartments and
+    ///   sub-compartments where the vocabulary allows agency-specific
+    ///   extensions): admission is by *generative shape rule* —
+    ///   character class (ASCII alpha vs. alphanumeric), length
+    ///   bounds, and any required prefix/suffix structure. The shape
+    ///   rule MUST trace to an authoritative passage in the scheme's
+    ///   primary source (Constitution Principle VIII).
+    ///
+    /// Implementations are total over `(CategoryId, &[u8])`: an
+    /// unknown `category` MUST return `false` rather than panicking,
+    /// so callers (notably parser admission sites — see FR-015 of
+    /// `specs/006-engine-rule-refactor/spec.md`) can route every
+    /// open-vocabulary slot through this method without category
+    /// existence checks. The empty byte slice MUST return `false`
+    /// for every category — no token has zero length.
+    ///
+    /// # Performance contract
+    ///
+    /// `Arc<dyn Vocabulary<S>>` precludes cross-crate
+    /// devirtualization (FR-030), so implementations sit on the
+    /// parser hot path. Implementations MUST avoid heap allocation,
+    /// regex compilation, and UTF-8 decoding overhead beyond what
+    /// is required to identify the byte class. ASCII byte
+    /// comparisons are the expected operation set; anything richer
+    /// requires measurement against `SC-001`.
+    fn shape_admits(&self, category: CategoryId, bytes: &[u8]) -> bool;
 }
