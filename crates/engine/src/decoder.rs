@@ -381,6 +381,37 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 candidates: Vec::new(),
             };
         }
+        // Per-candidate prose null-hypothesis filter (issue #258
+        // PR #313 review-2). Each candidate's `null_posterior` is
+        // computed against *its own* canonical token set, so the
+        // marking-vs-null comparison is per-candidate, not a
+        // single-top property. Drop candidates whose prose-side
+        // posterior beats their marking-side posterior before sort
+        // / dispatch. Without this filter the previous early-return
+        // could silently suppress a perfectly good marking-y
+        // candidate just because some other candidate (with a
+        // different token set) ranked higher by raw posterior but
+        // lost to its own null. Filtering first means the dispatch
+        // sees only candidates whose marking interpretation actually
+        // beats their prose alternative.
+        debug_assert!(
+            scored.iter().all(|c| c.null_posterior.is_finite()),
+            "decoder produced non-finite null_posterior — invariant violated"
+        );
+        scored.retain(|c| c.posterior >= c.null_posterior);
+        if scored.is_empty() {
+            // Every candidate's prose hypothesis beat its marking
+            // hypothesis — prose-shaped input that round-tripped
+            // through the strict parser into a CAPCO shape but is
+            // more likely prose than any of the recovery candidates
+            // (e.g., `(s)` mid-sentence in Federalist 10). Return
+            // zero-candidate Ambiguous so the engine emits no
+            // diagnostic and no auto-fix. FR-015: "we see signal,
+            // can't resolve."
+            return Parsed::Ambiguous {
+                candidates: Vec::new(),
+            };
+        }
         scored.sort_by(|a, b| b.posterior.total_cmp(&a.posterior));
         scored.truncate(K_MAX_CANDIDATES);
 
@@ -416,22 +447,15 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // Federalist-corpus `(s)` regression that motivated #258. No
         // candidates returned, no diagnostic, no auto-fix.
         let top_score = scored[0].posterior;
+        // After the per-candidate `posterior >= null_posterior`
+        // filter above, the top candidate's prose alternative is by
+        // construction at most equal to its marking interpretation —
+        // no separate null-wins early return is needed here.
         let top_null_score = scored[0].null_posterior;
         let marking_runner_up = scored
             .get(1)
             .map(|c| c.posterior)
             .unwrap_or(f32::NEG_INFINITY);
-
-        // Null hypothesis wins outright: prose-shaped input that the
-        // strict parser happened to round-trip into a CAPCO shape
-        // (e.g., `(s)` mid-sentence in Federalist 10). Return
-        // zero-candidate Ambiguous so the engine emits no diagnostic
-        // and no auto-fix. FR-015: "we see signal, can't resolve."
-        if top_null_score > top_score {
-            return Parsed::Ambiguous {
-                candidates: Vec::new(),
-            };
-        }
 
         // Recognition runner-up: whichever of (marking-side runner-up,
         // null hypothesis) is the strongest alternative to the top.
