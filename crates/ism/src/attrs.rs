@@ -5,8 +5,8 @@
 //! Leaf vocabulary types for the ISM attribute model.
 //!
 //! Houses the structural, generated-CVE, and classification leaf types
-//! shared by [`crate::ParsedAttrs`], [`crate::CanonicalAttrs`], and
-//! [`crate::ProjectedMarking`]. Mirrors the IC ISM XML attribute model.
+//! shared by [`crate::ParsedAttrs`] and [`crate::CanonicalAttrs`].
+//! Mirrors the IC ISM XML attribute model.
 //!
 //! # Code generation
 //! CVE enum variants (`SciControl`, `DissemControl`, `DeclassExemption`) are
@@ -21,11 +21,14 @@
 //!
 //! Pre-PR-3a a single owned struct (then named `IsmAttributes`) lived in
 //! this module and served both as the parser output and the
-//! rule-consumption form. PR 3a split that role across three types:
+//! rule-consumption form. PR 3a split that role across two types
+//! (`ParsedMarking`'s third leg, `ProjectedMarking`, lands in PR 5/6
+//! where it has consumers — defining it in `marque-ism` would require
+//! a `marque-scheme` dep that violates Constitution VII's peer-leaf
+//! placement of `marque-ism`):
 //!
 //! - [`crate::ParsedAttrs`] (in `parsed.rs`) — borrowed parser output.
 //! - [`crate::CanonicalAttrs`] (in `canonical.rs`) — owned rule input.
-//! - [`crate::ProjectedMarking`] (in `projected.rs`) — page projection.
 //!
 //! The `from_parsed_unchecked` adapter bridges parser output to
 //! `CanonicalAttrs` during the keystone window; PR 3c's

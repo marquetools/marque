@@ -78,12 +78,12 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 ### PR 3a — Pivot type split (KEYSTONE-1)
 
-- [ ] T020 [US1] Define `ParsedAttrs<'src>` in `crates/ism/src/attrs.rs` (or new `parsed.rs`) with `'src` lifetime threading and the eight `Parsed*<'src>` field types per `data-model.md` § ParsedAttrs (PR-3a)
-- [ ] T021 [US1] Define `CanonicalAttrs` in `crates/ism/src/attrs.rs` (or new `canonical.rs`) — owned form, `classification: Option<MarkingClassification>` (FR-007 supporting), existing lattice types (`SciSet`, `SarSet`, `FgiSet`) for set-valued fields (PR-3a)
-- [ ] T022 [US1] Define `ProjectedMarking` with `scope: Scope`, classification + lattice fields, and `provenance: ProjectionProvenance` for lattice trace (PR-3a)
-- [ ] T023 [US1] Implement `from_parsed_unchecked(ParsedAttrs<'_>) -> CanonicalAttrs` adapter as `#[doc(hidden)] pub` in `crates/ism/src/attrs.rs`; transitional bridge for PR 3a → PR 3c (PR-3a)
-- [ ] T024 [US1] Mechanically migrate test-fixture `IsmAttributes { ... }` literals across `crates/capco/tests/`, `crates/engine/tests/`, and unit-test modules to `from_parsed_unchecked(...)` form; expect to re-touch at PR 3c (PR-3a)
-- [ ] T025 [P] [US1] Add CI matrix entry: corpus regression sweep × {3a-only} = 1 run validating PR 3a is independently correct (SC-014; PR-3a)
+- [X] T020 [US1] Define `ParsedAttrs<'src>` in `crates/ism/src/parsed.rs` with `'src` lifetime threading and the eight `Parsed*<'src>` field types per `data-model.md` § ParsedAttrs (PR-3a)
+- [X] T021 [US1] Define `CanonicalAttrs` in `crates/ism/src/canonical.rs` — owned form, `classification: Option<MarkingClassification>` (FR-007 supporting), existing lattice types (`SciSet`, `SarSet`, `FgiSet`) for set-valued fields (PR-3a)
+- [ ] T022 [US1] **DEFERRED to PR 5/6** — `ProjectedMarking` has no consumer at PR 3a (`MarkingScheme::project` already returns `Self::Marking`, not `ProjectedMarking`). Defining it in `marque-ism` would force a `marque-ism → marque-scheme` dep edge, violating Constitution VII's peer-leaf placement of `marque-ism`. The type lands when its consumer (`Scope::Page` projection cutover) lands at PR 6. (was: PR-3a → now PR-5/6)
+- [X] T023 [US1] Implement `from_parsed_unchecked(ParsedAttrs<'_>) -> CanonicalAttrs` adapter as `#[doc(hidden)] pub` in `crates/ism/src/canonical.rs`; transitional bridge for PR 3a → PR 3c (PR-3a)
+- [X] T024 [US1] Mechanically migrate test-fixture `IsmAttributes { ... }` literals across `crates/capco/tests/`, `crates/engine/tests/`, and unit-test modules to `from_parsed_unchecked(...)` form; expect to re-touch at PR 3c (PR-3a)
+- [X] T025 [P] [US1] Add CI matrix entry: corpus regression sweep × {3a-only} = 1 run validating PR 3a is independently correct (SC-014; PR-3a)
 
 ### PR 3b — Rule collapse (KEYSTONE-2)
 

@@ -10,6 +10,18 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Status**: Approved-for-implementation
 **Audience**: implementer-of-record for PR 3a
 
+> **Post-implementation amendment (T022 deferred).** §3.4's
+> `ProjectedMarking` type was deferred from PR 3a to PR 5/6 after
+> implementation. Reason: `MarkingScheme::project` (in `marque-scheme`)
+> currently returns `Self::Marking`, not a separate `ProjectedMarking` —
+> so the type had no consumer at PR 3a. Defining it in `marque-ism`
+> required a `marque-ism → marque-scheme` dep edge that violates
+> Constitution VII's peer-leaf placement of `marque-ism`
+> ("`marque-ism` ... sits at the bottom of every WASM-safe chain").
+> The type will land in PR 5/6 alongside the `Scope::Page` projection
+> cutover that consumes it. PR 3a delivers T020 / T021 / T023 / T024 /
+> T025 only; T022 moves to PR 5/6.
+
 PR 3a is structural-rename + transitional-adapter. **No rule semantics
 change. No discriminant change. No schema bump. No new fields.** Output
 is byte-identical to `main` on every fixture in every corpus. PR 3a is

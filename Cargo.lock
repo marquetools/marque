@@ -1005,7 +1005,6 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "jiff",
- "marque-scheme",
  "memchr",
  "proptest",
  "quick-xml",
