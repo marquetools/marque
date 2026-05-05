@@ -9,12 +9,11 @@
 //!
 //! This crate is a leaf dependency in the marque workspace. It owns:
 //! - `Span` and scanner candidate types (zero-copy position tracking)
-//! - The pivot type pair ([`ParsedAttrs<'src>`], [`CanonicalAttrs`]) and the
-//!   `from_parsed_unchecked` transitional adapter that bridges parser output
-//!   to rule input. (`ProjectedMarking` — the third leg of the
-//!   data-model.md split — is deferred to PR 5/6 where it has consumers;
-//!   defining it in `marque-ism` would require a `marque-scheme` dep that
-//!   violates Constitution VII's peer-leaf placement.)
+//! - The pivot type triple ([`ParsedAttrs<'src>`], [`CanonicalAttrs`],
+//!   [`ProjectedMarking`]) and the `from_parsed_unchecked` transitional
+//!   adapter that bridges parser output to rule input. PR 6 wires
+//!   `ProjectedMarking` into the engine alongside the `Scope::Page`
+//!   projection cutover.
 //! - `TokenSet` trait and `CapcoTokenSet` (Aho-Corasick CVE token matching)
 //! - Generated code from ODNI ISM schemas (CVE enums, validators, migrations)
 //!
@@ -27,6 +26,7 @@ pub mod generated;
 pub mod marking_forms;
 pub mod page_context;
 pub mod parsed;
+pub mod projected;
 pub mod span;
 pub mod token_set;
 
@@ -50,5 +50,6 @@ pub use parsed::{
     ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
     SourceOrigin,
 };
+pub use projected::{ProjectedMarking, ProjectionProvenance};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
 pub use token_set::{CapcoTokenSet, TokenSet};

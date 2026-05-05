@@ -12,16 +12,18 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 > **Post-implementation amendments.**
 >
-> - **T022 deferred.** §3.4's `ProjectedMarking` type was deferred from
->   PR 3a to PR 5/6. Reason: `MarkingScheme::project` (in
->   `marque-scheme`) currently returns `Self::Marking`, not a separate
->   `ProjectedMarking` — so the type had no consumer at PR 3a. Defining
->   it in `marque-ism` required a `marque-ism → marque-scheme` dep
->   edge that violates Constitution VII's peer-leaf placement of
->   `marque-ism` ("`marque-ism` ... sits at the bottom of every
->   WASM-safe chain"). The type will land in PR 5/6 alongside the
->   `Scope::Page` projection cutover that consumes it. PR 3a delivers
->   T020 / T021 / T023 / T024 / T025 only; T022 moves to PR 5/6.
+> - **T022 dep-graph clarification.** §3.4's `ProjectedMarking::scope`
+>   field forces a `marque-ism → marque-scheme` dep edge. The
+>   consolidated plan's Appendix D anticipates an
+>   `marque-ism` ↔ `marque-scheme` edge as part of the keystone-window
+>   dep-graph evolution; both crates remain WASM-safe; the graph stays
+>   acyclic because `marque-scheme` does NOT depend on `marque-ism`
+>   (it remains a domain-neutral trait surface). An earlier deferral of
+>   T022 was reverted: the edge was always anticipated, and shipping
+>   `ProjectedMarking` at PR 3a gives PR 5/6 the stable target the
+>   design intended. Constitution VII's literal "peer leaf" wording
+>   describes the pre-refactor shape; the plan supersedes for the
+>   refactor itself.
 > - **§3.1 wrapper count corrected: 9, not 8.** A
 >   `ParsedRelToEntry<'src>` wrapper for REL TO country trigraphs is
 >   required and was implemented; it was omitted from the §3.1 listing.
