@@ -517,7 +517,15 @@ def iter_corpus_texts(
     legitimately fit in fewer than 20 bytes (`(S)`, `SECRET//NF`,
     `S//NF` are all valid marking fixtures and must contribute to
     `token_base_rates`).
+
+    *max_docs* is treated with `is not None` semantics: a literal `0`
+    means "yield zero documents" (used by the priors-mode budget
+    arithmetic when the marking stratum has already consumed the
+    full ``--max-docs`` budget). A truthiness check (`if max_docs`)
+    would treat 0 as falsy and yield the entire corpus uncapped.
     """
+    if max_docs is not None and max_docs <= 0:
+        return
     count = 0
     for root, _dirs, files in os.walk(corpus_path):
         for fname in files:
@@ -531,7 +539,7 @@ def iter_corpus_texts(
                     doc_id = str(fpath.relative_to(corpus_path))
                     yield doc_id, text
                     count += 1
-                    if max_docs and count >= max_docs:
+                    if max_docs is not None and count >= max_docs:
                         return
             except (UnicodeDecodeError, OSError):
                 continue
@@ -552,15 +560,21 @@ def iter_corpus_texts_multi(
     per-source, so a small *max_docs* will be drawn entirely from the first
     source.  Pass ``None`` (default) to iterate all documents in all sources.
 
+    *max_docs* uses `is not None` semantics: a literal `0` short-
+    circuits with no docs yielded. A truthiness check would
+    silently treat 0 as "unlimited" and scan the whole corpus.
+
     *min_length* is forwarded to ``iter_corpus_texts``; see that
     function's docstring for the marking-vs-prose stratum tradeoff.
     """
+    if max_docs is not None and max_docs <= 0:
+        return
     count = 0
     for corpus_path in corpus_paths:
         for doc_id, text in iter_corpus_texts(corpus_path, min_length=min_length):
             yield doc_id, text
             count += 1
-            if max_docs and count >= max_docs:
+            if max_docs is not None and count >= max_docs:
                 return
 
 
@@ -2285,9 +2299,14 @@ def main():
                     )
                 )
 
-    # Default for --mode priors: marking stratum from tests/corpus/valid/,
-    # prose stratum from Enron. Other modes get the combined list with
-    # tests/corpus/valid/ as the single source if nothing was specified.
+    # Per-mode defaults when no source flags are supplied:
+    # - `--mode priors` needs both strata, so it pulls the marking
+    #   stratum from `tests/corpus/valid/` and the prose stratum
+    #   from Enron.
+    # - `--mode baseline` / `mangled` / `heuristic-frequency` keep
+    #   their legacy single-path Enron default (the stratum tag is
+    #   irrelevant for these modes — they iterate `corpus_paths`,
+    #   the combined list, and don't separate marking from prose).
     repo_root = Path(__file__).resolve().parents[2]
     default_marking = repo_root / "tests" / "corpus" / "valid"
     if not marking_paths and not prose_paths and not args.corpus_sources and not args.corpus:
@@ -2295,11 +2314,8 @@ def main():
             if default_marking.exists():
                 marking_paths.append(default_marking)
             prose_paths.append(download_enron())
-        elif args.mode == "baseline":
-            prose_paths.append(download_enron())
         else:
-            # mangled / heuristic-frequency keep their legacy single-path
-            # default (Enron). Stratum tag is irrelevant for these modes.
+            # baseline / mangled / heuristic-frequency
             prose_paths.append(download_enron())
 
     corpus_paths: list[Path] = list(marking_paths) + list(prose_paths)
@@ -2337,28 +2353,16 @@ def main():
         # the per-stratum `run_analysis` calls below, applying the
         # raw `args.max_docs` to each call would double the actual
         # cap (a `--max-docs 1000` invocation could process 2000
-        # docs total). Honor the contract by passing the marking
-        # stratum its full count uncapped (it's small — just
-        # `tests/corpus/valid/`, ~34 short fixtures) and reserving
-        # the rest of the budget for the prose stratum, which is
-        # always the dominant contributor to processing time.
-        # `None` (the default) preserves the unlimited-budget case.
-        if args.max_docs is None:
-            marking_max = None
-            prose_max = None
-        else:
-            # Marking corpus is small enough that capping it
-            # meaningfully would always come at the cost of priors
-            # quality. Take what's there and give the rest to prose.
-            marking_max = None
-            prose_max = max(0, args.max_docs - sum(1 for _ in (
-                p for p in marking_paths
-                # Fast count: number of .txt files. Cheaper than a
-                # full `iter_corpus_texts` walk and accurate enough
-                # for budget arithmetic.
-                if p.exists()
-                for _ in p.rglob("*.txt")
-            )))
+        # docs total). Honor the contract by capping the marking
+        # stratum at the full budget, then giving the prose stratum
+        # `--max-docs - actual_marking_docs` so the total stays
+        # bounded — and crucially using the *actual* count of
+        # processed documents from `marking_results`, not a
+        # heuristic file count (which undercounts on
+        # custom marking corpora that use Enron-shaped or HTML-
+        # wrapped inputs without a `.txt` extension and would let
+        # the total exceed the budget).
+        marking_max = args.max_docs
 
         # Marking stratum: drop the default 20-byte minimum so short
         # canonical fixtures (`(S)`, `SECRET//NF`, single-portion
@@ -2369,6 +2373,29 @@ def main():
         marking_results = run_analysis(
             marking_paths, tokens_by_category, marking_max, min_length=1
         )
+
+        # Compute the prose budget from the actual marking document
+        # count. `0` is a meaningful value (means "marking already
+        # consumed the budget, prose gets nothing") — see the
+        # `is not None` handling in `iter_corpus_texts*` above which
+        # treats 0 as a hard zero rather than falsy/unlimited.
+        if args.max_docs is None:
+            prose_max = None
+        else:
+            marking_doc_count = int(
+                marking_results.get("corpus_stats", {}).get("document_count", 0)
+            )
+            prose_max = max(0, args.max_docs - marking_doc_count)
+            if prose_max == 0:
+                print(
+                    f"Note: --max-docs={args.max_docs} consumed entirely by the "
+                    f"marking stratum ({marking_doc_count} docs); prose stratum "
+                    "will be skipped. The build-time fail-closed check in "
+                    "crates/capco/build.rs will reject the resulting priors.json. "
+                    "Raise --max-docs to give prose a non-zero budget.",
+                    file=sys.stderr,
+                )
+
         prose_results = run_analysis(prose_paths, tokens_by_category, prose_max)
 
         priors = derive_priors(marking_results, prose_results, tokens_by_category)

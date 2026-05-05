@@ -181,9 +181,24 @@ pub const MISSING_PROSE_LOG_PRIOR: f32 = -12.0;
 /// compute the per-token "marking-y" score
 /// `log P(token|marking) − log P(token|prose)`.
 ///
-/// Returns `None` for tokens the prose-stratum corpus did not surface.
-/// Decoder code should fall back to [`MISSING_PROSE_LOG_PRIOR`] in
-/// that case so the marking-y delta for an unknown token is neutral.
+/// Return contract:
+///
+/// - **`Some(lp)`** for every token in the canonical CAPCO
+///   vocabulary (`tools/corpus-analysis/tokens/capco.json` —
+///   `derive_priors` materializes one prose row per vocabulary
+///   token, so a vocabulary token the prose corpus never observed
+///   still returns the Laplace-smoothed zero-count log-prior, NOT
+///   `None`). The Laplace floor for a 0-count token in the
+///   reference Enron corpus is around `-9.8` to `-10.1` —
+///   distinguishable from but not far above
+///   [`MISSING_PROSE_LOG_PRIOR`] (`-12.0`).
+/// - **`None`** for tokens outside the canonical vocabulary —
+///   most commonly `Custom` SCI control tokens or other
+///   open-set agency-assigned strings the corpus pipeline doesn't
+///   recognize. Decoder code falls back to
+///   [`MISSING_PROSE_LOG_PRIOR`] in that case so the marking-y
+///   delta for an unknown token is neutral (the marking-side
+///   floor matches at `-12.0`).
 ///
 /// Same sort-invariant-backed binary search as [`token_log_prior`].
 pub fn token_prose_log_prior(token: &str) -> Option<f32> {
@@ -202,9 +217,19 @@ pub fn token_prose_log_prior(token: &str) -> Option<f32> {
 /// passage — does not auto-fix; the marking-y delta for those codes
 /// shrinks toward zero in prose-shaped contexts.
 ///
-/// Returns `None` for codes the prose-stratum corpus did not surface.
-/// Decoder code falls back to [`MISSING_PROSE_LOG_PRIOR`] in that
-/// case.
+/// Return contract:
+///
+/// - **`Some(lp)`** for every code in
+///   `_REL_TO_COUNTRY_CODE_BASELINE`
+///   (`tools/corpus-analysis/analyze.py` — `derive_priors`
+///   pre-seeds the prose table with the full baseline vocabulary,
+///   so a code the prose corpus never observed (e.g., NZL, FVEY)
+///   still returns the Laplace-smoothed zero-count log-prior, NOT
+///   `None`).
+/// - **`None`** for codes outside the baseline — most commonly
+///   rare ISO trigraphs that don't appear in CAPCO REL TO usage
+///   at all. Decoder code falls back to [`MISSING_PROSE_LOG_PRIOR`]
+///   in that case.
 pub fn country_code_prose_log_prior(token: &str) -> Option<f32> {
     COUNTRY_CODE_PROSE_BASE_RATES
         .binary_search_by_key(&token, |t| t.token)
