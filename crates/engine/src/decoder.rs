@@ -4956,8 +4956,7 @@ mod tests {
         };
 
         let (prior_dup, _, _) = score_candidate(&attempt_dup, &dup_marking, MarkingType::Banner);
-        let (prior_once, _, _) =
-            score_candidate(&attempt_once, &once_marking, MarkingType::Banner);
+        let (prior_once, _, _) = score_candidate(&attempt_once, &once_marking, MarkingType::Banner);
 
         // Deduplication ensures the duplicate USA is only scored once, so
         // both priors must be equal (same base tokens + same single USA prior).

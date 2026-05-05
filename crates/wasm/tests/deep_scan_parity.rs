@@ -53,8 +53,18 @@ fn shared_native_engine() -> &'static Engine {
 }
 
 /// Native engine with `confidence_threshold = 0.80` so the decoder-
-/// path fix on the canonical mangled fixture (`(SERCET//NF)`) lands
-/// in `result.applied` instead of being downgraded to a suggestion.
+/// path fix triggered by the mangled input `(SERCET//NF)` (see
+/// [`MANGLED_INPUT`]) lands in `result.applied` instead of being
+/// downgraded to a suggestion. `(SERCET//NF)` is the fuzzy-mangled
+/// input the test feeds to the engine; the canonical CAPCO portion
+/// form for the same marking is `(S//NF)` — abbreviated S for
+/// SECRET and NF for NOFORN per the §A.6 portion grammar — and the
+/// strict-or-decoder dispatcher's job here is to recover *some*
+/// canonical CAPCO interpretation. The decoder's current output is
+/// the slightly different `(SECRET//NF)` (banner forms inside a
+/// portion shape, tracked separately as a canonicalization
+/// correctness item — out of scope for this parity test, which
+/// only cares that an audit-emitting `DecoderPosterior` fix lands).
 ///
 /// Issue #258: the prose null-hypothesis runner-up shrinks
 /// `recognition_score` for short fuzzy fixes — the marking still wins
