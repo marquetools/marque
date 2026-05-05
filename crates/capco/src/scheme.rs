@@ -1538,8 +1538,8 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::IsmAttributes) -> Vec<Constrai
     }]
 }
 
-/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement per
-/// Atomic Energy Act sections 123 / 144 exists). CAPCO §H.6 p104.
+/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement under
+/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104.
 /// Intentionally narrower than `AnyInCategory(CAT_AEA)` — UCNI variants
 /// do not carry the NOFORN requirement (CAPCO §H.6 p116 / p118).
 fn e021_aea_requires_noforn(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolation> {
@@ -1728,7 +1728,7 @@ fn joint_requires_usa(attrs: &marque_ism::IsmAttributes) -> Vec<ConstraintViolat
         message: "JOINT classifications must list USA in both the \
                   classification countries and REL TO"
             .to_owned(),
-        citation: "CAPCO-2016 §H.3 p55",
+        citation: "CAPCO-2016 §H.3 pp 55–57",
     }]
 }
 
