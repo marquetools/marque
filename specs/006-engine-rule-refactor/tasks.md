@@ -61,7 +61,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [X] T015 Run citation-lint + F.1 against existing rule catalog; capture defect catalog at `docs/refactor-006/citation-defect-catalog.md` (R-6 discovery exercise; PR-0.5)
 - [X] T016 Fix the four pre-identified citation-defect classes in `crates/capco/src/scheme.rs` and `rules.rs`: (a) `§4` fabrications across multiple `scheme.rs` lines; (b) doubled `p150–151 p151` at five sites in `rules.rs`; (c) SIGMA cross-revision archaeology at `rules.rs:4053`; (d) HCS-P over-strict predicate at `scheme.rs:1839-1849` if F.1 surfaces it (FR-020; PR-0.6)
 - [X] T017 Address every additional defect surfaced by PR 0.5's citation-defect catalog; add corpus fixtures for any newly-cited authority lacking one; update citations per FR-018 rules (FR-019, FR-020; PR-0.6)
-- [X] T018 Verify PR 0.6 merge gate: `cargo run -p citation-lint -- .` exits 0; F.1 corpus fixture coverage is 100% over current rule catalog (FR-018, FR-019; PR-0.6)
+- [X] T018 Verify PR 0.6 merge gate: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0; F.1 corpus fixture coverage is 100% over current rule catalog (FR-018, FR-019; PR-0.6)
 - [ ] T019 Verify single-pass forward splice (PR #277 / #278 already landed): run `fix_throughput` Criterion bench; confirm R² ≥ 0.9 against PR-0 baseline (FR-029; PR-1)
 
 **Checkpoint**: Citation-lint green workspace-wide; F.1 corpus fixture coverage 100% over current rules; splice perf gate green; ready to begin keystone work.
