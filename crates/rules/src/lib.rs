@@ -20,7 +20,7 @@
 
 pub mod confidence;
 
-use marque_ism::{IsmAttributes, Span};
+use marque_ism::{CanonicalAttrs, Span};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -654,7 +654,7 @@ pub trait Rule: Send + Sync {
     fn name(&self) -> &'static str;
     /// Default severity — overridable per rule in `.marque.toml`.
     fn default_severity(&self) -> Severity;
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic>;
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic>;
 }
 
 /// A collection of rules provided by a rule crate.

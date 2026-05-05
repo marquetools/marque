@@ -63,6 +63,58 @@ jobs:
       - name: cargo nextest
         run: cargo nextest run --workspace --profile ci
 
+  # T025 / SC-014 — Refactor-006 PR-3a-only corpus regression sweep.
+  #
+  # PR 3a is the keystone "pivot type split + transitional adapter"
+  # commit on the `refactor-006-pr-3a` branch. The PR's revertability
+  # gate (consolidated plan §3.1, design doc §1) is byte-identical
+  # behavior on every fixture: every corpus regression test must pass
+  # against PR-3a HEAD with no rule semantics change.
+  #
+  # This job runs the corpus-regression suite (`*corpus*` integration
+  # tests in `crates/{capco,engine}/tests/` plus marque/tests/) on the
+  # PR-3a branch only — `if:` filters by branch name so the job doesn't
+  # run on unrelated PRs. PR 3b and PR 3c will land their own matrix
+  # entries with the same body and a different branch filter; running
+  # them separately keeps "did PR 3a regress?" answerable from the CI
+  # log alone, not by re-bisecting through the keystone window.
+  pr-3a-corpus-regression:
+    name: PR 3a corpus regression (T025)
+    needs: check
+    if: github.ref == 'refs/heads/refactor-006-pr-3a' || github.head_ref == 'refactor-006-pr-3a'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "nightly"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      # Corpus regression tests live in `crates/{capco,engine}/tests/`
+      # and `marque/tests/`. `cargo test --test` matches an exact
+      # integration-test target name within ONE package; `--workspace`
+      # combined with `--test` fails when the named target doesn't
+      # exist in every member crate. Invoke each suite per-package
+      # explicitly (Copilot review feedback on PR #315):
+      #   - corpus_parity     in marque-capco
+      #   - corpus_accuracy   in marque-engine
+      #   - corpus_provenance in marque
+      #
+      # When new corpus suites land, add them here in the same shape.
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
+        run: |
+          cargo test -p marque-capco --test corpus_parity \
+            --features marque-engine/corpus-override
+          cargo test -p marque-engine --test corpus_accuracy \
+            --features marque-engine/corpus-override
+          cargo test -p marque --test corpus_provenance \
+            --features marque-engine/corpus-override
+
       # Phase 4 (US2) regression suites are file-level gated on
       # `decoder-harness` and `corpus-override` features that are NOT
       # in any default feature set. Without this explicit invocation
@@ -74,9 +126,14 @@ jobs:
       # its tests are all `#[ignore]`-marked (issue #133 root-cause
       # traces) and require an explicit `--run-ignored` invocation;
       # they intentionally do not run in this step.
-      - name: cargo nextest (Phase 4 gated suites)
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
         run: |
-          cargo nextest run --profile ci \
+          cargo test \
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
 

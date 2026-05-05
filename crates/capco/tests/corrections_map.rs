@@ -65,6 +65,9 @@ fn run_c001_rule_pipeline_only(
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
+        // PR-3a transitional adapter; test-fixture carve-out per
+        // Constitution V Principle V.
+        let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
         let ctx = RuleContext {
             marking_type: candidate.kind,
             zone: None,
@@ -74,7 +77,7 @@ fn run_c001_rule_pipeline_only(
         };
         for rule in rule_set.rules() {
             if rule.id() == RuleId::new("C001") {
-                out.extend(rule.check(&parsed.attrs, &ctx));
+                out.extend(rule.check(&attrs, &ctx));
             }
         }
     }

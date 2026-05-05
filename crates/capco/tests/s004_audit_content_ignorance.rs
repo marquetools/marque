@@ -40,8 +40,11 @@ fn lint(source: &[u8]) -> Vec<Diagnostic> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
+        // PR-3a transitional adapter; test-fixture carve-out per
+        // Constitution V Principle V.
+        let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
-            page_context.add_portion(parsed.attrs.clone());
+            page_context.add_portion(attrs.clone());
             page_context_arc = None;
         }
         let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
@@ -61,7 +64,7 @@ fn lint(source: &[u8]) -> Vec<Diagnostic> {
             corrections: None,
         };
         for rule in rule_set.rules() {
-            out.extend(rule.check(&parsed.attrs, &ctx));
+            out.extend(rule.check(&attrs, &ctx));
         }
     }
     out

@@ -1097,7 +1097,16 @@ pub fn compute_banner_native(text: &str) -> Result<String, String> {
             continue;
         }
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            page_context.add_portion(parsed.attrs);
+            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
+            // PageContext stores CanonicalAttrs. This site is a known
+            // exception to the "engine-owned adapter" principle (the
+            // function is documented as "Does NOT run the rules engine"
+            // and predates the keystone window — callers reach for it
+            // when they want banner roll-up without rule dispatch).
+            // PR 3c retires `from_parsed_unchecked` in favor of
+            // `MarkingScheme::canonicalize`; this call migrates then.
+            // FR-040 lint whitelists the call site.
+            page_context.add_portion(marque_ism::from_parsed_unchecked(parsed.attrs));
         }
     }
 
@@ -1165,8 +1174,17 @@ pub fn generate_cab_native(
 
     for candidate in &candidates {
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
+            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
+            // downstream consumers want CanonicalAttrs. This site is a
+            // known exception to the "engine-owned adapter" principle —
+            // CAB-line generation predates the keystone window and runs
+            // outside the rules engine on purpose. PR 3c retires
+            // `from_parsed_unchecked` in favor of
+            // `MarkingScheme::canonicalize`; this call migrates then.
+            // FR-040 lint whitelists the call site.
+            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
             if found_declass_date.is_none() {
-                if let Some(date) = &parsed.attrs.declassify_on {
+                if let Some(date) = &attrs.declassify_on {
                     // `to_maxdate_str()` always returns 8-digit YYYYMMDD:
                     // Year(y) → "{y}1231", YearMonth(y,m) → last day of month,
                     // Date / DateHourMin / DateTime → YYYYMMDD of the date component.
@@ -1175,12 +1193,12 @@ pub fn generate_cab_native(
                 }
             }
             if found_declass_exemption.is_none() {
-                if let Some(ex) = parsed.attrs.declass_exemption {
+                if let Some(ex) = attrs.declass_exemption {
                     found_declass_exemption = Some(ex.as_str().to_owned());
                 }
             }
             if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(parsed.attrs);
+                page_context.add_portion(attrs);
             }
         }
     }

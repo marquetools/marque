@@ -112,7 +112,7 @@ fn default_engine_on_unrecognized_bytes_emits_no_decoder_fix() {
 fn default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
     // The critical regression-guard for the strict→decoder fallback:
     // the `marque_core::Parser` is lenient enough to return
-    // `Ok(empty IsmAttributes)` for shapes like `(SERCET//NOFORN)`
+    // `Ok(empty CanonicalAttrs)` for shapes like `(SERCET//NOFORN)`
     // where no CVE tokens are recognized. The dispatcher must treat
     // such a trivial strict result as equivalent to zero-candidate
     // and fall through to the decoder — otherwise the engine would

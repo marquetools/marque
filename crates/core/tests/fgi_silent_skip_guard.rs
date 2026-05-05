@@ -26,7 +26,7 @@
 //! not import the private `parse_fgi_marker` helper or reach into private
 //! parser fields. They drive the public `Parser::parse` entry point with
 //! synthetic `MarkingCandidate`s (the same surface `marque-engine` reaches in
-//! production) and inspect `IsmAttributes::fgi_marker` / `IsmAttributes::sar_markings`.
+//! production) and inspect `CanonicalAttrs::fgi_marker` / `CanonicalAttrs::sar_markings`.
 //!
 //! A regression that silently re-introduces shape-failure-as-`Some` would
 //! produce the wrong observable on these inputs and trip every relevant test.
@@ -49,13 +49,13 @@
 //! - SC-011 (no `FgiMarker { countries: [] }` shape survives in parser output)
 
 use marque_core::Parser;
-use marque_ism::IsmAttributes;
+use marque_ism::CanonicalAttrs;
 use marque_ism::attrs::FgiMarker;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::CapcoTokenSet;
 
 /// Drive `Parser::parse` over `text` interpreted as a banner candidate and
-/// return the resulting `IsmAttributes`. Mirrors the engine's banner-path
+/// return the resulting `CanonicalAttrs`. Mirrors the engine's banner-path
 /// dispatch (`marque-engine` constructs banner candidates the same way for
 /// any byte slice the scanner identified as a banner).
 ///
@@ -65,7 +65,7 @@ use marque_ism::token_set::CapcoTokenSet;
 /// `attrs.sar_markings.is_none()`, NOT a hard parse error: the parser is
 /// lenient on individual blocks and surfaces shape failures as missing
 /// attribute fields plus `Unknown` token spans.
-fn parse_banner_attrs(text: &str) -> IsmAttributes {
+fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     let source = text.as_bytes();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
@@ -73,10 +73,15 @@ fn parse_banner_attrs(text: &str) -> IsmAttributes {
         span: Span::new(0, source.len()),
         kind: MarkingType::Banner,
     };
-    parser
+    let parsed = parser
         .parse(&candidate, source)
-        .expect("banner candidate parses (lenient parser; shape failures surface as None fields)")
-        .attrs
+        .expect("banner candidate parses (lenient parser; shape failures surface as None fields)");
+    // Test-fixture carve-out per Constitution V Principle V — wrap the
+    // parser's borrowed output through the PR-3a transitional adapter
+    // so the test assertions retain the pre-PR-3a `CanonicalAttrs`
+    // shape. PR 3c retires `from_parsed_unchecked` in favor of
+    // `MarkingScheme::canonicalize`; this site migrates then.
+    marque_ism::from_parsed_unchecked(parsed.attrs)
 }
 
 /// Drive `Parser::parse` over `text` interpreted as a portion candidate.
@@ -84,7 +89,7 @@ fn parse_banner_attrs(text: &str) -> IsmAttributes {
 /// `text` MUST include the outer parentheses — the parser strips them and
 /// rejects un-parenthesized portion text outright (which is the wrong
 /// surface for these admission tests).
-fn parse_portion_attrs(text: &str) -> IsmAttributes {
+fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
     let source = text.as_bytes();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
@@ -92,10 +97,12 @@ fn parse_portion_attrs(text: &str) -> IsmAttributes {
         span: Span::new(0, source.len()),
         kind: MarkingType::Portion,
     };
-    parser
+    let parsed = parser
         .parse(&candidate, source)
-        .expect("portion candidate parses (lenient parser; shape failures surface as None fields)")
-        .attrs
+        .expect("portion candidate parses (lenient parser; shape failures surface as None fields)");
+    // Test-fixture carve-out per Constitution V Principle V (see
+    // `parse_banner_attrs`).
+    marque_ism::from_parsed_unchecked(parsed.attrs)
 }
 
 // =============================================================================

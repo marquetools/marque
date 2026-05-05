@@ -20,7 +20,7 @@
 //!    transition. Detected by enclosing `impl <...> MarkingScheme<...> for T`
 //!    plus method ident `canonicalize`.
 //! 3. **Transitional `from_parsed_unchecked`** in
-//!    `crates/ism/src/attrs.rs` — path-based carve-out scoped to
+//!    `crates/ism/src/canonical.rs` — path-based carve-out scoped to
 //!    the PR 3a → PR 3c keystone window. **Auto-expires** when
 //!    PR 3c lands and tasks.md T054 deletes the function: the
 //!    whitelist match becomes a no-op (nothing to whitelist) but
@@ -60,8 +60,11 @@ const CANONICAL_TYPE_NAME: &str = "CanonicalAttrs";
 const RESULT_TYPE_NAME: &str = "Result";
 
 /// File-relative path of the transitional whitelist site (whitelist 3).
-/// Components are joined at runtime to stay portable.
-const TRANSITIONAL_WHITELIST_PATH: &[&str] = &["crates", "ism", "src", "attrs.rs"];
+/// Components are joined at runtime to stay portable. The function
+/// landed in `crates/ism/src/canonical.rs` (PR 3a) rather than
+/// `attrs.rs` because PR 3a split the pivot type into its own module
+/// per the design's module-placement decision (§2 of pr-3a-design.md).
+const TRANSITIONAL_WHITELIST_PATH: &[&str] = &["crates", "ism", "src", "canonical.rs"];
 
 /// Function ident of the transitional whitelist site (whitelist 3).
 const TRANSITIONAL_WHITELIST_FN: &str = "from_parsed_unchecked";
@@ -388,7 +391,7 @@ impl SignatureWalker<'_> {
             }
         }
 
-        // Whitelist 3: transitional `crates/ism/src/attrs.rs::from_parsed_unchecked`.
+        // Whitelist 3: transitional `crates/ism/src/canonical.rs::from_parsed_unchecked`.
         // Auto-expires when PR 3c lands and tasks.md T054 deletes the
         // function — the whitelist becomes a no-op at that point.
         if self.rel_path_matches_transitional_site() && sig.ident == TRANSITIONAL_WHITELIST_FN

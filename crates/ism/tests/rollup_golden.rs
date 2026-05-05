@@ -5,13 +5,14 @@
 //! Golden tests derived from the ODNI ISM-Rollup XSpec test suite.
 //!
 //! Each test translates an authoritative XSpec scenario into a Rust test.
-//! Uses Default::default() + field mutation since IsmAttributes is #[non_exhaustive].
+//! Uses Default::default() + field mutation since CanonicalAttrs is #[non_exhaustive].
 
+use marque_ism::CanonicalAttrs;
 use marque_ism::attrs::*;
 use marque_ism::page_context::PageContext;
 
-fn portion(c: Classification) -> IsmAttributes {
-    let mut a = IsmAttributes::default();
+fn portion(c: Classification) -> CanonicalAttrs {
+    let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(c));
     a
 }
@@ -258,11 +259,11 @@ fn country_noforn_supersedes_rel() {
 fn fgi_concealed_supersedes_open() {
     let mut ctx = PageContext::new();
 
-    let mut p1 = IsmAttributes::default();
+    let mut p1 = CanonicalAttrs::default();
     p1.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]);
     ctx.add_portion(p1);
 
-    let mut p2 = IsmAttributes::default();
+    let mut p2 = CanonicalAttrs::default();
     p2.fgi_marker = Some(FgiMarker::SourceConcealed);
     ctx.add_portion(p2);
 
@@ -275,11 +276,11 @@ fn fgi_concealed_supersedes_open() {
 fn fgi_open_union() {
     let mut ctx = PageContext::new();
 
-    let mut p1 = IsmAttributes::default();
+    let mut p1 = CanonicalAttrs::default();
     p1.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
     ctx.add_portion(p1);
 
-    let mut p2 = IsmAttributes::default();
+    let mut p2 = CanonicalAttrs::default();
     p2.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]);
     ctx.add_portion(p2);
 
@@ -309,11 +310,11 @@ fn classification_max() {
 fn sci_union() {
     let mut ctx = PageContext::new();
 
-    let mut p1 = IsmAttributes::default();
+    let mut p1 = CanonicalAttrs::default();
     p1.sci_controls = vec![SciControl::Si].into();
     ctx.add_portion(p1);
 
-    let mut p2 = IsmAttributes::default();
+    let mut p2 = CanonicalAttrs::default();
     p2.sci_controls = vec![SciControl::Tk, SciControl::HcsP].into();
     ctx.add_portion(p2);
 

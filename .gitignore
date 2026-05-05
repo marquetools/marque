@@ -73,6 +73,7 @@ Temporary Items
 .LSOverride
 Icon[*]
 .claude/*.local.*
+.claude/scheduled_tasks.lock
 
 demo/demo.webm
 demo/demo.mp4

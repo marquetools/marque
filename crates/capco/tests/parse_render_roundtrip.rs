@@ -48,31 +48,39 @@ use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::CapcoTokenSet;
-use marque_ism::{IsmAttributes, MarkingClassification};
+use marque_ism::{CanonicalAttrs, MarkingClassification};
 use marque_scheme::MarkingScheme;
 use marque_test_utils::{load_fixture, valid_fixtures};
 use std::path::Path;
 
 // =============================================================================
 // Parse helpers — drive `marque_core::Parser` on a typed banner / portion
-// candidate and return the produced `IsmAttributes`. Mirrors the
+// candidate and return the produced `CanonicalAttrs`. Mirrors the
 // engine's per-candidate dispatch without pulling in `marque-engine` (a
 // dev-dep cycle would result for the PR-2 scope).
 // =============================================================================
 
-fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<IsmAttributes> {
+fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
         span: Span::new(0, source.len()),
         kind,
     };
-    parser.parse(&candidate, source).ok().map(|p| p.attrs)
+    parser
+        .parse(&candidate, source)
+        .ok()
+        // Test-fixture carve-out per Constitution V Principle V — wrap the
+        // parser's borrowed output through the PR-3a transitional adapter
+        // so tests retain the pre-PR-3a `CanonicalAttrs` shape they assert
+        // against. PR 3c retires `from_parsed_unchecked` in favor of
+        // `MarkingScheme::canonicalize`; this site migrates then.
+        .map(|p| marque_ism::from_parsed_unchecked(p.attrs))
 }
 
 /// Parse a banner string; panics on parser failure (the strict-path corpus
 /// is, by construction, parseable).
-fn parse_banner(text: &str) -> IsmAttributes {
+fn parse_banner(text: &str) -> CanonicalAttrs {
     parse_with_kind(text.as_bytes(), MarkingType::Banner)
         .expect("banner candidate from valid corpus must parse")
 }
@@ -80,7 +88,7 @@ fn parse_banner(text: &str) -> IsmAttributes {
 /// Parse a portion string; panics on parser failure. The text must include
 /// outer parens — the parser strips them and rejects un-parenthesized
 /// portion text outright.
-fn parse_portion(text: &str) -> IsmAttributes {
+fn parse_portion(text: &str) -> CanonicalAttrs {
     parse_with_kind(text.as_bytes(), MarkingType::Portion)
         .expect("portion candidate from valid corpus must parse")
 }
@@ -156,7 +164,7 @@ fn render_and_reparse_classification(
     fixture: &Path,
     text: &str,
     kind: Kind,
-    attrs1: &IsmAttributes,
+    attrs1: &CanonicalAttrs,
 ) {
     let scheme = CapcoScheme::new();
     let marking1 = CapcoMarking::from(attrs1.clone());

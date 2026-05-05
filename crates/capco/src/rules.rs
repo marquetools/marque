@@ -7,7 +7,7 @@
 //! Each rule uses Layer 1 schema predicates (from generated/validators.rs) to
 //! detect violations, then produces enriched diagnostics with fixes and
 //! confidence. Phase 3 lands the full set of MVP rules with byte-precise
-//! spans threaded through `IsmAttributes::token_spans`.
+//! spans threaded through `CanonicalAttrs::token_spans`.
 //!
 //! Rule IDs follow the convention: E### = error, W### = warning, C### = correction.
 //! Assignments per spec tasks.md:
@@ -61,8 +61,8 @@
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    IsmAttributes, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan,
-    sar_sort_key,
+    CanonicalAttrs, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind,
+    TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -267,7 +267,7 @@ impl Rule for PortionMarkInBannerRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -419,7 +419,7 @@ impl Rule for MissingUsaTrigraphRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if attrs.rel_to.is_empty() {
             return vec![];
         }
@@ -595,7 +595,7 @@ impl Rule for MisorderedBlocksRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
             return vec![];
@@ -745,7 +745,7 @@ fn ordinal_for_block(kind: TokenKind) -> Option<u8> {
 /// This is the suggestion path for E003 (T032). It is not byte-equivalent to
 /// the original markup whitespace, but it is a valid CAPCO marking that the
 /// engine could splice if a caller lowers the threshold below 0.6.
-fn reorder_marking(attrs: &IsmAttributes) -> Option<String> {
+fn reorder_marking(attrs: &CanonicalAttrs) -> Option<String> {
     // Group token texts by ordinal, preserving document order.
     let mut classification: Vec<&str> = Vec::new();
     let mut sci: Vec<&str> = Vec::new();
@@ -854,7 +854,7 @@ impl Rule for SeparatorCountRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         // === Extra separators (`////` or longer runs) ===
         // Adjacent separator spans (back-to-back `//` with nothing between)
@@ -1041,7 +1041,7 @@ impl Rule for DeclassifyMisplacedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         // Fire on banner AND portion. CAB candidates are the correct
         // location for declass info and must be skipped. PageBreak is
@@ -1103,7 +1103,7 @@ impl Rule for DeprecatedDissemRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         // Walk every TokenSpan whose kind is either DissemControl (the
         // deprecated marking is in the modern CVE — e.g., FOUO) or Unknown
@@ -1219,7 +1219,7 @@ impl Rule for XShorthandDateRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for token in attrs.token_spans.iter() {
             if token.kind != TokenKind::Unknown {
@@ -1442,7 +1442,7 @@ impl Rule for UnknownTokenRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
         // own token-shape preconditions are met; otherwise a malformed
@@ -1562,7 +1562,7 @@ impl Rule for CorrectionsMapRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         // Engine guarantees corrections is Some only when the map is non-empty
         // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
         let Some(corrections) = ctx.corrections.as_ref() else {
@@ -1655,7 +1655,7 @@ impl Rule for PortionAbbreviationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Portion {
             return vec![];
@@ -1813,7 +1813,7 @@ impl Rule for PreferBannerAbbreviationRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -1949,7 +1949,7 @@ impl Rule for BannerConsistentFormRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         use marque_ism::marking_forms::MARKING_FORMS;
 
@@ -2091,7 +2091,7 @@ impl Rule for JointUsaFirstRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{CountryCode, MarkingType};
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -2312,7 +2312,7 @@ fn s004_edit_distance(a: &str, b: &str) -> usize {
 ///
 /// Extracted from the rule body so each of the four `(Option,
 /// Option)` country-name arms can be exercised directly in tests
-/// — building real `IsmAttributes` to drive every arm requires
+/// — building real `CanonicalAttrs` to drive every arm requires
 /// finding trigraph pairs that satisfy both the corpus-prior gap
 /// AND the partial COUNTRY_NAMES coverage, which is brittle. The
 /// helper lets us pin the formatting contract independently.
@@ -2358,7 +2358,7 @@ impl Rule for RelToTrigraphSuggestRule {
         Severity::Suggest
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
         use crate::vocab::country_name;
 
@@ -2515,7 +2515,7 @@ impl Rule for MissingNonUsPrefix {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Only fire when classification failed to parse (None) and the
         // classification token text looks like a non-US pattern.
         if attrs.classification.is_some() {
@@ -2678,7 +2678,7 @@ impl Rule for DelimiterMismatchRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         // --- JOINT: comma delimiter is wrong; canonical is single space.
@@ -2854,7 +2854,7 @@ impl Rule for NonIcInClassifiedBannerRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -3000,7 +3000,7 @@ impl Rule for CountryCodeOrderingRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         // Check REL TO ordering. Skip if USA is missing or not first —
@@ -3295,7 +3295,7 @@ impl Rule for RelToNoDuplicatesRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         if attrs.rel_to.len() < 2 {
             return diagnostics;
@@ -3599,7 +3599,7 @@ struct S005Candidate {
 /// number of uncertain codes across them — a handful of operations
 /// over BTreeSets in practice. Sharing the helper keeps S005 and
 /// S006 from drifting on the trigger condition or the message body.
-fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<S005Candidate> {
+fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<S005Candidate> {
     use marque_ism::{MarkingType, is_decomposable};
 
     if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
@@ -3613,7 +3613,7 @@ fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<
     // Plan §3.2 requires "at least two portions carrying a
     // non-empty REL TO list." Anything less and there's no
     // intersection to compute.
-    let portions_with_rel_to: Vec<&IsmAttributes> = page
+    let portions_with_rel_to: Vec<&CanonicalAttrs> = page
         .portions()
         .iter()
         .filter(|p| !p.rel_to.is_empty())
@@ -3740,7 +3740,7 @@ fn analyze_uncertain_reduction(attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<
         // Conversely, X drops iff there is at least one portion
         // without X. That set of portions-without-X is what bounds
         // the "other codes" candidate set below.
-        let portions_without_x: Vec<&IsmAttributes> = portions_with_rel_to
+        let portions_without_x: Vec<&CanonicalAttrs> = portions_with_rel_to
             .iter()
             .copied()
             .filter(|p| !p.rel_to.iter().any(|c| c.as_str() == x.as_str()))
@@ -3841,7 +3841,7 @@ impl Rule for RelToOpaqueUncertainReductionSuggestRule {
         Severity::Suggest
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
             .filter(|c| c.branch == S005Branch::Suggest)
@@ -3870,7 +3870,7 @@ impl Rule for RelToOpaqueUncertainReductionInfoRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
             .filter(|c| c.branch == S005Branch::Info)
@@ -3911,7 +3911,7 @@ fn check_trigraph_ordering(
     list_name: &str,
     rule: RuleId,
     severity: Severity,
-    attrs: &IsmAttributes,
+    attrs: &CanonicalAttrs,
     block_span: Option<Span>,
     citation: &'static str,
     usa_first: bool,
@@ -4086,7 +4086,7 @@ impl Rule for SigmaValidationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::AeaMarking;
 
         let mut diagnostics = Vec::new();
@@ -4204,7 +4204,7 @@ impl Rule for SarPortionFormRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{MarkingType, SarIndicator};
         if ctx.marking_type != MarkingType::Portion {
             return vec![];
@@ -4296,7 +4296,7 @@ impl Rule for SarClassificationRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{Classification, MarkingClassification};
         if attrs.sar_markings.is_none() {
             return vec![];
@@ -4363,7 +4363,7 @@ impl Rule for SarProgramOrderRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let Some(sar) = attrs.sar_markings.as_ref() else {
             return vec![];
         };
@@ -4462,7 +4462,7 @@ impl Rule for SarCompartmentOrderRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let Some(sar) = attrs.sar_markings.as_ref() else {
             return vec![];
         };
@@ -4618,7 +4618,7 @@ impl Rule for SarIndicatorRepeatRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         // Fast exit: no SAR block at all.
         if attrs.sar_markings.is_none() {
             return vec![];
@@ -4783,7 +4783,7 @@ impl Rule for SarBannerRollupRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
 
         // Banner / CAB markings only; portions are the input to the rollup,
@@ -4974,7 +4974,7 @@ fn render_single_program(prog: &marque_ism::SarProgram) -> String {
 /// preserve original formatting; it renders the parsed SAR structure via
 /// `render_sar_block(...)`. Returns `None` when the attributes have no SAR
 /// markings or when the provided span does not contain SAR tokens.
-fn sar_block_source(attrs: &IsmAttributes, span: Span) -> Option<String> {
+fn sar_block_source(attrs: &CanonicalAttrs, span: Span) -> Option<String> {
     // We do not have enough information here to recover exact original source
     // bytes. Instead, gate on whether the requested span contains SAR tokens
     // and then return the canonical rendering of the parsed SAR block.
@@ -5034,7 +5034,7 @@ impl Rule for SciSystemOrderRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         if attrs.sci_markings.len() < 2 {
             return vec![];
         }
@@ -5180,7 +5180,7 @@ impl Rule for SciCompartmentOrderRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut out = Vec::new();
 
         let comp_spans: Vec<&TokenSpan> = attrs
@@ -5384,7 +5384,7 @@ impl Rule for SciCustomControlInfoRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         let sys_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
@@ -5469,7 +5469,7 @@ impl Rule for SciBannerRollupRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::MarkingType;
 
         // Portion candidates carry only their own SCI, not the page
@@ -5656,7 +5656,7 @@ fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking>
 /// Compute the byte span covering the full SAR block: from the start of
 /// its `SarIndicator` token through the end of the last SAR-constituent
 /// token (`SarProgram` / `SarCompartment` / `SarSubCompartment`).
-fn sar_block_span(attrs: &IsmAttributes) -> Option<Span> {
+fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
     let mut start: Option<usize> = None;
     let mut end: Option<usize> = None;
     for tok in attrs.token_spans.iter() {
@@ -5850,7 +5850,7 @@ impl Rule for NodisExdisClearsBannerRelToRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         // Banner-only (and CAB, since CABs can carry REL TO). Portion
@@ -5954,7 +5954,7 @@ impl Rule for NodisExdisBannerRollupRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
@@ -6115,7 +6115,7 @@ impl Rule for NodisSupersedesExdisInPortionRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &IsmAttributes, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         if ctx.marking_type != MarkingType::Portion {
@@ -7741,7 +7741,7 @@ mod tests {
         // distinct phrasing because the surrounding parenthetical
         // English name only renders when the trigraph is in the
         // hand-curated COUNTRY_NAMES table. Driving every arm
-        // through real `IsmAttributes` requires manufactured
+        // through real `CanonicalAttrs` requires manufactured
         // priors — pinning the helper directly keeps the contract
         // visible and stable.
         //
@@ -7822,10 +7822,10 @@ mod tests {
         // tetragraph-expanded entries differently), the rule must
         // skip the misaligned entries instead of producing a
         // diagnostic with the wrong span.
-        use marque_ism::{CountryCode, IsmAttributes};
+        use marque_ism::{CanonicalAttrs, CountryCode};
         use marque_rules::{MarkingType, RuleContext};
 
-        let mut attrs = IsmAttributes::default();
+        let mut attrs = CanonicalAttrs::default();
         // Two REL TO entries (AUT triggers the suggest, USA does
         // not) but ZERO RelToTrigraph token spans — the defensive
         // path must hit the `trigraph_spans.get(idx)` None arm
@@ -9229,7 +9229,7 @@ mod tests {
         // JOINT+REL TO banner, which does NOT exercise an FGI-marker
         // path (the parser's banner grammar does not surface
         // `fgi_marker` on a JOINT classification). True FGI-marker
-        // coverage requires constructing `IsmAttributes` directly;
+        // coverage requires constructing `CanonicalAttrs` directly;
         // that's covered at the scheme level in
         // `scheme_equivalence.rs::no_legacy_e017_e018_e019_constraints_in_catalog`.
         let diags = lint_banner("//JOINT S USA GBR//REL TO USA, GBR");
@@ -11333,8 +11333,13 @@ pub(crate) mod marque_capco_test_support {
             let Ok(parsed) = parser.parse(candidate, source) else {
                 continue;
             };
+            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
+            // PageContext / Rule::check consume CanonicalAttrs.
+            // Test-fixture carve-out per Constitution V Principle V — the
+            // adapter is invoked here to construct the test input only.
+            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
             if parsed.kind == MarkingType::Portion {
-                page_context.add_portion(parsed.attrs.clone());
+                page_context.add_portion(attrs.clone());
                 page_context_arc = None;
             }
             let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
@@ -11354,7 +11359,7 @@ pub(crate) mod marque_capco_test_support {
                 corrections: None,
             };
             for rule in rule_set.rules() {
-                out.extend(rule.check(&parsed.attrs, &ctx));
+                out.extend(rule.check(&attrs, &ctx));
             }
         }
         out

@@ -4,7 +4,11 @@
 
 //! Phase 2/3: token extraction and structural parsing.
 //!
-//! Takes [`MarkingCandidate`] spans from the scanner and produces [`IsmAttributes`].
+//! Takes [`MarkingCandidate`] spans from the scanner and produces
+//! [`marque_ism::ParsedAttrs`]. The engine then runs
+//! [`marque_ism::from_parsed_unchecked`] (PR 3a transitional path) or
+//! `MarkingScheme::canonicalize` (post-PR-3c) to land owned
+//! [`marque_ism::CanonicalAttrs`] for rule consumption.
 //!
 //! # Phase 2 — Token Extraction
 //! A compile-time Aho-Corasick automaton (built from CVE token list in marque-capco)
@@ -12,7 +16,7 @@
 //! Unrecognized tokens within a candidate boundary are themselves diagnostics.
 //!
 //! # Phase 3 — Structural Parsing
-//! Token sequence → IsmAttributes. Validates ordering and block structure.
+//! Token sequence → ParsedAttrs<'src>. Validates ordering and block structure.
 //! Produces `ParseError` for structural violations; these feed into the rule engine
 //! as diagnostics with associated fixes.
 //!
@@ -22,21 +26,32 @@
 use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
-    FgiMarker, ForeignClassification, IsmAttributes, JointClassification, MarkingClassification,
+    FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 use marque_ism::date::IsmDate;
 use marque_ism::is_bare_cve_value;
+use marque_ism::parsed::{
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
+    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
+    SourceOrigin,
+};
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 use smallvec::SmallVec;
 use std::str::FromStr;
 
 /// Parse result for a single candidate.
+///
+/// Carries a borrow into the original source bytes via `attrs` (each
+/// `Parsed*<'src>` wrapper retains its source slice). Short-lived: the
+/// engine immediately canonicalizes to `CanonicalAttrs` via
+/// `marque_ism::from_parsed_unchecked` (PR 3a transitional path) or via
+/// `MarkingScheme::canonicalize` (post-PR-3c).
 #[derive(Debug)]
-pub struct ParsedMarking {
-    pub attrs: IsmAttributes,
+pub struct ParsedMarking<'src> {
+    pub attrs: ParsedAttrs<'src>,
     pub source_span: Span,
     pub kind: MarkingType,
 }
@@ -51,12 +66,12 @@ impl<'t> Parser<'t> {
         Self { tokens }
     }
 
-    /// Parse a single scanner candidate into [`IsmAttributes`].
-    pub fn parse(
+    /// Parse a single scanner candidate into [`ParsedAttrs`].
+    pub fn parse<'src>(
         &self,
         candidate: &MarkingCandidate,
-        source: &[u8],
-    ) -> Result<ParsedMarking, CoreError> {
+        source: &'src [u8],
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         let text = candidate
             .span
             .as_str(source)
@@ -75,11 +90,11 @@ impl<'t> Parser<'t> {
         }
     }
 
-    fn parse_portion(
+    fn parse_portion<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // Strip outer parentheses: "(TS//SI//NF)" -> "TS//SI//NF"
         // The inner-string offset is `candidate.span.start + 1` because
         // the leading `(` is one byte (verified ASCII by the scanner).
@@ -88,8 +103,12 @@ impl<'t> Parser<'t> {
             .and_then(|s| s.strip_suffix(')'))
             .ok_or_else(|| CoreError::MalformedMarking(text.to_owned()))?;
 
-        let attrs =
-            self.parse_marking_string(inner, MarkingType::Portion, candidate.span.start + 1)?;
+        let attrs = self.parse_marking_string(
+            inner,
+            MarkingType::Portion,
+            candidate.span.start + 1,
+            SourceOrigin::Portion,
+        )?;
         Ok(ParsedMarking {
             attrs,
             source_span: candidate.span,
@@ -97,11 +116,11 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_banner(
+    fn parse_banner<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // For banner candidates, `text` is the full line bytes from the
         // scanner. `text.trim()` may consume leading whitespace, which
         // shifts the per-token offsets. Compute the leading whitespace
@@ -113,6 +132,7 @@ impl<'t> Parser<'t> {
             trimmed,
             MarkingType::Banner,
             candidate.span.start + lead_ws,
+            SourceOrigin::Banner,
         )?;
         Ok(ParsedMarking {
             attrs,
@@ -121,58 +141,106 @@ impl<'t> Parser<'t> {
         })
     }
 
-    fn parse_cab(
+    fn parse_cab<'src>(
         &self,
-        text: &str,
+        text: &'src str,
         candidate: &MarkingCandidate,
-    ) -> Result<ParsedMarking, CoreError> {
+    ) -> Result<ParsedMarking<'src>, CoreError> {
         // CAB is line-structured: "Classified By: ...\nDerived From: ...\nDeclassify On: ..."
-        let mut attrs = IsmAttributes::default();
+        // CAB markings borrow `&'src str` for free-text fields directly so the
+        // canonicalizer's round-trip property (FR-019) sees the bytes the
+        // parser actually consumed.
+        let mut classified_by: Option<&'src str> = None;
+        let mut derived_from: Option<&'src str> = None;
+        let mut declassify_on: Option<ParsedDeclassifyOn<'src>> = None;
+        let mut declass_exemption: Option<DeclassExemption> = None;
 
         for line in text.lines() {
             if let Some(val) = line.strip_prefix("Classified By:") {
-                attrs.classified_by = Some(val.trim().into());
+                classified_by = Some(val.trim());
             } else if let Some(val) = line.strip_prefix("Derived From:") {
-                attrs.derived_from = Some(val.trim().into());
+                derived_from = Some(val.trim());
             } else if let Some(val) = line.strip_prefix("Declassify On:") {
                 let s = val.trim();
                 if let Some(exemption) = DeclassExemption::parse(s) {
-                    attrs.declass_exemption = Some(exemption);
+                    declass_exemption = Some(exemption);
                 } else {
                     // Attempt to parse as a typed IsmDate (YYYY, YYYYMMDD,
                     // YYYY-MM-DD, etc.). Unrecognized strings are silently
                     // dropped rather than stored as raw text, since the field
                     // is now typed.
-                    attrs.declassify_on = IsmDate::from_str(s).ok();
+                    if let Ok(date) = IsmDate::from_str(s) {
+                        // `s` is the trimmed value of the `Declassify On:`
+                        // line — a subslice of `text`, the candidate's
+                        // backing `&str`. Span is full-width over `s` so
+                        // `bytes`/`span` agree and round-trip is exact.
+                        // The pointer-arithmetic offset is safe here: `s`
+                        // is borrowed from `text` and Rust guarantees
+                        // `s.as_ptr() >= text.as_ptr()` for a slice
+                        // relationship that holds by the construction
+                        // chain `text.lines() → strip_prefix → trim`.
+                        // PR 3c may switch to an offset-tracking iterator
+                        // if any consumer needs sub-line provenance; for
+                        // PR 3a the byte position is recoverable from
+                        // `bytes` itself when needed.
+                        let abs_start =
+                            candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
+                        declassify_on = Some(ParsedDeclassifyOn::new(
+                            date,
+                            s,
+                            Span::new(abs_start, abs_start + s.len()),
+                        ));
+                    }
                 }
             }
         }
 
         Ok(ParsedMarking {
-            attrs,
+            attrs: ParsedAttrs::new(
+                None,
+                Box::new([]),
+                Box::new([]),
+                None,
+                Box::new([]),
+                None,
+                Box::new([]),
+                Box::new([]),
+                Box::new([]),
+                declassify_on,
+                classified_by,
+                derived_from,
+                declass_exemption,
+                Box::new([]),
+                SourceOrigin::Cab,
+            ),
             source_span: candidate.span,
             kind: MarkingType::Cab,
         })
     }
 
-    /// Parse a marking string (without outer parentheses) into IsmAttributes.
+    /// Parse a marking string (without outer parentheses) into [`ParsedAttrs`].
     /// Handles both portion form (abbreviated) and banner form (full words).
     ///
     /// `s_offset` is the absolute byte offset of `s` within the original
     /// source buffer. Phase 3 uses it to record per-token absolute spans on
-    /// `IsmAttributes::token_spans` so rules can point at byte-precise
+    /// `ParsedAttrs::token_spans` so rules can point at byte-precise
     /// diagnostic locations.
-    fn parse_marking_string(
+    fn parse_marking_string<'src>(
         &self,
-        s: &str,
+        s: &'src str,
         context: MarkingType,
         s_offset: usize,
-    ) -> Result<IsmAttributes, CoreError> {
-        let mut attrs = IsmAttributes::default();
-
+        origin: SourceOrigin,
+    ) -> Result<ParsedAttrs<'src>, CoreError> {
         if s.is_empty() {
             return Err(CoreError::MalformedMarking(s.to_owned()));
         }
+
+        let mut classification: Option<ParsedClassification<'src>> = None;
+        let mut fgi_marker: Option<ParsedFgiMarker<'src>> = None;
+        let mut declassify_on: Option<ParsedDeclassifyOn<'src>> = None;
+        let mut declass_exemption: Option<DeclassExemption> = None;
+        let mut sar_markings: Option<ParsedSarMarking<'src>> = None;
 
         // Walk separator (`//`) positions inside `s`. Each block is the
         // substring between consecutive separators (or string ends). Track
@@ -190,16 +258,16 @@ impl<'t> Parser<'t> {
         let mut token_spans: Vec<TokenSpan> = Vec::new();
 
         let mut sci: Vec<SciControl> = Vec::new();
-        let mut sci_markings: Vec<SciMarking> = Vec::new();
+        let mut sci_markings: Vec<ParsedSciMarking<'src>> = Vec::new();
         // SAR: P2 wires the hand-written subparser. Only the FIRST SAR block
-        // encountered populates `attrs.sar_markings`; any subsequent SAR block
+        // encountered populates `sar_markings`; any subsequent SAR block
         // is emitted as `TokenKind::Unknown` so rule E030 (indicator-repeat)
         // can flag the duplicate.
         let mut sar_captured = false;
-        let mut aea: Vec<AeaMarking> = Vec::new();
-        let mut dissem: Vec<DissemControl> = Vec::new();
-        let mut non_ic: Vec<NonIcDissem> = Vec::new();
-        let mut rel_to: Vec<CountryCode> = Vec::new();
+        let mut aea: Vec<ParsedAea<'src>> = Vec::new();
+        let mut dissem: Vec<ParsedDissem<'src>> = Vec::new();
+        let mut non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
+        let mut rel_to: Vec<ParsedRelToEntry<'src>> = Vec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
@@ -221,7 +289,13 @@ impl<'t> Parser<'t> {
             // Block 0: US classification (or empty for non-US markings)
             // ---------------------------------------------------------------
             if idx == 0 && !is_non_us {
-                attrs.classification = parse_classification(trimmed).map(MarkingClassification::Us);
+                if let Some(c) = parse_classification(trimmed) {
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Us(c),
+                        trimmed,
+                        span,
+                    ));
+                }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::Classification,
                     span,
@@ -234,12 +308,15 @@ impl<'t> Parser<'t> {
             // Block 1 when non-US: foreign classification
             // ---------------------------------------------------------------
             if idx == 1 && is_non_us {
-                if let Some(nato) = parse_nato_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Nato(nato));
+                let parsed_cls = if let Some(nato) = parse_nato_classification(trimmed) {
+                    Some(MarkingClassification::Nato(nato))
                 } else if let Some(joint) = parse_joint_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Joint(joint));
-                } else if let Some(fgi) = parse_fgi_classification(trimmed) {
-                    attrs.classification = Some(MarkingClassification::Fgi(fgi));
+                    Some(MarkingClassification::Joint(joint))
+                } else {
+                    parse_fgi_classification(trimmed).map(MarkingClassification::Fgi)
+                };
+                if let Some(value) = parsed_cls {
+                    classification = Some(ParsedClassification::new(value, trimmed, span));
                 } else {
                     // Unrecognized non-US classification block.
                     token_spans.push(TokenSpan {
@@ -277,7 +354,7 @@ impl<'t> Parser<'t> {
                     continue;
                 }
                 if let Some((marking, sar_spans)) = parse_sar_category(trimmed, abs_start) {
-                    attrs.sar_markings = Some(marking);
+                    sar_markings = Some(ParsedSarMarking::new(marking, trimmed, span));
                     token_spans.extend(sar_spans);
                     sar_captured = true;
                     continue;
@@ -331,7 +408,25 @@ impl<'t> Parser<'t> {
                         sci.push(ctrl);
                     }
                 }
-                sci_markings.extend(markings);
+                // Wrap each structural SCI marking with the source slice
+                // for the full SCI sub-block. **Known PR 3a limitation
+                // (Copilot review feedback):** when the block holds
+                // multiple `/`-separated systems (e.g. `SI-G/TK-BLFH`),
+                // every wrapper here gets the *same* `trimmed`+`span`
+                // covering the whole block, not the per-system slice.
+                // The structural subparser already records granular
+                // per-system spans inside `token_spans` (kinds
+                // `SciSystem` / `SciCompartment` / `SciSubCompartment`),
+                // so per-marking provenance is recoverable today; the
+                // wrapper-level redundancy is benign for PR 3a's
+                // byte-identical-behavior gate. PR 3c picks up
+                // per-marking byte slicing as part of FR-019 round-trip
+                // work — `parse_sci_block` will return the per-chunk
+                // slices alongside the parsed markings, and this site
+                // pairs them 1:1.
+                for marking in markings {
+                    sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
+                }
             } else if let Some(ctrl) = SciControl::parse(trimmed) {
                 sci.push(ctrl);
                 token_spans.push(TokenSpan {
@@ -340,11 +435,14 @@ impl<'t> Parser<'t> {
                     text: trimmed.into(),
                 });
             } else if trimmed.starts_with("FGI")
-                && matches!(attrs.classification, Some(MarkingClassification::Us(_)))
+                && matches!(
+                    classification.as_ref().map(|c| &c.value),
+                    Some(MarkingClassification::Us(_))
+                )
             {
                 // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
                 if let Some(marker) = parse_fgi_marker(trimmed) {
-                    attrs.fgi_marker = Some(marker);
+                    fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
                         span,
@@ -354,35 +452,37 @@ impl<'t> Parser<'t> {
             } else if let Some(ctrl) =
                 DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
             {
-                dissem.push(ctrl);
+                dissem.push(ParsedDissem::new(ctrl, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DissemControl,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(nic) = parse_non_ic_full_form(trimmed) {
-                non_ic.push(nic);
+                non_ic.push(ParsedNonIcDissem::new(nic, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::NonIcDissem,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
-                aea.push(aea_marking);
+                aea.push(ParsedAea::new(aea_marking, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::AeaMarking,
                     span,
                     text: trimmed.into(),
                 });
             } else if let Some(exemption) = DeclassExemption::parse(trimmed) {
-                attrs.declass_exemption = Some(exemption);
+                declass_exemption = Some(exemption);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassExemption,
                     span,
                     text: trimmed.into(),
                 });
             } else if is_declass_date(trimmed) {
-                attrs.declassify_on = IsmDate::from_str(trimmed).ok();
+                if let Ok(date) = IsmDate::from_str(trimmed) {
+                    declassify_on = Some(ParsedDeclassifyOn::new(date, trimmed, span));
+                }
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DeclassDate,
                     span,
@@ -391,17 +491,39 @@ impl<'t> Parser<'t> {
             } else if let Some(foreign) = try_parse_foreign_classification(trimmed) {
                 // Conflict: a foreign classification in a marking that already
                 // has a US classification. US wins at the greater of the two.
-                if let Some(MarkingClassification::Us(us_level)) = attrs.classification {
+                let prior_us = match classification.as_ref().map(|c| &c.value) {
+                    Some(MarkingClassification::Us(level)) => Some(*level),
+                    _ => None,
+                };
+                if let Some(us_level) = prior_us {
                     let foreign_equiv = match &foreign {
                         ForeignClassification::Nato(n) => n.us_equivalent(),
                         ForeignClassification::Fgi(f) => f.level,
                         ForeignClassification::Joint(j) => j.level,
                     };
                     let max_level = us_level.max(foreign_equiv);
-                    attrs.classification = Some(MarkingClassification::Conflict {
-                        us: max_level,
-                        foreign: Box::new(foreign),
-                    });
+                    // Conflict provenance choice: bytes/span point at the
+                    // FOREIGN block (`trimmed`/`span`), not the prior US
+                    // block. The conflict is detected here, when parsing
+                    // the second classification — pointing at the foreign
+                    // block makes a future diagnostic ("dual classification
+                    // — pick one") land on the offending position. The US
+                    // block's own location is still recoverable via
+                    // `token_spans` (its `TokenSpan` was pushed on the
+                    // earlier iteration). A consumer that wants the full
+                    // conflict region can compute it from
+                    // `min(us.span.start, foreign.span.start)` to
+                    // `max(us.span.end, foreign.span.end)`. PR 3c may
+                    // promote this to a Conflict-specific span shape if a
+                    // round-trip property test (FR-019) requires it.
+                    classification = Some(ParsedClassification::new(
+                        MarkingClassification::Conflict {
+                            us: max_level,
+                            foreign: Box::new(foreign),
+                        },
+                        trimmed,
+                        span,
+                    ));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::Classification,
                         span,
@@ -539,7 +661,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Dissem => {
-                                dissem.push(r.dissem.unwrap());
+                                dissem.push(ParsedDissem::new(r.dissem.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::DissemControl,
                                     span: r.span,
@@ -547,7 +669,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::NonIc => {
-                                non_ic.push(r.nic.unwrap());
+                                non_ic.push(ParsedNonIcDissem::new(r.nic.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::NonIcDissem,
                                     span: r.span,
@@ -555,7 +677,7 @@ impl<'t> Parser<'t> {
                                 });
                             }
                             SubKind::Aea => {
-                                aea.push(r.aea.unwrap());
+                                aea.push(ParsedAea::new(r.aea.unwrap(), r.tok, r.span));
                                 token_spans.push(TokenSpan {
                                     kind: TokenKind::AeaMarking,
                                     span: r.span,
@@ -583,16 +705,6 @@ impl<'t> Parser<'t> {
             }
         }
 
-        attrs.sci_controls = sci.into_boxed_slice();
-        attrs.sci_markings = sci_markings.into_boxed_slice();
-        // `attrs.sar_markings` is populated inline by the SAR branch above
-        // when the first SAR category block is encountered; otherwise it
-        // defaults to `None` from `IsmAttributes::default()`. `sar_captured`
-        // is read in that branch to gate duplicate-block detection.
-        attrs.aea_markings = aea.into_boxed_slice();
-        attrs.dissem_controls = dissem.into_boxed_slice();
-        attrs.non_ic_dissem = non_ic.into_boxed_slice();
-        attrs.rel_to = rel_to.into_boxed_slice();
         // Record separator spans (Phase 3 needs them for E004). Push them
         // here alongside block tokens, then sort by start offset so the
         // final slice is in document (source) order.
@@ -604,11 +716,26 @@ impl<'t> Parser<'t> {
             });
         }
         token_spans.sort_unstable_by_key(|ts| ts.span.start);
-        attrs.token_spans = token_spans.into_boxed_slice();
 
         let _ = context; // used for future context-aware validation
 
-        Ok(attrs)
+        Ok(ParsedAttrs::new(
+            classification,
+            sci_markings.into_boxed_slice(),
+            sci.into_boxed_slice(),
+            sar_markings,
+            aea.into_boxed_slice(),
+            fgi_marker,
+            dissem.into_boxed_slice(),
+            non_ic.into_boxed_slice(),
+            rel_to.into_boxed_slice(),
+            declassify_on,
+            None,
+            None,
+            declass_exemption,
+            token_spans.into_boxed_slice(),
+            origin,
+        ))
     }
 }
 
@@ -1199,10 +1326,10 @@ fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
 /// that were appended to the last comma entry via an intra-segment `/`
 /// separator (e.g., `REL TO USA, FVEY/NF` → countries=[USA, FVEY],
 /// trailing_dissem=[NF]).
-struct RelToParseResult {
-    countries: Vec<CountryCode>,
-    trailing_dissem: Vec<DissemControl>,
-    trailing_non_ic: Vec<NonIcDissem>,
+struct RelToParseResult<'src> {
+    countries: Vec<ParsedRelToEntry<'src>>,
+    trailing_dissem: Vec<ParsedDissem<'src>>,
+    trailing_non_ic: Vec<ParsedNonIcDissem<'src>>,
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
@@ -1218,12 +1345,12 @@ struct RelToParseResult {
 ///
 /// `block_offset` is the absolute byte offset of `block` within the
 /// original source buffer.
-fn parse_rel_to_with_spans(
-    block: &str,
+fn parse_rel_to_with_spans<'src>(
+    block: &'src str,
     block_offset: usize,
     tokens: &dyn TokenSet,
     token_spans: &mut Vec<TokenSpan>,
-) -> RelToParseResult {
+) -> RelToParseResult<'src> {
     // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
     // need the offset of the *trigraph list* within `block` so that each
     // trigraph's absolute span can be computed.
@@ -1236,9 +1363,9 @@ fn parse_rel_to_with_spans(
     };
     let after_rel = &block[prefix_skip..];
 
-    let mut countries: Vec<CountryCode> = Vec::new();
-    let mut trailing_dissem: Vec<DissemControl> = Vec::new();
-    let mut trailing_non_ic: Vec<NonIcDissem> = Vec::new();
+    let mut countries: Vec<ParsedRelToEntry<'src>> = Vec::new();
+    let mut trailing_dissem: Vec<ParsedDissem<'src>> = Vec::new();
+    let mut trailing_non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
@@ -1272,10 +1399,11 @@ fn parse_rel_to_with_spans(
             if !country_part.is_empty() {
                 if tokens.is_trigraph(country_part) {
                     if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
-                        countries.push(t);
+                        let span = Span::new(abs_start, abs_start + country_part.len());
+                        countries.push(ParsedRelToEntry::new(t, country_part, span));
                         token_spans.push(TokenSpan {
                             kind: TokenKind::RelToTrigraph,
-                            span: Span::new(abs_start, abs_start + country_part.len()),
+                            span,
                             text: country_part.into(),
                         });
                     }
@@ -1302,17 +1430,19 @@ fn parse_rel_to_with_spans(
                 if let Some(ctrl) =
                     DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
                 {
-                    trailing_dissem.push(ctrl);
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_dissem.push(ParsedDissem::new(ctrl, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::DissemControl,
-                        span: Span::new(part_abs, part_abs + part.len()),
+                        span,
                         text: part.into(),
                     });
                 } else if let Some(nic) = parse_non_ic_full_form(part) {
-                    trailing_non_ic.push(nic);
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_non_ic.push(ParsedNonIcDissem::new(nic, part, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::NonIcDissem,
-                        span: Span::new(part_abs, part_abs + part.len()),
+                        span,
                         text: part.into(),
                     });
                 } else {
@@ -1364,10 +1494,11 @@ fn parse_rel_to_with_spans(
         let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
             continue;
         };
-        countries.push(t);
+        let span = Span::new(abs_start, abs_start + trimmed.len());
+        countries.push(ParsedRelToEntry::new(t, trimmed, span));
         token_spans.push(TokenSpan {
             kind: TokenKind::RelToTrigraph,
-            span: Span::new(abs_start, abs_start + trimmed.len()),
+            span,
             text: trimmed.into(),
         });
     }
@@ -1696,8 +1827,35 @@ fn split_with_offsets(s: &str, delim: char) -> Vec<(usize, &str)> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use marque_ism::CanonicalAttrs;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
     use marque_ism::token_set::CapcoTokenSet;
+
+    /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
+    /// so existing assertions on the typed `attrs.classification` /
+    /// `attrs.dissem_controls` shape continue to work without per-test
+    /// edits during the PR 3a rename.
+    ///
+    /// Test-fixture carve-out per Constitution V Principle V — the
+    /// adapter is invoked here only to construct test inputs whose
+    /// shape mirrors the engine's post-recognition view.
+    pub(super) struct CanonicalParsed {
+        pub attrs: CanonicalAttrs,
+        #[allow(dead_code)] // tests inspect attrs only; kept for parity
+        pub source_span: Span,
+        #[allow(dead_code)]
+        pub kind: MarkingType,
+    }
+
+    impl<'src> From<ParsedMarking<'src>> for CanonicalParsed {
+        fn from(p: ParsedMarking<'src>) -> Self {
+            Self {
+                attrs: marque_ism::from_parsed_unchecked(p.attrs),
+                source_span: p.source_span,
+                kind: p.kind,
+            }
+        }
+    }
 
     fn make_candidate(text: &[u8], kind: MarkingType, offset: usize) -> MarkingCandidate {
         MarkingCandidate {
@@ -1706,7 +1864,7 @@ mod tests {
         }
     }
 
-    fn parse_banner(text: &str) -> ParsedMarking {
+    fn parse_banner(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -1714,9 +1872,10 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("parse should succeed")
+            .into()
     }
 
-    fn parse_portion(text: &str) -> ParsedMarking {
+    fn parse_portion(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -1724,6 +1883,7 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("parse should succeed")
+            .into()
     }
 
     // --- declass exemption in banner (E005 detection) ---
@@ -2974,7 +3134,7 @@ mod tests {
     // CAB date parsing (parse_cab Declassify On: path)
     // -----------------------------------------------------------------------
 
-    fn parse_cab_text(text: &str) -> ParsedMarking {
+    fn parse_cab_text(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -2982,6 +3142,7 @@ mod tests {
         parser
             .parse(&candidate, source)
             .expect("CAB parse should succeed")
+            .into()
     }
 
     #[test]
@@ -3124,6 +3285,7 @@ mod sar_parse_tests {
     //! Direct unit tests for [`parse_sar_category`] plus integration-level
     //! tests that exercise the dispatch from `parse_marking_string`.
 
+    use super::tests::CanonicalParsed;
     use super::*;
     use marque_ism::span::{MarkingCandidate, MarkingType, Span};
     use marque_ism::token_set::CapcoTokenSet;
@@ -3497,7 +3659,7 @@ mod sar_parse_tests {
     // Dispatch tests (through `parse_marking_string`)
     // ---------------------------------------------------------------------
 
-    fn make_banner(text: &str) -> ParsedMarking {
+    fn make_banner(text: &str) -> CanonicalParsed {
         let source = text.as_bytes();
         let tokens = CapcoTokenSet;
         let parser = Parser::new(&tokens);
@@ -3505,7 +3667,10 @@ mod sar_parse_tests {
             span: Span::new(0, source.len()),
             kind: MarkingType::Banner,
         };
-        parser.parse(&candidate, source).expect("parse succeeds")
+        parser
+            .parse(&candidate, source)
+            .expect("parse succeeds")
+            .into()
     }
 
     #[test]
