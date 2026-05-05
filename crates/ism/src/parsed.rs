@@ -153,6 +153,58 @@ pub struct ParsedAttrs<'src> {
     pub source_bytes_origin: SourceOrigin,
 }
 
+impl<'src> ParsedAttrs<'src> {
+    /// Construct a [`ParsedAttrs`] with every field provided.
+    ///
+    /// Required because `ParsedAttrs` is `#[non_exhaustive]` to keep
+    /// consumers (rules) from pattern-matching exhaustively, but the
+    /// parser in `marque-core` is the sole constructor and lives in a
+    /// different crate. The constructor accepts every field by value
+    /// so the parser does not have to thread `..Default::default()` —
+    /// the type does not derive `Default` because of the `'src`
+    /// lifetime parameter.
+    ///
+    /// Argument order mirrors the field declaration order so a future
+    /// field addition can be slotted in deterministically (and the
+    /// parser site updated atomically).
+    #[allow(clippy::too_many_arguments)] // mirrors field count by design
+    pub fn new(
+        classification: Option<ParsedClassification<'src>>,
+        sci_markings: Box<[ParsedSciMarking<'src>]>,
+        sci_controls: Box<[SciControl]>,
+        sar_markings: Option<ParsedSarMarking<'src>>,
+        aea_markings: Box<[ParsedAea<'src>]>,
+        fgi_marker: Option<ParsedFgiMarker<'src>>,
+        dissem_controls: Box<[ParsedDissem<'src>]>,
+        non_ic_dissem: Box<[ParsedNonIcDissem<'src>]>,
+        rel_to: Box<[ParsedRelToEntry<'src>]>,
+        declassify_on: Option<ParsedDeclassifyOn<'src>>,
+        classified_by: Option<&'src str>,
+        derived_from: Option<&'src str>,
+        declass_exemption: Option<DeclassExemption>,
+        token_spans: Box<[TokenSpan]>,
+        source_bytes_origin: SourceOrigin,
+    ) -> Self {
+        Self {
+            classification,
+            sci_markings,
+            sci_controls,
+            sar_markings,
+            aea_markings,
+            fgi_marker,
+            dissem_controls,
+            non_ic_dissem,
+            rel_to,
+            declassify_on,
+            classified_by,
+            derived_from,
+            declass_exemption,
+            token_spans,
+            source_bytes_origin,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------
 // Parsed*<'src> thin wrappers
 //
