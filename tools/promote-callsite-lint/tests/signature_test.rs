@@ -143,7 +143,7 @@ fn whitelist_transitional_from_parsed_unchecked_is_allowed() {
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
-        "crates/ism/src/attrs.rs",
+        "crates/ism/src/canonical.rs",
         r"
 pub struct ParsedAttrs;
 pub struct CanonicalAttrs;
@@ -263,7 +263,7 @@ pub fn just_parses(p: ParsedAttrs) -> u32 {
 #[test]
 fn from_parsed_unchecked_outside_whitelist_path_is_denied() {
     // Function name alone does not unlock the whitelist; it's
-    // path-keyed to `crates/ism/src/attrs.rs`.
+    // path-keyed to `crates/ism/src/canonical.rs`.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
