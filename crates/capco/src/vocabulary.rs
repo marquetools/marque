@@ -630,6 +630,60 @@ fn shape_country_token(bytes: &[u8]) -> bool {
     marque_ism::CountryCode::admits_country_token(bytes)
 }
 
+/// REL TO list-token admission: union of the shape gate
+/// ([`shape_country_token`]) AND registered-code membership in
+/// [`marque_ism::TRIGRAPHS`].
+///
+/// REL TO §H.8 admits a strictly broader surface than FGI §H.7. The
+/// strict parser at `crates/core/src/parser.rs::parse_rel_to_with_spans`
+/// uses `tokens.is_trigraph(...)` (binary search over
+/// `TRIGRAPHS`), which accepts:
+/// - 2-byte registered exception codes (e.g., `EU`).
+/// - 3-byte Annex B trigraphs.
+/// - 4-byte Annex A tetragraphs (e.g., `NATO`, `FVEY`, `ISAF`).
+/// - **15-byte registered long codes** — `AUSTRALIA_GROUP` is the
+///   canonical case. These have non-uniform shape (length + interior
+///   underscore) and are admitted by registry membership only;
+///   `admits_country_token` cannot encode them as a byte-class
+///   predicate.
+///
+/// A pure-shape gate (`admits_country_token`, 2/3/4 ASCII upper)
+/// would silently reject `AUSTRALIA_GROUP` even though the strict
+/// parser admits it — that's the asymmetry the PR #311 round-3
+/// review caught. This helper restores parity by ORing the two
+/// admission paths:
+/// - Shape-admissible (2/3/4 ASCII upper) → admit. Catches the
+///   common case alloc-free.
+/// - Registry membership (any length, exact match in `TRIGRAPHS`)
+///   → admit. Catches the long-code exceptions and is also a
+///   stricter check than the shape gate for caller convenience
+///   (a code that fails shape but is in the registry is still
+///   admissible).
+///
+/// CAT_FGI_MARKER deliberately does NOT widen this way — CAPCO §H.7
+/// p123 admits trigraphs and tetragraphs only; AUSTRALIA_GROUP-class
+/// codes are not lawful FGI material.
+///
+/// Authority: CAPCO-2016 §H.8 p150 (REL TO list grammar) +
+/// `marque_ism::generated::values::TRIGRAPHS` (the canonical REL TO
+/// admission registry, generated from ODNI ISMCAT
+/// `CVEnumISMCATRelTo` plus org extensions, sorted for binary
+/// search).
+#[inline]
+fn shape_or_registered_rel_to_token(bytes: &[u8]) -> bool {
+    if shape_country_token(bytes) {
+        return true;
+    }
+    // Long-code path: convert to `&str` (registry is `&[&str]`) and
+    // binary-search. Non-UTF-8 bytes can't be in the registry by
+    // construction (registry entries are ASCII), so failed
+    // conversion is a guaranteed `false`.
+    let Ok(s) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    marque_ism::TRIGRAPHS.binary_search(&s).is_ok()
+}
+
 /// SAR program identifier abbreviation: delegates to
 /// [`marque_ism::SarProgram::admits_program_id_abbrev`], the single
 /// source of truth for the 2-3 ASCII alphanumeric shape gate
@@ -820,14 +874,22 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             // is also rule-layer.
             CAT_FGI_MARKER => shape_country_token(bytes),
 
-            // REL TO list-token: same trigraph-or-tetragraph
-            // shape as CAT_FGI_MARKER per CAPCO-2016 §H.8 p150 +
-            // §A.6 p17 ("'USA' trigraph code must be listed
-            // first, followed by trigraph codes listed in
-            // ascending alphabetic sort order, then tetragraph
-            // codes ..."). The list-token shape gate is identical;
-            // the USA-first ordering invariant is rule-layer.
-            CAT_REL_TO => shape_country_token(bytes),
+            // REL TO list-token: shape (2/3/4 ASCII upper) OR
+            // registered long-code membership in
+            // `marque_ism::TRIGRAPHS`. The strict parser at
+            // `parse_rel_to_with_spans` uses the same registry,
+            // so the API surface and the parser admit the same
+            // set — including 15-byte registered codes like
+            // `AUSTRALIA_GROUP` that cannot be encoded as a
+            // byte-class shape predicate. CAT_FGI_MARKER does NOT
+            // widen this way — §H.7 p123 admits trigraphs and
+            // tetragraphs only.
+            // CAPCO-2016 §H.8 p150 + §A.6 p17 ("'USA' trigraph
+            // code must be listed first, followed by trigraph
+            // codes listed in ascending alphabetic sort order,
+            // then tetragraph codes ...") + `TRIGRAPHS` registry
+            // generated from ODNI ISMCAT `CVEnumISMCATRelTo`.
+            CAT_REL_TO => shape_or_registered_rel_to_token(bytes),
 
             // Dissemination controls: closed CVE set spanning IC
             // (NF, OC, REL, RELIDO, FOUO, ...) and non-IC
@@ -943,7 +1005,7 @@ mod shape_admits_tests {
     }
 
     #[test]
-    fn rel_to_uses_same_country_token_shape_as_fgi() {
+    fn rel_to_admits_shape_eligible_codes() {
         let v = vocab();
         // Trigraph + tetragraph + 2-letter EU exception admit
         // symmetrically across CAT_FGI_MARKER and CAT_REL_TO.
@@ -952,13 +1014,57 @@ mod shape_admits_tests {
         assert!(v.shape_admits(CAT_REL_TO, b"NATO"));
         assert!(v.shape_admits(CAT_REL_TO, b"FVEY"));
         assert!(v.shape_admits(CAT_REL_TO, b"EU"));
-        // Same-shape rejections.
+    }
+
+    #[test]
+    fn rel_to_admits_registered_long_codes() {
+        // `AUSTRALIA_GROUP` is a 15-byte registered REL TO code in
+        // `marque_ism::TRIGRAPHS`. Pure shape (`admits_country_token`,
+        // 2/3/4 ASCII upper) cannot encode it; registry membership
+        // does. This is the asymmetry CAT_REL_TO has vs CAT_FGI_MARKER:
+        // strict parser (`parse_rel_to_with_spans` via
+        // `tokens.is_trigraph(...)`) admits AUSTRALIA_GROUP, so
+        // shape_admits must too — otherwise callers that adopt
+        // shape_admits as the category admission contract will
+        // disagree with the strict parser on lawful inputs.
+        let v = vocab();
+        assert!(v.shape_admits(CAT_REL_TO, b"AUSTRALIA_GROUP"));
+    }
+
+    #[test]
+    fn rel_to_rejects_arbitrary_long_codes_not_in_registry() {
+        // The registry-membership widening admits ONLY codes the
+        // registry actually contains. An arbitrary 5+-byte
+        // upper/underscore string that isn't a registered REL TO
+        // code must still reject — registry membership ≠ shape gate.
+        let v = vocab();
+        assert!(!v.shape_admits(CAT_REL_TO, b"ARBITRARY_LONG_CODE"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"USAGB"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"FAKE_GROUP"));
+    }
+
+    #[test]
+    fn rel_to_rejects_invalid_inputs() {
+        let v = vocab();
         assert!(!v.shape_admits(CAT_REL_TO, b"usa"));
         assert!(!v.shape_admits(CAT_REL_TO, b"nato"));
         assert!(!v.shape_admits(CAT_REL_TO, b"eu"));
+        assert!(!v.shape_admits(CAT_REL_TO, b"australia_group"));
         assert!(!v.shape_admits(CAT_REL_TO, b"123"));
         assert!(!v.shape_admits(CAT_REL_TO, b"U")); // single letter
-        assert!(!v.shape_admits(CAT_REL_TO, b"USAGB"));
+        assert!(!v.shape_admits(CAT_REL_TO, b""));
+    }
+
+    #[test]
+    fn fgi_marker_rejects_australia_group_class_codes() {
+        // CAT_FGI_MARKER does NOT widen via TRIGRAPHS membership —
+        // CAPCO §H.7 p123 admits trigraphs + tetragraphs only;
+        // AUSTRALIA_GROUP-class registered codes are not lawful
+        // FGI material. This test pins the asymmetry between
+        // CAT_FGI_MARKER and CAT_REL_TO so a future cleanup
+        // doesn't accidentally widen FGI by symmetry argument.
+        let v = vocab();
+        assert!(!v.shape_admits(CAT_FGI_MARKER, b"AUSTRALIA_GROUP"));
     }
 
     // -------- SAR program identifier (open vocab — 2-3 ASCII alnum) -

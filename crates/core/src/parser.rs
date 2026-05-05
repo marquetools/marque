@@ -30,6 +30,7 @@ use marque_ism::date::IsmDate;
 use marque_ism::is_bare_cve_value;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
+use smallvec::SmallVec;
 use std::str::FromStr;
 
 /// Parse result for a single candidate.
@@ -1102,15 +1103,17 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     // canonical separator.
     let rest = s.strip_prefix("FGI ")?;
 
-    // Collect into a small `Vec` and let `FgiMarker::acknowledged`
-    // re-collect into its inline `SmallVec<[CountryCode; 4]>`. This
-    // crate (`marque-core`) does not depend on `smallvec`; the
-    // constructor in `marque-ism` does, so deferring the SmallVec
-    // construction to the constructor keeps the dep boundary tight.
-    // The transient `Vec` fits in 4 inline `CountryCode` values for
-    // the typical FGI list (≤4 codes per CAPCO §H.7); a longer list
-    // would heap-allocate either way.
-    let mut countries: Vec<CountryCode> = Vec::new();
+    // Build the country list directly into the inline-4
+    // `SmallVec` shape `FgiMarker::Acknowledged` carries — typical
+    // FGI lists are ≤4 codes per CAPCO §H.7, so the common cases
+    // (`FGI USA`, `FGI USA GBR`, the §H.7 canonical example
+    // `FGI GBR JPN NATO`) stay heap-free. A longer list spills to
+    // the heap in `SmallVec` itself once, matching what
+    // `FgiMarker::acknowledged` would produce; the previous
+    // intermediate `Vec` defeated the inline-storage optimization
+    // by forcing one heap allocation on every acknowledged marker
+    // before the constructor re-collected.
+    let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
     for token in rest.split_whitespace() {
         // FR-015 admission: route every token through the canonical
         // FGI/REL TO list-token shape predicate. Trigraphs (3 ASCII
@@ -1595,7 +1598,7 @@ fn parse_sar_program(
     // `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` admission
     // surface (CHK030). Mirrors the FGI marker site at
     // [`parse_fgi_marker`] which routes through
-    // [`CountryCode::admits_fgi_trigraph`].
+    // [`CountryCode::admits_country_token`].
     let prog_shape_ok = match indicator {
         // §H.5 p101: "A program identifier abbreviation is the two
         // or three-character designator for the program."

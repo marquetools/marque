@@ -956,6 +956,7 @@ dependencies = [
  "marque-ism",
  "memchr",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 
