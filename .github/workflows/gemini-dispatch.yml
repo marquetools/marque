@@ -143,7 +143,7 @@ jobs:
       app_id: "${{ needs.dispatch.outputs.app_id }}"
       app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
     secrets: "inherit"
 
   triage:
@@ -163,7 +163,7 @@ jobs:
       app_id: "${{ needs.dispatch.outputs.app_id }}"
       app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
     secrets: "inherit"
 
   invoke:
@@ -183,7 +183,7 @@ jobs:
       app_id: "${{ needs.dispatch.outputs.app_id }}"
       app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
     secrets: "inherit"
 
   plan-execute:
@@ -203,7 +203,7 @@ jobs:
       app_id: "${{ needs.dispatch.outputs.app_id }}"
       app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV | 'cloud' }}
+      mise_env: ${{ vars.MISE_ENV || env.MISE_ENV }}
     secrets: "inherit"
 
   fallthrough:
@@ -228,14 +228,14 @@ jobs:
         uses: "actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3" # ratchet:actions/create-github-app-token@v2
         with:
           client-id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-          private-key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY || needs.dispatch.outputs.app_private_key }}"
           permission-contents: "read"
           permission-issues: "write"
           permission-pull-requests: "write"
 
       - name: "Send failure comment"
         env:
-          GITHUB_TOKEN: "${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}"
+          GITHUB_TOKEN: "${{ needs.dispatch.outputs.github_token || secrets.GITHUB_TOKEN || github.token }}"
           ISSUE_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
           MESSAGE: |-
             🤖 I'm sorry @${{ github.actor }}, but I was unable to process your request. Please [see the logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.
