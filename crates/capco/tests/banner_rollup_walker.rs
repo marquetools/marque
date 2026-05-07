@@ -216,6 +216,38 @@ fn non_ic_dissem_row_fires_when_banner_missing_nodis() {
     assert_eq!(fix.replacement.as_ref(), "/NODIS");
 }
 
+#[test]
+fn non_ic_dissem_row_emits_error_no_fix_when_banner_lacks_non_ic_block_entirely() {
+    // Portion: NODIS. Banner: classification + IC dissem only — no
+    // Non-IC dissem block at all. The Non-IC evaluator's `None` arm
+    // applies here: byte-positioning a new Non-IC category block from
+    // rule context alone requires separator offsets the rule cannot
+    // safely supply, so the row escalates severity to Error and emits
+    // no fix.
+    //
+    // Isolated from `walker_fires_per_row_when_multiple_categories_mismatch`
+    // (which exercises all three `None` arms simultaneously) so a
+    // regression on the Non-IC `None` arm specifically is named in
+    // CI output instead of being entangled with SAR / SCI failures.
+    let source = "(S//NF//ND)\nSECRET//NOFORN";
+    let diags = lint(source);
+    let e040 = diags_for_rule(&diags, "E040");
+    assert_eq!(e040.len(), 1, "expected one E040: {diags:?}");
+
+    let d = e040[0];
+    assert_eq!(d.severity, Severity::Error);
+    assert!(
+        d.fix.is_none(),
+        "Non-IC dissem `None` arm must not propose a fix; got: {:?}",
+        d.fix,
+    );
+    assert!(
+        d.message.contains("NODIS"),
+        "diagnostic must name NODIS as the required token; got: {:?}",
+        d.message,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Banner matches projection — silence
 // ---------------------------------------------------------------------------

@@ -5220,14 +5220,24 @@ impl Rule for SciCustomControlInfoRule {
 /// emission paths so they cannot silently diverge. References the
 /// per-system "Precedence Rules for Banner Line Guidance" template
 /// that appears in every §H.4 entry (HCS p62 is one of 18 identical
-/// instances) plus §D.2 p28 for the general banner/portion
-/// consistency invariant.
+/// instances).
+///
+/// Per T026a D13 single-citation discipline, this string carries the
+/// **operative** banner-roll-up rule for SCI only — §H.4 per-system
+/// precedence. §D.2 p28 (CAPCO-2016 lines 577–579) restates the same
+/// banner/portion consistency invariant in general-algorithm prose;
+/// the spec wording in
+/// `specs/006-engine-rule-refactor/tasks.md` T026a explicitly directs
+/// background §-references to row documentation rather than the
+/// citation string ("§D.2 is general-algorithm prose (per-category
+/// citations are tighter and verifiable per Constitution VIII)").
+/// The §D.2 background pointer therefore lives on the SCI evaluator's
+/// doc comment, not here.
 const E035_CITATION: &str = concat!(
     "CAPCO-2016 §H.4 per-system \"Precedence Rules for Banner Line ",
-    "Guidance\" (e.g. HCS p62, SI p74, TK p85) + §D.2 p28 (general ",
-    "banner/portion consistency). All unique SCI markings in portions ",
-    "must appear in the banner line; unlike SAR, SCI has no ",
-    "hierarchy-optional carve-out.",
+    "Guidance\" (e.g. HCS p62, SI p74, TK p85). All unique SCI ",
+    "markings in portions must appear in the banner line; unlike ",
+    "SAR, SCI has no hierarchy-optional carve-out.",
 );
 
 // ---------------------------------------------------------------------------
@@ -5814,13 +5824,21 @@ fn evaluate_sar_banner_rollup(
 /// `SciBannerRollupRule::check`, parameterized over the page projection
 /// and the catalog row.
 ///
-/// Authority: CAPCO-2016 §H.4 per-system "Precedence Rules for Banner
-/// Line Guidance" template (HCS p62, SI p74, TK p85, …) — *"All unique
-/// SCI markings contained in the portion marks must always appear in
-/// the banner line."* Cross-cited with §D.2 p28 for the general
-/// banner/portion consistency invariant. Unlike SAR (§H.5 p101), SCI
+/// **Operative authority**: CAPCO-2016 §H.4 per-system "Precedence
+/// Rules for Banner Line Guidance" template (HCS p62, SI p74, TK p85,
+/// …) — *"All unique SCI markings contained in the portion marks must
+/// always appear in the banner line."* Unlike SAR (§H.5 p101), SCI
 /// has no hierarchy-optional carve-out: compartments and
 /// sub-compartments roll up too.
+///
+/// **Background**: §D.2 p28 (CAPCO-2016 lines 577–579) restates the
+/// same banner/portion consistency invariant in general-algorithm
+/// prose. Per T026a D13 single-citation discipline (and
+/// `specs/006-engine-rule-refactor/tasks.md` T026a wording — *"§D.2
+/// is general-algorithm prose (per-category citations are tighter and
+/// verifiable per Constitution VIII)"*), §D.2 is a background pointer
+/// only and is deliberately NOT included in `E035_CITATION`. The
+/// per-category §H.4 reference is the row's primary citation.
 fn evaluate_sci_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::PageContext,
@@ -10739,10 +10757,14 @@ mod tests {
         let diags = lint_banner(source);
         let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
         assert_eq!(e035.len(), 1);
-        // Cites an example per-system Precedence Rules line (HCS p62
-        // line 1397 stands in for the 18 identical instances across
-        // §H.4) plus the general §D.2 p28 banner/portion consistency
-        // invariant.
+        // T026a D13 single-citation discipline: the citation string
+        // carries §H.4 per-system "Precedence Rules for Banner Line
+        // Guidance" only — that's the operative banner-roll-up rule
+        // for SCI per `specs/006-engine-rule-refactor/tasks.md`
+        // T026a. §D.2 p28 (CAPCO-2016 lines 577–579) restates the
+        // same invariant in general-algorithm prose; it lives as a
+        // background reference in `evaluate_sci_banner_rollup`'s doc
+        // comment, NOT in the citation string.
         assert!(
             e035[0].citation.contains("§H.4"),
             "E035 citation must reference §H.4; got: {:?}",
@@ -10756,10 +10778,17 @@ mod tests {
              template; got: {:?}",
             e035[0].citation
         );
+        // §D.2 was demoted to a background-only doc-comment reference
+        // per the M-1 review condition (citation-discipline cleanup).
+        // Pin its absence so a future change that re-adds it to the
+        // citation string trips this test instead of silently
+        // re-introducing a co-primary cross-citation.
         assert!(
-            e035[0].citation.contains("§D.2 p28"),
-            "E035 citation must reference §D.2 p28 as the general \
-             banner/portion consistency anchor; got: {:?}",
+            !e035[0].citation.contains("§D.2"),
+            "E035 citation must NOT mix §D.2 (general-algorithm prose) \
+             with §H.4 (per-category operative rule) — D13 single-\
+             citation discipline. §D.2 lives in evaluator doc comment \
+             as a background reference. got: {:?}",
             e035[0].citation
         );
     }
