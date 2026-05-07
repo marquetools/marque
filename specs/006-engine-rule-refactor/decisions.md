@@ -388,8 +388,18 @@ the trait method is the actual failure pattern. Rust stdlib uses
 
 ### D13 — Rule-collapse band
 
-**Decision**: 56 → **8–18 rule count band** post-PR-3b + qualitative
-gate. Each surviving rule MUST satisfy:
+> **Superseded 2026-05-07.** The original D13 "56 → 8–18 post-PR-3b"
+> target and "single CAPCO-§ citation per rule" wording below are
+> retained for historical reference but **superseded by the
+> Amendment 2026-05-07 below**. Operative interpretation: source
+> count is **59** (not 56); PR 3b proper target is **13–18 (Stage 1)**
+> with end-state 8–18 across stages; "single citation" applies **per
+> declarative catalog entry**, not per `impl Rule` block. Read the
+> amendment, not this block, for binding acceptance criteria.
+
+**Decision (original, superseded 2026-05-07)**: 56 → **8–18 rule
+count band** post-PR-3b + qualitative gate. Each surviving rule
+MUST satisfy:
 
 1. A single CAPCO-§ citation (no rule cites more than one §).
 2. Predicate body has ≤3 internal branches (measured by
@@ -406,6 +416,89 @@ branching is "in band" but worse than a team landing at 19 with
 clean predicates. Pairing the count with a qualitative gate (single
 citation, branch limit, reviewer attestation) prevents both failure
 modes — under-collapse and over-collapse-with-brittle-branching.
+
+#### D13 — Amendment 2026-05-07 (consultation verdict)
+
+The marque-lattice-consultant pass on PR 3b (recorded at
+`docs/plans/2026-05-07-pr3b-consultation-verdict.md`; algebraic
+justification in `marque-applied.md` §3 + §3.11) re-baselines and
+re-sequences D13 without removing it.
+
+**Re-baseline.** Source rule count is **59** (ground-truth
+`grep -c '^impl Rule for' rules.rs rules_declarative.rs
+rules_sci_per_system.rs`, not the "~56" approximation the
+lattice-design plan carried).
+
+**Re-sequence.** The 8–18 band remains the **end-state** acceptance
+target (post-Stage-4); the **PR 3b proper** target is **13–18**, with
+collapse to 9–11 staged across PR 3.7 (new primitives), PR 4 (per-
+category Lattice impls + closure wiring), and PR 5+ (renderer +
+RELOPT). The full staging table and the six PR 3b sub-moves
+(3b.A–3b.F) are pinned in `plan.md` D13 addendum.
+
+**Resolved sub-decisions**:
+
+- **Q-3.9** ("single citation per rule" — does it mean per `impl Rule`
+  block or per declarative entry?) → **per declarative entry**.
+  Consolidated walkers (3b.A banner, 3b.C RELIDO, 3b.D floors, 3b.E
+  SCI per-system) are each one `impl Rule` block delegating to a
+  catalog whose rows each carry their own §-citation. Citation
+  integrity per Constitution VIII is per-claim, not per-block.
+- **Q-3.4.2-timing** (where does the family-predicate `Constraint::
+  Conflicts::RhsFamily(predicate)` variant land?) → **fold into
+  PR 3.7**. The lattice §-resolution spike already touches
+  `marque-scheme`; one variant addition fits. PR 3b ships the
+  enumerated form (~15–20 single-token rows); PR 4 compacts to 2
+  family rows.
+- **Q-4.7-timing** (where does the `marque-applied.md` §4.7 closure
+  operator primitive land?) → **fold into PR 3.7**. Same reason.
+  The implication tables and `proptest_closure.rs` ship with the
+  primitive; PR 4 wires CAPCO's `ImplTable` and re-classifies
+  closure-implied entries.
+- **Q-Move-7-timing** (where does style/ordering → renderer move
+  land?) → **PR 5+, with a single fallback walker retained in
+  PR 3b**. The renderer trait surface is a separate effort; PR 3b
+  retains one "non-canonical input" diagnostic walker covering
+  E020 / E023 / E028 / E033 ordering checks until the renderer
+  arrives.
+- **Q-FgiSet-vs-§4.8** (does existing `FgiSet::Present { concealed,
+  countries }` already model the §4.8 consensus-or-fallback pattern?)
+  → **yes** (user confirmation 2026-05-07): the FGI category is the
+  union of acknowledged foreign-government trigraphs unless any
+  portion is source-concealed, in which case the banner falls back to
+  bare `FGI`. The existing `FgiSet` join law (`concealed=true ∨ x =
+  concealed=true`; `{countries: A} ∨ {countries: B} = {countries: A
+  ∪ B}`) implements this exactly. **No new primitive needed**; T108d
+  collapses to **doc-comment amendment only** at
+  `crates/capco/src/lattice.rs` citing `marque-applied.md` §4.8 +
+  CAPCO §H.7 / §H.7 p123.
+
+**Open sub-decisions** (do NOT block PR 3b; flagged for follow-up):
+
+- **Q-3.4.6a** (class-floor catalog: build-time generated from
+  CVE/Schematron metadata, or hand-curated in `marque-capco`?) →
+  **hand-curated in PR 3b**, with a 30-minute spike to inspect ODNI
+  XML coverage tracked as a follow-up. If the schema carries floor
+  data uniformly, swap to build-time at the next ODNI schema bump.
+
+**Audibles permitted**: PR 3b reviewer may decline to land 3b.A
+(banner walker) if the per-category Lattice impls landing in PR 4
+preserve correctness via property-test-only coverage; in that case
+the walker is skipped at 3b and the 5 banner-roll-up rules retire
+in PR 4 directly. Documented as a 3b reviewer choice in the PR
+description.
+
+**Lands in**:
+- `plan.md` D13 addendum (re-sequenced staging table + sub-moves).
+- `tasks.md` T026 expansion to T026a–T026f; new T108b/T108c/T108d under
+  PR 3.7 for `RhsFamily` variant + closure operator primitive +
+  §4.8 `FgiSet` doc-comment amendment.
+- `docs/plans/2026-05-07-pr3b-consultation-verdict.md` — dated
+  decision record with the (a)/(b)/(c) verdicts.
+- `marque-applied.md` §3.10.3 timing correction + new §3.11 stage-
+  sequencing section.
+- `docs/plans/2026-05-01-lattice-design.md` §10 amendments
+  (closure operator + RhsFamily as PR 3.7 fill-in items).
 
 ---
 
@@ -492,7 +585,7 @@ queue management.
 | D10 | Layer 0 + toolchain / trybuild pin | `contracts/engine-pipeline.md` test-strategy amended |
 | D11 | Masking-pin cache-with-fallback | `research.md` new R-10 |
 | D12 | `_unchecked` lint by signature shape | `research.md` new R-11; `spec.md` FR-040 amended |
-| D13 | 8–18 band + qualitative gate | `plan.md` PR 3b acceptance criteria |
+| D13 | 8–18 band + qualitative gate (amended 2026-05-07: Stage 1 13–18 + Stages 2–4 → 9–11) | `plan.md` PR 3b acceptance criteria + D13 amendment 2026-05-07 |
 | D14 | Trait stabilization forcing function | `spec.md` Assumptions amendment |
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |
