@@ -579,18 +579,23 @@ impl Engine {
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
-                    // Skip rules that are configured as Off.
-                    let configured_severity = self
-                        .config
-                        .rules
-                        .overrides
-                        .get(rule.id().as_str())
-                        .and_then(|s| Severity::parse_config(s))
-                        .unwrap_or(rule.default_severity());
-
-                    if configured_severity == Severity::Off {
-                        continue;
-                    }
+                    // Off-skip is applied per-emitted-diagnostic below
+                    // (not here on the registered rule ID), so that
+                    // dispatcher walkers like
+                    // `BannerMatchesProjectedRule` (T026a) — which
+                    // register under one bookkeeping ID but emit
+                    // diagnostics under per-row catalog IDs — let
+                    // each catalog row be configured independently.
+                    // The per-emitted-id filter still drops diagnostics
+                    // from a non-walker rule whose registered ID is
+                    // `Off`, because that rule emits diagnostics under
+                    // its own ID; the only behavioral change for
+                    // non-walker rules is that the rule's `check` body
+                    // still runs (and returns the diagnostics that the
+                    // filter then drops). Marque rules are stateless
+                    // and gate cheaply on marking-type / attribute
+                    // shape, so the cost of running a fully-Off rule
+                    // is bounded and not on the hot path.
 
                     // Whitepaper §6.3 / gap register #10: a buggy rule
                     // that constructs an out-of-range `Confidence`
@@ -641,9 +646,46 @@ impl Engine {
                             Vec::new()
                         }
                     };
-                    // Apply configured severity override.
+                    // Apply configured severity override per emitted
+                    // diagnostic, keyed on the diagnostic's `rule` ID
+                    // (which may differ from the registered rule's ID
+                    // when a dispatcher walker like
+                    // `BannerMatchesProjectedRule` emits diagnostics
+                    // under per-row catalog IDs — T026a). When no
+                    // config override exists for the emitted ID, the
+                    // emitted severity is preserved — so per-row
+                    // catalog severities (e.g. Fix for E031, Error
+                    // for E035 / E040) survive into the audit stream
+                    // unchanged.
+                    //
+                    // Per-emitted-id Off filtering also lives here:
+                    // a config that turns off E035 or E040 (which
+                    // share the walker's E031 registration) drops
+                    // those diagnostics without disabling the others.
+                    diags.retain(|d| {
+                        let emitted_severity = self
+                            .config
+                            .rules
+                            .overrides
+                            .get(d.rule.as_str())
+                            .and_then(|s| Severity::parse_config(s))
+                            .unwrap_or(d.severity);
+                        emitted_severity != Severity::Off
+                    });
                     for d in &mut diags {
-                        d.severity = configured_severity;
+                        if let Some(override_severity) = self
+                            .config
+                            .rules
+                            .overrides
+                            .get(d.rule.as_str())
+                            .and_then(|s| Severity::parse_config(s))
+                        {
+                            d.severity = override_severity;
+                        }
+                        // else: keep the rule-emitted severity (which
+                        // for non-walker rules matches
+                        // `rule.default_severity()` by convention; for
+                        // walker rules carries the per-row severity).
                     }
                     diagnostics.extend(diags);
                 }

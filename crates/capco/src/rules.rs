@@ -145,11 +145,9 @@ impl CapcoRuleSet {
                 Box::new(SarProgramOrderRule),
                 Box::new(SarCompartmentOrderRule),
                 Box::new(SarIndicatorRepeatRule),
-                Box::new(SarBannerRollupRule),
                 Box::new(SciSystemOrderRule),
                 Box::new(SciCompartmentOrderRule),
                 Box::new(SciCustomControlInfoRule),
-                Box::new(SciBannerRollupRule),
                 // T035c-21 PR-A: NODIS/EXDIS constraint rules per
                 // CAPCO-2016 §H.9. E037 (mutual exclusion) and E038
                 // (require NOFORN). Declarative — see
@@ -162,8 +160,17 @@ impl CapcoRuleSet {
                 // (banner roll-up), E041 (NODIS supersedes EXDIS in
                 // portion). See §H.9 p172 + p174 for each citation.
                 Box::new(NodisExdisClearsBannerRelToRule),
-                Box::new(NodisExdisBannerRollupRule),
                 Box::new(NodisSupersedesExdisInPortionRule),
+                // PR 3b Sub-move A — banner-roll-up walker (T026a).
+                // Subsumes the three retired literal rules:
+                //   E031 SarBannerRollupRule       (§H.5 p101)
+                //   E035 SciBannerRollupRule       (§H.4 per-system)
+                //   E040 NodisExdisBannerRollupRule (§H.9 p172 + p174)
+                // Emitted diagnostics carry per-row IDs (E031 / E035 /
+                // E040) for audit-stream continuity and C-1 overlap-
+                // guard interaction with E028 / E029. Net delta:
+                // -2 rules (3 retired + 1 walker added).
+                Box::new(BannerMatchesProjectedRule),
                 // S003: joint-usa-first style rule. Info severity.
                 // Follow-up from PR #97 (T035c-18) — §H.3 prescribes
                 // pure alpha for JOINT, but IC convention puts USA
@@ -4712,213 +4719,6 @@ impl Rule for SarIndicatorRepeatRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E031 — SAR banner roll-up (programs-only)
-// ---------------------------------------------------------------------------
-
-/// Every SAR **program** present in a portion mark must also appear in the
-/// banner's SAR block. Banner hierarchy depth (compartments and
-/// sub-compartments) is **optional** and NOT checked by this rule.
-///
-/// # Authority
-///
-/// - **§H.5 p101** (Precedence Rules for Banner Line Guidance):
-///   *"Unique SAPs contained in portion marks must always appear in the
-///   banner line."* The "Unique SAPs" language refers to unique program
-///   identifiers — the rule is a program-rollup rule.
-/// - **§H.5 p101** (Notes): *"Depicting the hierarchical
-///   structure of a SAP program below the program identifier is optional
-///   and dependent upon operational requirements. It is not mandatory to
-///   reflect a SAP program's hierarchy in either the portion marks or
-///   banner line."*
-/// - **§H.5 p99** (general): *"Depiction of the hierarchical
-///   structure of a SAP below the program identifier in the banner line
-///   or portion mark is optional."*
-///
-/// These three passages together establish that programs MUST roll up
-/// to the banner, but compartments and sub-compartments MAY be omitted
-/// from the banner even when present in portions. A banner showing
-/// `SAR-BP` when a portion shows `SAR-BP-J12` is therefore valid.
-///
-/// # Predicate history
-///
-/// An earlier revision of this rule flagged missing compartments and
-/// sub-compartments as violations, producing false positives on
-/// hierarchy-optional banners. T035c-19 PR-C (this change) narrowed
-/// the predicate to programs-only per the §H.5 p101
-/// provision. The prior behavior over-restricted relative to source.
-///
-/// # Fix semantics
-///
-/// - If the banner has a SAR block, emit a zero-width insertion at the
-///   end of that block at confidence 0.9 (severity `Fix`). The
-///   insertion **preserves the observed banner's existing programs
-///   with whatever hierarchy they already show** (by not touching
-///   their bytes at all) and appends each missing program as a bare
-///   program identifier (no compartments) in the form
-///   `/<PROG1>/<PROG2>…`. This minimum-change fix honors the
-///   "hierarchy is optional" rule — the user chose how much hierarchy
-///   to show for the programs that were there, and we do not override
-///   that choice for the programs that were missing. The zero-width
-///   insertion shape is also what lets E031 coexist with E028
-///   (program-order, whole-block span) and E029 (compartment-order,
-///   per-program span) under the engine's C-1 overlap guard — see
-///   the in-body comment on the `Some(_observed)` arm for the FR-016
-///   argument.
-/// - If the banner has no SAR block at all, emit at severity `Error`
-///   with no fix — inserting a new block requires byte-positioning
-///   between the SCI and AEA blocks, which the engine's single-pass
-///   architecture does not reliably support from rule-level
-///   information alone.
-struct SarBannerRollupRule;
-
-impl Rule for SarBannerRollupRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E031")
-    }
-    fn name(&self) -> &'static str {
-        "sar-banner-rollup"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::MarkingType;
-
-        // Banner / CAB markings only; portions are the input to the rollup,
-        // not the subject of it.
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
-            return vec![];
-        }
-
-        let Some(page_context) = ctx.page_context.as_ref() else {
-            return vec![];
-        };
-        let Some(expected) = page_context.expected_sar_marking() else {
-            return vec![];
-        };
-        if expected.programs.is_empty() {
-            return vec![];
-        }
-
-        // Compute the identifiers of programs missing from the
-        // observed banner. Hierarchy (compartments / sub-compartments)
-        // is deliberately NOT compared — §H.5 p101 makes
-        // banner hierarchy depth optional even when portions carry
-        // hierarchy. See the `sar_missing_programs` helper doc for
-        // the authority trail.
-        let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
-        if missing_ids.is_empty() {
-            return vec![];
-        }
-
-        const CITATION: &str = concat!(
-            "CAPCO-2016 §H.5 p101 ",
-            "(Unique SAPs contained in portion marks must always appear ",
-            "in the banner line; hierarchy depiction optional per §H.5 ",
-            "p101 + p99)",
-        );
-
-        // Sort missing identifiers per §H.5 p99 (ascending,
-        // numeric first, then alpha) so the fix output is
-        // deterministic and self-canonical for the new tail.
-        let mut sorted_missing = missing_ids.clone();
-        sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
-
-        match attrs.sar_markings.as_ref() {
-            Some(_observed) => {
-                let message = format!(
-                    "banner SAR block is missing programs present in portions: {}",
-                    sorted_missing.join(", "),
-                );
-                // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
-                // fix at the end of the block so it does not overlap
-                // with E028 (program-order, whole-block span) or E029
-                // (compartment-order, last program's span) when they
-                // fire on the same marking.
-                //
-                // Why insertion and not a whole-block rewrite: the
-                // engine's C-1 overlap guard (FR-016 + `span.end <=
-                // boundary`) drops overlapping fixes. If E031's fix
-                // were a whole-block rewrite covering the same
-                // `sar_block_span` as E028, the lexicographic rule-id
-                // tiebreaker would favor E028, silently dropping the
-                // missing-program addition. A zero-width span at the
-                // block's end byte has `span.start == block_end`, so
-                // it sorts FIRST under FR-016 (`span.start DESC`) and
-                // its `span.start` becomes the boundary; E028's
-                // subsequent `span.end == block_end` still satisfies
-                // `<= boundary` and is kept. Both fixes apply.
-                //
-                // Single-apply convergence: when E028 and E031 both
-                // fire, the first apply pass produces
-                // `<observed-sorted>/<missing-sorted>` which may not
-                // be fully canonical (the inserted missing programs
-                // are suffix-appended, not merge-sorted). A second
-                // `marque fix` pass will detect and repair that via
-                // E028 alone. Net: never loses missing programs,
-                // never overflows into E028/E029 territory, and
-                // converges in ≤2 passes. The prior whole-block
-                // fix dropped silently in the overlap case and
-                // required 2 passes anyway — this is strictly
-                // better.
-                let Some(block) = sar_block_span(attrs) else {
-                    return vec![];
-                };
-                let insertion_span = Span::new(block.end, block.end);
-                // Replacement: `/PROG1/PROG2` — leading slash separates
-                // the inserted run from the last existing program
-                // per §H.5 p100 bullet 4 (`/` between
-                // program identifiers, no interjected spaces).
-                let replacement = format!("/{}", sorted_missing.join("/"));
-
-                vec![make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::BuiltinRule,
-                    span: insertion_span,
-                    message,
-                    citation: CITATION,
-                    // Zero-width insertion: `original` is empty to match
-                    // `span.start..span.end` being a zero-length slice.
-                    original: String::new(),
-                    replacement,
-                    confidence: 0.9,
-                    migration_ref: None,
-                })]
-            }
-            None => {
-                // No SAR block in the banner at all. Byte-positioning a new
-                // block between SCI and AEA from rule context alone is
-                // unsafe — report at Error severity with no fix and let a
-                // human place the block. The message wording describes the
-                // actual shape of the violation (a whole missing block,
-                // not a partial one) so the user isn't misled into
-                // looking for a block to edit.
-                let message = format!(
-                    "banner is missing an SAR block required by portions: \
-                     {}",
-                    sorted_missing.join(", "),
-                );
-                let span = attrs
-                    .token_spans
-                    .first()
-                    .map(|t| t.span)
-                    .unwrap_or(Span::new(0, 0));
-                vec![Diagnostic::new(
-                    self.id(),
-                    Severity::Error,
-                    span,
-                    message,
-                    CITATION,
-                    None,
-                )]
-            }
-        }
-    }
-}
-
 /// Collect program identifiers that appear in `expected` but not in
 /// `observed`.
 ///
@@ -5416,184 +5216,6 @@ impl Rule for SciCustomControlInfoRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E035 — SCI banner rollup
-// ---------------------------------------------------------------------------
-
-/// The banner's SCI block must contain every control system,
-/// compartment, AND sub-compartment that appears in any portion marking
-/// on the same page.
-///
-/// Authority: CAPCO-2016 §H.4 per-system "Precedence Rules for Banner
-/// Line Guidance" — *"All unique SCI markings contained in the portion
-/// marks must always appear in the banner line."* This identical text
-/// appears in every §H.4 per-system template (18 instances total, e.g.,
-/// HCS p62 line 1397; HCS-O p64 line 1450; HCS-P p66 line 1506; SI p74
-/// line 1819; SI-G p80 line 2025; TK p85 line 2250). Supplemental
-/// authority: §D.2 p28 (general banner/portion consistency).
-///
-/// # SCI/SAR asymmetry — hierarchy required vs optional
-///
-/// Contrast with SAR's E031 (`sar-banner-rollup`): SAR explicitly makes
-/// banner hierarchy depiction OPTIONAL via §H.5 p101
-/// (*"Depicting the hierarchical structure of a SAP program below the
-/// program identifier is optional and dependent upon operational
-/// requirements"*) + §H.5 p99. E031 was narrowed in T035c-19
-/// PR-C to programs-only to honor that carve-out.
-///
-/// **No equivalent carve-out exists in §H.4 for SCI.** The
-/// per-system Precedence Rules use "All unique SCI markings ... must
-/// always appear" with no hierarchy-optional note anywhere in §H.4 or
-/// §A.6. For SCI, every compartment and sub-compartment that appears
-/// in a portion MUST appear in the banner. E035 correctly enforces
-/// this at every level; the asymmetry between E031 (programs-only)
-/// and E035 (full hierarchy) is a real source-level semantic
-/// distinction, not an inconsistency.
-///
-/// Compares the observed banner's `sci_markings` against
-/// `page_context.expected_sci_markings()`; fires on any missing system,
-/// compartment, or sub-compartment. Confidence 0.9 for the with-fix
-/// path; escalates to `Error` with no fix when the banner has no SCI
-/// block at all (byte-positioning a new block between classification
-/// and the next category from rule context alone is unsafe).
-struct SciBannerRollupRule;
-
-impl Rule for SciBannerRollupRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E035")
-    }
-    fn name(&self) -> &'static str {
-        "sci-banner-rollup"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::MarkingType;
-
-        // Portion candidates carry only their own SCI, not the page
-        // rollup — this rule applies only to banner / CAB candidates.
-        if ctx.marking_type == MarkingType::Portion {
-            return vec![];
-        }
-        let Some(page) = ctx.page_context.as_ref() else {
-            return vec![];
-        };
-
-        let expected = page_expected_sci_markings(page);
-        if expected.is_empty() {
-            // Either P4 has not landed yet (helper returns empty) or no
-            // portions have been accumulated. Either way, nothing to check.
-            return vec![];
-        }
-
-        let mut missing: Vec<String> = Vec::new();
-        for exp in expected.iter() {
-            let exp_key = sci_system_text(&exp.system);
-            let observed = attrs
-                .sci_markings
-                .iter()
-                .find(|m| sci_system_text(&m.system) == exp_key);
-            match observed {
-                None => {
-                    missing.push(format!("{} (system missing from banner)", exp_key));
-                }
-                Some(obs) => {
-                    // Compartment check: every expected compartment must
-                    // appear in the observed marking.
-                    for exp_comp in exp.compartments.iter() {
-                        let obs_comp = obs
-                            .compartments
-                            .iter()
-                            .find(|c| c.identifier == exp_comp.identifier);
-                        match obs_comp {
-                            None => {
-                                missing.push(format!(
-                                    "{}-{} (compartment missing from banner)",
-                                    exp_key,
-                                    exp_comp.identifier.as_ref()
-                                ));
-                            }
-                            Some(oc) => {
-                                for exp_sub in exp_comp.sub_compartments.iter() {
-                                    if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
-                                        missing.push(format!(
-                                            "{}-{} {} (sub-compartment missing from banner)",
-                                            exp_key,
-                                            exp_comp.identifier.as_ref(),
-                                            exp_sub.as_ref()
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if missing.is_empty() {
-            return vec![];
-        }
-
-        // Fix: replace the observed SCI block with the fully-rolled-up
-        // form. The fix span covers every SciControl block token in order.
-        let chunk_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::SciControl)
-            .collect();
-
-        if chunk_spans.is_empty() {
-            // Banner has no SCI block at all. Byte-positioning a new
-            // block between classification and the next category from
-            // rule context alone is unsafe (requires knowing the
-            // separator offsets and the downstream block boundaries).
-            // Escalate severity and emit a diagnostic without a fix
-            // so the author inserts the block by hand.
-            return vec![Diagnostic::new(
-                self.id(),
-                Severity::Error,
-                Span::new(0, 0),
-                format!(
-                    "banner is missing an SCI block that portions require: {}",
-                    missing.join("; ")
-                ),
-                E035_CITATION,
-                None,
-            )];
-        }
-
-        let fix_start = chunk_spans.first().unwrap().span.start;
-        let fix_end = chunk_spans.last().unwrap().span.end;
-        let original: String = chunk_spans
-            .iter()
-            .map(|t| t.text.as_ref())
-            .collect::<Vec<_>>()
-            .join("/");
-        let fix_span = Span::new(fix_start, fix_end);
-        let replacement = render_sci_block(&expected);
-
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span: fix_span,
-            message: format!(
-                "banner SCI block is missing markings present in the page's \
-                 portions (systems, compartments, and/or sub-compartments): {}",
-                missing.join("; ")
-            ),
-            citation: E035_CITATION,
-            original,
-            replacement,
-            confidence: 0.9,
-            migration_ref: None,
-        })]
-    }
-}
-
 /// Citation string for E035 — shared between the with-fix and no-fix
 /// emission paths so they cannot silently diverge. References the
 /// per-system "Precedence Rules for Banner Line Guidance" template
@@ -5903,145 +5525,488 @@ impl Rule for NodisExdisClearsBannerRelToRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E040 — Banner must roll up NODIS (or EXDIS if no NODIS anywhere)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// PR 3b Sub-move A — banner-roll-up walker (T026a)
+// ===========================================================================
+//
+// `BannerMatchesProjectedRule` collapses three literal banner-roll-up rules
+// (E031 SAR, E035 SCI, E040 Non-IC dissem) into a single generic walker
+// dispatched over a per-category catalog. Each row carries its own rule ID,
+// citation, severity, and `evaluate` fn — so emitted diagnostics keep the
+// historical rule IDs (E031 / E035 / E040) for audit-stream continuity and
+// the C-1 overlap-guard interaction with E028 / E029 is preserved byte-for-
+// byte. The walker's own `id()` is a bookkeeping ID (`E031`, the lowest of
+// the retiring trio); the rule loop tracks via the per-row IDs on each
+// emitted `Diagnostic`.
+//
+// Per `specs/006-engine-rule-refactor/tasks.md` T026a (D13 single-citation
+// discipline): each catalog row carries ONE operative banner-roll-up
+// CAPCO-§ citation. Background §-references are permitted in row
+// documentation but are not counted as the row's primary citation.
+//
+// The `evaluate_*` fns are verbatim moves of the bodies of the retiring
+// rules' `check` methods; the only structural change is that they take an
+// explicit `&PageContext` parameter (the marking-type and page_context
+// guards moved up to the walker's `check`).
 
-/// Fires when portions carry NODIS or EXDIS but the banner's Non-IC
-/// dissem category omits the required token.
-///
-/// Authority:
-/// - **CAPCO-2016 §H.9 p174** (NODIS): *"If NODIS is contained
-///   in any portion of a document, it must appear in the banner line."*
-/// - **CAPCO-2016 §H.9 p172** (EXDIS): *"If EXDIS is contained
-///   in any portion of a document that does not contain one or more
-///   NODIS portions, EXDIS must appear in the banner line."*
-/// - **Banner priority** (both §H.9 p172 + p174):
-///   *"NODIS has priority over EXDIS in the banner line if both NODIS
-///   and EXDIS portions are in the same document."*
-///
-/// # Required banner token
-///
-/// Derived from the page's portions:
-/// - Any portion has NODIS → banner must have NODIS.
-/// - No portion has NODIS AND any portion has EXDIS → banner must have
-///   EXDIS.
-///
-/// # Fix
-///
-/// When the banner already has a Non-IC dissem category block
-/// (`TokenKind::NonIcDissem` present in `attrs.token_spans`), emit a
-/// zero-width insertion at the end of that block adding `/NODIS` or
-/// `/EXDIS` — mirrors E031's insertion pattern so it coexists with
-/// other rules on the same span under the C-1 overlap guard.
-///
-/// When the banner has no Non-IC dissem block at all, emit at `Error`
-/// severity with no fix — inserting a new category requires
-/// byte-positioning between the IC dissem and declassify-on blocks,
-/// which the engine's single-pass architecture cannot reliably support
-/// from rule-level information alone. Same policy as E031's no-SAR-
-/// block arm and E035's no-SCI-block arm.
-struct NodisExdisBannerRollupRule;
+/// Walker that asserts the banner / CAB candidate matches the page's
+/// projected marking for each per-category roll-up. See the section header
+/// above for the design rationale.
+pub(crate) struct BannerMatchesProjectedRule;
 
-impl Rule for NodisExdisBannerRollupRule {
+impl Rule for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E040")
+        // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
+        // audit traceability.
+        RuleId::new("E031")
     }
+
     fn name(&self) -> &'static str {
-        "nodis-exdis-banner-rollup"
+        "banner-matches-projected"
     }
+
     fn default_severity(&self) -> Severity {
+        // Per-row severities take precedence on emitted diagnostics; the
+        // walker-level default severity is the strictest of the three
+        // catalog rows so a config that uses `BannerMatchesProjectedRule`
+        // as the override anchor cannot accidentally weaken any row below
+        // its authoring intent.
         Severity::Error
     }
 
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{MarkingType, NonIcDissem};
+        use marque_ism::MarkingType;
 
+        // Marking-type guard (≤3 branches per D13).
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
             return vec![];
         }
-
+        // Page-context guard.
         let Some(page) = ctx.page_context.as_ref() else {
             return vec![];
         };
-
-        let (expected_non_ic, _) = page.expected_non_ic_dissem();
-        let portions_have_nodis = expected_non_ic
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Nodis));
-        let portions_have_exdis = expected_non_ic
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Exdis));
-
-        // Determine what the banner MUST carry per §H.9. NODIS has
-        // priority over EXDIS; if any portion has NODIS, the banner
-        // must have NODIS even if other portions have EXDIS.
-        let required = if portions_have_nodis {
-            NonIcDissem::Nodis
-        } else if portions_have_exdis {
-            NonIcDissem::Exdis
-        } else {
-            return vec![];
-        };
-
-        let banner_has_required = attrs.non_ic_dissem.contains(&required);
-        if banner_has_required {
-            return vec![];
+        // Dispatch loop.
+        let mut diags = Vec::new();
+        for row in BANNER_CATEGORY_CATALOG {
+            diags.extend((row.evaluate)(attrs, page, row));
         }
+        diags
+    }
+}
 
-        let required_str = required.banner_str();
-        let message = format!(
-            "banner is missing {required_str} required by portions \
-             (§H.9 roll-up rule: {required_str} in any portion must \
-             appear in the banner)"
-        );
-        const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
+/// One catalog row per banner-roll-up category. Ordering of rows controls
+/// only the order of emitted diagnostics for a single banner candidate; it
+/// does not affect correctness.
+struct BannerCategoryRow {
+    /// Rule ID emitted on diagnostics from this row. Distinct from the
+    /// walker's own `RuleId`, which is bookkeeping only — the audit
+    /// stream and the FR-016 overlap-guard tiebreaker both key on the
+    /// per-row ID.
+    rule_id: RuleId,
+    /// Per-row default severity. The walker copies this onto each emitted
+    /// `Diagnostic`; the engine's severity-override layer can downgrade
+    /// or upgrade per the user's `.marque.toml`.
+    severity: Severity,
+    /// Pure function returning the diagnostics this row produces for
+    /// the given banner attributes and page projection. Implemented as a
+    /// fn pointer so the catalog can be a `const`.
+    evaluate: fn(&CanonicalAttrs, &marque_ism::PageContext, &BannerCategoryRow) -> Vec<Diagnostic>,
+}
 
-        // Fix: if banner has at least one Non-IC dissem token, emit a
-        // zero-width insertion at the end of that category block
-        // appending `/<required>`. Otherwise, no-fix Error.
-        let last_non_ic_span = attrs
-            .token_spans
+const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
+    // SAR — §H.5 p101: "Unique SAPs contained in portion marks must
+    // always appear in the banner line." Banner hierarchy depiction
+    // (compartments / sub-compartments) is optional per §H.5 p101 +
+    // p99; the walker matches by program identifier only. Severity
+    // `Fix` because the with-block case has a deterministic zero-width
+    // insertion fix; the no-block case escalates to `Error` inside the
+    // evaluator (banner-positioning a new SAR block from rule context
+    // alone is unsafe).
+    BannerCategoryRow {
+        rule_id: RuleId::new("E031"),
+        severity: Severity::Fix,
+        evaluate: evaluate_sar_banner_rollup,
+    },
+    // SCI — per-system "Precedence Rules for Banner Line Guidance" in
+    // §H.4 (e.g. HCS p62, SI p74, TK p85; one of 18 identical
+    // instances): "All unique SCI markings contained in the portion
+    // marks must always appear in the banner line." Unlike SAR, §H.4
+    // contains no hierarchy-optional carve-out, so compartments and
+    // sub-compartments are also rolled up.
+    BannerCategoryRow {
+        rule_id: RuleId::new("E035"),
+        severity: Severity::Error,
+        evaluate: evaluate_sci_banner_rollup,
+    },
+    // Non-IC dissem — §H.9 p174 (NODIS) and §H.9 p172 (EXDIS): NODIS
+    // takes priority over EXDIS, and either token, if present in any
+    // portion, must roll up to the banner. Both passages are the
+    // operative supersession-and-roll-up rule for this category.
+    BannerCategoryRow {
+        rule_id: RuleId::new("E040"),
+        severity: Severity::Error,
+        evaluate: evaluate_non_ic_dissem_banner_rollup,
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Per-row evaluators
+// ---------------------------------------------------------------------------
+
+/// SAR banner roll-up evaluator. Verbatim move of the body of
+/// `SarBannerRollupRule::check`, parameterized over the page projection
+/// and the catalog row (so the row supplies the rule ID + severity).
+///
+/// Authority: CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion
+/// marks must always appear in the banner line; hierarchy depiction
+/// optional per §H.5 p101 + p99).
+fn evaluate_sar_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page_context: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    let Some(expected) = page_context.expected_sar_marking() else {
+        return vec![];
+    };
+    if expected.programs.is_empty() {
+        return vec![];
+    }
+
+    // Compute the identifiers of programs missing from the
+    // observed banner. Hierarchy (compartments / sub-compartments)
+    // is deliberately NOT compared — §H.5 p101 makes
+    // banner hierarchy depth optional even when portions carry
+    // hierarchy. See the `sar_missing_programs` helper doc for
+    // the authority trail.
+    let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+    if missing_ids.is_empty() {
+        return vec![];
+    }
+
+    const CITATION: &str = concat!(
+        "CAPCO-2016 §H.5 p101 ",
+        "(Unique SAPs contained in portion marks must always appear ",
+        "in the banner line; hierarchy depiction optional per §H.5 ",
+        "p101 + p99)",
+    );
+
+    // Sort missing identifiers per §H.5 p99 (ascending,
+    // numeric first, then alpha) so the fix output is
+    // deterministic and self-canonical for the new tail.
+    let mut sorted_missing = missing_ids.clone();
+    sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+
+    match attrs.sar_markings.as_ref() {
+        Some(_observed) => {
+            let message = format!(
+                "banner SAR block is missing programs present in portions: {}",
+                sorted_missing.join(", "),
+            );
+            // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
+            // fix at the end of the block so it does not overlap
+            // with E028 (program-order, whole-block span) or E029
+            // (compartment-order, last program's span) when they
+            // fire on the same marking.
+            //
+            // Why insertion and not a whole-block rewrite: the
+            // engine's C-1 overlap guard (FR-016 + `span.end <=
+            // boundary`) drops overlapping fixes. If E031's fix
+            // were a whole-block rewrite covering the same
+            // `sar_block_span` as E028, the lexicographic rule-id
+            // tiebreaker would favor E028, silently dropping the
+            // missing-program addition. A zero-width span at the
+            // block's end byte has `span.start == block_end`, so
+            // it sorts FIRST under FR-016 (`span.start DESC`) and
+            // its `span.start` becomes the boundary; E028's
+            // subsequent `span.end == block_end` still satisfies
+            // `<= boundary` and is kept. Both fixes apply.
+            //
+            // Single-apply convergence: when E028 and E031 both
+            // fire, the first apply pass produces
+            // `<observed-sorted>/<missing-sorted>` which may not
+            // be fully canonical (the inserted missing programs
+            // are suffix-appended, not merge-sorted). A second
+            // `marque fix` pass will detect and repair that via
+            // E028 alone. Net: never loses missing programs,
+            // never overflows into E028/E029 territory, and
+            // converges in ≤2 passes. The prior whole-block
+            // fix dropped silently in the overlap case and
+            // required 2 passes anyway — this is strictly
+            // better.
+            let Some(block) = sar_block_span(attrs) else {
+                return vec![];
+            };
+            let insertion_span = Span::new(block.end, block.end);
+            // Replacement: `/PROG1/PROG2` — leading slash separates
+            // the inserted run from the last existing program
+            // per §H.5 p100 bullet 4 (`/` between
+            // program identifiers, no interjected spaces).
+            let replacement = format!("/{}", sorted_missing.join("/"));
+
+            vec![make_fix_diagnostic(FixDiagnosticParams {
+                rule: row.rule_id.clone(),
+                severity: row.severity,
+                source: FixSource::BuiltinRule,
+                span: insertion_span,
+                message,
+                citation: CITATION,
+                // Zero-width insertion: `original` is empty to match
+                // `span.start..span.end` being a zero-length slice.
+                original: String::new(),
+                replacement,
+                confidence: 0.9,
+                migration_ref: None,
+            })]
+        }
+        None => {
+            // No SAR block in the banner at all. Byte-positioning a new
+            // block between SCI and AEA from rule context alone is
+            // unsafe — report at Error severity with no fix and let a
+            // human place the block. The message wording describes the
+            // actual shape of the violation (a whole missing block,
+            // not a partial one) so the user isn't misled into
+            // looking for a block to edit.
+            let message = format!(
+                "banner is missing an SAR block required by portions: \
+                 {}",
+                sorted_missing.join(", "),
+            );
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            vec![Diagnostic::new(
+                row.rule_id.clone(),
+                Severity::Error,
+                span,
+                message,
+                CITATION,
+                None,
+            )]
+        }
+    }
+}
+
+/// SCI banner roll-up evaluator. Verbatim move of the body of
+/// `SciBannerRollupRule::check`, parameterized over the page projection
+/// and the catalog row.
+///
+/// Authority: CAPCO-2016 §H.4 per-system "Precedence Rules for Banner
+/// Line Guidance" template (HCS p62, SI p74, TK p85, …) — *"All unique
+/// SCI markings contained in the portion marks must always appear in
+/// the banner line."* Cross-cited with §D.2 p28 for the general
+/// banner/portion consistency invariant. Unlike SAR (§H.5 p101), SCI
+/// has no hierarchy-optional carve-out: compartments and
+/// sub-compartments roll up too.
+fn evaluate_sci_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    let expected = page_expected_sci_markings(page);
+    if expected.is_empty() {
+        // Either P4 has not landed yet (helper returns empty) or no
+        // portions have been accumulated. Either way, nothing to check.
+        return vec![];
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for exp in expected.iter() {
+        let exp_key = sci_system_text(&exp.system);
+        let observed = attrs
+            .sci_markings
             .iter()
-            .filter(|t| t.kind == TokenKind::NonIcDissem)
-            .map(|t| t.span)
-            .next_back();
-
-        match last_non_ic_span {
-            Some(last_span) => {
-                let insertion = Span::new(last_span.end, last_span.end);
-                let replacement = format!("/{required_str}");
-                vec![make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::BuiltinRule,
-                    span: insertion,
-                    message,
-                    citation: CITATION,
-                    original: String::new(),
-                    replacement,
-                    confidence: 0.9,
-                    migration_ref: None,
-                })]
-            }
+            .find(|m| sci_system_text(&m.system) == exp_key);
+        match observed {
             None => {
-                // No Non-IC dissem block in banner at all. Byte-
-                // positioning a new block requires separator offsets
-                // the rule cannot safely supply. No fix.
-                let span = attrs
-                    .token_spans
-                    .first()
-                    .map(|t| t.span)
-                    .unwrap_or(Span::new(0, 0));
-                vec![Diagnostic::new(
-                    self.id(),
-                    Severity::Error,
-                    span,
-                    message,
-                    CITATION,
-                    None,
-                )]
+                missing.push(format!("{} (system missing from banner)", exp_key));
             }
+            Some(obs) => {
+                // Compartment check: every expected compartment must
+                // appear in the observed marking.
+                for exp_comp in exp.compartments.iter() {
+                    let obs_comp = obs
+                        .compartments
+                        .iter()
+                        .find(|c| c.identifier == exp_comp.identifier);
+                    match obs_comp {
+                        None => {
+                            missing.push(format!(
+                                "{}-{} (compartment missing from banner)",
+                                exp_key,
+                                exp_comp.identifier.as_ref()
+                            ));
+                        }
+                        Some(oc) => {
+                            for exp_sub in exp_comp.sub_compartments.iter() {
+                                if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
+                                    missing.push(format!(
+                                        "{}-{} {} (sub-compartment missing from banner)",
+                                        exp_key,
+                                        exp_comp.identifier.as_ref(),
+                                        exp_sub.as_ref()
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if missing.is_empty() {
+        return vec![];
+    }
+
+    // Fix: replace the observed SCI block with the fully-rolled-up
+    // form. The fix span covers every SciControl block token in order.
+    let chunk_spans: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::SciControl)
+        .collect();
+
+    if chunk_spans.is_empty() {
+        // Banner has no SCI block at all. Byte-positioning a new
+        // block between classification and the next category from
+        // rule context alone is unsafe (requires knowing the
+        // separator offsets and the downstream block boundaries).
+        // Escalate severity and emit a diagnostic without a fix
+        // so the author inserts the block by hand.
+        return vec![Diagnostic::new(
+            row.rule_id.clone(),
+            Severity::Error,
+            Span::new(0, 0),
+            format!(
+                "banner is missing an SCI block that portions require: {}",
+                missing.join("; ")
+            ),
+            E035_CITATION,
+            None,
+        )];
+    }
+
+    let fix_start = chunk_spans.first().unwrap().span.start;
+    let fix_end = chunk_spans.last().unwrap().span.end;
+    let original: String = chunk_spans
+        .iter()
+        .map(|t| t.text.as_ref())
+        .collect::<Vec<_>>()
+        .join("/");
+    let fix_span = Span::new(fix_start, fix_end);
+    let replacement = render_sci_block(&expected);
+
+    vec![make_fix_diagnostic(FixDiagnosticParams {
+        rule: row.rule_id.clone(),
+        severity: row.severity,
+        source: FixSource::BuiltinRule,
+        span: fix_span,
+        message: format!(
+            "banner SCI block is missing markings present in the page's \
+             portions (systems, compartments, and/or sub-compartments): {}",
+            missing.join("; ")
+        ),
+        citation: E035_CITATION,
+        original,
+        replacement,
+        confidence: 0.9,
+        migration_ref: None,
+    })]
+}
+
+/// Non-IC dissem banner roll-up evaluator. Verbatim move of the body of
+/// `NodisExdisBannerRollupRule::check`, parameterized over the page
+/// projection and the catalog row.
+///
+/// Authority: CAPCO-2016 §H.9 p174 (NODIS) + §H.9 p172 (EXDIS) — NODIS
+/// has priority over EXDIS in the banner; either token, if present in
+/// any portion, must roll up. The single operative supersession-and-
+/// roll-up rule.
+fn evaluate_non_ic_dissem_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    use marque_ism::NonIcDissem;
+
+    let (expected_non_ic, _) = page.expected_non_ic_dissem();
+    let portions_have_nodis = expected_non_ic
+        .iter()
+        .any(|d| matches!(d, NonIcDissem::Nodis));
+    let portions_have_exdis = expected_non_ic
+        .iter()
+        .any(|d| matches!(d, NonIcDissem::Exdis));
+
+    // Determine what the banner MUST carry per §H.9. NODIS has
+    // priority over EXDIS; if any portion has NODIS, the banner
+    // must have NODIS even if other portions have EXDIS.
+    let required = if portions_have_nodis {
+        NonIcDissem::Nodis
+    } else if portions_have_exdis {
+        NonIcDissem::Exdis
+    } else {
+        return vec![];
+    };
+
+    let banner_has_required = attrs.non_ic_dissem.contains(&required);
+    if banner_has_required {
+        return vec![];
+    }
+
+    let required_str = required.banner_str();
+    let message = format!(
+        "banner is missing {required_str} required by portions \
+         (§H.9 roll-up rule: {required_str} in any portion must \
+         appear in the banner)"
+    );
+    const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
+
+    // Fix: if banner has at least one Non-IC dissem token, emit a
+    // zero-width insertion at the end of that category block
+    // appending `/<required>`. Otherwise, no-fix Error.
+    let last_non_ic_span = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::NonIcDissem)
+        .map(|t| t.span)
+        .next_back();
+
+    match last_non_ic_span {
+        Some(last_span) => {
+            let insertion = Span::new(last_span.end, last_span.end);
+            let replacement = format!("/{required_str}");
+            vec![make_fix_diagnostic(FixDiagnosticParams {
+                rule: row.rule_id.clone(),
+                severity: row.severity,
+                source: FixSource::BuiltinRule,
+                span: insertion,
+                message,
+                citation: CITATION,
+                original: String::new(),
+                replacement,
+                confidence: 0.9,
+                migration_ref: None,
+            })]
+        }
+        None => {
+            // No Non-IC dissem block in banner at all. Byte-
+            // positioning a new block requires separator offsets
+            // the rule cannot safely supply. No fix.
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            vec![Diagnostic::new(
+                row.rule_id.clone(),
+                Severity::Error,
+                span,
+                message,
+                CITATION,
+                None,
+            )]
         }
     }
 }
@@ -6220,16 +6185,32 @@ mod tests {
         assert!(ids.contains(&"E028"));
         assert!(ids.contains(&"E029"));
         assert!(ids.contains(&"E030"));
+        // E031 is the bookkeeping ID of `BannerMatchesProjectedRule`
+        // (PR 3b Sub-move A walker, T026a). The walker emits diagnostics
+        // with per-row IDs (E031 SAR, E035 SCI, E040 Non-IC dissem) for
+        // audit-stream continuity, but registers under E031 only — the
+        // lowest-numeric of the retiring trio. E035 and E040 are therefore
+        // NOT in the registered-rule-ID set after T026a. The per-row IDs
+        // are surface-tested via the walker's emitted diagnostics (see
+        // `crates/capco/tests/banner_rollup_walker.rs`).
         assert!(ids.contains(&"E031"));
         assert!(ids.contains(&"E032"));
         assert!(ids.contains(&"E033"));
         assert!(ids.contains(&"W034"));
-        assert!(ids.contains(&"E035"));
+        assert!(
+            !ids.contains(&"E035"),
+            "E035 retired as a registered rule ID by T026a; now emitted \
+             as a per-row catalog ID by BannerMatchesProjectedRule"
+        );
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
         assert!(ids.contains(&"E038"));
         assert!(ids.contains(&"E039"));
-        assert!(ids.contains(&"E040"));
+        assert!(
+            !ids.contains(&"E040"),
+            "E040 retired as a registered rule ID by T026a; now emitted \
+             as a per-row catalog ID by BannerMatchesProjectedRule"
+        );
         assert!(ids.contains(&"E041"));
         assert!(ids.contains(&"S003"));
         assert!(ids.contains(&"E042"));
@@ -6280,8 +6261,13 @@ mod tests {
         // Issue #256: added E053 (noforn-rel-to-conflict), declarative
         // wrapper over the `capco/noforn-conflicts-rel-to` constraint
         // in CapcoScheme. §H.8 p145. Net: 59.
+        // T026a (PR 3b Sub-move A): collapsed three banner-roll-up
+        // rules (E031 SAR, E035 SCI, E040 Non-IC dissem) into a
+        // single `BannerMatchesProjectedRule` walker dispatched over a
+        // per-category catalog. Net delta: -2 (3 retired + 1 added).
+        // Final: 59 - 2 = 57.
         assert!(ids.contains(&"E053"));
-        assert_eq!(set.rules().len(), 59);
+        assert_eq!(set.rules().len(), 57);
     }
 
     #[test]
