@@ -695,31 +695,29 @@ impl Engine {
                     // useful work for non-walker rules (a non-Off
                     // override translates the rule's emitted severity
                     // to the configured one).
-                    diags.retain(|d| {
-                        let emitted_severity = self
-                            .config
-                            .rules
-                            .overrides
-                            .get(d.rule.as_str())
-                            .and_then(|s| Severity::parse_config(s))
-                            .unwrap_or(d.severity);
-                        emitted_severity != Severity::Off
-                    });
-                    for d in &mut diags {
-                        if let Some(override_severity) = self
+                    // Single-pass per-emitted-id resolution: one HashMap
+                    // lookup + one parse_config per diagnostic. Off drops
+                    // the diagnostic; a non-Off override replaces the
+                    // rule-emitted severity; absence keeps it (which for
+                    // non-walker rules matches `rule.default_severity()`
+                    // by convention; for walker rules carries the per-row
+                    // catalog severity).
+                    diags.retain_mut(|d| {
+                        match self
                             .config
                             .rules
                             .overrides
                             .get(d.rule.as_str())
                             .and_then(|s| Severity::parse_config(s))
                         {
-                            d.severity = override_severity;
+                            Some(Severity::Off) => false,
+                            Some(override_severity) => {
+                                d.severity = override_severity;
+                                true
+                            }
+                            None => true,
                         }
-                        // else: keep the rule-emitted severity (which
-                        // for non-walker rules matches
-                        // `rule.default_severity()` by convention; for
-                        // walker rules carries the per-row severity).
-                    }
+                    });
                     diagnostics.extend(diags);
                 }
             }
