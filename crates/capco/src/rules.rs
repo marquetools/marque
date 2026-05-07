@@ -5592,6 +5592,28 @@ impl Rule for BannerMatchesProjectedRule {
         }
         diags
     }
+
+    /// Catalog (id, name) pairs the walker emits on diagnostics beyond
+    /// its registered `id()` / `name()`. Required by the engine's
+    /// `canonicalize_rule_overrides` path so a `.marque.toml`
+    /// configuring `E035 = "warn"` (or `sci-banner-rollup = "warn"`,
+    /// the historical name from the retired `SciBannerRollupRule`) is
+    /// accepted at engine construction.
+    ///
+    /// Each pair is self-canonical: the catalog ID maps to itself, the
+    /// catalog name maps to the catalog ID. This keeps per-row override
+    /// scope independent of the walker's bookkeeping ID. The historical
+    /// names (`sar-banner-rollup`, `sci-banner-rollup`,
+    /// `nodis-exdis-banner-rollup`) match the retired rules' `name()`
+    /// values so existing configs that used the name form keep working
+    /// across the T026a refactor.
+    fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
+        &[
+            ("E031", "sar-banner-rollup"),
+            ("E035", "sci-banner-rollup"),
+            ("E040", "nodis-exdis-banner-rollup"),
+        ]
+    }
 }
 
 /// One catalog row per banner-roll-up category. Ordering of rows controls

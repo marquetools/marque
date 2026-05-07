@@ -1562,6 +1562,17 @@ fn canonicalize_rule_overrides(
     // Build the ID-and-name → canonical-ID lookup. Both sides live in
     // `&'static str` (RuleId's inner slice, rule.name()), so the map's
     // keys and values are all `'static`.
+    //
+    // Dispatcher walkers like `BannerMatchesProjectedRule` (T026a)
+    // register under one bookkeeping ID but emit diagnostics under
+    // per-row catalog IDs (E035 / E040 in addition to E031). The
+    // walker advertises those catalog (id, name) pairs through
+    // `Rule::additional_emitted_ids`; each pair becomes a self-
+    // canonical entry so a `.marque.toml` configuring the catalog ID
+    // (`E035 = "warn"`) is accepted instead of failing as
+    // `UnknownRuleOverride`. The per-emitted-id severity-override
+    // path at lint time then resolves the override against the
+    // diagnostic's emitted `rule` field.
     let mut known: HashMap<&'static str, &'static str> = HashMap::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
@@ -1569,6 +1580,14 @@ fn canonicalize_rule_overrides(
             let name = rule.name();
             known.insert(id_str, id_str);
             known.insert(name, id_str);
+            // Catalog IDs / names from dispatcher walkers — each
+            // entry maps to itself so config that names the catalog
+            // ID directly resolves to that ID (not the walker's
+            // bookkeeping ID), preserving per-row override scope.
+            for (catalog_id, catalog_name) in rule.additional_emitted_ids() {
+                known.insert(catalog_id, catalog_id);
+                known.insert(catalog_name, catalog_id);
+            }
         }
     }
 
@@ -2346,6 +2365,135 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 1);
         assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AAA");
+    }
+
+    // -----------------------------------------------------------------------
+    // T026a (PR 3b Sub-move A) — per-emitted-id severity-override propagation
+    // -----------------------------------------------------------------------
+    //
+    // The walker collapse changed the engine's configured-severity override
+    // to key on each emitted diagnostic's `rule` ID (`d.rule.as_str()`)
+    // instead of the registered rule's `id()`. The byte-equivalence claim
+    // for non-walker rules holds when each rule's `default_severity()`
+    // matches what `check()` emits — true for every existing CAPCO rule
+    // by convention. These tests pin the post-change correctness of the
+    // resolution path against a real `CapcoRuleSet`-driven engine, so a
+    // future regression that quietly stops honoring per-emitted-id
+    // overrides is caught at the engine layer (not only at the
+    // walker-specific test surface).
+
+    /// Triggers the SAR row of `BannerMatchesProjectedRule` (E031): a
+    /// portion introduces SAR-CD; the banner has only SAR-BP. The
+    /// walker emits one diagnostic with `Diagnostic.rule == "E031"`.
+    /// Same fixture shape as the `crates/capco/tests/banner_rollup_walker.rs`
+    /// behavior tests so a baseline drift on this string is caught here
+    /// too.
+    const SAR_BANNER_MISSING_PROGRAM: &[u8] =
+        b"(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
+
+    /// Triggers the SCI row of `BannerMatchesProjectedRule` (E035): a
+    /// portion carries SI-G; the banner has bare SI. §H.4 enforces
+    /// hierarchy roll-up (no §H.5-style optional carve-out), so the
+    /// walker emits one diagnostic with `Diagnostic.rule == "E035"`.
+    const SCI_BANNER_MISSING_COMPARTMENT: &[u8] = b"(TS//SI-G//NF)\nTOP SECRET//SI//NOFORN";
+
+    fn capco_engine_with_overrides(pairs: &[(&str, &str)]) -> Engine {
+        let mut config = Config::default();
+        for (k, v) in pairs {
+            config
+                .rules
+                .overrides
+                .insert((*k).to_owned(), (*v).to_owned());
+        }
+        Engine::new(
+            config,
+            vec![Box::new(marque_capco::CapcoRuleSet::new())],
+            marque_capco::scheme::CapcoScheme::new(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+    }
+
+    #[test]
+    fn lint_propagates_warn_override_to_walker_emitted_e031_diagnostic() {
+        // E031 is emitted by `BannerMatchesProjectedRule`'s SAR catalog
+        // row. The walker registers under the bookkeeping ID `E031` and
+        // emits diagnostics with the per-row ID `E031`. With
+        // `E031 = "warn"` configured, the engine's per-emitted-id
+        // override path must rewrite the diagnostic's severity from
+        // its emitted value (Fix → demoted to Suggest by the post-pass)
+        // to Warn.
+        //
+        // This is the load-bearing invariant of the engine change in
+        // commit `refactor(capco,engine): collapse banner roll-up rules
+        // into walker (T026a)`. A future regression that quietly
+        // re-keys the override on the registered rule's `id()` would
+        // still pass for non-walker rules (where registered ID equals
+        // emitted ID) but would either lose the per-row override or
+        // silently apply the walker's `default_severity()` to E035 /
+        // E040 — both of which are the failure modes this test exists
+        // to prevent.
+        let engine = capco_engine_with_overrides(&[("E031", "warn")]);
+        let diagnostics = engine.lint(SAR_BANNER_MISSING_PROGRAM).diagnostics;
+
+        let e031: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E031")
+            .collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "exactly one E031 diagnostic; got {} from full diag list: \
+             {diagnostics:?}",
+            e031.len(),
+        );
+        assert_eq!(
+            e031[0].severity,
+            Severity::Warn,
+            "config `E031 = \"warn\"` must propagate to the walker-\
+             emitted E031 diagnostic; got severity {:?}",
+            e031[0].severity,
+        );
+    }
+
+    #[test]
+    fn lint_propagates_warn_override_to_walker_emitted_e035_diagnostic() {
+        // Parallel test for E035 — the SCI row of the walker. E035 is
+        // NOT a registered rule ID after T026a (the walker registers
+        // under E031 only); a configured `E035 = "warn"` therefore can
+        // ONLY take effect through the per-emitted-id override path.
+        // This is exactly the case where pre-change behavior diverges
+        // from post-change behavior: the prior engine looked up
+        // overrides by `rule.id()`, never saw E035 because no
+        // registered rule has that ID, and applied the walker's
+        // `default_severity()` (Error) to the diagnostic. The post-
+        // change path looks up by `d.rule.as_str()`, finds the E035
+        // override, and rewrites to Warn.
+        //
+        // This is the strongest end-to-end pin available for the
+        // per-emitted-id override path: there is no way for the test
+        // to pass under the pre-change semantics.
+        let engine = capco_engine_with_overrides(&[("E035", "warn")]);
+        let diagnostics = engine.lint(SCI_BANNER_MISSING_COMPARTMENT).diagnostics;
+
+        let e035: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E035")
+            .collect();
+        assert_eq!(
+            e035.len(),
+            1,
+            "exactly one E035 diagnostic; got {} from full diag list: \
+             {diagnostics:?}",
+            e035.len(),
+        );
+        assert_eq!(
+            e035[0].severity,
+            Severity::Warn,
+            "config `E035 = \"warn\"` must propagate to the walker-\
+             emitted E035 diagnostic via the per-emitted-id override \
+             path; got severity {:?}",
+            e035[0].severity,
+        );
     }
 
     // -----------------------------------------------------------------------
