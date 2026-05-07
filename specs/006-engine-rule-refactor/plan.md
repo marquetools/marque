@@ -267,9 +267,13 @@ absorbs ordering / style rules).
 T026a–T026f in `tasks.md`):
 
 - **3b.A** — banner roll-up rules (E031 SAR, E035 SCI, E040 Non-IC
-  dissem — the literal `impl Rule` blocks in `rules.rs`; spec text
-  E034 / E045 / FGI / classification banner rules either do not exist
-  or belong to other sub-moves) collapse to ONE generic walker over a
+  dissem — the literal `impl Rule` blocks in `rules.rs`; spec-text
+  E034 / E045 / FGI / classification banner rules are out of scope:
+  no current `RuleId::new("E034")` exists in the live ruleset — the
+  archived spec planned it but it landed as `W034`
+  `SciCustomControlInfoRule`, which is per-system not banner-rollup;
+  E045 is per-system and belongs to T026e; FGI / classification
+  banner rollup have no current `impl Rule` block to retire) collapse to ONE generic walker over a
   per-category catalog. The walker consumes existing
   `PageContext::expected_*()` accessors (NOT `MarkingScheme::project`,
   which still delegates back through `PageContext` and which awaits

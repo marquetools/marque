@@ -155,7 +155,7 @@ Eight points on which all three original reviewers independently arrived
 at the same conclusion. Murder board did not contradict any.
 
 **2.1 #263 is the keystone refactor.** Canonicalizer + renderer split
-+ form-routing collapse. 49 → ~10–13 rules end-state. Co-lands in PR 3b. _(Amended 2026-05-07: PR-3b numeric band retired; per-sub-PR qualitative gate; end-state ~10 across stages 1–4. See top-of-file banner.)_
++ form-routing collapse. 49 → ~10 rules end-state across stages 1–4 (the original #263 framing was "~10–13"; refined to ~10 by user direction 2026-05-07). Co-lands in PR 3b. _(Amended 2026-05-07: PR-3b numeric band retired; per-sub-PR qualitative gate. See top-of-file banner.)_
 
 **2.2 The pivot type does too many jobs** (§1.1).
 
