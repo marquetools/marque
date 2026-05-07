@@ -208,7 +208,10 @@ fn non_ic_dissem_row_fires_when_banner_missing_nodis() {
         d.message,
     );
 
-    let fix = d.fix.as_ref().expect("Non-IC row with block must carry a fix");
+    let fix = d
+        .fix
+        .as_ref()
+        .expect("Non-IC row with block must carry a fix");
     assert_eq!(fix.span.start, fix.span.end, "zero-width insertion");
     assert_eq!(fix.replacement.as_ref(), "/NODIS");
 }
@@ -266,9 +269,7 @@ fn walker_fires_per_row_when_multiple_categories_mismatch() {
     // Distinct citations per row — D13 single-citation discipline.
     assert!(e031[0].citation.contains("§H.5 p101"));
     assert!(e035[0].citation.contains("§H.4"));
-    assert!(
-        e040[0].citation.contains("§H.9 p172") || e040[0].citation.contains("§H.9 p174")
-    );
+    assert!(e040[0].citation.contains("§H.9 p172") || e040[0].citation.contains("§H.9 p174"));
 
     // Distinct rule IDs reach the audit stream — the load-bearing
     // invariant from the T026a risk register.
