@@ -255,7 +255,7 @@ moves across stages.
 | Stage 4 (renderer correctness + RELOPT round-trip) | PR 5+ | **9–11** | PR 5+ acceptance |
 
 **PR 3b sub-moves** (each independently committable inside PR 3b; see
-T026a–T026e in `tasks.md`):
+T026a–T026f in `tasks.md`):
 
 - **3b.A** — banner roll-up rules (E031 / E034 / E035 / E040 / E045)
   collapse to ONE generic walker calling
@@ -279,13 +279,21 @@ T026a–T026e in `tasks.md`):
 - **3b.E** — `crates/capco/src/rules_sci_per_system.rs` (10 rules)
   collapse to ONE `Constraint::Custom("sci-per-system", ...)` walker
   over a per-system catalog; per-row `§H.4 row Y` citation.
+- **3b.F** — non-canonical input fallback walker covering E020 /
+  E023 / E028 / E033 ordering checks (REL TO leads with USA, AEA
+  SIGMA numeric sort, SAR alphabetic, SCI numeric-then-alpha) as a
+  single `impl Rule` block. Retained until the Phase C renderer
+  trait surface lands in PR 5+ (Stage 4) and absorbs canonical-form
+  rendering. Per Q-Move-7-timing default; per-row §-citation
+  (§A.6 / §H.5 / §H.6 / §H.8).
 
 **Reviewer attestation requirements** (each surviving rule):
 
 1. **Single CAPCO-§ citation per declarative catalog entry** (NOT
    per `impl Rule` block). Resolves Q-3.9 from `marque-applied.md`
    §9. The consolidated walkers (3b.A banner, 3b.C RELIDO, 3b.D
-   floors, 3b.E SCI per-system) are each one `impl Rule` block that
+   floors, 3b.E SCI per-system, 3b.F non-canonical input) are each
+   one `impl Rule` block that
    delegates to a catalog; each catalog row carries its own
    §-citation. Cited per Constitution VIII (citation integrity is
    per-claim, not per-block); the discipline is unaffected by where

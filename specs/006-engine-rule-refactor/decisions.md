@@ -423,8 +423,8 @@ lattice-design plan carried).
 target (post-Stage-4); the **PR 3b proper** target is **13–18**, with
 collapse to 9–11 staged across PR 3.7 (new primitives), PR 4 (per-
 category Lattice impls + closure wiring), and PR 5+ (renderer +
-RELOPT). The full staging table and the five PR 3b sub-moves
-(3b.A–3b.E) are pinned in `plan.md` D13 addendum.
+RELOPT). The full staging table and the six PR 3b sub-moves
+(3b.A–3b.F) are pinned in `plan.md` D13 addendum.
 
 **Resolved sub-decisions**:
 
@@ -474,8 +474,9 @@ description.
 
 **Lands in**:
 - `plan.md` D13 addendum (re-sequenced staging table + sub-moves).
-- `tasks.md` T026 expansion to T026a–T026e; new T108b/T108c under
-  PR 3.7 for `RhsFamily` variant + closure operator primitive.
+- `tasks.md` T026 expansion to T026a–T026f; new T108b/T108c/T108d under
+  PR 3.7 for `RhsFamily` variant + closure operator primitive +
+  §4.8 `FgiSet` doc-comment amendment.
 - `docs/plans/2026-05-07-pr3b-consultation-verdict.md` — dated
   decision record with the (a)/(b)/(c) verdicts.
 - `marque-applied.md` §3.10.3 timing correction + new §3.11 stage-

@@ -23,7 +23,7 @@ versus which had to land first.
 The bridge (`marque-applied.md`) closed the apparatus gap. This
 verdict doc closes the sequencing gap. It is the dated decision
 record; the algebra lives in the bridge; the operational acceptance
-criteria live in `plan.md` D13 addendum + `tasks.md` T026a–T026e and
+criteria live in `plan.md` D13 addendum + `tasks.md` T026a–T026f and
 T108b–T108d.
 
 ## 1. Verdict on the bridge
