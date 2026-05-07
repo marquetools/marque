@@ -163,9 +163,8 @@ Locale-theoretic introduction motivated by the logic of finite observations. Cit
 `[erne-koslowski-melton-strecker-1993]`
 Erné, M., Koslowski, J., Melton, A., & Strecker, G. E. (1993). *A Primer on Galois Connections*. Annals of the New York Academy of Sciences, 704: 103–125.
 DOI: 10.1111/j.1749-6632.1993.tb52513.x
-Author's preprint version (PostScript): http://www.math.ksu.edu/~strecker/primer.ps
-Vendored as PDF (converted via ps2pdf) at: `sources/erne-koslowski-melton-strecker-galois-primer.pdf` (≈350 KB) plus the original PS at `sources/erne-koslowski-melton-strecker-galois-primer.ps`.
-Author-hosted preprint; treat as fair-academic-citation use, not free redistribution. Defines Galois connections in covariant (monotone) form, derives closure/interior systems, gives 30+ examples.
+Author's preprint version (PostScript): http://www.math.ksu.edu/~strecker/primer.ps — convert locally via `ps2pdf` if a PDF is needed.
+Cite-and-link only (not vendored). Author-hosted preprint; fair-academic-citation use, not free redistribution. Defines Galois connections in covariant (monotone) form, derives closure/interior systems, gives 30+ examples.
 
 (Cross-reference: `[ore-1944]` listed under "Pure order theory & lattice algebra" — the originating Galois-connection paper.)
 
@@ -214,15 +213,13 @@ The earliest published statement of the interval abstract domain, predating the 
 Cousot, P. & Cousot, R. (1977). *Abstract Interpretation: A Unified Lattice Model for Static Analysis of Programs by Construction or Approximation of Fixpoints*. Conference Record of the 4th ACM Symposium on Principles of Programming Languages (POPL '77), pp. 238–252. ACM Press.
 DOI: 10.1145/512950.512973. Paywalled at ACM.
 Author preprint: https://www.di.ens.fr/~cousot/COUSOTpapers/publications.www/CousotCousot-POPL-77-ACM-p238--252-1977.pdf
-Vendored at: `sources/cousot-cousot-popl77.pdf` (940 KB).
-License note: ACM-copyrighted. Author institutional preprint; treat as fair-academic-citation use, *not* free redistribution. The originating paper of the abstract-interpretation framework. Defines Galois connections in the AI sense, soundness, widening, narrowing, the constructive lfp approach.
+Cite-and-link only (not vendored). ACM-copyrighted; author institutional preprint; fair-academic-citation use, *not* free redistribution. The originating paper of the abstract-interpretation framework. Defines Galois connections in the AI sense, soundness, widening, narrowing, the constructive lfp approach.
 
 `[cousot-cousot-1979]`
 Cousot, P. & Cousot, R. (1979). *Systematic Design of Program Analysis Frameworks*. Conference Record of the 6th ACM Symposium on Principles of Programming Languages (POPL '79), pp. 269–282.
 DOI: 10.1145/567752.567778. Paywalled at ACM.
 Author preprint: https://www.di.ens.fr/~cousot/COUSOTpapers/publications.www/CousotCousot-POPL-79-ACM-p269--282-1979.pdf
-Vendored at: `sources/cousot-cousot-popl79.pdf` (1.1 MB).
-License note: same as above — ACM-copyrighted; author institutional preprint; fair academic use only.
+Cite-and-link only (not vendored). ACM-copyrighted; author institutional preprint; fair academic use only.
 Introduces Galois insertion (`α∘γ = id`), reduced product, the systematic design recipe deriving `f^♯` from `f` and `(α, γ)`, and the relationship between Galois connections and approximation operators.
 
 `[cousot-cousot-1992]`

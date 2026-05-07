@@ -465,7 +465,7 @@ The two formulations are interconvertible by replacing `Q` with `Q^op` (entry 13
 
 **Example (formal concept analysis).** Given a context `(O, A, I)` (objects, attributes, incidence relation), the maps `S ↦ S' = {a : ∀o ∈ S, oIa}` and `T ↦ T' = {o : ∀a ∈ T, oIa}` form an antitone Galois connection `(P(O), ⊆) ↔ (P(A), ⊆)`. Closed elements are *formal concepts*.
 
-**Citation.** `[ore-1944]`; `[erne-koslowski-melton-strecker-1993]` (the standard primer, vendored at `sources/erne-koslowski-melton-strecker-galois-primer.pdf`); `[davey-priestley-2002]` ch. 7; `[nlab-galois-connection]`; `[wikipedia-galois-connection]`.
+**Citation.** `[ore-1944]`; `[erne-koslowski-melton-strecker-1993]` (the standard primer; cite-and-link only — see `sources/SOURCES.md` for the author URL); `[davey-priestley-2002]` ch. 7; `[nlab-galois-connection]`; `[wikipedia-galois-connection]`.
 
 **Consultant tags.** `(a)` whenever the user has an "abstraction + concretization" pair, or a "view + materialize" pair, or any antitone-pair-of-monotone-maps. `(a)` for the adjunction laws as soundness conditions in any program-analysis-shaped problem. `(b)` when the user has a single monotone map and wants its "approximate inverse" — propose finding an adjoint.
 
