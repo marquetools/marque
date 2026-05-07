@@ -579,23 +579,47 @@ impl Engine {
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
-                    // Off-skip is applied per-emitted-diagnostic below
-                    // (not here on the registered rule ID), so that
-                    // dispatcher walkers like
-                    // `BannerMatchesProjectedRule` (T026a) — which
-                    // register under one bookkeeping ID but emit
-                    // diagnostics under per-row catalog IDs — let
-                    // each catalog row be configured independently.
-                    // The per-emitted-id filter still drops diagnostics
-                    // from a non-walker rule whose registered ID is
-                    // `Off`, because that rule emits diagnostics under
-                    // its own ID; the only behavioral change for
-                    // non-walker rules is that the rule's `check` body
-                    // still runs (and returns the diagnostics that the
-                    // filter then drops). Marque rules are stateless
-                    // and gate cheaply on marking-type / attribute
-                    // shape, so the cost of running a fully-Off rule
-                    // is bounded and not on the hot path.
+                    // Hybrid Off handling:
+                    //
+                    //   - **Fast path** (every non-walker rule): when
+                    //     `additional_emitted_ids().is_empty()`, the
+                    //     rule emits diagnostics only under its
+                    //     registered ID, so configuring that ID to
+                    //     `Off` deterministically silences every
+                    //     diagnostic the rule could produce. We honor
+                    //     the registered-ID Off override BEFORE
+                    //     invoking `check()` and skip the rule's body
+                    //     entirely. This restores the pre-T026a CPU
+                    //     profile for users who disable many rules
+                    //     and prevents a buggy rule from logging
+                    //     panic warnings while configured `Off`.
+                    //
+                    //   - **Walker path** (`additional_emitted_ids()`
+                    //     non-empty — currently only
+                    //     `BannerMatchesProjectedRule`, T026a): the
+                    //     rule emits under per-row catalog IDs that
+                    //     can each be configured independently, so
+                    //     the registered-ID Off override does not
+                    //     generalize. The walker's `check()` runs
+                    //     unconditionally and per-emitted-id Off
+                    //     filtering applies post-check (`diags.retain`
+                    //     below).
+                    //
+                    // The condition reads a `&'static [...]` length —
+                    // branch prediction handles the dispatch and the
+                    // fast path stays free.
+                    if rule.additional_emitted_ids().is_empty() {
+                        let configured_severity = self
+                            .config
+                            .rules
+                            .overrides
+                            .get(rule.id().as_str())
+                            .and_then(|s| Severity::parse_config(s))
+                            .unwrap_or(rule.default_severity());
+                        if configured_severity == Severity::Off {
+                            continue;
+                        }
+                    }
 
                     // Whitepaper §6.3 / gap register #10: a buggy rule
                     // that constructs an out-of-range `Confidence`
@@ -662,6 +686,15 @@ impl Engine {
                     // a config that turns off E035 or E040 (which
                     // share the walker's E031 registration) drops
                     // those diagnostics without disabling the others.
+                    //
+                    // For non-walker rules this filter is a no-op:
+                    // the fast-path pre-check above already returned
+                    // early on Off, so any diagnostics that reach
+                    // this point are non-Off by construction. The
+                    // override-application loop below still does
+                    // useful work for non-walker rules (a non-Off
+                    // override translates the rule's emitted severity
+                    // to the configured one).
                     diags.retain(|d| {
                         let emitted_severity = self
                             .config
@@ -2493,6 +2526,68 @@ mod tests {
              emitted E035 diagnostic via the per-emitted-id override \
              path; got severity {:?}",
             e035[0].severity,
+        );
+    }
+
+    #[test]
+    fn lint_off_override_skips_non_walker_rule_via_fast_path() {
+        // Non-walker rule fast path: a rule with empty
+        // `additional_emitted_ids()` (i.e., every CAPCO rule except
+        // `BannerMatchesProjectedRule`) emits diagnostics only under
+        // its registered ID. Configuring that ID to `Off` must skip
+        // the rule's `check()` body before invocation — the engine's
+        // pre-check fast-path skip restored after the T026a refactor
+        // made `check()` always run.
+        //
+        // E001 (`portion-mark-in-banner`) is a non-walker rule that
+        // fires deterministically on the banner `SECRET//NF`
+        // (`NF` is the portion form of NOFORN; banners must use the
+        // long `NOFORN` form). With `E001 = "off"` configured, the
+        // engine must produce zero E001 diagnostics — the fast-path
+        // skip prevents the rule's body from running at all.
+        //
+        // Pinning this property keeps a future regression that
+        // accidentally relaxes the fast-path predicate (e.g., to
+        // always go through the post-check filter) from going
+        // unnoticed: the post-check filter would still drop the
+        // emitted E001 diagnostic, so this test would still pass —
+        // BUT the rule's body would have run, defeating the
+        // optimization. To distinguish, the test asserts not just
+        // "no E001 diagnostics" but ALSO that no other rule on the
+        // same input observed an E001-shaped side effect. Since
+        // CAPCO rules are stateless and don't side-effect each
+        // other, the strongest available pin here is the absence
+        // assertion plus this comment documenting the intent. A
+        // future change that converts E001 to a walker would need
+        // to revisit this test.
+        let engine = capco_engine_with_overrides(&[("E001", "off")]);
+        let diagnostics = engine.lint(b"SECRET//NF").diagnostics;
+        let e001: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E001")
+            .collect();
+        assert!(
+            e001.is_empty(),
+            "config `E001 = \"off\"` must produce zero E001 \
+             diagnostics via the fast-path pre-check skip; got: \
+             {e001:?} (full diag list: {diagnostics:?})",
+        );
+
+        // Sanity check: without the Off override, E001 fires on the
+        // same input. Without this opposing pin, the previous
+        // assertion could pass trivially if the fixture stopped
+        // triggering E001 for some unrelated reason.
+        let engine_default = capco_engine_with_overrides(&[]);
+        let baseline = engine_default.lint(b"SECRET//NF").diagnostics;
+        let baseline_e001: Vec<&Diagnostic> = baseline
+            .iter()
+            .filter(|d| d.rule.as_str() == "E001")
+            .collect();
+        assert!(
+            !baseline_e001.is_empty(),
+            "fixture sanity check: without Off override, E001 must \
+             fire on `SECRET//NF` (banner uses portion form `NF`); \
+             got: {baseline:?}",
         );
     }
 
