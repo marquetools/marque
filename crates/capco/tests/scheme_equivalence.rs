@@ -907,33 +907,52 @@ fn project_portion_scope_empty_returns_bottom() {
 
 #[test]
 fn scheme_declares_phase3_rewrites() {
-    // Phase 3 T034: CAPCO declares three rewrites — NOFORN clears
-    // REL TO (existing), JOINT-promotion, and FGI-absorption.
+    // PR 3b.B (T026b): CAPCO declares nine rewrites — the retained
+    // `noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3
+    // transmutation entries (consultant Entry 6 split into 6a + 6b
+    // for D13 single-citation discipline). The two earlier Phase-3
+    // stubs (`joint-promotion`, `fgi-absorption`) were retired in
+    // PR 3b.B because their semantics are subsumed by entries 1, 3,
+    // and 7 with finer-grained, properly-cited transmutations.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 3);
+    assert_eq!(rewrites.len(), 9);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
         ids,
         [
             "capco/noforn-clears-rel-to",
-            "capco/joint-promotion",
-            "capco/fgi-absorption"
+            "capco/frd-sigma-consolidates-into-rd-sigma",
+            "capco/fgi-rollup-on-us-contact",
+            "capco/fgi-restricted-rollup-on-us-contact",
+            "capco/joint-cross-class-rollup",
+            "capco/us-presence-promotes-bare-fgi-attribution",
+            "capco/orcon-nato-to-us-orcon-on-us-contact",
+            "capco/sbu-nf-transmutes-on-classified-contact",
+            "capco/les-nf-transmutes-on-classified-contact",
         ],
         "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
          reorders them by read/write edges, but the declaration-order snapshot \
-         here pins what downstream tools see from `page_rewrites()`."
+         here pins what downstream tools see from `page_rewrites()`. \
+         Declaration order matches the topological order from \
+         `docs/plans/2026-05-07-pr3b-B-transmutations-plan.md` §4."
     );
 
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections; T089 retired the line-number form per project memory
-    // `feedback_citations_use_page_numbers.md`). All three updated to
-    // §A-H normative cites with page-only references.
+    // `feedback_citations_use_page_numbers.md`). Each of the nine
+    // citations is verifiable in the vendored CAPCO-2016 markdown.
     assert_eq!(rewrites[0].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
-    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p124");
+    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.6 p113");
+    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[4].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]
