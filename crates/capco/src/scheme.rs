@@ -470,10 +470,15 @@ impl CapcoScheme {
     ///    (§H.9 p185) — LES-NF transmutes on classified contact.
     ///
     /// Source: `marque-applied.md` §3.4.1 + §3.4.3. Declaration order
-    /// here matches the topological order from
-    /// `docs/plans/2026-05-07-pr3b-B-transmutations-plan.md` §4 to
-    /// keep the file readable; the scheduler topologically sorts at
-    /// `Engine::new` regardless of declaration order.
+    /// is one valid total ordering of the rewrite vector (it groups
+    /// `noforn-clears-rel-to` first as the canonical worked example,
+    /// followed by entries 4, 1, 2, 3, 7, 5, 6a, 6b in the order
+    /// they appear in the consultant roster). It is **not** the
+    /// scheduler's topological order — `noforn-clears-rel-to` reads
+    /// `CAT_DISSEM` which entries 5/6a/6b write, so the scheduler
+    /// orders it AFTER those entries. `Engine::new` runs Kahn's
+    /// algorithm at construction; runtime execution order is
+    /// determined by the scheduler, not by this `Vec` order.
     ///
     /// [`CategoryPredicate::Contains`]: marque_scheme::CategoryPredicate::Contains
     /// [`CategoryAction::Clear`]: marque_scheme::CategoryAction::Clear

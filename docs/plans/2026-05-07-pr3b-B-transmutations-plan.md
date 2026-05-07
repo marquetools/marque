@@ -1,4 +1,4 @@
-# Implementation Plan: PR 3b.B — Seven Declarative `PageRewrite` Transmutations
+# Implementation Plan: PR 3b.B — Eight Declarative `PageRewrite` Transmutations
 
 **Target file**: `/home/knitli/marque-pr3b-B/docs/plans/2026-05-07-pr3b-B-transmutations-plan.md`
 **Branch**: `refactor-006-pr-3b-transmutations` (worktree `/home/knitli/marque-pr3b-B/`)
@@ -43,7 +43,7 @@ The `noforn-clears-rel-to` row stays at the top of the rewrite vector. Entries 1
 - **`reads`**: `&[CAT_CLASSIFICATION]` — narrow form. Predicate would scan `CAT_FGI_MARKER` for bare-FGI atoms; documented in doc-comment, not in `reads` to avoid mutual cycles among entries 1/2/3 per §4.
 - **`writes`**: `&[CAT_FGI_MARKER]` — single-axis write. Reciprocal-raise of class is performed at portion-parse-time per §3.4.1 Note (i), NOT as a rewrite transform; CLASS is not in `writes`.
 - **Predicate**: `CategoryPredicate::Custom(never_fires)` — Phase-3 stub.
-- **Action**: `CategoryAction::Custom(noop_action)` — Phase-3 no-op. Add a `noop_action` helper alongside `never_fires` and `identity_promote`.
+- **Action**: `CategoryAction::Custom(noop_action)` — Phase-3 no-op. Add a `noop_action` helper alongside the existing `never_fires` (the previous `identity_promote` helper, used only by the retired `joint-promotion` / `fgi-absorption` stubs, is removed in this PR as dead code).
 - **Monotonicity**: **Monotone-additive** on FGI axis (concealed wins; acknowledged unions). CLASS not mutated by this rewrite. Sound under fixed topological order per `marque-applied.md` §6 Framing 3.
 - **Phase 3 stub justification**: trigger is `never_fires` because runtime dispatch stays in `PageContext` until Phase D/E; the `Custom` action body is a no-op for the same reason — the `reads` / `writes` annotations are what the scheduler consumes.
 

@@ -933,10 +933,14 @@ fn scheme_declares_phase3_rewrites() {
             "capco/les-nf-transmutes-on-classified-contact",
         ],
         "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
-         reorders them by read/write edges, but the declaration-order snapshot \
-         here pins what downstream tools see from `page_rewrites()`. \
-         Declaration order matches the topological order from \
-         `docs/plans/2026-05-07-pr3b-B-transmutations-plan.md` §4."
+         reorders them by read/write edges. This snapshot pins what \
+         downstream tools see when iterating `page_rewrites()` directly \
+         (declaration order — `noforn-clears-rel-to` first as the canonical \
+         worked example, followed by the §3.4.1 / §3.4.3 transmutations). \
+         The scheduler's topological order — see plan §4 — is computed at \
+         `Engine::new` and runs `noforn-clears-rel-to` AFTER the DISSEM \
+         writers (entries 5/6a/6b). The two orderings are intentionally \
+         distinct."
     );
 
     // Citations point at verified normative passages (Constitution
