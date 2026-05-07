@@ -15,10 +15,14 @@ The "49 → ~10–13" count target appearing throughout this document
 (user constraints, §3 PR 3b row, §4 PR 3b row, §11 PR 3b row,
 mapping table) is **superseded** by the staged target — and the "49"
 itself was a historical approximation, not a verified count. Operative
-target: **PR 3b proper lands 13–18 surviving rules (Stage 1)**;
-cumulative collapse to 9–11 lands across PR 3.7 / PR 4 / PR 5+. The
-8–18 D13 band remains the end-state acceptance gate. The
-authoritative staging table lives in
+target: **PR 3b proper drives the rule count down within each
+sub-move's authorized primitive scope** (re-baselined 2026-05-07; the
+earlier "13–18 Stage-1 band" was retired in favor of qualitative
+per-sub-PR gating after the planning pass on T026a found the literal
+sub-move retirements deliver −15 to −21 rules, landing at ~38–44).
+End-state target ~10 surviving rules across stages 1–4 stays binding;
+heavy compaction lifts in Stage 3 (PR 4 per-category Lattice impls)
+and Stage 4 (PR 5+ renderer). The authoritative staging table lives in
 `specs/006-engine-rule-refactor/plan.md` D13 addendum and
 `.claude/skills/marque-lattice-consultant/references/marque-applied.md`
 §3.11. Two new primitives (`Constraint::Conflicts::RhsFamily(predicate)`
@@ -44,9 +48,10 @@ unchanged.
   is the operating philosophy.** This plan is the last clean-break window; the
   window closes when external consumers attach.
 - Issue #263 (canonicalizer/renderer split + form-routing collapse,
-  49 → ~10–13 rules) is a given. **(Amended 2026-05-07: target re-
-  sequenced to 13–18 at PR 3b proper + 9–11 end-state across PR 3.7 /
-  PR 4 / PR 5+; see top-of-file amendment banner.)**
+  49 → ~10–13 rules) is a given. **(Amended 2026-05-07: PR-3b-proper
+  numeric band retired in favor of qualitative per-sub-PR gating;
+  end-state target ~10 surviving rules across stages 1–4 stays
+  binding; see top-of-file amendment banner.)**
 - Optimize for 5-year maintenance.
 - CAPCO-first: no second `MarkingScheme` until CAPCO is solid. `Vocabulary<S>`,
   `MarkingScheme`, `Codec<S>` ship `#[doc(hidden)] pub` semver-unstable. They
@@ -150,7 +155,7 @@ Eight points on which all three original reviewers independently arrived
 at the same conclusion. Murder board did not contradict any.
 
 **2.1 #263 is the keystone refactor.** Canonicalizer + renderer split
-+ form-routing collapse. 49 → ~10–13 rules. Co-lands in PR 3b. _(Amended 2026-05-07: Stage-1 target 13–18; see top-of-file banner.)_
++ form-routing collapse. 49 → ~10–13 rules end-state. Co-lands in PR 3b. _(Amended 2026-05-07: PR-3b numeric band retired; per-sub-PR qualitative gate; end-state ~10 across stages 1–4. See top-of-file banner.)_
 
 **2.2 The pivot type does too many jobs** (§1.1).
 
@@ -317,7 +322,7 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
 | 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
-| 3b | **Keystone-2**: #263 rule collapse — Stage-1 target 13–18 (amended 2026-05-07) using the pivot from 3a. Touches `crates/capco/src/rules.rs` + `crates/capco/src/rules_declarative.rs` + `crates/capco/src/rules_sci_per_system.rs` + `crates/capco/src/scheme.rs` rule-set construction (T026e collapses `rules_sci_per_system.rs` to a `Constraint::Custom` walker; T026b/c/d add declarative `PageRewrite` / `Conflicts` / `Requires` rows on `CapcoScheme`). No schema bump. Independently revertable. Six sub-moves T026a–T026f per `tasks.md`; see top-of-file amendment banner. | #263 | IV, VI |
+| 3b | **Keystone-2**: #263 rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; numeric band retired) using the pivot from 3a. Touches `crates/capco/src/rules.rs` + `crates/capco/src/rules_declarative.rs` + `crates/capco/src/rules_sci_per_system.rs` + `crates/capco/src/scheme.rs` rule-set construction (T026e collapses `rules_sci_per_system.rs` to a `Constraint::Custom` walker; T026b/c/d add declarative `PageRewrite` / `Conflicts` / `Requires` rows on `CapcoScheme`). Expected ~38–44 post-3b; end-state ~10 across stages 1–4. No schema bump. Independently revertable. Six sub-moves T026a–T026f per `tasks.md`; see top-of-file amendment banner. | #263 | IV, VI |
 | 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
 | 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve all eight §10 open items; **no "explicitly deferred to a tracked issue" escape valve**. Patch §3 Q3 (`noforn-clears-rel-to` is already a declared `PageRewrite` per CLAUDE.md "Phase B"; reframe as confirm-and-document). Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
@@ -527,7 +532,7 @@ reshape across the keystone subsequence:
   `CanonicalAttrs::from_parsed_unchecked(...)` via the transitional
   adapter (`#[doc(hidden)]`). Touches every fixture but the migration is
   mechanical (sed-replaceable). Three revert points: revert PR 3a / no-op.
-- **PR 3b**: rule collapse — Stage-1 target 13–18 (amended 2026-05-07; see top-of-file banner). Touches rule registration; some
+- **PR 3b**: rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; numeric band retired; expected ~38–44 post-3b; see top-of-file banner). Touches rule registration; some
   fixtures consolidate as their rules consolidate. Independently
   revertable.
 - **PR 3c**: adapter delete + FixIntent + rule-ID retire + schema cutover.
@@ -1162,7 +1167,7 @@ this is a one-field extension.
 | #258 | 8 | Decoder prose null hypothesis priors (third problem class — acknowledged not closed by this plan) |
 | #260 | 8 | Decoder folds bare NATO {level} (third problem class — same) |
 | #261 | 5 | `FgiSet` render-canonical drops redundant `FGI` |
-| #263 | 3b | Rule collapse — Stage-1 13–18 (amended 2026-05-07; end-state 9–11 across PR 3.7 / PR 4 / PR 5+) |
+| #263 | 3b | Rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; PR-3b-proper numeric band retired; expected ~38–44 post-3b; end-state ~10 across stages 1–4) |
 | #264 | 9 | Banner-validation migration |
 | #265 | 9 | NATO-portion-in-US-doc → REL TO USA, NATO declarative `Constraint` |
 | #266 | — | Deferred (CAB out of immediate scope) |
