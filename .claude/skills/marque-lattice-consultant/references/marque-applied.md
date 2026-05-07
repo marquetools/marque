@@ -989,19 +989,33 @@ The phase reframing is more aggressive in two specific ways:
 1. **Generic walkers count as one rule.** §3.9 hedged on whether `Conflicts` should be 8–10 entries or 1 walker; the phase view commits to "1 walker, declarative entries are catalog data, not rules." This depends on Q-3.9 (single-citation interpretation) — see §9.
 2. **Phase C is not a rule budget.** §3.9 left the renderer-canonical idea half-articulated; the phase view commits to "Phase C is renderer responsibility, not rule responsibility." Style / ordering / delimiter checks live in the renderer's correctness contract, exercised by render-tests, not runtime rules.
 
-#### 3.10.3 The path from 56 to ~9 (concrete moves)
+#### 3.10.3 The path from 59 to ~10 across PRs 3b / 3.7 / 4 / 5+
 
-Ordered by leverage. Each move is independently committable; counts are cumulative.
+> **Re-sequenced 2026-05-07** per
+> `docs/plans/2026-05-07-pr3b-consultation-verdict.md`. The original
+> framing of this section scheduled Moves 1–7 inside PR 3b;
+> two of those moves (Move 3 family-predicate variant; Move 6 closure
+> operator wiring) require new primitives that don't ship at PR 3b
+> time. The corrected sequencing distributes the moves across four
+> stages — see §3.11 for the per-stage table.
+>
+> **Re-baselined source count:** **59** (`grep -c '^impl Rule for'
+> rules.rs rules_declarative.rs rules_sci_per_system.rs`), not the
+> "~56" approximation prior versions of this section carried.
 
-1. **Move 1 (PR 3b PR-X).** Convert the §3.1 banner-roll-up rules to `proptest_lattice.rs` property tests. Drops E031, E034, E035, E040, E045, plus the FGI within-axis rollup rules. **Δ: −5 to −7 rules; running total: 49 → 42 to 44.**
-2. **Move 2 (PR 3b PR-Y).** Wire the §3.4.1 transmutation roster as 6 declarative `PageRewrite` rows + the §3.4.3 cross-axis FGI rollup as a 7th. Retire the corresponding hand-written rules. **Δ: −3 to −5 rules; running total: 42 to 44 → 37 to 41.**
-3. **Move 3 (PR 3b PR-Z).** Consolidate all §3.2 conflicts + §3.4.2 RELIDO conflicts into the `Constraint::Conflicts` walker. Single generic rule, ~14–16 declarative entries. **Δ: −7 to −9 rules; running total: 37 to 41 → 28 to 34.** Requires Q-3.9 resolution (single-citation interpretation) before this lands.
-4. **Move 4 (PR 3b PR-W).** Consolidate all §3.3 requires + §3.4.6 per-token class floors + closure-implied requirements into the `Constraint::Requires` walker. The §4.7 closure operator handles "if X then Y" *implications* automatically; the §3.4.6 catalog handles "if X then class ⊒ F(X)" *floor checks*; the residual `Requires` covers structural validity like "RSV requires a compartment" and "JOINT [list] requires REL TO [matching list]". **Δ: −10 to −15 rules; running total: 28 to 34 → 13 to 24.** Larger leverage than prior estimate because §3.4.6 catalog absorbs many separate per-marking class-floor rules.
-5. **Move 5 (PR 3b PR-V).** Consolidate the abhors-company portion-isolation checks (the user's "Abhors Company" set: 12+ markings) into a single per-portion walker that reads the user's map as data. **Δ: −4 to −8 rules; running total: 24 to 32 → 16 to 28.**
-6. **Move 6 (PR 3b PR-U).** Wire the §4.7 closure operator (the implicit-default trio + per-marking unconditional implications) into Phase A. Retire the rules that today encode "if X then Y must also be present" (always-NOFORN, ORCON-ish, etc.). These were already partially counted in Move 4 (§3.4.6 floors are not closure; remaining is the unconditional/trio implications); the closure operator handles automatic derivation, leaving §3.3 to handle structural validity only (RSV-requires-compartment, JOINT-requires-REL-TO-list). **Δ: −5 to −8 rules; running total (refined per Move 4 update above): 13 to 24 → 5 to 19.**
-7. **Move 7 (PR 3b PR-T).** Move §3.5 + §3.6 (style + ordering) + §3.4.5 (b) auto-collapse to renderer correctness; leave at most one "non-canonical input" diagnostic rule. The §3.4.5 (a) RELOPT round-trip becomes a parser correctness obligation, not a runtime `Rule`. **Δ: −5 to −7 rules; running total: 5 to 19 → 0 to 12.** Squarely inside the 8–18 band, with significant margin at the aggressive end.
+Ordered by leverage. Each move is independently committable; counts are cumulative. Per-move PR-home tag indicates the stage where the move lands.
 
-**The numbers above are cumulative ranges, not point estimates.** The wide band reflects unresolved questions: (Q-3.9) does the consolidated walker count as one rule? (Q-Phase-3.10) does Phase C eliminate style rules entirely or retain one diagnostic? (Q-3.4.6a) is the class-floor catalog generated from CVE/Schematron at build time, or hand-curated? Resolving Q-3.9 at the aggressive end (single walker = 1 rule, declarative entries are catalog data) plus Q-Phase-3.10 at the aggressive end (renderer absorbs all style) lands the total at the bottom of the 0–12 band; conservative resolutions land at the top.
+1. **Move 1 (PR 3b — T026a + retires fully in PR 4).** Convert the §3.1 banner-roll-up rules to ONE generic walker calling `MarkingScheme::project(Scope::Page, ...)`; the walker retires when PR 4's per-category Lattice impls + property tests in `proptest_lattice.rs` land. Drops E031, E034, E035, E040, E045, plus the FGI within-axis rollup rules. **Δ: −5 to −7 individual rules → +1 walker. Net −4 to −6; running total: 59 → 53 to 55** (PR 3b); finalizes to **−1 walker rule** in PR 4.
+2. **Move 2 (PR 3b — T026b).** Wire the §3.4.1 transmutation roster as 6 declarative `PageRewrite` rows + the §3.4.3 cross-axis FGI rollup as a 7th. Retire the corresponding hand-written rules. **Δ: −3 to −5 rules; running total: 53 to 55 → 48 to 52.**
+3. **Move 3 (PR 3b — T026c enumerated form; PR 4 — compaction to family rows).** PR 3b lands §3.2 conflicts + §3.4.2 RELIDO conflicts as ~15–20 enumerated `Constraint::Conflicts` rows with single-token RHS (existing variant). Single generic walker. PR 4 compacts to 2 family rows once T108b's `RhsFamily(predicate)` variant ships in PR 3.7. Q-3.9 resolved per `2026-05-07-pr3b-consultation-verdict.md`: per declarative entry. **Δ: −7 to −9 rules; running total: 48 to 52 → 39 to 45.**
+4. **Move 4 (PR 3b — T026d; PR 4 — closure re-classification).** PR 3b lands §3.4.6 per-token class floors as ~25 `Constraint::Requires` rows (single generic walker). Closure-implied requirements stay as `Requires` rows in PR 3b; the §4.7 closure operator (T108c, lands in PR 3.7) re-classifies the implication-shaped entries from `Requires` to closure entries in PR 4. Residual `Requires` covers structural validity like "RSV requires a compartment" and "JOINT [list] requires REL TO [matching list]". **Δ: −10 to −15 rules; running total: 39 to 45 → 24 to 35.**
+5. **Move 5 (consolidation — split per `2026-05-07` correction).** The "abhors-company" framing splits into (a) RELIDO family conflicts (already counted in Move 3) and (b) class-conditional drops (SBU, LIMDIS, DOD UCNI, DOE UCNI eviction at class > U). The latter folds into Move 2's PageRewrite roster as additional entries (or into a single parameterized "u-only-drop" rewrite). **No separate "abhors walker" needed.** Δ counted under Moves 2 and 3.
+6. **Move 6 (PR 3.7 — T108c primitive; PR 4 — wiring).** Land the §4.7 closure operator primitive in PR 3.7. Wire CAPCO's `ImplTable` (the implicit-default trio + per-marking unconditional implications) in PR 4 alongside per-category Lattice impls. Retire the rules that today encode "if X then Y must also be present" (always-NOFORN, HCS-O ⇒ {NOFORN, ORCON}, TK-BLFH ⇒ NOFORN, etc.). The closure operator handles automatic derivation, leaving §3.3 to handle structural validity only. **Δ: −5 to −8 catalog entries (compaction); rule count unchanged; running total: 24 to 35** (the rule count was already collapsed in Move 4; closure compacts the catalog).
+7. **Move 7 (PR 3b — T026f single-walker fallback; PR 5+ — renderer takeover).** PR 3b retains ONE "non-canonical input" walker covering E020 / E023 / E028 / E033 ordering checks; PR 5+ lifts these into renderer correctness when the renderer trait surface lands, retiring the walker. The §3.4.5 (a) RELOPT round-trip becomes a parser correctness obligation (not a runtime `Rule`); §3.4.5 (b) auto-collapse stays off-by-default with step-bound termination per Q-3.4.5a. **Δ: −4 individual rules → +1 walker (PR 3b); −1 walker (PR 5+). Net −4 cumulative.**
+
+**End-state cumulative target.** Stage 1 (PR 3b proper): 13–18 surviving rules. Stage 4 (post-renderer takeover, post-closure wiring, post-RELIDO compaction): **9–11 surviving rules**. The 8–18 D13 band remains the end-state acceptance gate; 13–18 is the PR 3b proper acceptance gate per `plan.md` D13 addendum.
+
+**The wide cumulative ranges reflect the catalog-compaction effect.** Moves 3 / 6 / 7 reduce *catalog entries* (data, not rules) more than they reduce *rule count* once the walkers are in place. Resolving Q-3.4.6a at the build-time end (catalog auto-generated from CVE) does not change the rule count but reduces the maintenance burden. Resolving Q-FgiSet-vs-§4.8 at the no-new-primitive end (existing `FgiSet` already models §4.8) saves one primitive landing in PR 3.7 without changing the count.
 
 #### 3.10.4 Which moves matter most for the PR 3b acceptance criteria
 
@@ -1012,6 +1026,82 @@ The acceptance criteria (D13: post-collapse rule count in 8–18, single CAPCO-�
 - **≤3 internal branches per predicate body.** Moves 1–7 all produce predicate bodies that are simple presence-checks; the branching budget is for combining axes (e.g., FGI-attribution rewrite branches on class-axis presence + FGI-attribution shape, 2 branches). The walker bodies have one branch per declarative-entry kind (Conflicts vs. Requires vs. AbhorsCompany), which is ≤3 if the catalog stays homogeneous.
 
 **Recommendation.** Land Moves 1, 2, 7 first (independent, low-risk, retire the most rules). Land Move 3 only after Q-3.9 is resolved with the user. Land Moves 4, 5, 6 in any order after Move 3.
+
+> **Q-3.9 resolved 2026-05-07** (per declarative entry; see
+> `docs/plans/2026-05-07-pr3b-consultation-verdict.md`). The
+> ordering recommendation above is preserved as historical
+> guidance; the canonical sequencing is in §3.11.
+
+### 3.11 Stage sequencing (locked 2026-05-07)
+
+The canonical mapping of §3.10.3 Moves 1–7 to PR-time-availability of primitives. This section is the source of truth that `plan.md` D13 addendum + `tasks.md` T026a–T026f and T108b–T108d implement.
+
+**Why a separate section.** §3.10.3's prior framing scheduled all Moves inside PR 3b. Two of those moves (Move 3 family-predicate variant; Move 6 closure operator wiring) require new primitives that don't ship at PR 3b time — the bridge was honest about this in prose but the move list did not surface the dependency. §3.11 makes the staging explicit.
+
+**Stage 1 — PR 3b proper (declarative-catalog moves over existing primitives).**
+
+| Sub-move | T-task | Primitive(s) used | Source rules retired |
+|---|---|---|---|
+| 3b.A — banner walker | T026a | `MarkingScheme::project(Scope::Page, ...)` (Phase B) | E031, E034, E035, E040, E045 (5 rules) → 1 walker |
+| 3b.B — transmutation `PageRewrite` roster | T026b | `PageRewrite` + topological scheduler (Phase B + #69) | 3–5 hand-written rules → 7 declarative rows |
+| 3b.C — RELIDO `Constraint::Conflicts` enumerated | T026c | `Constraint::Conflicts` walker (Phase 4+) | 7–9 hand-written conflict rules → ~15–20 catalog rows + walker |
+| 3b.D — class-floor `Constraint::Requires` catalog | T026d | `Constraint::Requires` walker (Phase 4+) | 10–15 hand-written floor rules → ~25 catalog rows + walker |
+| 3b.E — SCI per-system collapse | T026e | `Constraint::Custom` walker | E042–E051 (10 rules) → 1 walker |
+| 3b.F — non-canonical input walker (fallback) | T026f | New `impl Rule` block | E020, E023, E028, E033 (4 rules) → 1 walker |
+
+**Stage-1 acceptance**: 13–18 surviving rules (consultation verdict; `plan.md` D13 addendum).
+
+**Stage 2 — PR 3.7 (new primitives + lattice-design.md fill-in).**
+
+| Deliverable | T-task | What lands |
+|---|---|---|
+| `Constraint::Conflicts::RhsFamily(predicate)` variant | T108b | Surface change on `marque-scheme::constraint`; walker dispatch extension; `proptest_constraint_rhs_family.rs` |
+| §4.7 closure operator primitive | T108c | `MarkingScheme::closure(...)` trait method (default no-op); `ImplTable<S>` shape; CAPCO `ImplTable` hand-curated with §-citations; `proptest_closure.rs` (monotone + extensive + idempotent + suppression-doesn't-break-monotonicity) |
+| §4.8 FGI/JOINT consensus verification | T108d | Verify §4.8.5 worked example against existing `FgiSet`; if mismatch, land `FgiAttributionLattice` per shape (β); doc-comment update |
+| Lattice-design.md §§2–8 fill-in | T104–T108a | Per-category §-citations, formal join semantics, worked examples, property-test fixtures (PR 3.7's existing scope) |
+
+**Stage-2 acceptance**: rule count unchanged (13–18); catalog compaction in flight; new primitives land; lattice-design.md gate cleared.
+
+**Stage 3 — PR 4 (lattice impls + closure wiring + RELIDO compaction).**
+
+| Deliverable | T-task | What lands |
+|---|---|---|
+| Per-category `Lattice` impls | T112 | Per-category formal `Lattice` impls satisfying assoc/comm/idem/identity-with-bottom |
+| RELIDO Conflicts compaction | (alongside T112) | T026c's enumerated rows compact to 2 family rows using T108b's `RhsFamily(predicate)` variant |
+| Closure operator wiring | (alongside T112) | T108c's primitive wired into `Engine::project` per §4.7.4 pipeline; T026d's implication-shaped entries flip from `Requires` to closure entries |
+| Banner walker retirement | (alongside T116) | T026a walker becomes property-test-only sanity check (or deletes outright if PR 4 reviewer accepts property-test coverage) |
+
+**Stage-3 acceptance**: 10–15 surviving rules.
+
+**Stage 4 — PR 5+ (renderer + RELOPT round-trip).**
+
+| Deliverable | What lands |
+|---|---|
+| Renderer trait surface | Phase C renderer absorbs E020 / E023 / E028 / E033 via canonical-form rendering; T026f walker retires |
+| RELOPT round-trip in parser | Parser obligation per §3.4.5 (a); not a runtime `Rule` |
+| RELOPT auto-collapse (off-by-default) | Optional renderer style with step-bound termination per Q-3.4.5a default `N=3` |
+
+**Stage-4 acceptance**: 9–11 surviving rules. End-state 8–18 D13 band cleared.
+
+**Cumulative table (the same staging in count form)**:
+
+| Stage | PR | Cumulative surviving rules |
+|---|---|---|
+| Pre-collapse | — | **59** |
+| Stage 1 | PR 3b | **13–18** |
+| Stage 2 | PR 3.7 | 13–18 (catalog compaction only) |
+| Stage 3 | PR 4 | **10–15** |
+| Stage 4 | PR 5+ | **9–11** |
+
+**What changed relative to §3.10.3's prior framing.** Move 1 (banner roll-up) lands as ONE walker in PR 3b that retires (or reduces) in PR 4 — not as immediate property-test conversion. Move 3 splits across PR 3b (enumerated) + PR 4 (family-predicate compaction). Move 5 (abhors-company) absorbs into Moves 2 and 3 with no separate walker. Move 6 lands as primitive in PR 3.7 + wiring in PR 4. Move 7 lands as fallback walker in PR 3b + renderer takeover in PR 5+.
+
+**Audibles permitted** (per `2026-05-07-pr3b-consultation-verdict.md` §7):
+
+- PR 3b reviewer MAY skip 3b.A if PR 4 reviewer accepts property-test-only coverage.
+- PR 3b implementer MAY land sub-moves as separate sub-PRs (3b1 / 3b2 / 3b3) if review bandwidth requires.
+- PR 3.7 implementer MAY discover `FgiSet` already models §4.8 and skip T108d's primitive landing in favor of doc-comment amendment only.
+
+Audibles beyond these require a dated amendment to the verdict doc.
 
 ---
 
