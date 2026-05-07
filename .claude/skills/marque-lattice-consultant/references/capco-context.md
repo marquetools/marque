@@ -6,11 +6,10 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # CAPCO-2016 Agent Context Helper
 
-> **Vendored copy** (as of 2026-05-06) from
-> `/home/knitli/marque/crates/capco/CAPCO-CONTEXT.md` — the marque source
-> tree. The original is authoritative; this copy exists so the lattice
-> consultant skill is self-contained without requiring the marque source
-> tree to be open in context. **If this file disagrees with the original,
+> **Vendored copy** (as of 2026-05-06) from `crates/capco/CAPCO-CONTEXT.md`
+> in the marque source tree. The original is authoritative; this copy
+> exists so the lattice consultant skill is self-contained without
+> requiring the marque source tree to be open in context. **If this file disagrees with the original,
 > the original wins** — re-vendor when investigating CAPCO-current
 > questions. The original is updated when CAPCO-2016 schemas or rules
 > change; there is no automatic sync to this copy. Per Constitution

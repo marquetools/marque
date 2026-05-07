@@ -123,15 +123,16 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc."
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
-# Local Claude Code skill content (lattice-consultant). All authored markdown
-# (SKILL.md, AGENT_BOILERPLATE.md, references/*.md, agents/*.md, sources/SOURCES.md)
-# is Knitli-authored skill tooling. No third-party PDFs are vendored under
-# sources/ — every primary source is cite-and-link only (URLs in
-# sources/SOURCES.md and references/bibliography.md).
+# Local Claude Code skill content (lattice-consultant). Default for the skill
+# tree is Knitli-authored skill tooling. `closest` precedence so files with
+# their own SPDX header (e.g., references/capco-context.md, which carries
+# MIT OR Apache-2.0 from the upstream crates/capco/CAPCO-CONTEXT.md vendor
+# source) keep their own license. No third-party PDFs are vendored under
+# sources/ — every primary source is cite-and-link only.
 [[annotations]]
 path = [
   ".claude/skills/marque-lattice-consultant/**",
 ]
-precedence = "aggregate"
+precedence = "closest"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
