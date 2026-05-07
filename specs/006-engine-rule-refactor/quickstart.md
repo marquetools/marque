@@ -68,11 +68,12 @@ PR 1     — single-pass forward splice (already landed in PR #278)
 PR 2     — Vocabulary::shape_admits at parser sites; FGI silent-skip → None;
             FgiMarker::SourceConcealed | Acknowledged discriminant
 PR 3a    — KEYSTONE-1: pivot type split + from_parsed_unchecked adapter
-PR 3b    — KEYSTONE-2: #263 rule collapse — Stage 1 target 13–18
+PR 3b    — KEYSTONE-2: #263 rule collapse — qualitative per-sub-PR gate
             (re-sequenced 2026-05-07 per
             docs/plans/2026-05-07-pr3b-consultation-verdict.md;
-            cumulative collapse to 9–11 across PR 3.7 / PR 4 / PR 5+;
-            8–18 end-state band per plan.md D13 addendum)
+            PR-3b-proper numeric band retired 2026-05-07 — expected
+            ~38–44 post-3b; end-state target ~10 surviving rules
+            across stages 1–4 per plan.md D13 addendum)
 PR 3c    — KEYSTONE-3: FixReplacement discriminant; Canonical sealing;
             decoder open-vocab lockout; FixIntent<S> rule API; rule-ID retire;
             audit cutover marque-mvp-2 → marque-1.0

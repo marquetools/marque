@@ -388,14 +388,19 @@ the trait method is the actual failure pattern. Rust stdlib uses
 
 ### D13 — Rule-collapse band
 
-> **Superseded 2026-05-07.** The original D13 "56 → 8–18 post-PR-3b"
-> target and "single CAPCO-§ citation per rule" wording below are
-> retained for historical reference but **superseded by the
-> Amendment 2026-05-07 below**. Operative interpretation: source
-> count is **59** (not 56); PR 3b proper target is **13–18 (Stage 1)**
-> with end-state 8–18 across stages; "single citation" applies **per
-> declarative catalog entry**, not per `impl Rule` block. Read the
-> amendment, not this block, for binding acceptance criteria.
+> **Superseded 2026-05-07** (initial amendment) **and 2026-05-07**
+> (PR-3b-numeric-band retirement). The original D13 "56 → 8–18
+> post-PR-3b" target and "single CAPCO-§ citation per rule" wording
+> below are retained for historical reference but **superseded by
+> the two-pass Amendment 2026-05-07 below**. Operative interpretation:
+> source count is **59** (not 56); the PR-3b-proper numeric band is
+> **retired** (the literal sub-move retirements deliver ~38–44; the
+> per-sub-PR principle is "drive the count down within the sub-move's
+> primitive scope," not "hit a band"); end-state target ~10 surviving
+> rules across all four stages stays binding; "single citation"
+> applies **per declarative catalog entry**, not per `impl Rule`
+> block. Read the amendment, not this block, for binding acceptance
+> criteria.
 
 **Decision (original, superseded 2026-05-07)**: 56 → **8–18 rule
 count band** post-PR-3b + qualitative gate. Each surviving rule
@@ -429,12 +434,33 @@ re-sequences D13 without removing it.
 rules_sci_per_system.rs`, not the "~56" approximation the
 lattice-design plan carried).
 
-**Re-sequence.** The 8–18 band remains the **end-state** acceptance
-target (post-Stage-4); the **PR 3b proper** target is **13–18**, with
-collapse to 9–11 staged across PR 3.7 (new primitives), PR 4 (per-
-category Lattice impls + closure wiring), and PR 5+ (renderer +
-RELOPT). The full staging table and the six PR 3b sub-moves
-(3b.A–3b.F) are pinned in `plan.md` D13 addendum.
+**Re-sequence (initial 2026-05-07).** The 8–18 band was originally
+intended as the **end-state** acceptance target (post-Stage-4); the
+**PR 3b proper** target was originally **13–18**, with collapse to
+9–11 staged across PR 3.7, PR 4, and PR 5+. The full staging table
+and the six PR 3b sub-moves (3b.A–3b.F) are pinned in `plan.md` D13
+addendum.
+
+**Re-baseline (subsequent 2026-05-07, retiring the PR-3b numeric
+band).** The planning pass on T026a (PR 3b sub-move A) found that the
+literal sub-move retirements deliver −15 to −21 rules across
+3b.A–3b.F, landing at **~38–44 post-3b** — outside any 13–18 band by
+construction. The 13–18 figure was an aspirational projection that
+assumed aggressive walker-style consolidation beyond what the
+authorized primitives in 3b.A–3b.F permit (e.g., compacting all 14
+`rules_declarative.rs` entries into a single walker, which the bridge
+§3.4 does not prescribe). Rather than relax the primitives' scope or
+shed declarative-catalog discipline, the band itself retires. The
+operative gate becomes per-sub-PR: each sub-move drives the count
+down within what its authorized primitive scope (the bridge §3.4
+moves) permits, declares the math in its PR description, and earns
+team review only when retirements stray outside the bridge's
+primitives. The end-state target stays at **~10 surviving rules**
+across all four stages; Stage 3 (PR 4 per-category Lattice impls)
+and Stage 4 (PR 5+ renderer) carry the heavy lifting toward that
+target. The Stage-by-Stage expected ranges (~38–44 → ~32–40 →
+~14–22 → ~10) live in `plan.md` D13 addendum as guidance, not
+acceptance gates.
 
 **Resolved sub-decisions**:
 
@@ -585,7 +611,7 @@ queue management.
 | D10 | Layer 0 + toolchain / trybuild pin | `contracts/engine-pipeline.md` test-strategy amended |
 | D11 | Masking-pin cache-with-fallback | `research.md` new R-10 |
 | D12 | `_unchecked` lint by signature shape | `research.md` new R-11; `spec.md` FR-040 amended |
-| D13 | 8–18 band + qualitative gate (amended 2026-05-07: Stage 1 13–18 + Stages 2–4 → 9–11) | `plan.md` PR 3b acceptance criteria + D13 amendment 2026-05-07 |
+| D13 | Qualitative per-declarative-entry gate; PR-3b numeric band retired 2026-05-07; end-state target ~10 surviving rules across stages 1–4 | `plan.md` PR 3b acceptance criteria + D13 two-pass amendment 2026-05-07 |
 | D14 | Trait stabilization forcing function | `spec.md` Assumptions amendment |
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |

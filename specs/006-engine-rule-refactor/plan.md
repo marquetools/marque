@@ -227,7 +227,7 @@ path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
 | D10 | Layer 0 in test taxonomy + `rust-toolchain.toml` + trybuild version pin | `contracts/engine-pipeline.md`; workspace toolchain file (verify) |
 | D11 | R-10 in research — masking-pin cache-with-fallback | `research.md`; `tools/masking-pin-lint/` design note |
 | D12 | R-11 in research — `_unchecked`-by-signature lint extension; FR-040 amendment | `research.md`; `spec.md` FR-040 (landed) |
-| D13 | PR 3b acceptance criteria (Stage 1 13–18; end-state 8–18 band + qualitative gate) — amended 2026-05-07 | this section (below) + reviewer attestation requirement |
+| D13 | PR 3b acceptance criteria (qualitative gate per declarative entry; end-state target ~10 surviving rules across stages 1–4) — amended 2026-05-07; per-PR-3b numeric band retired 2026-05-07 | this section (below) + reviewer attestation requirement |
 | D14 | Trait stabilization forcing function in Assumptions | `spec.md` (landed) |
 | D15 | US2 Independent Test → glob+count | `spec.md` (landed) |
 | D16 | FR-051 — flake-watch quarantine queue (cap=10) | `spec.md` (landed); `tools/flake-watch/` scaffold |
@@ -235,32 +235,56 @@ path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
 **PR 3b acceptance criteria addendum (D13, amended 2026-05-07 per
 `docs/plans/2026-05-07-pr3b-consultation-verdict.md`)**:
 
-The post-collapse rule count is the **first** of two collapse stages.
-PR 3b proper lands the **declarative-catalog moves** (existing
-primitives only); a second compaction wave lands across PR 3.7 /
-PR 4 / PR 5+ alongside the lattice §-resolution spike, the
-per-category Lattice impls, and the renderer correctness work.
-Original D13 wording targeted "8–18 band post-PR-3b"; the consultation
-verdict re-baselined the source count to **59** (`grep -c '^impl Rule
-for' rules.rs rules_declarative.rs rules_sci_per_system.rs`, not the
-"~56" approximation the lattice plan carried) and re-sequenced the
-moves across stages.
+The post-collapse rule count is the **first** of four staged collapse
+waves. PR 3b proper lands the **declarative-catalog moves** (existing
+primitives only); subsequent compaction lands across PR 3.7 / PR 4 /
+PR 5+ alongside the lattice §-resolution spike, the per-category
+Lattice impls, and the renderer correctness work. Original D13 wording
+targeted "8–18 band post-PR-3b"; the consultation verdict re-baselined
+the source count to **59** (`grep -c '^impl Rule for' rules.rs
+rules_declarative.rs rules_sci_per_system.rs`, not the "~56"
+approximation the lattice plan carried) and re-sequenced the moves
+across stages. A subsequent re-evaluation **2026-05-07** retired the
+PR-3b-proper numeric band (originally "13–18") after the planning pass
+on T026a found that the literal sub-move retirements deliver −15 to
+−21 rules, landing at ~38–44 post-3b — outside any 13–18 band by
+construction. The per-sub-PR principle is now **drive the count down
+within what the sub-move's primitive scope authorizes**, not "hit a
+band." End-state target across all four stages remains ~10 surviving
+rules, with the heavy compaction lifting in Stage 3 (PR 4 per-category
+Lattice impls retire entire walker classes) and Stage 4 (PR 5+ renderer
+absorbs ordering / style rules).
 
-| Stage | PR | Cumulative surviving rules | Acceptance gate |
+| Stage | PR | Expected surviving rules | Acceptance gate |
 |---|---|---|---|
 | Pre-collapse (today) | — | **59** | — |
-| Stage 1 (PR 3b proper — declarative-catalog) | PR 3b | **13–18** | This addendum |
-| Stage 2 (new primitives) | PR 3.7 | 13–18 (catalog compaction only) | PR 3.7 acceptance (T108) |
-| Stage 3 (per-category Lattice impls + closure wiring) | PR 4 | **10–15** | PR 4 acceptance (T111+) |
-| Stage 4 (renderer correctness + RELOPT round-trip) | PR 5+ | **9–11** | PR 5+ acceptance |
+| Stage 1 (PR 3b proper — declarative-catalog) | PR 3b | **~38–44** | Qualitative gate (per-sub-move attestation; see below). Numeric band retired. |
+| Stage 2 (new primitives + catalog compaction) | PR 3.7 | ~32–40 (RELIDO compacts to 2 family rows; closure operator absorbs implication rows) | PR 3.7 acceptance (T108) |
+| Stage 3 (per-category Lattice impls + closure wiring) | PR 4 | ~14–22 (banner walker retires; SCI per-system walker retires into per-category Lattice impls) | PR 4 acceptance (T111+) |
+| Stage 4 (renderer correctness + RELOPT round-trip) | PR 5+ | **~10** | PR 5+ acceptance |
 
 **PR 3b sub-moves** (each independently committable inside PR 3b; see
 T026a–T026f in `tasks.md`):
 
-- **3b.A** — banner roll-up rules (E031 / E034 / E035 / E040 / E045)
-  collapse to ONE generic walker calling
-  `MarkingScheme::project(Scope::Page, ...)`. The walker retires when
-  PR 4's per-category Lattice impls + property tests land (Stage 3).
+- **3b.A** — banner roll-up rules (E031 SAR, E035 SCI, E040 Non-IC
+  dissem — the literal `impl Rule` blocks in `rules.rs`; spec-text
+  E034 / E045 / FGI / classification banner rules are out of scope:
+  no current `RuleId::new("E034")` exists in the live ruleset — the
+  archived spec planned it but it landed as `W034`
+  `SciCustomControlInfoRule`, which is per-system not banner-rollup;
+  E045 is per-system and belongs to T026e; FGI / classification
+  banner rollup have no current `impl Rule` block to retire) collapse to ONE generic walker over a
+  per-category catalog. The walker consumes existing
+  `PageContext::expected_*()` accessors (NOT `MarkingScheme::project`,
+  which still delegates back through `PageContext` and which awaits
+  `ProjectedMarking` becoming a real consumer in PR 6). Each catalog
+  row preserves its source rule's surgical fix-emission machinery
+  (zero-width insertion span vs error fallback, C-1 overlap-guard
+  interaction with E028/E029) and emits diagnostics with per-row rule
+  IDs to preserve audit-stream traceability across the walker
+  boundary. Net delta: −2 rules (3 retired, 1 walker added). The
+  walker retires when PR 4's per-category Lattice impls + property
+  tests land (Stage 3).
 - **3b.B** — `marque-applied.md` §3.4.1 transmutation roster (6
   entries) + §3.4.3 cross-axis FGI rollup (1 entry) ship as 7
   declarative `PageRewrite` rows. Topological scheduler annotates
@@ -287,7 +311,9 @@ T026a–T026f in `tasks.md`):
   rendering. Per Q-Move-7-timing default; per-row §-citation
   (§A.6 / §H.5 / §H.6 / §H.8).
 
-**Reviewer attestation requirements** (each surviving rule):
+**Reviewer attestation requirements** (each sub-PR's PR description
+declares a–c against the sub-move it lands; the umbrella PR-3b
+aggregates):
 
 1. **Single CAPCO-§ citation per declarative catalog entry** (NOT
    per `impl Rule` block). Resolves Q-3.9 from `marque-applied.md`
@@ -303,9 +329,21 @@ T026a–T026f in `tasks.md`):
    `evaluate` impl; count nested `match` / `if` separately).
    Walkers' dispatch on catalog-entry kind counts as ≤3 when the
    catalog stays homogeneous (`Conflicts` / `Requires` / `Custom`).
-3. Out-of-band counts (Stage 1 post-PR-3b outside **13–18**, post-
-   Stage-4 outside **8–18**) require explicit team review and block
-   merge until reviewed.
+3. **Net rule delta and running count** declared in the PR
+   description with the math (e.g., "3b.A: 3 retired + 1 walker =
+   net −2; running count 59 → 57"). The PR-3b-proper numeric band
+   is retired; the gate is "drive the count down within what the
+   sub-move's primitive scope authorizes" — sub-PRs that retire 0
+   rules (because their primitives are additive, not consolidating)
+   are still acceptable when the additions ship the declarative
+   catalog the bridge §3.4 prescribes. Aggressive consolidation
+   beyond what the bridge prescribes (e.g., compacting
+   `rules_declarative.rs` further than `marque-applied.md` §3.4
+   authorizes) requires team review before merge — the gate is
+   "stay within the sub-move's authorized primitive scope," not "hit
+   a numeric target." End-state target ~10 surviving rules across
+   all four stages remains binding; the heavy lifting toward that
+   target lands in Stage 3 (PR 4) and Stage 4 (PR 5+).
 
 **Algebraic justification**: `marque-applied.md` §3 (PR 3b stall
 walkthrough — bucket carving + Phase A/B/C overlay) and §3.11 (stage
