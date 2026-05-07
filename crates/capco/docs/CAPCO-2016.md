@@ -1639,7 +1639,7 @@ begin page 72               UNCLASSIFIED
 
 (U) Example Banner Line:   TOP SECRET//RSV-123
 
-(U)   Example Portion Mark:   ( TS//RSV-12 3)
+(U)   Example Portion Mark:   ( TS//RSV-123)
 
 (U) Example Banner Line with Multiple Compartments:   TOP SECRET//RSV-123-ABC
 
@@ -1774,7 +1774,7 @@ end page 76               UNCLASSIFIED
 ---
 begin page 77               UNCLASSIFIED
 
-(U)   Notional Exam p le Page:  TOP SECRET//SI-ABC//NOFORN (TS//SI-ABC//NF) This is the portion mark for a portion that is classified TOP SECRET, contains SI-ABC information, and is not releasable to foreign nationals. This portion is marked for training purposes only.
+(U)   Notional Example Page:  TOP SECRET//SI-ABC//NOFORN (TS//SI-ABC//NF) This is the portion mark for a portion that is classified TOP SECRET, contains SI-ABC information, and is not releasable to foreign nationals. This portion is marked for training purposes only.
 
 (U) Note:   The classification authority block is required on all US classified NSI. See the ISOO Implementing Directive and General Marking Guidance Section of this document for more information.  TOP SECRET//SI-ABC//NOFORN
 
@@ -2052,7 +2052,7 @@ begin page 87               UNCLASSIFIED
 
 (U) Example Portion Mark:   (TS//TK-BLFH//NF)
 
-(U)   Marking Sponsor/Policy Basis:   DNI/TK Polic y
+(U)   Marking Sponsor/Policy Basis:   DNI/TK Policy
 
 (U) Definition:   A TALENT KEYHOLE (TK) compartment.
 
