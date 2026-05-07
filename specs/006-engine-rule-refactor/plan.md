@@ -227,21 +227,86 @@ path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
 | D10 | Layer 0 in test taxonomy + `rust-toolchain.toml` + trybuild version pin | `contracts/engine-pipeline.md`; workspace toolchain file (verify) |
 | D11 | R-10 in research — masking-pin cache-with-fallback | `research.md`; `tools/masking-pin-lint/` design note |
 | D12 | R-11 in research — `_unchecked`-by-signature lint extension; FR-040 amendment | `research.md`; `spec.md` FR-040 (landed) |
-| D13 | PR 3b acceptance criteria (8–18 band + qualitative gate) | this section (below) + reviewer attestation requirement |
+| D13 | PR 3b acceptance criteria (Stage 1 13–18; end-state 8–18 band + qualitative gate) — amended 2026-05-07 | this section (below) + reviewer attestation requirement |
 | D14 | Trait stabilization forcing function in Assumptions | `spec.md` (landed) |
 | D15 | US2 Independent Test → glob+count | `spec.md` (landed) |
 | D16 | FR-051 — flake-watch quarantine queue (cap=10) | `spec.md` (landed); `tools/flake-watch/` scaffold |
 
-**PR 3b acceptance criteria addendum (D13)**: post-collapse rule count
-MUST land in the **8–18 band**. Each surviving rule MUST satisfy
-(reviewer attests in PR description):
+**PR 3b acceptance criteria addendum (D13, amended 2026-05-07 per
+`docs/plans/2026-05-07-pr3b-consultation-verdict.md`)**:
 
-1. Single CAPCO-§ citation per rule.
-2. Predicate body has ≤3 internal branches (count `match`/`if` arms in
-   the body of the rule's `evaluate` impl; count nested `match` /
-   `if` separately).
-3. Out-of-band counts (<8 or >18) require explicit team review and
-   block merge until reviewed.
+The post-collapse rule count is the **first** of two collapse stages.
+PR 3b proper lands the **declarative-catalog moves** (existing
+primitives only); a second compaction wave lands across PR 3.7 /
+PR 4 / PR 5+ alongside the lattice §-resolution spike, the
+per-category Lattice impls, and the renderer correctness work.
+Original D13 wording targeted "8–18 band post-PR-3b"; the consultation
+verdict re-baselined the source count to **59** (`grep -c '^impl Rule
+for' rules.rs rules_declarative.rs rules_sci_per_system.rs`, not the
+"~56" approximation the lattice plan carried) and re-sequenced the
+moves across stages.
+
+| Stage | PR | Cumulative surviving rules | Acceptance gate |
+|---|---|---|---|
+| Pre-collapse (today) | — | **59** | — |
+| Stage 1 (PR 3b proper — declarative-catalog) | PR 3b | **13–18** | This addendum |
+| Stage 2 (new primitives) | PR 3.7 | 13–18 (catalog compaction only) | PR 3.7 acceptance (T108) |
+| Stage 3 (per-category Lattice impls + closure wiring) | PR 4 | **10–15** | PR 4 acceptance (T111+) |
+| Stage 4 (renderer correctness + RELOPT round-trip) | PR 5+ | **9–11** | PR 5+ acceptance |
+
+**PR 3b sub-moves** (each independently committable inside PR 3b; see
+T026a–T026e in `tasks.md`):
+
+- **3b.A** — banner roll-up rules (E031 / E034 / E035 / E040 / E045)
+  collapse to ONE generic walker calling
+  `MarkingScheme::project(Scope::Page, ...)`. The walker retires when
+  PR 4's per-category Lattice impls + property tests land (Stage 3).
+- **3b.B** — `marque-applied.md` §3.4.1 transmutation roster (6
+  entries) + §3.4.3 cross-axis FGI rollup (1 entry) ship as 7
+  declarative `PageRewrite` rows. Topological scheduler annotates
+  reads/writes per entry.
+- **3b.C** — `marque-applied.md` §3.4.2 RELIDO incompatibility
+  roster as ~15–20 enumerated `Constraint::Conflicts` rows (single-
+  token RHS only). The family-predicate `RhsFamily(predicate)`
+  variant lands in PR 3.7 (Q-3.4.2-timing); these rows compact to 2
+  family rows in Stage 3 (PR 4).
+- **3b.D** — `marque-applied.md` §3.4.6 per-token classification
+  floor catalog ships as ~25 `Constraint::Requires` rows. Closure-
+  implied requirements (`marque-applied.md` §4.7.5) stay as `Requires`
+  rows in PR 3b; the closure operator primitive (Stage 2.B in
+  `marque-applied.md` §3.11) lands in PR 3.7 and re-classifies the
+  implication-shaped entries in PR 4.
+- **3b.E** — `crates/capco/src/rules_sci_per_system.rs` (10 rules)
+  collapse to ONE `Constraint::Custom("sci-per-system", ...)` walker
+  over a per-system catalog; per-row `§H.4 row Y` citation.
+
+**Reviewer attestation requirements** (each surviving rule):
+
+1. **Single CAPCO-§ citation per declarative catalog entry** (NOT
+   per `impl Rule` block). Resolves Q-3.9 from `marque-applied.md`
+   §9. The consolidated walkers (3b.A banner, 3b.C RELIDO, 3b.D
+   floors, 3b.E SCI per-system) are each one `impl Rule` block that
+   delegates to a catalog; each catalog row carries its own
+   §-citation. Cited per Constitution VIII (citation integrity is
+   per-claim, not per-block); the discipline is unaffected by where
+   the citation textually lives so long as it is verifiable.
+2. Predicate body of every `impl Rule` block has ≤3 internal
+   branches (count `match`/`if` arms in the body of the rule's
+   `evaluate` impl; count nested `match` / `if` separately).
+   Walkers' dispatch on catalog-entry kind counts as ≤3 when the
+   catalog stays homogeneous (`Conflicts` / `Requires` / `Custom`).
+3. Out-of-band counts (Stage 1 post-PR-3b outside **13–18**, post-
+   Stage-4 outside **8–18**) require explicit team review and block
+   merge until reviewed.
+
+**Algebraic justification**: `marque-applied.md` §3 (PR 3b stall
+walkthrough — bucket carving + Phase A/B/C overlay) and §3.11 (stage
+sequencing) are the source of truth for "this rule collapses to that
+primitive." The (a)/(b)/(c) verdicts and per-move catalog citations
+from `pure-lattice.md` / `security-lattice.md` / `abstract-interp.md`
+/ `frames-locales.md` justify each collapse target. The consultation
+verdict at `docs/plans/2026-05-07-pr3b-consultation-verdict.md` is
+the dated decision record.
 
 **Risk register (refactor-006 specific)**:
 
