@@ -845,7 +845,7 @@ impl CapcoScheme {
             ),
             // Entry 6b — `capco/les-nf-transmutes-on-classified-contact`.
             // §H.9 p185 (LES-NF Precedence Rules for Banner Line
-            // Guidance, anchor at CAPCO-2016.md line 4558): "When a
+            // Guidance): "When a
             // classified document contains portions of U//LES-NF,
             // the 'LES' marking is used in the banner line and the
             // NOFORN marking is applied as a Dissemination Control
