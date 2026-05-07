@@ -112,10 +112,9 @@ DOI: 10.1017/S0305004100013463. Paywalled.
 The original variety theorem (HSP characterization); cited in `universal-algebra.md` entry 4. Tarski's later restatement in `[burris-sankappanavar-1981]` Theorem II.9.5 is the form most often cited today.
 
 `[burris-sankappanavar-1981]`
-Burris, S. & Sankappanavar, H. P. *A Course in Universal Algebra*. Springer-Verlag, 1981. The Millennium Edition (2012) is freely distributed by the authors.
+Burris, S. & Sankappanavar, H. P. *A Course in Universal Algebra*. Springer-Verlag, 1981; Millennium Edition (2012) made available by the authors.
 Open-access PDF: https://www.math.uwaterloo.ca/~snburris/htdocs/UALG/univ-algebra2012.pdf
-Vendored at: `sources/burris-sankappanavar-universal-algebra.pdf` (4.4 MB).
-Lattice theory is treated in §I.3–I.4; congruences in §II.5; coproducts and free algebras in §II.4 and §II.10. The Foreword of the Millennium Edition explicitly authorizes free distribution.
+Cite-and-link only (not vendored). The Millennium Edition foreword permits free copying, distribution, and printing for non-commercial educational purposes. Lattice theory is treated in §I.3–I.4; congruences in §II.5; coproducts and free algebras in §II.4 and §II.10.
 
 `[goguen-meseguer-1992]`
 Goguen, J. A. & Meseguer, J. (1992). "Order-Sorted Algebra I: Equational Deduction for Multiple Inheritance, Overloading, Exceptions, and Partial Operations." Theoretical Computer Science, 105(2): 217–273.
@@ -287,8 +286,7 @@ Journal-length elaboration of the octagon domain.
 Møller, A. & Schwartzbach, M. I. *Static Program Analysis*. Lecture notes, Aarhus University, edition of April 29, 2025.
 Open-access PDF: https://cs.au.dk/~amoeller/spa/spa.pdf
 License: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC-BY-NC-ND 4.0).
-Vendored at: `sources/moller-schwartzbach-static-analysis.pdf` (1.2 MB).
-The standard didactic reference for monotone framework data-flow analysis, lattice theory for AI, sign / constant-propagation / interval domains, widening, and Galois connections at textbook depth. Chapters 4 (Lattice Theory), 5 (Dataflow Analysis with Monotone Frameworks), 6 (Widening), and 12 (Soundness, Galois Connections) are referenced extensively.
+Cite-and-link only (not vendored). The standard didactic reference for monotone framework data-flow analysis, lattice theory for AI, sign / constant-propagation / interval domains, widening, and Galois connections at textbook depth. Chapters 4 (Lattice Theory), 5 (Dataflow Analysis with Monotone Frameworks), 6 (Widening), and 12 (Soundness, Galois Connections) are referenced extensively.
 
 `[monniaux-2001]`
 Monniaux, D. (2001). "An abstract analysis of the probabilistic logical semantics of an imperative programming language." Pacific Symposium on Biocomputing.

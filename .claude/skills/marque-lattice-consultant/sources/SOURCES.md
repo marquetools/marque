@@ -1,50 +1,41 @@
 # Source Notes
 
-This file inventories the primary sources the consultant relies on. Two sources are **vendored** (license explicitly permits redistribution); the rest are **cite-and-link only** (URLs in `references/bibliography.md`). The cite-and-link policy applies whenever a source is paywalled, fair-academic-use only, ACM-copyrighted, or otherwise lacks explicit redistribution authorization — even if the URL is openly accessible on an author's institutional page.
+This file is a **cite-and-link index** of the primary sources the consultant relies on. No PDFs are vendored in this skill — every source has a stable canonical URL (typically the author's institutional homepage) and readers retrieve from there.
 
-Each entry: citation key (resolved in `references/bibliography.md`), origin URL, license / redistribution status, vendoring decision, and a one-sentence "what this is."
+Each entry: citation key (resolved in `references/bibliography.md`), origin URL, license, and a one-sentence "what this is."
 
-## Vendored — redistribution explicitly permitted
+## Pure Lattice & Order Theory
 
-### `burris-sankappanavar-universal-algebra.pdf` (4.4 MB)
-- Citation key: `[burris-sankappanavar-1981]`
+### `[burris-sankappanavar-1981]` — A Course in Universal Algebra
 - Origin: https://www.math.uwaterloo.ca/~snburris/htdocs/UALG/univ-algebra2012.pdf
-- License: The Millennium Edition (2012) is freely distributed by the authors. Foreword explicitly authorizes free electronic redistribution. Originally published by Springer-Verlag (1981); rights reverted to authors.
-- Vendored: yes (this directory).
-- What it is: Burris, S. & Sankappanavar, H. P. *A Course in Universal Algebra*, Millennium Edition (2012). Standard graduate text covering lattices (§I.3–I.4), congruences (§II.5), coproducts and free algebras (§II.4, §II.10), Boolean algebras (§IV.1).
+- License: Millennium Edition (2012); foreword permits free copying, distribution, and printing for non-commercial educational purposes. Originally published by Springer-Verlag (1981); rights reverted to authors.
+- What it is: Burris, S. & Sankappanavar, H. P. *A Course in Universal Algebra*, Millennium Edition (2012). Standard graduate text covering lattices (§I.3–I.4), congruences (§II.5), coproducts and free algebras (§II.4, §II.10), Boolean algebras (§IV.1). Cited from `references/pure-lattice.md`, `references/universal-algebra.md`, `references/frames-locales.md` via citation key.
 
-### `moller-schwartzbach-static-analysis.pdf` (1.2 MB)
-- Citation key: `[moller-schwartzbach-spa]`
-- Origin: https://cs.au.dk/~amoeller/spa/spa.pdf (April 29, 2025 edition)
-- License: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC-BY-NC-ND 4.0). Copyright © 2008–2025 Anders Møller and Michael I. Schwartzbach (Aarhus University). Free electronic redistribution permitted; no commercial use; no derivative works.
-- Vendored: yes (this directory).
-- What it is: Møller & Schwartzbach. *Static Program Analysis*. The standard didactic reference for monotone framework data-flow analysis, lattice theory for AI, sign / constant-propagation / interval domains, widening, and Galois connections at textbook depth. Used heavily in `references/abstract-interp.md`.
-
-## Cite-and-link only — redistribution not authorized
-
-The following are cited extensively in the consultant's reference catalogs but are **not vendored** here. The author-hosted URLs below are stable enough to cite; readers wanting the source should retrieve it from the canonical location. Removing redistribution from the repo eliminates the licensing risk that would otherwise arise from mirroring fair-academic-use or ACM-copyrighted content in a public source-available repository.
-
-### `[erne-koslowski-melton-strecker-1993]` — Galois Connections Primer
+### `[erne-koslowski-melton-strecker-1993]` — A Primer on Galois Connections
 - Origin: http://www.math.ksu.edu/~strecker/primer.ps (author's institutional homepage). PDF derivable locally via `ps2pdf`.
 - License: Author-hosted preprint of paper published in *Annals of the New York Academy of Sciences* (1993, vol. 704, pp. 103–125). No explicit Creative Commons license; fair-academic-citation use only.
-- Vendored: no.
 - What it is: Erné, Koslowski, Melton, Strecker. *A Primer on Galois Connections* — defines Galois connections in covariant (monotone) form, derives closure/interior systems, gives 30+ examples across mathematics and computer science. The standard expository reference. Cited from `references/pure-lattice.md` §17 and elsewhere via the citation key only.
+
+## Abstract Interpretation
+
+### `[moller-schwartzbach-spa]` — Static Program Analysis
+- Origin: https://cs.au.dk/~amoeller/spa/spa.pdf (April 29, 2025 edition)
+- License: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC-BY-NC-ND 4.0). Copyright © 2008–2025 Anders Møller and Michael I. Schwartzbach (Aarhus University).
+- What it is: Møller & Schwartzbach. *Static Program Analysis*. The standard didactic reference for monotone framework data-flow analysis, lattice theory for AI, sign / constant-propagation / interval domains, widening, and Galois connections at textbook depth. Used heavily in `references/abstract-interp.md`.
 
 ### `[cousot-cousot-1977]` — POPL '77 Abstract Interpretation
 - Origin: https://www.di.ens.fr/~cousot/COUSOTpapers/publications.www/CousotCousot-POPL-77-ACM-p238--252-1977.pdf (Cousot's institutional homepage, ENS).
 - License: ACM-copyrighted. Author institutional preprint; fair-academic-citation use only — not free redistribution.
-- Vendored: no.
 - What it is: Cousot, P. & Cousot, R. (1977). *Abstract Interpretation: A Unified Lattice Model for Static Analysis of Programs by Construction or Approximation of Fixpoints* — POPL '77 paper. The originating paper of the AI framework. Defines Galois connections in the AI sense, soundness, widening, narrowing, the constructive lfp approach. The published PDF is image-only (no extractable text); citations rely on standard published page references. Cited from `references/abstract-interp.md` §1, §3, §16, §17 via citation key.
 
 ### `[cousot-cousot-1979]` — POPL '79 Systematic Design
 - Origin: https://www.di.ens.fr/~cousot/COUSOTpapers/publications.www/CousotCousot-POPL-79-ACM-p269--282-1979.pdf
 - License: ACM-copyrighted. Author institutional preprint; fair-academic-citation use only.
-- Vendored: no.
 - What it is: Cousot, P. & Cousot, R. (1979). *Systematic Design of Program Analysis Frameworks* — POPL '79 paper. Introduces Galois insertion (`α∘γ = id`), reduced product, and the systematic recipe for deriving abstract operators from `(α, γ)` and the concrete operator. PDF is image-only. Cited from `references/abstract-interp.md` and `frames-locales.md` via citation key.
 
 ## Frames, Locales, and Universal Algebra (Agent D)
 
-No new sources vendored. Agent D's two reference files (`references/frames-locales.md` and `references/universal-algebra.md`) reuse the existing `burris-sankappanavar-universal-algebra.pdf` (vendored by Agent A) as their primary open-access reference for variety theory, congruences, free algebras, subdirect-product representation, and lattice axioms. All other citations in those files are cite-and-link paywalled or print sources, recorded in `references/bibliography.md`:
+`references/frames-locales.md` and `references/universal-algebra.md` use `[burris-sankappanavar-1981]` (entry above) as the primary open-access reference for variety theory, congruences, free algebras, subdirect-product representation, and lattice axioms. All other citations in those files are paywalled or print sources, recorded in `references/bibliography.md`:
 
 - `[picado-pultr-2012]` — Picado & Pultr, *Frames and Locales: Topology Without Points*. Birkhäuser/Springer; paywalled.
 - `[vickers-1989]` — Vickers, *Topology via Logic*. CUP; paywalled (loanable scan on Internet Archive).

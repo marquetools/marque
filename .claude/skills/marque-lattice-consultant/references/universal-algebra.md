@@ -631,4 +631,4 @@ A short procedure the consultant runs on a candidate marque structure. Output: t
 
 ---
 
-*Bibliography entries appended to `references/bibliography.md`. No new vendored sources beyond Agent A's `burris-sankappanavar-universal-algebra.pdf`, which is the primary reference for this file.*
+*Bibliography entries appended to `references/bibliography.md`. The primary reference for this file is `[burris-sankappanavar-1981]` (cite-and-link only — see `sources/SOURCES.md`).*

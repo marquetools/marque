@@ -31,10 +31,10 @@ Tag entries in your file with which mode they support. An entry that's frequentl
 
 ## Sources policy
 
-- **Vendor open-access PDFs** under `.claude/skills/marque-lattice-consultant/sources/`. Use `wget` or `curl` to download the file; name it `<lastname>-<short-title>.pdf` (e.g., `burris-sankappanavar-universal-algebra.pdf`). Add a one-line license note to `sources/SOURCES.md` for each download.
-- **Cite-and-link paywalled** with: full bibliographic citation, DOI, publisher, and an `archive.org` permalink if one exists (search `web.archive.org` for the canonical URL).
+- **Cite-and-link only — do not vendor PDFs.** Surface any source for human review before vendoring.
+- **Catalog every source** in `sources/SOURCES.md` (URL, license) AND in `references/bibliography.md` (full bibliographic citation, DOI, publisher, and an `archive.org` permalink if one exists — search `web.archive.org` for the canonical URL).
 - **Never embed copyrighted text wholesale.** Paraphrase definitions, quote at most a short sentence with attribution, and refer to the source for the full development.
-- All sources land in a unified `references/bibliography.md` (you append to it; don't worry about ordering yet — the human will sort).
+- Append to `references/bibliography.md`; don't worry about ordering yet — the human will sort.
 
 ## Citation format
 
@@ -53,7 +53,7 @@ Author archive: https://web.archive.org/web/2024.../...
 Burris, S. & Sankappanavar, H. P. *A Course in Universal Algebra*. Springer, 1981.
 Open access (Millennium Edition, 2012):
 https://www.math.uwaterloo.ca/~snburris/htdocs/UALG/univ-algebra2012.pdf
-Vendored at sources/burris-sankappanavar-universal-algebra.pdf.
+Cite-and-link only.
 ```
 
 ## "When this comes up" hooks
