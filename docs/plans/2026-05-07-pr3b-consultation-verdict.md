@@ -124,9 +124,14 @@ each Move to its home PR.
 - PR 3b implementer MAY land T026a–T026f as separate sub-PRs
   (e.g., 3b1 / 3b2 / 3b3) if review bandwidth requires it; each
   sub-PR runs T029 CI matrix independently.
-- PR 3.7 implementer MAY discover `FgiSet` already models §4.8 and
-  skip T108d's new-primitive landing in favor of doc-comment
-  amendment only.
+- PR 3.7 implementer T108d work: confirm against §4.8.5 worked
+  example (resolved 2026-05-07: existing `FgiSet { concealed,
+  countries }` already models §4.8) and update the doc comment at
+  `crates/capco/src/lattice.rs` to cite `marque-applied.md` §4.8 +
+  CAPCO §H.7 / §H.7 p123. **No new primitive on the table** —
+  Q-FgiSet-vs-§4.8 is closed. This audible was originally framed as
+  "MAY discover and skip" before user confirmation 2026-05-07; that
+  hypothetical phrasing is superseded.
 
 Audibles beyond these require an amendment to this verdict doc
 (append a §8 with the dated audible) and a follow-up commit; do not

@@ -388,8 +388,18 @@ the trait method is the actual failure pattern. Rust stdlib uses
 
 ### D13 — Rule-collapse band
 
-**Decision**: 56 → **8–18 rule count band** post-PR-3b + qualitative
-gate. Each surviving rule MUST satisfy:
+> **Superseded 2026-05-07.** The original D13 "56 → 8–18 post-PR-3b"
+> target and "single CAPCO-§ citation per rule" wording below are
+> retained for historical reference but **superseded by the
+> Amendment 2026-05-07 below**. Operative interpretation: source
+> count is **59** (not 56); PR 3b proper target is **13–18 (Stage 1)**
+> with end-state 8–18 across stages; "single citation" applies **per
+> declarative catalog entry**, not per `impl Rule` block. Read the
+> amendment, not this block, for binding acceptance criteria.
+
+**Decision (original, superseded 2026-05-07)**: 56 → **8–18 rule
+count band** post-PR-3b + qualitative gate. Each surviving rule
+MUST satisfy:
 
 1. A single CAPCO-§ citation (no rule cites more than one §).
 2. Predicate body has ≤3 internal branches (measured by
@@ -451,6 +461,17 @@ RELOPT). The full staging table and the six PR 3b sub-moves
   retains one "non-canonical input" diagnostic walker covering
   E020 / E023 / E028 / E033 ordering checks until the renderer
   arrives.
+- **Q-FgiSet-vs-§4.8** (does existing `FgiSet::Present { concealed,
+  countries }` already model the §4.8 consensus-or-fallback pattern?)
+  → **yes** (user confirmation 2026-05-07): the FGI category is the
+  union of acknowledged foreign-government trigraphs unless any
+  portion is source-concealed, in which case the banner falls back to
+  bare `FGI`. The existing `FgiSet` join law (`concealed=true ∨ x =
+  concealed=true`; `{countries: A} ∨ {countries: B} = {countries: A
+  ∪ B}`) implements this exactly. **No new primitive needed**; T108d
+  collapses to **doc-comment amendment only** at
+  `crates/capco/src/lattice.rs` citing `marque-applied.md` §4.8 +
+  CAPCO §H.7 / §H.7 p123.
 
 **Open sub-decisions** (do NOT block PR 3b; flagged for follow-up):
 
@@ -459,11 +480,6 @@ RELOPT). The full staging table and the six PR 3b sub-moves
   **hand-curated in PR 3b**, with a 30-minute spike to inspect ODNI
   XML coverage tracked as a follow-up. If the schema carries floor
   data uniformly, swap to build-time at the next ODNI schema bump.
-- **Q-FgiSet-vs-§4.8** (does existing `FgiSet::Present` already
-  model the §4.8 consensus-or-fallback pattern?) → **verify by
-  hand against §4.8.5 worked example before PR 3.7**. Likely no
-  new primitive needed; if needed, lands in PR 3.7 alongside
-  closure operator and RhsFamily.
 
 **Audibles permitted**: PR 3b reviewer may decline to land 3b.A
 (banner walker) if the per-category Lattice impls landing in PR 4
