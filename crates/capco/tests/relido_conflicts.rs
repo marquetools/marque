@@ -769,25 +769,31 @@ fn relido_conflict_rows_are_dyadic_conflicts_variant() {
 // `E025/ucni-conflicts-classification`) that the new catalog
 // supersedes (R1 cleanup). Net: 19 + 27 − 2 = 44.
 //
+// PR 3b.E (T026e) adds 5 SCI per-system catalog rows (HCS-O companions,
+// HCS-P NOFORN, HCS-P sub companions, SI-G companions, TK compartment
+// NOFORN) at CAPCO-2016 §H.4 family granularity. Net: 44 + 5 = 49.
+//
 // Bump this number only when an intentional catalog change lands; the
 // change must be documented in `specs/006-engine-rule-refactor/decisions.md`.
 
 #[test]
-fn capco_constraints_count_after_pr3b_d() {
+fn capco_constraints_count_after_pr3b_e() {
     let scheme = CapcoScheme::new();
     // Pre-3b.C baseline: 15 constraints (verified by inspection of
     // `build_constraints()` on the `origin/staging` base at 13fdc085).
     // PR 3b.C adds exactly 4 (E054 / E055 / E056 / E057).
     // PR 3b.D adds 27 class-floor catalog rows AND removes 2 dead
     // legacy entries (E022 / E025) the new catalog supersedes.
+    // PR 3b.E adds 5 SCI per-system catalog rows.
     assert_eq!(
         scheme.constraints().len(),
-        44,
+        49,
         "expected 15 (pre-3b.C) + 4 (E054–E057) + 27 (PR 3b.D class-floor catalog) − 2 \
-         (E022/E025 legacy entries removed in R1 cleanup) = 44 constraints after PR 3b.D; \
-         if this fails, either a constraint was added/removed without updating this pin, \
-         or the baseline count drifted. Verify in decisions.md D17 and the PR 3b.D \
-         planning doc `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`."
+         (E022/E025 legacy entries removed in R1 cleanup) + 5 (PR 3b.E SCI per-system \
+         catalog) = 49 constraints after PR 3b.E; if this fails, either a constraint \
+         was added/removed without updating this pin, or the baseline count drifted. \
+         Verify in decisions.md D17 and the PR 3b.E planning doc \
+         `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`."
     );
 }
 

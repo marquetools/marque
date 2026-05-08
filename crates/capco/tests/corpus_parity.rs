@@ -81,18 +81,9 @@ fn rule_count_reflects_registration_changes() {
     //
     // T035d: added 10 per-SCI-system constraint rules (E042–E051)
     // covering §H.4 class-ceiling and required-companion constraints
-    // under the fix-and-warn pattern:
-    //   E042 HCS-O companions (ORCON+NOFORN req, ORCON-USGOV forbidden)
-    //   E043 HCS-P requires NOFORN
-    //   E044 HCS-P sub-compartment TS-only
-    //   E045 HCS class ceiling (TS or S; warn only, ambiguous)
-    //   E046 SI compartment TS-only (GAMMA or non-GAMMA)
-    //   E047 SI-G companions (ORCON req, ORCON-USGOV forbidden)
-    //   E048 RSV class ceiling (TS or S; warn only)
-    //   E049 TK class ceiling (TS or S; warn only)
-    //   E050 TK-BLFH TS-only
-    //   E051 TK compartment NOFORN requirement (BLFH/IDIT/KAND)
-    // Net: 44 + 10 = 54.
+    // under the fix-and-warn pattern. Retired in PR 3b.E into the
+    // E059 walker; see the T026e note further down. Net (at landing):
+    // 44 + 10 = 54.
     // Issue #234 PR-B (rel-to-no-duplicates):
     //   E052 REL TO duplicate country codes (structural; pairs with
     //        the decoder's USA-injection path on the same §H.8 p150–151
@@ -135,12 +126,35 @@ fn rule_count_reflects_registration_changes() {
     // `"class-floor/<marking>"` for new rows). Net delta: -2 rules
     // (3 retired + 1 walker added). Final: 61 - 2 = 59.
     //
+    // T026e (PR 3b Sub-move E): retired the 10 hand-written per-SCI-
+    // system rules (E042–E051 — `HcsOCompanionsRule`,
+    // `HcsPRequiresNofornRule`, `HcsPSubcompartmentTsOnlyRule`,
+    // `HcsClassificationCeilingRule`, `SiCompartmentTopSecretRule`,
+    // `SiGammaCompanionsRule`, `RsvClassificationCeilingRule`,
+    // `TkClassificationCeilingRule`, `TkBlfhTopSecretRule`,
+    // `TkCompartmentRequiresNofornRule`) into the
+    // `DeclarativeSciPerSystemRule` walker (rule ID E059) dispatched
+    // over a 5-row SCI per-system catalog at CAPCO-2016 §H.4 family
+    // granularity. The class-floor portions of E044/E045/E046/E048/
+    // E049/E050 are absorbed by PR 3b.D's class-floor catalog rows
+    // (`class-floor/HCS-comp-sub`, `class-floor/HCS-comp`,
+    // `class-floor/SI-comp`, `class-floor/RSV-comp`, `class-floor/TK`,
+    // `class-floor/TK-BLFH`); no class-floor rows are added in PR 3b.E.
+    // Diagnostics emit with `Diagnostic.rule = "E059"`; per-row
+    // identification flows via the catalog row's `name` field
+    // (`sci-per-system/HCS-O-companions`,
+    // `sci-per-system/HCS-P-NOFORN`,
+    // `sci-per-system/HCS-P-sub-companions`,
+    // `sci-per-system/SI-G-companions`,
+    // `sci-per-system/TK-compartment-NOFORN`). Net delta: -9 rules
+    // (10 retired + 1 walker added). Final: 59 - 9 = 50.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        59,
+        50,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
@@ -155,7 +169,8 @@ fn rule_count_reflects_registration_changes() {
          PR 3b.C (added E054/E055/E056/E057 RELIDO incompatibility \
          declarative wrappers; net +4) + T026d PR 3b.D (retired \
          E022/E025/E027 into DeclarativeClassFloorRule walker E058; \
-         net -2). \
+         net -2) + T026e PR 3b.E (retired E042–E051 into \
+         DeclarativeSciPerSystemRule walker E059; net -9). \
          Adjust this assertion only when rule registration \
          actually changes."
     );

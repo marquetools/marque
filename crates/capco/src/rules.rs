@@ -93,7 +93,7 @@ impl CapcoRuleSet {
             DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
             DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
             DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
-            DeclarativeRelidoNofornConflictRule,
+            DeclarativeRelidoNofornConflictRule, DeclarativeSciPerSystemRule,
         };
         Self {
             rules: vec![
@@ -209,20 +209,27 @@ impl CapcoRuleSet {
                 // engine never auto-applies a Suggest-severity
                 // diagnostic regardless of confidence.
                 Box::new(RelToTrigraphSuggestRule),
-                // T035d: per-SCI-system constraint rules (E042–E051)
-                // implementing §H.4 class-ceiling and required-
-                // companion constraints under the fix-and-warn pattern.
-                // See `rules_sci_per_system` module doc.
-                Box::new(crate::rules_sci_per_system::HcsOCompanionsRule),
-                Box::new(crate::rules_sci_per_system::HcsPRequiresNofornRule),
-                Box::new(crate::rules_sci_per_system::HcsPSubcompartmentTsOnlyRule),
-                Box::new(crate::rules_sci_per_system::HcsClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::SiCompartmentTopSecretRule),
-                Box::new(crate::rules_sci_per_system::SiGammaCompanionsRule),
-                Box::new(crate::rules_sci_per_system::RsvClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::TkClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::TkBlfhTopSecretRule),
-                Box::new(crate::rules_sci_per_system::TkCompartmentRequiresNofornRule),
+                // PR 3b.E (T026e): retired the 10 hand-written per-SCI-
+                // system rules `E042`–`E051` into the SCI per-system
+                // catalog walker `DeclarativeSciPerSystemRule` (rule ID
+                // `E059`). The companion-required (ORCON, NOFORN) and
+                // forbid-companion (ORCON-USGOV) invariants from the
+                // retired rules ship as 5 `Constraint::Custom` rows on
+                // `CapcoScheme` (HCS-O companions, HCS-P NOFORN, HCS-P
+                // sub companions, SI-G companions, TK compartment
+                // NOFORN). The class-floor portions of E044/E045/E046/
+                // E048/E049/E050 are absorbed by PR 3b.D's class-floor
+                // catalog (`class-floor/<marking>` rows). Net delta:
+                // 10 retired + 1 walker added = net −9. Per project
+                // memory `feedback_pre_users_no_deprecation_phasing.md`,
+                // severity-config back-compat for the legacy E042–E051
+                // IDs is intentionally not preserved; users keying
+                // `.marque.toml` at any of those must migrate to E059.
+                // See `crate::scheme::SCI_PER_SYSTEM_CATALOG` for the
+                // row table and
+                // `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
+                // for the architectural rationale.
+                Box::new(DeclarativeSciPerSystemRule),
                 // Issue #234 PR-B: REL TO duplicate country codes.
                 // Hand-written structural rule. Sister of E020 (ordering)
                 // and E002 (USA-first); the three together close the
@@ -6289,16 +6296,54 @@ mod tests {
         );
         assert!(ids.contains(&"E041"));
         assert!(ids.contains(&"S003"));
-        assert!(ids.contains(&"E042"));
-        assert!(ids.contains(&"E043"));
-        assert!(ids.contains(&"E044"));
-        assert!(ids.contains(&"E045"));
-        assert!(ids.contains(&"E046"));
-        assert!(ids.contains(&"E047"));
-        assert!(ids.contains(&"E048"));
-        assert!(ids.contains(&"E049"));
-        assert!(ids.contains(&"E050"));
-        assert!(ids.contains(&"E051"));
+        // PR 3b.E (T026e): E042–E051 retired into the SCI per-system
+        // catalog walker `DeclarativeSciPerSystemRule` (rule ID E059).
+        // Per-row identification flows via the catalog row's `name`
+        // (`sci-per-system/<purpose>`) into the diagnostic message text.
+        assert!(
+            !ids.contains(&"E042"),
+            "E042 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E043"),
+            "E043 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E044"),
+            "E044 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E045"),
+            "E045 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E046"),
+            "E046 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E047"),
+            "E047 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E048"),
+            "E048 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E049"),
+            "E049 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E050"),
+            "E050 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E051"),
+            "E051 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            ids.contains(&"E059"),
+            "E059 added in PR 3b.E as the SCI per-system catalog walker"
+        );
         assert!(ids.contains(&"E052"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
@@ -6318,8 +6363,7 @@ mod tests {
         // lists. Net: 44.
         // T035d: added 10 per-SCI-system constraint rules (E042–E051)
         // covering §H.4 class ceilings and required-companion
-        // constraints under the fix-and-warn pattern. See
-        // `rules_sci_per_system` module doc. Net: 44 + 10 = 54.
+        // constraints under the fix-and-warn pattern. Net: 44 + 10 = 54.
         // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
         // structural sister of E020 (ordering) closing the §H.8
         // p150–151 list-grammar surface. Net: 55.
@@ -6347,6 +6391,9 @@ mod tests {
         // PR 3b.D (T026d): retired E022/E025/E027 into the class-floor
         // catalog walker `DeclarativeClassFloorRule` (rule ID E058).
         // Net: 61 (post-3b.C) − 3 retired + 1 walker = 59.
+        // PR 3b.E (T026e): retired E042–E051 (10 rules) into the SCI
+        // per-system catalog walker `DeclarativeSciPerSystemRule`
+        // (rule ID E059). Net: 59 − 10 + 1 = 50.
         assert!(ids.contains(&"E053"));
         assert!(ids.contains(&"E054"));
         assert!(ids.contains(&"E055"));
@@ -6356,7 +6403,7 @@ mod tests {
             ids.contains(&"E058"),
             "E058 added in PR 3b.D as the class-floor catalog walker"
         );
-        assert_eq!(set.rules().len(), 59);
+        assert_eq!(set.rules().len(), 50);
     }
 
     #[test]
@@ -11442,10 +11489,10 @@ mod tests {
 /// without depending on the engine crate. This avoids a circular dependency
 /// (`marque-capco` is below `marque-engine` in the workspace graph).
 ///
-/// `pub(crate)` so sibling rule modules (`rules_sci_per_system`, any
-/// future per-cluster module) can share the same test harness rather
-/// than duplicating the parser-driving boilerplate. Gated on `cfg(test)`
-/// so it never ships in release builds.
+/// `pub(crate)` so sibling rule modules (any future per-cluster module)
+/// can share the same test harness rather than duplicating the parser-
+/// driving boilerplate. Gated on `cfg(test)` so it never ships in release
+/// builds.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod marque_capco_test_support {

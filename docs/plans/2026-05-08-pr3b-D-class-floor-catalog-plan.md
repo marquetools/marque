@@ -11,6 +11,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Predecessors landed in staging**: PR 3b.A (#319 banner walker), PR 3b.B (#320 transmutations), PR 3b.C (#321 RELIDO conflicts).
 **Status**: PM-APPROVED (third pass). Architectural option A locked; row-count locked to §3.4.6 family granularity (~26 rows); all five remaining open items resolved per PM update 2026-05-08. Implementation may proceed.
 
+> **2026-05-08 transition note** — PR 3b.E (T026e) has since landed (`docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`). The 10 per-SCI-system rules referenced in §4.2 / §4.3 below as "NOT retiring under PR 3b.D" (E042–E051) have all retired into the `DeclarativeSciPerSystemRule` walker (rule ID `E059`); the file `crates/capco/src/rules_sci_per_system.rs` no longer exists. The `rules_sci_per_system.rs:NNN` line references in the §4.2 / §4.3 tables are historical anchors as of PR D's authorship and refer to deleted source.
+
 ---
 
 ## 0. One-paragraph summary (third pass — granularity locked)
