@@ -758,27 +758,36 @@ fn relido_conflict_rows_are_dyadic_conflicts_variant() {
 // Constraint count pin
 // ---------------------------------------------------------------------------
 //
-// Pins the absolute count of `CapcoScheme::constraints()` after PR 3b.C.
+// Pins the absolute count of `CapcoScheme::constraints()` after PR 3b.D.
 // A failure here means a constraint was added or removed without an
 // accompanying intentional documentation update. The pre-3b.C count (15)
 // was verified by inspecting `build_constraints()` before this PR added
-// any rows. PR 3b.C adds exactly 4 (E054–E057), giving 19.
+// any rows. PR 3b.C adds exactly 4 (E054–E057), giving 19. PR 3b.D
+// (T026d) adds 27 class-floor catalog rows (5 TS + 8 S + 8 C + 2 UCNI
+// + 4 passthrough) AND removes the two dead legacy entries
+// (`E022/CNWDI-classification-floor`,
+// `E025/ucni-conflicts-classification`) that the new catalog
+// supersedes (R1 cleanup). Net: 19 + 27 − 2 = 44.
 //
 // Bump this number only when an intentional catalog change lands; the
 // change must be documented in `specs/006-engine-rule-refactor/decisions.md`.
 
 #[test]
-fn capco_constraints_count_after_pr3b_c() {
+fn capco_constraints_count_after_pr3b_d() {
     let scheme = CapcoScheme::new();
     // Pre-3b.C baseline: 15 constraints (verified by inspection of
     // `build_constraints()` on the `origin/staging` base at 13fdc085).
     // PR 3b.C adds exactly 4 (E054 / E055 / E056 / E057).
+    // PR 3b.D adds 27 class-floor catalog rows AND removes 2 dead
+    // legacy entries (E022 / E025) the new catalog supersedes.
     assert_eq!(
         scheme.constraints().len(),
-        19,
-        "expected 15 (pre-3b.C) + 4 (E054–E057) = 19 constraints after PR 3b.C; \
-         if this fails, either a constraint was added/removed without updating this \
-         pin, or the baseline count drifted. Verify in decisions.md D17."
+        44,
+        "expected 15 (pre-3b.C) + 4 (E054–E057) + 27 (PR 3b.D class-floor catalog) − 2 \
+         (E022/E025 legacy entries removed in R1 cleanup) = 44 constraints after PR 3b.D; \
+         if this fails, either a constraint was added/removed without updating this pin, \
+         or the baseline count drifted. Verify in decisions.md D17 and the PR 3b.D \
+         planning doc `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`."
     );
 }
 

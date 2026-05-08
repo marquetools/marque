@@ -87,13 +87,13 @@ impl Default for CapcoRuleSet {
 impl CapcoRuleSet {
     pub fn new() -> Self {
         use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCnwdiConstraintRule,
+            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeClassFloorRule,
             DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
             DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
             DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
             DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
             DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
-            DeclarativeRelidoNofornConflictRule, DeclarativeUcniClassificationRule,
+            DeclarativeRelidoNofornConflictRule,
         };
         Self {
             rules: vec![
@@ -142,12 +142,30 @@ impl CapcoRuleSet {
                 Box::new(DeclarativeJointHcsRule),
                 Box::new(CountryCodeOrderingRule),
                 Box::new(DeclarativeAeaNofornRule),
-                Box::new(DeclarativeCnwdiConstraintRule),
                 Box::new(SigmaValidationRule),
                 Box::new(DeclarativeRdPrecedenceRule),
-                Box::new(DeclarativeUcniClassificationRule),
+                // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), and E027
+                // (SAR classification) retired into the class-floor
+                // catalog walker `DeclarativeClassFloorRule` (rule
+                // ID E058). Replacement catalog row names (walker-
+                // prefixed; the legacy E### IDs are not preserved per
+                // `feedback_pre_users_no_deprecation_phasing.md`):
+                //   - E058/CNWDI-classification-floor (CAPCO §H.6 p104)
+                //   - E058/DOD-UCNI-classification-ceiling (§H.6 p116)
+                //   - E058/DOE-UCNI-classification-ceiling (§H.6 p118)
+                //   - E058/SAR-classification-floor (§H.5)
+                // Plus 23 additional `class-floor/<marking>` family
+                // rows per `marque-applied.md` §3.4.6 (HCS-comp-sub,
+                // SI-comp, TK-BLFH, BALK, BOHEMIA, HCS-comp, RSV-comp,
+                // TK family, RD-SG, FRD-SG, RSEN, IMCON, SI bare, RD
+                // bare, FRD bare, TFNI, ATOMAL, ORCON family, EYES
+                // ONLY, BUR/HCS-X/KLM/MVL passthrough). See
+                // `crate::scheme::CLASS_FLOOR_CATALOG` for the row
+                // table and
+                // `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
+                // for the architectural rationale.
+                Box::new(DeclarativeClassFloorRule),
                 Box::new(SarPortionFormRule),
-                Box::new(SarClassificationRule),
                 Box::new(SarProgramOrderRule),
                 Box::new(SarCompartmentOrderRule),
                 Box::new(SarIndicatorRepeatRule),
@@ -4311,71 +4329,22 @@ impl Rule for SarPortionFormRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E027 — SAR requires TS, S, or C classification
+// Rule: E027 — SAR requires TS, S, or C classification (RETIRED)
 // ---------------------------------------------------------------------------
-
-/// SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL
-/// classifications.
-///
-/// Authority: CAPCO-2016 §H.5 p101 — "Relationship(s) to Other
-/// Markings: May only be used with TOP SECRET, SECRET, or CONFIDENTIAL."
-/// All three classification levels are explicitly permitted; no
-/// TS-only or C-excluded carve-out exists in §H.5.
-///
-/// The rule also fires when `attrs.classification` is `None` — §H.5
-/// p101 line 2452 ("Applicable only to classified information") makes
-/// this position derivative: a SAR block without any classification
-/// token is malformed, not merely Unclassified. Treating the two
-/// invalid states together (no classification vs Unclassified) is
-/// defensible because both fail the §H.5 "classified information"
-/// gate; the diagnostic message names the three valid classifications
-/// so the user sees the remedy either way.
-///
-/// `UNCLASSIFIED//SAR-*` requires human review — no automated fix is
-/// offered because the correct classification is outside the marking.
-struct SarClassificationRule;
-
-impl Rule for SarClassificationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E027")
-    }
-    fn name(&self) -> &'static str {
-        "sar-classification"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{Classification, MarkingClassification};
-        if attrs.sar_markings.is_none() {
-            return vec![];
-        }
-        let invalid = matches!(
-            &attrs.classification,
-            None | Some(MarkingClassification::Us(Classification::Unclassified))
-        );
-        if !invalid {
-            return vec![];
-        }
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::SarIndicator)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "SAR markings may only be used with TOP SECRET, SECRET, or \
-             CONFIDENTIAL classifications",
-            "CAPCO-2016 §H.5 p101 (Relationship(s) to Other Markings)",
-            None,
-        )]
-    }
-}
+//
+// PR 3b.D (T026d): retired. The SAR floor invariant moved into the
+// class-floor catalog as the row `E058/SAR-classification-floor`
+// (CAPCO §H.5). The catalog walker `DeclarativeClassFloorRule` (rule
+// ID `E058`) is the new emitter; the legacy `E027` rule ID is NOT
+// preserved (per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users
+// — no severity-config back-compat).
+//
+// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
+// citation. The emitted diagnostic carries `Diagnostic.rule = "E058"`
+// (walker ID); per-row identification flows via the diagnostic
+// message text + the catalog's `name` field
+// (`"E058/SAR-classification-floor"`).
 
 // ---------------------------------------------------------------------------
 // Rule: E028 — SAR programs must be in ascending order
@@ -6257,14 +6226,38 @@ mod tests {
         assert!(!ids.contains(&"E019"), "E019 retired in T035b");
         assert!(ids.contains(&"E020"));
         assert!(ids.contains(&"E021"));
-        assert!(ids.contains(&"E022"));
+        // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), E027 (SAR
+        // classification) retired into the class-floor catalog walker
+        // `DeclarativeClassFloorRule` (rule ID `E058`). Replacement
+        // catalog row names use the walker-prefixed form
+        // (`E058/CNWDI-classification-floor`,
+        // `E058/DOD-UCNI-classification-ceiling`,
+        // `E058/DOE-UCNI-classification-ceiling`,
+        // `E058/SAR-classification-floor`); the legacy E### IDs are
+        // NOT preserved (per project memory
+        // `feedback_pre_users_no_deprecation_phasing.md`: marque is
+        // pre-users — no severity-config back-compat). All catalog
+        // diagnostics carry `Diagnostic.rule = "E058"`; per-row
+        // identification flows via the diagnostic message text.
+        // `.marque.toml` keys must use `E058` (walker-level), not the
+        // retired E022/E025/E027 IDs.
+        assert!(
+            !ids.contains(&"E022"),
+            "E022 retired in PR 3b.D into E058 catalog"
+        );
         assert!(ids.contains(&"E023"));
         assert!(ids.contains(&"E024"));
-        assert!(ids.contains(&"E025"));
+        assert!(
+            !ids.contains(&"E025"),
+            "E025 retired in PR 3b.D into E058 catalog"
+        );
         assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
         assert!(ids.contains(&"E026"));
-        assert!(ids.contains(&"E027"));
+        assert!(
+            !ids.contains(&"E027"),
+            "E027 retired in PR 3b.D into E058 catalog"
+        );
         assert!(ids.contains(&"E028"));
         assert!(ids.contains(&"E029"));
         assert!(ids.contains(&"E030"));
@@ -6351,13 +6344,19 @@ mod tests {
         // Post-T026a: 59 - 2 = 57.
         // PR 3b.C (T026c): added E054/E055/E056/E057 RELIDO
         // incompatibility declarative wrappers (§H.8 p154/p136/p140).
-        // Final: 57 + 4 = 61.
+        // PR 3b.D (T026d): retired E022/E025/E027 into the class-floor
+        // catalog walker `DeclarativeClassFloorRule` (rule ID E058).
+        // Net: 61 (post-3b.C) − 3 retired + 1 walker = 59.
         assert!(ids.contains(&"E053"));
         assert!(ids.contains(&"E054"));
         assert!(ids.contains(&"E055"));
         assert!(ids.contains(&"E056"));
         assert!(ids.contains(&"E057"));
-        assert_eq!(set.rules().len(), 61);
+        assert!(
+            ids.contains(&"E058"),
+            "E058 added in PR 3b.D as the class-floor catalog walker"
+        );
+        assert_eq!(set.rules().len(), 59);
     }
 
     #[test]
@@ -10300,30 +10299,46 @@ mod tests {
         assert_eq!(e021.len(), 1);
     }
 
-    // --- E022: CNWDI only with TS or S RD ---
+    // --- CNWDI floor (formerly E022, now E058 catalog row
+    // `E058/CNWDI-classification-floor`) ---
+    //
+    // PR 3b.D (T026d): the CNWDI floor invariant moved into the
+    // class-floor catalog. Diagnostic.rule is `E058` (walker bookkeeping
+    // ID); per-row identification flows via the diagnostic message text
+    // ("CNWDI requires classification ≥ ..."). These tests pin the
+    // observable behavior: fires below floor, doesn't fire at-or-above.
+
+    fn cnwdi_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("CNWDI"))
+            .collect()
+    }
 
     #[test]
     fn e022_fires_on_cnwdi_with_confidential() {
         let diags = lint_banner("CONFIDENTIAL//RD-CNWDI//NOFORN");
-        let e022: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E022").collect();
-        assert_eq!(e022.len(), 1);
+        let cnwdi = cnwdi_floor_diags(&diags);
+        assert_eq!(cnwdi.len(), 1);
     }
 
     #[test]
     fn e022_does_not_fire_on_cnwdi_with_secret() {
         let diags = lint_banner("SECRET//RD-CNWDI//NOFORN");
+        let cnwdi = cnwdi_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E022"),
-            "E022 should not fire with SECRET: {diags:?}"
+            cnwdi.is_empty(),
+            "CNWDI floor should not fire with SECRET: {diags:?}"
         );
     }
 
     #[test]
     fn e022_does_not_fire_on_cnwdi_with_top_secret() {
         let diags = lint_banner("TOP SECRET//RD-CNWDI//NOFORN");
+        let cnwdi = cnwdi_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E022"),
-            "E022 should not fire with TOP SECRET: {diags:?}"
+            cnwdi.is_empty(),
+            "CNWDI floor should not fire with TOP SECRET: {diags:?}"
         );
     }
 
@@ -10344,21 +10359,38 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E024"));
     }
 
-    // --- E025: UCNI only with UNCLASSIFIED ---
+    // --- UCNI ceiling (formerly E025, now E058 catalog rows
+    // `E058/DOD-UCNI-classification-ceiling` +
+    // `E058/DOE-UCNI-classification-ceiling`) ---
+    //
+    // PR 3b.D (T026d): the UCNI ceiling invariant moved into the
+    // class-floor catalog as TWO rows (DOD UCNI + DOE UCNI; split per
+    // PM decision so each carries its own §H.6 sub-page citation).
+    // Diagnostic.rule is `E058`; per-row identification flows via the
+    // diagnostic message text ("DOD UCNI may only be used with
+    // UNCLASSIFIED" / "DOE UCNI may only be used with UNCLASSIFIED").
+
+    fn ucni_ceiling_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("UCNI"))
+            .collect()
+    }
 
     #[test]
     fn e025_fires_on_ucni_with_secret() {
         let diags = lint_banner("SECRET//DOD UCNI");
-        let e025: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E025").collect();
-        assert_eq!(e025.len(), 1);
+        let ucni = ucni_ceiling_diags(&diags);
+        assert_eq!(ucni.len(), 1);
     }
 
     #[test]
     fn e025_does_not_fire_on_ucni_with_unclassified() {
         let diags = lint_banner("UNCLASSIFIED//DOD UCNI");
+        let ucni = ucni_ceiling_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E025"),
-            "E025 should not fire with UNCLASSIFIED: {diags:?}"
+            ucni.is_empty(),
+            "UCNI ceiling should not fire with UNCLASSIFIED: {diags:?}"
         );
     }
 
@@ -10472,31 +10504,49 @@ mod tests {
         );
     }
 
-    // --- E027: sar-classification ---
+    // --- SAR floor (formerly E027, now E058 catalog row
+    // `E058/SAR-classification-floor`) ---
+    //
+    // PR 3b.D (T026d): the SAR floor invariant moved into the class-floor
+    // catalog. Diagnostic.rule is `E058`; per-row identification flows
+    // via the diagnostic message text ("SAR requires classification ≥
+    // CONFIDENTIAL ...").
+
+    fn sar_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.starts_with("SAR "))
+            .collect()
+    }
 
     #[test]
     fn e027_fires_on_unclassified_banner_with_sar() {
         let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
-        assert_eq!(e027.len(), 1, "E027 must fire on U//SAR-*: {diags:?}");
-        assert!(e027[0].fix.is_none(), "E027 requires human review, no fix");
+        let sar = sar_floor_diags(&diags);
+        assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
+        assert!(
+            sar[0].fix.is_none(),
+            "SAR floor requires human review, no fix"
+        );
     }
 
     #[test]
     fn e027_does_not_fire_on_secret_with_sar() {
         let diags = lint_banner("SECRET//SAR-BP//NOFORN");
+        let sar = sar_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E027"),
-            "E027 must not fire on SECRET//SAR-*: {diags:?}"
+            sar.is_empty(),
+            "SAR floor must not fire on SECRET//SAR-*: {diags:?}"
         );
     }
 
     #[test]
     fn e027_does_not_fire_on_top_secret_with_sar() {
         let diags = lint_banner("TOP SECRET//SAR-BP//NOFORN");
+        let sar = sar_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E027"),
-            "E027 must not fire on TS//SAR-*: {diags:?}"
+            sar.is_empty(),
+            "SAR floor must not fire on TS//SAR-*: {diags:?}"
         );
     }
 
@@ -10940,13 +10990,18 @@ mod tests {
 
     #[test]
     fn e027_cites_relationship_line_2456() {
+        // PR 3b.D (T026d): retired E027 → E058 catalog row
+        // `E058/SAR-classification-floor`. Per marque-applied.md §3.4.6
+        // line 801 the SAR family floor cites `§H.5` (family-level —
+        // §3.4.6 author's choice). Diagnostic.rule is `E058` (walker).
         let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
-        assert_eq!(e027.len(), 1);
+        let sar = sar_floor_diags(&diags);
+        assert_eq!(sar.len(), 1);
         assert!(
-            e027[0].citation.contains("§H.5 p101"),
-            "E027 citation must pin §H.5 p101; got: {:?}",
-            e027[0].citation
+            sar[0].citation.contains("§H.5"),
+            "SAR floor citation must contain §H.5 (family-level per \
+             marque-applied.md §3.4.6); got: {:?}",
+            sar[0].citation
         );
     }
 

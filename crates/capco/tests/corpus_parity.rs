@@ -121,12 +121,26 @@ fn rule_count_reflects_registration_changes() {
     // E040) for audit-stream continuity. Net delta: -2 rules
     // (3 retired + 1 walker added). Final: 59 - 2 = 57.
     //
+    // T026d (PR 3b Sub-move D): retired three pure class-floor rules
+    // (`DeclarativeCnwdiConstraintRule` E022, `DeclarativeUcniClassificationRule`
+    // E025, hand-written `SarClassificationRule` E027) into the
+    // `DeclarativeClassFloorRule` walker (rule ID E058) dispatched
+    // over a 27-row class-floor catalog at marque-applied.md §3.4.6
+    // family granularity. Diagnostics emit with `Diagnostic.rule = "E058"`;
+    // per-row identification flows via the catalog row's `name` field
+    // (e.g., `"E058/CNWDI-classification-floor"`,
+    // `"E058/SAR-classification-floor"`,
+    // `"E058/DOD-UCNI-classification-ceiling"`,
+    // `"E058/DOE-UCNI-classification-ceiling"`,
+    // `"class-floor/<marking>"` for new rows). Net delta: -2 rules
+    // (3 retired + 1 walker added). Final: 61 - 2 = 59.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        61,
+        59,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
@@ -139,7 +153,9 @@ fn rule_count_reflects_registration_changes() {
          (PR 3b Sub-move A: collapsed E031/E035/E040 banner roll-ups \
          into BannerMatchesProjectedRule walker; net -2) + T026c \
          PR 3b.C (added E054/E055/E056/E057 RELIDO incompatibility \
-         declarative wrappers; net +4). \
+         declarative wrappers; net +4) + T026d PR 3b.D (retired \
+         E022/E025/E027 into DeclarativeClassFloorRule walker E058; \
+         net -2). \
          Adjust this assertion only when rule registration \
          actually changes."
     );
