@@ -126,7 +126,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        57,
+        61,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
@@ -137,7 +137,9 @@ fn rule_count_reflects_registration_changes() {
          #206 (added S005 + S006 rel-to-opaque-uncertain-reduction \
          pair) + #256 (added E053 noforn-rel-to-conflict) + T026a \
          (PR 3b Sub-move A: collapsed E031/E035/E040 banner roll-ups \
-         into BannerMatchesProjectedRule walker; net -2). \
+         into BannerMatchesProjectedRule walker; net -2) + T026c \
+         PR 3b.C (added E054/E055/E056/E057 RELIDO incompatibility \
+         declarative wrappers; net +4). \
          Adjust this assertion only when rule registration \
          actually changes."
     );

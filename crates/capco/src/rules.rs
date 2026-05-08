@@ -55,6 +55,10 @@
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   E053 = NOFORN conflicts with REL TO (§H.8 p145, declarative wrapper)
+//!   E054 = RELIDO conflicts with NOFORN — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E055 = RELIDO conflicts with DISPLAY ONLY — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E056 = ORCON conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p136, declarative wrapper — PR 3b.C)
+//!   E057 = ORCON-USGOV conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p140, declarative wrapper — PR 3b.C)
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -87,7 +91,9 @@ impl CapcoRuleSet {
             DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
             DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
             DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
-            DeclarativeRdPrecedenceRule, DeclarativeUcniClassificationRule,
+            DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+            DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
+            DeclarativeRelidoNofornConflictRule, DeclarativeUcniClassificationRule,
         };
         Self {
             rules: vec![
@@ -230,6 +236,23 @@ impl CapcoRuleSet {
                 // `capco/noforn-conflicts-rel-to` constraint already
                 // declared in `CapcoScheme::constraints()`.
                 Box::new(DeclarativeNofornRelToConflictRule),
+                // PR 3b.C (T026c): RELIDO incompatibility declarative wrappers.
+                // Four directly-cited §H.8 conflict pairs from CAPCO-2016:
+                //   E054 — RELIDO ⊥ NOFORN        (§H.8 p154)
+                //   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154)
+                //   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; assertion on ORCON template)
+                //   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; assertion on ORCON-USGOV template)
+                // Each wraps a `Constraint::Conflicts` row in
+                // `CapcoScheme::constraints()`. The broader §3.4.2 family
+                // roster (RELIDO ⊥ {LES-NF, SBU-NF, FGI atoms, JOINT atoms,
+                // NATO atoms}) is deferred to PR 3.7 (T108b) where
+                // `Constraint::Conflicts::RhsFamily(predicate)` lands. See
+                // `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2`
+                // for the Constitution VIII rationale.
+                Box::new(DeclarativeRelidoNofornConflictRule),
+                Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
+                Box::new(DeclarativeOrconRelidoConflictRule),
+                Box::new(DeclarativeOrconUsgovRelidoConflictRule),
             ],
         }
     }
@@ -244,6 +267,26 @@ impl RuleSet for CapcoRuleSet {
         crate::SCHEMA_VERSION
     }
 }
+
+// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers
+// and the `compute_relido_removal_span` helper for integration tests in
+// `crates/capco/tests/`. Both the underlying `pub struct` items and
+// these re-exports carry `#[doc(hidden)]`, signaling "technically pub
+// for compilation but not stable public API" — the same convention
+// `marque_rules::AppliedFix::__engine_promote` uses (per Constitution V
+// Principle V test-fixture carve-out). Future refactors are free to
+// consolidate or rename these without a breaking-change concern.
+#[doc(hidden)]
+pub use crate::rules_declarative::{
+    DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+    DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+};
+
+#[doc(hidden)]
+pub use crate::rules_declarative::compute_relido_removal_span;
+
+#[doc(hidden)]
+pub use crate::rules_declarative::find_dissem_token_span;
 
 // ---------------------------------------------------------------------------
 // Rule: E001 — Portion mark used in banner (correctness)
@@ -6305,9 +6348,16 @@ mod tests {
         // rules (E031 SAR, E035 SCI, E040 Non-IC dissem) into a
         // single `BannerMatchesProjectedRule` walker dispatched over a
         // per-category catalog. Net delta: -2 (3 retired + 1 added).
-        // Final: 59 - 2 = 57.
+        // Post-T026a: 59 - 2 = 57.
+        // PR 3b.C (T026c): added E054/E055/E056/E057 RELIDO
+        // incompatibility declarative wrappers (§H.8 p154/p136/p140).
+        // Final: 57 + 4 = 61.
         assert!(ids.contains(&"E053"));
-        assert_eq!(set.rules().len(), 57);
+        assert!(ids.contains(&"E054"));
+        assert!(ids.contains(&"E055"));
+        assert!(ids.contains(&"E056"));
+        assert!(ids.contains(&"E057"));
+        assert_eq!(set.rules().len(), 61);
     }
 
     #[test]
