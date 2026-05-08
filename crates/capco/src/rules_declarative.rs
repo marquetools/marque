@@ -1775,3 +1775,772 @@ impl Rule for DeclarativeSciPerSystemRule {
         diags
     }
 }
+
+// ===========================================================================
+// PR 3b.F (T026f) — Non-canonical input walker (E060)
+// ===========================================================================
+//
+// `DeclarativeNonCanonicalInputRule` is a single hand-written walker that
+// dispatches over a private `&'static [NonCanonicalRow]` catalog declared
+// in this file. It collapses four retired ordering-validation rules:
+//
+//   E020 CountryCodeOrderingRule    (REL TO + JOINT alphabetical, §H.8 + §H.3)
+//   E023 SigmaValidationRule        (AEA SIGMA valid set + numeric sort, §H.6)
+//   E028 SarProgramOrderRule        (SAR programs ascending, §H.5)
+//   E033 SciCompartmentOrderRule    (SCI compartment / sub-compartment, §H.4)
+//
+// PR 3b.F (T026f) — Non-canonical input walker.
+//
+// This walker exists as a STAGE-1 INTERIM. The four ordering rules
+// collapsed here (E020 REL TO + JOINT alpha, E023 SIGMA numeric sort,
+// E028 SAR ascending alpha, E033 SCI compartment + sub-compartment
+// alpha) are renderer-canonical-form concerns per `marque-applied.md`
+// §3.6 + §3.10 Move 7. Once `MarkingScheme::render_canonical` lands
+// in PR 5+ (Stage 4 of the engine refactor) the renderer absorbs
+// canonical-form rendering, and "your input doesn't match the
+// canonical form" becomes a normalization fix in the renderer's
+// correctness surface, not a `Rule`.
+//
+// When that happens, this entire walker — `DeclarativeNonCanonicalInputRule`,
+// the `NON_CANONICAL_CATALOG` table, and the per-row evaluators — retires
+// cleanly. The audit-stream consumers must keep working through the
+// transition: the renderer-emitted normalization fix carries a
+// `FixProposal` with the same shape as today's walker emits (span +
+// replacement + confidence + source), and `Engine::fix_inner` continues
+// to be the sole `AppliedFix::__engine_promote` caller. See
+// `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md` for
+// the architectural rationale; `docs/plans/2026-05-02-engine-refactor-
+// consolidated.md` Stage 4 + `tasks.md` T026f checkbox for the
+// retirement plan.
+//
+// # Why this is structurally different from PR 3b.D / 3b.E
+//
+// 3b.D and 3b.E declared their rows as `Constraint::Custom` on
+// `CapcoScheme` because their invariants (class-floor partial-order
+// thresholds; SCI per-system companion-required + forbid-companion)
+// are *cross-axis predicates* over canonical attributes. PR 3b.F's
+// invariants are not predicates over canonical attributes; they are
+// *non-canonical input detection* — the invariant fires when the
+// surface-form token order in the source bytes differs from the
+// canonical representative, not when the canonical attributes
+// themselves violate an algebraic law. The catalog therefore lives
+// privately inside this walker module and the rows do NOT participate
+// in `evaluate_custom_by_attrs` dispatch on the scheme.
+//
+// # Rule-ID convention
+//
+// ONE walker rule `E060` (verified next-free slot after PR 3b.E took
+// E059). All emitted diagnostics carry `Diagnostic.rule = "E060"`.
+// Per-row identification flows via:
+//
+//   - the diagnostic message text (preserved verbatim from the retired
+//     rules — "REL TO country codes must be alphabetically ordered",
+//     "SIGMA numbers must be in numerical order", etc.)
+//   - the `Diagnostic.citation` field (per-row §-citation propagated
+//     onto the diagnostic by the per-row evaluator)
+//   - the `name` field on `NonCanonicalRow` (private to this module;
+//     used only by tests via the engine's public lint surface, not as
+//     a public API)
+//
+// The legacy E020 / E023 / E028 / E033 IDs are NOT preserved as
+// severity-config aliases (per `feedback_pre_users_no_deprecation_phasing.md`:
+// marque is pre-users; rewrite freely). `additional_emitted_ids()`
+// returns `&[]`.
+//
+// # Severity convention
+//
+// The walker's `default_severity()` is `Severity::Error` — the
+// strictest of the per-row defaults (matches PR 3b.A banner walker
+// precedent: a config that uses `E060` as the override anchor cannot
+// accidentally weaken any row below its authoring intent without an
+// explicit user choice). Per-row severities are stored in
+// `NonCanonicalRow.severity` and are what each `Diagnostic` carries
+// when no config override engages: `Severity::Fix` for rows 1-4
+// (REL TO / JOINT / SIGMA / SAR), `Severity::Error` for row 5 (SCI).
+// The engine's severity-override layer can downgrade or upgrade per
+// `[rules] E060 = "off|warn|error|..."`.
+
+use marque_ism::{AeaMarking, MarkingClassification};
+
+use crate::rules::{
+    canonicalize_trigraph_list, check_trigraph_ordering, render_sar_block, sar_block_span,
+};
+
+/// One catalog row per non-canonical-input ordering invariant.
+///
+/// Ordering of rows in `NON_CANONICAL_CATALOG` controls only emit
+/// order for a single candidate; correctness is independent of row
+/// order.
+struct NonCanonicalRow {
+    /// Stable per-row identifier; used in tests that pin per-row
+    /// behavior via the engine's public lint surface. Not emitted as
+    /// the diagnostic's `rule` field — that's `E060` via
+    /// `Rule::id()`. Contributes to the audit-stream traceability
+    /// invariant (a reviewer can grep diagnostic message text or
+    /// `Diagnostic.citation` to identify which row fired).
+    ///
+    /// Currently unused at runtime (the walker dispatches on
+    /// `presence` + `evaluate` directly). Kept for symmetry with
+    /// `SciPerSystemRow` / `ClassFloorRow` and as anchor for the
+    /// catalog-pin test in `non_canonical_input_walker.rs`. Marked
+    /// `#[allow(dead_code)]` rather than removed so a future audit-
+    /// trail extension (e.g. emitting per-row name into the audit
+    /// record) can populate it without re-introducing the field.
+    #[allow(dead_code)]
+    name: &'static str,
+    /// Per-row default severity: copied onto each emitted diagnostic
+    /// when the engine's severity-override layer is silent for
+    /// `E060`.
+    severity: Severity,
+    /// Per-row §-citation; propagated onto each emitted
+    /// `Diagnostic.citation` by the per-row evaluator. Verified
+    /// against the vendored `crates/capco/docs/CAPCO-2016.md` per
+    /// Constitution VIII; see `tests/non_canonical_input_walker.rs`
+    /// for the per-row citation-fidelity test.
+    citation: &'static str,
+    /// Quick presence check; gates the per-row evaluator so the hot
+    /// path skips rows whose axis is empty for this candidate.
+    presence: fn(&CanonicalAttrs) -> bool,
+    /// Per-row evaluator. Returns the diagnostics this row produces
+    /// for the given attributes + context. Body is a verbatim move
+    /// of the retired rule's `check` body (with the
+    /// `self.id()` / `self.default_severity()` / inline-citation
+    /// strings replaced by the row's stored values), so the
+    /// diagnostic message text + fix shapes + spans are byte-
+    /// identical to the retired rule's output.
+    evaluate: fn(&CanonicalAttrs, &RuleContext, &NonCanonicalRow) -> Vec<Diagnostic>,
+}
+
+const NON_CANONICAL_CATALOG: &[NonCanonicalRow] = &[
+    NonCanonicalRow {
+        name: "non-canonical/rel-to-usa-first",
+        severity: Severity::Fix,
+        citation: concat!(
+            "CAPCO-2016 §H.8 p150–151 ",
+            "(REL TO: trigraphs alpha, then tetragraphs alpha, USA first)",
+        ),
+        presence: presence_rel_to_usa_first,
+        evaluate: evaluate_rel_to_usa_first_alpha,
+    },
+    NonCanonicalRow {
+        name: "non-canonical/joint-alphabetical",
+        severity: Severity::Fix,
+        citation: concat!(
+            "CAPCO-2016 §H.3 p56 ",
+            "(JOINT: trigraphs alpha, then tetragraphs alpha)",
+        ),
+        presence: presence_joint_alphabetical,
+        evaluate: evaluate_joint_alphabetical,
+    },
+    NonCanonicalRow {
+        name: "non-canonical/sigma-numeric-sort",
+        severity: Severity::Fix,
+        citation: "CAPCO-2016 §H.6 p108",
+        presence: presence_sigma_numeric_sort,
+        evaluate: evaluate_sigma_numeric_sort,
+    },
+    NonCanonicalRow {
+        name: "non-canonical/sar-program-ascending-sort",
+        severity: Severity::Fix,
+        citation: "CAPCO-2016 §H.5 p99 \
+                   (programs: ascending, numeric first, then alpha)",
+        presence: presence_sar_program_ascending_sort,
+        evaluate: evaluate_sar_program_ascending_sort,
+    },
+    NonCanonicalRow {
+        name: "non-canonical/sci-compartment-numeric-then-alpha",
+        severity: Severity::Error,
+        citation: "CAPCO-2016 §H.4 p61",
+        presence: presence_sci_compartment_numeric_then_alpha,
+        evaluate: evaluate_sci_compartment_numeric_then_alpha,
+    },
+];
+
+/// Quick axis-presence check. When all five ordering axes are empty
+/// (the dominant case on prose body text in a 10KB document), the
+/// catalog walk is skipped entirely. Each sub-check is O(1) modulo
+/// classification-variant matching.
+fn axis_presence_any(attrs: &CanonicalAttrs) -> bool {
+    !attrs.rel_to.is_empty()
+        || matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
+        || !attrs.aea_markings.is_empty()
+        || attrs.sar_markings.is_some()
+        || !attrs.sci_markings.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// Per-row presence predicates
+// ---------------------------------------------------------------------------
+
+fn presence_rel_to_usa_first(attrs: &CanonicalAttrs) -> bool {
+    // Precondition for the REL TO ordering check: REL TO has 2+
+    // entries AND USA is first. If USA is missing or not first, E002
+    // fires for those cases and its fix produces the fully canonical
+    // list (USA first, non-USA entries alphabetical), so this row's
+    // concern is silently absorbed there. Mirrors the retired
+    // `CountryCodeOrderingRule` E020 REL TO sub-check at lines
+    // 3086-3091.
+    attrs.rel_to.len() >= 2
+        && attrs
+            .rel_to
+            .first()
+            .is_some_and(|t| *t == marque_ism::CountryCode::USA)
+}
+
+fn presence_joint_alphabetical(attrs: &CanonicalAttrs) -> bool {
+    matches!(
+        &attrs.classification,
+        Some(MarkingClassification::Joint(j)) if j.countries.len() >= 2
+    )
+}
+
+fn presence_sigma_numeric_sort(attrs: &CanonicalAttrs) -> bool {
+    attrs.aea_markings.iter().any(|aea| match aea {
+        AeaMarking::Rd(rd) => !rd.sigma.is_empty(),
+        AeaMarking::Frd(frd) => !frd.sigma.is_empty(),
+        _ => false,
+    })
+}
+
+fn presence_sar_program_ascending_sort(attrs: &CanonicalAttrs) -> bool {
+    attrs
+        .sar_markings
+        .as_ref()
+        .is_some_and(|sar| sar.programs.len() >= 2)
+}
+
+fn presence_sci_compartment_numeric_then_alpha(attrs: &CanonicalAttrs) -> bool {
+    !attrs.sci_markings.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// Per-row evaluators (verbatim moves of the retired rules' check bodies)
+// ---------------------------------------------------------------------------
+
+/// Row 1: REL TO USA-first alphabetical (§H.8 p150-151).
+///
+/// Verbatim move of the REL TO sub-check from
+/// `CountryCodeOrderingRule::check` (rules.rs:3086-3151).
+/// Multi-block REL TO suppression preserved at lines 3110-3133.
+fn evaluate_rel_to_usa_first_alpha(
+    attrs: &CanonicalAttrs,
+    _ctx: &RuleContext,
+    row: &NonCanonicalRow,
+) -> Vec<Diagnostic> {
+    let rule_id = RuleId::new("E060");
+    let mut diagnostics = Vec::new();
+
+    // Locate the `RelToBlock` for this list. A single first→last
+    // `RelToTrigraph` splice across the whole marking would delete
+    // intervening `//...//` content when more than one REL TO block
+    // is present (e.g.,
+    // `SECRET//REL TO USA, GBR//NF//REL TO AUS`). Mirrors E002 in
+    // scoping the fix to a single block and suppressing it when
+    // multiple blocks are present.
+    let rel_to_blocks: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::RelToBlock)
+        .collect();
+
+    if rel_to_blocks.len() > 1 {
+        // Suppress the fix rather than risk cross-block corruption.
+        // Span the first block so downstream consumers have a
+        // location to display.
+        let actual: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
+        // REL TO is USA-first per §H.8 p151.
+        let sorted = canonicalize_trigraph_list(&attrs.rel_to, true);
+        if actual != sorted {
+            diagnostics.push(Diagnostic::new(
+                rule_id,
+                row.severity,
+                rel_to_blocks[0].span,
+                format!(
+                    "REL TO country codes must be alphabetically ordered \
+                     (USA first when present): [{}] → [{}] \
+                     (multiple REL TO blocks present; fix suppressed to avoid \
+                     cross-block corruption — resolve manually)",
+                    actual.join(", "),
+                    sorted.join(", "),
+                ),
+                row.citation,
+                None,
+            ));
+        }
+    } else if let Some(&block) = rel_to_blocks.first() {
+        if let Some(diag) = check_trigraph_ordering(
+            &attrs.rel_to,
+            "REL TO",
+            rule_id,
+            row.severity,
+            attrs,
+            Some(block.span),
+            row.citation,
+            true, // REL TO: USA-first per §H.8 p151
+        ) {
+            diagnostics.push(diag);
+        }
+    }
+    // If `rel_to_blocks` is empty while `attrs.rel_to` is populated,
+    // the parser is in an inconsistent state; skip silently rather
+    // than synthesize a span.
+
+    diagnostics
+}
+
+/// Row 2: JOINT alphabetical (§H.3 p56).
+///
+/// Verbatim move of the JOINT sub-check from
+/// `CountryCodeOrderingRule::check` (rules.rs:3164-3183). JOINT
+/// prescribes pure alphabetical order — no USA-first carve-out per
+/// §H.3 p56 (the widespread IC practice of rendering USA first in
+/// JOINT lists is style convention; S003 `joint-usa-first` covers
+/// that separately).
+fn evaluate_joint_alphabetical(
+    attrs: &CanonicalAttrs,
+    _ctx: &RuleContext,
+    row: &NonCanonicalRow,
+) -> Vec<Diagnostic> {
+    let rule_id = RuleId::new("E060");
+    let mut diagnostics = Vec::new();
+
+    if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
+        if j.countries.len() >= 2 {
+            if let Some(diag) = check_trigraph_ordering(
+                &j.countries,
+                "JOINT",
+                rule_id,
+                row.severity,
+                attrs,
+                None,
+                row.citation,
+                false, // JOINT: pure alpha per §H.3 p56 (no USA-first)
+            ) {
+                diagnostics.push(diag);
+            }
+        }
+    }
+
+    diagnostics
+}
+
+/// Row 3: AEA SIGMA numeric sort (§H.6 p108).
+///
+/// Verbatim move of `SigmaValidationRule::check` (rules.rs:4164-
+/// 4244). Two emit branches per AEA marking with non-empty SIGMA:
+///
+///   1. **Invalid-set check** — values outside the currently
+///      authorized set `[14, 15, 18, 20]` produce a no-fix
+///      diagnostic. §H.6 p108: "SIGMA # currently represents one or
+///      more of the following numbers: 14, 15, 18, and 20."
+///   2. **Numerical-order check** — `sigma.len() >= 2` AND `sigma
+///      != sorted_dedup(sigma)` produces a fix diagnostic. §H.6 p108
+///      (RD block): "Multiple SIGMA numbers shall be listed in
+///      numerical order with a space preceding each value."
+///
+/// Both branches preserved verbatim under one walker row (splitting
+/// would force a 6-row catalog with no citation-cleanness benefit —
+/// both branches cite §H.6 p108).
+fn evaluate_sigma_numeric_sort(
+    attrs: &CanonicalAttrs,
+    _ctx: &RuleContext,
+    row: &NonCanonicalRow,
+) -> Vec<Diagnostic> {
+    let rule_id = RuleId::new("E060");
+    let mut diagnostics = Vec::new();
+    let valid_sigmas: &[u8] = &[14, 15, 18, 20];
+
+    for aea in attrs.aea_markings.iter() {
+        let sigma = match aea {
+            AeaMarking::Rd(rd) => &rd.sigma,
+            AeaMarking::Frd(frd) => &frd.sigma,
+            _ => continue,
+        };
+        if sigma.is_empty() {
+            continue;
+        }
+
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::AeaMarking)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        // Check for values outside the currently authorized set.
+        // Unified message (no obsolete/invalid bifurcation) — CAPCO
+        // 2016 §H.6 p108 only names the current four, not any
+        // specific obsolete subset. Contact the originating
+        // program for guidance on historical SIGMA numbers (CAPCO
+        // v1.2 2008 permitted 1-99).
+        let invalid: Vec<u8> = sigma
+            .iter()
+            .filter(|n| !valid_sigmas.contains(n))
+            .copied()
+            .collect();
+        if !invalid.is_empty() {
+            diagnostics.push(Diagnostic::new(
+                rule_id.clone(),
+                row.severity,
+                span,
+                format!(
+                    "SIGMA {:?} not in the currently authorized set \
+                     (14, 15, 18, 20); contact the originating \
+                     program for guidance on historical values",
+                    invalid,
+                ),
+                row.citation,
+                None,
+            ));
+        }
+
+        // Check numerical order.
+        if sigma.len() >= 2 {
+            let mut sorted = sigma.to_vec();
+            sorted.sort_unstable();
+            sorted.dedup();
+            if sigma.as_ref() != sorted.as_slice() {
+                let original: Vec<String> = sigma.iter().map(|n| n.to_string()).collect();
+                let replacement: Vec<String> = sorted.iter().map(|n| n.to_string()).collect();
+                diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
+                    rule: rule_id.clone(),
+                    severity: row.severity,
+                    source: FixSource::BuiltinRule,
+                    span,
+                    message: format!(
+                        "SIGMA numbers must be in numerical order: {} → {}",
+                        original.join(" "),
+                        replacement.join(" "),
+                    ),
+                    // §H.6 p108 (RD block): "Multiple SIGMA
+                    // numbers shall be listed in numerical order
+                    // with a space preceding each value."
+                    citation: row.citation,
+                    original: original.join(" "),
+                    replacement: replacement.join(" "),
+                    confidence: 1.0,
+                    migration_ref: None,
+                }));
+            }
+        }
+    }
+    diagnostics
+}
+
+/// Row 4: SAR program ascending sort (§H.5 p99).
+///
+/// Verbatim move of `SarProgramOrderRule::check` (rules.rs:4392-
+/// 4446). Whole-block rewrite: the fix sorts programs AND normalizes
+/// per-program compartments + sub-compartments in the same pass, so
+/// applying this fix alone fully normalizes the block even when E029
+/// violations are present (E029 covers per-program sub-spans and is
+/// dropped under the C-1 overlap guard when this row's whole-block
+/// fix wins).
+fn evaluate_sar_program_ascending_sort(
+    attrs: &CanonicalAttrs,
+    _ctx: &RuleContext,
+    row: &NonCanonicalRow,
+) -> Vec<Diagnostic> {
+    let rule_id = RuleId::new("E060");
+    use marque_ism::sar_sort_key;
+
+    let Some(sar) = attrs.sar_markings.as_ref() else {
+        return vec![];
+    };
+    if sar.programs.len() < 2 {
+        return vec![];
+    }
+    let in_order = sar
+        .programs
+        .windows(2)
+        .all(|w| sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier));
+    if in_order {
+        return vec![];
+    }
+    let Some(span) = sar_block_span(attrs) else {
+        return vec![];
+    };
+    let original = render_sar_block(sar.indicator, &sar.programs);
+
+    // Sort programs and also normalize compartments/subs within each program
+    // in the same pass. This ensures applying the fix alone fully normalizes
+    // the block even when E029 violations are present.
+    let mut sorted = sar.programs.to_vec();
+    for prog in sorted.iter_mut() {
+        let mut comps = prog.compartments.to_vec();
+        for comp in comps.iter_mut() {
+            let mut subs = comp.sub_compartments.to_vec();
+            subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+            *comp =
+                marque_ism::SarCompartment::new(comp.identifier.clone(), subs.into_boxed_slice());
+        }
+        comps.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+        *prog = marque_ism::SarProgram::new(prog.identifier.clone(), comps.into_boxed_slice());
+    }
+    sorted.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
+    let replacement = render_sar_block(sar.indicator, &sorted);
+
+    vec![make_fix_diagnostic(FixDiagnosticParams {
+        rule: rule_id,
+        severity: row.severity,
+        source: FixSource::BuiltinRule,
+        span,
+        message: "SAR programs must be in ascending order (numeric first, \
+             then alphabetic)"
+            .to_owned(),
+        citation: row.citation,
+        original,
+        replacement,
+        confidence: 0.85,
+        migration_ref: None,
+    })]
+}
+
+/// Row 5: SCI compartment + sub-compartment numeric-then-alpha
+/// (§H.4 p61).
+///
+/// Verbatim move of `SciCompartmentOrderRule::check`
+/// (rules.rs:5002-5159). Per-marking emit (one diagnostic per
+/// out-of-order marking, not per level). The fix sorts compartments
+/// AND sub-compartments together in a single rewrite — matches the
+/// SAR E029 shape and ensures comp-order + sub-order violations on
+/// the same marking don't produce overlapping fix spans.
+///
+/// Two citation strings (compartment-level vs sub-compartment-level)
+/// are selected inside this evaluator based on `(comps_ok, subs_ok)`;
+/// both cite §H.4 p61 with parenthetical specificity ("SCI
+/// compartments: ascending..." vs "SCI sub-compartments:
+/// ascending...").
+fn evaluate_sci_compartment_numeric_then_alpha(
+    attrs: &CanonicalAttrs,
+    _ctx: &RuleContext,
+    row: &NonCanonicalRow,
+) -> Vec<Diagnostic> {
+    let rule_id = RuleId::new("E060");
+    use marque_ism::sar_sort_key;
+
+    let mut out = Vec::new();
+
+    let comp_spans: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::SciCompartment)
+        .collect();
+    let sub_spans: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::SciSubCompartment)
+        .collect();
+
+    let mut comp_cursor = 0usize;
+    let mut sub_cursor = 0usize;
+
+    for marking in attrs.sci_markings.iter() {
+        let n_comps = marking.compartments.len();
+        let this_sub_count: usize = marking
+            .compartments
+            .iter()
+            .map(|c| c.sub_compartments.len())
+            .sum();
+
+        let comps_ok = n_comps < 2
+            || marking.compartments.windows(2).all(|w| {
+                sar_sort_key(w[0].identifier.as_ref()) <= sar_sort_key(w[1].identifier.as_ref())
+            });
+        let subs_ok = marking.compartments.iter().all(|c| {
+            c.sub_compartments.len() < 2
+                || c.sub_compartments
+                    .windows(2)
+                    .all(|w| sar_sort_key(w[0].as_ref()) <= sar_sort_key(w[1].as_ref()))
+        });
+
+        if comps_ok && subs_ok {
+            comp_cursor += n_comps;
+            sub_cursor += this_sub_count;
+            continue;
+        }
+
+        // Span covers the whole compartment+sub-compartment region
+        // for this marking: from the first compartment token through
+        // the last sub-compartment token (or the last compartment
+        // token when the marking has no sub-compartments).
+        //
+        // Use `.get()` defensively: if the token stream doesn't carry
+        // the expected number of SciCompartment / SciSubCompartment
+        // tokens (attrs built outside the parser, or future parser
+        // changes), skip the fix instead of panicking.
+        let this_comp_spans = if n_comps == 0 {
+            &[][..]
+        } else {
+            match comp_spans.get(comp_cursor..comp_cursor + n_comps) {
+                Some(s) => s,
+                None => {
+                    comp_cursor += n_comps;
+                    sub_cursor += this_sub_count;
+                    continue;
+                }
+            }
+        };
+        let fix_start = this_comp_spans.first().map(|t| t.span.start).unwrap_or(0);
+        let fix_end = if this_sub_count > 0 {
+            sub_spans
+                .get(sub_cursor + this_sub_count - 1)
+                .map(|t| t.span.end)
+                .unwrap_or_else(|| {
+                    this_comp_spans
+                        .last()
+                        .map(|t| t.span.end)
+                        .unwrap_or(fix_start)
+                })
+        } else {
+            this_comp_spans
+                .last()
+                .map(|t| t.span.end)
+                .unwrap_or(fix_start)
+        };
+        let fix_span = Span::new(fix_start, fix_end);
+
+        // Build the sorted marking: sort sub-compartments within
+        // each compartment, then sort compartments by identifier.
+        // Sub-comps ride along with their parent compartment.
+        let mut sorted_comps = marking.compartments.to_vec();
+        for c in sorted_comps.iter_mut() {
+            let mut subs = c.sub_compartments.to_vec();
+            subs.sort_by(|a, b| sar_sort_key(a.as_ref()).cmp(&sar_sort_key(b.as_ref())));
+            *c = marque_ism::SciCompartment::new(c.identifier.clone(), subs.into_boxed_slice());
+        }
+        sorted_comps.sort_by(|a, b| {
+            sar_sort_key(a.identifier.as_ref()).cmp(&sar_sort_key(b.identifier.as_ref()))
+        });
+
+        // Render this marking's compartment region (no system prefix —
+        // the span only covers compartments+subs, not the system head).
+        let render_comps = |comps: &[marque_ism::SciCompartment]| -> String {
+            let parts: Vec<String> = comps
+                .iter()
+                .map(|c| {
+                    if c.sub_compartments.is_empty() {
+                        c.identifier.as_ref().to_owned()
+                    } else {
+                        let mut s = c.identifier.as_ref().to_owned();
+                        for sub in c.sub_compartments.iter() {
+                            s.push(' ');
+                            s.push_str(sub.as_ref());
+                        }
+                        s
+                    }
+                })
+                .collect();
+            parts.join("-")
+        };
+        let original = render_comps(&marking.compartments);
+        let replacement = render_comps(&sorted_comps);
+
+        let (level, citation) = if !comps_ok {
+            (
+                "compartments",
+                concat!(
+                    "CAPCO-2016 §H.4 p61 ",
+                    "(SCI compartments: ascending, numeric first, then alpha)",
+                ),
+            )
+        } else {
+            (
+                "sub-compartments",
+                concat!(
+                    "CAPCO-2016 §H.4 p61 ",
+                    "(SCI sub-compartments: ascending, numeric first, ",
+                    "then alpha)",
+                ),
+            )
+        };
+        // Per-row citation field is `§H.4 p61`; the parenthetical
+        // specificity ("SCI compartments" vs "SCI sub-compartments")
+        // is a UX detail of the diagnostic and is selected here. Both
+        // strings still contain `§H.4 p61` so the row's authoritative
+        // citation is preserved on every emitted Diagnostic.
+        let _ = row.citation;
+
+        out.push(make_fix_diagnostic(FixDiagnosticParams {
+            rule: rule_id.clone(),
+            severity: row.severity,
+            source: FixSource::BuiltinRule,
+            span: fix_span,
+            message: format!(
+                "SCI {level} must be listed in ascending order (numeric first, \
+                 then alphabetic)"
+            ),
+            citation,
+            original,
+            replacement,
+            confidence: 0.85,
+            migration_ref: None,
+        }));
+
+        comp_cursor += n_comps;
+        sub_cursor += this_sub_count;
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Walker
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeNonCanonicalInputRule;
+
+impl Rule for DeclarativeNonCanonicalInputRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E060")
+    }
+    fn name(&self) -> &'static str {
+        "non-canonical-input"
+    }
+    fn default_severity(&self) -> Severity {
+        // Strictest of the per-row defaults (matches PR 3b.A banner
+        // walker precedent: a config that uses E060 as the override
+        // anchor cannot accidentally weaken any row below its
+        // authoring intent without an explicit user choice). Per-row
+        // severity is what's emitted when no override is set: `Fix`
+        // for rows 1-4 (REL TO / JOINT / SIGMA / SAR), `Error` for
+        // row 5 (SCI). The walker-level default engages when a user
+        // keys `[rules] E060 = ...` for a coarse-grained override.
+        // PM-resolved per OQ-3.
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+        // PR 3b.F R-2 perf-1: axis-presence early-out. Bail when none
+        // of the five ordering axes are populated. On prose body
+        // text in a 10KB document this is the dominant case and the
+        // catalog walk is skipped entirely.
+        if !axis_presence_any(attrs) {
+            return Vec::new();
+        }
+        // PR 3b.F R-2 perf-2: direct catalog-row dispatch with
+        // per-row presence guard. Walk the static catalog table; for
+        // each row whose presence predicate fires, call its
+        // evaluator. The guard elides per-row evaluator overhead for
+        // non-firing rows.
+        let mut diags = Vec::new();
+        for row in NON_CANONICAL_CATALOG {
+            if (row.presence)(attrs) {
+                diags.extend((row.evaluate)(attrs, ctx, row));
+            }
+        }
+        diags
+    }
+
+    fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
+        // Severity-config compatibility for the legacy IDs (E020,
+        // E023, E028, E033) is intentionally NOT preserved — per
+        // `feedback_pre_users_no_deprecation_phasing.md`, marque is
+        // pre-users; rewrite freely. Returning an empty slice means
+        // `[rules] E020 = ...` (and E023 / E028 / E033 likewise) are
+        // rejected at engine construction with the standard "unknown
+        // rule ID" error, forcing users to migrate to
+        // `[rules] E060 = ...`.
+        &[]
+    }
+}
