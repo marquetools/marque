@@ -1866,26 +1866,86 @@ use crate::rules::{
     canonicalize_trigraph_list, check_trigraph_ordering, render_sar_block, sar_block_span,
 };
 
+/// Walker rule ID. Single source of truth for the per-evaluator
+/// `Diagnostic.rule` field and `Rule::id()`. Hoisted to a module-
+/// scope constant so future rule-ID renames touch one declaration
+/// instead of six.
+const RULE_ID: RuleId = RuleId::new("E060");
+
+/// Authoritative §-citation anchor for Row 5 (SCI compartment +
+/// sub-compartment ordering, §H.4 p61). Stored in
+/// `NON_CANONICAL_CATALOG[4].citation` AND used as the prefix for
+/// the two level-specific citations below. Keeping a single named
+/// anchor here means a citation drift in any one of the three
+/// places trips the prefix-equality `const _` assertion at compile
+/// time rather than going unnoticed.
+const SCI_CITATION_ANCHOR: &str = "CAPCO-2016 §H.4 p61";
+
+/// Per-Diagnostic citation for the SCI compartment-level emit
+/// branch. Constructed via `concat!` from `SCI_CITATION_ANCHOR` to
+/// make the load-bearing relationship explicit at the source level
+/// (no copy-paste anchor strings).
+const SCI_CITATION_COMPARTMENTS: &str = concat!(
+    "CAPCO-2016 §H.4 p61",
+    " (SCI compartments: ascending, numeric first, then alpha)",
+);
+
+/// Per-Diagnostic citation for the SCI sub-compartment-level emit
+/// branch. Same construction discipline as `SCI_CITATION_COMPARTMENTS`.
+const SCI_CITATION_SUB_COMPARTMENTS: &str = concat!(
+    "CAPCO-2016 §H.4 p61",
+    " (SCI sub-compartments: ascending, numeric first, then alpha)",
+);
+
+// Compile-time prefix-equality discipline: every per-level citation
+// emitted by Row 5 must begin with the catalog-row anchor. If a
+// future edit drifts `SCI_CITATION_ANCHOR` or either of the two
+// per-level citations, the build fails before the change can land.
+// This is what makes `NON_CANONICAL_CATALOG[4].citation` genuinely
+// load-bearing: it is not just stored on the row for documentation;
+// it is the verified prefix of every citation Row 5 emits.
+const _: () = {
+    let anchor = SCI_CITATION_ANCHOR.as_bytes();
+    let comp = SCI_CITATION_COMPARTMENTS.as_bytes();
+    let sub = SCI_CITATION_SUB_COMPARTMENTS.as_bytes();
+    assert!(
+        comp.len() >= anchor.len(),
+        "SCI_CITATION_COMPARTMENTS must begin with SCI_CITATION_ANCHOR",
+    );
+    assert!(
+        sub.len() >= anchor.len(),
+        "SCI_CITATION_SUB_COMPARTMENTS must begin with SCI_CITATION_ANCHOR",
+    );
+    let mut i = 0;
+    while i < anchor.len() {
+        assert!(
+            comp[i] == anchor[i],
+            "SCI_CITATION_COMPARTMENTS must begin with SCI_CITATION_ANCHOR",
+        );
+        assert!(
+            sub[i] == anchor[i],
+            "SCI_CITATION_SUB_COMPARTMENTS must begin with SCI_CITATION_ANCHOR",
+        );
+        i += 1;
+    }
+};
+
 /// One catalog row per non-canonical-input ordering invariant.
 ///
 /// Ordering of rows in `NON_CANONICAL_CATALOG` controls only emit
 /// order for a single candidate; correctness is independent of row
 /// order.
 struct NonCanonicalRow {
-    /// Stable per-row identifier; used in tests that pin per-row
-    /// behavior via the engine's public lint surface. Not emitted as
-    /// the diagnostic's `rule` field — that's `E060` via
-    /// `Rule::id()`. Contributes to the audit-stream traceability
-    /// invariant (a reviewer can grep diagnostic message text or
-    /// `Diagnostic.citation` to identify which row fired).
-    ///
-    /// Currently unused at runtime (the walker dispatches on
-    /// `presence` + `evaluate` directly). Kept for symmetry with
-    /// `SciPerSystemRow` / `ClassFloorRow` and as anchor for the
-    /// catalog-pin test in `non_canonical_input_walker.rs`. Marked
-    /// `#[allow(dead_code)]` rather than removed so a future audit-
-    /// trail extension (e.g. emitting per-row name into the audit
-    /// record) can populate it without re-introducing the field.
+    /// Stable per-row identifier; not currently read at runtime (the
+    /// catalog is private to this module and there is no
+    /// `Constraint::Custom` linkage as in `ClassFloorRow` /
+    /// `SciPerSystemRow`, where `name` is consumed by the
+    /// scheme-level evaluator). Kept as a debugging anchor and a
+    /// hook for a future audit-trail extension that exposes per-row
+    /// identity to consumers without requiring them to parse
+    /// diagnostic message text. If no such extension lands by Stage
+    /// 4 (renderer takeover, PR 5+), drop this field with the rest
+    /// of the walker.
     #[allow(dead_code)]
     name: &'static str,
     /// Per-row default severity: copied onto each emitted diagnostic
@@ -1950,7 +2010,7 @@ const NON_CANONICAL_CATALOG: &[NonCanonicalRow] = &[
     NonCanonicalRow {
         name: "non-canonical/sci-compartment-numeric-then-alpha",
         severity: Severity::Error,
-        citation: "CAPCO-2016 §H.4 p61",
+        citation: SCI_CITATION_ANCHOR,
         presence: presence_sci_compartment_numeric_then_alpha,
         evaluate: evaluate_sci_compartment_numeric_then_alpha,
     },
@@ -2010,7 +2070,20 @@ fn presence_sar_program_ascending_sort(attrs: &CanonicalAttrs) -> bool {
 }
 
 fn presence_sci_compartment_numeric_then_alpha(attrs: &CanonicalAttrs) -> bool {
+    // Tighten beyond bare presence per plan §4.4: only enter the
+    // evaluator when at least one marking has 2+ compartments OR at
+    // least one compartment carries 2+ sub-compartments. A single-
+    // compartment / no-sub marking cannot fire under the §H.4 p61
+    // ordering invariant, so gating here avoids an unnecessary
+    // `Vec::new()` allocation per non-firing SCI marking on the hot
+    // path. This guard is a strict subset of `!is_empty()`, so any
+    // input that fires under it already fired under the looser
+    // predicate; correctness is preserved.
     !attrs.sci_markings.is_empty()
+        && attrs.sci_markings.iter().any(|m| {
+            m.compartments.len() >= 2
+                || m.compartments.iter().any(|c| c.sub_compartments.len() >= 2)
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -2027,7 +2100,7 @@ fn evaluate_rel_to_usa_first_alpha(
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
 ) -> Vec<Diagnostic> {
-    let rule_id = RuleId::new("E060");
+    let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
     // Locate the `RelToBlock` for this list. A single first→last
@@ -2101,7 +2174,7 @@ fn evaluate_joint_alphabetical(
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
 ) -> Vec<Diagnostic> {
-    let rule_id = RuleId::new("E060");
+    let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
     if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
@@ -2146,7 +2219,7 @@ fn evaluate_sigma_numeric_sort(
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
 ) -> Vec<Diagnostic> {
-    let rule_id = RuleId::new("E060");
+    let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
     let valid_sigmas: &[u8] = &[14, 15, 18, 20];
 
@@ -2241,7 +2314,7 @@ fn evaluate_sar_program_ascending_sort(
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
 ) -> Vec<Diagnostic> {
-    let rule_id = RuleId::new("E060");
+    let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
     let Some(sar) = attrs.sar_markings.as_ref() else {
@@ -2316,7 +2389,7 @@ fn evaluate_sci_compartment_numeric_then_alpha(
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
 ) -> Vec<Diagnostic> {
-    let rule_id = RuleId::new("E060");
+    let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
     let mut out = Vec::new();
@@ -2436,30 +2509,27 @@ fn evaluate_sci_compartment_numeric_then_alpha(
         let original = render_comps(&marking.compartments);
         let replacement = render_comps(&sorted_comps);
 
+        // Per-Diagnostic citation: the `Diagnostic.citation` field on
+        // `marque-rules` is `&'static str`, so the catalog row's
+        // `citation` (the §-anchor `"CAPCO-2016 §H.4 p61"`) cannot be
+        // run-time concatenated with a level-specific parenthetical
+        // and emitted; we therefore select between two compile-time
+        // constants. To keep `row.citation` load-bearing rather than
+        // decorative, both constants are constructed from
+        // `SCI_CITATION_ANCHOR` (the same `&'static str` stored in
+        // `row.citation`) via `concat!`. A `const _` prefix-equality
+        // assertion at the head of this file enforces that the two
+        // emitted citations share `row.citation` as their prefix —
+        // any drift in `row.citation` (or in either of the two
+        // emitted citations) trips the assertion at compile time.
+        // The citation-fidelity test in `non_canonical_input_walker.rs`
+        // continues to assert `d.citation.contains("§H.4 p61")` and
+        // both emitted strings still contain that anchor.
         let (level, citation) = if !comps_ok {
-            (
-                "compartments",
-                concat!(
-                    "CAPCO-2016 §H.4 p61 ",
-                    "(SCI compartments: ascending, numeric first, then alpha)",
-                ),
-            )
+            ("compartments", SCI_CITATION_COMPARTMENTS)
         } else {
-            (
-                "sub-compartments",
-                concat!(
-                    "CAPCO-2016 §H.4 p61 ",
-                    "(SCI sub-compartments: ascending, numeric first, ",
-                    "then alpha)",
-                ),
-            )
+            ("sub-compartments", SCI_CITATION_SUB_COMPARTMENTS)
         };
-        // Per-row citation field is `§H.4 p61`; the parenthetical
-        // specificity ("SCI compartments" vs "SCI sub-compartments")
-        // is a UX detail of the diagnostic and is selected here. Both
-        // strings still contain `§H.4 p61` so the row's authoritative
-        // citation is preserved on every emitted Diagnostic.
-        let _ = row.citation;
 
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: rule_id.clone(),
@@ -2492,7 +2562,7 @@ pub(crate) struct DeclarativeNonCanonicalInputRule;
 
 impl Rule for DeclarativeNonCanonicalInputRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E060")
+        RULE_ID.clone()
     }
     fn name(&self) -> &'static str {
         "non-canonical-input"
