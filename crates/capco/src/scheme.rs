@@ -1681,6 +1681,64 @@ impl CapcoScheme {
                 name: "class-floor/passthrough-MVL",
                 label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
             },
+            // ================================================================
+            // PR 3b.E (T026e) — SCI per-system catalog (§H.4)
+            // ================================================================
+            //
+            // Per-SCI-system companion-required / forbid-companion
+            // invariants per CAPCO-2016 §H.4. Five rows at family
+            // granularity covering the §H.4 invariants that PR 3b.D's
+            // class-floor catalog does NOT already cover (companion-
+            // required: ORCON, NOFORN; forbid-companion: ORCON-USGOV).
+            // The class-floor portions of the retired E044/E045/E046/
+            // E048/E049/E050 rules are absorbed by PR 3b.D's class-floor
+            // rows and are not duplicated here.
+            //
+            // # Why Constraint::Custom (architectural choice)
+            //
+            // The §H.4 invariants are companion-presence (ORCON, NOFORN)
+            // + companion-forbid (ORCON-USGOV) + per-row fix-shape
+            // (zero-width insertion at the end of the IC dissem block,
+            // or a span replacement on the dominated token) — none of
+            // which fit the existing primitive surface. PR 4 (per-
+            // category Lattice impls per Stage 3 of plan.md:263) MAY
+            // revisit and re-classify to a `CompanionRequired<Set>` /
+            // `Forbid<Set>` primitive on `marque-scheme` when those
+            // primitives land. The walker stays until that retirement.
+            // See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
+            // §3 for the rule-by-rule analysis; tasks.md T026e for the
+            // walker landing.
+            //
+            // # Per-row name and walker rule-ID
+            //
+            // The single walker `DeclarativeSciPerSystemRule` (rule ID
+            // `E059`) emits all diagnostics. Each catalog row's `name`
+            // takes the `sci-per-system/<purpose>` form. Per project
+            // memory `feedback_pre_users_no_deprecation_phasing.md`
+            // (marque is pre-users), severity-config back-compat for
+            // the retiring E042–E051 rule IDs is not preserved — users
+            // keying `.marque.toml` at any of `E042`..`E051` must
+            // migrate to `E059`.
+            Constraint::Custom {
+                name: "sci-per-system/HCS-O-companions",
+                label: "CAPCO-2016 §H.4 p64",
+            },
+            Constraint::Custom {
+                name: "sci-per-system/HCS-P-NOFORN",
+                label: "CAPCO-2016 §H.4 p66",
+            },
+            Constraint::Custom {
+                name: "sci-per-system/HCS-P-sub-companions",
+                label: "CAPCO-2016 §H.4 p68",
+            },
+            Constraint::Custom {
+                name: "sci-per-system/SI-G-companions",
+                label: "CAPCO-2016 §H.4 p80",
+            },
+            Constraint::Custom {
+                name: "sci-per-system/TK-compartment-NOFORN",
+                label: "CAPCO-2016 §H.4 p87 + p91 + p95",
+            },
         ]
     }
 }
@@ -1890,6 +1948,9 @@ fn evaluate_custom_by_attrs(
 ) -> Vec<ConstraintViolation> {
     if is_class_floor_catalog_name(name) {
         return class_floor_catalog_eval(attrs, name);
+    }
+    if is_sci_per_system_catalog_name(name) {
+        return sci_per_system_catalog_eval(attrs, name);
     }
     match name {
         "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p61-62"),
@@ -3561,6 +3622,739 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
+    },
+];
+
+// ===========================================================================
+// PR 3b.E (T026e) — SCI per-system catalog (§H.4)
+// ===========================================================================
+//
+// `sci_per_system_catalog_eval` is the static-table dispatcher for the 5
+// `Constraint::Custom` rows declared by `build_constraints` under the
+// "PR 3b.E (T026e) — SCI per-system catalog (§H.4)" section header.
+//
+// Each row's predicate has a uniform shape: "if SCI marking M is present in
+// `attrs`, the portion's IC dissem block must satisfy F(M)" where F(M) is
+// either a companion-required check (NOFORN must appear) or a multi-branch
+// check covering required-and-forbidden companions (ORCON required, ORCON-
+// USGOV forbidden, etc.). The table stores one entry per row carrying:
+//
+//   - `name`: catalog row identifier (matches `Constraint::Custom { name }`,
+//      and starts with the `sci-per-system/` prefix)
+//   - `marking_label`: human-readable marking name for the diagnostic
+//   - `presence`: predicate `fn(&CanonicalAttrs) -> bool` checking whether
+//      the family pattern is present
+//   - `kind`: dispatch tag — `CompanionRequired` (single dissem-control
+//      insertion) or `Custom` (closure for multi-branch emit logic)
+//   - `severity`: per-row default `Severity` (typically `Warn`; the emit
+//      helper escalates per-branch to `Error` no-fix when no IC dissem
+//      block exists)
+//   - `citation`: per-row §-citation matching `Constraint::Custom { label }`
+//   - `primary_kind`: diagnostic-span anchor token kind (uniformly
+//      `Some(TokenKind::SciSystem)` for the 5 PR-E rows)
+//
+// The walker `DeclarativeSciPerSystemRule` (in `rules_declarative.rs`)
+// iterates the table and emits per-row diagnostics.
+//
+// FORWARD LINK to PR 4 (per-category Lattice impls): once `marque-scheme`
+// exposes `Constraint::CompanionRequired<Set>` / `Forbid<Set>` primitives
+// (or the equivalent ImplTable / closure-operator machinery from
+// `marque-applied.md` §3.4.6), these rows can re-classify from
+// `Constraint::Custom` to a primitive form without changing per-row
+// semantics. See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
+// §1 for the architectural rationale.
+
+/// Companion form (abbreviated vs full) inferred from the dissem-token
+/// text observed on a portion. Used to keep the inserted token's surface
+/// form consistent with the existing block (so `(S//HCS-O//OC)` inserts
+/// `/NF`, not `/NOFORN`).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CompanionForm {
+    /// Short form: `OC`, `NF`, `OC-USGOV`. Used when the first observed
+    /// dissem token on the portion is a portion/abbrev surface form.
+    Abbreviated,
+    /// Full form: `ORCON`, `NOFORN`. Used otherwise (banner long-form or
+    /// no dissem block yet).
+    Full,
+}
+
+impl CompanionForm {
+    pub(crate) fn orcon(self) -> &'static str {
+        match self {
+            Self::Abbreviated => "OC",
+            Self::Full => "ORCON",
+        }
+    }
+
+    pub(crate) fn noforn(self) -> &'static str {
+        match self {
+            Self::Abbreviated => "NF",
+            Self::Full => "NOFORN",
+        }
+    }
+}
+
+/// Dispatch tag for an SCI per-system catalog row's emit body. Two
+/// variants keep the `match row.kind` arm count under the ≤3-branch
+/// reviewer-attestation cap (§7(b) of the PR 3b.E plan).
+#[derive(Copy, Clone)]
+pub(crate) enum SciPerSystemKind {
+    /// Single dissem-control insertion. The row encodes "if marking M is
+    /// present, dissem control D must appear; if absent, emit a
+    /// zero-width insertion fix at the end of the IC dissem block." The
+    /// only PR-E rows using this kind are the NOFORN-only rows (#2 and
+    /// #5).
+    CompanionRequired {
+        /// The dissem control whose presence is required.
+        dissem: marque_ism::DissemControl,
+        /// Component for the diagnostic message (e.g., "NOFORN").
+        token_name: &'static str,
+    },
+    /// Custom multi-branch emit. The row encodes a closure that produces
+    /// the full emit list, used by rows whose emit logic spans 2-3 distinct
+    /// branches with row-specific text and span logic (rows #1, #3, #4).
+    Custom(fn(&marque_ism::CanonicalAttrs, &SciPerSystemRow) -> Vec<marque_rules::Diagnostic>),
+}
+
+/// One catalog row. The walker dispatches over `&[SciPerSystemRow]`;
+/// each row owns its presence predicate, dispatch kind, severity,
+/// citation, and human-readable marking label.
+///
+/// # Naming-prefix invariant
+///
+/// Every row's `name` MUST start with `sci-per-system/`. The
+/// `sci_per_system_catalog_naming_convention` test in
+/// `crates/capco/tests/sci_per_system_catalog.rs` enforces this at build
+/// time so adding a row that doesn't follow the convention fails CI.
+/// The prefix is what makes [`is_sci_per_system_catalog_name`] dispatch
+/// O(1) instead of a linear catalog scan.
+#[derive(Copy, Clone)]
+pub(crate) struct SciPerSystemRow {
+    /// Catalog row name — matches the `Constraint::Custom { name }` of
+    /// the same logical row. MUST start with `sci-per-system/`.
+    pub(crate) name: &'static str,
+    /// Human-readable marking name for the diagnostic message
+    /// (e.g., `"HCS-O"`, `"TK-{BLFH|IDIT|KAND}"`).
+    pub(crate) marking_label: &'static str,
+    /// Marking-presence predicate.
+    pub(crate) presence: fn(&marque_ism::CanonicalAttrs) -> bool,
+    /// Dispatch kind — `CompanionRequired` (single-token) or `Custom`
+    /// (multi-branch closure).
+    pub(crate) kind: SciPerSystemKind,
+    /// Default severity (typically `Warn`). The emit helper escalates
+    /// per-branch to `Error` no-fix when no IC dissem block exists.
+    pub(crate) severity: marque_rules::Severity,
+    /// Per-row §-citation, matching `Constraint::Custom { label }`.
+    pub(crate) citation: &'static str,
+}
+
+// ---------------------------------------------------------------------------
+// SCI per-system helpers — moved verbatim from rules_sci_per_system.rs
+// (helper-relocation Option A per planning doc §4.1)
+// ---------------------------------------------------------------------------
+
+/// Is this `SciMarking` anchored on the given published bare system?
+pub(crate) fn anchors_on(m: &marque_ism::SciMarking, system: marque_ism::SciControlBare) -> bool {
+    use marque_ism::SciControlSystem;
+    matches!(&m.system, SciControlSystem::Published(s) if *s == system)
+}
+
+/// Does any compartment under this marking carry the given identifier?
+pub(crate) fn has_compartment(m: &marque_ism::SciMarking, id: &str) -> bool {
+    m.compartments.iter().any(|c| c.identifier.as_ref() == id)
+}
+
+/// Does the specific compartment carry at least one sub-compartment?
+pub(crate) fn compartment_has_sub(m: &marque_ism::SciMarking, comp_id: &str) -> bool {
+    m.compartments
+        .iter()
+        .any(|c| c.identifier.as_ref() == comp_id && !c.sub_compartments.is_empty())
+}
+
+/// Is this a TK-BLFH, TK-IDIT, or TK-KAND marking (the three TK
+/// compartments that require NOFORN per §H.4 p87 / p91 / p95)?
+pub(crate) fn is_tk_noforn_compartment(m: &marque_ism::SciMarking) -> bool {
+    use marque_ism::SciControlBare;
+    anchors_on(m, SciControlBare::Tk)
+        && m.compartments
+            .iter()
+            .any(|c| matches!(c.identifier.as_ref(), "BLFH" | "IDIT" | "KAND"))
+}
+
+/// Find the first SCI-system/SCI-control token span in document order.
+/// Used as the diagnostic anchor when the rule fires on a portion's SCI
+/// block.
+pub(crate) fn first_sci_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_ism::Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| {
+            matches!(
+                t.kind,
+                TokenKind::SciSystem
+                    | TokenKind::SciControl
+                    | TokenKind::SciCompartment
+                    | TokenKind::SciSubCompartment
+            )
+        })
+        .map(|t| t.span)
+}
+
+/// Observed US classification level, if any. Returns `None` for pure
+/// foreign classifications (FGI/NATO/JOINT) — SCI-on-foreign is out of
+/// §H.4's scope and handled by the foreign-classification rule cluster.
+pub(crate) fn us_level(attrs: &marque_ism::CanonicalAttrs) -> Option<Classification> {
+    use marque_ism::MarkingClassification;
+    match attrs.classification {
+        Some(MarkingClassification::Us(c)) => Some(c),
+        Some(MarkingClassification::Conflict { us, .. }) => Some(us),
+        _ => None,
+    }
+}
+
+/// Last token span of the IC dissem block (anchors zero-width insertions).
+/// Returns `None` when no IC dissem token exists.
+pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_ism::Span> {
+    attrs
+        .token_spans
+        .iter()
+        .rev()
+        .find(|t| t.kind == TokenKind::DissemControl)
+        .map(|t| t.span)
+}
+
+/// Find the span (and current text) of a specific `DissemControl` token —
+/// used when a rule needs to replace e.g. `OC-USGOV` with `OC`.
+pub(crate) fn dissem_token_span(
+    attrs: &marque_ism::CanonicalAttrs,
+    target: marque_ism::DissemControl,
+) -> Option<(marque_ism::Span, &str)> {
+    for (dissem_idx, d) in attrs.dissem_controls.iter().enumerate() {
+        if *d == target {
+            // Walk token_spans to find the Nth DissemControl.
+            let tok = attrs
+                .token_spans
+                .iter()
+                .filter(|t| t.kind == TokenKind::DissemControl)
+                .nth(dissem_idx)?;
+            return Some((tok.span, tok.text.as_ref()));
+        }
+    }
+    None
+}
+
+/// Banner-form vs portion-form companion representation, given the
+/// current dissem block. The parser preserves user-written text verbatim
+/// in `TokenSpan::text`, so inserting in matching form avoids surprise
+/// mixed-form output.
+pub(crate) fn infer_companion_form(attrs: &marque_ism::CanonicalAttrs) -> CompanionForm {
+    let first = attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::DissemControl);
+    match first.map(|t| t.text.as_ref()) {
+        Some("NF") | Some("OC") | Some("OC-USGOV") => CompanionForm::Abbreviated,
+        _ => CompanionForm::Full,
+    }
+}
+
+/// Build a diagnostic that points at `anchor_span` (the offending SCI
+/// token) with a zero-width insertion fix appending `/<token>` at the
+/// end of the existing IC dissem block. Diagnostic span and fix span
+/// intentionally differ: the user sees the SCI marking that triggered
+/// the requirement; the edit applies at the dissem block where the
+/// insertion belongs. Same diagnostic-vs-fix-span split used by
+/// `SarPortionFormRule` (E026).
+///
+/// Falls back to `Severity::Error` no-fix when no dissem block exists
+/// — inserting a whole `//`-separated category block from rule context
+/// is unsafe (no anchor for the `//`). Same policy as E040.
+pub(crate) fn emit_companion_insert(
+    rule: marque_rules::RuleId,
+    severity: marque_rules::Severity,
+    anchor_span: marque_ism::Span,
+    last_dissem: Option<marque_ism::Span>,
+    token: &str,
+    message: String,
+    citation: &'static str,
+) -> marque_rules::Diagnostic {
+    use marque_ism::Span;
+    use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Severity};
+    match last_dissem {
+        Some(dissem_span) => {
+            let insert_at = dissem_span.end;
+            let fix = FixProposal::new(
+                rule.clone(),
+                FixSource::BuiltinRule,
+                Span::new(insert_at, insert_at),
+                String::new(),
+                format!("/{token}"),
+                Confidence::strict(0.9),
+                None,
+            );
+            Diagnostic::new(rule, severity, anchor_span, message, citation, Some(fix))
+        }
+        None => {
+            // No dissem block — escalate to Error with no fix.
+            Diagnostic::new(rule, Severity::Error, anchor_span, message, citation, None)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Family-presence predicates (one per PR-E catalog row)
+// ---------------------------------------------------------------------------
+
+/// HCS-O — any HCS-anchored marking carrying the "O" compartment.
+/// §H.4 p64.
+fn presence_hcs_o(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::SciControlBare;
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| anchors_on(m, SciControlBare::Hcs) && has_compartment(m, "O"))
+}
+
+/// HCS-P (any) — any HCS-anchored marking carrying the "P" compartment,
+/// with or without sub-compartments. §H.4 p66 (and p68 inheriting NOFORN).
+fn presence_hcs_p_any(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::SciControlBare;
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| anchors_on(m, SciControlBare::Hcs) && has_compartment(m, "P"))
+}
+
+/// HCS-P [SUB] — any HCS-anchored marking carrying a "P" compartment
+/// with at least one sub-compartment. §H.4 p68. By §H.4 grammar, P is
+/// the only HCS compartment that can carry sub-compartments, so this
+/// coincides with `presence_hcs_comp_sub` from the class-floor catalog
+/// in practice; we keep a separate predicate here to make the row
+/// surface-explicit ("requires ORCON / forbids ORCON-USGOV on
+/// sub-compartmented HCS-P").
+fn presence_hcs_p_sub(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::SciControlBare;
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| anchors_on(m, SciControlBare::Hcs) && compartment_has_sub(m, "P"))
+}
+
+/// SI-G — any SI-anchored marking carrying the "G" compartment, with or
+/// without sub-compartments. §H.4 p80 (and p81 inheriting ORCON).
+fn presence_si_g(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::SciControlBare;
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| anchors_on(m, SciControlBare::Si) && has_compartment(m, "G"))
+}
+
+/// TK with BLFH/IDIT/KAND compartment — any TK-anchored marking carrying
+/// at least one of the three NOFORN-required compartments. §H.4 p87 +
+/// p91 + p95.
+fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs.sci_markings.iter().any(is_tk_noforn_compartment)
+}
+
+// ---------------------------------------------------------------------------
+// Per-row Custom-kind emit closures (rows #1, #3, #4)
+// ---------------------------------------------------------------------------
+
+/// Row #1 — HCS-O companions: requires ORCON + NOFORN, forbids
+/// ORCON-USGOV. §H.4 p64.
+fn emit_hcs_o_companions(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+) -> Vec<marque_rules::Diagnostic> {
+    use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
+    use marque_ism::{DissemControl, Span};
+    use marque_rules::{FixSource, RuleId};
+
+    if us_level(attrs).is_none() {
+        return Vec::new();
+    }
+    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+    let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
+
+    let mut out = Vec::new();
+    let form = infer_companion_form(attrs);
+    let last_dissem = last_dissem_span(attrs);
+    let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
+    let rule_id = RuleId::new("E059");
+
+    if !has_orcon {
+        out.push(emit_companion_insert(
+            rule_id.clone(),
+            row.severity,
+            sci_span,
+            last_dissem,
+            form.orcon(),
+            "HCS-O requires ORCON (§H.4 p64)".to_owned(),
+            row.citation,
+        ));
+    }
+    if !has_noforn {
+        out.push(emit_companion_insert(
+            rule_id.clone(),
+            row.severity,
+            sci_span,
+            last_dissem,
+            form.noforn(),
+            "HCS-O requires NOFORN (§H.4 p64)".to_owned(),
+            row.citation,
+        ));
+    }
+    if let Some((span, text)) = usgov_entry {
+        out.push(make_fix_diagnostic(FixDiagnosticParams {
+            rule: rule_id,
+            severity: row.severity,
+            source: FixSource::BuiltinRule,
+            span,
+            message: "HCS-O forbids ORCON-USGOV (§H.4 p64) — replace with ORCON".to_owned(),
+            citation: row.citation,
+            original: text.to_owned(),
+            replacement: form.orcon().to_owned(),
+            confidence: 0.9,
+            migration_ref: None,
+        }));
+    }
+    out
+}
+
+/// Row #3 — HCS-P sub-compartment companions: requires ORCON, forbids
+/// ORCON-USGOV. §H.4 p68. NOFORN is enforced by row #2 (HCS-P NOFORN)
+/// which fires on any HCS-P including sub-compartmented variants, so
+/// it is not duplicated here.
+fn emit_hcs_p_sub_companions(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+) -> Vec<marque_rules::Diagnostic> {
+    use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
+    use marque_ism::{DissemControl, Span};
+    use marque_rules::{FixSource, RuleId};
+
+    if us_level(attrs).is_none() {
+        return Vec::new();
+    }
+    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
+
+    let mut out = Vec::new();
+    let form = infer_companion_form(attrs);
+    let last_dissem = last_dissem_span(attrs);
+    let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
+    let rule_id = RuleId::new("E059");
+
+    if !has_orcon {
+        out.push(emit_companion_insert(
+            rule_id.clone(),
+            row.severity,
+            sci_span,
+            last_dissem,
+            form.orcon(),
+            "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
+            row.citation,
+        ));
+    }
+    if let Some((span, text)) = usgov_entry {
+        out.push(make_fix_diagnostic(FixDiagnosticParams {
+            rule: rule_id,
+            severity: row.severity,
+            source: FixSource::BuiltinRule,
+            span,
+            message: "HCS-P sub-compartment forbids ORCON-USGOV (§H.4 p68) — replace with ORCON"
+                .to_owned(),
+            citation: row.citation,
+            original: text.to_owned(),
+            replacement: form.orcon().to_owned(),
+            confidence: 0.9,
+            migration_ref: None,
+        }));
+    }
+    out
+}
+
+/// Row #4 — SI-G companions: requires ORCON, forbids ORCON-USGOV.
+/// §H.4 p80.
+fn emit_si_g_companions(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+) -> Vec<marque_rules::Diagnostic> {
+    use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
+    use marque_ism::{DissemControl, Span};
+    use marque_rules::{FixSource, RuleId};
+
+    if us_level(attrs).is_none() {
+        return Vec::new();
+    }
+    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
+        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
+
+    let mut out = Vec::new();
+    let form = infer_companion_form(attrs);
+    let last_dissem = last_dissem_span(attrs);
+    let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
+    let rule_id = RuleId::new("E059");
+
+    if !has_orcon {
+        out.push(emit_companion_insert(
+            rule_id.clone(),
+            row.severity,
+            sci_span,
+            last_dissem,
+            form.orcon(),
+            "SI-G requires ORCON (§H.4 p80)".to_owned(),
+            row.citation,
+        ));
+    }
+    if let Some((span, text)) = usgov_entry {
+        out.push(make_fix_diagnostic(FixDiagnosticParams {
+            rule: rule_id,
+            severity: row.severity,
+            source: FixSource::BuiltinRule,
+            span,
+            message: "SI-G forbids ORCON-USGOV (§H.4 p80) — replace with ORCON".to_owned(),
+            citation: row.citation,
+            original: text.to_owned(),
+            replacement: form.orcon().to_owned(),
+            confidence: 0.9,
+            migration_ref: None,
+        }));
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// CompanionRequired single-token emit (rows #2, #5)
+// ---------------------------------------------------------------------------
+
+/// Single-token companion insertion. Used by `CompanionRequired`-kind
+/// rows whose only check is "dissem control X must appear; if missing,
+/// emit a zero-width-insertion fix at the end of the IC dissem block."
+fn emit_companion_required(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+    dissem: marque_ism::DissemControl,
+    token_name: &'static str,
+) -> Vec<marque_rules::Diagnostic> {
+    use marque_ism::Span;
+    use marque_rules::RuleId;
+
+    if us_level(attrs).is_none() {
+        return Vec::new();
+    }
+    if attrs.dissem_controls.contains(&dissem) {
+        return Vec::new();
+    }
+    // ORCON-USGOV satisfies ORCON-presence checks (the OC-USGOV → OC
+    // replacement covers the post-fix state). For PR-E rows #2 and #5
+    // (NOFORN-only), this branch never trips because the dissem
+    // control is `Nf`, not `Oc`. Guard kept for symmetry with the
+    // multi-branch helpers; the explicit `dissem == Oc` check is what
+    // makes the guard apply only when relevant.
+    if dissem == marque_ism::DissemControl::Oc
+        && attrs
+            .dissem_controls
+            .contains(&marque_ism::DissemControl::OcUsgov)
+    {
+        return Vec::new();
+    }
+
+    let form = infer_companion_form(attrs);
+    let last_dissem = last_dissem_span(attrs);
+    let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
+    let rule_id = RuleId::new("E059");
+
+    let companion_text = match dissem {
+        marque_ism::DissemControl::Nf => form.noforn(),
+        marque_ism::DissemControl::Oc => form.orcon(),
+        // PR-E rows do not currently use other dissem controls; fall
+        // back to the abbreviated CVE form for symmetry.
+        _ => dissem.as_str(),
+    };
+
+    // Per-row diagnostic-message shape — matches the legacy E043 / E051
+    // text verbatim (preserves user-visible text to minimize fixture
+    // churn).
+    let message = match row.name {
+        "sci-per-system/HCS-P-NOFORN" => "HCS-P requires NOFORN (§H.4 p66)".to_owned(),
+        "sci-per-system/TK-compartment-NOFORN" => {
+            "TK-{BLFH|IDIT|KAND} require NOFORN (§H.4 p87, p91, p95)".to_owned()
+        }
+        // Fallback for future rows added under CompanionRequired —
+        // tests exercise this row via the per-row name match above.
+        _ => format!("{} requires {token_name}", row.marking_label),
+    };
+
+    vec![emit_companion_insert(
+        rule_id,
+        row.severity,
+        sci_span,
+        last_dissem,
+        companion_text,
+        message,
+        row.citation,
+    )]
+}
+
+// ---------------------------------------------------------------------------
+// Catalog dispatch
+// ---------------------------------------------------------------------------
+
+/// Returns true if `name` is a catalog row name dispatched by
+/// [`sci_per_system_catalog_eval`]. Used by `evaluate_custom_by_attrs`
+/// to route on the table.
+///
+/// O(1) prefix check — every catalog row's `name` MUST start with
+/// `sci-per-system/`. The `sci_per_system_catalog_naming_convention`
+/// test in `crates/capco/tests/sci_per_system_catalog.rs` enforces the
+/// invariant at build time.
+fn is_sci_per_system_catalog_name(name: &str) -> bool {
+    name.starts_with("sci-per-system/")
+}
+
+/// Resolve a catalog row by `name`. Returns `None` for unknown names.
+///
+/// Walked only on the trait/validate path (5-row catalog → linear scan,
+/// ≪1 µs). The walker hot path uses [`sci_per_system_catalog`] then
+/// [`sci_per_system_eval_row`] directly with no name lookup.
+pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSystemRow> {
+    SCI_PER_SYSTEM_CATALOG.iter().find(|row| row.name == name)
+}
+
+/// Iterate the full SCI per-system catalog. Used by the walker
+/// `DeclarativeSciPerSystemRule::check` to dispatch over every row.
+pub(crate) fn sci_per_system_catalog() -> &'static [SciPerSystemRow] {
+    SCI_PER_SYSTEM_CATALOG
+}
+
+/// Single source of truth for the SCI per-system catalog's emit logic.
+/// Both the walker hot path ([`sci_per_system_eval_row`]) and the
+/// trait/validate path ([`sci_per_system_catalog_eval`]) converge through
+/// here, so a citation, message-text, fix-shape, or severity-escalation
+/// change to one row cannot silently diverge between the two emitters.
+///
+/// Returns an empty `Vec` when the row's presence predicate doesn't fire
+/// or when no diagnostic is warranted; otherwise returns one or more
+/// `Diagnostic` values per the row's emit logic.
+fn sci_per_system_emit(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+) -> Vec<marque_rules::Diagnostic> {
+    if !(row.presence)(attrs) {
+        return Vec::new();
+    }
+    match row.kind {
+        SciPerSystemKind::CompanionRequired { dissem, token_name } => {
+            emit_companion_required(attrs, row, dissem, token_name)
+        }
+        SciPerSystemKind::Custom(emit_fn) => emit_fn(attrs, row),
+    }
+}
+
+/// Direct catalog-row dispatch for the walker's hot path. Skips the
+/// `evaluate_custom_by_attrs` → `sci_per_system_catalog_eval` → name-
+/// lookup chain entirely; the walker has the row in hand and calls the
+/// predicate fields directly.
+pub(crate) fn sci_per_system_eval_row(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &SciPerSystemRow,
+) -> Vec<marque_rules::Diagnostic> {
+    sci_per_system_emit(attrs, row)
+}
+
+/// Dispatch a single catalog row by name and return any
+/// `ConstraintViolation`s. Trait-path entry point used by
+/// [`MarkingScheme::validate`] →
+/// [`marque_scheme::constraint::evaluate`] when the catalog row's
+/// `Constraint::Custom` arm fires.
+///
+/// Note: PR-E rows produce `FixProposal` values on the walker path,
+/// but `ConstraintViolation` doesn't carry a fix — the trait/validate
+/// path drops the fix (this is the same divergence PR D's class-floor
+/// catalog has). The engine path is the only path that produces
+/// `AppliedFix` records, and the engine path always uses the walker.
+fn sci_per_system_catalog_eval(
+    attrs: &marque_ism::CanonicalAttrs,
+    name: &'static str,
+) -> Vec<ConstraintViolation> {
+    let Some(row) = sci_per_system_row_by_name(name) else {
+        return Vec::new();
+    };
+    sci_per_system_emit(attrs, row)
+        .into_iter()
+        .map(|d| ConstraintViolation {
+            constraint_label: row.name,
+            message: String::from(d.message),
+            citation: row.citation,
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// The catalog — 5 rows at §H.4 family granularity
+// ---------------------------------------------------------------------------
+
+const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
+    // Row #1 — HCS-O companions (ORCON + NOFORN required, ORCON-USGOV
+    // forbidden). §H.4 p64.
+    SciPerSystemRow {
+        name: "sci-per-system/HCS-O-companions",
+        marking_label: "HCS-O",
+        presence: presence_hcs_o,
+        kind: SciPerSystemKind::Custom(emit_hcs_o_companions),
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §H.4 p64",
+    },
+    // Row #2 — HCS-P NOFORN (NOFORN required). §H.4 p66.
+    SciPerSystemRow {
+        name: "sci-per-system/HCS-P-NOFORN",
+        marking_label: "HCS-P",
+        presence: presence_hcs_p_any,
+        kind: SciPerSystemKind::CompanionRequired {
+            dissem: marque_ism::DissemControl::Nf,
+            token_name: "NOFORN",
+        },
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §H.4 p66",
+    },
+    // Row #3 — HCS-P sub-compartment companions (ORCON required,
+    // ORCON-USGOV forbidden). §H.4 p68. NOFORN is covered by row #2.
+    SciPerSystemRow {
+        name: "sci-per-system/HCS-P-sub-companions",
+        marking_label: "HCS-P sub-compartment",
+        presence: presence_hcs_p_sub,
+        kind: SciPerSystemKind::Custom(emit_hcs_p_sub_companions),
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §H.4 p68",
+    },
+    // Row #4 — SI-G companions (ORCON required, ORCON-USGOV forbidden).
+    // §H.4 p80.
+    SciPerSystemRow {
+        name: "sci-per-system/SI-G-companions",
+        marking_label: "SI-G",
+        presence: presence_si_g,
+        kind: SciPerSystemKind::Custom(emit_si_g_companions),
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §H.4 p80",
+    },
+    // Row #5 — TK compartment NOFORN (BLFH/IDIT/KAND require NOFORN).
+    // §H.4 p87 (TK-BLFH) + p91 (TK-IDIT) + p95 (TK-KAND).
+    SciPerSystemRow {
+        name: "sci-per-system/TK-compartment-NOFORN",
+        marking_label: "TK-{BLFH|IDIT|KAND}",
+        presence: presence_tk_compartment_noforn,
+        kind: SciPerSystemKind::CompanionRequired {
+            dissem: marque_ism::DissemControl::Nf,
+            token_name: "NOFORN",
+        },
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §H.4 p87 + p91 + p95",
     },
 ];
 

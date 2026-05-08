@@ -1660,3 +1660,93 @@ fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Spa
         .find(|t| t.kind == kind)
         .map(|t| t.span)
 }
+
+// ===========================================================================
+// PR 3b.E (T026e) — SCI per-system catalog walker (E059)
+// ===========================================================================
+//
+// `DeclarativeSciPerSystemRule` is the single walker that dispatches over
+// the 5-row SCI per-system catalog declared in
+// `crate::scheme::SCI_PER_SYSTEM_CATALOG` (and registered as
+// `Constraint::Custom` rows in `CapcoScheme::build_constraints` under the
+// "PR 3b.E (T026e) — SCI per-system catalog (§H.4)" section).
+//
+// # Walker rule-ID convention
+//
+// Per the PR 3b.E planning doc §4.2 + PM directive: ONE walker rule
+// `E059` with a fresh ID. All emitted diagnostics carry
+// `Diagnostic.rule = "E059"`. Per-row identification flows via the
+// catalog row's `name` field (always `sci-per-system/<purpose>`) into
+// the diagnostic message text. The legacy `E042`–`E051` IDs are NOT
+// preserved as severity-config aliases (per
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users;
+// rewrite freely).
+//
+// # Severity convention
+//
+// The walker's `default_severity()` is `Severity::Warn` (matches the
+// per-row authoring intent on every PR-E row). Per-row severities are
+// stored in `SciPerSystemRow.severity` and the emit helper escalates
+// per-branch to `Severity::Error` no-fix when no IC dissem block exists
+// (companion-insertion would need to synthesize a whole `//`-separated
+// category from rule context, which is unsafe; same policy as E040).
+// The engine's severity-override layer can downgrade or upgrade per
+// `.marque.toml [rules] E059 = "off|warn|error|..."`.
+//
+// # Span anchoring
+//
+// PR-E rows uniformly anchor at the SCI marking token (not the dissem
+// or classification token) — the `row.primary_kind` is always
+// `TokenKind::SciSystem`. The fix span (zero-width insertion or
+// replacement) differs from the diagnostic span: the user sees the
+// SCI marking that triggered the requirement; the edit applies at the
+// dissem-block anchor where the insertion or replacement belongs.
+// Same diagnostic-vs-fix-span split used by `SarPortionFormRule` (E026).
+
+pub(crate) struct DeclarativeSciPerSystemRule;
+
+impl Rule for DeclarativeSciPerSystemRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E059")
+    }
+    fn name(&self) -> &'static str {
+        "sci-per-system-catalog"
+    }
+    fn default_severity(&self) -> Severity {
+        // Catalog rows individually carry `Severity::Warn` (the fix-and-
+        // warn pattern from the legacy E042–E051 cluster). The emit
+        // helper escalates per-branch to `Severity::Error` no-fix when
+        // no IC dissem block exists. `default_severity` governs the
+        // no-override case ONLY — if a user sets
+        // `[rules] E059 = "error"`, the engine's severity-override
+        // layer replaces every emitted `Diagnostic.severity` with
+        // `Error`. A per-row severity floor mechanism (preventing
+        // config from downgrading specific rows below their authoring
+        // intent) does not exist in the engine and is not in scope for
+        // PR E.
+        Severity::Warn
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // PR 3b.E perf-1: per-portion early-out guard. All PR-E rows
+        // are SCI-axis-only — if `attrs.sci_markings` is empty, no row
+        // can fire and the catalog walk is skipped entirely. On a 10KB
+        // document where most portions are prose body text (no SCI
+        // markings), this is a single boolean check that costs
+        // effectively nothing.
+        if attrs.sci_markings.is_empty() {
+            return Vec::new();
+        }
+
+        // PR 3b.E perf-2: direct catalog-row dispatch. Walk the static
+        // catalog table; for each row whose presence predicate fires,
+        // dispatch to `sci_per_system_eval_row` (which calls the row's
+        // emit body via `sci_per_system_emit` — no string-keyed lookup).
+        let mut diags = Vec::new();
+        for row in crate::scheme::sci_per_system_catalog() {
+            let row_diags = crate::scheme::sci_per_system_eval_row(attrs, row);
+            diags.extend(row_diags);
+        }
+        diags
+    }
+}
