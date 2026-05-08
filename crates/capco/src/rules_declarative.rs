@@ -1756,10 +1756,19 @@ impl Rule for DeclarativeSciPerSystemRule {
 
         // PR 3b.E perf-2: direct catalog-row dispatch. Walk the static
         // catalog table; for each row whose presence predicate fires,
-        // call `sci_per_system_emit` directly with the row in hand —
-        // no string-keyed lookup, no wrapper indirection.
+        // call `sci_per_system_emit` with the row in hand — no string-
+        // keyed lookup, no wrapper indirection. The explicit per-row
+        // presence check elides the function-call overhead for non-
+        // firing rows; `sci_per_system_emit` also re-checks presence
+        // internally (idempotent — predicates are pure functions of
+        // `attrs`) so the trait/validate path through
+        // `sci_per_system_catalog_eval`, which calls emit without
+        // going through this walker, stays correct.
         let mut diags = Vec::new();
         for row in crate::scheme::sci_per_system_catalog() {
+            if !(row.presence)(attrs) {
+                continue;
+            }
             let row_diags = crate::scheme::sci_per_system_emit(attrs, row);
             diags.extend(row_diags);
         }
