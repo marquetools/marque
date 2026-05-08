@@ -94,18 +94,23 @@ fn catalog_declares_five_sci_per_system_rows() {
 #[test]
 fn sci_per_system_catalog_naming_convention() {
     // Every row's `name` MUST start with `sci-per-system/` per the
-    // PR 3b.E plan §4.2 naming-prefix invariant.
-    let scheme = CapcoScheme::new();
-    for c in scheme.constraints() {
-        let n = c.name();
-        // Only check rows we own; other catalog rows have their own
-        // prefix conventions.
-        if !n.contains("sci-per-system") {
-            continue;
-        }
+    // PR 3b.E plan §4.2 naming-prefix invariant. Iterate the catalog
+    // directly via `sci_per_system_catalog_row_names()` (a test-only
+    // accessor that walks `SCI_PER_SYSTEM_CATALOG`) rather than
+    // `scheme.constraints()` filtered by `contains("sci-per-system")`
+    // — the latter would silently skip a typo'd-prefix row like
+    // `sai-per-system/...`. Direct catalog iteration catches the typo
+    // at the row's authoring site.
+    let names = marque_capco::scheme::sci_per_system_catalog_row_names();
+    assert!(
+        !names.is_empty(),
+        "catalog must have at least one row; got 0"
+    );
+    for n in &names {
         assert!(
             n.starts_with("sci-per-system/"),
-            "PR-E catalog row {n:?} must start with `sci-per-system/`"
+            "PR-E catalog row {n:?} must start with `sci-per-system/` \
+             (no `contains` filter — typo-tolerant)"
         );
     }
 }
@@ -458,7 +463,7 @@ fn si_g_companions_does_not_fire_when_satisfied() {
 #[test]
 fn tk_compartment_noforn_fires_on_blfh_without_noforn() {
     let diags = lint("(TS//TK-BLFH//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} require NOFORN");
+    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/NF");
@@ -467,14 +472,14 @@ fn tk_compartment_noforn_fires_on_blfh_without_noforn() {
 #[test]
 fn tk_compartment_noforn_fires_on_idit_without_noforn() {
     let diags = lint("(TS//TK-IDIT//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} require NOFORN");
+    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
 }
 
 #[test]
 fn tk_compartment_noforn_fires_on_kand_without_noforn() {
     let diags = lint("(TS//TK-KAND//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} require NOFORN");
+    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
 }
 

@@ -1695,13 +1695,17 @@ fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Spa
 //
 // # Span anchoring
 //
-// PR-E rows uniformly anchor at the SCI marking token (not the dissem
-// or classification token) — the `row.primary_kind` is always
-// `TokenKind::SciSystem`. The fix span (zero-width insertion or
-// replacement) differs from the diagnostic span: the user sees the
-// SCI marking that triggered the requirement; the edit applies at the
-// dissem-block anchor where the insertion or replacement belongs.
-// Same diagnostic-vs-fix-span split used by `SarPortionFormRule` (E026).
+// PR-E rows uniformly anchor the diagnostic at the offending SCI
+// marking token. The emit helper (`emit_companion_insert` in
+// `crate::scheme`) selects the anchor via `first_sci_span(attrs)`,
+// which walks `attrs.token_spans` and returns the span of the first
+// `TokenKind::SciSystem` / `SciControl` / `SciCompartment` /
+// `SciSubCompartment` token in document order. The fix span (zero-
+// width insertion or token replacement) differs from the diagnostic
+// span: the user sees the SCI marking that triggered the requirement;
+// the edit applies at the dissem-block anchor where the insertion or
+// replacement belongs. Same diagnostic-vs-fix-span split used by
+// `SarPortionFormRule` (E026).
 
 pub(crate) struct DeclarativeSciPerSystemRule;
 
@@ -1740,11 +1744,11 @@ impl Rule for DeclarativeSciPerSystemRule {
 
         // PR 3b.E perf-2: direct catalog-row dispatch. Walk the static
         // catalog table; for each row whose presence predicate fires,
-        // dispatch to `sci_per_system_eval_row` (which calls the row's
-        // emit body via `sci_per_system_emit` — no string-keyed lookup).
+        // call `sci_per_system_emit` directly with the row in hand —
+        // no string-keyed lookup, no wrapper indirection.
         let mut diags = Vec::new();
         for row in crate::scheme::sci_per_system_catalog() {
-            let row_diags = crate::scheme::sci_per_system_eval_row(attrs, row);
+            let row_diags = crate::scheme::sci_per_system_emit(attrs, row);
             diags.extend(row_diags);
         }
         diags
