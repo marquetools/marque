@@ -301,9 +301,17 @@ T026a–T026f in `tasks.md`):
   rows in PR 3b; the closure operator primitive (Stage 2.B in
   `marque-applied.md` §3.11) lands in PR 3.7 and re-classifies the
   implication-shaped entries in PR 4.
-- **3b.E** — `crates/capco/src/rules_sci_per_system.rs` (10 rules)
-  collapse to ONE `Constraint::Custom("sci-per-system", ...)` walker
-  over a per-system catalog; per-row `§H.4 row Y` citation.
+- **3b.E** — **LANDED 2026-05-08** (T026e). Collapsed the 10 rules in
+  the now-deleted `crates/capco/src/rules_sci_per_system.rs` into ONE
+  `DeclarativeSciPerSystemRule` walker (rule ID `E059`) dispatching
+  over a 5-row `Constraint::Custom("sci-per-system/...", ...)` catalog
+  at §H.4 family granularity (HCS-O companions, HCS-P NOFORN, HCS-P
+  sub-compartment companions, SI-G companions, TK compartment NOFORN);
+  per-row `CAPCO-2016 §H.4 pXX` citation. The class-floor portions of
+  the retired rules are absorbed by PR 3b.D's class-floor catalog;
+  no class-floor rows are added in 3b.E. Net rule delta: −9 (10
+  retired + 1 walker added). Running registered-rule count: 59 → 50.
+  See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`.
 - **3b.F** — non-canonical input fallback walker covering E020 /
   E023 / E028 / E033 ordering checks (REL TO leads with USA, AEA
   SIGMA numeric sort, SAR alphabetic, SCI numeric-then-alpha) as a
