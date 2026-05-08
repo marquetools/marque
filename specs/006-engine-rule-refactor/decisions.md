@@ -628,10 +628,21 @@ fabricating per-atom citations.
 
 **Net rule delta**: 57 → 61 (+4). Net constraint delta: 15 → 19 (+4).
 
-**Subtractive-fix direction (PM Addendum II, 2026-05-07).** All four
-wrappers emit a `FixProposal` that **removes RELIDO** from the dissem
-block (replacement = `""`, confidence = 0.9, `FixSource::BuiltinRule`,
-`Severity::Error`). RELIDO is the unambiguous remove-target because the
+**Subtractive-fix direction (PM Addendum II, 2026-05-07; confidence
+calibration 2026-05-08).** All four wrappers emit a `FixProposal` that
+**removes RELIDO** from the dissem block (replacement = `""`, confidence
+= 0.95, `FixSource::BuiltinRule`, `Severity::Error`). The 0.95 value
+clears the engine's default `Config::confidence_threshold = 0.95`
+(`crates/config/src/lib.rs:156`; auto-apply gate is `confidence >=
+threshold`) so the fix auto-applies under default config — matching the
+user-stated guidance behavior ("remove RELIDO and tell them why"). The
+initial PM Addendum II §2 value of 0.9 was calibrated up after verifying
+the threshold default; the 0.85–0.9 tier is reserved for conditional /
+lower-confidence cases (`crates/capco/src/rules.rs:4465 / :4602 / :4962
+/ :5173`), and 0.95 matches the established CAPCO convention for
+definite, at-threshold, auto-apply fixes (`crates/capco/src/rules.rs:998
+/ :1327 / :2622 / :2777 / :2853`). RELIDO is the unambiguous
+remove-target because the
 other token in each pair carries the binding §-cited authority (NOFORN
 dominates per FD&R supersession; DISPLAY ONLY is a positive disclosure
 decision; ORCON / ORCON-USGOV explicitly assert "may not be used with

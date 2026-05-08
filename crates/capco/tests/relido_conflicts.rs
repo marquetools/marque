@@ -322,7 +322,7 @@ fn e054_fires_when_both_relido_and_noforn_present() {
     assert_eq!(fix.span.end, 10, "fix span should consume trailing `/`");
     assert_eq!(fix.replacement.as_ref(), "");
     assert_eq!(fix.source, FixSource::BuiltinRule);
-    assert_eq!(fix.confidence.rule, 0.9);
+    assert_eq!(fix.confidence.rule, 0.95);
     assert!(fix.migration_ref.is_none());
 
     // Apply the fix and verify the result is well-formed: NOFORN remains,
@@ -393,7 +393,7 @@ fn e055_fires_when_both_relido_and_display_only_present() {
     assert_eq!(fix.span.end, 10, "fix span should consume trailing `/`");
     assert_eq!(fix.replacement.as_ref(), "");
     assert_eq!(fix.source, FixSource::BuiltinRule);
-    assert_eq!(fix.confidence.rule, 0.9);
+    assert_eq!(fix.confidence.rule, 0.95);
 
     let fixed = apply_fix(&source, fix.span, &fix.replacement);
     assert_eq!(fixed, "S//DISPLAYONLY");
@@ -464,7 +464,7 @@ fn e056_fires_when_both_orcon_and_relido_present() {
     assert_eq!(fix.span.end, 12, "fix span should end after RELIDO");
     assert_eq!(fix.replacement.as_ref(), "");
     assert_eq!(fix.source, FixSource::BuiltinRule);
-    assert_eq!(fix.confidence.rule, 0.9);
+    assert_eq!(fix.confidence.rule, 0.95);
 
     let fixed = apply_fix(&source, fix.span, &fix.replacement);
     assert_eq!(fixed, "S//OC");
@@ -537,7 +537,7 @@ fn e057_fires_when_both_orcon_usgov_and_relido_present() {
     assert_eq!(fix.span.end, 18, "fix span should end after RELIDO");
     assert_eq!(fix.replacement.as_ref(), "");
     assert_eq!(fix.source, FixSource::BuiltinRule);
-    assert_eq!(fix.confidence.rule, 0.9);
+    assert_eq!(fix.confidence.rule, 0.95);
 
     let fixed = apply_fix(&source, fix.span, &fix.replacement);
     assert_eq!(fixed, "S//OC-USGOV");
@@ -625,7 +625,8 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
         // Wrapper emission side: build triggering attrs WITH spans (so the
         // FixProposal helper can compute a removal layout) and confirm
         // Diagnostic.citation == catalog.label, plus FixProposal exists
-        // with confidence 0.9 (PM Addendum II §3, §8).
+        // with confidence 0.95 (PM Addendum II §3, §8 — post-2026-05-08
+        // calibration to clear the engine's default 0.95 threshold).
         let trigger_attrs = attrs_with_dissem_and_spans(dissem);
         let diags = rule.check(&trigger_attrs, &ctx());
         assert_eq!(
@@ -639,7 +640,7 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
             "Diagnostic.citation from {constraint_name} wrapper drifted from catalog label"
         );
         // PM Addendum II §8: every triggering wrapper must emit a FixProposal
-        // with confidence 0.9. The only legitimate `None` case is the rare
+        // with confidence 0.95. The only legitimate `None` case is the rare
         // ambiguous-span layout where `compute_relido_removal_span` cannot
         // pick a sound removal — none of the four canonical triggering
         // shapes used here exercises that path.
@@ -647,8 +648,8 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
             panic!("{constraint_name} must emit a FixProposal on the canonical triggering shape")
         });
         assert!(
-            (fix.confidence.rule - 0.9).abs() < f32::EPSILON,
-            "{constraint_name} FixProposal confidence must be 0.9, got {}",
+            (fix.confidence.rule - 0.95).abs() < f32::EPSILON,
+            "{constraint_name} FixProposal confidence must be 0.95, got {}",
             fix.confidence.rule
         );
         assert_eq!(

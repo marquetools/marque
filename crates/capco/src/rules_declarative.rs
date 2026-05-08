@@ -936,9 +936,14 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 //   E057: §H.8 p140 explicitly asserts "May not be used with RELIDO" on the
 //         ORCON-USGOV template. Same logic as E056. Remove RELIDO.
 //
-// The fix is `confidence = 0.9` (high — the asymmetric §-citation OR FD&R
-// supersession dominance makes the direction unambiguous; auto-applies under
-// the engine's default fix threshold).
+// The fix is `confidence = 0.95` (definite, at-threshold) so it auto-applies
+// under the engine's default `Config::confidence_threshold = 0.95`
+// (auto-apply gate is `confidence >= threshold`). The §-cited prose is
+// categorical in every case and the user has explicitly endorsed RELIDO as
+// the remove-target, so the matching CAPCO convention is the 0.95 tier
+// (rules.rs:998 / :1327 / :2622 / :2777 / :2853 — definite-fix sites);
+// 0.85–0.9 is reserved for conditional or lower-confidence cases. See
+// `build_relido_removal_fix` doc-comment for the full calibration rationale.
 //
 // Generalization scope: this subtractive-fix pattern applies to **dissem-axis
 // `Constraint::Conflicts`** rules ONLY. Non-dissem axis conflicts
@@ -1046,10 +1051,21 @@ pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<
 /// in that case so Constitution V's "never emit a malformed fix" invariant
 /// holds).
 ///
-/// Confidence is fixed at **0.9** per PM Addendum II §3 — high enough to
-/// auto-apply under the engine's default fix threshold (typically 0.85);
-/// the asymmetric §H.8 citation OR FD&R supersession dominance makes the
-/// remove-RELIDO direction unambiguous in every E054–E057 case.
+/// Confidence is fixed at **0.95** per PM Addendum II §3 (post-2026-05-08
+/// calibration) so the fix clears the engine's default
+/// `Config::confidence_threshold` of 0.95 (`crates/config/src/lib.rs:156`,
+/// auto-apply gate is `confidence >= threshold`). The §-cited prose in
+/// every E054–E057 case is categorical ("Cannot be used with..." / "May
+/// not be used with RELIDO"); the marking IS invalid and the user has
+/// explicitly endorsed RELIDO as the remove-target. 0.95 matches the
+/// established CAPCO convention for definite, at-threshold, auto-apply
+/// fixes (e.g. `crates/capco/src/rules.rs:998 / :1327 / :2622 / :2777 /
+/// :2853`); 0.85–0.9 is reserved for conditional / lower-confidence cases.
+///
+/// The earlier 0.9 value left the fix as a manual-review suggestion under
+/// the default threshold — opposite of the user-stated guidance behavior
+/// ("remove RELIDO and tell them why"). Bumped to 0.95 in PR 3b.C
+/// pre-merge.
 ///
 /// `FixSource::BuiltinRule` is the existing strict-path provenance variant
 /// for hand-written CAPCO rules (the PM Addendum II §4 reference to
@@ -1063,7 +1079,7 @@ fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<F
         span,
         original,
         "",
-        Confidence::strict(0.9),
+        Confidence::strict(0.95),
         None,
     ))
 }
