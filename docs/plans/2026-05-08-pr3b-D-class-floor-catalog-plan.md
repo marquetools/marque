@@ -312,11 +312,7 @@ For UCNI ceiling rows:
 "DOE UCNI may only be used with UNCLASSIFIED information (CAPCO-2016 §H.6 p118); current classification is <CURRENT>"
 ```
 
-For NATO rows:
-
-```
-"<MARKING> requires classification ≥ <FLOOR> (CAPCO-2016 §H.7 Appendix B; reciprocal-class-raise per marque-applied.md §3.4.1 Note (i)); current classification is <CURRENT>"
-```
+NATO rows (BALK / BOHEMIA / ATOMAL) use the same uniform `AtLeast` template as the rest of the catalog — the message helper computes `<CURRENT>` via `MarkingClassification::effective_level()` per the R1 C1 fix, so a NATO portion's classification displays as the reciprocal-raised US-equivalent (`SECRET` for NS-classified content, `TOP SECRET` for CTS, etc.) without any per-row template variation. The user reads "current classification is `S` / `TS` / etc." which IS the reciprocal-raised level. No special-cased prose; the citation field carries `CAPCO-2016 §H.7 Appendix B` for these rows.
 
 For passthrough-Warn rows:
 

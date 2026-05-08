@@ -2744,7 +2744,7 @@ fn is_class_floor_catalog_name(name: &str) -> bool {
 /// Resolve a catalog row by `name`. Returns `None` for unknown
 /// names.
 ///
-/// Walked only on the trait/validate path (29-row catalog → linear
+/// Walked only on the trait/validate path (27-row catalog → linear
 /// scan, ≪1 µs) — the walker hot path uses
 /// [`class_floor_catalog`] then [`class_floor_eval_row`] directly
 /// with no name lookup. A build-time perfect-hash lookup
@@ -3034,7 +3034,9 @@ fn presence_rd_bare(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 /// RD-CNWDI — any RD block with `cnwdi == true`. Replaces retired E022.
-/// CAPCO §H.6 p106 (TS-or-S RD).
+/// CAPCO §H.6 p104 (TS-or-S RD); matches the catalog row's
+/// authoritative §3.4.6 citation
+/// (`E058/CNWDI-classification-floor` → `CAPCO-2016 §H.6 p104`).
 fn presence_rd_cnwdi(attrs: &marque_ism::CanonicalAttrs) -> bool {
     attrs
         .aea_markings

@@ -1542,10 +1542,25 @@ impl Rule for DeclarativeClassFloorRule {
     }
     fn default_severity(&self) -> Severity {
         // Catalog rows individually carry `Severity::Error` (enumerated
-        // rows) or `Severity::Warn` (passthrough rows). The walker-level
-        // default is the strictest of the per-row severities so a config
-        // anchoring at `E058` cannot accidentally weaken a row's
-        // authoring intent.
+        // rows) or `Severity::Warn` (passthrough rows); each row's
+        // severity is stored in `ClassFloorRow.severity` and is what
+        // the emitted `Diagnostic.severity` carries when no
+        // `.marque.toml` override is configured for `E058`.
+        //
+        // `default_severity` governs the no-override case ONLY. If a
+        // user sets `[rules] E058 = "warn"`, the engine's severity-
+        // override layer replaces every emitted `Diagnostic.severity`
+        // with `Warn` regardless of the per-row authoring intent — so
+        // this default value cannot prevent downgrading. Returning
+        // `Severity::Error` here matches the strictest per-row floor
+        // so an unconfigured catalog defaults to error-severity for
+        // the enumerated rows; passthrough rows still emit at `Warn`
+        // because the walker copies `row.severity` onto each
+        // `Diagnostic` directly (see `check` below).
+        //
+        // A per-row severity floor mechanism (preventing config from
+        // downgrading specific rows below their authoring intent) does
+        // not exist in the engine and is not in scope for PR D.
         Severity::Error
     }
 
