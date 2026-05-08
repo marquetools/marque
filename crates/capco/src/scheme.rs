@@ -2745,10 +2745,11 @@ fn is_class_floor_catalog_name(name: &str) -> bool {
 /// names.
 ///
 /// Walked only on the trait/validate path (29-row catalog → linear
-/// scan, ≪1 µs) — the walker hot path uses [`class_floor_catalog`]
-/// + [`class_floor_eval_row`] directly with no name lookup. A phf
-/// build-time perfect-hash lookup is deferred unless the trait path
-/// shows up as a measurable hotspot in profiling.
+/// scan, ≪1 µs) — the walker hot path uses
+/// [`class_floor_catalog`] then [`class_floor_eval_row`] directly
+/// with no name lookup. A build-time perfect-hash lookup
+/// (`phf::Map`) is deferred unless the trait path shows up as a
+/// measurable hotspot in profiling.
 pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorRow> {
     CLASS_FLOOR_CATALOG.iter().find(|row| row.name == name)
 }

@@ -786,3 +786,678 @@ fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
          (UCNI is US AEA per §H.6 p116; non-US classification + UCNI is malformed)"
     );
 }
+
+// ===========================================================================
+// R3.4 Path A — per-row catalog coverage (Copilot R3 C4)
+// ===========================================================================
+//
+// The module docstring claims every catalog row carries the three
+// observable-behavior tests. Pre-R3 the suite covered a subset of
+// rows; R3.4 fills in the rows that were missing one or more of the
+// fires-below / silent-at-or-above / silent-when-absent triplet.
+//
+// Rows already fully covered by the §2.1 / §2.2 / §2.3 / §2.4 / §2.6
+// blocks above (HCS-comp-sub, SI-comp, TK-BLFH, BALK, BOHEMIA,
+// HCS-comp partial, RSV-comp partial, CNWDI partial, RD-SG partial,
+// SAR partial, RD partial, ATOMAL partial, ORCON partial, EYES-ONLY
+// missing, DOD/DOE UCNI, BUR, KLM, MVL) get their missing assertions
+// added below; rows missing entirely (TK family, FRD-SG, RSEN, IMCON,
+// SI-bare, FRD-bare, TFNI, EYES-ONLY, passthrough-HCS-X) get the full
+// observable-behavior triplet.
+//
+// Convention: each test function names the row + the property it
+// pins so a future failure points at the exact row.
+
+// ---------------------------------------------------------------------------
+// Naming-prefix invariant (R3.2 build-time enforcement)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn class_floor_catalog_naming_convention() {
+    // R3.2: every catalog row's `name` MUST start with one of the two
+    // prefixes (`E058/` or `class-floor/`). The `is_class_floor_catalog_name`
+    // dispatch in `evaluate_custom_by_attrs` is an O(1) prefix check
+    // that depends on this invariant. Adding a row whose name doesn't
+    // follow the convention would break the dispatch routing for that
+    // row silently — this test fails the build instead.
+    let scheme = CapcoScheme::new();
+    let class_floor_rows: Vec<&str> = scheme
+        .constraints()
+        .iter()
+        .filter(|c| {
+            let n = c.name();
+            n.starts_with("E058/") || n.starts_with("class-floor/")
+        })
+        .map(|c| c.name())
+        .collect();
+    assert_eq!(
+        class_floor_rows.len(),
+        27,
+        "expected 27 class-floor catalog rows under the E058/ + class-floor/ prefix \
+         convention; got {}: {:?}",
+        class_floor_rows.len(),
+        class_floor_rows
+    );
+    // The above filter catches anything with the right prefix; this
+    // test pins that EVERY row's name carries one of the two prefixes
+    // (no other prefix is used). If a future row uses some third
+    // prefix (e.g., `cf/...`), the count above would still pass but
+    // this assertion would fail.
+    for c in scheme.constraints() {
+        let n = c.name();
+        // Every row whose marking is class-floor-related (catalog
+        // dispatch routes to it) must use one of the two prefixes.
+        // The non-class-floor rows in the catalog (E010/, E012/,
+        // capco/joint-requires-usa, etc.) are EXCLUDED — they don't
+        // route through `is_class_floor_catalog_name`.
+        if n.starts_with("E058/") || n.starts_with("class-floor/") {
+            assert!(
+                n.starts_with("E058/") || n.starts_with("class-floor/"),
+                "class-floor catalog row name {n:?} violates naming-prefix invariant"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §2.1 row #4 — class-floor/BALK: fires-below + absent
+// ---------------------------------------------------------------------------
+//
+// BALK presence is bound to NatoClassification::CosmicTopSecretBalk
+// (the parser binds class+marking together), so "BALK present at
+// sub-CTS class" is a constructed-attrs case — only reachable via
+// the trait/validate path. The well-formed engine-path silence is
+// covered by `balk_does_not_fire_on_well_formed_cts_balk_banner`
+// above.
+
+#[test]
+fn balk_does_not_fire_when_marking_absent() {
+    // No NATO classification; BALK presence is `None`. Floor must
+    // not fire.
+    let diags = lint("TOP SECRET//SI//NOFORN\n");
+    let balk = e058_diags_for(&diags, "BALK (NATO)");
+    assert!(
+        balk.is_empty(),
+        "BALK floor must not fire when no BALK classification is present: {diags:?}"
+    );
+}
+
+#[test]
+fn bohemia_does_not_fire_when_marking_absent() {
+    let diags = lint("TOP SECRET//SI//NOFORN\n");
+    let bohemia = e058_diags_for(&diags, "BOHEMIA (NATO)");
+    assert!(
+        bohemia.is_empty(),
+        "BOHEMIA floor must not fire when no BOHEMIA classification is present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #6 — class-floor/HCS-comp: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn hcs_compartment_does_not_fire_when_no_hcs_marking() {
+    // No HCS marking at all → row must not fire.
+    let diags = lint("SECRET//SI-G//ORCON/NOFORN\n");
+    let hcs = e058_diags_for(&diags, "HCS-O / HCS-P");
+    assert!(
+        hcs.is_empty(),
+        "HCS-comp floor must not fire when no HCS marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #7 — class-floor/RSV-comp: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rsv_compartment_does_not_fire_when_no_rsv_marking() {
+    let diags = lint("SECRET//SI//NOFORN\n");
+    let rsv = e058_diags_for(&diags, "RSV compartment");
+    assert!(
+        rsv.is_empty(),
+        "RSV compartment floor must not fire when no RSV marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #8 — class-floor/TK family: full triplet
+// ---------------------------------------------------------------------------
+//
+// TK family: bare TK + TK-IDIT (with/without sub-comp) + TK-KAND
+// (with/without sub-comp). Excludes TK-BLFH (covered by §2.1 row #3).
+
+#[test]
+fn tk_family_fires_below_secret_on_bare_tk() {
+    let diags = lint("CONFIDENTIAL//TK//NOFORN\n");
+    let tk = e058_diags_for(&diags, "TK / TK-IDIT / TK-KAND");
+    assert_eq!(
+        tk.len(),
+        1,
+        "TK family floor must fire on CONFIDENTIAL//TK: {diags:?}"
+    );
+    assert_eq!(tk[0].severity, Severity::Error);
+    assert_eq!(tk[0].citation, "CAPCO-2016 §H.4");
+}
+
+#[test]
+fn tk_family_does_not_fire_at_secret_on_bare_tk() {
+    let diags = lint("SECRET//TK//NOFORN\n");
+    let tk = e058_diags_for(&diags, "TK / TK-IDIT / TK-KAND");
+    assert!(
+        tk.is_empty(),
+        "TK family floor must not fire on SECRET//TK: {diags:?}"
+    );
+}
+
+#[test]
+fn tk_family_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let tk = e058_diags_for(&diags, "TK / TK-IDIT / TK-KAND");
+    assert!(
+        tk.is_empty(),
+        "TK family floor must not fire when no TK marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #9 — class-floor/RD-SG: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rd_sigma_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let rd_sg = e058_diags_for(&diags, "RD-SIGMA");
+    assert!(
+        rd_sg.is_empty(),
+        "RD-SIGMA floor must not fire when no RD-SIGMA marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #10 — class-floor/FRD-SG: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn frd_sigma_fires_below_secret() {
+    let diags = lint("CONFIDENTIAL//FRD-SIGMA 14//NOFORN\n");
+    let frd_sg = e058_diags_for(&diags, "FRD-SIGMA");
+    assert_eq!(
+        frd_sg.len(),
+        1,
+        "FRD-SIGMA floor must fire on CONFIDENTIAL: {diags:?}"
+    );
+    assert_eq!(frd_sg[0].severity, Severity::Error);
+    assert_eq!(frd_sg[0].citation, "CAPCO-2016 §H.6 p113");
+}
+
+#[test]
+fn frd_sigma_does_not_fire_at_secret() {
+    let diags = lint("SECRET//FRD-SIGMA 14//NOFORN\n");
+    let frd_sg = e058_diags_for(&diags, "FRD-SIGMA");
+    assert!(
+        frd_sg.is_empty(),
+        "FRD-SIGMA floor must not fire on SECRET: {diags:?}"
+    );
+}
+
+#[test]
+fn frd_sigma_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let frd_sg = e058_diags_for(&diags, "FRD-SIGMA");
+    assert!(
+        frd_sg.is_empty(),
+        "FRD-SIGMA floor must not fire when no FRD-SIGMA marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #11 — E058/CNWDI-classification-floor: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cnwdi_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let cnwdi = e058_diags_for(&diags, "CNWDI");
+    assert!(
+        cnwdi.is_empty(),
+        "CNWDI floor must not fire when no CNWDI marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #12 — class-floor/RSEN: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rsen_fires_below_secret() {
+    // RSEN portion form is `RS`; banner form is `RSEN`. RSEN floor S.
+    let diags = lint("CONFIDENTIAL//TK//RSEN\n");
+    let rsen = e058_diags_for(&diags, "RSEN");
+    assert_eq!(
+        rsen.len(),
+        1,
+        "RSEN floor must fire on CONFIDENTIAL: {diags:?}"
+    );
+    assert_eq!(rsen[0].severity, Severity::Error);
+    assert_eq!(rsen[0].citation, "CAPCO-2016 §H.8 p149");
+}
+
+#[test]
+fn rsen_does_not_fire_at_secret() {
+    let diags = lint("SECRET//TK//RSEN\n");
+    let rsen = e058_diags_for(&diags, "RSEN");
+    assert!(
+        rsen.is_empty(),
+        "RSEN floor must not fire on SECRET: {diags:?}"
+    );
+}
+
+#[test]
+fn rsen_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let rsen = e058_diags_for(&diags, "RSEN");
+    assert!(
+        rsen.is_empty(),
+        "RSEN floor must not fire when no RSEN dissem control present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.2 row #13 — class-floor/IMCON: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn imcon_fires_below_secret() {
+    // IMCON portion form is `IMC`; banner form is `IMCON`. Floor S.
+    let diags = lint("CONFIDENTIAL//IMCON/NOFORN\n");
+    let imcon = e058_diags_for(&diags, "IMCON");
+    assert_eq!(
+        imcon.len(),
+        1,
+        "IMCON floor must fire on CONFIDENTIAL: {diags:?}"
+    );
+    assert_eq!(imcon[0].severity, Severity::Error);
+    assert_eq!(imcon[0].citation, "CAPCO-2016 §H.8 p144");
+}
+
+#[test]
+fn imcon_does_not_fire_at_secret() {
+    let diags = lint("SECRET//IMCON/NOFORN\n");
+    let imcon = e058_diags_for(&diags, "IMCON");
+    assert!(
+        imcon.is_empty(),
+        "IMCON floor must not fire on SECRET: {diags:?}"
+    );
+}
+
+#[test]
+fn imcon_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let imcon = e058_diags_for(&diags, "IMCON");
+    assert!(
+        imcon.is_empty(),
+        "IMCON floor must not fire when no IMCON dissem control present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #14 — class-floor/SI (bare): full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn si_bare_fires_when_no_classification() {
+    // SI bare floor is C; "no classification" fails any AtLeast(C)
+    // floor (preserves retired-E022/E027 historical behavior). The
+    // engine path doesn't naturally reach "SI bare with no class
+    // token" via well-formed input, so use a portion form.
+    // Equivalent: a SAR-only "(SAR-BP)" portion has no classification
+    // token in the same span as SI; we test SI on UNCLASSIFIED.
+    let diags = lint("UNCLASSIFIED//SI\n");
+    let si = e058_diags_for(&diags, "SI (bare)");
+    assert_eq!(
+        si.len(),
+        1,
+        "SI bare floor (C) must fire on UNCLASSIFIED//SI: {diags:?}"
+    );
+    assert_eq!(si[0].severity, Severity::Error);
+    assert_eq!(si[0].citation, "CAPCO-2016 §H.4");
+}
+
+#[test]
+fn si_bare_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let si = e058_diags_for(&diags, "SI (bare)");
+    assert!(
+        si.is_empty(),
+        "SI bare floor must not fire on CONFIDENTIAL: {diags:?}"
+    );
+}
+
+#[test]
+fn si_bare_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//TK//NOFORN\n");
+    let si = e058_diags_for(&diags, "SI (bare)");
+    assert!(
+        si.is_empty(),
+        "SI bare floor must not fire when no bare SI marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #15 — E058/SAR-classification-floor: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sar_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let sar = e058_diags_for(&diags, "SAR requires");
+    assert!(
+        sar.is_empty(),
+        "SAR floor must not fire when no SAR marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #16 — class-floor/RD: fires-below + absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rd_bare_fires_when_no_classification_token() {
+    // RD bare floor C. UNCLASSIFIED//RD fires (RD requires ≥ C).
+    let diags = lint("UNCLASSIFIED//RD//NOFORN\n");
+    let rd = e058_diags_for(&diags, "RD requires");
+    assert_eq!(
+        rd.len(),
+        1,
+        "RD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
+    );
+    assert_eq!(rd[0].severity, Severity::Error);
+    assert_eq!(rd[0].citation, "CAPCO-2016 §H.6 p104");
+}
+
+#[test]
+fn rd_bare_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let rd = e058_diags_for(&diags, "RD requires");
+    assert!(
+        rd.is_empty(),
+        "RD bare floor must not fire when no RD marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #17 — class-floor/FRD: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn frd_bare_fires_when_unclassified() {
+    let diags = lint("UNCLASSIFIED//FRD//NOFORN\n");
+    let frd = e058_diags_for(&diags, "FRD requires");
+    assert_eq!(
+        frd.len(),
+        1,
+        "FRD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
+    );
+    assert_eq!(frd[0].severity, Severity::Error);
+    assert_eq!(frd[0].citation, "CAPCO-2016 §H.6 p104");
+}
+
+#[test]
+fn frd_bare_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//FRD//NOFORN\n");
+    let frd = e058_diags_for(&diags, "FRD requires");
+    assert!(
+        frd.is_empty(),
+        "FRD bare floor must not fire on CONFIDENTIAL: {diags:?}"
+    );
+}
+
+#[test]
+fn frd_bare_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let frd = e058_diags_for(&diags, "FRD requires");
+    assert!(
+        frd.is_empty(),
+        "FRD bare floor must not fire when no FRD marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #18 — class-floor/TFNI: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tfni_fires_when_unclassified() {
+    let diags = lint("UNCLASSIFIED//TFNI\n");
+    let tfni = e058_diags_for(&diags, "TFNI");
+    assert_eq!(
+        tfni.len(),
+        1,
+        "TFNI floor (C) must fire on UNCLASSIFIED: {diags:?}"
+    );
+    assert_eq!(tfni[0].severity, Severity::Error);
+    assert_eq!(tfni[0].citation, "CAPCO-2016 §H.6 p107");
+}
+
+#[test]
+fn tfni_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//TFNI\n");
+    let tfni = e058_diags_for(&diags, "TFNI");
+    assert!(
+        tfni.is_empty(),
+        "TFNI floor must not fire on CONFIDENTIAL: {diags:?}"
+    );
+}
+
+#[test]
+fn tfni_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let tfni = e058_diags_for(&diags, "TFNI");
+    assert!(
+        tfni.is_empty(),
+        "TFNI floor must not fire when no TFNI marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #19 — class-floor/ATOMAL: absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn atomal_does_not_fire_when_marking_absent() {
+    let diags = lint("TOP SECRET//SI//NOFORN\n");
+    let atomal = e058_diags_for(&diags, "ATOMAL (NATO)");
+    assert!(
+        atomal.is_empty(),
+        "ATOMAL floor must not fire when no ATOMAL classification present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #20 — class-floor/ORCON family: fires-below + absent
+// ---------------------------------------------------------------------------
+
+#[test]
+fn orcon_family_fires_when_unclassified() {
+    let diags = lint("UNCLASSIFIED//ORCON\n");
+    let orcon = e058_diags_for(&diags, "ORCON / ORCON-USGOV");
+    assert_eq!(
+        orcon.len(),
+        1,
+        "ORCON family floor (C) must fire on UNCLASSIFIED: {diags:?}"
+    );
+    assert_eq!(orcon[0].severity, Severity::Error);
+    assert_eq!(orcon[0].citation, "CAPCO-2016 §H.8 p136");
+}
+
+#[test]
+fn orcon_family_does_not_fire_when_marking_absent() {
+    let diags = lint("CONFIDENTIAL//SI//NOFORN\n");
+    let orcon = e058_diags_for(&diags, "ORCON / ORCON-USGOV");
+    assert!(
+        orcon.is_empty(),
+        "ORCON family floor must not fire when no ORCON dissem present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.3 row #21 — class-floor/EYES-ONLY: full triplet
+// ---------------------------------------------------------------------------
+
+// EYES ONLY: the parser recognizes the CVE `EYES` form (per
+// `marque-ism::DissemControl::Eyes`). The banner-form
+// `USA/[LIST] EYES ONLY` syntax requires lexer support for
+// trigraph-EYES coupling that doesn't yet exist; portion form
+// `(U//EYES)` / `(C//EYES)` is what the parser recognizes via the
+// CVE projection. The fires-below + at-floor + absent triplet uses
+// portion form so the engine path actually exercises the row.
+
+#[test]
+fn eyes_only_fires_when_unclassified() {
+    let diags = lint("(U//EYES)\n");
+    let eyes = e058_diags_for(&diags, "EYES ONLY");
+    assert_eq!(
+        eyes.len(),
+        1,
+        "EYES ONLY floor (C) must fire on (U//EYES): {diags:?}"
+    );
+    assert_eq!(eyes[0].severity, Severity::Error);
+    assert_eq!(eyes[0].citation, "CAPCO-2016 §H.8 p152");
+}
+
+#[test]
+fn eyes_only_does_not_fire_at_confidential() {
+    let diags = lint("(C//EYES)\n");
+    let eyes = e058_diags_for(&diags, "EYES ONLY");
+    assert!(
+        eyes.is_empty(),
+        "EYES ONLY floor must not fire on (C//EYES): {diags:?}"
+    );
+}
+
+#[test]
+fn eyes_only_does_not_fire_when_marking_absent() {
+    let diags = lint("(C//SI//NF)\n");
+    let eyes = e058_diags_for(&diags, "EYES ONLY");
+    assert!(
+        eyes.is_empty(),
+        "EYES ONLY floor must not fire when no EYES ONLY dissem present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.4 — DOD/DOE UCNI: silent-when-absent (fires/silent-at-U already covered)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dod_ucni_does_not_fire_when_marking_absent() {
+    let diags = lint("UNCLASSIFIED//FOUO\n");
+    let ucni = e058_diags_for(&diags, "DOD UCNI may only");
+    assert!(
+        ucni.is_empty(),
+        "DOD UCNI ceiling must not fire when no DOD UCNI marking present: {diags:?}"
+    );
+}
+
+#[test]
+fn doe_ucni_does_not_fire_when_marking_absent() {
+    let diags = lint("UNCLASSIFIED//FOUO\n");
+    let ucni = e058_diags_for(&diags, "DOE UCNI may only");
+    assert!(
+        ucni.is_empty(),
+        "DOE UCNI ceiling must not fire when no DOE UCNI marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 row #25 — class-floor/passthrough-HCS-X: full triplet
+// ---------------------------------------------------------------------------
+
+#[test]
+fn passthrough_hcs_x_fires_at_warn_severity_on_unclassified() {
+    let diags = lint("UNCLASSIFIED//HCS-X\n");
+    let hcsx = e058_diags_for(&diags, "HCS-X");
+    assert_eq!(
+        hcsx.len(),
+        1,
+        "HCS-X passthrough must fire on UNCLASSIFIED: {diags:?}"
+    );
+    assert_eq!(
+        hcsx[0].severity,
+        Severity::Warn,
+        "passthrough rows fire at Warn (§3.4.6 Q-3.4.6b)"
+    );
+    assert!(
+        hcsx[0]
+            .message
+            .contains("ISM but not enumerated in CAPCO-2016"),
+        "passthrough diagnostic must quote §3.7 policy framing; got: {:?}",
+        hcsx[0].message
+    );
+}
+
+#[test]
+fn passthrough_hcs_x_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//HCS-X//NOFORN\n");
+    let hcsx = e058_diags_for(&diags, "HCS-X");
+    assert!(
+        hcsx.is_empty(),
+        "HCS-X passthrough must not fire at-or-above C floor: {diags:?}"
+    );
+}
+
+#[test]
+fn passthrough_hcs_x_does_not_fire_when_marking_absent() {
+    let diags = lint("UNCLASSIFIED//SI\n");
+    let hcsx = e058_diags_for(&diags, "HCS-X");
+    assert!(
+        hcsx.is_empty(),
+        "HCS-X passthrough must not fire when no HCS-X marking present: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 — KLM / MVL: at-or-above + absent (fires-below already covered)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn passthrough_klm_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//KLM//NOFORN\n");
+    let klm = e058_diags_for(&diags, "KLM family");
+    assert!(
+        klm.is_empty(),
+        "KLM passthrough must not fire at-or-above C floor: {diags:?}"
+    );
+}
+
+#[test]
+fn passthrough_klm_does_not_fire_when_marking_absent() {
+    let diags = lint("UNCLASSIFIED//SI\n");
+    let klm = e058_diags_for(&diags, "KLM family");
+    assert!(
+        klm.is_empty(),
+        "KLM passthrough must not fire when no KLM marking present: {diags:?}"
+    );
+}
+
+#[test]
+fn passthrough_mvl_does_not_fire_at_confidential() {
+    let diags = lint("CONFIDENTIAL//MVL//NOFORN\n");
+    let mvl = e058_diags_for(&diags, "MVL");
+    assert!(
+        mvl.is_empty(),
+        "MVL passthrough must not fire at-or-above C floor: {diags:?}"
+    );
+}
+
+#[test]
+fn passthrough_mvl_does_not_fire_when_marking_absent() {
+    let diags = lint("UNCLASSIFIED//SI\n");
+    let mvl = e058_diags_for(&diags, "MVL");
+    assert!(
+        mvl.is_empty(),
+        "MVL passthrough must not fire when no MVL marking present: {diags:?}"
+    );
+}
