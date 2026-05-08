@@ -268,27 +268,21 @@ impl RuleSet for CapcoRuleSet {
     }
 }
 
-// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers so
-// integration tests in `crates/capco/tests/` can instantiate them directly
-// for behavior verification. `rules_declarative` is `pub(crate)` at the
-// module level; the four wrappers below carry `pub` (deviating from the
-// `pub(crate)` convention used by every prior `Declarative*` wrapper)
-// specifically so the `pub use` re-export below is legal — integration
-// tests link the crate as an external dependency and only see `pub`
-// items. Each wrapper's struct definition in `rules_declarative.rs`
-// carries an inline note pointing back here. The re-export through the
-// `pub mod rules` surface is the minimal change that preserves
-// Constitution VII (no engine/scheme edits) while enabling the
-// citation-fidelity test pattern from plan §6.1.3.
+// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers
+// and the `compute_relido_removal_span` helper for integration tests in
+// `crates/capco/tests/`. Both the underlying `pub struct` items and
+// these re-exports carry `#[doc(hidden)]`, signaling "technically pub
+// for compilation but not stable public API" — the same convention
+// `marque_rules::AppliedFix::__engine_promote` uses (per Constitution V
+// Principle V test-fixture carve-out). Future refactors are free to
+// consolidate or rename these without a breaking-change concern.
+#[doc(hidden)]
 pub use crate::rules_declarative::{
     DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
     DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
 };
 
-// Helper exposed to integration tests so the three separator-position
-// cases (first / middle / last) can be exercised in isolation, separate
-// from the four wrapper invocations. Same Constitution VII rationale as
-// the wrapper re-exports above.
+#[doc(hidden)]
 pub use crate::rules_declarative::compute_relido_removal_span;
 
 // ---------------------------------------------------------------------------

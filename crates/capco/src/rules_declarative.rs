@@ -987,17 +987,27 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 ///   `//` separator, and a follow-on E004 separator-collapse fix would
 ///   apply on a second pass — breaking idempotency.
 ///
-/// Discrimination uses the parser's explicit `TokenKind::Separator`
-/// spans interleaved between content tokens (no source-buffer access
-/// required — Constitution V keeps `FixProposal` pure data). The parser
-/// emits a `Separator` `TokenSpan` with `text == "/"` for intra-block
-/// separators and `text == "//"` for inter-category separators. The
-/// helper looks at the `TokenSpan` immediately preceding RELIDO (and
-/// immediately following) and discriminates by `(kind, text)`. Earlier
-/// versions of the helper used byte-offset arithmetic only (`prior.end +
-/// 1 == relido.start`) and missed the Separator spans entirely — that
-/// was the bug `proptest_engine::fix_idempotent` caught for banner-form
-/// `TOP SECRET//NOFORN//RELIDO` input on 2026-05-08.
+/// Discrimination follows the parser's actual `TokenSpan` emission
+/// pattern, which is asymmetric across separator kinds (no source-buffer
+/// access required — Constitution V keeps `FixProposal` pure data):
+///
+///   - **Cross-category `//` separators** are emitted as
+///     `TokenKind::Separator` spans with `text == "//"`, occupying two
+///     bytes between the bordering content tokens.
+///   - **Intra-block `/` separators** are NOT emitted as TokenSpans;
+///     adjacent dissem-control content tokens carry adjacent byte
+///     offsets (`prev.span.end + 1 == relido.span.start`) and the `/`
+///     occupies the gap byte without a span of its own.
+///
+/// So the helper discriminates Cases 1 / 2 (intra-block) by **content-
+/// token byte adjacency** (`prev.kind != Separator && prev.span.end + 1
+/// == relido.span.start`, and the symmetric check for `next`) and Case 3
+/// (cross-category) by the **explicit `Separator` span with `text ==
+/// "//"`** immediately preceding RELIDO. Earlier byte-offset-only logic
+/// missed Case 3; an interim Separator-only attempt broke Cases 1 / 2;
+/// the combined model handles both correctly. This was the
+/// `proptest_engine::fix_idempotent` regression caught and resolved on
+/// 2026-05-08 for banner-form `TOP SECRET//NOFORN//RELIDO` input.
 ///
 /// # Returns `None` when no sound removal can be proved
 ///
@@ -1035,6 +1045,14 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 /// preserving Constitution V (no malformed `FixProposal` ever leaves the
 /// rule). The `Severity::Error` diagnostic still surfaces; the user
 /// resolves it manually in the rare-but-real ambiguous-layout case.
+///
+/// `#[doc(hidden)] pub` — `pub` for integration-test access via the
+/// re-export in `crate::rules`, but excluded from rendered docs because
+/// this is implementation-detail support for E054–E057 (and the future
+/// PR 3.7 RELIDO RhsFamily entries that inherit the subtractive-fix
+/// pattern), not a stable public API. Same convention as the four
+/// wrapper structs and as `marque_rules::AppliedFix::__engine_promote`.
+#[doc(hidden)]
 pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<str>)> {
     let spans = &attrs.token_spans;
     // Find the RELIDO TokenSpan and its index for adjacency lookups.
@@ -1147,16 +1165,15 @@ fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<F
 // E054 — RELIDO conflicts with NOFORN (§H.8 p154)
 // ---------------------------------------------------------------------------
 
-// Deviation from the `pub(crate)` convention used by every prior
-// `Declarative*` wrapper in this module is intentional: integration
-// tests in `crates/capco/tests/relido_conflicts.rs` (PR 3b.C behavior +
-// citation-fidelity + helper-position coverage) need to instantiate
-// these wrappers directly, and integration tests link the crate as an
-// external dependency that only sees `pub` items. The wrappers are
-// re-exported through `crate::rules` (`pub use ...`) to keep the
-// integration-test surface explicit and module-local. `rules_declarative`
-// is `pub(crate) mod`, so the effective external visibility of these
-// items remains scoped to what `crate::rules` re-exports.
+// `pub` so the integration tests in `crates/capco/tests/relido_conflicts.rs`
+// can instantiate these wrappers via the `pub use` re-export in
+// `crate::rules` (integration tests link the crate as an external
+// dependency and only see `pub` items). `#[doc(hidden)]` signals
+// "technically pub for compilation but not stable public API" — the same
+// convention `marque_rules::AppliedFix::__engine_promote` uses (Constitution
+// V Principle V test-fixture carve-out). Future refactors are free to
+// consolidate or rename these without a breaking-change concern.
+#[doc(hidden)]
 pub struct DeclarativeRelidoNofornConflictRule;
 
 impl Rule for DeclarativeRelidoNofornConflictRule {
@@ -1218,8 +1235,10 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 // E055 — RELIDO conflicts with DISPLAY ONLY (§H.8 p154)
 // ---------------------------------------------------------------------------
 
-// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
-// above — integration-test access via `crate::rules` re-export.
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
 pub struct DeclarativeRelidoDisplayOnlyConflictRule;
 
 impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
@@ -1284,8 +1303,10 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
 // E056 — ORCON conflicts with RELIDO (§H.8 p136)
 // ---------------------------------------------------------------------------
 
-// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
-// above — integration-test access via `crate::rules` re-export.
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
 pub struct DeclarativeOrconRelidoConflictRule;
 
 impl Rule for DeclarativeOrconRelidoConflictRule {
@@ -1348,8 +1369,10 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
 // E057 — ORCON-USGOV conflicts with RELIDO (§H.8 p140)
 // ---------------------------------------------------------------------------
 
-// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
-// above — integration-test access via `crate::rules` re-export.
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
 pub struct DeclarativeOrconUsgovRelidoConflictRule;
 
 impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
