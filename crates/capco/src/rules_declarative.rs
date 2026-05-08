@@ -960,38 +960,76 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 // compliance is automatic (no interior mutability, no heap state).
 
 /// Compute a `(removal_span, original_text)` pair for the RELIDO token in
-/// `attrs.token_spans`, including the adjacent `/` separator so a fix with
-/// replacement `""` produces a well-formed dissem block (no dangling `//`,
-/// no leading `/` after `//`, no trailing `/`).
+/// `attrs.token_spans`, including the adjacent separator(s) so a fix with
+/// replacement `""` produces a well-formed marking (no dangling `//`,
+/// no leading `/` after `//`, no trailing `/`, no source bytes outside the
+/// dissem-block category consumed).
 ///
-/// Layout cases (from PM Addendum II §3):
+/// Layout cases (PM Addendum II §3 + 2026-05-08 idempotency-fix extension):
 ///
-/// - **First**: `S//RELIDO/...` — RELIDO is the leading dissem-control
-///   token, preceded by `//`. Consume the trailing `/` so the removal span
-///   is `[relido.start, relido.end + 1]`. After fix: `S//...`.
-/// - **Middle / Last**: `S//.../RELIDO[/...]` — preceded by a `/` separator
-///   from a prior dissem-control token. Consume the preceding `/` so the
-///   removal span is `[relido.start - 1, relido.end]`. After fix: the
-///   adjacent tokens close up cleanly.
+/// - **Middle / last in dissem block** — RELIDO has a `/`-adjacent prior
+///   sibling (`prior.end + 1 == relido.start`). Consume the preceding `/`:
+///   removal span `[relido.start - 1, relido.end]`, original `"/RELIDO"`.
+///   After fix: surrounding tokens close up cleanly.
+/// - **First in dissem block (with following sibling)** — RELIDO has a
+///   `/`-adjacent following sibling (`next.start == relido.end + 1`) but
+///   no `/`-adjacent prior. Consume the trailing `/`: removal span
+///   `[relido.start, relido.end + 1]`, original `"RELIDO/"`.
+/// - **Sole dissem in `//`-delimited category** — RELIDO has a prior
+///   `TokenSpan` separated by `//` (`prior.end + 2 == relido.start`) AND
+///   no `/`-adjacent prior or following sibling. Consume both preceding
+///   `/`s: removal span `[relido.start - 2, relido.end]`, original
+///   `"//RELIDO"`. This case covers banner-form input like
+///   `TOP SECRET//NOFORN//RELIDO` (where NOFORN and RELIDO sit in
+///   separate dissem categories under malformed-but-recognizable input)
+///   AND portion-form `(S//RELIDO)` (where RELIDO is a sole-payload
+///   dissem block). Without this branch the fix would leave a stranded
+///   `//` separator, and a follow-on E004 separator-collapse fix would
+///   apply on a second pass — breaking idempotency.
 ///
-/// Discrimination is purely byte-offset-based against the slice of
-/// `TokenSpan`s; no source-buffer access is required (the wrapper has no
-/// such access — Constitution V keeps `FixProposal` pure data). The
-/// distinguishing signal is whether the span immediately preceding RELIDO
-/// belongs to a dissem-block category. The parser splits dissem blocks on
-/// `/` (`crates/core/src/parser.rs:1422`) and emits one `TokenSpan` per
-/// `/`-separated atom; consecutive atoms within one block carry adjacent
-/// (`prior.end + 1 == curr.start`) byte offsets.
+/// Discrimination uses the parser's explicit `TokenKind::Separator`
+/// spans interleaved between content tokens (no source-buffer access
+/// required — Constitution V keeps `FixProposal` pure data). The parser
+/// emits a `Separator` `TokenSpan` with `text == "/"` for intra-block
+/// separators and `text == "//"` for inter-category separators. The
+/// helper looks at the `TokenSpan` immediately preceding RELIDO (and
+/// immediately following) and discriminates by `(kind, text)`. Earlier
+/// versions of the helper used byte-offset arithmetic only (`prior.end +
+/// 1 == relido.start`) and missed the Separator spans entirely — that
+/// was the bug `proptest_engine::fix_idempotent` caught for banner-form
+/// `TOP SECRET//NOFORN//RELIDO` input on 2026-05-08.
 ///
-/// Returns `None` when:
+/// # Returns `None` when no sound removal can be proved
 ///
 /// - `attrs.token_spans` contains no `RELIDO` token (caller's check fired
 ///   on the constraint predicate but the parser didn't surface a span — a
 ///   rare-but-real layout where the fast-path elided the span).
-/// - The RELIDO span is at offset 0 (cannot consume a preceding separator)
-///   AND has no following sibling (cannot consume a trailing separator).
-///   This is a malformed-input edge case the parser ordinarily rejects;
-///   returning `None` is a defensive fall-through.
+/// - **RELIDO has no adjacent neighbor on either side** (not preceded by
+///   `/` or `//`, not followed by a `/`-adjacent sibling). Without a
+///   recognized layout the helper cannot prove which separator to consume;
+///   eating bytes blindly risks reaching outside the marking (the closing
+///   `)`, `\n`, or end-of-source). Realistic parser output always provides
+///   at least one anchor; this branch is defensive against synthetic /
+///   malformed inputs.
+/// - **Non-canonical whitespace between the prior token and RELIDO** (e.g.,
+///   `(S//OC /RELIDO)`). Byte-offset adjacency fails when whitespace or
+///   other content occupies the would-be-separator position. The parser
+///   canonicalizes whitespace in normal CAPCO-shaped input, so this is
+///   defensive against synthetic / malformed inputs.
+///
+/// **The helper is for canonical-whitespace inputs only.** Broader fix
+/// coverage (long-form `RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL`,
+/// non-canonical whitespace, RELIDO with FGI/JOINT/NATO atoms in shapes
+/// like `(S//FGI XXX//RELIDO)`) is a future-PR concern — see plan §8 and
+/// PR 3.7 (T108b) deferred work for the family-predicate roster, where
+/// the subtractive-fix pattern extends without changing this helper.
+///
+/// Long-form RELIDO is not yet auto-fix-supported; the conflict predicate
+/// fires correctly (the parser canonicalizes long-form to
+/// `DissemControl::Relido`), but the wrapper's span lookup keys on the
+/// abbreviation-form `t.text == "RELIDO"`, so long-form input surfaces
+/// the diagnostic without a fix span. Tracked for follow-up; ICD long-form
+/// is rare in practice.
 ///
 /// `None` causes the caller to emit the `Diagnostic` without a fix —
 /// preserving Constitution V (no malformed `FixProposal` ever leaves the
@@ -1005,44 +1043,65 @@ pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<
         .enumerate()
         .find(|(_, t)| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")?;
 
-    // Look at the immediately-preceding TokenSpan (if any). If its byte
-    // end is exactly `relido.span.start - 1`, the parser saw a single `/`
-    // between it and RELIDO — meaning RELIDO is NOT the first atom in its
-    // dissem block. Consume the preceding `/`.
+    // Adjacency model — the parser's actual TokenSpan emission pattern
+    // (verified against `marque check` output 2026-05-08):
     //
-    // Otherwise (no prior token, or prior token's end is further back than
-    // 1 byte — i.e., separated by `//` or another category boundary),
-    // RELIDO is the first atom in its block. Consume the trailing `/`.
-    let preceded_by_slash = relido_idx
-        .checked_sub(1)
-        .and_then(|i| spans.get(i))
-        .is_some_and(|prev| prev.span.end + 1 == relido.span.start);
+    //   - Intra-block `/` separators: NOT emitted as TokenSpans.
+    //     Adjacent dissem-control content tokens carry adjacent byte
+    //     offsets (`prior.span.end + 1 == curr.span.start`); the `/`
+    //     occupies the gap byte but has no span of its own.
+    //   - Cross-category `//` separators: emitted as
+    //     `TokenKind::Separator` spans with `text == "//"`, occupying
+    //     two bytes between the bordering content tokens.
+    //
+    // The earlier byte-offset-only model (`prior.end + 1 ==
+    // relido.start`) handled intra-block adjacency correctly but missed
+    // the cross-category case. The earlier Separator-only model handled
+    // cross-category but broke intra-block. The combined model below
+    // checks BOTH: prior content-token byte-adjacency for case 1, prior
+    // Separator span for case 3.
+    let prev = relido_idx.checked_sub(1).and_then(|i| spans.get(i));
+    let next = spans.get(relido_idx + 1);
 
-    if preceded_by_slash {
-        // Case: middle or last in dissem block. Removal span =
-        // [relido.start - 1, relido.end]. Original text = "/RELIDO".
+    // Case 1: middle / last in dissem block — prior is a `/`-adjacent
+    // **content** token (no Separator span between, intra-block).
+    let preceded_by_single_slash =
+        prev.is_some_and(|p| p.kind != TokenKind::Separator && p.span.end + 1 == relido.span.start);
+    if preceded_by_single_slash {
+        // Removal span = [relido.start - 1, relido.end]. Original = "/RELIDO".
         let start = relido.span.start.checked_sub(1)?;
         let end = relido.span.end;
-        Some((Span::new(start, end), "/RELIDO".into()))
-    } else {
-        // Case: first in dissem block (after `//`) OR the only dissem
-        // token. Removal span = [relido.start, relido.end + 1].
-        // Original text = "RELIDO/".
-        //
-        // If RELIDO is at byte 0 AND has no following sibling, we cannot
-        // safely consume a trailing `/` either — but in practice the
-        // parser always frames dissem blocks within a marking delimited by
-        // `(` ... `)` or banner separators, so a leading-`/` is always
-        // present and the trailing case is recoverable. Defensive fall-
-        // through to None handles the pathological "marking is just
-        // `RELIDO`" input the parser ordinarily rejects upstream.
-        if relido.span.start == 0 && spans.len() == 1 {
-            return None;
-        }
+        return Some((Span::new(start, end), "/RELIDO".into()));
+    }
+
+    // Case 2: first in dissem block — following is a `/`-adjacent
+    // **content** token (intra-block sibling).
+    let followed_by_single_slash =
+        next.is_some_and(|n| n.kind != TokenKind::Separator && n.span.start == relido.span.end + 1);
+    if followed_by_single_slash {
+        // Removal span = [relido.start, relido.end + 1]. Original = "RELIDO/".
         let start = relido.span.start;
         let end = relido.span.end.checked_add(1)?;
-        Some((Span::new(start, end), "RELIDO/".into()))
+        return Some((Span::new(start, end), "RELIDO/".into()));
     }
+
+    // Case 3: sole dissem in `//`-delimited category — prior is a
+    // double-slash Separator (`prev.text == "//"`, `prev.span.end ==
+    // relido.span.start`). Consume both preceding `/`s so the stranded
+    // category separator goes with the payload. Covers banner-form
+    // `... // <other-cat> // RELIDO` AND portion-form `(... // RELIDO)`.
+    let preceded_by_double_slash = prev.is_some_and(|p| {
+        p.kind == TokenKind::Separator && &*p.text == "//" && p.span.end == relido.span.start
+    });
+    if preceded_by_double_slash {
+        // Removal span = [relido.start - 2, relido.end]. Original = "//RELIDO".
+        let start = relido.span.start.checked_sub(2)?;
+        let end = relido.span.end;
+        return Some((Span::new(start, end), "//RELIDO".into()));
+    }
+
+    // No recognized layout — defensive fall-through to None.
+    None
 }
 
 /// Build a subtractive RELIDO `FixProposal` for the four §H.8 conflict
@@ -1088,6 +1147,16 @@ fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<F
 // E054 — RELIDO conflicts with NOFORN (§H.8 p154)
 // ---------------------------------------------------------------------------
 
+// Deviation from the `pub(crate)` convention used by every prior
+// `Declarative*` wrapper in this module is intentional: integration
+// tests in `crates/capco/tests/relido_conflicts.rs` (PR 3b.C behavior +
+// citation-fidelity + helper-position coverage) need to instantiate
+// these wrappers directly, and integration tests link the crate as an
+// external dependency that only sees `pub` items. The wrappers are
+// re-exported through `crate::rules` (`pub use ...`) to keep the
+// integration-test surface explicit and module-local. `rules_declarative`
+// is `pub(crate) mod`, so the effective external visibility of these
+// items remains scoped to what `crate::rules` re-exports.
 pub struct DeclarativeRelidoNofornConflictRule;
 
 impl Rule for DeclarativeRelidoNofornConflictRule {
@@ -1149,6 +1218,8 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 // E055 — RELIDO conflicts with DISPLAY ONLY (§H.8 p154)
 // ---------------------------------------------------------------------------
 
+// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
+// above — integration-test access via `crate::rules` re-export.
 pub struct DeclarativeRelidoDisplayOnlyConflictRule;
 
 impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
@@ -1213,6 +1284,8 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
 // E056 — ORCON conflicts with RELIDO (§H.8 p136)
 // ---------------------------------------------------------------------------
 
+// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
+// above — integration-test access via `crate::rules` re-export.
 pub struct DeclarativeOrconRelidoConflictRule;
 
 impl Rule for DeclarativeOrconRelidoConflictRule {
@@ -1275,6 +1348,8 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
 // E057 — ORCON-USGOV conflicts with RELIDO (§H.8 p140)
 // ---------------------------------------------------------------------------
 
+// `pub` for the same reason as `DeclarativeRelidoNofornConflictRule`
+// above — integration-test access via `crate::rules` re-export.
 pub struct DeclarativeOrconUsgovRelidoConflictRule;
 
 impl Rule for DeclarativeOrconUsgovRelidoConflictRule {

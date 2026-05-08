@@ -49,6 +49,29 @@ use marque_rules::{FixSource, Rule, RuleContext, Severity};
 use marque_scheme::{Constraint, MarkingScheme, TokenRef};
 
 // ---------------------------------------------------------------------------
+// Type aliases — keep `clippy::type_complexity` quiet under
+// `cargo clippy --workspace --all-targets -- -D warnings` (M-4 fix).
+// ---------------------------------------------------------------------------
+
+/// One row of the citation-fidelity test case table:
+/// `(constraint name, rule trait object, expected §-citation,
+///   triggering dissem-control + token-text pairs)`.
+type CitationCase = (
+    &'static str,
+    &'static dyn Rule,
+    &'static str,
+    &'static [(DissemControl, &'static str)],
+);
+
+/// One row of the FixProposal-discipline test case table:
+/// `(rule id, rule trait object, triggering dissem-control + token-text pairs)`.
+type FixDisciplineCase = (
+    &'static str,
+    &'static dyn Rule,
+    &'static [(DissemControl, &'static str)],
+);
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -105,14 +128,37 @@ fn attrs_for_dissem_block(
         .into_boxed_slice();
 
     // Construct the source string and walk byte offsets in lock-step.
+    // Mirror the real parser's TokenSpan emission pattern (verified
+    // against `marque check` output 2026-05-08):
+    //   - Cross-category `//` separators: emitted as Separator spans.
+    //   - Intra-block `/` separators: NOT emitted; adjacent content
+    //     tokens carry adjacent byte offsets with the `/` in the gap.
     let mut source = String::new();
+    let head_start = source.len();
     source.push_str(head); // head occupies [0, head.len()]
-    source.push_str("//"); // category boundary at [head.len(), head.len() + 2]
+    let head_end = source.len();
 
-    let mut spans: Vec<TokenSpan> = Vec::with_capacity(dissem.len());
+    let mut spans: Vec<TokenSpan> = Vec::with_capacity(2 + dissem.len());
+    spans.push(TokenSpan {
+        kind: TokenKind::Classification,
+        text: head.to_string().into_boxed_str(),
+        span: Span::new(head_start, head_end),
+    });
+
+    // Category-boundary `//` between head and first dissem token.
+    let cat_sep_start = source.len();
+    source.push_str("//");
+    let cat_sep_end = source.len();
+    spans.push(TokenSpan {
+        kind: TokenKind::Separator,
+        text: "//".to_string().into_boxed_str(),
+        span: Span::new(cat_sep_start, cat_sep_end),
+    });
+
     for (i, (_, text)) in dissem.iter().enumerate() {
         if i > 0 {
-            source.push('/'); // intra-block separator
+            // Intra-block `/`: bytes only, no Separator span.
+            source.push('/');
         }
         let start = source.len();
         source.push_str(text);
@@ -577,7 +623,7 @@ fn e057_silent_when_neither_orcon_usgov_nor_relido_present() {
 #[test]
 fn relido_conflict_wrappers_carry_catalog_citations() {
     let scheme = CapcoScheme::new();
-    let cases: &[(&str, &dyn Rule, &str, &[(DissemControl, &str)])] = &[
+    let cases: &[CitationCase] = &[
         (
             "E054/relido-conflicts-noforn",
             &DeclarativeRelidoNofornConflictRule as &dyn Rule,
@@ -817,6 +863,143 @@ fn helper_returns_none_when_relido_absent() {
     );
 }
 
+#[test]
+fn helper_sole_in_block_consumes_double_slash() {
+    // Layout case 3 (M-1 boundary case + 2026-05-08 idempotency-fix
+    // extension): input shaped like `S//RELIDO` has RELIDO as the sole
+    // token in its dissem block, preceded by a `//` category separator.
+    // The helper consumes BOTH preceding `/`s so the stranded category
+    // separator goes with the RELIDO payload. After fix: `S`. Without
+    // case 3, the helper would either fabricate a malformed trailing-`/`
+    // removal (the original bug the M-1 review flagged) OR emit no fix
+    // and let a follow-on E004 separator-collapse pass run on a second
+    // pass — the second behavior is what proptest_engine's `fix_idempotent`
+    // caught for `TOP SECRET//NOFORN//RELIDO\n`-shaped banners.
+    //
+    // attrs_for_dissem_block("S", &[Relido]) produces source "S//RELIDO".
+    // S occupies [0, 1]; "//" at [1, 3]; RELIDO at [3, 9].
+    let (attrs, source) = attrs_for_dissem_block("S", &[(DissemControl::Relido, "RELIDO")]);
+    let (span, original) = compute_relido_removal_span(&attrs)
+        .expect("sole-in-block layout must produce a `//RELIDO` removal");
+    assert_eq!(
+        span.start, 1,
+        "sole-in-block fix must consume both preceding `/`s"
+    );
+    assert_eq!(span.end, 9);
+    assert_eq!(original.as_ref(), "//RELIDO");
+
+    let fixed = apply_fix(&source, span, "");
+    assert_eq!(fixed, "S");
+    assert!(!fixed.contains("RELIDO"));
+    assert!(!fixed.contains("//"));
+    assert!(!fixed.ends_with('/'));
+}
+
+#[test]
+fn helper_banner_form_double_slash_neighbor() {
+    // Layout case 3 in banner form: `TOP SECRET//NOFORN//RELIDO`.
+    // NOFORN and RELIDO sit in separate dissem-control category blocks
+    // (the `//` between them is a category separator under malformed-but-
+    // recognizable input that the parser surfaces as two TokenSpans
+    // separated by 2 bytes). The helper consumes `//RELIDO` so the post-
+    // fix banner is `TOP SECRET//NOFORN`.
+    //
+    // This is the proptest_engine::fix_idempotent regression case
+    // (2026-05-08): without case 3, a first pass would apply E004
+    // (`//` → `/`) and a second pass would apply E054 with a different
+    // span layout, breaking `Engine::fix` idempotency. With case 3, E054's
+    // span subsumes E004's via the engine's overlap guard and idempotency
+    // holds in one pass.
+    //
+    // attrs_for_dissem_block("TOP SECRET//NOFORN", &[Relido]) produces
+    // source "TOP SECRET//NOFORN//RELIDO" (the head string is taken
+    // verbatim, including the inner "//"). NOFORN is NOT a TokenSpan in
+    // this synthetic — only the head Classification ("TOP SECRET//NOFORN"
+    // span) and the trailing RELIDO. We synthesize the layout directly
+    // here to mirror what the real parser produces.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    a.dissem_controls = vec![DissemControl::Nf, DissemControl::Relido].into_boxed_slice();
+    // Real parser layout for `TOP SECRET//NOFORN//RELIDO` (verified by
+    // running `marque check` against `/tmp/banner.txt` during PR review):
+    //   Classification "TOP SECRET" @ [0, 10]
+    //   Separator     "//"          @ [10, 12]   (cross-category boundary)
+    //   DissemControl "NOFORN"      @ [12, 18]
+    //   Separator     "//"          @ [18, 20]   (cross-category boundary)
+    //   DissemControl "RELIDO"      @ [20, 26]
+    // Intra-block `/` separators (e.g. between siblings within one
+    // dissem block) are NOT emitted as Separator spans; only the
+    // cross-category `//` boundaries are.
+    a.token_spans = vec![
+        TokenSpan {
+            kind: TokenKind::Classification,
+            text: "TOP SECRET".to_string().into_boxed_str(),
+            span: Span::new(0, 10),
+        },
+        TokenSpan {
+            kind: TokenKind::Separator,
+            text: "//".to_string().into_boxed_str(),
+            span: Span::new(10, 12),
+        },
+        TokenSpan {
+            kind: TokenKind::DissemControl,
+            text: "NOFORN".to_string().into_boxed_str(),
+            span: Span::new(12, 18),
+        },
+        TokenSpan {
+            kind: TokenKind::Separator,
+            text: "//".to_string().into_boxed_str(),
+            span: Span::new(18, 20),
+        },
+        TokenSpan {
+            kind: TokenKind::DissemControl,
+            text: "RELIDO".to_string().into_boxed_str(),
+            span: Span::new(20, 26),
+        },
+    ]
+    .into_boxed_slice();
+
+    let (span, original) = compute_relido_removal_span(&a)
+        .expect("banner-form `//RELIDO` layout must produce a removal span");
+    assert_eq!(span.start, 18, "fix must consume both preceding `/`s");
+    assert_eq!(span.end, 26);
+    assert_eq!(original.as_ref(), "//RELIDO");
+
+    let source = "TOP SECRET//NOFORN//RELIDO";
+    let fixed = apply_fix(source, span, "");
+    assert_eq!(fixed, "TOP SECRET//NOFORN");
+    assert!(!fixed.contains("RELIDO"));
+    assert!(!fixed.ends_with('/'));
+}
+
+#[test]
+fn helper_returns_none_when_no_recognized_layout() {
+    // Defensive fall-through: synthetic input where RELIDO has neither a
+    // `/`-adjacent prior, nor a `/`-adjacent following sibling, nor a
+    // `//`-preceded prior. None of the three recognized layout cases
+    // applies, so the helper returns None. Caller falls back to no-fix
+    // (Constitution V: never emit a malformed fix). Realistic parser
+    // output never produces this layout, but the helper is `pub` and
+    // future call sites in PR 3.7 may exercise pathological cases.
+    //
+    // Construct: RELIDO at offset 100 with no other token spans at all
+    // (no prior, no following). All three cases fall through.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_controls = vec![DissemControl::Relido].into_boxed_slice();
+    a.token_spans = vec![TokenSpan {
+        kind: TokenKind::DissemControl,
+        text: "RELIDO".to_string().into_boxed_str(),
+        span: Span::new(100, 106),
+    }]
+    .into_boxed_slice();
+
+    assert!(
+        compute_relido_removal_span(&a).is_none(),
+        "helper must return None when no recognized layout matches"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // FixProposal source / migration_ref / source_field discipline
 // ---------------------------------------------------------------------------
@@ -828,12 +1011,7 @@ fn helper_returns_none_when_relido_absent() {
 
 #[test]
 fn relido_fix_proposals_carry_builtin_rule_source_and_no_migration_ref() {
-    type W = (
-        &'static str,
-        &'static dyn Rule,
-        &'static [(DissemControl, &'static str)],
-    );
-    let cases: &[W] = &[
+    let cases: &[FixDisciplineCase] = &[
         (
             "E054",
             &DeclarativeRelidoNofornConflictRule,
