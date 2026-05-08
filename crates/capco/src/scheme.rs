@@ -86,6 +86,21 @@ pub const TOK_NON_US_CLASSIFICATION: TokenId = TokenId(121);
 pub const TOK_NODIS: TokenId = TokenId(122);
 pub const TOK_EXDIS: TokenId = TokenId(123);
 
+// PR 3b.C (T026c): RELIDO incompatibility roster sentinels.
+// Resolved via `satisfies_attrs` against `attrs.dissem_controls` —
+// all four tokens are IC dissem controls living in
+// `marque_ism::DissemControl`.
+//
+// DissemControl variant → CVE string form (from generated values.rs):
+//   Relido     → "RELIDO"
+//   Displayonly → "DISPLAYONLY"
+//   Oc         → "OC"      (ORCON portion abbreviation)
+//   OcUsgov    → "OC-USGOV" (ORCON-USGOV portion abbreviation)
+pub const TOK_RELIDO: TokenId = TokenId(124);
+pub const TOK_DISPLAY_ONLY: TokenId = TokenId(125);
+pub const TOK_ORCON: TokenId = TokenId(126);
+pub const TOK_ORCON_USGOV: TokenId = TokenId(127);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
 // ---------------------------------------------------------------------------
@@ -1333,6 +1348,116 @@ impl CapcoScheme {
                 name: "E038/nodis-or-exdis-requires-noforn",
                 label: "CAPCO-2016 §H.9 p172 + p174",
             },
+            // ---- E054: RELIDO ⊥ NOFORN (§H.8 p154) ------------------
+            //
+            // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
+            // "Cannot be used with NOFORN or DISPLAY ONLY."
+            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            //
+            // Rationale: RELIDO authorizes foreign release under a
+            // Secretary of Defense / SFDRA-mediated arrangement;
+            // NOFORN is the most restrictive FD&R marking, prohibiting
+            // any foreign national access. The two are in direct semantic
+            // conflict on the FD&R axis.
+            //
+            // Reciprocal (doc-comment only — NOT the primary citation
+            // under D13 single-citation discipline):
+            // §H.8 NOFORN entry p145 line 3585: "Cannot be used with
+            // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY."
+            //
+            // LHS = asserting token (RELIDO at p154); wrapper span
+            // anchors at RELIDO per PM Q1 resolution.
+            Constraint::Conflicts {
+                name: "E054/relido-conflicts-noforn",
+                left: TokenRef::Token(TOK_RELIDO),
+                right: TokenRef::Token(TOK_NOFORN),
+                label: "CAPCO-2016 §H.8 p154",
+            },
+            // ---- E055: RELIDO ⊥ DISPLAY ONLY (§H.8 p154) ------------
+            //
+            // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
+            // "Cannot be used with NOFORN or DISPLAY ONLY."
+            // Same cited line as E054 — both NOFORN and DISPLAY ONLY
+            // appear in the single prohibition sentence.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            //
+            // Rationale: DISPLAY ONLY authorizes viewing but not release
+            // or duplication; RELIDO defers release to a
+            // Secretary of Defense / SFDRA arrangement. The two FD&R
+            // semantics — "view in place" vs. "release deferred pending
+            // SFDRA authorization" — are in direct conflict.
+            //
+            // Reciprocal (doc-comment only — NOT the primary citation):
+            // §H.8 DISPLAY ONLY entry p163 line 4050: "Cannot be used
+            // with RELIDO or NOFORN."
+            //
+            // LHS = asserting token (RELIDO at p154); wrapper span
+            // anchors at RELIDO per PM Q1 resolution.
+            Constraint::Conflicts {
+                name: "E055/relido-conflicts-display-only",
+                left: TokenRef::Token(TOK_RELIDO),
+                right: TokenRef::Token(TOK_DISPLAY_ONLY),
+                label: "CAPCO-2016 §H.8 p154",
+            },
+            // ---- E056: ORCON ⊥ RELIDO (§H.8 p136) -------------------
+            //
+            // §H.8 ORCON entry p136, Relationship(s) to Other Markings:
+            // "May not be used with RELIDO."
+            // Full surrounding prose (lines 3361–3363):
+            // "May not be used with ORCON-USGOV in a portion mark or
+            // banner line. May be used with NOFORN, REL TO, DISPLAY
+            // ONLY. May not be used with RELIDO."
+            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3363.
+            //
+            // Citation authority note: the asserting prose lives on the
+            // ORCON template (p136), NOT in RELIDO's p154
+            // Relationship(s) section. §H.8 p154 does NOT mention ORCON.
+            // The directionality is real: this entry carries the ORCON
+            // assertion, and the catalog row anchors at the page where
+            // that assertion is made.
+            //
+            // Rationale: ORCON requires originator approval before
+            // further dissemination; RELIDO defers release to a SFDRA
+            // arrangement that bypasses originator approval. The two
+            // control semantics are incompatible.
+            //
+            // LHS = asserting token (ORCON at p136); wrapper span
+            // anchors at ORCON per PM Q1 + Q2 resolution.
+            Constraint::Conflicts {
+                name: "E056/orcon-conflicts-relido",
+                left: TokenRef::Token(TOK_ORCON),
+                right: TokenRef::Token(TOK_RELIDO),
+                label: "CAPCO-2016 §H.8 p136",
+            },
+            // ---- E057: ORCON-USGOV ⊥ RELIDO (§H.8 p140) ------------
+            //
+            // §H.8 ORCON-USGOV entry p140, Relationship(s) to Other
+            // Markings: "May not be used with RELIDO."
+            // Full surrounding prose (lines 3442–3446):
+            // "May not be used with ORCON in a portion mark or banner
+            // line. May be used with NOFORN, REL TO, DISPLAY ONLY.
+            // May not be used with RELIDO."
+            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3444.
+            //
+            // Citation page note: the ORCON-USGOV template begins p139
+            // (line 3407); the Relationship(s) subsection straddles
+            // p139–p140. The RELIDO exclusion appears on p140. The
+            // catalog primary is p140 because that is where the specific
+            // RELIDO prose occurs. Verified against line 3444 in the
+            // vendored source.
+            //
+            // Rationale: ORCON-USGOV is the USGOV-pre-approved variant
+            // of ORCON; it carries the same originator-approval semantic
+            // conflict with RELIDO's SFDRA-deferred release arrangement.
+            //
+            // LHS = asserting token (ORCON-USGOV at p140); wrapper span
+            // anchors at ORCON-USGOV per PM Q1 + Q2 resolution.
+            Constraint::Conflicts {
+                name: "E057/orcon-usgov-conflicts-relido",
+                left: TokenRef::Token(TOK_ORCON_USGOV),
+                right: TokenRef::Token(TOK_RELIDO),
+                label: "CAPCO-2016 §H.8 p140",
+            },
         ]
     }
 }
@@ -1469,6 +1594,27 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis)),
+            // PR 3b.C (T026c): RELIDO incompatibility sentinels.
+            // Pattern mirrors TOK_NOFORN above — scan `dissem_controls`
+            // for the matching DissemControl variant. All four variants
+            // exist in the generated values.rs; no new marque-ism edits
+            // needed (Constitution VII compliance verified).
+            TOK_RELIDO => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Relido)),
+            TOK_DISPLAY_ONLY => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Displayonly)),
+            TOK_ORCON => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Oc)),
+            TOK_ORCON_USGOV => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::OcUsgov)),
             _ => false,
         },
         TokenRef::AnyInCategory(cat) => match *cat {

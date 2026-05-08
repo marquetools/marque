@@ -84,7 +84,9 @@
 use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
-use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
+use marque_rules::{
+    Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity,
+};
 use marque_scheme::ConstraintViolation;
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -145,6 +147,72 @@ fn spans_of_kind(attrs: &CanonicalAttrs, kind: TokenKind) -> Vec<&TokenSpan> {
         .iter()
         .filter(|t| t.kind == kind)
         .collect()
+}
+
+/// Find the first `TokenSpan` whose kind is `DissemControl` AND whose
+/// text matches any of the supplied forms.
+///
+/// # Form taxonomy
+///
+/// CAPCO-2016 §G.1 Table 4 (p36) and the §H.8 per-marking templates
+/// distinguish **three marking-surface forms** for each dissem control:
+///
+/// 1. **Authorized Banner Line Marking Title** — the long surface form
+///    that appears in banner lines. Example: `ORCON`, `ORCON-USGOV`,
+///    `NOFORN`, `DISPLAY ONLY`.
+/// 2. **Authorized Banner Line Abbreviation** — a short banner form
+///    when one is registered (Table 4 column 2). Example: `OC`,
+///    `OC-USGOV`, `NF`. For `DISPLAY ONLY` this column is **`None`**
+///    per §H.8 p163 — there is no abbreviation; banner form is the
+///    long surface string.
+/// 3. **Authorized Portion Mark** — the form rendered inside `(...)`
+///    (Table 4 column 3). Equals the banner abbreviation when one
+///    exists, otherwise equals the banner long form. For
+///    `DISPLAY ONLY` the portion mark is `DISPLAY ONLY [LIST]` per
+///    §H.8 p163.
+///
+/// Plus a fourth form-space, orthogonal to the marking surface:
+///
+/// 4. **ODNI ISM XML CVE attribute value** — the data shape used in
+///    `ism:disseminationControls="..."`. All-uppercase, no spaces.
+///    `DissemControl::as_str()` returns this form. Example: `"OC"`,
+///    `"OC-USGOV"`, `"NF"`, `"DISPLAYONLY"` (no space). The CVE form
+///    matches the marking-surface portion mark for entries where the
+///    portion is itself a short token (`OC`, `NF`), but diverges where
+///    the marking surface contains spaces or is the long form (`DISPLAY
+///    ONLY` vs `DISPLAYONLY`). Marque accepts CVE-form input on the
+///    lookup chain so that a future programmatic / re-import path
+///    feeding `ism:disseminationControls` values back through the rule
+///    engine round-trips cleanly.
+///
+/// The parser preserves raw user input verbatim in `TokenSpan::text`
+/// (see `crates/core/src/parser.rs` — every push uses `text:
+/// trimmed.into()` with no canonicalization), so callers anchoring at a
+/// dissem-control token MUST enumerate every form a user (or an XML
+/// re-import) might have written: banner long form, banner abbreviation
+/// (when distinct), portion mark, AND CVE attribute value.
+///
+/// # Engine gap (tracked at #323)
+///
+/// `crates/ism/src/marking_forms.rs::MARKING_FORMS` has no DISPLAY ONLY
+/// entry, and `DissemControl::parse` only matches the CVE string
+/// `"DISPLAYONLY"`. So today the parser cannot tokenize `DISPLAY ONLY`
+/// (with space) as a `DissemControl` — only the CVE form is recognized.
+/// The `"DISPLAY ONLY"` form in this lookup is forward-looking until
+/// that gap closes (separate `marque-ism` PR per Constitution VII
+/// Principle IV; tracked at #323).
+///
+/// `#[doc(hidden)]` because this is an internal layout helper for the
+/// RELIDO incompatibility wrappers (E054–E057), not a stable public
+/// API. Same convention as the four wrapper structs and the
+/// `compute_relido_removal_span` helper.
+#[doc(hidden)]
+pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::DissemControl && forms.contains(&&*t.text))
+        .map(|t| t.span)
 }
 
 // ---------------------------------------------------------------------------
@@ -839,6 +907,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
 // ---------------------------------------------------------------------------
 // E053 — NOFORN conflicts with REL TO (§H.8 p145)
 // ---------------------------------------------------------------------------
+// (See below for E054–E057, PR 3b.C RELIDO incompatibility wrappers.)
 
 pub(crate) struct DeclarativeNofornRelToConflictRule;
 
@@ -882,6 +951,563 @@ impl Rule for DeclarativeNofornRelToConflictRule {
              remove one or the other",
             "CAPCO-2016 §H.8 p145",
             None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PR 3b.C (T026c) — RELIDO incompatibility wrappers (E054 / E055 / E056 / E057)
+// ---------------------------------------------------------------------------
+//
+// Four directly-cited §H.8 RELIDO mutual-exclusion pairs, each wrapping
+// one `Constraint::Conflicts` row in `CapcoScheme::constraints()`:
+//
+//   E054 — RELIDO ⊥ NOFORN        (§H.8 p154; reciprocal §H.8 p145)
+//   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154; reciprocal §H.8 p163)
+//   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; asymmetric — no p154 reciprocal)
+//   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; asymmetric — no p154 reciprocal)
+//
+// Pattern: each wrapper calls `violations_for(attrs, "<catalog-name>")` as the
+// trigger check (did the named `Constraint::Conflicts` predicate fire?), then
+// selects a diagnostic-anchor span from `attrs.token_spans` at the LHS
+// (asserting) token per PM Q1 + Q2 resolution, computes a removal span via
+// `compute_relido_removal_span` that covers RELIDO + an adjacent `/`
+// separator, and emits a single `Diagnostic` carrying a subtractive
+// `FixProposal` whose replacement is `""`. The citation-fidelity test in
+// `tests/relido_conflicts.rs` enforces byte-identity between wrapper emission
+// and catalog label.
+//
+// Scope note: the broader §3.4.2 family roster (RELIDO ⊥ {LES-NF, SBU-NF,
+// each FGI atom, each JOINT atom, each NATO atom}) is deferred to PR 3.7
+// (T108b) where `Constraint::Conflicts::RhsFamily(predicate)` ships. See
+// `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2` for rationale.
+//
+// Subtractive-fix direction (PM Addendum II, 2026-05-07).
+//
+// Marque is a guidance tool for dissem markings, not just a checker. The
+// dissemination axis is the unique area where the engine can apply true
+// fixes — we are never *inventing* a token (we couldn't say "this should be
+// LES" if the user never typed LES); we are only *removing* one that the
+// surrounding tokens have already excluded by their §-cited Relationship(s)
+// prose. RELIDO is the unambiguous remove-target in all four cases:
+//
+//   E054: NOFORN dominates per FD&R supersession (§D.2 Table 3 +
+//         §H.8 p145). Remove RELIDO.
+//   E055: DISPLAY ONLY is a positive disclosure decision (specific country
+//         list); RELIDO defers release to a SFDRA. The deferred decision
+//         can't operate when a positive decision is already on the marking.
+//         Remove RELIDO.
+//   E056: §H.8 p136 explicitly asserts "May not be used with RELIDO" on the
+//         ORCON template — RELIDO is the rejected token. Remove RELIDO.
+//   E057: §H.8 p140 explicitly asserts "May not be used with RELIDO" on the
+//         ORCON-USGOV template. Same logic as E056. Remove RELIDO.
+//
+// The fix is `confidence = 0.95` (definite, at-threshold) so it auto-applies
+// under the engine's default `Config::confidence_threshold = 0.95`
+// (auto-apply gate is `confidence >= threshold`). The §-cited prose is
+// categorical in every case and the user has explicitly endorsed RELIDO as
+// the remove-target, so the matching CAPCO convention is the 0.95 tier
+// (rules.rs:998 / :1327 / :2622 / :2777 / :2853 — definite-fix sites);
+// 0.85–0.9 is reserved for conditional or lower-confidence cases. See
+// `build_relido_removal_fix` doc-comment for the full calibration rationale.
+//
+// Generalization scope: this subtractive-fix pattern applies to **dissem-axis
+// `Constraint::Conflicts`** rules ONLY. Non-dissem axis conflicts
+// (classification E012, JOINT cross-system, SCI grammar) remain
+// "user resolves" because the fix direction cannot be inferred without
+// policy input.
+//
+// Constitution V (audit-first) compliance preserved: every `FixProposal` is
+// pure data (span + replacement + confidence + source + migration_ref). The
+// engine snapshots runtime state into `AppliedFix` at promotion time. The
+// wrappers never construct `AppliedFix`.
+//
+// Constitution VI: all four structs are stateless zero-size; `Send + Sync`
+// compliance is automatic (no interior mutability, no heap state).
+
+/// Compute a `(removal_span, original_text)` pair for the RELIDO token in
+/// `attrs.token_spans`, including the adjacent separator(s) so a fix with
+/// replacement `""` produces a well-formed marking (no dangling `//`,
+/// no leading `/` after `//`, no trailing `/`, no source bytes outside the
+/// dissem-block category consumed).
+///
+/// Layout cases (PM Addendum II §3 + 2026-05-08 idempotency-fix extension):
+///
+/// - **Middle / last in dissem block** — RELIDO has a `/`-adjacent prior
+///   sibling (`prior.end + 1 == relido.start`). Consume the preceding `/`:
+///   removal span `[relido.start - 1, relido.end]`, original `"/RELIDO"`.
+///   After fix: surrounding tokens close up cleanly.
+/// - **First in dissem block (with following sibling)** — RELIDO has a
+///   `/`-adjacent following sibling (`next.start == relido.end + 1`) but
+///   no `/`-adjacent prior. Consume the trailing `/`: removal span
+///   `[relido.start, relido.end + 1]`, original `"RELIDO/"`.
+/// - **Sole dissem in `//`-delimited category** — RELIDO has a prior
+///   `TokenSpan` separated by `//` (`prior.end + 2 == relido.start`) AND
+///   no `/`-adjacent prior or following sibling. Consume both preceding
+///   `/`s: removal span `[relido.start - 2, relido.end]`, original
+///   `"//RELIDO"`. This case covers banner-form input like
+///   `TOP SECRET//NOFORN//RELIDO` (where NOFORN and RELIDO sit in
+///   separate dissem categories under malformed-but-recognizable input)
+///   AND portion-form `(S//RELIDO)` (where RELIDO is a sole-payload
+///   dissem block). Without this branch the fix would leave a stranded
+///   `//` separator, and a follow-on E004 separator-collapse fix would
+///   apply on a second pass — breaking idempotency.
+///
+/// Discrimination follows the parser's actual `TokenSpan` emission
+/// pattern, which is asymmetric across separator kinds (no source-buffer
+/// access required — Constitution V keeps `FixProposal` pure data):
+///
+///   - **Cross-category `//` separators** are emitted as
+///     `TokenKind::Separator` spans with `text == "//"`, occupying two
+///     bytes between the bordering content tokens.
+///   - **Intra-block `/` separators** are NOT emitted as TokenSpans;
+///     adjacent dissem-control content tokens carry adjacent byte
+///     offsets (`prev.span.end + 1 == relido.span.start`) and the `/`
+///     occupies the gap byte without a span of its own.
+///
+/// So the helper discriminates Cases 1 / 2 (intra-block) by **content-
+/// token byte adjacency** (`prev.kind != Separator && prev.span.end + 1
+/// == relido.span.start`, and the symmetric check for `next`) and Case 3
+/// (cross-category) by the **explicit `Separator` span with `text ==
+/// "//"`** immediately preceding RELIDO. Earlier byte-offset-only logic
+/// missed Case 3; an interim Separator-only attempt broke Cases 1 / 2;
+/// the combined model handles both correctly. This was the
+/// `proptest_engine::fix_idempotent` regression caught and resolved on
+/// 2026-05-08 for banner-form `TOP SECRET//NOFORN//RELIDO` input.
+///
+/// # Returns `None` when no sound removal can be proved
+///
+/// - `attrs.token_spans` contains no `RELIDO` token (caller's check fired
+///   on the constraint predicate but the parser didn't surface a span — a
+///   rare-but-real layout where the fast-path elided the span).
+/// - **RELIDO has no adjacent neighbor on either side** (not preceded by
+///   `/` or `//`, not followed by a `/`-adjacent sibling). Without a
+///   recognized layout the helper cannot prove which separator to consume;
+///   eating bytes blindly risks reaching outside the marking (the closing
+///   `)`, `\n`, or end-of-source). Realistic parser output always provides
+///   at least one anchor; this branch is defensive against synthetic /
+///   malformed inputs.
+/// - **Non-canonical whitespace between the prior token and RELIDO** (e.g.,
+///   `(S//OC /RELIDO)`). Byte-offset adjacency fails when whitespace or
+///   other content occupies the would-be-separator position. The parser
+///   canonicalizes whitespace in normal CAPCO-shaped input, so this is
+///   defensive against synthetic / malformed inputs.
+///
+/// **The helper is for canonical-whitespace inputs only.** Broader fix
+/// coverage (long-form `RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL`,
+/// non-canonical whitespace, RELIDO with FGI/JOINT/NATO atoms in shapes
+/// like `(S//FGI XXX//RELIDO)`) is a future-PR concern — see plan §8 and
+/// PR 3.7 (T108b) deferred work for the family-predicate roster, where
+/// the subtractive-fix pattern extends without changing this helper.
+///
+/// Long-form RELIDO is not yet auto-fix-supported; the conflict predicate
+/// fires correctly (the parser canonicalizes long-form to
+/// `DissemControl::Relido`), but the wrapper's span lookup keys on the
+/// abbreviation-form `t.text == "RELIDO"`, so long-form input surfaces
+/// the diagnostic without a fix span. Tracked for follow-up; ICD long-form
+/// is rare in practice.
+///
+/// `None` causes the caller to emit the `Diagnostic` without a fix —
+/// preserving Constitution V (no malformed `FixProposal` ever leaves the
+/// rule). The `Severity::Error` diagnostic still surfaces; the user
+/// resolves it manually in the rare-but-real ambiguous-layout case.
+///
+/// `#[doc(hidden)] pub` — `pub` for integration-test access via the
+/// re-export in `crate::rules`, but excluded from rendered docs because
+/// this is implementation-detail support for E054–E057 (and the future
+/// PR 3.7 RELIDO RhsFamily entries that inherit the subtractive-fix
+/// pattern), not a stable public API. Same convention as the four
+/// wrapper structs and as `marque_rules::AppliedFix::__engine_promote`.
+#[doc(hidden)]
+pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<str>)> {
+    let spans = &attrs.token_spans;
+    // Find the RELIDO TokenSpan and its index for adjacency lookups.
+    let (relido_idx, relido) = spans
+        .iter()
+        .enumerate()
+        .find(|(_, t)| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")?;
+
+    // Adjacency model — the parser's actual TokenSpan emission pattern
+    // (verified against `marque check` output 2026-05-08):
+    //
+    //   - Intra-block `/` separators: NOT emitted as TokenSpans.
+    //     Adjacent dissem-control content tokens carry adjacent byte
+    //     offsets (`prior.span.end + 1 == curr.span.start`); the `/`
+    //     occupies the gap byte but has no span of its own.
+    //   - Cross-category `//` separators: emitted as
+    //     `TokenKind::Separator` spans with `text == "//"`, occupying
+    //     two bytes between the bordering content tokens.
+    //
+    // The earlier byte-offset-only model (`prior.end + 1 ==
+    // relido.start`) handled intra-block adjacency correctly but missed
+    // the cross-category case. The earlier Separator-only model handled
+    // cross-category but broke intra-block. The combined model below
+    // checks BOTH: prior content-token byte-adjacency for case 1, prior
+    // Separator span for case 3.
+    let prev = relido_idx.checked_sub(1).and_then(|i| spans.get(i));
+    let next = spans.get(relido_idx + 1);
+
+    // Case 1: middle / last in dissem block — prior is a `/`-adjacent
+    // **content** token (no Separator span between, intra-block).
+    let preceded_by_single_slash =
+        prev.is_some_and(|p| p.kind != TokenKind::Separator && p.span.end + 1 == relido.span.start);
+    if preceded_by_single_slash {
+        // Removal span = [relido.start - 1, relido.end]. Original = "/RELIDO".
+        let start = relido.span.start.checked_sub(1)?;
+        let end = relido.span.end;
+        return Some((Span::new(start, end), "/RELIDO".into()));
+    }
+
+    // Case 2: first in dissem block — following is a `/`-adjacent
+    // **content** token (intra-block sibling).
+    let followed_by_single_slash =
+        next.is_some_and(|n| n.kind != TokenKind::Separator && n.span.start == relido.span.end + 1);
+    if followed_by_single_slash {
+        // Removal span = [relido.start, relido.end + 1]. Original = "RELIDO/".
+        let start = relido.span.start;
+        let end = relido.span.end.checked_add(1)?;
+        return Some((Span::new(start, end), "RELIDO/".into()));
+    }
+
+    // Case 3: sole dissem in `//`-delimited category — prior is a
+    // double-slash Separator (`prev.text == "//"`, `prev.span.end ==
+    // relido.span.start`). Consume both preceding `/`s so the stranded
+    // category separator goes with the payload. Covers banner-form
+    // `... // <other-cat> // RELIDO` AND portion-form `(... // RELIDO)`.
+    let preceded_by_double_slash = prev.is_some_and(|p| {
+        p.kind == TokenKind::Separator && &*p.text == "//" && p.span.end == relido.span.start
+    });
+    if preceded_by_double_slash {
+        // Removal span = [relido.start - 2, relido.end]. Original = "//RELIDO".
+        let start = relido.span.start.checked_sub(2)?;
+        let end = relido.span.end;
+        return Some((Span::new(start, end), "//RELIDO".into()));
+    }
+
+    // No recognized layout — defensive fall-through to None.
+    None
+}
+
+/// Build a subtractive RELIDO `FixProposal` for the four §H.8 conflict
+/// wrappers. Returns `None` when `compute_relido_removal_span` cannot find
+/// a sound removal layout (rare; caller emits the diagnostic without a fix
+/// in that case so Constitution V's "never emit a malformed fix" invariant
+/// holds).
+///
+/// Confidence is fixed at **0.95** per PM Addendum II §3 (post-2026-05-08
+/// calibration) so the fix clears the engine's default
+/// `Config::confidence_threshold` of 0.95 (`crates/config/src/lib.rs:156`,
+/// auto-apply gate is `confidence >= threshold`). The §-cited prose in
+/// every E054–E057 case is categorical ("Cannot be used with..." / "May
+/// not be used with RELIDO"); the marking IS invalid and the user has
+/// explicitly endorsed RELIDO as the remove-target. 0.95 matches the
+/// established CAPCO convention for definite, at-threshold, auto-apply
+/// fixes (e.g. `crates/capco/src/rules.rs:998 / :1327 / :2622 / :2777 /
+/// :2853`); 0.85–0.9 is reserved for conditional / lower-confidence cases.
+///
+/// The earlier 0.9 value left the fix as a manual-review suggestion under
+/// the default threshold — opposite of the user-stated guidance behavior
+/// ("remove RELIDO and tell them why"). Bumped to 0.95 in PR 3b.C
+/// pre-merge.
+///
+/// `FixSource::BuiltinRule` is the existing strict-path provenance variant
+/// for hand-written CAPCO rules (the PM Addendum II §4 reference to
+/// `FixSource::Rule { rule_id }` was nomenclature-only — no such variant
+/// exists in `marque-rules`; `BuiltinRule` is the existing-pattern match).
+fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
+    let (span, original) = compute_relido_removal_span(attrs)?;
+    Some(FixProposal::new(
+        rule_id,
+        FixSource::BuiltinRule,
+        span,
+        original,
+        "",
+        Confidence::strict(0.95),
+        None,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// E054 — RELIDO conflicts with NOFORN (§H.8 p154)
+// ---------------------------------------------------------------------------
+
+// `pub` so the integration tests in `crates/capco/tests/relido_conflicts.rs`
+// can instantiate these wrappers via the `pub use` re-export in
+// `crate::rules` (integration tests link the crate as an external
+// dependency and only see `pub` items). `#[doc(hidden)]` signals
+// "technically pub for compilation but not stable public API" — the same
+// convention `marque_rules::AppliedFix::__engine_promote` uses (Constitution
+// V Principle V test-fixture carve-out). Future refactors are free to
+// consolidate or rename these without a breaking-change concern.
+#[doc(hidden)]
+pub struct DeclarativeRelidoNofornConflictRule;
+
+impl Rule for DeclarativeRelidoNofornConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E054")
+    }
+
+    fn name(&self) -> &'static str {
+        "relido-noforn-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
+            return vec![];
+        }
+
+        // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
+        // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
+        // or DISPLAY ONLY."). Fall back to NOFORN if RELIDO span is
+        // unavailable; final fallback Span::new(0, 0).
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage and §H.8 templates):
+        //   RELIDO: only `"RELIDO"` — the banner long name and the CVE
+        //           portion abbreviation are identical
+        //           (`DissemControl::Relido::as_str()` returns "RELIDO").
+        //   NOFORN: `"NOFORN"` (banner long name, §H.8 p145) or
+        //           `"NF"` (CVE portion abbreviation,
+        //           `DissemControl::Nf::as_str()`).
+        let span = find_dissem_token_span(attrs, &["RELIDO"])
+            .or_else(|| find_dissem_token_span(attrs, &["NOFORN", "NF"]))
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        // Subtractive fix: remove RELIDO. NOFORN dominates per FD&R
+        // supersession (§D.2 Table 3 + §H.8 p145 NOFORN entry: "Cannot be
+        // used with REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY"). NOFORN
+        // is the binding constraint, so the only well-defined fix is to
+        // remove the rejected token (RELIDO). PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+            "CAPCO-2016 §H.8 p154",
+            fix,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E055 — RELIDO conflicts with DISPLAY ONLY (§H.8 p154)
+// ---------------------------------------------------------------------------
+
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
+pub struct DeclarativeRelidoDisplayOnlyConflictRule;
+
+impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E055")
+    }
+
+    fn name(&self) -> &'static str {
+        "relido-display-only-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
+            return vec![];
+        }
+
+        // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
+        // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
+        // or DISPLAY ONLY.").
+        //
+        // Forms in `attrs.token_spans` (per parser raw-text storage; the
+        // parser preserves user input verbatim, no canonicalization):
+        //   RELIDO:       only `"RELIDO"` — the banner long form, the
+        //                 portion mark, AND the CVE attribute value all
+        //                 render identically.
+        //   DISPLAY ONLY: marking-surface form is `"DISPLAY ONLY"` (with
+        //                 space) — used in BOTH banner and portion per
+        //                 §H.8 p163 ("Authorized Banner Line Abbreviation:
+        //                 None"; "Authorized Portion Mark: DISPLAY ONLY
+        //                 [LIST]"). The CVE attribute value is
+        //                 `"DISPLAYONLY"` (no space, all-caps;
+        //                 `DissemControl::Displayonly::as_str()` per ODNI
+        //                 `CVEnumISMDissem.xml`). Both are accepted on
+        //                 input — see `find_dissem_token_span` doc for
+        //                 the form taxonomy and the engine gap (tracked
+        //                 at #323).
+        //
+        // The DISPLAY ONLY fallback branch is unreachable in correctness
+        // terms — the rule's pre-condition (the dyadic `Conflicts`
+        // predicate) guarantees RELIDO is in `attrs.dissem_controls` and
+        // therefore in `token_spans`. The branch exists for invariant-
+        // drift safety: if a future parser change ever elides the RELIDO
+        // span on a triggering input, anchoring at DISPLAY ONLY is the
+        // least-bad fallback. Per PM Addendum II Q1, the primary anchor
+        // stays at RELIDO regardless.
+        let span = find_dissem_token_span(attrs, &["RELIDO"])
+            .or_else(|| find_dissem_token_span(attrs, &["DISPLAY ONLY", "DISPLAYONLY"]))
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        // Subtractive fix: remove RELIDO. DISPLAY ONLY is a positive
+        // disclosure decision (specific country list); RELIDO defers
+        // release to a SFDRA. The deferred decision can't operate when a
+        // positive decision is already on the marking — DISPLAY ONLY is
+        // the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
+            "CAPCO-2016 §H.8 p154",
+            fix,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E056 — ORCON conflicts with RELIDO (§H.8 p136)
+// ---------------------------------------------------------------------------
+
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
+pub struct DeclarativeOrconRelidoConflictRule;
+
+impl Rule for DeclarativeOrconRelidoConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E056")
+    }
+
+    fn name(&self) -> &'static str {
+        "orcon-relido-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
+            return vec![];
+        }
+
+        // Diagnostic-anchor span — the user's cursor lands at ORCON. The
+        // asserting prose lives on the ORCON template at §H.8 p136 ("May
+        // not be used with RELIDO."). Anchoring at ORCON shows the user
+        // the token that contains the prohibition; the fix span (built
+        // by `compute_relido_removal_span`) covers RELIDO + adjacent
+        // separator regardless of the anchor.
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage; the parser preserves user input verbatim, no
+        // canonicalization):
+        //   ORCON: `"ORCON"` (banner long name, §H.8 p136) or `"OC"`
+        //          (CVE portion abbreviation, `DissemControl::Oc::as_str()`).
+        //   RELIDO: only `"RELIDO"`.
+        //
+        // The ORCON template is the §-asserting side per PM Addendum II
+        // Q1; missing the banner-form lookup would silently fall back to
+        // the RELIDO anchor for canonical banner-shaped input
+        // (`SECRET//ORCON/RELIDO` — `/` separates same-category dissem
+        // values per §A.6 Figure 2 p17), which is the wrong cursor
+        // location.
+        let span = find_dissem_token_span(attrs, &["ORCON", "OC"])
+            .or_else(|| find_dissem_token_span(attrs, &["RELIDO"]))
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        // Subtractive fix: remove RELIDO. §H.8 p136 explicitly asserts
+        // "May not be used with RELIDO" on the ORCON template — RELIDO is
+        // the rejected token. ORCON requires originator approval for
+        // further dissemination, which RELIDO's SFDRA-deferred release
+        // bypasses. ORCON is the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
+            "CAPCO-2016 §H.8 p136",
+            fix,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E057 — ORCON-USGOV conflicts with RELIDO (§H.8 p140)
+// ---------------------------------------------------------------------------
+
+// `#[doc(hidden)] pub` for the same reason as
+// `DeclarativeRelidoNofornConflictRule` above — integration-test access
+// via `crate::rules` re-export, not a stable public API.
+#[doc(hidden)]
+pub struct DeclarativeOrconUsgovRelidoConflictRule;
+
+impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E057")
+    }
+
+    fn name(&self) -> &'static str {
+        "orcon-usgov-relido-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
+            return vec![];
+        }
+
+        // Diagnostic-anchor span — the user's cursor lands at ORCON-USGOV.
+        // The asserting prose lives on the ORCON-USGOV template at §H.8
+        // p140 ("May not be used with RELIDO.").
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage; the parser preserves user input verbatim):
+        //   ORCON-USGOV: `"ORCON-USGOV"` (banner long name, §H.8 p140)
+        //                or `"OC-USGOV"` (CVE portion abbreviation,
+        //                `DissemControl::OcUsgov::as_str()`).
+        //   RELIDO:      only `"RELIDO"`.
+        //
+        // Same banner-form rationale as E056: missing the banner-form
+        // lookup would silently fall back to the RELIDO anchor for
+        // canonical banner-shaped input
+        // (`SECRET//ORCON-USGOV/RELIDO` — `/` separates same-category
+        // dissem values per §A.6 Figure 2 p17), which is the wrong
+        // cursor location per PM Addendum II Q1.
+        let span = find_dissem_token_span(attrs, &["ORCON-USGOV", "OC-USGOV"])
+            .or_else(|| find_dissem_token_span(attrs, &["RELIDO"]))
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        // Subtractive fix: remove RELIDO. §H.8 p140 explicitly asserts
+        // "May not be used with RELIDO" on the ORCON-USGOV template —
+        // RELIDO is the rejected token. ORCON-USGOV is the
+        // USGOV-pre-approved variant of ORCON; same originator-approval
+        // semantic conflict with RELIDO's SFDRA-deferred release.
+        // ORCON-USGOV is the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+            "CAPCO-2016 §H.8 p140",
+            fix,
         )]
     }
 }
