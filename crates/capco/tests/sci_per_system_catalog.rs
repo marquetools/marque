@@ -125,10 +125,10 @@ fn sci_per_system_catalog_naming_convention() {
     //       count) AND by direct comparison via the citations test
     //       (which would not exercise the new row, leaving it
     //       silently uncovered — flagged at code review).
-    assert!(
-        !EXPECTED_ROWS.is_empty(),
-        "EXPECTED_ROWS must have at least one entry; got 0"
-    );
+    //
+    // Note: an `EXPECTED_ROWS.is_empty()` guard is omitted — the
+    // const has 5 entries by definition; clippy::const_is_empty
+    // would flag the assertion as statically false.
     for (name, _) in EXPECTED_ROWS {
         assert!(
             name.starts_with("sci-per-system/"),
