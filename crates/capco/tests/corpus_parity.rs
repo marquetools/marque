@@ -144,14 +144,18 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_three_page_rewrites_with_citations() {
+fn phase_3_declares_nine_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        3,
-        "Phase 3 T034 declares three page rewrites (NOFORN clears \
-         REL TO, JOINT-promotion, FGI-absorption)"
+        9,
+        "PR 3b.B (T026b) declares nine page rewrites: the retained \
+         `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
+         transmutation entries from `marque-applied.md` (consultant \
+         Entry 6 split into 6a + 6b for D13). The two earlier Phase-3 \
+         stubs (`joint-promotion`, `fgi-absorption`) were retired in \
+         PR 3b.B."
     );
     for rw in rewrites {
         assert!(
@@ -175,48 +179,63 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_three_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_nine_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
-    // property, not a declaration-order one.
+    // property, not a declaration-order one. Set is the retained
+    // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 3);
+    assert_eq!(scheduled.len(), 9);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
         names,
         [
-            "capco/fgi-absorption",
-            "capco/joint-promotion",
+            "capco/fgi-restricted-rollup-on-us-contact",
+            "capco/fgi-rollup-on-us-contact",
+            "capco/frd-sigma-consolidates-into-rd-sigma",
+            "capco/joint-cross-class-rollup",
+            "capco/les-nf-transmutes-on-classified-contact",
             "capco/noforn-clears-rel-to",
+            "capco/orcon-nato-to-us-orcon-on-us-contact",
+            "capco/sbu-nf-transmutes-on-classified-contact",
+            "capco/us-presence-promotes-bare-fgi-attribution",
         ]
     );
 }
 
 #[test]
-fn phase_3_noforn_clearer_runs_after_joint_promotion() {
-    // `capco/joint-promotion` writes REL TO; `capco/noforn-clears-
-    // rel-to` reads REL TO (and writes it to clear it). The
-    // scheduler must order JOINT-promotion before the NOFORN
-    // clearer — otherwise JOINT could reintroduce REL TO entries
-    // after NOFORN cleared them. This ordering is a declarative
-    // guarantee of the scheme's `reads` / `writes` annotations,
-    // not an accident of declaration order.
+fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
+    // The DISSEM-writing transmutations (entries 5, 6a, 6b — ORCON-
+    // NATO, SBU-NF, LES-NF) all write CAT_DISSEM; `capco/noforn-
+    // clears-rel-to` reads CAT_DISSEM (and writes CAT_REL_TO). The
+    // scheduler must therefore order each DISSEM writer BEFORE the
+    // NOFORN clearer — otherwise a transmutation that emits NOFORN
+    // could fire after the clearer and leave REL TO populated when
+    // it should have been cleared. This ordering is a declarative
+    // guarantee of the scheme's `reads` / `writes` annotations, not
+    // an accident of declaration order.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    let jp = scheduled
-        .iter()
-        .position(|&r| r == "capco/joint-promotion")
-        .expect("joint-promotion is declared");
     let nf = scheduled
         .iter()
         .position(|&r| r == "capco/noforn-clears-rel-to")
         .expect("noforn-clears-rel-to is declared");
-    assert!(
-        jp < nf,
-        "joint-promotion ({jp}) must be scheduled before \
-         noforn-clears-rel-to ({nf}) — scheduled order: {scheduled:?}",
-    );
+    for dissem_writer in [
+        "capco/orcon-nato-to-us-orcon-on-us-contact",
+        "capco/sbu-nf-transmutes-on-classified-contact",
+        "capco/les-nf-transmutes-on-classified-contact",
+    ] {
+        let pos = scheduled
+            .iter()
+            .position(|&r| r == dissem_writer)
+            .unwrap_or_else(|| panic!("{dissem_writer} is declared"));
+        assert!(
+            pos < nf,
+            "{dissem_writer} ({pos}) must be scheduled before \
+             noforn-clears-rel-to ({nf}) — scheduled order: {scheduled:?}",
+        );
+    }
 }
