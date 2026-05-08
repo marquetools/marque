@@ -22,7 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext};
+use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, TokenKind};
 use marque_scheme::{
     AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
     Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
@@ -2652,6 +2652,48 @@ pub(crate) struct ClassFloorRow {
     /// diagnostic message variant (passthrough rows quote the §3.7
     /// passthrough-policy framing).
     pub(crate) passthrough: bool,
+    /// Diagnostic-span anchor token kind. PR D R2 hot-path optimization
+    /// (perf-3): hoisted from the per-diagnostic
+    /// `primary_token_kind_for_row` string match in
+    /// `rules_declarative.rs`. The walker reads this field directly
+    /// when resolving the diagnostic span. `None` means "fall back to
+    /// the classification span" (used for NATO rows where the
+    /// classification token IS the marking surface).
+    pub(crate) primary_kind: Option<marque_ism::TokenKind>,
+    /// Coarse axis classifier for the early-out guard. PR D R2 hot-path
+    /// optimization (perf-1): the walker reads this once per row and
+    /// can skip the entire row when the corresponding axis is empty
+    /// in `attrs`. The axis bitfield model is too coarse for the BUR
+    /// passthrough family (which dual-reads `sci_controls` AND
+    /// `sci_markings`); using a single discriminant per row is
+    /// sufficient because the early-out guard only reads
+    /// "any-token-present-on-this-axis" flags.
+    pub(crate) axis: ClassFloorAxis,
+}
+
+/// Coarse axis classifier for a class-floor catalog row's marking
+/// presence. Used by the walker's early-out guard to skip rows whose
+/// axis is empty in the current `attrs` without invoking the row's
+/// presence predicate.
+///
+/// The classifier is at the marking-axis granularity, NOT the
+/// CanonicalAttrs-field granularity — `Sci` covers BOTH `sci_controls`
+/// and `sci_markings` because passthrough predicates dual-read; `Aea`
+/// covers `aea_markings`; etc. This is a hot-path optimization, not a
+/// semantic guard, so coarseness is correct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClassFloorAxis {
+    /// SCI markings or SCI controls (covers HCS / SI / TK / RSV +
+    /// passthrough BUR / HCS-X / KLM / MVL).
+    Sci,
+    /// AEA markings (covers RD / FRD / TFNI / CNWDI / SIGMA / UCNI).
+    Aea,
+    /// SAR markings (covers the SAR floor row).
+    Sar,
+    /// IC dissemination controls (covers RSEN / IMCON / ORCON / EYES).
+    Dissem,
+    /// NATO classification system (covers BALK / BOHEMIA / ATOMAL).
+    NatoClass,
 }
 
 /// Returns true if `name` is a catalog row name dispatched by
@@ -2670,6 +2712,61 @@ pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorR
 /// `DeclarativeClassFloorRule::check` to dispatch over every row.
 pub(crate) fn class_floor_catalog() -> &'static [ClassFloorRow] {
     CLASS_FLOOR_CATALOG
+}
+
+/// Direct catalog-row dispatch for the walker's hot path. Skips the
+/// `evaluate_custom_by_attrs` → `class_floor_catalog_eval` → name-
+/// lookup chain entirely; the walker has the row in hand and calls
+/// the predicate fields directly. PR D R2 hot-path optimization
+/// (perf-2).
+///
+/// Returns `None` when the row's predicate does not fire (presence
+/// false OR floor satisfied). Returns `Some((message, severity))`
+/// when the row fires; the caller pairs that with the row's citation
+/// and span anchor to construct a `Diagnostic`.
+///
+/// This mirrors `class_floor_catalog_eval` semantically but skips the
+/// name-based dispatch: there are zero string comparisons on the hot
+/// path. The `class_floor_catalog_eval` helper stays as the
+/// trait-path / `validate()` entry point, and is unchanged.
+pub(crate) fn class_floor_eval_row(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &ClassFloorRow,
+) -> Option<String> {
+    if !(row.presence)(attrs) {
+        return None;
+    }
+    if class_floor_satisfied(attrs, row.policy) {
+        return None;
+    }
+    let level_str = attrs
+        .classification
+        .as_ref()
+        .map(|c| c.effective_level().banner_str())
+        .unwrap_or("unknown");
+    let message = if row.passthrough {
+        format!(
+            "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
+             floor is C (classified). Verify against the current ODNI manual; current \
+             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
+            row.marking_label
+        )
+    } else {
+        match row.policy {
+            ClassFloorPolicy::AtLeast(floor) => format!(
+                "{} requires classification ≥ {} ({}); current classification is {level_str}",
+                row.marking_label,
+                floor.banner_str(),
+                row.citation
+            ),
+            ClassFloorPolicy::EqualsU => format!(
+                "{} may only be used with UNCLASSIFIED information ({}); current classification \
+                 is {level_str}",
+                row.marking_label, row.citation
+            ),
+        }
+    };
+    Some(message)
 }
 
 /// Dispatch a single catalog row by name and return at most one
@@ -3121,6 +3218,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/SI-comp",
@@ -3130,6 +3229,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/TK-BLFH",
@@ -3139,6 +3240,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
     // marque-applied.md §3.4.1 Note (i). The presence predicate fires
@@ -3156,6 +3259,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
+        primary_kind: None,
+        axis: ClassFloorAxis::NatoClass,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -3165,6 +3270,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
+        primary_kind: None,
+        axis: ClassFloorAxis::NatoClass,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -3175,6 +3282,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/RSV-comp",
@@ -3184,6 +3293,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/TK",
@@ -3193,6 +3304,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/RD-SG",
@@ -3202,6 +3315,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/FRD-SG",
@@ -3211,6 +3326,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     // CNWDI — replaces retired E022. Walker-prefixed name per PM
     // directive #5.
@@ -3222,6 +3339,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/RSEN",
@@ -3231,6 +3350,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p149",
         passthrough: false,
+        primary_kind: Some(TokenKind::DissemControl),
+        axis: ClassFloorAxis::Dissem,
     },
     ClassFloorRow {
         name: "class-floor/IMCON",
@@ -3240,6 +3361,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p144",
         passthrough: false,
+        primary_kind: Some(TokenKind::DissemControl),
+        axis: ClassFloorAxis::Dissem,
     },
     // ---- §2.3 Floor C (8 rows) -------------------------------------
     ClassFloorRow {
@@ -3250,6 +3373,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     // SAR — replaces retired E027.
     ClassFloorRow {
@@ -3260,6 +3385,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.5",
         passthrough: false,
+        primary_kind: Some(TokenKind::SarIndicator),
+        axis: ClassFloorAxis::Sar,
     },
     ClassFloorRow {
         name: "class-floor/RD",
@@ -3269,6 +3396,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/FRD",
@@ -3278,6 +3407,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/TFNI",
@@ -3287,6 +3418,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p107",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/ATOMAL",
@@ -3296,6 +3429,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
+        primary_kind: None,
+        axis: ClassFloorAxis::NatoClass,
     },
     ClassFloorRow {
         name: "class-floor/ORCON",
@@ -3305,6 +3440,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p136",
         passthrough: false,
+        primary_kind: Some(TokenKind::DissemControl),
+        axis: ClassFloorAxis::Dissem,
     },
     ClassFloorRow {
         name: "class-floor/EYES-ONLY",
@@ -3314,6 +3451,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p152",
         passthrough: false,
+        primary_kind: Some(TokenKind::DissemControl),
+        axis: ClassFloorAxis::Dissem,
     },
     // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
     ClassFloorRow {
@@ -3324,6 +3463,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p116",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
@@ -3333,6 +3474,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p118",
         passthrough: false,
+        primary_kind: Some(TokenKind::AeaMarking),
+        axis: ClassFloorAxis::Aea,
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
     ClassFloorRow {
@@ -3343,6 +3486,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-HCS-X",
@@ -3352,6 +3497,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-KLM",
@@ -3361,6 +3508,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-MVL",
@@ -3370,6 +3519,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
+        primary_kind: Some(TokenKind::SciSystem),
+        axis: ClassFloorAxis::Sci,
     },
 ];
 

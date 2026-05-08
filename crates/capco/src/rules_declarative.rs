@@ -1550,23 +1550,61 @@ impl Rule for DeclarativeClassFloorRule {
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        // PR D R2 perf-1: per-portion early-out guard. Pre-compute
+        // axis-presence flags once. On a 10KB document where most
+        // portions are prose body text (no SCI / AEA / SAR / dissem /
+        // NATO classification), all five flags are `false` and the
+        // catalog walk is skipped entirely. The flags are O(1) each
+        // (Box<[T]> length checks + one classification-variant match).
+        let any_sci = !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty();
+        let any_aea = !attrs.aea_markings.is_empty();
+        let any_sar = attrs.sar_markings.is_some();
+        let any_dissem = !attrs.dissem_controls.is_empty();
+        let any_nato_class = matches!(
+            &attrs.classification,
+            Some(marque_ism::MarkingClassification::Nato(_))
+        );
+        if !(any_sci || any_aea || any_sar || any_dissem || any_nato_class) {
+            return Vec::new();
+        }
+
+        // PR D R2 perf-2: direct catalog-row dispatch. Walk the static
+        // `CLASS_FLOOR_CATALOG` table once; for each row whose axis is
+        // present, fire the row's predicate via `class_floor_eval_row`
+        // (which calls `(row.presence)(attrs)` and
+        // `class_floor_satisfied(attrs, row.policy)` directly — no
+        // string-keyed dispatch through `evaluate_custom_by_attrs`).
         let mut diags = Vec::new();
         for row in crate::scheme::class_floor_catalog() {
-            // The catalog dispatch lives in scheme.rs — invoke the
-            // fast-path `evaluate_named_constraint` to fire the row's
-            // predicate. Returns 0 or 1 violations per row.
-            let violations = violations_for(attrs, row.name);
-            for v in violations {
-                let span = class_floor_anchor_span(attrs, row);
-                diags.push(Diagnostic::new(
-                    self.id(),
-                    row.severity,
-                    span,
-                    v.message,
-                    v.citation,
-                    None,
-                ));
+            // Axis-empty short-circuit: skip rows whose axis carries
+            // no tokens in this portion. The walker can then call
+            // `class_floor_eval_row` only for rows whose axis is
+            // populated.
+            let axis_present = match row.axis {
+                crate::scheme::ClassFloorAxis::Sci => any_sci,
+                crate::scheme::ClassFloorAxis::Aea => any_aea,
+                crate::scheme::ClassFloorAxis::Sar => any_sar,
+                crate::scheme::ClassFloorAxis::Dissem => any_dissem,
+                crate::scheme::ClassFloorAxis::NatoClass => any_nato_class,
+            };
+            if !axis_present {
+                continue;
             }
+            let Some(message) = crate::scheme::class_floor_eval_row(attrs, row) else {
+                continue;
+            };
+            // PR D R2 perf-3: span anchor read from `row.primary_kind`
+            // (hoisted from the previous `primary_token_kind_for_row`
+            // string match into a struct field).
+            let span = class_floor_anchor_span(attrs, row);
+            diags.push(Diagnostic::new(
+                self.id(),
+                row.severity,
+                span,
+                message,
+                row.citation,
+                None,
+            ));
         }
         diags
     }
@@ -1576,65 +1614,25 @@ impl Rule for DeclarativeClassFloorRule {
 ///
 /// Per PM directive #2, the span anchors at the marking token (not the
 /// classification token) so the diagnostic UX puts the squiggle under
-/// the offending presence. Each row's preferred anchor depends on the
-/// marking axis it tests; the dispatch table here maps catalog-row name
-/// to the appropriate `TokenKind`. Falls back to the first
+/// the offending presence. PR D R2 perf-3: reads
+/// `row.primary_kind` directly (hoisted from the previous
+/// `primary_token_kind_for_row` string-match table into a struct
+/// field on `ClassFloorRow`). Falls back to the first
 /// `Classification` token span if no axis-specific span is found, and
 /// finally to `Span::new(0, 0)` if neither is present.
 fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &crate::scheme::ClassFloorRow) -> Span {
-    let primary_kind = primary_token_kind_for_row(row.name);
-    if let Some(kind) = primary_kind
+    if let Some(kind) = row.primary_kind
         && let Some(span) = first_span_of_optional(attrs, kind)
     {
         return span;
     }
     // Some rows have no single primary kind (e.g., NATO rows have no
-    // marking-side token). Try classification as a fallback.
+    // marking-side token; `row.primary_kind == None`). Try
+    // classification as a fallback.
     if let Some(span) = first_span_of_optional(attrs, TokenKind::Classification) {
         return span;
     }
     Span::new(0, 0)
-}
-
-/// Lookup table mapping catalog row name to the primary token kind to
-/// anchor diagnostics at. `None` means "fall back to the classification
-/// span" (used for NATO rows where the classification token IS the
-/// marking surface).
-fn primary_token_kind_for_row(name: &str) -> Option<TokenKind> {
-    match name {
-        // §2.1 / §2.2 / §2.3 — SCI-axis rows anchor at the SCI system token.
-        "class-floor/HCS-comp-sub"
-        | "class-floor/HCS-comp"
-        | "class-floor/SI-comp"
-        | "class-floor/SI"
-        | "class-floor/TK-BLFH"
-        | "class-floor/TK"
-        | "class-floor/RSV-comp"
-        | "class-floor/passthrough-BUR"
-        | "class-floor/passthrough-HCS-X"
-        | "class-floor/passthrough-KLM"
-        | "class-floor/passthrough-MVL" => Some(TokenKind::SciSystem),
-        // §2.2 / §2.3 — AEA-axis rows anchor at the AEA marking token.
-        "class-floor/RD-SG"
-        | "class-floor/FRD-SG"
-        | "E058/CNWDI-classification-floor"
-        | "class-floor/RD"
-        | "class-floor/FRD"
-        | "class-floor/TFNI"
-        | "E058/DOD-UCNI-classification-ceiling"
-        | "E058/DOE-UCNI-classification-ceiling" => Some(TokenKind::AeaMarking),
-        // §2.3 — SAR row anchors at the SAR indicator token.
-        "E058/SAR-classification-floor" => Some(TokenKind::SarIndicator),
-        // §2.2 / §2.3 — IC dissem rows anchor at the dissem token.
-        "class-floor/RSEN"
-        | "class-floor/IMCON"
-        | "class-floor/ORCON"
-        | "class-floor/EYES-ONLY" => Some(TokenKind::DissemControl),
-        // §2.5 — NATO rows: classification token IS the marking surface.
-        // Return `None` to trigger the Classification fallback.
-        "class-floor/BALK" | "class-floor/BOHEMIA" | "class-floor/ATOMAL" => None,
-        _ => None,
-    }
 }
 
 /// Variant of `first_span_of` that returns `Option` instead of
