@@ -91,7 +91,8 @@ fn sar_row_fires_when_banner_has_block_but_omits_program() {
     let fix = d.fix.as_ref().expect(
         "E031 SAR row must carry a fix when banner has SAR block — \
          the zero-width-insertion path is the FR-016 / C-1 contract \
-         that lets E031 coexist with E028 / E029",
+         that lets E031 coexist with E060 (SAR row, retired E028) / \
+         E029",
     );
     assert_eq!(
         fix.span.start, fix.span.end,

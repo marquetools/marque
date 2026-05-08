@@ -325,10 +325,18 @@ T026a–T026f in `tasks.md`):
 - **3b.F** — non-canonical input fallback walker covering E020 /
   E023 / E028 / E033 ordering checks (REL TO leads with USA, AEA
   SIGMA numeric sort, SAR alphabetic, SCI numeric-then-alpha) as a
-  single `impl Rule` block. Retained until the Phase C renderer
-  trait surface lands in PR 5+ (Stage 4) and absorbs canonical-form
-  rendering. Per Q-Move-7-timing default; per-row §-citation
-  (§A.6 / §H.5 / §H.6 / §H.8).
+  single `impl Rule` block. **Status: LANDED 2026-05-08.**
+  `DeclarativeNonCanonicalInputRule` (rule ID `E060`) dispatches
+  over a 5-row private `NON_CANONICAL_CATALOG` inside
+  `crates/capco/src/rules_declarative.rs`. Per-row §-citations:
+  REL TO USA-first alpha (§H.8 p150-151), JOINT alpha (§H.3 p56),
+  AEA SIGMA numeric sort (§H.6 p108), SAR program ascending alpha
+  (§H.5 p99), SCI compartment + sub-compartment numeric-then-alpha
+  (§H.4 p61). Net rule delta: −3 (4 retired + 1 walker added).
+  Running registered-rule count: 50 → 47. Walker retires when the
+  Phase C renderer trait surface lands in PR 5+ (Stage 4) and
+  absorbs canonical-form rendering. See
+  `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
 
 **Reviewer attestation requirements** (each sub-PR's PR description
 declares a–c against the sub-move it lands; the umbrella PR-3b
