@@ -556,3 +556,233 @@ fn sar_span_anchors_at_sar_indicator_not_classification() {
          token. Got anchor: {anchor:?}"
     );
 }
+
+// ===========================================================================
+// R1 C1 — NATO / FGI / JOINT class-floor regression tests
+// ===========================================================================
+//
+// The pre-fix `class_floor_satisfied` and the diagnostic message helper
+// queried `attrs.us_classification()`, which returns `None` for non-US
+// classification kinds (NATO / FGI / JOINT). Result: every well-formed
+// NATO portion bearing BALK / BOHEMIA / ATOMAL emitted a spurious
+// class-floor diagnostic and reported the current classification as
+// "unknown".
+//
+// The fix: `class_floor_satisfied` and the diagnostic message helper use
+// `MarkingClassification::effective_level()` for the AtLeast policy. That
+// accessor maps NATO / FGI / JOINT classifications to their US-equivalent
+// level via reciprocal-raise (CTS → TS, NS → S, NC → C, NR → R, NU → U)
+// per `marque-applied.md` §3.4.1 Note (i).
+//
+// EqualsU (UCNI ceiling) deliberately keeps `us_classification()`
+// semantics: UCNI per CAPCO-2016 §H.6 p116 / p118 is US-only AEA, and a
+// non-US classification carrying UCNI is malformed input (caught by
+// other rules).
+//
+// Tests below cover (a) NATO well-formed inputs no longer emit a
+// false-positive class-floor diagnostic, (b) the diagnostic message
+// reads the correct effective level (not "unknown") for non-US
+// classifications, and (c) JOINT inputs with US-only markings (SAR)
+// satisfy the floor when the JOINT level reciprocal-raises to ≥ floor.
+
+#[test]
+fn balk_does_not_fire_on_well_formed_cts_balk_banner() {
+    // `//COSMIC TOP SECRET-BALK` parses to `Nato(CosmicTopSecretBalk)`,
+    // effective level TS. BALK floor (TS) is satisfied → no diagnostic.
+    let diags = lint("//COSMIC TOP SECRET-BALK\n");
+    let balk = e058_diags_for(&diags, "BALK (NATO)");
+    assert!(
+        balk.is_empty(),
+        "BALK floor must not fire on well-formed `//COSMIC TOP SECRET-BALK` \
+         (effective TS satisfies the TS floor via reciprocal-raise per \
+         marque-applied.md §3.4.1 Note (i)): {diags:?}"
+    );
+}
+
+#[test]
+fn bohemia_does_not_fire_on_well_formed_cts_bohemia_banner() {
+    let diags = lint("//COSMIC TOP SECRET-BOHEMIA\n");
+    let bohemia = e058_diags_for(&diags, "BOHEMIA (NATO)");
+    assert!(
+        bohemia.is_empty(),
+        "BOHEMIA floor must not fire on well-formed `//COSMIC TOP SECRET-BOHEMIA`: {diags:?}"
+    );
+}
+
+#[test]
+fn atomal_does_not_fire_on_well_formed_nato_secret_atomal_banner() {
+    // ATOMAL floor is C. NATO SECRET ATOMAL effective level = S, which
+    // satisfies AtLeast(C) via reciprocal-raise.
+    let diags = lint("//NATO SECRET ATOMAL\n");
+    let atomal = e058_diags_for(&diags, "ATOMAL (NATO)");
+    assert!(
+        atomal.is_empty(),
+        "ATOMAL floor must not fire on well-formed `//NATO SECRET ATOMAL` \
+         (effective S satisfies the C floor via reciprocal-raise): {diags:?}"
+    );
+}
+
+#[test]
+fn atomal_does_not_fire_on_well_formed_nato_confidential_atomal_banner() {
+    // NATO CONFIDENTIAL ATOMAL effective level = C, exactly at the floor.
+    let diags = lint("//NATO CONFIDENTIAL ATOMAL\n");
+    let atomal = e058_diags_for(&diags, "ATOMAL (NATO)");
+    assert!(
+        atomal.is_empty(),
+        "ATOMAL floor must not fire on well-formed `//NATO CONFIDENTIAL ATOMAL` \
+         (effective C exactly meets the C floor): {diags:?}"
+    );
+}
+
+#[test]
+fn atomal_does_not_fire_on_well_formed_cosmic_top_secret_atomal_banner() {
+    let diags = lint("//COSMIC TOP SECRET ATOMAL\n");
+    let atomal = e058_diags_for(&diags, "ATOMAL (NATO)");
+    assert!(
+        atomal.is_empty(),
+        "ATOMAL floor must not fire on well-formed `//COSMIC TOP SECRET ATOMAL` \
+         (effective TS satisfies the C floor): {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FGI reciprocal-raise behavior on enumerated rows (e.g., SAR)
+// ---------------------------------------------------------------------------
+//
+// SAR per §H.5 p101 is US-only by EO 13526 §4.3 — but a JOINT-classified
+// portion (US-co-owned) with SAR is well-formed (the JOINT category
+// carries a US-equivalent class via JointClassification.level). The
+// reciprocal-raise fix means the SAR floor recognizes the JOINT class
+// and doesn't fire spuriously.
+
+#[test]
+fn sar_does_not_fire_on_joint_secret_with_sar() {
+    // `//JOINT S USA GBR//SAR-BP//REL TO USA, GBR`: JOINT S has
+    // effective level S (US-equivalent), which satisfies SAR's C floor.
+    let diags = lint("//JOINT S USA GBR//SAR-BP//REL TO USA, GBR\n");
+    let sar = e058_diags_for(&diags, "SAR requires");
+    assert!(
+        sar.is_empty(),
+        "SAR floor must not fire on JOINT S//SAR-* (effective S satisfies C floor): {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic message reports the effective level (not "unknown")
+// ---------------------------------------------------------------------------
+//
+// Pre-fix, the diagnostic message helper returned "unknown" for any
+// non-US classification because it queried `us_classification()`.
+// Post-fix it queries `effective_level()` so the user sees the
+// reciprocal-raised banner-form name.
+//
+// We exercise this path via constructed `CapcoMarking` + the public
+// trait-path `MarkingScheme::validate`, then filter the resulting
+// `ConstraintViolation` list by `constraint_label` (the catalog row
+// `name`). This avoids reaching for `pub(crate)` fast-path methods
+// and uses the same dispatch the engine ultimately triggers.
+
+fn validate_and_filter<'a>(
+    scheme: &'a CapcoScheme,
+    marking: &'a marque_capco::scheme::CapcoMarking,
+    name: &str,
+) -> Vec<marque_scheme::ConstraintViolation> {
+    scheme
+        .validate(marking)
+        .into_iter()
+        .filter(|v| v.constraint_label == name)
+        .collect()
+}
+
+#[test]
+fn diagnostic_message_reports_reciprocal_raised_level_for_nato() {
+    use marque_capco::scheme::CapcoMarking;
+    use marque_ism::{CanonicalAttrs, MarkingClassification, NatoClassification, SciControl};
+
+    // NATO RESTRICTED + BUR passthrough. NATO RESTRICTED has effective
+    // level R (reciprocal-raised), which is below the provisional C
+    // floor for BUR — the floor fires, AND the diagnostic message must
+    // report "RESTRICTED" (effective level), not "unknown".
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification = Some(MarkingClassification::Nato(
+        NatoClassification::NatoRestricted,
+    ));
+    attrs.sci_controls = vec![SciControl::Bur].into_boxed_slice();
+
+    let scheme = CapcoScheme::new();
+    let marking = CapcoMarking::from(attrs);
+    let violations = validate_and_filter(&scheme, &marking, "class-floor/passthrough-BUR");
+    assert_eq!(
+        violations.len(),
+        1,
+        "BUR passthrough must fire on NATO RESTRICTED (effective R below provisional C floor)"
+    );
+    assert!(
+        violations[0].message.contains("RESTRICTED"),
+        "diagnostic must report effective level RESTRICTED (reciprocal-raised from \
+         NATO RESTRICTED), not `unknown`. Got message: {:?}",
+        violations[0].message
+    );
+    assert!(
+        !violations[0].message.contains("unknown"),
+        "diagnostic must not report `unknown` for a non-US classification. Got: {:?}",
+        violations[0].message
+    );
+}
+
+#[test]
+fn diagnostic_message_reports_unknown_only_when_no_classification() {
+    use marque_capco::scheme::CapcoMarking;
+    use marque_ism::{CanonicalAttrs, SciControl};
+
+    // No classification set. Diagnostic message must read "unknown" —
+    // this is the legitimate fallback for the truly-unclassified case.
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification = None;
+    attrs.sci_controls = vec![SciControl::Bur].into_boxed_slice();
+
+    let scheme = CapcoScheme::new();
+    let marking = CapcoMarking::from(attrs);
+    let violations = validate_and_filter(&scheme, &marking, "class-floor/passthrough-BUR");
+    assert_eq!(violations.len(), 1);
+    assert!(
+        violations[0].message.contains("unknown"),
+        "diagnostic must report `unknown` when no classification is parsed. Got: {:?}",
+        violations[0].message
+    );
+}
+
+// ---------------------------------------------------------------------------
+// EqualsU (UCNI) keeps US-classification semantics
+// ---------------------------------------------------------------------------
+//
+// Per §H.6 p116 (DOD UCNI) / p118 (DOE UCNI), UCNI is US-only AEA. A
+// non-US classification carrying UCNI is malformed; other rules catch
+// the malformed shape. The class-floor walker's EqualsU policy
+// deliberately keeps `attrs.us_classification()` semantics rather than
+// `effective_level()`.
+
+#[test]
+fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
+    use marque_capco::scheme::CapcoMarking;
+    use marque_ism::{AeaMarking, CanonicalAttrs, MarkingClassification, NatoClassification};
+
+    // Constructed attrs: NATO CONFIDENTIAL + DOD UCNI. This is malformed
+    // per CAPCO §H.6 p116 — UCNI is US AEA. The EqualsU policy fires
+    // (us_classification() returns None for NATO; ceiling unsatisfied).
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification = Some(MarkingClassification::Nato(
+        NatoClassification::NatoConfidential,
+    ));
+    attrs.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+
+    let scheme = CapcoScheme::new();
+    let marking = CapcoMarking::from(attrs);
+    let violations = validate_and_filter(&scheme, &marking, "E058/DOD-UCNI-classification-ceiling");
+    assert_eq!(
+        violations.len(),
+        1,
+        "DOD UCNI ceiling must fire on NATO classification + UCNI \
+         (UCNI is US AEA per §H.6 p116; non-US classification + UCNI is malformed)"
+    );
+}

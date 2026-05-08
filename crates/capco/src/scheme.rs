@@ -2660,9 +2660,20 @@ fn class_floor_catalog_eval(
     if class_floor_satisfied(attrs, row.policy) {
         return Vec::new();
     }
+    // Diagnostic message uses the *effective* level (reciprocal-raised
+    // for NATO / FGI / JOINT classifications via
+    // `MarkingClassification::effective_level`) so a portion classified
+    // `//NATO SECRET//ATOMAL` reports `SECRET` — not `unknown` — even
+    // though `attrs.us_classification()` returns `None` for non-US
+    // classification kinds. This is the C1 fix from PR #324 R1: pre-fix
+    // the NATO catalog rows (BALK / BOHEMIA / ATOMAL) always reported
+    // `unknown` and always failed the floor check — guaranteed false
+    // positive on every well-formed NATO portion. See
+    // `marque-applied.md` §3.4.1 Note (i) for the reciprocal-raise rule.
     let level_str = attrs
-        .us_classification()
-        .map(|c| c.banner_str())
+        .classification
+        .as_ref()
+        .map(|c| c.effective_level().banner_str())
         .unwrap_or("unknown");
     let message = if row.passthrough {
         format!(
@@ -2694,25 +2705,53 @@ fn class_floor_catalog_eval(
 }
 
 /// Returns true when the classification axis satisfies the floor policy.
+///
+/// The two policy variants take different views of the classification axis:
+///
+/// - **`AtLeast(floor)`** uses `MarkingClassification::effective_level`
+///   so NATO / FGI / JOINT classifications get reciprocal-raised to
+///   their US-equivalent level per `marque-applied.md` §3.4.1 Note (i)
+///   (CTS → TS, NS → S, NC → C, NR → R, NU → U). This is the C1 fix
+///   from PR #324 R1: before the fix, the NATO catalog rows
+///   (BALK / BOHEMIA / ATOMAL) queried `attrs.us_classification()`,
+///   which returns `None` for non-US classification kinds, so the
+///   reciprocal-raised NATO floors always failed and always emitted a
+///   spurious diagnostic — guaranteed false positive on every
+///   well-formed NATO portion. The `effective_level()` accessor
+///   already lives in `marque-ism` and is the canonical answer to
+///   "what's the effective classification level for ordering?";
+///   capco-side we just consume it.
+///
+///   Behavior on a `None` classification (no classification token
+///   parsed at all) stays as "fail the floor" — this preserves
+///   retired-E022 / retired-E027 semantics where a CNWDI / SAR marking
+///   without any classification context is treated as malformed and
+///   the floor diagnostic fires.
+///
+/// - **`EqualsU`** keeps `attrs.us_classification()` semantics. The
+///   UCNI ceiling per CAPCO-2016 §H.6 p116 (DOD UCNI) and §H.6 p118
+///   (DOE UCNI) is "May only be used with UNCLASSIFIED" — strictly the
+///   US-classification system, not reciprocal-raised. A NATO-class
+///   portion carrying UCNI is malformed input (UCNI is US AEA,
+///   parallel to NATO ATOMAL); other rules catch the malformed shape.
 fn class_floor_satisfied(attrs: &marque_ism::CanonicalAttrs, policy: ClassFloorPolicy) -> bool {
-    let level = attrs.us_classification();
     match policy {
-        ClassFloorPolicy::AtLeast(floor) => match level {
-            // E022 / E027 historical behavior: `None` (no classification)
-            // and `Some(Unclassified)` both fail any floor at C or above.
-            // Pure-FGI / NATO / JOINT markings (returns `None` here)
-            // fail the floor — class promotion is FixIntent-territory in
-            // PR 3c, so these rows fire on the user-visible "classification
-            // is missing or below floor" case.
-            Some(c) => c >= floor,
+        ClassFloorPolicy::AtLeast(floor) => match attrs.classification.as_ref() {
+            // Reciprocal-raise via `effective_level()`. NATO / FGI /
+            // JOINT classifications return their US-equivalent level
+            // for the comparison; US classifications return as-is.
+            Some(c) => c.effective_level() >= floor,
+            // No classification parsed at all → fail the floor.
+            // Preserves retired-E022 / retired-E027 behavior on the
+            // "classification is missing" case.
             None => false,
         },
-        ClassFloorPolicy::EqualsU => match level {
+        ClassFloorPolicy::EqualsU => match attrs.us_classification() {
             // Equals-U is the UCNI ceiling. `Some(Unclassified)` is the
             // only allowed state; everything else (including `None` for
-            // pure-FGI) fails. Mirrors retired E025 semantics: a UCNI
-            // marking on a portion with no US-classification context is
-            // malformed.
+            // pure-FGI / NATO / JOINT) fails. Mirrors retired E025
+            // semantics: UCNI is US AEA and a non-US classification
+            // carrying UCNI is malformed.
             Some(Classification::Unclassified) => true,
             _ => false,
         },
