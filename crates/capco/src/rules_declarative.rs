@@ -84,7 +84,9 @@
 use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
-use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, RuleId, Severity};
+use marque_rules::{
+    Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity,
+};
 use marque_scheme::ConstraintViolation;
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -901,9 +903,11 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 //
 // Pattern: each wrapper calls `violations_for(attrs, "<catalog-name>")` as the
 // trigger check (did the named `Constraint::Conflicts` predicate fire?), then
-// selects a span from `attrs.token_spans` anchored at the LHS (asserting)
-// token per PM Q1 + Q2 resolution, and emits a single `Diagnostic` with the
-// catalog's `label` as the citation. The citation-fidelity test in
+// selects a diagnostic-anchor span from `attrs.token_spans` at the LHS
+// (asserting) token per PM Q1 + Q2 resolution, computes a removal span via
+// `compute_relido_removal_span` that covers RELIDO + an adjacent `/`
+// separator, and emits a single `Diagnostic` carrying a subtractive
+// `FixProposal` whose replacement is `""`. The citation-fidelity test in
 // `tests/relido_conflicts.rs` enforces byte-identity between wrapper emission
 // and catalog label.
 //
@@ -912,12 +916,157 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 // (T108b) where `Constraint::Conflicts::RhsFamily(predicate)` ships. See
 // `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2` for rationale.
 //
-// Constitution V: NO `FixProposal` from any wrapper — trailing `None`.
-// Conflicts ambiguity requires user resolution; the engine cannot determine
-// which of the two conflicting tokens to remove without policy input.
+// Subtractive-fix direction (PM Addendum II, 2026-05-07).
+//
+// Marque is a guidance tool for dissem markings, not just a checker. The
+// dissemination axis is the unique area where the engine can apply true
+// fixes — we are never *inventing* a token (we couldn't say "this should be
+// LES" if the user never typed LES); we are only *removing* one that the
+// surrounding tokens have already excluded by their §-cited Relationship(s)
+// prose. RELIDO is the unambiguous remove-target in all four cases:
+//
+//   E054: NOFORN dominates per FD&R supersession (§D.2 Table 3 +
+//         §H.8 p145). Remove RELIDO.
+//   E055: DISPLAY ONLY is a positive disclosure decision (specific country
+//         list); RELIDO defers release to a SFDRA. The deferred decision
+//         can't operate when a positive decision is already on the marking.
+//         Remove RELIDO.
+//   E056: §H.8 p136 explicitly asserts "May not be used with RELIDO" on the
+//         ORCON template — RELIDO is the rejected token. Remove RELIDO.
+//   E057: §H.8 p140 explicitly asserts "May not be used with RELIDO" on the
+//         ORCON-USGOV template. Same logic as E056. Remove RELIDO.
+//
+// The fix is `confidence = 0.9` (high — the asymmetric §-citation OR FD&R
+// supersession dominance makes the direction unambiguous; auto-applies under
+// the engine's default fix threshold).
+//
+// Generalization scope: this subtractive-fix pattern applies to **dissem-axis
+// `Constraint::Conflicts`** rules ONLY. Non-dissem axis conflicts
+// (classification E012, JOINT cross-system, SCI grammar) remain
+// "user resolves" because the fix direction cannot be inferred without
+// policy input.
+//
+// Constitution V (audit-first) compliance preserved: every `FixProposal` is
+// pure data (span + replacement + confidence + source + migration_ref). The
+// engine snapshots runtime state into `AppliedFix` at promotion time. The
+// wrappers never construct `AppliedFix`.
 //
 // Constitution VI: all four structs are stateless zero-size; `Send + Sync`
 // compliance is automatic (no interior mutability, no heap state).
+
+/// Compute a `(removal_span, original_text)` pair for the RELIDO token in
+/// `attrs.token_spans`, including the adjacent `/` separator so a fix with
+/// replacement `""` produces a well-formed dissem block (no dangling `//`,
+/// no leading `/` after `//`, no trailing `/`).
+///
+/// Layout cases (from PM Addendum II §3):
+///
+/// - **First**: `S//RELIDO/...` — RELIDO is the leading dissem-control
+///   token, preceded by `//`. Consume the trailing `/` so the removal span
+///   is `[relido.start, relido.end + 1]`. After fix: `S//...`.
+/// - **Middle / Last**: `S//.../RELIDO[/...]` — preceded by a `/` separator
+///   from a prior dissem-control token. Consume the preceding `/` so the
+///   removal span is `[relido.start - 1, relido.end]`. After fix: the
+///   adjacent tokens close up cleanly.
+///
+/// Discrimination is purely byte-offset-based against the slice of
+/// `TokenSpan`s; no source-buffer access is required (the wrapper has no
+/// such access — Constitution V keeps `FixProposal` pure data). The
+/// distinguishing signal is whether the span immediately preceding RELIDO
+/// belongs to a dissem-block category. The parser splits dissem blocks on
+/// `/` (`crates/core/src/parser.rs:1422`) and emits one `TokenSpan` per
+/// `/`-separated atom; consecutive atoms within one block carry adjacent
+/// (`prior.end + 1 == curr.start`) byte offsets.
+///
+/// Returns `None` when:
+///
+/// - `attrs.token_spans` contains no `RELIDO` token (caller's check fired
+///   on the constraint predicate but the parser didn't surface a span — a
+///   rare-but-real layout where the fast-path elided the span).
+/// - The RELIDO span is at offset 0 (cannot consume a preceding separator)
+///   AND has no following sibling (cannot consume a trailing separator).
+///   This is a malformed-input edge case the parser ordinarily rejects;
+///   returning `None` is a defensive fall-through.
+///
+/// `None` causes the caller to emit the `Diagnostic` without a fix —
+/// preserving Constitution V (no malformed `FixProposal` ever leaves the
+/// rule). The `Severity::Error` diagnostic still surfaces; the user
+/// resolves it manually in the rare-but-real ambiguous-layout case.
+pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<str>)> {
+    let spans = &attrs.token_spans;
+    // Find the RELIDO TokenSpan and its index for adjacency lookups.
+    let (relido_idx, relido) = spans
+        .iter()
+        .enumerate()
+        .find(|(_, t)| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")?;
+
+    // Look at the immediately-preceding TokenSpan (if any). If its byte
+    // end is exactly `relido.span.start - 1`, the parser saw a single `/`
+    // between it and RELIDO — meaning RELIDO is NOT the first atom in its
+    // dissem block. Consume the preceding `/`.
+    //
+    // Otherwise (no prior token, or prior token's end is further back than
+    // 1 byte — i.e., separated by `//` or another category boundary),
+    // RELIDO is the first atom in its block. Consume the trailing `/`.
+    let preceded_by_slash = relido_idx
+        .checked_sub(1)
+        .and_then(|i| spans.get(i))
+        .is_some_and(|prev| prev.span.end + 1 == relido.span.start);
+
+    if preceded_by_slash {
+        // Case: middle or last in dissem block. Removal span =
+        // [relido.start - 1, relido.end]. Original text = "/RELIDO".
+        let start = relido.span.start.checked_sub(1)?;
+        let end = relido.span.end;
+        Some((Span::new(start, end), "/RELIDO".into()))
+    } else {
+        // Case: first in dissem block (after `//`) OR the only dissem
+        // token. Removal span = [relido.start, relido.end + 1].
+        // Original text = "RELIDO/".
+        //
+        // If RELIDO is at byte 0 AND has no following sibling, we cannot
+        // safely consume a trailing `/` either — but in practice the
+        // parser always frames dissem blocks within a marking delimited by
+        // `(` ... `)` or banner separators, so a leading-`/` is always
+        // present and the trailing case is recoverable. Defensive fall-
+        // through to None handles the pathological "marking is just
+        // `RELIDO`" input the parser ordinarily rejects upstream.
+        if relido.span.start == 0 && spans.len() == 1 {
+            return None;
+        }
+        let start = relido.span.start;
+        let end = relido.span.end.checked_add(1)?;
+        Some((Span::new(start, end), "RELIDO/".into()))
+    }
+}
+
+/// Build a subtractive RELIDO `FixProposal` for the four §H.8 conflict
+/// wrappers. Returns `None` when `compute_relido_removal_span` cannot find
+/// a sound removal layout (rare; caller emits the diagnostic without a fix
+/// in that case so Constitution V's "never emit a malformed fix" invariant
+/// holds).
+///
+/// Confidence is fixed at **0.9** per PM Addendum II §3 — high enough to
+/// auto-apply under the engine's default fix threshold (typically 0.85);
+/// the asymmetric §H.8 citation OR FD&R supersession dominance makes the
+/// remove-RELIDO direction unambiguous in every E054–E057 case.
+///
+/// `FixSource::BuiltinRule` is the existing strict-path provenance variant
+/// for hand-written CAPCO rules (the PM Addendum II §4 reference to
+/// `FixSource::Rule { rule_id }` was nomenclature-only — no such variant
+/// exists in `marque-rules`; `BuiltinRule` is the existing-pattern match).
+fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
+    let (span, original) = compute_relido_removal_span(attrs)?;
+    Some(FixProposal::new(
+        rule_id,
+        FixSource::BuiltinRule,
+        span,
+        original,
+        "",
+        Confidence::strict(0.9),
+        None,
+    ))
+}
 
 // ---------------------------------------------------------------------------
 // E054 — RELIDO conflicts with NOFORN (§H.8 p154)
@@ -943,11 +1092,10 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
             return vec![];
         }
 
-        // Prefer the RELIDO span — RELIDO is the asserting token per §H.8
-        // p154 ("Cannot be used with NOFORN or DISPLAY ONLY.").
-        // Fall back to NOFORN/NF span if RELIDO span is unavailable.
-        // Final fallback Span::new(0, 0) is always safe (Convention from
-        // every other wrapper in this module).
+        // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
+        // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
+        // or DISPLAY ONLY."). Fall back to NOFORN/NF if RELIDO span is
+        // unavailable; final fallback Span::new(0, 0).
         //
         // Token text in attrs.token_spans: "RELIDO" (DissemControl::Relido),
         // "NOFORN" or "NF" (DissemControl::Nf).
@@ -963,14 +1111,20 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
 
+        // Subtractive fix: remove RELIDO. NOFORN dominates per FD&R
+        // supersession (§D.2 Table 3 + §H.8 p145 NOFORN entry: "Cannot be
+        // used with REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY"). NOFORN
+        // is the binding constraint, so the only well-defined fix is to
+        // remove the rejected token (RELIDO). PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             span,
-            "RELIDO cannot be used with NOFORN (§H.8 p154); \
-             remove one or the other",
+            "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
             "CAPCO-2016 §H.8 p154",
-            None,
+            fix,
         )]
     }
 }
@@ -999,8 +1153,9 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
             return vec![];
         }
 
-        // Prefer the RELIDO span — RELIDO is the asserting token per §H.8
-        // p154 ("Cannot be used with NOFORN or DISPLAY ONLY.").
+        // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
+        // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
+        // or DISPLAY ONLY.").
         // Fall back to DISPLAY ONLY span. Note: the CVE abbreviation for
         // DISPLAY ONLY in token_spans.text is "DISPLAYONLY" (no space) —
         // this matches `DissemControl::Displayonly::as_str()` in generated
@@ -1020,14 +1175,20 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
 
+        // Subtractive fix: remove RELIDO. DISPLAY ONLY is a positive
+        // disclosure decision (specific country list); RELIDO defers
+        // release to a SFDRA. The deferred decision can't operate when a
+        // positive decision is already on the marking — DISPLAY ONLY is
+        // the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             span,
-            "RELIDO cannot be used with DISPLAY ONLY (§H.8 p154); \
-             remove one or the other",
+            "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
             "CAPCO-2016 §H.8 p154",
-            None,
+            fix,
         )]
     }
 }
@@ -1056,9 +1217,11 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
             return vec![];
         }
 
-        // Prefer the ORCON span — the asserting prose lives on the ORCON
-        // template at §H.8 p136 ("May not be used with RELIDO."). Anchoring
-        // at ORCON shows the user the token that contains the prohibition.
+        // Diagnostic-anchor span — the user's cursor lands at ORCON. The
+        // asserting prose lives on the ORCON template at §H.8 p136 ("May
+        // not be used with RELIDO."). Anchoring at ORCON shows the user
+        // the token that contains the prohibition; the fix span (below)
+        // covers RELIDO + adjacent separator regardless of the anchor.
         // Note: the CVE abbreviation for ORCON in token_spans.text is "OC"
         // (DissemControl::Oc::as_str()). Fall back to RELIDO span.
         let span = attrs
@@ -1074,14 +1237,20 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
 
+        // Subtractive fix: remove RELIDO. §H.8 p136 explicitly asserts
+        // "May not be used with RELIDO" on the ORCON template — RELIDO is
+        // the rejected token. ORCON requires originator approval for
+        // further dissemination, which RELIDO's SFDRA-deferred release
+        // bypasses. ORCON is the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             span,
-            "ORCON cannot be used with RELIDO (§H.8 p136); \
-             remove one or the other",
+            "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
             "CAPCO-2016 §H.8 p136",
-            None,
+            fix,
         )]
     }
 }
@@ -1110,11 +1279,11 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
             return vec![];
         }
 
-        // Prefer the ORCON-USGOV span — the asserting prose lives on the
-        // ORCON-USGOV template at §H.8 p140 ("May not be used with
-        // RELIDO."). Note: the CVE abbreviation in token_spans.text is
-        // "OC-USGOV" (DissemControl::OcUsgov::as_str()). Fall back to
-        // RELIDO span.
+        // Diagnostic-anchor span — the user's cursor lands at ORCON-USGOV.
+        // The asserting prose lives on the ORCON-USGOV template at §H.8
+        // p140 ("May not be used with RELIDO."). Note: the CVE abbreviation
+        // in token_spans.text is "OC-USGOV" (DissemControl::OcUsgov::as_str()).
+        // Fall back to RELIDO span.
         let span = attrs
             .token_spans
             .iter()
@@ -1128,14 +1297,21 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
 
+        // Subtractive fix: remove RELIDO. §H.8 p140 explicitly asserts
+        // "May not be used with RELIDO" on the ORCON-USGOV template —
+        // RELIDO is the rejected token. ORCON-USGOV is the
+        // USGOV-pre-approved variant of ORCON; same originator-approval
+        // semantic conflict with RELIDO's SFDRA-deferred release.
+        // ORCON-USGOV is the binding constraint. PM Addendum II §3.
+        let fix = build_relido_removal_fix(self.id(), attrs);
+
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             span,
-            "ORCON-USGOV cannot be used with RELIDO (§H.8 p140); \
-             remove one or the other",
+            "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
             "CAPCO-2016 §H.8 p140",
-            None,
+            fix,
         )]
     }
 }

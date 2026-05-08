@@ -38,13 +38,14 @@ use marque_capco::CapcoScheme;
 use marque_capco::rules::{
     DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
     DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+    compute_relido_removal_span,
 };
 use marque_capco::scheme::{TOK_DISPLAY_ONLY, TOK_NOFORN, TOK_ORCON, TOK_ORCON_USGOV, TOK_RELIDO};
 use marque_ism::{
     CanonicalAttrs, Classification, DissemControl, MarkingClassification, MarkingType, Span,
     TokenKind, TokenSpan,
 };
-use marque_rules::{Rule, RuleContext, Severity};
+use marque_rules::{FixSource, Rule, RuleContext, Severity};
 use marque_scheme::{Constraint, MarkingScheme, TokenRef};
 
 // ---------------------------------------------------------------------------
@@ -76,36 +77,73 @@ fn attrs_with_dissem(controls: &[DissemControl]) -> CanonicalAttrs {
     a
 }
 
-/// `CanonicalAttrs` with dissem controls AND a synthetic `TokenSpan` slice
-/// so wrapper span-selection logic is exercised. Text strings mirror the
-/// CVE abbreviation form from `DissemControl::as_str()` in generated
-/// values.rs: `"RELIDO"`, `"DISPLAYONLY"`, `"OC"`, `"OC-USGOV"`, `"NOFORN"`.
-fn attrs_with_dissem_and_spans(controls: &[(DissemControl, &str)]) -> CanonicalAttrs {
+/// Build `CanonicalAttrs` whose `token_spans` reflect the byte layout of
+/// `source` for a banner / portion shaped `(<head>//<dissem-block>)`. The
+/// dissem block is a `/`-separated list of tokens: `RELIDO`, `NOFORN`,
+/// `DISPLAYONLY`, `OC`, `OC-USGOV`, `NF` (the CVE abbreviation form per
+/// `DissemControl::as_str()` in generated values.rs).
+///
+/// `head` is a pseudo-classification token (e.g., `"S"` for SECRET) that
+/// occupies bytes `[0, head.len()]` followed by a `//` category separator
+/// at bytes `[head.len(), head.len() + 2]`. Each dissem token is emitted
+/// as a `TokenKind::DissemControl` `TokenSpan` with adjacent (`prev.end + 1
+/// == curr.start`) byte offsets — exactly mirroring the parser's actual
+/// output for a dissem block (see `crates/core/src/parser.rs:1422`).
+///
+/// Returns `(attrs, source_bytes)` so behavior tests can apply a
+/// `FixProposal` to `source_bytes` and assert the post-fix substring.
+fn attrs_for_dissem_block(
+    head: &str,
+    dissem: &[(DissemControl, &str)],
+) -> (CanonicalAttrs, String) {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = controls
+    a.dissem_controls = dissem
         .iter()
         .map(|(d, _)| *d)
         .collect::<Vec<_>>()
         .into_boxed_slice();
-    // Build synthetic token_spans with sequential byte offsets so each
-    // span is distinguishable. Span::new takes usize.
-    let mut offset: usize = 10;
-    a.token_spans = controls
-        .iter()
-        .map(|(_, text)| {
-            let len = text.len();
-            let span = Span::new(offset, offset + len);
-            offset += len + 1; // +1 for a notional space between tokens
-            TokenSpan {
-                kind: TokenKind::DissemControl,
-                text: text.to_string().into_boxed_str(),
-                span,
-            }
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
-    a
+
+    // Construct the source string and walk byte offsets in lock-step.
+    let mut source = String::new();
+    source.push_str(head); // head occupies [0, head.len()]
+    source.push_str("//"); // category boundary at [head.len(), head.len() + 2]
+
+    let mut spans: Vec<TokenSpan> = Vec::with_capacity(dissem.len());
+    for (i, (_, text)) in dissem.iter().enumerate() {
+        if i > 0 {
+            source.push('/'); // intra-block separator
+        }
+        let start = source.len();
+        source.push_str(text);
+        let end = source.len();
+        spans.push(TokenSpan {
+            kind: TokenKind::DissemControl,
+            text: (*text).to_string().into_boxed_str(),
+            span: Span::new(start, end),
+        });
+    }
+    a.token_spans = spans.into_boxed_slice();
+    (a, source)
+}
+
+/// Convenience: build `CanonicalAttrs` whose `token_spans` mirror a
+/// `S//<dissem block>` layout but discard the source string. Used in tests
+/// that don't need to apply the fix to bytes (e.g., the trigger / silence
+/// behavior tests, the citation-fidelity test).
+fn attrs_with_dissem_and_spans(dissem: &[(DissemControl, &str)]) -> CanonicalAttrs {
+    let (attrs, _src) = attrs_for_dissem_block("S", dissem);
+    attrs
+}
+
+/// Apply a span-and-replacement to source bytes, mirroring
+/// `Engine::fix`'s in-place substitution. Test-only.
+fn apply_fix(source: &str, span: Span, replacement: &str) -> String {
+    let mut out = String::with_capacity(source.len() + replacement.len());
+    out.push_str(&source[..span.start]);
+    out.push_str(replacement);
+    out.push_str(&source[span.end..]);
+    out
 }
 
 /// Minimal `RuleContext` for wrapper `check()` calls.
@@ -247,10 +285,16 @@ fn e057_orcon_usgov_relido_constraint_is_correctly_authored() {
 
 #[test]
 fn e054_fires_when_both_relido_and_noforn_present() {
-    let attrs = attrs_with_dissem_and_spans(&[
-        (DissemControl::Relido, "RELIDO"),
-        (DissemControl::Nf, "NOFORN"),
-    ]);
+    // Source "(S//RELIDO/NOFORN)" — RELIDO is the FIRST dissem token,
+    // immediately after `//`. The fix must consume the trailing `/` so
+    // the post-fix bytes are "S//NOFORN".
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::Relido, "RELIDO"),
+            (DissemControl::Nf, "NOFORN"),
+        ],
+    );
     let rule = DeclarativeRelidoNofornConflictRule;
     let diags = rule.check(&attrs, &ctx());
 
@@ -263,9 +307,30 @@ fn e054_fires_when_both_relido_and_noforn_present() {
     assert_eq!(d.rule.as_str(), "E054");
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(d.citation, "CAPCO-2016 §H.8 p154");
-    // Span must point at RELIDO (offset 10, len 6 → 10..16).
-    assert_eq!(d.span.start, 10, "E054 span should anchor at RELIDO token");
-    assert!(d.fix.is_none(), "E054 must not emit a FixProposal");
+    assert_eq!(
+        d.message.as_ref(),
+        "RELIDO removed: cannot be used with NOFORN (§H.8 p154)"
+    );
+    // Diagnostic span anchors at RELIDO (the user's cursor lands here).
+    // RELIDO starts at byte 3 (after "S//"); spans `[3, 9]`.
+    assert_eq!(d.span.start, 3, "E054 anchor span should point at RELIDO");
+    assert_eq!(d.span.end, 9);
+
+    // Subtractive FixProposal: span covers RELIDO + trailing `/` → [3, 10].
+    let fix = d.fix.as_ref().expect("E054 must emit a FixProposal");
+    assert_eq!(fix.span.start, 3, "fix span should start at RELIDO");
+    assert_eq!(fix.span.end, 10, "fix span should consume trailing `/`");
+    assert_eq!(fix.replacement.as_ref(), "");
+    assert_eq!(fix.source, FixSource::BuiltinRule);
+    assert_eq!(fix.confidence.rule, 0.9);
+    assert!(fix.migration_ref.is_none());
+
+    // Apply the fix and verify the result is well-formed: NOFORN remains,
+    // RELIDO is gone, no `//` adjacent to a `/`, no leading or trailing `/`
+    // in the dissem block.
+    let fixed = apply_fix(&source, fix.span, &fix.replacement);
+    assert_eq!(fixed, "S//NOFORN");
+    assert!(!fixed.contains("RELIDO"));
 }
 
 #[test]
@@ -294,10 +359,15 @@ fn e054_silent_when_neither_relido_nor_noforn_present() {
 
 #[test]
 fn e055_fires_when_both_relido_and_display_only_present() {
-    let attrs = attrs_with_dissem_and_spans(&[
-        (DissemControl::Relido, "RELIDO"),
-        (DissemControl::Displayonly, "DISPLAYONLY"),
-    ]);
+    // Source "S//RELIDO/DISPLAYONLY" — RELIDO is FIRST in the dissem
+    // block. The fix consumes the trailing `/`.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::Relido, "RELIDO"),
+            (DissemControl::Displayonly, "DISPLAYONLY"),
+        ],
+    );
     let rule = DeclarativeRelidoDisplayOnlyConflictRule;
     let diags = rule.check(&attrs, &ctx());
 
@@ -310,9 +380,24 @@ fn e055_fires_when_both_relido_and_display_only_present() {
     assert_eq!(d.rule.as_str(), "E055");
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(d.citation, "CAPCO-2016 §H.8 p154");
-    // Span must point at RELIDO (offset 10, len 6 → 10..16).
-    assert_eq!(d.span.start, 10, "E055 span should anchor at RELIDO token");
-    assert!(d.fix.is_none(), "E055 must not emit a FixProposal");
+    assert_eq!(
+        d.message.as_ref(),
+        "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)"
+    );
+    // Anchor span points at RELIDO ([3, 9]).
+    assert_eq!(d.span.start, 3, "E055 anchor span should point at RELIDO");
+    assert_eq!(d.span.end, 9);
+
+    let fix = d.fix.as_ref().expect("E055 must emit a FixProposal");
+    assert_eq!(fix.span.start, 3);
+    assert_eq!(fix.span.end, 10, "fix span should consume trailing `/`");
+    assert_eq!(fix.replacement.as_ref(), "");
+    assert_eq!(fix.source, FixSource::BuiltinRule);
+    assert_eq!(fix.confidence.rule, 0.9);
+
+    let fixed = apply_fix(&source, fix.span, &fix.replacement);
+    assert_eq!(fixed, "S//DISPLAYONLY");
+    assert!(!fixed.contains("RELIDO"));
 }
 
 #[test]
@@ -341,10 +426,12 @@ fn e055_silent_when_neither_relido_nor_display_only_present() {
 
 #[test]
 fn e056_fires_when_both_orcon_and_relido_present() {
-    let attrs = attrs_with_dissem_and_spans(&[
-        (DissemControl::Oc, "OC"),
-        (DissemControl::Relido, "RELIDO"),
-    ]);
+    // Source "S//OC/RELIDO" — RELIDO is the LAST dissem token, preceded
+    // by `/`. The fix consumes the preceding `/`.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
+    );
     let rule = DeclarativeOrconRelidoConflictRule;
     let diags = rule.check(&attrs, &ctx());
 
@@ -357,14 +444,32 @@ fn e056_fires_when_both_orcon_and_relido_present() {
     assert_eq!(d.rule.as_str(), "E056");
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(d.citation, "CAPCO-2016 §H.8 p136");
-    // Span must point at OC/ORCON (offset 10, len 2 → 10..12) — asserting
-    // token is ORCON per PM Q1: anchor at the token whose template says
-    // "May not be used with RELIDO."
     assert_eq!(
-        d.span.start, 10,
-        "E056 span should anchor at OC (ORCON) token"
+        d.message.as_ref(),
+        "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)"
     );
-    assert!(d.fix.is_none(), "E056 must not emit a FixProposal");
+    // Anchor span points at OC (ORCON), the asserting-template token.
+    // OC starts at byte 3 (after "S//"); spans `[3, 5]`.
+    assert_eq!(
+        d.span.start, 3,
+        "E056 anchor span should point at OC (ORCON)"
+    );
+    assert_eq!(d.span.end, 5);
+
+    // Subtractive FixProposal: span covers preceding `/` + RELIDO →
+    // RELIDO is at `[6, 12]`; the `/` separator is at byte 5. Fix span
+    // is `[5, 12]`.
+    let fix = d.fix.as_ref().expect("E056 must emit a FixProposal");
+    assert_eq!(fix.span.start, 5, "fix span should consume preceding `/`");
+    assert_eq!(fix.span.end, 12, "fix span should end after RELIDO");
+    assert_eq!(fix.replacement.as_ref(), "");
+    assert_eq!(fix.source, FixSource::BuiltinRule);
+    assert_eq!(fix.confidence.rule, 0.9);
+
+    let fixed = apply_fix(&source, fix.span, &fix.replacement);
+    assert_eq!(fixed, "S//OC");
+    assert!(!fixed.contains("RELIDO"));
+    assert!(!fixed.ends_with('/'), "no trailing `/` after fix");
 }
 
 #[test]
@@ -393,10 +498,15 @@ fn e056_silent_when_neither_orcon_nor_relido_present() {
 
 #[test]
 fn e057_fires_when_both_orcon_usgov_and_relido_present() {
-    let attrs = attrs_with_dissem_and_spans(&[
-        (DissemControl::OcUsgov, "OC-USGOV"),
-        (DissemControl::Relido, "RELIDO"),
-    ]);
+    // Source "S//OC-USGOV/RELIDO" — RELIDO is LAST in the dissem block,
+    // preceded by `/`. The fix consumes the preceding `/`.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::OcUsgov, "OC-USGOV"),
+            (DissemControl::Relido, "RELIDO"),
+        ],
+    );
     let rule = DeclarativeOrconUsgovRelidoConflictRule;
     let diags = rule.check(&attrs, &ctx());
 
@@ -409,14 +519,30 @@ fn e057_fires_when_both_orcon_usgov_and_relido_present() {
     assert_eq!(d.rule.as_str(), "E057");
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(d.citation, "CAPCO-2016 §H.8 p140");
-    // Span must point at OC-USGOV (offset 10, len 8 → 10..18) — asserting
-    // token is ORCON-USGOV per PM Q1: anchor at the token whose template says
-    // "May not be used with RELIDO."
     assert_eq!(
-        d.span.start, 10,
-        "E057 span should anchor at OC-USGOV (ORCON-USGOV) token"
+        d.message.as_ref(),
+        "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)"
     );
-    assert!(d.fix.is_none(), "E057 must not emit a FixProposal");
+    // Anchor span points at OC-USGOV ([3, 11]).
+    assert_eq!(
+        d.span.start, 3,
+        "E057 anchor span should point at OC-USGOV (ORCON-USGOV)"
+    );
+    assert_eq!(d.span.end, 11);
+
+    // Subtractive FixProposal: RELIDO is at `[12, 18]`; the `/` separator
+    // is at byte 11. Fix span is `[11, 18]`.
+    let fix = d.fix.as_ref().expect("E057 must emit a FixProposal");
+    assert_eq!(fix.span.start, 11, "fix span should consume preceding `/`");
+    assert_eq!(fix.span.end, 18, "fix span should end after RELIDO");
+    assert_eq!(fix.replacement.as_ref(), "");
+    assert_eq!(fix.source, FixSource::BuiltinRule);
+    assert_eq!(fix.confidence.rule, 0.9);
+
+    let fixed = apply_fix(&source, fix.span, &fix.replacement);
+    assert_eq!(fixed, "S//OC-USGOV");
+    assert!(!fixed.contains("RELIDO"));
+    assert!(!fixed.ends_with('/'), "no trailing `/` after fix");
 }
 
 #[test]
@@ -451,30 +577,43 @@ fn e057_silent_when_neither_orcon_usgov_nor_relido_present() {
 #[test]
 fn relido_conflict_wrappers_carry_catalog_citations() {
     let scheme = CapcoScheme::new();
-    let cases: &[(&str, &dyn Rule, &str)] = &[
+    let cases: &[(&str, &dyn Rule, &str, &[(DissemControl, &str)])] = &[
         (
             "E054/relido-conflicts-noforn",
             &DeclarativeRelidoNofornConflictRule as &dyn Rule,
             "CAPCO-2016 §H.8 p154",
+            &[
+                (DissemControl::Relido, "RELIDO"),
+                (DissemControl::Nf, "NOFORN"),
+            ],
         ),
         (
             "E055/relido-conflicts-display-only",
             &DeclarativeRelidoDisplayOnlyConflictRule as &dyn Rule,
             "CAPCO-2016 §H.8 p154",
+            &[
+                (DissemControl::Relido, "RELIDO"),
+                (DissemControl::Displayonly, "DISPLAYONLY"),
+            ],
         ),
         (
             "E056/orcon-conflicts-relido",
             &DeclarativeOrconRelidoConflictRule as &dyn Rule,
             "CAPCO-2016 §H.8 p136",
+            &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
         ),
         (
             "E057/orcon-usgov-conflicts-relido",
             &DeclarativeOrconUsgovRelidoConflictRule as &dyn Rule,
             "CAPCO-2016 §H.8 p140",
+            &[
+                (DissemControl::OcUsgov, "OC-USGOV"),
+                (DissemControl::Relido, "RELIDO"),
+            ],
         ),
     ];
 
-    for (constraint_name, rule, expected_citation) in cases {
+    for (constraint_name, rule, expected_citation, dissem) in cases {
         // Catalog side: the `label` must equal the expected citation.
         let c = lookup_constraint(&scheme, constraint_name);
         assert_eq!(
@@ -483,33 +622,39 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
             "catalog label for {constraint_name} drifted from plan §3"
         );
 
-        // Wrapper emission side: build a minimal triggering attrs and confirm
-        // Diagnostic.citation == catalog.label. For E054/E055 both tokens are
-        // RELIDO-side; for E056/E057 the LHS token is ORCON/ORCON-USGOV.
-        let trigger_attrs = match *constraint_name {
-            "E054/relido-conflicts-noforn" => {
-                attrs_with_dissem(&[DissemControl::Relido, DissemControl::Nf])
-            }
-            "E055/relido-conflicts-display-only" => {
-                attrs_with_dissem(&[DissemControl::Relido, DissemControl::Displayonly])
-            }
-            "E056/orcon-conflicts-relido" => {
-                attrs_with_dissem(&[DissemControl::Oc, DissemControl::Relido])
-            }
-            "E057/orcon-usgov-conflicts-relido" => {
-                attrs_with_dissem(&[DissemControl::OcUsgov, DissemControl::Relido])
-            }
-            other => panic!("unhandled constraint name in fidelity test: {other}"),
-        };
+        // Wrapper emission side: build triggering attrs WITH spans (so the
+        // FixProposal helper can compute a removal layout) and confirm
+        // Diagnostic.citation == catalog.label, plus FixProposal exists
+        // with confidence 0.9 (PM Addendum II §3, §8).
+        let trigger_attrs = attrs_with_dissem_and_spans(dissem);
         let diags = rule.check(&trigger_attrs, &ctx());
         assert_eq!(
             diags.len(),
             1,
             "expected exactly one diagnostic from {constraint_name} on triggering attrs"
         );
+        let d = &diags[0];
         assert_eq!(
-            diags[0].citation, *expected_citation,
+            d.citation, *expected_citation,
             "Diagnostic.citation from {constraint_name} wrapper drifted from catalog label"
+        );
+        // PM Addendum II §8: every triggering wrapper must emit a FixProposal
+        // with confidence 0.9. The only legitimate `None` case is the rare
+        // ambiguous-span layout where `compute_relido_removal_span` cannot
+        // pick a sound removal — none of the four canonical triggering
+        // shapes used here exercises that path.
+        let fix = d.fix.as_ref().unwrap_or_else(|| {
+            panic!("{constraint_name} must emit a FixProposal on the canonical triggering shape")
+        });
+        assert!(
+            (fix.confidence.rule - 0.9).abs() < f32::EPSILON,
+            "{constraint_name} FixProposal confidence must be 0.9, got {}",
+            fix.confidence.rule
+        );
+        assert_eq!(
+            fix.replacement.as_ref(),
+            "",
+            "{constraint_name} FixProposal must replace with empty string (subtractive)"
         );
     }
 }
@@ -563,6 +708,181 @@ fn capco_constraints_count_after_pr3b_c() {
         19,
         "expected 15 (pre-3b.C) + 4 (E054–E057) = 19 constraints after PR 3b.C; \
          if this fails, either a constraint was added/removed without updating this \
-         pin, or the baseline count drifted. Verify in decisions.md D14."
+         pin, or the baseline count drifted. Verify in decisions.md D17."
     );
+}
+
+// ---------------------------------------------------------------------------
+// `compute_relido_removal_span` helper — separator-position cases
+// ---------------------------------------------------------------------------
+//
+// Per PM Addendum II §3, the helper distinguishes three layout cases:
+//
+//   - **First**: `S//RELIDO/...` — RELIDO is the leading dissem token.
+//     Removal span consumes the trailing `/`.
+//   - **Middle**: `S//.../RELIDO/...` — RELIDO is between two siblings.
+//     Removal span consumes the preceding `/`.
+//   - **Last**: `S//.../RELIDO` — RELIDO is the final dissem token.
+//     Removal span consumes the preceding `/`.
+//
+// Each case is exercised below. The `apply_fix` round-trip confirms the
+// post-fix bytes are well-formed (no `//` adjacent to `/`, no leading or
+// trailing `/` in the dissem block, and the surviving tokens are intact).
+
+#[test]
+fn helper_first_position_consumes_trailing_slash() {
+    // "S//RELIDO/NOFORN" — RELIDO at byte [3, 9]; trailing `/` at byte 9.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::Relido, "RELIDO"),
+            (DissemControl::Nf, "NOFORN"),
+        ],
+    );
+    let (span, original) = compute_relido_removal_span(&attrs)
+        .expect("first-position layout must produce a removal span");
+    assert_eq!(span.start, 3);
+    assert_eq!(span.end, 10, "first-position fix must consume trailing `/`");
+    assert_eq!(original.as_ref(), "RELIDO/");
+
+    let fixed = apply_fix(&source, span, "");
+    assert_eq!(fixed, "S//NOFORN");
+    // Well-formedness: no `//` immediately followed by `/` (which would
+    // indicate a stranded separator), no leading `/` after `//`, no
+    // trailing `/`.
+    assert!(!fixed.contains("///"));
+    assert!(!fixed.ends_with('/'));
+}
+
+#[test]
+fn helper_middle_position_consumes_preceding_slash() {
+    // "S//OC/RELIDO/NOFORN" — RELIDO at byte [6, 12]; preceding `/` at
+    // byte 5.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::Oc, "OC"),
+            (DissemControl::Relido, "RELIDO"),
+            (DissemControl::Nf, "NOFORN"),
+        ],
+    );
+    let (span, original) = compute_relido_removal_span(&attrs)
+        .expect("middle-position layout must produce a removal span");
+    assert_eq!(
+        span.start, 5,
+        "middle-position fix must consume preceding `/`"
+    );
+    assert_eq!(span.end, 12);
+    assert_eq!(original.as_ref(), "/RELIDO");
+
+    let fixed = apply_fix(&source, span, "");
+    assert_eq!(fixed, "S//OC/NOFORN");
+    assert!(!fixed.contains("///"));
+    assert!(!fixed.ends_with('/'));
+    assert!(!fixed.contains("RELIDO"));
+}
+
+#[test]
+fn helper_last_position_consumes_preceding_slash() {
+    // "S//OC/RELIDO" — RELIDO at byte [6, 12]; preceding `/` at byte 5.
+    let (attrs, source) = attrs_for_dissem_block(
+        "S",
+        &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
+    );
+    let (span, original) = compute_relido_removal_span(&attrs)
+        .expect("last-position layout must produce a removal span");
+    assert_eq!(
+        span.start, 5,
+        "last-position fix must consume preceding `/`"
+    );
+    assert_eq!(span.end, 12);
+    assert_eq!(original.as_ref(), "/RELIDO");
+
+    let fixed = apply_fix(&source, span, "");
+    assert_eq!(fixed, "S//OC");
+    assert!(!fixed.ends_with('/'));
+    assert!(!fixed.contains("RELIDO"));
+}
+
+#[test]
+fn helper_returns_none_when_relido_absent() {
+    // No RELIDO in token_spans → helper must return None so the caller
+    // emits the diagnostic without a fix (defensive Constitution V
+    // posture: never emit a malformed fix).
+    let (attrs, _source) = attrs_for_dissem_block("S", &[(DissemControl::Nf, "NOFORN")]);
+    assert!(
+        compute_relido_removal_span(&attrs).is_none(),
+        "helper must return None when RELIDO is absent from token_spans"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FixProposal source / migration_ref / source_field discipline
+// ---------------------------------------------------------------------------
+//
+// Per PM Addendum II §4: every emitted FixProposal must use
+// FixSource::BuiltinRule (the existing strict-path provenance for
+// hand-written CAPCO rules) and migration_ref: None (no schema migration
+// involved). This test pins both fields across all four wrappers.
+
+#[test]
+fn relido_fix_proposals_carry_builtin_rule_source_and_no_migration_ref() {
+    type W = (
+        &'static str,
+        &'static dyn Rule,
+        &'static [(DissemControl, &'static str)],
+    );
+    let cases: &[W] = &[
+        (
+            "E054",
+            &DeclarativeRelidoNofornConflictRule,
+            &[
+                (DissemControl::Relido, "RELIDO"),
+                (DissemControl::Nf, "NOFORN"),
+            ],
+        ),
+        (
+            "E055",
+            &DeclarativeRelidoDisplayOnlyConflictRule,
+            &[
+                (DissemControl::Relido, "RELIDO"),
+                (DissemControl::Displayonly, "DISPLAYONLY"),
+            ],
+        ),
+        (
+            "E056",
+            &DeclarativeOrconRelidoConflictRule,
+            &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
+        ),
+        (
+            "E057",
+            &DeclarativeOrconUsgovRelidoConflictRule,
+            &[
+                (DissemControl::OcUsgov, "OC-USGOV"),
+                (DissemControl::Relido, "RELIDO"),
+            ],
+        ),
+    ];
+    for (rule_id, rule, dissem) in cases {
+        let attrs = attrs_with_dissem_and_spans(dissem);
+        let diags = rule.check(&attrs, &ctx());
+        let fix = diags[0]
+            .fix
+            .as_ref()
+            .unwrap_or_else(|| panic!("{rule_id} must emit a FixProposal"));
+        assert_eq!(
+            fix.source,
+            FixSource::BuiltinRule,
+            "{rule_id} FixProposal source must be BuiltinRule"
+        );
+        assert!(
+            fix.migration_ref.is_none(),
+            "{rule_id} FixProposal must have migration_ref = None"
+        );
+        assert_eq!(
+            fix.rule.as_str(),
+            *rule_id,
+            "{rule_id} FixProposal rule field must match the wrapper's id()"
+        );
+    }
 }

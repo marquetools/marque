@@ -55,10 +55,10 @@
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   E053 = NOFORN conflicts with REL TO (§H.8 p145, declarative wrapper)
-//!   E054 = RELIDO conflicts with NOFORN (§H.8 p154, declarative wrapper — PR 3b.C)
-//!   E055 = RELIDO conflicts with DISPLAY ONLY (§H.8 p154, declarative wrapper — PR 3b.C)
-//!   E056 = ORCON conflicts with RELIDO (§H.8 p136, declarative wrapper — PR 3b.C)
-//!   E057 = ORCON-USGOV conflicts with RELIDO (§H.8 p140, declarative wrapper — PR 3b.C)
+//!   E054 = RELIDO conflicts with NOFORN — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E055 = RELIDO conflicts with DISPLAY ONLY — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E056 = ORCON conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p136, declarative wrapper — PR 3b.C)
+//!   E057 = ORCON-USGOV conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p140, declarative wrapper — PR 3b.C)
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -279,6 +279,12 @@ pub use crate::rules_declarative::{
     DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
     DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
 };
+
+// Helper exposed to integration tests so the three separator-position
+// cases (first / middle / last) can be exercised in isolation, separate
+// from the four wrapper invocations. Same Constitution VII rationale as
+// the wrapper re-exports above.
+pub use crate::rules_declarative::compute_relido_removal_span;
 
 // ---------------------------------------------------------------------------
 // Rule: E001 — Portion mark used in banner (correctness)

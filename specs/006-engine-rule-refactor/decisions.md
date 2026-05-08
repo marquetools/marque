@@ -628,10 +628,33 @@ fabricating per-atom citations.
 
 **Net rule delta**: 57 → 61 (+4). Net constraint delta: 15 → 19 (+4).
 
+**Subtractive-fix direction (PM Addendum II, 2026-05-07).** All four
+wrappers emit a `FixProposal` that **removes RELIDO** from the dissem
+block (replacement = `""`, confidence = 0.9, `FixSource::BuiltinRule`,
+`Severity::Error`). RELIDO is the unambiguous remove-target because the
+other token in each pair carries the binding §-cited authority (NOFORN
+dominates per FD&R supersession; DISPLAY ONLY is a positive disclosure
+decision; ORCON / ORCON-USGOV explicitly assert "may not be used with
+RELIDO" on their §H.8 templates). The pattern applies to **dissem-axis
+`Constraint::Conflicts`** rules only — non-dissem conflicts (classification
+E012, JOINT cross-system, SCI grammar) remain "user resolves" because the
+fix direction cannot be inferred without policy input. Constitution V
+(audit-first) is preserved: `FixProposal` is pure data; the engine
+snapshots runtime state into `AppliedFix` at promotion. See PM Addendum II
+in `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md` for the full
+rationale and user-correction context (Marque is a guidance tool for
+dissem markings, not just a checker).
+
 **Verdict-line-82 amendment**: see `docs/plans/2026-05-07-pr3b-consultation-verdict.md` line 82 (amended in this PR).
 
-**Lands in**: PR 3b.C implementation, test count pin in
-`crates/capco/tests/relido_conflicts.rs:capco_constraints_count_after_pr3b_c`.
+**Lands in**: PR 3b.C implementation, helper `compute_relido_removal_span`
+in `crates/capco/src/rules_declarative.rs`, test count pin in
+`crates/capco/tests/relido_conflicts.rs:capco_constraints_count_after_pr3b_c`,
+and the helper-position tests
+(`helper_first_position_consumes_trailing_slash`,
+`helper_middle_position_consumes_preceding_slash`,
+`helper_last_position_consumes_preceding_slash`,
+`helper_returns_none_when_relido_absent`).
 
 ---
 
