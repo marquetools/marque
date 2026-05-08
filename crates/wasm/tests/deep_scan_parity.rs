@@ -52,6 +52,46 @@ fn shared_native_engine() -> &'static Engine {
     })
 }
 
+/// Native engine with `confidence_threshold = 0.80` so the decoder-
+/// path fix triggered by the mangled input `(SERCET//NF)` (see
+/// [`MANGLED_INPUT`]) lands in `result.applied` instead of being
+/// downgraded to a suggestion. `(SERCET//NF)` is the fuzzy-mangled
+/// input the test feeds to the engine; the canonical CAPCO portion
+/// form for the same marking is `(S//NF)` — abbreviated S for
+/// SECRET and NF for NOFORN per the §A.6 portion grammar — and the
+/// strict-or-decoder dispatcher's job here is to recover *some*
+/// canonical CAPCO interpretation. The decoder's current output is
+/// the slightly different `(SECRET//NF)` (banner forms inside a
+/// portion shape, tracked separately as a canonicalization
+/// correctness item — out of scope for this parity test, which
+/// only cares that an audit-emitting `DecoderPosterior` fix lands).
+///
+/// Issue #258: the prose null-hypothesis runner-up shrinks
+/// `recognition_score` for short fuzzy fixes — the marking still wins
+/// the marking-vs-prose competition, but the runner-up is no longer
+/// `f32::NEG_INFINITY` so `recognition` lands around 0.83 instead of
+/// `SOLO_RECOGNITION = 0.999999`. The lint phase's eager
+/// `Severity::Fix → Severity::Suggest` downgrade
+/// (`crates/engine/src/engine.rs:748`) consults the engine's
+/// `Config::confidence_threshold`, so we lower it for the parity
+/// test rather than relying on `fix_with_threshold`'s per-call
+/// override (which only takes effect after the lint downgrade).
+fn shared_relaxed_engine() -> &'static Engine {
+    static ENGINE: OnceLock<Engine> = OnceLock::new();
+    ENGINE.get_or_init(|| {
+        let mut config = Config::default();
+        config
+            .set_confidence_threshold(0.80)
+            .expect("0.80 is a valid confidence threshold");
+        Engine::new(
+            config,
+            marque_engine::default_ruleset(),
+            marque_engine::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+    })
+}
+
 // ---------------------------------------------------------------------------
 // JSON projection — duplicated from the WASM crate to keep the parity
 // check independent. If the two diverge in shape, the byte-equal
@@ -149,7 +189,12 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     // mangled input. If this fixture stops triggering the decoder,
     // either the dispatcher is dormant or the WASM build's baked
     // priors / vocab have drifted from the native build.
-    let engine = shared_native_engine();
+    // Issue #258: short fuzzy fixes like `(SERCET//NF)` now land
+    // around recognition 0.83 due to the prose null-hypothesis
+    // runner-up. Use a relaxed-threshold engine (0.80) so the fix
+    // auto-applies and the parity check has something to compare.
+    // See `shared_relaxed_engine` for the rationale.
+    let engine = shared_relaxed_engine();
     let native_fix = engine.fix(MANGLED_INPUT, FixMode::Apply);
     let saw_decoder_native = native_fix
         .applied
@@ -162,13 +207,23 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
         std::str::from_utf8(MANGLED_INPUT).unwrap()
     );
 
-    // WASM path: the JSON envelope's `applied` records must include
-    // at least one entry whose `source` is `"DecoderPosterior"`.
-    let default_threshold = Config::default().confidence_threshold();
+    // WASM path: pass the same relaxed threshold through fix_native
+    // so the WASM and native paths stay in parity.
+    //
+    // Both `threshold` (the per-call parameter) AND
+    // `confidence_threshold` in the config are needed: the per-call
+    // threshold drives the `fix_with_options` threshold_override path,
+    // and the config threshold drives the lint-phase eager
+    // `Severity::Fix → Severity::Suggest` downgrade
+    // (`crates/engine/src/engine.rs:748`). Setting only one leaves the
+    // other path on the default 0.95 and the fix gets downgraded to
+    // a suggestion before `fix_with_options` ever sees it.
+    let relaxed_threshold = 0.80_f32;
+    let config_json = r#"{"confidence_threshold": 0.80}"#;
     let wasm_json = fix_native(
         std::str::from_utf8(MANGLED_INPUT).expect("MANGLED_INPUT is valid UTF-8"),
-        default_threshold,
-        None,
+        relaxed_threshold,
+        Some(config_json.to_string()),
     )
     .expect("fix_native must succeed");
     let parsed: serde_json::Value =
