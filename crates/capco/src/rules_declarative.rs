@@ -636,15 +636,22 @@ impl Rule for DeclarativeAeaNofornRule {
 }
 
 // ---------------------------------------------------------------------------
-// E022 — CNWDI classification floor
+// E022 — CNWDI classification floor (RETIRED)
 // ---------------------------------------------------------------------------
 //
 // PR 3b.D (T026d): retired. The CNWDI floor invariant moved into the
-// class-floor catalog as the row `E022/CNWDI-classification-floor`
-// (§H.6 p104 / §H.6 p106 — preserves the original rule ID). The
-// catalog walker `DeclarativeClassFloorRule` (rule ID `E058`) is the
-// new emitter; per-row identification (which catalog row fired) lives
-// in the walker's emitted `Diagnostic.message` text.
+// class-floor catalog as the row `E058/CNWDI-classification-floor`
+// (CAPCO §H.6 p104). The catalog walker
+// `DeclarativeClassFloorRule` (rule ID `E058`) is the new emitter;
+// per-row identification (which catalog row fired) lives in the
+// walker's emitted `Diagnostic.message` text.
+//
+// The legacy `E022` rule ID is NOT preserved as a severity-config
+// alias. Per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is
+// pre-users; we don't carry alias maps or retained namespaces.
+// `.marque.toml` files keying class-floor severity overrides MUST
+// use `E058` (the walker-level ID).
 //
 // See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
 // citation, and `DeclarativeClassFloorRule` below for the walker.
@@ -702,16 +709,23 @@ impl Rule for DeclarativeRdPrecedenceRule {
 }
 
 // ---------------------------------------------------------------------------
-// E025 — UCNI only with UNCLASSIFIED
+// E025 — UCNI only with UNCLASSIFIED (RETIRED)
 // ---------------------------------------------------------------------------
 //
 // PR 3b.D (T026d): retired. The UCNI ceiling invariant moved into the
 // class-floor catalog as TWO rows
-// (`E025/dod-ucni-conflicts-classification` at §H.6 p116 and
-// `E025/doe-ucni-conflicts-classification` at §H.6 p118 — split per PM
+// (`E058/DOD-UCNI-classification-ceiling` at CAPCO §H.6 p116 and
+// `E058/DOE-UCNI-classification-ceiling` at §H.6 p118 — split per PM
 // decision so each variant has its own §H.6 sub-page citation). The
 // catalog walker `DeclarativeClassFloorRule` (rule ID `E058`) is the
 // new emitter.
+//
+// The legacy `E025` rule ID is NOT preserved as a severity-config
+// alias. Per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is
+// pre-users; we don't carry alias maps or retained namespaces.
+// `.marque.toml` files keying class-floor severity overrides MUST
+// use `E058` (the walker-level ID).
 //
 // See `crate::scheme::CLASS_FLOOR_CATALOG` for the row predicates +
 // citations, and `DeclarativeClassFloorRule` below for the walker.
@@ -1481,9 +1495,16 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
 // Per the PR 3b.D planning doc §5.2 + PM directive #5: ONE walker rule
 // `E058` with a fresh ID. All emitted diagnostics carry
 // `Diagnostic.rule = "E058"`. Per-row identification flows via the
-// catalog row's `name` field (e.g., `"class-floor/HCS-O"`,
-// `"E022/CNWDI-classification-floor"`) into the diagnostic message
-// text.
+// catalog row's `name` field — either `"E058/<purpose>"` (for the
+// four rows replacing retired E022/E025/E027 invariants —
+// `E058/CNWDI-classification-floor`, `E058/SAR-classification-floor`,
+// `E058/DOD-UCNI-classification-ceiling`,
+// `E058/DOE-UCNI-classification-ceiling`) or
+// `"class-floor/<marking>"` (for the 23 new family rows with no
+// retired-rule predecessor) — into the diagnostic message text. The
+// legacy E022 / E025 / E027 IDs are NOT preserved as severity-config
+// aliases (per `feedback_pre_users_no_deprecation_phasing.md`:
+// marque is pre-users; rewrite freely).
 //
 // # Severity convention
 //

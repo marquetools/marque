@@ -147,18 +147,22 @@ impl CapcoRuleSet {
                 // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), and E027
                 // (SAR classification) retired into the class-floor
                 // catalog walker `DeclarativeClassFloorRule` (rule
-                // ID E058). Per-row preserved IDs:
-                //   - E022/CNWDI-classification-floor (CAPCO §H.6 p104)
-                //   - E025/dod-ucni-conflicts-classification (§H.6 p116)
-                //   - E025/doe-ucni-conflicts-classification (§H.6 p118)
-                //   - E027/sar-classification (§H.5)
-                // Plus 23 additional family rows per `marque-applied.md`
-                // §3.4.6 (HCS-comp-sub, SI-comp, TK-BLFH, BALK, BOHEMIA,
-                // HCS-comp, RSV-comp, TK family, RD-SG, FRD-SG, RSEN,
-                // IMCON, SI bare, RD bare, FRD bare, TFNI, ATOMAL, ORCON
-                // family, EYES ONLY, BUR/HCS-X/KLM/MVL passthrough). See
-                // `crate::scheme::CLASS_FLOOR_CATALOG` for the row table
-                // and `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
+                // ID E058). Replacement catalog row names (walker-
+                // prefixed; the legacy E### IDs are not preserved per
+                // `feedback_pre_users_no_deprecation_phasing.md`):
+                //   - E058/CNWDI-classification-floor (CAPCO §H.6 p104)
+                //   - E058/DOD-UCNI-classification-ceiling (§H.6 p116)
+                //   - E058/DOE-UCNI-classification-ceiling (§H.6 p118)
+                //   - E058/SAR-classification-floor (§H.5)
+                // Plus 23 additional `class-floor/<marking>` family
+                // rows per `marque-applied.md` §3.4.6 (HCS-comp-sub,
+                // SI-comp, TK-BLFH, BALK, BOHEMIA, HCS-comp, RSV-comp,
+                // TK family, RD-SG, FRD-SG, RSEN, IMCON, SI bare, RD
+                // bare, FRD bare, TFNI, ATOMAL, ORCON family, EYES
+                // ONLY, BUR/HCS-X/KLM/MVL passthrough). See
+                // `crate::scheme::CLASS_FLOOR_CATALOG` for the row
+                // table and
+                // `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
                 // for the architectural rationale.
                 Box::new(DeclarativeClassFloorRule),
                 Box::new(SarPortionFormRule),
@@ -4325,19 +4329,22 @@ impl Rule for SarPortionFormRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E027 — SAR requires TS, S, or C classification
+// Rule: E027 — SAR requires TS, S, or C classification (RETIRED)
 // ---------------------------------------------------------------------------
 //
 // PR 3b.D (T026d): retired. The SAR floor invariant moved into the
-// class-floor catalog as the row `E027/sar-classification` (§H.5 p101
-// — preserves the original rule ID). The catalog walker
-// `DeclarativeClassFloorRule` (rule ID `E058`) is the new emitter.
+// class-floor catalog as the row `E058/SAR-classification-floor`
+// (CAPCO §H.5). The catalog walker `DeclarativeClassFloorRule` (rule
+// ID `E058`) is the new emitter; the legacy `E027` rule ID is NOT
+// preserved (per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users
+// — no severity-config back-compat).
 //
 // See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
 // citation. The emitted diagnostic carries `Diagnostic.rule = "E058"`
 // (walker ID); per-row identification flows via the diagnostic
 // message text + the catalog's `name` field
-// (`"E027/sar-classification"`).
+// (`"E058/SAR-classification-floor"`).
 
 // ---------------------------------------------------------------------------
 // Rule: E028 — SAR programs must be in ascending order
@@ -6221,15 +6228,19 @@ mod tests {
         assert!(ids.contains(&"E021"));
         // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), E027 (SAR
         // classification) retired into the class-floor catalog walker
-        // `DeclarativeClassFloorRule` (rule ID E058). Per-row preserved
-        // names (`E022/CNWDI-classification-floor`,
-        // `E025/dod-ucni-conflicts-classification`,
-        // `E025/doe-ucni-conflicts-classification`,
-        // `E027/sar-classification`) keep severity-config back-compat
-        // and `evaluate_named_constraint` fast-path lookups working;
-        // the engine's `additional_emitted_ids` exposes them so a
-        // `.marque.toml` config keyed at the original IDs continues
-        // to work. Diagnostic.rule is `E058` (walker bookkeeping ID).
+        // `DeclarativeClassFloorRule` (rule ID `E058`). Replacement
+        // catalog row names use the walker-prefixed form
+        // (`E058/CNWDI-classification-floor`,
+        // `E058/DOD-UCNI-classification-ceiling`,
+        // `E058/DOE-UCNI-classification-ceiling`,
+        // `E058/SAR-classification-floor`); the legacy E### IDs are
+        // NOT preserved (per project memory
+        // `feedback_pre_users_no_deprecation_phasing.md`: marque is
+        // pre-users — no severity-config back-compat). All catalog
+        // diagnostics carry `Diagnostic.rule = "E058"`; per-row
+        // identification flows via the diagnostic message text.
+        // `.marque.toml` keys must use `E058` (walker-level), not the
+        // retired E022/E025/E027 IDs.
         assert!(
             !ids.contains(&"E022"),
             "E022 retired in PR 3b.D into E058 catalog"

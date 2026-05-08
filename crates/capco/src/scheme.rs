@@ -1236,17 +1236,21 @@ impl CapcoScheme {
                 name: "E021/aea-requires-noforn",
                 label: "CAPCO-2016 §H.6 p104",
             },
-            // ---- E022: CNWDI classification floor (§H.6 p106) ----
+            // ---- E022 retired in PR 3b.D (T026d) -----------------
             //
-            // §H.6 CNWDI entry p106: "Applicable only to
-            // Top Secret or Secret RD information" / "May only be
-            // used with TOP SECRET RD or SECRET RD." Custom because
-            // the floor predicate ("classification ≥ S") is a level
-            // comparison, not a single-token check.
-            Constraint::Custom {
-                name: "E022/CNWDI-classification-floor",
-                label: "CAPCO-2016 §H.6 p106",
-            },
+            // The CNWDI classification floor moved into the class-
+            // floor catalog block below as
+            // `E058/CNWDI-classification-floor`. The legacy
+            // `E022/CNWDI-classification-floor` entry that previously
+            // lived here is removed because (a) the catalog walker
+            // emits the diagnostic via `E058/...`, and (b) keeping the
+            // `E022/...` entry alongside the `E058/...` entry produced
+            // a dead duplicate constraint row that never fires (the
+            // dispatch in `evaluate_custom_by_attrs` no longer routes
+            // to a predicate for it). Per
+            // `feedback_pre_users_no_deprecation_phasing.md`, no
+            // alias map is preserved.
+
             // ---- E024: RD precedence (§H.6 p104) -----------------
             //
             // §H.6 RD entry p104: "If RD, FRD, and TFNI
@@ -1262,18 +1266,20 @@ impl CapcoScheme {
                 name: "E024/rd-precedence",
                 label: "CAPCO-2016 §H.6 p104",
             },
-            // ---- E025: UCNI conflicts classification (§H.6 p116) -
+            // ---- E025 retired in PR 3b.D (T026d) -----------------
             //
-            // §H.6 DOD UCNI entry p116: "Applicable only
-            // to unclassified information" / "May only be used with
-            // UNCLASSIFIED." Custom (not Conflicts) because the
-            // predicate distinguishes UNCLASSIFIED (allowed) from
-            // C/S/TS (forbidden) — a level comparison rather than
-            // mere presence/absence.
-            Constraint::Custom {
-                name: "E025/ucni-conflicts-classification",
-                label: "CAPCO-2016 §H.6 p116",
-            },
+            // The UCNI ceiling invariant moved into the class-floor
+            // catalog block below as TWO rows
+            // (`E058/DOD-UCNI-classification-ceiling` at §H.6 p116 and
+            // `E058/DOE-UCNI-classification-ceiling` at §H.6 p118),
+            // split per PM decision #1 so each variant carries its
+            // own §H.6 sub-page citation. The legacy
+            // `E025/ucni-conflicts-classification` aggregated entry
+            // that previously lived here is removed for the same
+            // reason as the E022 entry above (the dispatch in
+            // `evaluate_custom_by_attrs` no longer routes to a
+            // predicate for it).
+
             // ---- W002: US + FGI commingling (§H.7 p124) ----------
             //
             // §H.7 p124: documents not marked per ICD 206
@@ -1499,17 +1505,36 @@ impl CapcoScheme {
             //
             // # Per-row name and walker rule-ID
             //
-            // Each catalog row's `name` follows the convention
-            // `class-floor/<family-id>` (or for retiring-rule rows:
-            // `E022/CNWDI-classification-floor`,
-            // `E025/dod-ucni-conflicts-classification`,
-            // `E025/doe-ucni-conflicts-classification`,
-            // `E027/sar-classification`). The single walker
-            // `DeclarativeClassFloorRule` (rule id `E058`) emits all
-            // diagnostics; per-row identification flows via the catalog's
-            // `name` field into `ConstraintViolation.constraint_label` and
-            // is referenced in `Diagnostic.message` for human-readable
+            // The single walker `DeclarativeClassFloorRule` (rule ID
+            // `E058`) emits all diagnostics. Each catalog row's `name`
+            // takes one of two forms:
+            //
+            //   - `E058/<purpose>` for rows that REPLACE a retired
+            //     legacy rule. Specifically:
+            //     `E058/CNWDI-classification-floor` (replaces retired
+            //     E022), `E058/SAR-classification-floor` (replaces
+            //     retired E027), `E058/DOD-UCNI-classification-ceiling`
+            //     and `E058/DOE-UCNI-classification-ceiling` (replace
+            //     retired E025; split per PM decision so each carries
+            //     its own §H.6 sub-page citation).
+            //   - `class-floor/<marking>` for rows with no retired-rule
+            //     predecessor (e.g., `class-floor/HCS-comp-sub`,
+            //     `class-floor/SI-comp`, `class-floor/BALK`,
+            //     `class-floor/passthrough-BUR`).
+            //
+            // Per-row identification flows via the catalog's `name`
+            // field into `ConstraintViolation.constraint_label` and is
+            // referenced in `Diagnostic.message` for human-readable
             // identification.
+            //
+            // Severity-config compatibility for the legacy IDs (E022,
+            // E025, E027) is intentionally NOT preserved. Per project
+            // memory `feedback_pre_users_no_deprecation_phasing.md`:
+            // marque is pre-users, so we don't carry alias maps,
+            // retained namespaces, or phased deprecation.
+            // `.marque.toml` files keying class-floor severity
+            // overrides MUST use `E058` (walker-level) — there's no
+            // per-row severity-override surface in PR D.
             //
             // # Citation methodology
             //
@@ -1845,15 +1870,20 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
 /// predicate helper. Returns an empty `Vec` for unknown names
 /// (forward-compat with future catalog entries).
 ///
-/// PR 3b.D (T026d): names with the prefixes `class-floor/`,
-/// `E022/CNWDI-`, `E025/...-ucni-`, `E027/sar-classification` are
-/// dispatched to [`class_floor_catalog_eval`] over the static
+/// PR 3b.D (T026d): catalog-row names with the prefixes
+/// `class-floor/` or `E058/` are dispatched to
+/// [`class_floor_catalog_eval`] over the static
 /// [`CLASS_FLOOR_CATALOG`] table. The retired `e022_cnwdi_floor` /
-/// `e025_ucni_classification` helpers are absorbed into the
-/// catalog's static-table form; their original constraint names
-/// (`E022/...`, `E025/...`) are preserved as catalog-row names for
-/// severity-config back-compat and to keep
-/// `evaluate_named_constraint` fast-path lookups working unchanged.
+/// `e025_ucni_classification` helpers were absorbed into the
+/// catalog's static-table form; their replacement catalog rows
+/// (`E058/CNWDI-classification-floor`,
+/// `E058/DOD-UCNI-classification-ceiling`,
+/// `E058/DOE-UCNI-classification-ceiling`,
+/// `E058/SAR-classification-floor`) reuse the walker's `E058`
+/// prefix rather than the legacy E022/E025/E027 IDs. Per project
+/// memory `feedback_pre_users_no_deprecation_phasing.md`,
+/// severity-config back-compat for the legacy IDs is intentionally
+/// not preserved; `.marque.toml` keys must use `E058` (walker-level).
 fn evaluate_custom_by_attrs(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
