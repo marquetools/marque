@@ -638,42 +638,16 @@ impl Rule for DeclarativeAeaNofornRule {
 // ---------------------------------------------------------------------------
 // E022 — CNWDI classification floor
 // ---------------------------------------------------------------------------
-
-pub(crate) struct DeclarativeCnwdiConstraintRule;
-
-impl Rule for DeclarativeCnwdiConstraintRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E022")
-    }
-    fn name(&self) -> &'static str {
-        "cnwdi-constraint"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, "E022/CNWDI-classification-floor").is_empty() {
-            return vec![];
-        }
-
-        let level = attrs.us_classification();
-        let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
-        let span = first_span_of(attrs, TokenKind::AeaMarking);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            format!(
-                "CNWDI may only be used with TOP SECRET or SECRET RD; \
-                 current classification is {level_str}"
-            ),
-            "CAPCO-2016 §H.6",
-            None,
-        )]
-    }
-}
+//
+// PR 3b.D (T026d): retired. The CNWDI floor invariant moved into the
+// class-floor catalog as the row `E022/CNWDI-classification-floor`
+// (§H.6 p104 / §H.6 p106 — preserves the original rule ID). The
+// catalog walker `DeclarativeClassFloorRule` (rule ID `E058`) is the
+// new emitter; per-row identification (which catalog row fired) lives
+// in the walker's emitted `Diagnostic.message` text.
+//
+// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
+// citation, and `DeclarativeClassFloorRule` below for the walker.
 
 // ---------------------------------------------------------------------------
 // E024 — RD takes precedence over FRD/TFNI (multi-emission)
@@ -730,37 +704,17 @@ impl Rule for DeclarativeRdPrecedenceRule {
 // ---------------------------------------------------------------------------
 // E025 — UCNI only with UNCLASSIFIED
 // ---------------------------------------------------------------------------
-
-pub(crate) struct DeclarativeUcniClassificationRule;
-
-impl Rule for DeclarativeUcniClassificationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E025")
-    }
-    fn name(&self) -> &'static str {
-        "ucni-classification"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        if violations_for(attrs, "E025/ucni-conflicts-classification").is_empty() {
-            return vec![];
-        }
-
-        let span = first_span_of(attrs, TokenKind::AeaMarking);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "DOD/DOE UCNI may only be used with UNCLASSIFIED information",
-            "CAPCO-2016 §H.6",
-            None,
-        )]
-    }
-}
+//
+// PR 3b.D (T026d): retired. The UCNI ceiling invariant moved into the
+// class-floor catalog as TWO rows
+// (`E025/dod-ucni-conflicts-classification` at §H.6 p116 and
+// `E025/doe-ucni-conflicts-classification` at §H.6 p118 — split per PM
+// decision so each variant has its own §H.6 sub-page citation). The
+// catalog walker `DeclarativeClassFloorRule` (rule ID `E058`) is the
+// new emitter.
+//
+// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row predicates +
+// citations, and `DeclarativeClassFloorRule` below for the walker.
 
 // ---------------------------------------------------------------------------
 // W002 — US + FGI comingling in portion (portion-only)
@@ -1510,4 +1464,165 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
             fix,
         )]
     }
+}
+
+// ===========================================================================
+// PR 3b.D (T026d) — Class-floor catalog walker (E058)
+// ===========================================================================
+//
+// `DeclarativeClassFloorRule` is the single walker rule that dispatches
+// over the 27-row class-floor catalog declared in
+// `crate::scheme::CLASS_FLOOR_CATALOG` (and registered as
+// `Constraint::Custom` rows in `CapcoScheme::build_constraints` under
+// the "PR 3b.D (T026d) — class-floor catalog" section).
+//
+// # Walker rule-ID convention
+//
+// Per the PR 3b.D planning doc §5.2 + PM directive #5: ONE walker rule
+// `E058` with a fresh ID. All emitted diagnostics carry
+// `Diagnostic.rule = "E058"`. Per-row identification flows via the
+// catalog row's `name` field (e.g., `"class-floor/HCS-O"`,
+// `"E022/CNWDI-classification-floor"`) into the diagnostic message
+// text.
+//
+// # Severity convention
+//
+// The walker's `default_severity()` is `Severity::Error` (matches the
+// majority of catalog rows). Per-row severities are stored in
+// `ClassFloorRow.severity` and copied onto each emitted `Diagnostic`
+// — the unknown-floor passthrough rows (BUR / HCS-X / KLM / MVL) emit
+// at `Severity::Warn` per `marque-applied.md` §3.4.6 Q-3.4.6b. The
+// engine's severity-override layer can downgrade or upgrade per
+// `.marque.toml [rules] E058 = "off|warn|error|..."`.
+//
+// # Span anchoring
+//
+// PM directive #2: anchor at the marking token, not the classification
+// token. The diagnostic squiggle should be under the offending presence,
+// not the classification value. Span resolution per row dispatches on
+// the marking axis: AEA-axis rows (RD, FRD, TFNI, CNWDI, SIGMA, UCNI)
+// anchor at the first `TokenKind::AeaMarking` span; SCI-axis rows
+// (HCS, SI, TK, RSV, BUR, HCS-X, KLM, MVL) anchor at the first
+// `TokenKind::SciSystem` or `TokenKind::SciControl` span; SAR rows at
+// `TokenKind::SarIndicator`; dissem-axis rows (RSEN, IMCON, ORCON,
+// EYES) at the first `TokenKind::DissemControl` span; NATO rows at the
+// first `TokenKind::Classification` span (NATO classification token is
+// the marking surface). When no specific token-kind span is found, fall
+// back to the first `Classification` span, and finally to `(0, 0)`.
+
+pub(crate) struct DeclarativeClassFloorRule;
+
+impl Rule for DeclarativeClassFloorRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E058")
+    }
+    fn name(&self) -> &'static str {
+        "class-floor-catalog"
+    }
+    fn default_severity(&self) -> Severity {
+        // Catalog rows individually carry `Severity::Error` (enumerated
+        // rows) or `Severity::Warn` (passthrough rows). The walker-level
+        // default is the strictest of the per-row severities so a config
+        // anchoring at `E058` cannot accidentally weaken a row's
+        // authoring intent.
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        for row in crate::scheme::class_floor_catalog() {
+            // The catalog dispatch lives in scheme.rs — invoke the
+            // fast-path `evaluate_named_constraint` to fire the row's
+            // predicate. Returns 0 or 1 violations per row.
+            let violations = violations_for(attrs, row.name);
+            for v in violations {
+                let span = class_floor_anchor_span(attrs, row);
+                diags.push(Diagnostic::new(
+                    self.id(),
+                    row.severity,
+                    span,
+                    v.message,
+                    v.citation,
+                    None,
+                ));
+            }
+        }
+        diags
+    }
+}
+
+/// Resolve the diagnostic span anchor for a class-floor catalog row.
+///
+/// Per PM directive #2, the span anchors at the marking token (not the
+/// classification token) so the diagnostic UX puts the squiggle under
+/// the offending presence. Each row's preferred anchor depends on the
+/// marking axis it tests; the dispatch table here maps catalog-row name
+/// to the appropriate `TokenKind`. Falls back to the first
+/// `Classification` token span if no axis-specific span is found, and
+/// finally to `Span::new(0, 0)` if neither is present.
+fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &crate::scheme::ClassFloorRow) -> Span {
+    let primary_kind = primary_token_kind_for_row(row.name);
+    if let Some(kind) = primary_kind
+        && let Some(span) = first_span_of_optional(attrs, kind)
+    {
+        return span;
+    }
+    // Some rows have no single primary kind (e.g., NATO rows have no
+    // marking-side token). Try classification as a fallback.
+    if let Some(span) = first_span_of_optional(attrs, TokenKind::Classification) {
+        return span;
+    }
+    Span::new(0, 0)
+}
+
+/// Lookup table mapping catalog row name to the primary token kind to
+/// anchor diagnostics at. `None` means "fall back to the classification
+/// span" (used for NATO rows where the classification token IS the
+/// marking surface).
+fn primary_token_kind_for_row(name: &str) -> Option<TokenKind> {
+    match name {
+        // §2.1 / §2.2 / §2.3 — SCI-axis rows anchor at the SCI system token.
+        "class-floor/HCS-comp-sub"
+        | "class-floor/HCS-comp"
+        | "class-floor/SI-comp"
+        | "class-floor/SI"
+        | "class-floor/TK-BLFH"
+        | "class-floor/TK"
+        | "class-floor/RSV-comp"
+        | "class-floor/passthrough-BUR"
+        | "class-floor/passthrough-HCS-X"
+        | "class-floor/passthrough-KLM"
+        | "class-floor/passthrough-MVL" => Some(TokenKind::SciSystem),
+        // §2.2 / §2.3 — AEA-axis rows anchor at the AEA marking token.
+        "class-floor/RD-SG"
+        | "class-floor/FRD-SG"
+        | "E058/CNWDI-classification-floor"
+        | "class-floor/RD"
+        | "class-floor/FRD"
+        | "class-floor/TFNI"
+        | "E058/DOD-UCNI-classification-ceiling"
+        | "E058/DOE-UCNI-classification-ceiling" => Some(TokenKind::AeaMarking),
+        // §2.3 — SAR row anchors at the SAR indicator token.
+        "E058/SAR-classification-floor" => Some(TokenKind::SarIndicator),
+        // §2.2 / §2.3 — IC dissem rows anchor at the dissem token.
+        "class-floor/RSEN"
+        | "class-floor/IMCON"
+        | "class-floor/ORCON"
+        | "class-floor/EYES-ONLY" => Some(TokenKind::DissemControl),
+        // §2.5 — NATO rows: classification token IS the marking surface.
+        // Return `None` to trigger the Classification fallback.
+        "class-floor/BALK" | "class-floor/BOHEMIA" | "class-floor/ATOMAL" => None,
+        _ => None,
+    }
+}
+
+/// Variant of `first_span_of` that returns `Option` instead of
+/// substituting `Span::new(0, 0)` for "no token". Used by the
+/// class-floor span-anchor resolver to chain fallbacks.
+fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == kind)
+        .map(|t| t.span)
 }

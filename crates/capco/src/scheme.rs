@@ -1458,6 +1458,204 @@ impl CapcoScheme {
                 right: TokenRef::Token(TOK_RELIDO),
                 label: "CAPCO-2016 §H.8 p140",
             },
+            // ================================================================
+            // PR 3b.D (T026d) — class-floor catalog (§3.4.6)
+            // ================================================================
+            //
+            // Per-marking classification floors per `marque-applied.md`
+            // §3.4.6: presence of marking M requires the page's
+            // classification level to be at least F(M). This is *not* part
+            // of the lattice axis itself (the class chain is
+            // `OrdMax(TS > CTS > S > NS > C > NC > R > NR > U > NU)`); it
+            // is a *constraint* over the joint fact-set: the page is
+            // malformed if M is present and the class level is below F(M).
+            //
+            // # Why Constraint::Custom (architectural choice — Option A)
+            //
+            // Class-floor RHS is "classification level ≥ F(M)" — a
+            // partial-order threshold over the OrdMax classification
+            // chain, not a token-presence assertion. The existing
+            // `Constraint::Requires` shape is dyadic token-presence; the
+            // class-floor predicate doesn't fit. PR 3.7 (T108b) may
+            // revisit and re-classify to a primitive form
+            // (e.g., `TokenRef::ClassAtLeast(ClassLevel)` or
+            // `Constraint::ClassFloor`) once that primitive lands in
+            // marque-scheme. See
+            // `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
+            // §3 for the architectural rationale.
+            //
+            // # Why family granularity (~26 rows, not ~38)
+            //
+            // The §3.4.6 author wrote at family granularity (HCS-[comp][sub],
+            // SI-[comp], TK, RD-SG, etc. — pattern-matching family rows,
+            // not enumerated per-template rows). Family granularity is
+            // deliberate: clean lattice algebra, stable ImplTable shape
+            // that survives PR 3.7's closure-operator landing without
+            // re-shaping, uniform §-citation discipline. Family-pattern
+            // matching is implemented in the predicate body
+            // (`class_floor_catalog_eval`) — each predicate iterates the
+            // relevant axis (`attrs.sci_markings`, `attrs.aea_markings`,
+            // etc.) looking for any token matching the family.
+            //
+            // # Per-row name and walker rule-ID
+            //
+            // Each catalog row's `name` follows the convention
+            // `class-floor/<family-id>` (or for retiring-rule rows:
+            // `E022/CNWDI-classification-floor`,
+            // `E025/dod-ucni-conflicts-classification`,
+            // `E025/doe-ucni-conflicts-classification`,
+            // `E027/sar-classification`). The single walker
+            // `DeclarativeClassFloorRule` (rule id `E058`) emits all
+            // diagnostics; per-row identification flows via the catalog's
+            // `name` field into `ConstraintViolation.constraint_label` and
+            // is referenced in `Diagnostic.message` for human-readable
+            // identification.
+            //
+            // # Citation methodology
+            //
+            // Each row's `label` carries the §3.4.6 author's chosen
+            // citation. Some rows cite operative-authority pages
+            // (precedence rules, FD&R-supersession anchors, AEA-chain
+            // references) rather than the marking-template-body page; the
+            // §3.4.6 author's choice is authoritative per
+            // `marque-applied.md` line 783-808. The marking-body floor
+            // language is verifiable in the H.x section body of each
+            // marking; see the planning doc §2 for the verification
+            // matrix.
+            //
+            // ---- §2.1 Floor TS — single classification level (5 rows) -
+            Constraint::Custom {
+                name: "class-floor/HCS-comp-sub",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/SI-comp",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/TK-BLFH",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/BALK",
+                label: "CAPCO-2016 §H.7 Appendix B",
+            },
+            Constraint::Custom {
+                name: "class-floor/BOHEMIA",
+                label: "CAPCO-2016 §H.7 Appendix B",
+            },
+            // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
+            Constraint::Custom {
+                name: "class-floor/HCS-comp",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/RSV-comp",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/TK",
+                label: "CAPCO-2016 §H.4",
+            },
+            Constraint::Custom {
+                name: "class-floor/RD-SG",
+                label: "CAPCO-2016 §H.6 p113",
+            },
+            Constraint::Custom {
+                name: "class-floor/FRD-SG",
+                label: "CAPCO-2016 §H.6 p113",
+            },
+            // CNWDI — replaces retired E022. Per PM directive #5 + the
+            // PR 3b.D planning doc §5.2, catalog row names use the
+            // walker-prefixed form `E058/<suffix>`. Per
+            // `feedback_pre_users_no_deprecation_phasing.md` (marque is
+            // pre-users), severity-config back-compat for the retiring
+            // E022 rule ID is not preserved — users keying `.marque.toml`
+            // at `E022` will need to migrate to `E058`.
+            Constraint::Custom {
+                name: "E058/CNWDI-classification-floor",
+                label: "CAPCO-2016 §H.6 p104",
+            },
+            Constraint::Custom {
+                name: "class-floor/RSEN",
+                label: "CAPCO-2016 §H.8 p149",
+            },
+            Constraint::Custom {
+                name: "class-floor/IMCON",
+                label: "CAPCO-2016 §H.8 p144",
+            },
+            // ---- §2.3 Floor C — any classified level (8 rows) --------
+            Constraint::Custom {
+                name: "class-floor/SI",
+                label: "CAPCO-2016 §H.4",
+            },
+            // SAR — replaces retired E027. Walker-prefixed name per PM
+            // directive #5.
+            Constraint::Custom {
+                name: "E058/SAR-classification-floor",
+                label: "CAPCO-2016 §H.5",
+            },
+            Constraint::Custom {
+                name: "class-floor/RD",
+                label: "CAPCO-2016 §H.6 p104",
+            },
+            Constraint::Custom {
+                name: "class-floor/FRD",
+                label: "CAPCO-2016 §H.6 p104",
+            },
+            Constraint::Custom {
+                name: "class-floor/TFNI",
+                label: "CAPCO-2016 §H.6 p107",
+            },
+            Constraint::Custom {
+                name: "class-floor/ATOMAL",
+                label: "CAPCO-2016 §H.7 Appendix B",
+            },
+            Constraint::Custom {
+                name: "class-floor/ORCON",
+                label: "CAPCO-2016 §H.8 p136",
+            },
+            Constraint::Custom {
+                name: "class-floor/EYES-ONLY",
+                label: "CAPCO-2016 §H.8 p152",
+            },
+            // ---- §2.4 Floor =U — UNCLASSIFIED-only (2 rows; UCNI split) -
+            //
+            // Replaces retired `DeclarativeUcniClassificationRule` (E025).
+            // Split per PM decision into two rows (DOD UCNI and DOE UCNI)
+            // so each row carries its own §H.6 sub-page citation. Both
+            // use the walker-prefixed name `E058/<suffix>`.
+            Constraint::Custom {
+                name: "E058/DOD-UCNI-classification-ceiling",
+                label: "CAPCO-2016 §H.6 p116",
+            },
+            Constraint::Custom {
+                name: "E058/DOE-UCNI-classification-ceiling",
+                label: "CAPCO-2016 §H.6 p118",
+            },
+            // ---- §2.6 Unknown-floor passthrough (4 rows) -------------
+            //
+            // Per `marque-applied.md` §3.4.6 unknown-floor sub-catalog +
+            // §3.7 passthrough policy. Provisional `F(M) = C` (minimal
+            // classified). Severity Warn (per §3.4.6 Q-3.4.6b) — fired by
+            // the walker at the per-row severity stored in the catalog
+            // table.
+            Constraint::Custom {
+                name: "class-floor/passthrough-BUR",
+                label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            },
+            Constraint::Custom {
+                name: "class-floor/passthrough-HCS-X",
+                label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            },
+            Constraint::Custom {
+                name: "class-floor/passthrough-KLM",
+                label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            },
+            Constraint::Custom {
+                name: "class-floor/passthrough-MVL",
+                label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            },
         ]
     }
 }
@@ -1646,18 +1844,29 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
 /// Route a `Constraint::Custom` by name to its scheme-private
 /// predicate helper. Returns an empty `Vec` for unknown names
 /// (forward-compat with future catalog entries).
+///
+/// PR 3b.D (T026d): names with the prefixes `class-floor/`,
+/// `E022/CNWDI-`, `E025/...-ucni-`, `E027/sar-classification` are
+/// dispatched to [`class_floor_catalog_eval`] over the static
+/// [`CLASS_FLOOR_CATALOG`] table. The retired `e022_cnwdi_floor` /
+/// `e025_ucni_classification` helpers are absorbed into the
+/// catalog's static-table form; their original constraint names
+/// (`E022/...`, `E025/...`) are preserved as catalog-row names for
+/// severity-config back-compat and to keep
+/// `evaluate_named_constraint` fast-path lookups working unchanged.
 fn evaluate_custom_by_attrs(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
+    if is_class_floor_catalog_name(name) {
+        return class_floor_catalog_eval(attrs, name);
+    }
     match name {
         "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p61-62"),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
         "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
-        "E022/CNWDI-classification-floor" => e022_cnwdi_floor(attrs),
         "E024/rd-precedence" => e024_rd_precedence(attrs),
-        "E025/ucni-conflicts-classification" => e025_ucni_classification(attrs),
         "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
         "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
@@ -2080,34 +2289,6 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Co
     }]
 }
 
-/// E022 — CNWDI requires TS or S classification. CAPCO §H.6 p106.
-fn e022_cnwdi_floor(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
-    let has_cnwdi = attrs
-        .aea_markings
-        .iter()
-        .any(|a| matches!(a, marque_ism::AeaMarking::Rd(rd) if rd.cnwdi));
-    if !has_cnwdi {
-        return Vec::new();
-    }
-    let level = attrs.us_classification();
-    let valid = matches!(
-        level,
-        Some(Classification::TopSecret | Classification::Secret)
-    );
-    if valid {
-        return Vec::new();
-    }
-    let level_str = level.map(|c| c.banner_str()).unwrap_or("unknown");
-    vec![ConstraintViolation {
-        constraint_label: "E022/CNWDI-classification-floor",
-        message: format!(
-            "CNWDI may only be used with TOP SECRET or SECRET RD; \
-             current classification is {level_str}"
-        ),
-        citation: "CAPCO-2016 §H.6 p106",
-    }]
-}
-
 /// E024 — RD takes precedence over FRD/TFNI. Fires when RD AND any of
 /// (FRD, TFNI) are present. The wrapper enumerates per-element to emit one
 /// `Diagnostic` per offending marking with byte-precise spans; this helper
@@ -2135,44 +2316,6 @@ fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViola
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
-    }]
-}
-
-/// E025 — UCNI may only be used with UNCLASSIFIED. Fires when DOD/DOE UCNI
-/// is present AND the classification level is above UNCLASSIFIED.
-/// CAPCO §H.6 p116 (DOD UCNI) / p118 (DOE UCNI).
-///
-/// Note on T035 refactor: the Phase 3 catalog entry was
-/// `Conflicts { left: TOK_UCNI, right: AnyInCategory(CAT_CLASSIFICATION) }`.
-/// That shape would fire on `classification.is_some()` — including
-/// `Some(Unclassified)` — because `satisfies(AnyInCategory(CAT_CLASSIFICATION))`
-/// is `true` whenever a classification field is populated at all. The
-/// hand-written legacy rule fires only when `classification >
-/// Unclassified`. Converting to `Custom` closed that semantic gap: a
-/// valid `U//UCNI` marking (CAPCO §H.6) would have tripped the
-/// `Conflicts` variant but passes the hand-written predicate. This
-/// helper matches the hand-written predicate exactly (early-return
-/// on `Some(Unclassified)`).
-fn e025_ucni_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
-    let has_ucni = attrs.aea_markings.iter().any(|a| {
-        matches!(
-            a,
-            marque_ism::AeaMarking::DodUcni | marque_ism::AeaMarking::DoeUcni
-        )
-    });
-    if !has_ucni {
-        return Vec::new();
-    }
-    let is_unclassified = attrs
-        .us_classification()
-        .is_some_and(|c| c == Classification::Unclassified);
-    if is_unclassified {
-        return Vec::new();
-    }
-    vec![ConstraintViolation {
-        constraint_label: "E025/ucni-conflicts-classification",
-        message: "DOD/DOE UCNI may only be used with UNCLASSIFIED information".to_owned(),
-        citation: "CAPCO-2016 §H.6 p116",
     }]
 }
 
@@ -2409,6 +2552,757 @@ fn hcs_system_constraints(
 
     out
 }
+
+// ===========================================================================
+// PR 3b.D (T026d) — Class-floor catalog dispatch (§3.4.6)
+// ===========================================================================
+//
+// `class_floor_catalog_eval` is the static-table dispatcher for the 27
+// `Constraint::Custom` rows declared by `build_constraints` under the
+// "PR 3b.D (T026d) — class-floor catalog (§3.4.6)" section header.
+//
+// Each row's predicate has a uniform shape: "if marking M is present in
+// `attrs`, the page's classification must satisfy F(M)" where F(M) is
+// either a floor (`level >= floor`) or an equality (`level == U`). The
+// table stores one entry per row carrying:
+//
+//   - `name`: catalog row identifier (matches `Constraint::Custom { name }`)
+//   - `marking_label`: human-readable marking name for the diagnostic
+//   - `presence`: predicate `fn(&CanonicalAttrs) -> bool` checking whether
+//      the family pattern is present
+//   - `policy`: `ClassFloorPolicy` — either `AtLeast(level)` or `EqualsU`
+//   - `severity`: `Severity` — `Error` for enumerated rows, `Warn` for
+//      passthrough rows (§3.4.6 Q-3.4.6b)
+//   - `citation`: per-row §-citation matching `Constraint::Custom { label }`
+//   - `passthrough`: `true` for unknown-floor passthrough rows (drives the
+//      diagnostic message variant)
+//
+// The walker `DeclarativeClassFloorRule` (in `rules_declarative.rs`)
+// iterates the table and emits one `Diagnostic` per row whose presence
+// predicate fires AND whose floor/equality predicate is violated.
+//
+// FORWARD LINK to PR 3.7 (T108b): once `TokenRef::ClassAtLeast(ClassLevel)`
+// or `Constraint::ClassFloor` lands as a primitive in `marque-scheme`,
+// these rows can re-classify from `Constraint::Custom` to the new
+// primitive form without changing per-row semantics. See
+// `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md` §3 for the
+// architectural rationale.
+
+/// Floor policy for a class-floor catalog row.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ClassFloorPolicy {
+    /// Classification level must be ≥ this floor (TS / S / C semantics).
+    AtLeast(Classification),
+    /// Classification must be exactly UNCLASSIFIED. Used by the UCNI
+    /// ceiling rows (§2.4 of the planning doc).
+    EqualsU,
+}
+
+/// One catalog row. The walker dispatches over the `&[ClassFloorRow]`
+/// table; each row owns its presence predicate, floor policy, severity,
+/// citation, and human-readable marking label for diagnostic messages.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ClassFloorRow {
+    /// Catalog row name — matches the `Constraint::Custom { name }` of
+    /// the same logical row.
+    pub(crate) name: &'static str,
+    /// Human-readable marking name for the diagnostic message
+    /// (e.g., `"CNWDI"`, `"HCS-P sub-compartment"`, `"BUR family"`).
+    pub(crate) marking_label: &'static str,
+    /// Marking-presence predicate.
+    pub(crate) presence: fn(&marque_ism::CanonicalAttrs) -> bool,
+    /// Floor policy.
+    pub(crate) policy: ClassFloorPolicy,
+    /// Per-row severity (`Error` for enumerated rows, `Warn` for
+    /// passthrough rows per §3.4.6 Q-3.4.6b).
+    pub(crate) severity: marque_rules::Severity,
+    /// Per-row §-citation, matching `Constraint::Custom { label }`.
+    pub(crate) citation: &'static str,
+    /// True for the unknown-floor passthrough rows. Drives the
+    /// diagnostic message variant (passthrough rows quote the §3.7
+    /// passthrough-policy framing).
+    pub(crate) passthrough: bool,
+}
+
+/// Returns true if `name` is a catalog row name dispatched by
+/// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs` to
+/// route on the table.
+fn is_class_floor_catalog_name(name: &str) -> bool {
+    CLASS_FLOOR_CATALOG.iter().any(|row| row.name == name)
+}
+
+/// Resolve a catalog row by `name`. Returns `None` for unknown names.
+pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorRow> {
+    CLASS_FLOOR_CATALOG.iter().find(|row| row.name == name)
+}
+
+/// Iterate the full class-floor catalog. Used by the walker
+/// `DeclarativeClassFloorRule::check` to dispatch over every row.
+pub(crate) fn class_floor_catalog() -> &'static [ClassFloorRow] {
+    CLASS_FLOOR_CATALOG
+}
+
+/// Dispatch a single catalog row by name and return at most one
+/// `ConstraintViolation`. The returned violation's
+/// `constraint_label` and `citation` are taken from the matching row's
+/// `name` and `citation` fields verbatim, matching the
+/// `marque_scheme::constraint::evaluate` Custom-arm contract.
+fn class_floor_catalog_eval(
+    attrs: &marque_ism::CanonicalAttrs,
+    name: &'static str,
+) -> Vec<ConstraintViolation> {
+    let Some(row) = class_floor_row_by_name(name) else {
+        return Vec::new();
+    };
+    if !(row.presence)(attrs) {
+        return Vec::new();
+    }
+    if class_floor_satisfied(attrs, row.policy) {
+        return Vec::new();
+    }
+    let level_str = attrs
+        .us_classification()
+        .map(|c| c.banner_str())
+        .unwrap_or("unknown");
+    let message = if row.passthrough {
+        format!(
+            "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
+             floor is C (classified). Verify against the current ODNI manual; current \
+             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
+            row.marking_label
+        )
+    } else {
+        match row.policy {
+            ClassFloorPolicy::AtLeast(floor) => format!(
+                "{} requires classification ≥ {} ({}); current classification is {level_str}",
+                row.marking_label,
+                floor.banner_str(),
+                row.citation
+            ),
+            ClassFloorPolicy::EqualsU => format!(
+                "{} may only be used with UNCLASSIFIED information ({}); current classification \
+                 is {level_str}",
+                row.marking_label, row.citation
+            ),
+        }
+    };
+    vec![ConstraintViolation {
+        constraint_label: row.name,
+        message,
+        citation: row.citation,
+    }]
+}
+
+/// Returns true when the classification axis satisfies the floor policy.
+fn class_floor_satisfied(attrs: &marque_ism::CanonicalAttrs, policy: ClassFloorPolicy) -> bool {
+    let level = attrs.us_classification();
+    match policy {
+        ClassFloorPolicy::AtLeast(floor) => match level {
+            // E022 / E027 historical behavior: `None` (no classification)
+            // and `Some(Unclassified)` both fail any floor at C or above.
+            // Pure-FGI / NATO / JOINT markings (returns `None` here)
+            // fail the floor — class promotion is FixIntent-territory in
+            // PR 3c, so these rows fire on the user-visible "classification
+            // is missing or below floor" case.
+            Some(c) => c >= floor,
+            None => false,
+        },
+        ClassFloorPolicy::EqualsU => match level {
+            // Equals-U is the UCNI ceiling. `Some(Unclassified)` is the
+            // only allowed state; everything else (including `None` for
+            // pure-FGI) fails. Mirrors retired E025 semantics: a UCNI
+            // marking on a portion with no US-classification context is
+            // malformed.
+            Some(Classification::Unclassified) => true,
+            _ => false,
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Family-presence predicates (one per catalog row)
+// ---------------------------------------------------------------------------
+//
+// Each predicate iterates the relevant axis (`attrs.sci_markings`,
+// `attrs.aea_markings`, `attrs.dissem_controls`, etc.) looking for any
+// token matching the family pattern. Family granularity is the §3.4.6
+// author's choice — the predicates pattern-match across all marking-
+// template-level leaves that belong to the family.
+
+/// HCS-[comp][sub] — any HCS-anchored marking carrying a compartment
+/// that has at least one sub-compartment. Family covers HCS-P [SUB] and
+/// any future HCS sub-compartmented variants.
+fn presence_hcs_comp_sub(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+            && m.compartments
+                .iter()
+                .any(|c| !c.sub_compartments.is_empty())
+    })
+}
+
+/// HCS-[comp] — any HCS-anchored marking carrying a compartment but no
+/// sub-compartment (HCS-O, HCS-P bare). Family does NOT include HCS-X
+/// (passthrough — see `presence_passthrough_hcs_x`) or bare HCS (legacy,
+/// covered by E006/E008).
+fn presence_hcs_comp_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+            && !m.compartments.is_empty()
+            && m.compartments.iter().all(|c| c.sub_compartments.is_empty())
+            // Exclude HCS-X: it's a passthrough family with its own row.
+            && !m.compartments.iter().any(|c| c.identifier.as_ref() == "X")
+    })
+}
+
+/// SI-[comp] — any SI-anchored marking carrying at least one
+/// compartment. Family covers SI-G, SI-G [SUB], SI-ECRU, SI-NONBOOK, and
+/// any agency SI compartment per CAPCO-2016 §H.4 p76 (TS-only).
+fn presence_si_comp(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Si))
+            && !m.compartments.is_empty()
+    })
+}
+
+/// SI (bare) — any SI-anchored marking with NO compartment. Family is
+/// the bare SI control system per §H.4 p74 (C-or-above floor).
+fn presence_si_bare(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Si))
+            && m.compartments.is_empty()
+    })
+}
+
+/// TK-BLFH — any TK-anchored marking carrying a BLFH compartment (with
+/// or without sub-compartments). §H.4 p87 / p89 — TS-only.
+fn presence_tk_blfh(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Tk))
+            && m.compartments
+                .iter()
+                .any(|c| c.identifier.as_ref() == "BLFH")
+    })
+}
+
+/// TK family at the S floor — TK bare, TK-IDIT (with/without sub-comp),
+/// TK-KAND (with/without sub-comp). Excludes TK-BLFH (covered by
+/// `presence_tk_blfh` at TS-only). §H.4 p85 / p91 / p95.
+fn presence_tk_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        if !matches!(m.system, SciControlSystem::Published(SciControlBare::Tk)) {
+            return false;
+        }
+        // Exclude markings whose compartment set includes BLFH — those
+        // are §2.1 row TK-BLFH (TS-only), not §2.2 row TK (S floor).
+        let has_blfh = m
+            .compartments
+            .iter()
+            .any(|c| c.identifier.as_ref() == "BLFH");
+        !has_blfh
+    })
+}
+
+/// RSV-[comp] — any RSV-anchored marking carrying a compartment.
+/// CAPCO §H.4 p72.
+fn presence_rsv_comp(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControlBare, SciControlSystem};
+    attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Rsv))
+            && !m.compartments.is_empty()
+    })
+}
+
+/// RD bare — RD without CNWDI and without SIGMA. CAPCO §H.6 p104 floor C.
+fn presence_rd_bare(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Rd(rd) if !rd.cnwdi && rd.sigma.is_empty()
+        )
+    })
+}
+
+/// RD-CNWDI — any RD block with `cnwdi == true`. Replaces retired E022.
+/// CAPCO §H.6 p106 (TS-or-S RD).
+fn presence_rd_cnwdi(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Rd(rd) if rd.cnwdi))
+}
+
+/// RD-SIGMA — any RD block carrying at least one SIGMA number.
+/// CAPCO §H.6 p108 / p113 (RD-SIGMA TS-or-S).
+fn presence_rd_sigma(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Rd(rd) if !rd.sigma.is_empty()))
+}
+
+/// FRD bare — FRD without SIGMA. CAPCO §H.6 p111 floor C.
+fn presence_frd_bare(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs.aea_markings.iter().any(|a| {
+        matches!(
+            a,
+            marque_ism::AeaMarking::Frd(frd) if frd.sigma.is_empty()
+        )
+    })
+}
+
+/// FRD-SIGMA — any FRD block carrying at least one SIGMA number.
+/// CAPCO §H.6 p113 (FRD-SIGMA TS-or-S).
+fn presence_frd_sigma(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Frd(frd) if !frd.sigma.is_empty()))
+}
+
+/// TFNI present. CAPCO §H.6 p120 floor C.
+fn presence_tfni(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Tfni))
+}
+
+/// DOD UCNI present. Replaces half of retired E025.
+fn presence_dod_ucni(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::DodUcni))
+}
+
+/// DOE UCNI present. Replaces half of retired E025.
+fn presence_doe_ucni(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::DoeUcni))
+}
+
+/// SAR markings present. Replaces retired E027.
+fn presence_sar(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    attrs.sar_markings.is_some()
+}
+
+/// RSEN dissem control present. CAPCO §H.8 p132 (operative §H.8 p149
+/// per §3.4.6 author). RSEN's CVE form is `RS`
+/// (the portion-mark abbreviation; banner form is `RSEN`).
+fn presence_rsen(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::DissemControl;
+    attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, DissemControl::Rs))
+}
+
+/// IMCON dissem control present.
+fn presence_imcon(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::DissemControl;
+    attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, DissemControl::Imc))
+}
+
+/// ORCON family — ORCON or ORCON-USGOV. The §3.4.6 single family entry
+/// covers both because §H.8 p136 (ORCON) and p139 (ORCON-USGOV) both
+/// require classification ≥ C and the §3.4.6 author groups them.
+fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::DissemControl;
+    attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, DissemControl::Oc | DissemControl::OcUsgov))
+}
+
+/// EYES ONLY portion mark / banner form. CAPCO §H.8 p157 (operative
+/// §H.8 p152 per §3.4.6 author).
+fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::DissemControl;
+    attrs
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, DissemControl::Eyes))
+}
+
+/// BALK / BOHEMIA / ATOMAL — NATO Appendix B markings.
+///
+/// These appear via the NATO classification system: the `BALK`,
+/// `BOHEMIA`, and `ATOMAL` floors fire when the *NATO sub-classification*
+/// indicates the corresponding atom AND the page's US-equivalent
+/// classification (per `NatoClassification::us_equivalent` and the
+/// reciprocal-raise rule) is below the floor.
+fn presence_balk(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{MarkingClassification, NatoClassification};
+    matches!(
+        &attrs.classification,
+        Some(MarkingClassification::Nato(
+            NatoClassification::CosmicTopSecretBalk
+        ))
+    )
+}
+
+fn presence_bohemia(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{MarkingClassification, NatoClassification};
+    matches!(
+        &attrs.classification,
+        Some(MarkingClassification::Nato(
+            NatoClassification::CosmicTopSecretBohemia
+        ))
+    )
+}
+
+fn presence_atomal(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{MarkingClassification, NatoClassification};
+    matches!(
+        &attrs.classification,
+        Some(MarkingClassification::Nato(
+            NatoClassification::NatoConfidentialAtomal
+                | NatoClassification::NatoSecretAtomal
+                | NatoClassification::CosmicTopSecretAtomal
+        ))
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Passthrough family predicates — §3.7 unknown-floor passthrough policy
+// ---------------------------------------------------------------------------
+
+/// BUR family — `BUR`, `BUR-BLG`, `BUR-DTP`, `BUR-WRG`. ISM-known SCI
+/// control system; specific floor not enumerated in CAPCO-2016.
+fn presence_passthrough_bur(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+    let has_via_markings = attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::Published(SciControlBare::Bur)));
+    let has_via_controls = attrs.sci_controls.iter().any(|s| {
+        matches!(
+            s,
+            SciControl::Bur | SciControl::BurBlg | SciControl::BurDtp | SciControl::BurWrg
+        )
+    });
+    has_via_markings || has_via_controls
+}
+
+/// HCS-X — ISM-known HCS variant; specific floor not enumerated.
+fn presence_passthrough_hcs_x(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+    let has_via_markings = attrs.sci_markings.iter().any(|m| {
+        matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+            && m.compartments.iter().any(|c| c.identifier.as_ref() == "X")
+    });
+    let has_via_controls = attrs
+        .sci_controls
+        .iter()
+        .any(|s| matches!(s, SciControl::HcsX));
+    has_via_markings || has_via_controls
+}
+
+/// KLM family — `KLM` / `KLAMATH`, `KLM-R`. ISM-known SCI control system.
+fn presence_passthrough_klm(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+    let has_via_markings = attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::Published(SciControlBare::Klm)));
+    let has_via_controls = attrs
+        .sci_controls
+        .iter()
+        .any(|s| matches!(s, SciControl::Klm | SciControl::KlmR));
+    has_via_markings || has_via_controls
+}
+
+/// MVL family — `MVL` / `MARVEL`. ISM-known SCI control system.
+fn presence_passthrough_mvl(attrs: &marque_ism::CanonicalAttrs) -> bool {
+    use marque_ism::{SciControl, SciControlBare, SciControlSystem};
+    let has_via_markings = attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::Published(SciControlBare::Mvl)));
+    let has_via_controls = attrs
+        .sci_controls
+        .iter()
+        .any(|s| matches!(s, SciControl::Mvl));
+    has_via_markings || has_via_controls
+}
+
+// ---------------------------------------------------------------------------
+// The catalog — 27 rows at §3.4.6 family granularity
+// ---------------------------------------------------------------------------
+
+const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
+    // ---- §2.1 Floor TS (5 rows) ------------------------------------
+    ClassFloorRow {
+        name: "class-floor/HCS-comp-sub",
+        marking_label: "HCS sub-compartment markings",
+        presence: presence_hcs_comp_sub,
+        policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/SI-comp",
+        marking_label: "SI compartments",
+        presence: presence_si_comp,
+        policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/TK-BLFH",
+        marking_label: "TK-BLFH (BLUEFISH)",
+        presence: presence_tk_blfh,
+        policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
+    // marque-applied.md §3.4.1 Note (i). The presence predicate fires
+    // only when the document's NATO classification is exactly
+    // `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`. CTS = TS in the
+    // OrdMax chain, so an at-least-TS floor is satisfied by the
+    // presence itself; the row exists for the case where a portion
+    // labelled BALK/BOHEMIA is incorrectly carried with a sub-CTS
+    // classification (data-corruption / mangled input).
+    ClassFloorRow {
+        name: "class-floor/BALK",
+        marking_label: "BALK (NATO)",
+        presence: presence_balk,
+        policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.7 Appendix B",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/BOHEMIA",
+        marking_label: "BOHEMIA (NATO)",
+        presence: presence_bohemia,
+        policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.7 Appendix B",
+        passthrough: false,
+    },
+    // ---- §2.2 Floor S (8 rows) -------------------------------------
+    ClassFloorRow {
+        name: "class-floor/HCS-comp",
+        marking_label: "HCS-O / HCS-P (compartment, no sub-compartment)",
+        presence: presence_hcs_comp_only,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/RSV-comp",
+        marking_label: "RSV compartment",
+        presence: presence_rsv_comp,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/TK",
+        marking_label: "TK / TK-IDIT / TK-KAND",
+        presence: presence_tk_family,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/RD-SG",
+        marking_label: "RD-SIGMA",
+        presence: presence_rd_sigma,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p113",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/FRD-SG",
+        marking_label: "FRD-SIGMA",
+        presence: presence_frd_sigma,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p113",
+        passthrough: false,
+    },
+    // CNWDI — replaces retired E022. Walker-prefixed name per PM
+    // directive #5.
+    ClassFloorRow {
+        name: "E058/CNWDI-classification-floor",
+        marking_label: "CNWDI",
+        presence: presence_rd_cnwdi,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p104",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/RSEN",
+        marking_label: "RSEN",
+        presence: presence_rsen,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.8 p149",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/IMCON",
+        marking_label: "IMCON",
+        presence: presence_imcon,
+        policy: ClassFloorPolicy::AtLeast(Classification::Secret),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.8 p144",
+        passthrough: false,
+    },
+    // ---- §2.3 Floor C (8 rows) -------------------------------------
+    ClassFloorRow {
+        name: "class-floor/SI",
+        marking_label: "SI (bare)",
+        presence: presence_si_bare,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.4",
+        passthrough: false,
+    },
+    // SAR — replaces retired E027.
+    ClassFloorRow {
+        name: "E058/SAR-classification-floor",
+        marking_label: "SAR",
+        presence: presence_sar,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.5",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/RD",
+        marking_label: "RD",
+        presence: presence_rd_bare,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p104",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/FRD",
+        marking_label: "FRD",
+        presence: presence_frd_bare,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p104",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/TFNI",
+        marking_label: "TFNI",
+        presence: presence_tfni,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p107",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/ATOMAL",
+        marking_label: "ATOMAL (NATO)",
+        presence: presence_atomal,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.7 Appendix B",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/ORCON",
+        marking_label: "ORCON / ORCON-USGOV",
+        presence: presence_orcon_family,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.8 p136",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "class-floor/EYES-ONLY",
+        marking_label: "EYES ONLY",
+        presence: presence_eyes_only,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.8 p152",
+        passthrough: false,
+    },
+    // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
+    ClassFloorRow {
+        name: "E058/DOD-UCNI-classification-ceiling",
+        marking_label: "DOD UCNI",
+        presence: presence_dod_ucni,
+        policy: ClassFloorPolicy::EqualsU,
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p116",
+        passthrough: false,
+    },
+    ClassFloorRow {
+        name: "E058/DOE-UCNI-classification-ceiling",
+        marking_label: "DOE UCNI",
+        presence: presence_doe_ucni,
+        policy: ClassFloorPolicy::EqualsU,
+        severity: marque_rules::Severity::Error,
+        citation: "CAPCO-2016 §H.6 p118",
+        passthrough: false,
+    },
+    // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
+    ClassFloorRow {
+        name: "class-floor/passthrough-BUR",
+        marking_label: "BUR family",
+        presence: presence_passthrough_bur,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Warn,
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        passthrough: true,
+    },
+    ClassFloorRow {
+        name: "class-floor/passthrough-HCS-X",
+        marking_label: "HCS-X",
+        presence: presence_passthrough_hcs_x,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Warn,
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        passthrough: true,
+    },
+    ClassFloorRow {
+        name: "class-floor/passthrough-KLM",
+        marking_label: "KLM family",
+        presence: presence_passthrough_klm,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Warn,
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        passthrough: true,
+    },
+    ClassFloorRow {
+        name: "class-floor/passthrough-MVL",
+        marking_label: "MVL",
+        presence: presence_passthrough_mvl,
+        policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
+        severity: marque_rules::Severity::Warn,
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        passthrough: true,
+    },
+];
 
 // ---------------------------------------------------------------------------
 // Convenience: expose the classification level for test assertions
