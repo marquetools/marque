@@ -26,7 +26,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-const SUPPORTED_PRIORS_SCHEMA_VERSION: &str = "marque-priors-2";
+const SUPPORTED_PRIORS_SCHEMA_VERSION: &str = "marque-priors-3";
 
 fn main() {
     let priors_json_path = Path::new("corpus").join("priors.json");
@@ -91,6 +91,16 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
         .unwrap_or("");
 
     let token_base_rates = require_object(parsed, "token_base_rates", priors_path);
+    // Token prose base rates land in marque-priors-3 (issue #258). Same
+    // shape as token_base_rates: ``{token, count, log_prior}``. The
+    // decoder consumes this in parallel with the marking-side
+    // ``TOKEN_BASE_RATES`` to compute the per-token "marking-y" score
+    // ``log P(token|marking) − log P(token|prose)``. Without this
+    // signal, the decoder's candidate set never includes a "this is
+    // prose, not a marking" hypothesis and saturates at the
+    // ``SOLO_RECOGNITION = 0.999999`` floor for any single-CAPCO-
+    // candidate input — the regression that motivated #258.
+    let token_prose_base_rates = require_object(parsed, "token_prose_base_rates", priors_path);
     let template_base_rates = require_object(parsed, "template_base_rates", priors_path);
     // Country-code base rates land in marque-priors-2 (issue #233). Same
     // shape as token_base_rates: ``{token, count, log_prior}``. The
@@ -104,6 +114,17 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // the prior name ``trigraph_*`` was load-bearing-narrower than
     // the data it carried.
     let country_code_base_rates = require_object(parsed, "country_code_base_rates", priors_path);
+    // Country-code prose base rates land in marque-priors-3 (issue
+    // #258). Counts come from the prose stratum only, with no
+    // ``_REL_TO_COUNTRY_CODE_BASELINE`` mixin — the marking-side
+    // baseline encodes ratios derived from REL-TO frequencies, which
+    // would corrupt the prose-side signal. Standalone "(USA)" in
+    // prose (proper-noun country mention) is exactly the case the
+    // decoder needs to push back against; the prose-side log-prior
+    // for USA must be high enough that an isolated REL-TO-style
+    // mention in prose does not auto-fix.
+    let country_code_prose_base_rates =
+        require_object(parsed, "country_code_prose_base_rates", priors_path);
     let strict_context = require_object(parsed, "strict_context_priors", priors_path);
 
     let confidential_floor = require_probability(
@@ -193,6 +214,90 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     }
     country_code_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
+    let mut token_prose_rows: Vec<(String, u64, f64)> = token_prose_base_rates
+        .iter()
+        .map(|(name, record)| {
+            let count = require_u64(record, "count", name, priors_path);
+            let log_prior = require_log_prior(record, "log_prior", name, priors_path);
+            (name.clone(), count, log_prior)
+        })
+        .collect();
+    // Empty TOKEN_PROSE_BASE_RATES means the decoder has no prose-side
+    // signal for any canonical token — the per-token "marking-y" score
+    // ``log P(token|marking) − log P(token|prose)`` collapses back to
+    // ``log P(token|marking)`` and the null hypothesis silently
+    // disappears, which is exactly the bug issue #258 set out to fix.
+    // Fail closed at build time so a regenerator that drops the prose
+    // stratum cannot ship as a green binary.
+    if token_prose_rows.is_empty() {
+        panic!(
+            "[marque-capco build.rs] priors.json token_prose_base_rates is empty. \
+             {} must contain at least one prose-stratum token (issue #258).",
+            priors_path.display()
+        );
+    }
+    // Same defense as the country-code prose check below: `derive_priors`
+    // materializes one prose row per vocabulary token (93 today), so the
+    // table is structurally always non-empty even when the prose stratum
+    // contributed zero documents — the .is_empty() check would silently
+    // pass on a fully-zeroed prose table. Validate that at least one
+    // prose row carries an actual observation, which is what the
+    // null-hypothesis pipeline needs.
+    let prose_token_total: u64 = token_prose_rows.iter().map(|(_, c, _)| *c).sum();
+    if prose_token_total == 0 {
+        panic!(
+            "[marque-capco build.rs] priors.json token_prose_base_rates has every \
+             row at count 0 — the prose corpus contributed no token observations \
+             and the marking-y delta `log P(token|marking) - log P(token|prose)` \
+             collapses to a flat baseline (the null hypothesis silently disappears). \
+             Likely cause: the priors regenerator ran with no prose corpus path, \
+             or the prose corpus directory is empty. Regenerate priors.json with a \
+             populated prose stratum.",
+        );
+    }
+    token_prose_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut country_code_prose_rows: Vec<(String, u64, f64)> = country_code_prose_base_rates
+        .iter()
+        .map(|(name, record)| {
+            let count = require_u64(record, "count", name, priors_path);
+            let log_prior = require_log_prior(record, "log_prior", name, priors_path);
+            (name.clone(), count, log_prior)
+        })
+        .collect();
+    // An all-zero-count COUNTRY_CODE_PROSE_BASE_RATES would silently
+    // re-open the same channel as an empty TOKEN_PROSE_BASE_RATES on
+    // the country-code side: standalone "(USA)" in prose would fall
+    // back to a Laplace-smoothed zero on the prose side and the
+    // marking-y delta against the high-count marking-side prior
+    // would never narrow enough to suppress a proper-noun country
+    // mention. The .is_empty() check is insufficient — the table is
+    // pre-seeded with the country-code vocabulary on the producer
+    // side so it always has rows; what matters is that at least one
+    // row reflects an actual prose observation. Validate both: the
+    // table must be non-empty, AND the total observed count across
+    // all rows must be > 0.
+    if country_code_prose_rows.is_empty() {
+        panic!(
+            "[marque-capco build.rs] priors.json country_code_prose_base_rates is empty. \
+             {} must contain at least one prose-stratum country code (issue #258).",
+            priors_path.display()
+        );
+    }
+    let prose_country_total: u64 = country_code_prose_rows.iter().map(|(_, c, _)| *c).sum();
+    if prose_country_total == 0 {
+        panic!(
+            "[marque-capco build.rs] priors.json country_code_prose_base_rates has \
+             every row at count 0 — the prose corpus contributed no country-code \
+             observations and the marking-y delta will collapse to a flat baseline. \
+             Likely cause: the analyzer derived prose country counts from \
+             `rel_to_trigraph_hits` (which only fires inside REL TO blocks) instead \
+             of the prose stratum's general token table. Regenerate priors.json with \
+             a fixed generator.",
+        );
+    }
+    country_code_prose_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
     let mut out = String::new();
     out.push_str("// AUTO-GENERATED by crates/capco/build.rs. Do not edit by hand.\n");
     out.push_str("// Source: crates/capco/corpus/priors.json\n\n");
@@ -243,6 +348,32 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // tetragraphs, group codes), not just trigraphs.
     out.push_str("pub const COUNTRY_CODE_BASE_RATES: &[TokenPrior] = &[\n");
     for (name, count, log_prior) in &country_code_rows {
+        let log_prior_f32 = downcast_log_prior(*log_prior, name, priors_path);
+        out.push_str(&format!(
+            "    TokenPrior {{ token: {:?}, count: {}, log_prior: {:?}_f32 }},\n",
+            name, count, log_prior_f32,
+        ));
+    }
+    out.push_str("];\n\n");
+
+    // Prose-stratum tables (issue #258). Reuses ``TokenPrior`` because
+    // the on-disk shape is identical to the marking-side tables: an
+    // entry is just ``{ name, count, log_prior }``. The decoder sums
+    // these in parallel with the marking-side priors during candidate
+    // scoring; see ``crates/engine/src/decoder.rs::score_candidate``
+    // for the per-token marking-y delta computation.
+    out.push_str("pub const TOKEN_PROSE_BASE_RATES: &[TokenPrior] = &[\n");
+    for (name, count, log_prior) in &token_prose_rows {
+        let log_prior_f32 = downcast_log_prior(*log_prior, name, priors_path);
+        out.push_str(&format!(
+            "    TokenPrior {{ token: {:?}, count: {}, log_prior: {:?}_f32 }},\n",
+            name, count, log_prior_f32,
+        ));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str("pub const COUNTRY_CODE_PROSE_BASE_RATES: &[TokenPrior] = &[\n");
+    for (name, count, log_prior) in &country_code_prose_rows {
         let log_prior_f32 = downcast_log_prior(*log_prior, name, priors_path);
         out.push_str(&format!(
             "    TokenPrior {{ token: {:?}, count: {}, log_prior: {:?}_f32 }},\n",

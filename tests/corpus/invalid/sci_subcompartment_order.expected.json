@@ -1,6 +1,6 @@
 {
-  "_note": "E033 emits one diagnostic per out-of-order marking; fix span covers the whole compartment+sub-compartment region (matches SAR E029 shape). Span starts at the G compartment token, ends after the last DEFG sub-compartment. Fixture updated for T035d: banner now TS + ORCON so §H.4 p80-81 (SI-G requires TS and ORCON) are satisfied and only E033 remains.",
+  "_note": "PR 3b.F (T026f): E033 retired into E060 non-canonical input walker (SCI compartment + sub-compartment row, §H.4 p61). Diagnostic.rule = E060; per-row identification flows via the diagnostic message text. Walker emits one diagnostic per out-of-order marking; fix span covers the whole compartment+sub-compartment region (matches SAR E029 shape). Span starts at the G compartment token, ends after the last DEFG sub-compartment. Fixture updated for T035d: banner now TS + ORCON so §H.4 p80-81 (SI-G requires TS and ORCON) are satisfied and only E060 (SCI row) remains.",
   "diagnostics": [
-    {"rule": "E033", "span": {"start": 15, "end": 26}}
+    {"rule": "E060", "span": {"start": 15, "end": 26}}
   ]
 }

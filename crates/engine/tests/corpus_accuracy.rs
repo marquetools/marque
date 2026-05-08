@@ -12,33 +12,33 @@
 //! - **SC-003a**: Zero diagnostics on clean prose (precision gate)
 
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
+use marque_engine::{Engine, FixMode};
 use marque_test_utils::{
     invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
 
-/// Strict-pinned engine used by every corpus-accuracy gate in this file.
+/// Default-engine corpus-accuracy gate.
 ///
-/// SC-002 / SC-003a / C001 were specified against the strict-path
-/// recognizer (the engine default at the time of authorship). The
-/// dispatcher default (`StrictOrDecoderRecognizer`) is the right
-/// user-facing default, and `feat/preceded-by-whitespace` closed two
-/// of its precision regressions — prose-glue (`letter(s)`,
-/// `function(c)`) via `ParseContext.preceded_by_whitespace`, and
-/// bare-`(R)` via `is_us_restricted`. The remaining
-/// regression is mid-prose footnote / subsection references like
-/// `Notwithstanding (s) the early prevalence` (Federalist-corpus
-/// `article.txt`): `(s)` is preceded by whitespace, so the
-/// prose-glue heuristic correctly leaves the candidate alone, and the
-/// decoder canonicalizes it to a SECRET portion. Distinguishing that
-/// shape from a real `(s)` portion requires the per-token prose
-/// null-hypothesis priors tracked in #258, which are out of scope
-/// here. Pinning the strict recognizer keeps the SC-003a gate
-/// meaningful until #258 lands; do NOT unpin without first
-/// confirming the prose corpus stays at zero diagnostics under the
-/// dispatcher default.
+/// Issue #258 landed the per-token prose null-hypothesis priors that
+/// the `StrictOrDecoderRecognizer` dispatcher needs to reject prose-
+/// shaped portions like the Federalist-corpus `Notwithstanding (s)
+/// the early prevalence` case. With those priors in place, the
+/// dispatcher's decoder fallback no longer auto-fixes `(s)` mid-prose
+/// to a SECRET portion — `token_prose_log_prior("S")` exceeds
+/// `token_log_prior("S")` so the null hypothesis wins and the
+/// decoder returns zero candidates (FR-015), suppressing the
+/// diagnostic.
+///
+/// SC-002 / SC-003 / SC-003a / C001 now run against the user-facing
+/// default engine (no recognizer override). Adding a
+/// `with_recognizer(StrictRecognizer::new())` here re-pins the strict
+/// path and re-introduces the gap this test is meant to defend
+/// against; do NOT unpin to "Strict" without the same null-hypothesis
+/// gate landing first (per Constitution §VIII source-fidelity, this
+/// test's load-bearing role is the SC-003a precision gate against
+/// `tests/corpus/prose/article.txt`, NOT a strict-vs-decoder
+/// equivalence check).
 fn make_engine() -> Engine {
     Engine::new(
         Config::default(),
@@ -46,8 +46,6 @@ fn make_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    // MASKING-PIN: tracks #258 — decoder prose null-hypothesis priors not yet baked (#258); pinning to strict avoids decoder mis-fires on prose corpus until PR 8 lands
-    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------

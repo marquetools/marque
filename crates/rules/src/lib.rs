@@ -655,6 +655,27 @@ pub trait Rule: Send + Sync {
     /// Default severity — overridable per rule in `.marque.toml`.
     fn default_severity(&self) -> Severity;
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic>;
+
+    /// Additional rule IDs / names this rule may emit on diagnostics
+    /// beyond its registered `id()` / `name()`. Each entry is
+    /// `(rule_id, rule_name)` and contributes to:
+    ///
+    /// 1. The engine's `canonicalize_rule_overrides` known-keys set —
+    ///    so a `.marque.toml` configuring an emitted-only ID
+    ///    (`E035 = "warn"`) is accepted instead of failing as
+    ///    `UnknownRuleOverride`.
+    /// 2. The engine's per-emitted-id severity-override path at lint
+    ///    time — the override the user wrote against the catalog ID
+    ///    is resolved against the diagnostic's emitted `rule` field.
+    ///
+    /// Default: empty. Only dispatcher walkers like
+    /// `BannerMatchesProjectedRule` (T026a) — which register under one
+    /// bookkeeping ID but emit diagnostics under per-row catalog IDs
+    /// — need to override this. A rule whose registered `id()` matches
+    /// every diagnostic it emits should leave this at the default.
+    fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
 }
 
 /// A collection of rules provided by a rule crate.

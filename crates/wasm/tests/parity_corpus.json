@@ -17,7 +17,7 @@
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
-      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":17},\"message\":\"banner contains portion mark \\\"IMC\\\" for an IC dissem control; use banner abbreviation \\\"IMCON\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"IMCON\",\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":17},\"message\":\"banner contains portion mark \\\"IMC\\\" for an IC dissem control; use banner abbreviation \\\"IMCON\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"IMCON\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":\"IMCON requires classification ≥ SECRET (CAPCO-2016 §H.8 p144); current classification is CONFIDENTIAL\",\"citation\":\"CAPCO-2016 §H.8 p144\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_limdis.txt",
@@ -47,7 +47,7 @@
       "name": "corrections_map_typo_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//ORCON//REL TO USA, GBER\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":37},\"message\":\"decoder-recognized canonical form: \\\"CONFIDENTIAL//ORCON//REL TO USA, GBR\\\"\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"replacement\":\"CONFIDENTIAL//ORCON//REL TO USA, GBR\",\"confidence\":0.9639867,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":37},\"message\":\"decoder-recognized canonical form: \\\"CONFIDENTIAL//ORCON//REL TO USA, GBR\\\"\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"replacement\":\"CONFIDENTIAL//ORCON//REL TO USA, GBR\",\"confidence\":0.9640041,\"migration_ref\":null}}\n"
     },
     {
       "name": "declass_in_banner.txt",
@@ -143,7 +143,7 @@
       "name": "sar_bad_program_order.txt",
       "category": "invalid",
       "input": "SECRET//SAR-CD/BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E028\",\"severity\":\"suggest\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"suggest\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_banner_missing_program.txt",
@@ -167,13 +167,13 @@
       "name": "sar_unclassified.txt",
       "category": "invalid",
       "input": "UNCLASSIFIED//SAR-BP\n",
-      "expected_lint": "{\"rule\":\"E027\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":\"SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL classifications\",\"citation\":\"CAPCO-2016 §H.5 p101 (Relationship(s) to Other Markings)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":\"SAR requires classification ≥ CONFIDENTIAL (CAPCO-2016 §H.5); current classification is UNCLASSIFIED\",\"citation\":\"CAPCO-2016 §H.5\",\"fix\":null}\n"
     },
     {
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85) + §D.2 p28 (general banner/portion consistency). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",
@@ -185,7 +185,7 @@
       "name": "sci_compartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-NK-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_custom_control_info.txt",
@@ -197,7 +197,7 @@
       "name": "sci_subcompartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-G DEFG ABCD//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_system_order.txt",

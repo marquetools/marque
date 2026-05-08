@@ -579,17 +579,46 @@ impl Engine {
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
-                    // Skip rules that are configured as Off.
-                    let configured_severity = self
-                        .config
-                        .rules
-                        .overrides
-                        .get(rule.id().as_str())
-                        .and_then(|s| Severity::parse_config(s))
-                        .unwrap_or(rule.default_severity());
-
-                    if configured_severity == Severity::Off {
-                        continue;
+                    // Hybrid Off handling:
+                    //
+                    //   - **Fast path** (every non-walker rule): when
+                    //     `additional_emitted_ids().is_empty()`, the
+                    //     rule emits diagnostics only under its
+                    //     registered ID, so configuring that ID to
+                    //     `Off` deterministically silences every
+                    //     diagnostic the rule could produce. We honor
+                    //     the registered-ID Off override BEFORE
+                    //     invoking `check()` and skip the rule's body
+                    //     entirely. This restores the pre-T026a CPU
+                    //     profile for users who disable many rules
+                    //     and prevents a buggy rule from logging
+                    //     panic warnings while configured `Off`.
+                    //
+                    //   - **Walker path** (`additional_emitted_ids()`
+                    //     non-empty — currently only
+                    //     `BannerMatchesProjectedRule`, T026a): the
+                    //     rule emits under per-row catalog IDs that
+                    //     can each be configured independently, so
+                    //     the registered-ID Off override does not
+                    //     generalize. The walker's `check()` runs
+                    //     unconditionally and per-emitted-id Off
+                    //     filtering applies post-check (`diags.retain`
+                    //     below).
+                    //
+                    // The condition reads a `&'static [...]` length —
+                    // branch prediction handles the dispatch and the
+                    // fast path stays free.
+                    if rule.additional_emitted_ids().is_empty() {
+                        let configured_severity = self
+                            .config
+                            .rules
+                            .overrides
+                            .get(rule.id().as_str())
+                            .and_then(|s| Severity::parse_config(s))
+                            .unwrap_or(rule.default_severity());
+                        if configured_severity == Severity::Off {
+                            continue;
+                        }
                     }
 
                     // Whitepaper §6.3 / gap register #10: a buggy rule
@@ -641,10 +670,54 @@ impl Engine {
                             Vec::new()
                         }
                     };
-                    // Apply configured severity override.
-                    for d in &mut diags {
-                        d.severity = configured_severity;
-                    }
+                    // Apply configured severity override per emitted
+                    // diagnostic, keyed on the diagnostic's `rule` ID
+                    // (which may differ from the registered rule's ID
+                    // when a dispatcher walker like
+                    // `BannerMatchesProjectedRule` emits diagnostics
+                    // under per-row catalog IDs — T026a). When no
+                    // config override exists for the emitted ID, the
+                    // emitted severity is preserved — so per-row
+                    // catalog severities (e.g. Fix for E031, Error
+                    // for E035 / E040) survive into the audit stream
+                    // unchanged.
+                    //
+                    // Per-emitted-id Off filtering also lives here:
+                    // a config that turns off E035 or E040 (which
+                    // share the walker's E031 registration) drops
+                    // those diagnostics without disabling the others.
+                    //
+                    // For non-walker rules this filter is a no-op:
+                    // the fast-path pre-check above already returned
+                    // early on Off, so any diagnostics that reach
+                    // this point are non-Off by construction. The
+                    // override-application loop below still does
+                    // useful work for non-walker rules (a non-Off
+                    // override translates the rule's emitted severity
+                    // to the configured one).
+                    // Single-pass per-emitted-id resolution: one HashMap
+                    // lookup + one parse_config per diagnostic. Off drops
+                    // the diagnostic; a non-Off override replaces the
+                    // rule-emitted severity; absence keeps it (which for
+                    // non-walker rules matches `rule.default_severity()`
+                    // by convention; for walker rules carries the per-row
+                    // catalog severity).
+                    diags.retain_mut(|d| {
+                        match self
+                            .config
+                            .rules
+                            .overrides
+                            .get(d.rule.as_str())
+                            .and_then(|s| Severity::parse_config(s))
+                        {
+                            Some(Severity::Off) => false,
+                            Some(override_severity) => {
+                                d.severity = override_severity;
+                                true
+                            }
+                            None => true,
+                        }
+                    });
                     diagnostics.extend(diags);
                 }
             }
@@ -1520,6 +1593,17 @@ fn canonicalize_rule_overrides(
     // Build the ID-and-name → canonical-ID lookup. Both sides live in
     // `&'static str` (RuleId's inner slice, rule.name()), so the map's
     // keys and values are all `'static`.
+    //
+    // Dispatcher walkers like `BannerMatchesProjectedRule` (T026a)
+    // register under one bookkeeping ID but emit diagnostics under
+    // per-row catalog IDs (E035 / E040 in addition to E031). The
+    // walker advertises those catalog (id, name) pairs through
+    // `Rule::additional_emitted_ids`; each pair becomes a self-
+    // canonical entry so a `.marque.toml` configuring the catalog ID
+    // (`E035 = "warn"`) is accepted instead of failing as
+    // `UnknownRuleOverride`. The per-emitted-id severity-override
+    // path at lint time then resolves the override against the
+    // diagnostic's emitted `rule` field.
     let mut known: HashMap<&'static str, &'static str> = HashMap::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
@@ -1527,6 +1611,14 @@ fn canonicalize_rule_overrides(
             let name = rule.name();
             known.insert(id_str, id_str);
             known.insert(name, id_str);
+            // Catalog IDs / names from dispatcher walkers — each
+            // entry maps to itself so config that names the catalog
+            // ID directly resolves to that ID (not the walker's
+            // bookkeeping ID), preserving per-row override scope.
+            for (catalog_id, catalog_name) in rule.additional_emitted_ids() {
+                known.insert(catalog_id, catalog_id);
+                known.insert(catalog_name, catalog_id);
+            }
         }
     }
 
@@ -2304,6 +2396,197 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 1);
         assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AAA");
+    }
+
+    // -----------------------------------------------------------------------
+    // T026a (PR 3b Sub-move A) — per-emitted-id severity-override propagation
+    // -----------------------------------------------------------------------
+    //
+    // The walker collapse changed the engine's configured-severity override
+    // to key on each emitted diagnostic's `rule` ID (`d.rule.as_str()`)
+    // instead of the registered rule's `id()`. The byte-equivalence claim
+    // for non-walker rules holds when each rule's `default_severity()`
+    // matches what `check()` emits — true for every existing CAPCO rule
+    // by convention. These tests pin the post-change correctness of the
+    // resolution path against a real `CapcoRuleSet`-driven engine, so a
+    // future regression that quietly stops honoring per-emitted-id
+    // overrides is caught at the engine layer (not only at the
+    // walker-specific test surface).
+
+    /// Triggers the SAR row of `BannerMatchesProjectedRule` (E031): a
+    /// portion introduces SAR-CD; the banner has only SAR-BP. The
+    /// walker emits one diagnostic with `Diagnostic.rule == "E031"`.
+    /// Same fixture shape as the `crates/capco/tests/banner_rollup_walker.rs`
+    /// behavior tests so a baseline drift on this string is caught here
+    /// too.
+    const SAR_BANNER_MISSING_PROGRAM: &[u8] =
+        b"(S//SAR-BP//NF)\n(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN";
+
+    /// Triggers the SCI row of `BannerMatchesProjectedRule` (E035): a
+    /// portion carries SI-G; the banner has bare SI. §H.4 enforces
+    /// hierarchy roll-up (no §H.5-style optional carve-out), so the
+    /// walker emits one diagnostic with `Diagnostic.rule == "E035"`.
+    const SCI_BANNER_MISSING_COMPARTMENT: &[u8] = b"(TS//SI-G//NF)\nTOP SECRET//SI//NOFORN";
+
+    fn capco_engine_with_overrides(pairs: &[(&str, &str)]) -> Engine {
+        let mut config = Config::default();
+        for (k, v) in pairs {
+            config
+                .rules
+                .overrides
+                .insert((*k).to_owned(), (*v).to_owned());
+        }
+        Engine::new(
+            config,
+            vec![Box::new(marque_capco::CapcoRuleSet::new())],
+            marque_capco::scheme::CapcoScheme::new(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+    }
+
+    #[test]
+    fn lint_propagates_warn_override_to_walker_emitted_e031_diagnostic() {
+        // E031 is emitted by `BannerMatchesProjectedRule`'s SAR catalog
+        // row. The walker registers under the bookkeeping ID `E031` and
+        // emits diagnostics with the per-row ID `E031`. With
+        // `E031 = "warn"` configured, the engine's per-emitted-id
+        // override path must rewrite the diagnostic's severity from
+        // its emitted value (Fix → demoted to Suggest by the post-pass)
+        // to Warn.
+        //
+        // This is the load-bearing invariant of the engine change in
+        // commit `refactor(capco,engine): collapse banner roll-up rules
+        // into walker (T026a)`. A future regression that quietly
+        // re-keys the override on the registered rule's `id()` would
+        // still pass for non-walker rules (where registered ID equals
+        // emitted ID) but would either lose the per-row override or
+        // silently apply the walker's `default_severity()` to E035 /
+        // E040 — both of which are the failure modes this test exists
+        // to prevent.
+        let engine = capco_engine_with_overrides(&[("E031", "warn")]);
+        let diagnostics = engine.lint(SAR_BANNER_MISSING_PROGRAM).diagnostics;
+
+        let e031: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E031")
+            .collect();
+        assert_eq!(
+            e031.len(),
+            1,
+            "exactly one E031 diagnostic; got {} from full diag list: \
+             {diagnostics:?}",
+            e031.len(),
+        );
+        assert_eq!(
+            e031[0].severity,
+            Severity::Warn,
+            "config `E031 = \"warn\"` must propagate to the walker-\
+             emitted E031 diagnostic; got severity {:?}",
+            e031[0].severity,
+        );
+    }
+
+    #[test]
+    fn lint_propagates_warn_override_to_walker_emitted_e035_diagnostic() {
+        // Parallel test for E035 — the SCI row of the walker. E035 is
+        // NOT a registered rule ID after T026a (the walker registers
+        // under E031 only); a configured `E035 = "warn"` therefore can
+        // ONLY take effect through the per-emitted-id override path.
+        // This is exactly the case where pre-change behavior diverges
+        // from post-change behavior: the prior engine looked up
+        // overrides by `rule.id()`, never saw E035 because no
+        // registered rule has that ID, and applied the walker's
+        // `default_severity()` (Error) to the diagnostic. The post-
+        // change path looks up by `d.rule.as_str()`, finds the E035
+        // override, and rewrites to Warn.
+        //
+        // This is the strongest end-to-end pin available for the
+        // per-emitted-id override path: there is no way for the test
+        // to pass under the pre-change semantics.
+        let engine = capco_engine_with_overrides(&[("E035", "warn")]);
+        let diagnostics = engine.lint(SCI_BANNER_MISSING_COMPARTMENT).diagnostics;
+
+        let e035: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E035")
+            .collect();
+        assert_eq!(
+            e035.len(),
+            1,
+            "exactly one E035 diagnostic; got {} from full diag list: \
+             {diagnostics:?}",
+            e035.len(),
+        );
+        assert_eq!(
+            e035[0].severity,
+            Severity::Warn,
+            "config `E035 = \"warn\"` must propagate to the walker-\
+             emitted E035 diagnostic via the per-emitted-id override \
+             path; got severity {:?}",
+            e035[0].severity,
+        );
+    }
+
+    #[test]
+    fn lint_off_override_skips_non_walker_rule_via_fast_path() {
+        // Non-walker rule fast path: a rule with empty
+        // `additional_emitted_ids()` (i.e., every CAPCO rule except
+        // `BannerMatchesProjectedRule`) emits diagnostics only under
+        // its registered ID. Configuring that ID to `Off` must skip
+        // the rule's `check()` body before invocation — the engine's
+        // pre-check fast-path skip restored after the T026a refactor
+        // made `check()` always run.
+        //
+        // E001 (`portion-mark-in-banner`) is a non-walker rule that
+        // fires deterministically on the banner `SECRET//NF`
+        // (`NF` is the portion form of NOFORN; banners must use the
+        // long `NOFORN` form). With `E001 = "off"` configured, the
+        // engine must produce zero E001 diagnostics — the fast-path
+        // skip prevents the rule's body from running at all.
+        //
+        // Pinning this property keeps a future regression that
+        // accidentally relaxes the fast-path predicate (e.g., to
+        // always go through the post-check filter) from going
+        // unnoticed: the post-check filter would still drop the
+        // emitted E001 diagnostic, so this test would still pass —
+        // BUT the rule's body would have run, defeating the
+        // optimization. To distinguish, the test asserts not just
+        // "no E001 diagnostics" but ALSO that no other rule on the
+        // same input observed an E001-shaped side effect. Since
+        // CAPCO rules are stateless and don't side-effect each
+        // other, the strongest available pin here is the absence
+        // assertion plus this comment documenting the intent. A
+        // future change that converts E001 to a walker would need
+        // to revisit this test.
+        let engine = capco_engine_with_overrides(&[("E001", "off")]);
+        let diagnostics = engine.lint(b"SECRET//NF").diagnostics;
+        let e001: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.rule.as_str() == "E001")
+            .collect();
+        assert!(
+            e001.is_empty(),
+            "config `E001 = \"off\"` must produce zero E001 \
+             diagnostics via the fast-path pre-check skip; got: \
+             {e001:?} (full diag list: {diagnostics:?})",
+        );
+
+        // Sanity check: without the Off override, E001 fires on the
+        // same input. Without this opposing pin, the previous
+        // assertion could pass trivially if the fixture stopped
+        // triggering E001 for some unrelated reason.
+        let engine_default = capco_engine_with_overrides(&[]);
+        let baseline = engine_default.lint(b"SECRET//NF").diagnostics;
+        let baseline_e001: Vec<&Diagnostic> = baseline
+            .iter()
+            .filter(|d| d.rule.as_str() == "E001")
+            .collect();
+        assert!(
+            !baseline_e001.is_empty(),
+            "fixture sanity check: without Off override, E001 must \
+             fire on `SECRET//NF` (banner uses portion form `NF`); \
+             got: {baseline:?}",
+        );
     }
 
     // -----------------------------------------------------------------------

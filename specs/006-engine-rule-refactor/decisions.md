@@ -388,14 +388,19 @@ the trait method is the actual failure pattern. Rust stdlib uses
 
 ### D13 — Rule-collapse band
 
-> **Superseded 2026-05-07.** The original D13 "56 → 8–18 post-PR-3b"
-> target and "single CAPCO-§ citation per rule" wording below are
-> retained for historical reference but **superseded by the
-> Amendment 2026-05-07 below**. Operative interpretation: source
-> count is **59** (not 56); PR 3b proper target is **13–18 (Stage 1)**
-> with end-state 8–18 across stages; "single citation" applies **per
-> declarative catalog entry**, not per `impl Rule` block. Read the
-> amendment, not this block, for binding acceptance criteria.
+> **Superseded 2026-05-07** (initial amendment) **and 2026-05-07**
+> (PR-3b-numeric-band retirement). The original D13 "56 → 8–18
+> post-PR-3b" target and "single CAPCO-§ citation per rule" wording
+> below are retained for historical reference but **superseded by
+> the two-pass Amendment 2026-05-07 below**. Operative interpretation:
+> source count is **59** (not 56); the PR-3b-proper numeric band is
+> **retired** (the literal sub-move retirements deliver ~38–44; the
+> per-sub-PR principle is "drive the count down within the sub-move's
+> primitive scope," not "hit a band"); end-state target ~10 surviving
+> rules across all four stages stays binding; "single citation"
+> applies **per declarative catalog entry**, not per `impl Rule`
+> block. Read the amendment, not this block, for binding acceptance
+> criteria.
 
 **Decision (original, superseded 2026-05-07)**: 56 → **8–18 rule
 count band** post-PR-3b + qualitative gate. Each surviving rule
@@ -429,12 +434,33 @@ re-sequences D13 without removing it.
 rules_sci_per_system.rs`, not the "~56" approximation the
 lattice-design plan carried).
 
-**Re-sequence.** The 8–18 band remains the **end-state** acceptance
-target (post-Stage-4); the **PR 3b proper** target is **13–18**, with
-collapse to 9–11 staged across PR 3.7 (new primitives), PR 4 (per-
-category Lattice impls + closure wiring), and PR 5+ (renderer +
-RELOPT). The full staging table and the six PR 3b sub-moves
-(3b.A–3b.F) are pinned in `plan.md` D13 addendum.
+**Re-sequence (initial 2026-05-07).** The 8–18 band was originally
+intended as the **end-state** acceptance target (post-Stage-4); the
+**PR 3b proper** target was originally **13–18**, with collapse to
+9–11 staged across PR 3.7, PR 4, and PR 5+. The full staging table
+and the six PR 3b sub-moves (3b.A–3b.F) are pinned in `plan.md` D13
+addendum.
+
+**Re-baseline (subsequent 2026-05-07, retiring the PR-3b numeric
+band).** The planning pass on T026a (PR 3b sub-move A) found that the
+literal sub-move retirements deliver −15 to −21 rules across
+3b.A–3b.F, landing at **~38–44 post-3b** — outside any 13–18 band by
+construction. The 13–18 figure was an aspirational projection that
+assumed aggressive walker-style consolidation beyond what the
+authorized primitives in 3b.A–3b.F permit (e.g., compacting all 14
+`rules_declarative.rs` entries into a single walker, which the bridge
+§3.4 does not prescribe). Rather than relax the primitives' scope or
+shed declarative-catalog discipline, the band itself retires. The
+operative gate becomes per-sub-PR: each sub-move drives the count
+down within what its authorized primitive scope (the bridge §3.4
+moves) permits, declares the math in its PR description, and earns
+team review only when retirements stray outside the bridge's
+primitives. The end-state target stays at **~10 surviving rules**
+across all four stages; Stage 3 (PR 4 per-category Lattice impls)
+and Stage 4 (PR 5+ renderer) carry the heavy lifting toward that
+target. The Stage-by-Stage expected ranges (~38–44 → ~32–40 →
+~14–22 → ~10) live in `plan.md` D13 addendum as guidance, not
+acceptance gates.
 
 **Resolved sub-decisions**:
 
@@ -569,6 +595,80 @@ queue management.
 
 ---
 
+### D17 — PR 3b.C scope correction: RELIDO Conflicts roster
+
+**Decision**: PR 3b.C ships exactly **4** `Constraint::Conflicts` rows
+(E054–E057), not the ~15–20 rows projected in the 2026-05-07 consultation
+verdict line 82. The broader §3.4.2 family roster (RELIDO ⊥ {LES-NF,
+SBU-NF, each FGI atom, each JOINT atom, each NATO atom}) is deferred to
+**PR 3.7 (T108b)** where `Constraint::Conflicts::RhsFamily(predicate)` ships.
+
+**Rationale (Constitution VIII)**: Re-verification of CAPCO-2016 against
+the consultant's `marque-applied.md §3.4.2` roster surfaces only four pairs
+with direct, re-traceable §-passage authority:
+
+| LHS | RHS | Primary citation | CAPCO-2016.md line |
+|-----|-----|------------------|--------------------|
+| RELIDO | NOFORN | §H.8 p154 | 3808 |
+| RELIDO | DISPLAY ONLY | §H.8 p154 | 3808 |
+| ORCON | RELIDO | §H.8 p136 | 3363 |
+| ORCON-USGOV | RELIDO | §H.8 p140 | 3444 |
+
+The remaining ~11–16 pairs are structural inferences (the consultant's
+"IDO has no authority over foreign equity" argument) without a verbatim
+§-passage saying "may not be used with RELIDO." Constitution VIII §3
+prohibits embedding citations that cannot be traced to a real passage —
+fabricating fifteen specific §-citations would be a correctness defect.
+
+At PR 3.7 the `RhsFamily(predicate)` variant ships. A single
+family-predicate row (or two — one per grouping) can carry the structural
+argument with one well-documented citation chain explaining the
+IDO-vs-foreign-equity reasoning, satisfying Constitution VIII without
+fabricating per-atom citations.
+
+**Net rule delta**: 57 → 61 (+4). Net constraint delta: 15 → 19 (+4).
+
+**Subtractive-fix direction (PM Addendum II, 2026-05-07; confidence
+calibration 2026-05-08).** All four wrappers emit a `FixProposal` that
+**removes RELIDO** from the dissem block (replacement = `""`, confidence
+= 0.95, `FixSource::BuiltinRule`, `Severity::Error`). The 0.95 value
+clears the engine's default `Config::confidence_threshold = 0.95`
+(`crates/config/src/lib.rs:156`; auto-apply gate is `confidence >=
+threshold`) so the fix auto-applies under default config — matching the
+user-stated guidance behavior ("remove RELIDO and tell them why"). The
+initial PM Addendum II §2 value of 0.9 was calibrated up after verifying
+the threshold default; the 0.85–0.9 tier is reserved for conditional /
+lower-confidence cases (`crates/capco/src/rules.rs:4465 / :4602 / :4962
+/ :5173`), and 0.95 matches the established CAPCO convention for
+definite, at-threshold, auto-apply fixes (`crates/capco/src/rules.rs:998
+/ :1327 / :2622 / :2777 / :2853`). RELIDO is the unambiguous
+remove-target because the
+other token in each pair carries the binding §-cited authority (NOFORN
+dominates per FD&R supersession; DISPLAY ONLY is a positive disclosure
+decision; ORCON / ORCON-USGOV explicitly assert "may not be used with
+RELIDO" on their §H.8 templates). The pattern applies to **dissem-axis
+`Constraint::Conflicts`** rules only — non-dissem conflicts (classification
+E012, JOINT cross-system, SCI grammar) remain "user resolves" because the
+fix direction cannot be inferred without policy input. Constitution V
+(audit-first) is preserved: `FixProposal` is pure data; the engine
+snapshots runtime state into `AppliedFix` at promotion. See PM Addendum II
+in `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md` for the full
+rationale and user-correction context (Marque is a guidance tool for
+dissem markings, not just a checker).
+
+**Verdict-line-82 amendment**: see `docs/plans/2026-05-07-pr3b-consultation-verdict.md` line 82 (amended in this PR).
+
+**Lands in**: PR 3b.C implementation, helper `compute_relido_removal_span`
+in `crates/capco/src/rules_declarative.rs`, test count pin in
+`crates/capco/tests/relido_conflicts.rs:capco_constraints_count_after_pr3b_c`,
+and the helper-position tests
+(`helper_first_position_consumes_trailing_slash`,
+`helper_middle_position_consumes_preceding_slash`,
+`helper_last_position_consumes_preceding_slash`,
+`helper_returns_none_when_relido_absent`).
+
+---
+
 ## PR 0 absorption summary
 
 | # | Decision | PR-0 deliverable |
@@ -585,10 +685,13 @@ queue management.
 | D10 | Layer 0 + toolchain / trybuild pin | `contracts/engine-pipeline.md` test-strategy amended |
 | D11 | Masking-pin cache-with-fallback | `research.md` new R-10 |
 | D12 | `_unchecked` lint by signature shape | `research.md` new R-11; `spec.md` FR-040 amended |
-| D13 | 8–18 band + qualitative gate (amended 2026-05-07: Stage 1 13–18 + Stages 2–4 → 9–11) | `plan.md` PR 3b acceptance criteria + D13 amendment 2026-05-07 |
+| D13 | Qualitative per-declarative-entry gate; PR-3b numeric band retired 2026-05-07; end-state target ~10 surviving rules across stages 1–4 | `plan.md` PR 3b acceptance criteria + D13 two-pass amendment 2026-05-07 |
 | D14 | Trait stabilization forcing function | `spec.md` Assumptions amendment |
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |
+| D17 | PR 3b.C scope correction: RELIDO Conflicts roster pruned from ~15–20 to 4 rows under Constitution VIII; broader §3.4.2 family roster deferred to PR 3.7 T108b | `crates/capco/tests/relido_conflicts.rs` count pin; verdict line 82 amended |
 
-All 16 decisions lock at PR 0. Subsequent PRs execute against this
-register; amendments require a follow-up PR editing this file.
+All 16 decisions lock at PR 0. D17 is a PR 3b.C implementation decision
+amending the consultation verdict projection; it was added post-PR-0.
+Subsequent PRs execute against this register; amendments require a
+follow-up PR editing this file.

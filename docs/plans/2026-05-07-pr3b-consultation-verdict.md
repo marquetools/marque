@@ -73,18 +73,28 @@ correctness.
 ## 4. Staging (the executable plan)
 
 The full staging table lives in `plan.md` D13 addendum. Summary
-here for the dated record:
+here for the dated record (re-baselined 2026-05-07; numeric band
+retired in favor of qualitative per-sub-PR gates):
 
-| Stage | PR | Deliverables | Cumulative surviving rules |
+| Stage | PR | Deliverables | Expected surviving rules |
 |---|---|---|---|
 | Pre-collapse | — | 59 `impl Rule` blocks across `rules.rs:35` + `rules_declarative.rs:14` + `rules_sci_per_system.rs:10` | **59** |
-| **Stage 1 (PR 3b proper)** | PR 3b (T026a–T026f) | 3b.A banner walker, 3b.B 7 PageRewrites, 3b.C ~15–20 RELIDO Conflicts rows, 3b.D ~25 class-floor Requires rows, 3b.E SCI per-system walker, 3b.F renderer fallback walker | **13–18** |
-| **Stage 2 (new primitives)** | PR 3.7 (T108b, T108c, T108d) | RhsFamily Conflicts variant, closure operator primitive, FGI consensus verification | 13–18 (catalog compaction in flight) |
-| **Stage 3 (lattice impls + closure wiring)** | PR 4 (T111+) | Per-category Lattice impls, RELIDO compaction to 2 family rows, closure-implied entries flip from Requires to closure, banner walker retires (or becomes property-test-only sanity check) | **10–15** |
-| **Stage 4 (renderer + RELOPT round-trip)** | PR 5+ | Renderer trait surface absorbs E020 / E023 / E028 / E033; RELOPT round-trip parser obligation lands; 3b.F walker retires | **9–11** |
+| **Stage 1 (PR 3b proper)** | PR 3b (T026a–T026f) | 3b.A banner walker (3 → 1, net −2), 3b.B 7 PageRewrites (mostly additive, ~−1 to −3), 3b.C 4 RELIDO Conflicts rows (single-token RHS, all directly §-cited; broader §3.4.2 family roster deferred to PR 3.7 T108b under Constitution VIII), 3b.D ~25 class-floor Requires rows (mostly additive, ~0 to −2), 3b.E SCI per-system walker (10 → 1, net −9), 3b.F renderer fallback walker (4 → 1, net −3) | **~38–44** |
+| **Stage 2 (new primitives + catalog compaction)** | PR 3.7 (T108b, T108c, T108d) | RhsFamily Conflicts variant (RELIDO compacts to 2 family rows: −13 to −18), closure operator primitive (~−5 to −8 implication-shaped Requires entries flip to closure entries), FGI consensus verification (doc-comment only, 0 delta) | **~32–40** |
+| **Stage 3 (lattice impls + closure wiring)** | PR 4 (T111+) | Per-category Lattice impls retire entire walker classes (banner walker → property-test-only; SCI per-system walker → per-category Lattice impls), closure-implied Requires entries flip into the closure operator, RELIDO compaction completes | **~14–22** |
+| **Stage 4 (renderer + RELOPT round-trip)** | PR 5+ | Renderer trait surface absorbs E020 / E023 / E028 / E033; RELOPT round-trip parser obligation lands; 3b.F walker retires | **~10** |
 
-The 8–18 D13 band remains the **end-state** target. **PR 3b proper
-target is 13–18** (Stage 1).
+**The PR-3b-proper numeric band is retired.** The literal sub-move
+retirements deliver −15 to −21 rules across 3b.A–3b.F, landing at
+~38–44. The earlier "13–18" Stage-1 figure was an aspirational
+projection that assumed aggressive walker-style consolidation beyond
+what the authorized primitives in 3b.A–3b.F permit. Rather than
+relax the primitives' scope or shed declarative-catalog discipline,
+the band itself retires. Per-sub-PR gate becomes: **drive the count
+down within what the sub-move's authorized primitive scope permits**.
+End-state target ~10 surviving rules across all four stages stays
+binding; Stage 3 (PR 4 per-category Lattice impls) and Stage 4
+(PR 5+ renderer) carry the heavy lifting toward that target.
 
 ## 5. Bridge corrections committed
 
@@ -112,7 +122,7 @@ each Move to its home PR.
 - `specs/006-engine-rule-refactor/decisions.md` — D13 amendment 2026-05-07 (decision register)
 - `specs/006-engine-rule-refactor/tasks.md` — T026a–T026f (PR 3b sub-moves), T108b–T108d (PR 3.7 primitives)
 - `docs/plans/2026-05-01-lattice-design.md` — §10 (open items 9, 10 added; 3.7 fill-in scope expanded)
-- `docs/plans/2026-05-02-engine-refactor-consolidated.md` — source plan; references PR 3b but the count target (~10–13) is superseded by this verdict's 13–18 Stage-1 + 8–18 end-state staging
+- `docs/plans/2026-05-02-engine-refactor-consolidated.md` — source plan; references PR 3b but the count target (~10–13) is superseded by this verdict's qualitative per-sub-PR gating (PR-3b numeric band retired 2026-05-07; end-state target ~10 surviving rules across stages 1–4 stays binding)
 - `.claude/skills/marque-lattice-consultant/references/marque-applied.md` — algebraic justification (§3 PR 3b walkthrough, §3.11 stage sequencing, §4.7 closure operator, §4.8 FGI consensus lattice)
 
 ## 7. Audibles

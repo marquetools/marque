@@ -34,15 +34,20 @@
 //!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
 //!   E018 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
 //!   E019 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
-//!   E020 = country code list ordering (alphabetical after USA)
+//!   E020 = retired in PR 3b.F (T026f) — country code list ordering
+//!           absorbed by E060 non-canonical input walker (REL TO §H.8 +
+//!           JOINT §H.3 alpha rows)
 //!   E021 = RD/FRD requires NOFORN (configurable to warn)
 //!   E022 = CNWDI only with TS or S RD
-//!   E023 = SIGMA valid values + numerical order
+//!   E023 = retired in PR 3b.F (T026f) — SIGMA valid values + numerical
+//!           order absorbed by E060 non-canonical input walker (§H.6 p108)
 //!   E024 = RD precedence over FRD/TFNI
 //!   E025 = UCNI only with UNCLASSIFIED
 //!   W003 = non-IC dissem in classified banner
 //!   E032 = SCI control-system sort order (spec 003-sci-compartments)
-//!   E033 = SCI compartment / sub-compartment sort order
+//!   E033 = retired in PR 3b.F (T026f) — SCI compartment / sub-
+//!           compartment sort order absorbed by E060 non-canonical
+//!           input walker (§H.4 p61)
 //!   W034 = SCI custom (unpublished) control-system audit visibility
 //!   E035 = SCI banner rollup (missing compartments from portions)
 //!   E036 = JOINT may not be used with HCS markings (T035b, replaces E017-E019)
@@ -55,6 +60,19 @@
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   E053 = NOFORN conflicts with REL TO (§H.8 p145, declarative wrapper)
+//!   E054 = RELIDO conflicts with NOFORN — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E055 = RELIDO conflicts with DISPLAY ONLY — subtractive fix removes RELIDO (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E056 = ORCON conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p136, declarative wrapper — PR 3b.C)
+//!   E057 = ORCON-USGOV conflicts with RELIDO — subtractive fix removes RELIDO (§H.8 p140, declarative wrapper — PR 3b.C)
+//!   E060 = non-canonical input walker (PR 3b.F / T026f) — collapses
+//!           E020 / E023 / E028 / E033 ordering checks into a single
+//!           walker with a 5-row private catalog: REL TO USA-first
+//!           alpha (§H.8 p150-151), JOINT alpha (§H.3 p56), AEA SIGMA
+//!           numeric sort (§H.6 p108), SAR program ascending alpha
+//!           (§H.5 p99), SCI compartment + sub-compartment
+//!           numeric-then-alpha (§H.4 p61). Walker retires when PR 5+
+//!           renderer trait surface absorbs canonical-form rendering
+//!           (Stage 4 of the engine refactor).
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -83,11 +101,14 @@ impl Default for CapcoRuleSet {
 impl CapcoRuleSet {
     pub fn new() -> Self {
         use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCnwdiConstraintRule,
+            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeClassFloorRule,
             DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
             DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
-            DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
-            DeclarativeRdPrecedenceRule, DeclarativeUcniClassificationRule,
+            DeclarativeNofornRelToConflictRule, DeclarativeNonCanonicalInputRule,
+            DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
+            DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
+            DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+            DeclarativeSciPerSystemRule,
         };
         Self {
             rules: vec![
@@ -134,22 +155,34 @@ impl CapcoRuleSet {
                 Box::new(NonIcInClassifiedBannerRule),
                 Box::new(DeclarativeJointRestrictedRule),
                 Box::new(DeclarativeJointHcsRule),
-                Box::new(CountryCodeOrderingRule),
                 Box::new(DeclarativeAeaNofornRule),
-                Box::new(DeclarativeCnwdiConstraintRule),
-                Box::new(SigmaValidationRule),
                 Box::new(DeclarativeRdPrecedenceRule),
-                Box::new(DeclarativeUcniClassificationRule),
+                // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), and E027
+                // (SAR classification) retired into the class-floor
+                // catalog walker `DeclarativeClassFloorRule` (rule
+                // ID E058). Replacement catalog row names (walker-
+                // prefixed; the legacy E### IDs are not preserved per
+                // `feedback_pre_users_no_deprecation_phasing.md`):
+                //   - E058/CNWDI-classification-floor (CAPCO §H.6 p104)
+                //   - E058/DOD-UCNI-classification-ceiling (§H.6 p116)
+                //   - E058/DOE-UCNI-classification-ceiling (§H.6 p118)
+                //   - E058/SAR-classification-floor (§H.5)
+                // Plus 23 additional `class-floor/<marking>` family
+                // rows per `marque-applied.md` §3.4.6 (HCS-comp-sub,
+                // SI-comp, TK-BLFH, BALK, BOHEMIA, HCS-comp, RSV-comp,
+                // TK family, RD-SG, FRD-SG, RSEN, IMCON, SI bare, RD
+                // bare, FRD bare, TFNI, ATOMAL, ORCON family, EYES
+                // ONLY, BUR/HCS-X/KLM/MVL passthrough). See
+                // `crate::scheme::CLASS_FLOOR_CATALOG` for the row
+                // table and
+                // `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
+                // for the architectural rationale.
+                Box::new(DeclarativeClassFloorRule),
                 Box::new(SarPortionFormRule),
-                Box::new(SarClassificationRule),
-                Box::new(SarProgramOrderRule),
                 Box::new(SarCompartmentOrderRule),
                 Box::new(SarIndicatorRepeatRule),
-                Box::new(SarBannerRollupRule),
                 Box::new(SciSystemOrderRule),
-                Box::new(SciCompartmentOrderRule),
                 Box::new(SciCustomControlInfoRule),
-                Box::new(SciBannerRollupRule),
                 // T035c-21 PR-A: NODIS/EXDIS constraint rules per
                 // CAPCO-2016 §H.9. E037 (mutual exclusion) and E038
                 // (require NOFORN). Declarative — see
@@ -162,8 +195,17 @@ impl CapcoRuleSet {
                 // (banner roll-up), E041 (NODIS supersedes EXDIS in
                 // portion). See §H.9 p172 + p174 for each citation.
                 Box::new(NodisExdisClearsBannerRelToRule),
-                Box::new(NodisExdisBannerRollupRule),
                 Box::new(NodisSupersedesExdisInPortionRule),
+                // PR 3b Sub-move A — banner-roll-up walker (T026a).
+                // Subsumes the three retired literal rules:
+                //   E031 SarBannerRollupRule       (§H.5 p101)
+                //   E035 SciBannerRollupRule       (§H.4 per-system)
+                //   E040 NodisExdisBannerRollupRule (§H.9 p172 + p174)
+                // Emitted diagnostics carry per-row IDs (E031 / E035 /
+                // E040) for audit-stream continuity and C-1 overlap-
+                // guard interaction with E028 / E029. Net delta:
+                // -2 rules (3 retired + 1 walker added).
+                Box::new(BannerMatchesProjectedRule),
                 // S003: joint-usa-first style rule. Info severity.
                 // Follow-up from PR #97 (T035c-18) — §H.3 prescribes
                 // pure alpha for JOINT, but IC convention puts USA
@@ -178,20 +220,51 @@ impl CapcoRuleSet {
                 // engine never auto-applies a Suggest-severity
                 // diagnostic regardless of confidence.
                 Box::new(RelToTrigraphSuggestRule),
-                // T035d: per-SCI-system constraint rules (E042–E051)
-                // implementing §H.4 class-ceiling and required-
-                // companion constraints under the fix-and-warn pattern.
-                // See `rules_sci_per_system` module doc.
-                Box::new(crate::rules_sci_per_system::HcsOCompanionsRule),
-                Box::new(crate::rules_sci_per_system::HcsPRequiresNofornRule),
-                Box::new(crate::rules_sci_per_system::HcsPSubcompartmentTsOnlyRule),
-                Box::new(crate::rules_sci_per_system::HcsClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::SiCompartmentTopSecretRule),
-                Box::new(crate::rules_sci_per_system::SiGammaCompanionsRule),
-                Box::new(crate::rules_sci_per_system::RsvClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::TkClassificationCeilingRule),
-                Box::new(crate::rules_sci_per_system::TkBlfhTopSecretRule),
-                Box::new(crate::rules_sci_per_system::TkCompartmentRequiresNofornRule),
+                // PR 3b.E (T026e): retired the 10 hand-written per-SCI-
+                // system rules `E042`–`E051` into the SCI per-system
+                // catalog walker `DeclarativeSciPerSystemRule` (rule ID
+                // `E059`). The companion-required (ORCON, NOFORN) and
+                // forbid-companion (ORCON-USGOV) invariants from the
+                // retired rules ship as 5 `Constraint::Custom` rows on
+                // `CapcoScheme` (HCS-O companions, HCS-P NOFORN, HCS-P
+                // sub companions, SI-G companions, TK compartment
+                // NOFORN). The class-floor portions of E044/E045/E046/
+                // E048/E049/E050 are absorbed by PR 3b.D's class-floor
+                // catalog (`class-floor/<marking>` rows). Net delta:
+                // 10 retired + 1 walker added = net −9. Per project
+                // memory `feedback_pre_users_no_deprecation_phasing.md`,
+                // severity-config back-compat for the legacy E042–E051
+                // IDs is intentionally not preserved; users keying
+                // `.marque.toml` at any of those must migrate to E059.
+                // See `crate::scheme::SCI_PER_SYSTEM_CATALOG` for the
+                // row table and
+                // `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
+                // for the architectural rationale.
+                Box::new(DeclarativeSciPerSystemRule),
+                // PR 3b.F (T026f): retired four ordering-validation rules
+                // (E020 CountryCodeOrderingRule, E023 SigmaValidationRule,
+                // E028 SarProgramOrderRule, E033 SciCompartmentOrderRule)
+                // into the non-canonical input walker
+                // `DeclarativeNonCanonicalInputRule` (rule ID `E060`)
+                // dispatching over a 5-row internal catalog
+                // (`NON_CANONICAL_CATALOG`) covering REL TO USA-first
+                // alpha (§H.8 p150-151), JOINT alpha (§H.3 p56), AEA
+                // SIGMA numeric sort (§H.6 p108), SAR program ascending
+                // alpha (§H.5 p99), and SCI compartment +
+                // sub-compartment numeric-then-alpha (§H.4 p61). Catalog
+                // is private to the walker module — these are renderer-
+                // canonical-form concerns absorbed by
+                // `MarkingScheme::render_canonical` once the renderer
+                // trait surface lands in PR 5+ (Stage 4). Diagnostics
+                // emit with `Diagnostic.rule = "E060"`; per-row
+                // identification flows via the diagnostic message text +
+                // the per-row §-citation. The legacy E020/E023/E028/E033
+                // IDs are NOT preserved (per project memory
+                // `feedback_pre_users_no_deprecation_phasing.md`: marque
+                // is pre-users — no severity-config back-compat). Net
+                // delta: 4 retired + 1 walker = -3. See
+                // `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
+                Box::new(DeclarativeNonCanonicalInputRule),
                 // Issue #234 PR-B: REL TO duplicate country codes.
                 // Hand-written structural rule. Sister of E020 (ordering)
                 // and E002 (USA-first); the three together close the
@@ -223,6 +296,23 @@ impl CapcoRuleSet {
                 // `capco/noforn-conflicts-rel-to` constraint already
                 // declared in `CapcoScheme::constraints()`.
                 Box::new(DeclarativeNofornRelToConflictRule),
+                // PR 3b.C (T026c): RELIDO incompatibility declarative wrappers.
+                // Four directly-cited §H.8 conflict pairs from CAPCO-2016:
+                //   E054 — RELIDO ⊥ NOFORN        (§H.8 p154)
+                //   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154)
+                //   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; assertion on ORCON template)
+                //   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; assertion on ORCON-USGOV template)
+                // Each wraps a `Constraint::Conflicts` row in
+                // `CapcoScheme::constraints()`. The broader §3.4.2 family
+                // roster (RELIDO ⊥ {LES-NF, SBU-NF, FGI atoms, JOINT atoms,
+                // NATO atoms}) is deferred to PR 3.7 (T108b) where
+                // `Constraint::Conflicts::RhsFamily(predicate)` lands. See
+                // `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2`
+                // for the Constitution VIII rationale.
+                Box::new(DeclarativeRelidoNofornConflictRule),
+                Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
+                Box::new(DeclarativeOrconRelidoConflictRule),
+                Box::new(DeclarativeOrconUsgovRelidoConflictRule),
             ],
         }
     }
@@ -237,6 +327,26 @@ impl RuleSet for CapcoRuleSet {
         crate::SCHEMA_VERSION
     }
 }
+
+// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers
+// and the `compute_relido_removal_span` helper for integration tests in
+// `crates/capco/tests/`. Both the underlying `pub struct` items and
+// these re-exports carry `#[doc(hidden)]`, signaling "technically pub
+// for compilation but not stable public API" — the same convention
+// `marque_rules::AppliedFix::__engine_promote` uses (per Constitution V
+// Principle V test-fixture carve-out). Future refactors are free to
+// consolidate or rename these without a breaking-change concern.
+#[doc(hidden)]
+pub use crate::rules_declarative::{
+    DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+    DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+};
+
+#[doc(hidden)]
+pub use crate::rules_declarative::compute_relido_removal_span;
+
+#[doc(hidden)]
+pub use crate::rules_declarative::find_dissem_token_span;
 
 // ---------------------------------------------------------------------------
 // Rule: E001 — Portion mark used in banner (correctness)
@@ -2053,31 +2163,35 @@ impl Rule for BannerConsistentFormRule {
 /// convention-based style to portions is a judgment call best
 /// deferred.
 ///
-/// # Interaction with E020
+/// # Interaction with E060 (JOINT row)
 ///
-/// E020 and S003 can both fire on the same JOINT list when it is
-/// neither pure-alpha nor USA-first (e.g., `AUS USA GBR` is pure
-/// alpha? No — A < U < G is wrong; actual: `GBR USA AUS` is not
-/// alpha AND not USA-first). Both fixes target the same Classification
-/// token span:
+/// E060's JOINT row and S003 can both fire on the same JOINT list
+/// when it is neither pure-alpha nor USA-first (e.g., `GBR USA AUS`
+/// is not alpha AND not USA-first). Both fixes target the same
+/// Classification token span:
 ///
-/// - E020 fix: `AUS GBR USA` (pure alpha per §H.3).
+/// - E060 (non-canonical input walker, JOINT row) fix: `AUS GBR USA`
+///   (pure alpha per §H.3 p56).
 /// - S003 fix: `USA AUS GBR` (USA first, rest alpha per convention).
 ///
-/// Under FR-016's rule-id tiebreaker ("E020" < "S003" lexically),
-/// E020 wins the overlap guard and applies. On re-lint, E020 is
+/// Under FR-016's rule-id tiebreaker ("E060" < "S003" lexically),
+/// E060 wins the overlap guard and applies. On re-lint, E060 is
 /// silent (list now pure-alpha) and S003 still wants USA first;
 /// running fix again converges to `USA AUS GBR`. Two passes. Orgs
-/// that want single-pass USA-first convergence can disable E020
+/// that want single-pass USA-first convergence can disable E060
 /// for JOINT (currently not configurable; would need a per-list-type
 /// severity override — follow-up).
 ///
+/// (Pre-PR-3b.F this was E020; PR 3b.F retired E020 into the E060
+/// walker, which preserved the same fix shape and citation but
+/// changed the rule-ID.)
+///
 /// Complementary rules:
-/// - **E020** (`country-code-ordering`, correctness) — pure-alpha
-///   ordering per §H.3 / §H.8 (depending on list type). For REL TO,
-///   E020 encodes USA-first by authority (§H.8 p151). For JOINT,
-///   E020 encodes pure-alpha (§H.3 p56, post-T035c-18).
-/// - **S001**/`S002` (style) — banner-abbreviation preferences.
+/// - **E060** (`non-canonical-input`, correctness) JOINT row — pure-alpha
+///   ordering per §H.3 p56 (no USA-first carve-out). The companion REL TO
+///   row of E060 encodes USA-first by authority (§H.8 p151). Both rows
+///   share the same `Rule::id()` but emit row-specific message text.
+/// - **S001** / **S002** (style) — banner-abbreviation preferences.
 struct JointUsaFirstRule;
 
 impl Rule for JointUsaFirstRule {
@@ -2921,195 +3035,19 @@ impl Rule for NonIcInClassifiedBannerRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E020 — Country code list ordering
+// Rule: E020 — RETIRED in PR 3b.F (T026f)
 // ---------------------------------------------------------------------------
-
-/// REL TO and JOINT country lists must be alphabetically ordered.
-///
-/// # Authority (per-template)
-///
-/// - **REL TO, §H.8 pp 150–151**: "After 'USA', list the
-///   required one or more trigraph country codes in alphabetical
-///   order followed by tetragraph codes listed in alphabetical
-///   order." REL TO elevates USA to the front.
-/// - **JOINT, §H.3 p56**: "Country trigraph codes are
-///   listed alphabetically followed by tetragraph codes in
-///   alphabetical order." JOINT prescribes **pure alphabetical** —
-///   no USA-first carve-out.
-///
-/// `canonicalize_trigraph_list` takes a `usa_first: bool` flag so
-/// each caller selects its authoritative convention. The REL TO
-/// path passes `true`; the JOINT path passes `false`.
-///
-/// # JOINT USA-first convention is style, not rule
-///
-/// The widespread IC practice of rendering USA first in JOINT
-/// lists — because every other US-authored country list leads
-/// with USA — is convention, not CAPCO text. E020 does NOT encode
-/// it as a correctness error. A follow-up style rule
-/// (S003 `joint-usa-first`, `Severity::Info`) will surface
-/// deviations without conflating them with ordering violations.
-///
-/// # Scope
-///
-/// Fires on REL TO (`attrs.rel_to`) and JOINT (`attrs.classification`
-/// when it is `MarkingClassification::Joint`). Does NOT currently
-/// cover:
-///
-/// - **FGI ordering** (`attrs.fgi_marker`, specifically the
-///   `FgiMarker::Acknowledged { countries }` variant — the
-///   `SourceConcealed` variant has no list to order) — §A.6 p15-16
-///   line 332 establishes the same trigraph-then-tetragraph alpha
-///   rule for FGI, but extending E020 to cover it is a future
-///   follow-up; no FGI-ordering test fixtures exist today.
-/// - **Tetragraph partition sorting** — issue #183 PR-A widened
-///   `CountryCode` so 4-byte tetragraphs round-trip through
-///   `attrs.rel_to`, but `canonicalize_trigraph_list` still sorts
-///   the whole list flat-alphabetically rather than the §H.8 p151
-///   "trigraphs alpha, then tetragraphs alpha" partition. Follow-up:
-///   bucket true trigraphs (`code.len() == 3`) before everything
-///   else (the 2-byte `EU`, the 4-byte tetragraphs, and 15-byte
-///   `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
-///   derive the buckets from the CVE schema groups in
-///   `CVEnumISMCATRelTo.xsd`.
-///
-/// # Interaction with E002
-///
-/// REL TO ordering is skipped entirely when USA is missing or not
-/// first (see `attrs.rel_to` guard). E002's fix produces the fully
-/// canonical list in a single pass (USA first, non-USA entries
-/// alphabetical), so E020's concern is already absorbed whenever E002
-/// is active. This prevents double-firing on the same span.
-///
-/// This is a fixable error. Fix confidence is `1.0` for both paths —
-/// the sort is deterministic with exact trigraph matches and no
-/// fuzzy matching today. When fuzzy matching lands in a future
-/// decoder phase, per-candidate confidence may need to plumb
-/// through `check_trigraph_ordering`; this helper signature is
-/// designed to accommodate that change.
-struct CountryCodeOrderingRule;
-
-impl Rule for CountryCodeOrderingRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E020")
-    }
-    fn name(&self) -> &'static str {
-        "country-code-ordering"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
-
-        // Check REL TO ordering. Skip if USA is missing or not first —
-        // E002 fires for those cases and its fix produces the fully
-        // canonical list (USA first, non-USA entries alphabetical per
-        // CAPCO-2016 §H.8 p151), so E020's concern is already
-        // absorbed when E002 is active.
-        if attrs.rel_to.len() >= 2
-            && attrs
-                .rel_to
-                .first()
-                .is_some_and(|t| *t == marque_ism::CountryCode::USA)
-        {
-            // Locate the `RelToBlock` for this list. A single first→last
-            // `RelToTrigraph` splice across the whole marking would
-            // delete intervening `//...//` content when more than one
-            // REL TO block is present (e.g.,
-            // `SECRET//REL TO USA, GBR//NF//REL TO AUS`). Mirrors E002
-            // (line 345) in scoping the fix to a single block and
-            // suppressing it when multiple blocks are present.
-            let rel_to_blocks: Vec<&TokenSpan> = attrs
-                .token_spans
-                .iter()
-                .filter(|t| t.kind == TokenKind::RelToBlock)
-                .collect();
-            // `concat!` avoids any ambiguity around whether `\<newline>`
-            // preserves embedded whitespace in the resulting string.
-            const REL_TO_CITATION: &str = concat!(
-                "CAPCO-2016 §H.8 p150–151 ",
-                "(REL TO: trigraphs alpha, then tetragraphs alpha, USA first)",
-            );
-            if rel_to_blocks.len() > 1 {
-                // Suppress the fix rather than risk cross-block corruption.
-                // Span the first block so downstream consumers have a
-                // location to display.
-                let actual: Vec<&str> = attrs.rel_to.iter().map(|t| t.as_str()).collect();
-                // REL TO is USA-first per §H.8 p151.
-                let sorted = canonicalize_trigraph_list(&attrs.rel_to, true);
-                if actual != sorted {
-                    diagnostics.push(Diagnostic::new(
-                        self.id(),
-                        self.default_severity(),
-                        rel_to_blocks[0].span,
-                        format!(
-                            "REL TO country codes must be alphabetically ordered \
-                             (USA first when present): [{}] → [{}] \
-                             (multiple REL TO blocks present; fix suppressed to avoid \
-                             cross-block corruption — resolve manually)",
-                            actual.join(", "),
-                            sorted.join(", "),
-                        ),
-                        REL_TO_CITATION,
-                        None,
-                    ));
-                }
-            } else if let Some(&block) = rel_to_blocks.first() {
-                if let Some(diag) = check_trigraph_ordering(
-                    &attrs.rel_to,
-                    "REL TO",
-                    self.id(),
-                    self.default_severity(),
-                    attrs,
-                    Some(block.span),
-                    REL_TO_CITATION,
-                    true, // REL TO: USA-first per §H.8 p151
-                ) {
-                    diagnostics.push(diag);
-                }
-            }
-            // If `rel_to_blocks` is empty while `attrs.rel_to` is
-            // populated, the parser is in an inconsistent state; skip
-            // silently rather than synthesize a span.
-        }
-
-        // Check JOINT country ordering. JOINT countries live inside a
-        // single `Classification` token, so the multi-block concern
-        // that motivates REL TO's block scoping does not apply here.
-        // JOINT's ordering rule lives in §H.3 (its own template), not
-        // §H.8 (REL TO's template), and §H.3 p56 prescribes
-        // pure alphabetical order — no USA-first carve-out. The
-        // widespread IC practice of rendering USA first in JOINT
-        // lists is style convention, not CAPCO rule; a planned
-        // follow-up S003 `joint-usa-first` style rule will surface
-        // deviations without conflating them with a correctness
-        // error.
-        if let Some(MarkingClassification::Joint(j)) = &attrs.classification {
-            if j.countries.len() >= 2 {
-                const JOINT_CITATION: &str = concat!(
-                    "CAPCO-2016 §H.3 p56 ",
-                    "(JOINT: trigraphs alpha, then tetragraphs alpha)",
-                );
-                if let Some(diag) = check_trigraph_ordering(
-                    &j.countries,
-                    "JOINT",
-                    self.id(),
-                    self.default_severity(),
-                    attrs,
-                    None,
-                    JOINT_CITATION,
-                    false, // JOINT: pure alpha per §H.3 p56 (no USA-first)
-                ) {
-                    diagnostics.push(diag);
-                }
-            }
-        }
-
-        diagnostics
-    }
-}
+//
+// PR 3b.F (T026f): retired into the non-canonical input walker
+// `DeclarativeNonCanonicalInputRule` (rule ID `E060`) as catalog rows
+// `non-canonical/rel-to-usa-first` (REL TO sub-check, §H.8 p150-151)
+// and `non-canonical/joint-alphabetical` (JOINT sub-check, §H.3 p56).
+// Diagnostic.rule is `E060` (walker bookkeeping ID); per-row
+// identification flows via the diagnostic message text + the
+// per-row §-citation field. The legacy `E020` rule ID is NOT
+// preserved (per project memory `feedback_pre_users_no_deprecation_phasing.md`:
+// marque is pre-users — no severity-config back-compat). See
+// `crate::rules_declarative::DeclarativeNonCanonicalInputRule`.
 
 /// Canonicalize a country code list. The `usa_first` flag selects the
 /// convention:
@@ -3906,7 +3844,7 @@ impl Rule for RelToOpaqueUncertainReductionInfoRule {
 /// `citation` is caller-supplied so each list type cites its own
 /// authoritative passage verbatim (Constitution VIII).
 #[allow(clippy::too_many_arguments)]
-fn check_trigraph_ordering(
+pub(crate) fn check_trigraph_ordering(
     codes: &[marque_ism::CountryCode],
     list_name: &str,
     rule: RuleId,
@@ -4054,121 +3992,17 @@ fn check_trigraph_ordering(
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E023 — SIGMA valid values and numerical order
+// Rule: E023 — RETIRED in PR 3b.F (T026f)
 // ---------------------------------------------------------------------------
-
-/// SIGMA compartment numbers must be from the currently authorized set
-/// (14, 15, 18, 20) and listed in numerical order.
-///
-/// # Authorized SIGMA values
-///
-/// CAPCO-2016 §H.6 p108 (RD-SIGMA marking template) narrows the
-/// authorized SIGMA set to the four numbers currently in active use:
-/// "SIGMA # currently represents one or more of the following numbers:
-/// 14, 15, 18, and 20." CAPCO-2016 does not enumerate which specific
-/// values outside this set were formally obsoleted — only that the
-/// current authorized set is these four. An earlier revision of this
-/// rule asserted that values `1..=5 | 9..=13` were "obsolete" while
-/// `6..=8 | 16..=17 | 19 | 21..=99` were "invalid"; that bifurcation
-/// was project inference and not backed by CAPCO-2016 source text.
-/// The unified "not in current authorized set" message below matches
-/// what the source actually says.
-struct SigmaValidationRule;
-
-impl Rule for SigmaValidationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E023")
-    }
-    fn name(&self) -> &'static str {
-        "sigma-validation"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::AeaMarking;
-
-        let mut diagnostics = Vec::new();
-        let valid_sigmas: &[u8] = &[14, 15, 18, 20];
-
-        for aea in attrs.aea_markings.iter() {
-            let sigma = match aea {
-                AeaMarking::Rd(rd) => &rd.sigma,
-                AeaMarking::Frd(frd) => &frd.sigma,
-                _ => continue,
-            };
-            if sigma.is_empty() {
-                continue;
-            }
-
-            let span = attrs
-                .token_spans
-                .iter()
-                .find(|t| t.kind == TokenKind::AeaMarking)
-                .map(|t| t.span)
-                .unwrap_or(Span::new(0, 0));
-
-            // Check for values outside the currently authorized set.
-            // Unified message (no obsolete/invalid bifurcation) — CAPCO
-            // 2016 §H.6 p108 only names the current four, not any
-            // specific obsolete subset. Contact the originating
-            // program for guidance on historical SIGMA numbers (CAPCO
-            // v1.2 2008 permitted 1-99).
-            let invalid: Vec<u8> = sigma
-                .iter()
-                .filter(|n| !valid_sigmas.contains(n))
-                .copied()
-                .collect();
-            if !invalid.is_empty() {
-                diagnostics.push(Diagnostic::new(
-                    self.id(),
-                    self.default_severity(),
-                    span,
-                    format!(
-                        "SIGMA {:?} not in the currently authorized set \
-                         (14, 15, 18, 20); contact the originating \
-                         program for guidance on historical values",
-                        invalid,
-                    ),
-                    "CAPCO-2016 §H.6 p108",
-                    None,
-                ));
-            }
-
-            // Check numerical order.
-            if sigma.len() >= 2 {
-                let mut sorted = sigma.to_vec();
-                sorted.sort_unstable();
-                sorted.dedup();
-                if sigma.as_ref() != sorted.as_slice() {
-                    let original: Vec<String> = sigma.iter().map(|n| n.to_string()).collect();
-                    let replacement: Vec<String> = sorted.iter().map(|n| n.to_string()).collect();
-                    diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
-                        rule: self.id(),
-                        severity: self.default_severity(),
-                        source: FixSource::BuiltinRule,
-                        span,
-                        message: format!(
-                            "SIGMA numbers must be in numerical order: {} → {}",
-                            original.join(" "),
-                            replacement.join(" "),
-                        ),
-                        // §H.6 p108 (RD block): "Multiple SIGMA
-                        // numbers shall be listed in numerical order
-                        // with a space preceding each value."
-                        citation: "CAPCO-2016 §H.6 p108",
-                        original: original.join(" "),
-                        replacement: replacement.join(" "),
-                        confidence: 1.0,
-                        migration_ref: None,
-                    }));
-                }
-            }
-        }
-        diagnostics
-    }
-}
+//
+// PR 3b.F (T026f): retired into the non-canonical input walker
+// `DeclarativeNonCanonicalInputRule` (rule ID `E060`) as catalog row
+// `non-canonical/sigma-numeric-sort` (§H.6 p108). The walker's row
+// preserves both emit branches verbatim: invalid-set check
+// (no-fix diagnostic) AND numerical-order check (fix diagnostic).
+// Diagnostic.rule is `E060`; per-row identification flows via the
+// diagnostic message text. See
+// `crate::rules_declarative::DeclarativeNonCanonicalInputRule`.
 
 // ---------------------------------------------------------------------------
 // Rule: E026 — SAR portion must use `SAR-` abbreviation
@@ -4261,164 +4095,37 @@ impl Rule for SarPortionFormRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E027 — SAR requires TS, S, or C classification
+// Rule: E027 — SAR requires TS, S, or C classification (RETIRED)
 // ---------------------------------------------------------------------------
-
-/// SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL
-/// classifications.
-///
-/// Authority: CAPCO-2016 §H.5 p101 — "Relationship(s) to Other
-/// Markings: May only be used with TOP SECRET, SECRET, or CONFIDENTIAL."
-/// All three classification levels are explicitly permitted; no
-/// TS-only or C-excluded carve-out exists in §H.5.
-///
-/// The rule also fires when `attrs.classification` is `None` — §H.5
-/// p101 line 2452 ("Applicable only to classified information") makes
-/// this position derivative: a SAR block without any classification
-/// token is malformed, not merely Unclassified. Treating the two
-/// invalid states together (no classification vs Unclassified) is
-/// defensible because both fail the §H.5 "classified information"
-/// gate; the diagnostic message names the three valid classifications
-/// so the user sees the remedy either way.
-///
-/// `UNCLASSIFIED//SAR-*` requires human review — no automated fix is
-/// offered because the correct classification is outside the marking.
-struct SarClassificationRule;
-
-impl Rule for SarClassificationRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E027")
-    }
-    fn name(&self) -> &'static str {
-        "sar-classification"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{Classification, MarkingClassification};
-        if attrs.sar_markings.is_none() {
-            return vec![];
-        }
-        let invalid = matches!(
-            &attrs.classification,
-            None | Some(MarkingClassification::Us(Classification::Unclassified))
-        );
-        if !invalid {
-            return vec![];
-        }
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::SarIndicator)
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "SAR markings may only be used with TOP SECRET, SECRET, or \
-             CONFIDENTIAL classifications",
-            "CAPCO-2016 §H.5 p101 (Relationship(s) to Other Markings)",
-            None,
-        )]
-    }
-}
+//
+// PR 3b.D (T026d): retired. The SAR floor invariant moved into the
+// class-floor catalog as the row `E058/SAR-classification-floor`
+// (CAPCO §H.5). The catalog walker `DeclarativeClassFloorRule` (rule
+// ID `E058`) is the new emitter; the legacy `E027` rule ID is NOT
+// preserved (per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users
+// — no severity-config back-compat).
+//
+// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
+// citation. The emitted diagnostic carries `Diagnostic.rule = "E058"`
+// (walker ID); per-row identification flows via the diagnostic
+// message text + the catalog's `name` field
+// (`"E058/SAR-classification-floor"`).
 
 // ---------------------------------------------------------------------------
-// Rule: E028 — SAR programs must be in ascending order
+// Rule: E028 — RETIRED in PR 3b.F (T026f)
 // ---------------------------------------------------------------------------
-
-/// Programs within a SAR block must be listed in ascending sort order
-/// with numbered values first, followed by alphabetic values.
-///
-/// Authority: CAPCO-2016 §H.5 p99 — "Multiple program
-/// identifiers are listed in ascending sort order with numbered values
-/// first, followed by alphabetic values." Reinforced by §H.5 p100 line
-/// 2402 Syntax Rules bullet 4 (same sort rule, `/` separator without
-/// interjected spaces).
-///
-/// Note: SAR's ordering authority is solely §H.5. §A.6 covers SCI
-/// ordering and is NOT a valid citation target for SAR rules.
-///
-/// When programs are out of order, the fix also sorts compartments and
-/// sub-compartments within each program in a single whole-block rewrite
-/// — so when E028 and E029 both detect violations on the same marking,
-/// applying E028's fix fully normalizes the block and the E029 fixes
-/// (which cover per-program sub-spans) become redundant. The engine's
-/// overlap guard will retain E028 and drop E029 for that run; a
-/// subsequent lint will confirm zero residual violations.
-struct SarProgramOrderRule;
-
-impl Rule for SarProgramOrderRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E028")
-    }
-    fn name(&self) -> &'static str {
-        "sar-program-order"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let Some(sar) = attrs.sar_markings.as_ref() else {
-            return vec![];
-        };
-        if sar.programs.len() < 2 {
-            return vec![];
-        }
-        let in_order = sar
-            .programs
-            .windows(2)
-            .all(|w| sar_sort_key(&w[0].identifier) <= sar_sort_key(&w[1].identifier));
-        if in_order {
-            return vec![];
-        }
-        let Some(span) = sar_block_span(attrs) else {
-            return vec![];
-        };
-        let original = render_sar_block(sar.indicator, &sar.programs);
-
-        // Sort programs and also normalize compartments/subs within each program
-        // in the same pass. This ensures applying the E028 fix alone fully
-        // normalizes the block even when E029 violations are present.
-        let mut sorted = sar.programs.to_vec();
-        for prog in sorted.iter_mut() {
-            let mut comps = prog.compartments.to_vec();
-            for comp in comps.iter_mut() {
-                let mut subs = comp.sub_compartments.to_vec();
-                subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
-                *comp = marque_ism::SarCompartment::new(
-                    comp.identifier.clone(),
-                    subs.into_boxed_slice(),
-                );
-            }
-            comps.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
-            *prog = marque_ism::SarProgram::new(prog.identifier.clone(), comps.into_boxed_slice());
-        }
-        sorted.sort_by(|a, b| sar_sort_key(&a.identifier).cmp(&sar_sort_key(&b.identifier)));
-        let replacement = render_sar_block(sar.indicator, &sorted);
-
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span,
-            message: "SAR programs must be in ascending order (numeric first, \
-                 then alphabetic)"
-                .to_owned(),
-            citation: "CAPCO-2016 §H.5 p99 \
-                       (programs: ascending, numeric first, then alpha)",
-            original,
-            replacement,
-            confidence: 0.85,
-            migration_ref: None,
-        })]
-    }
-}
+//
+// PR 3b.F (T026f): retired into the non-canonical input walker
+// `DeclarativeNonCanonicalInputRule` (rule ID `E060`) as catalog row
+// `non-canonical/sar-program-ascending-sort` (§H.5 p99). The walker's
+// row preserves the single-pass-canonical fix verbatim — sorts
+// programs AND normalizes per-program compartments + sub-compartments
+// in one whole-block rewrite, so applying the fix alone fully
+// normalizes the block even when E029 violations are present.
+// Diagnostic.rule is `E060`; per-row identification flows via the
+// diagnostic message text. See
+// `crate::rules_declarative::DeclarativeNonCanonicalInputRule`.
 
 // ---------------------------------------------------------------------------
 // Rule: E029 — SAR compartments and sub-compartments must be in order
@@ -4712,213 +4419,6 @@ impl Rule for SarIndicatorRepeatRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E031 — SAR banner roll-up (programs-only)
-// ---------------------------------------------------------------------------
-
-/// Every SAR **program** present in a portion mark must also appear in the
-/// banner's SAR block. Banner hierarchy depth (compartments and
-/// sub-compartments) is **optional** and NOT checked by this rule.
-///
-/// # Authority
-///
-/// - **§H.5 p101** (Precedence Rules for Banner Line Guidance):
-///   *"Unique SAPs contained in portion marks must always appear in the
-///   banner line."* The "Unique SAPs" language refers to unique program
-///   identifiers — the rule is a program-rollup rule.
-/// - **§H.5 p101** (Notes): *"Depicting the hierarchical
-///   structure of a SAP program below the program identifier is optional
-///   and dependent upon operational requirements. It is not mandatory to
-///   reflect a SAP program's hierarchy in either the portion marks or
-///   banner line."*
-/// - **§H.5 p99** (general): *"Depiction of the hierarchical
-///   structure of a SAP below the program identifier in the banner line
-///   or portion mark is optional."*
-///
-/// These three passages together establish that programs MUST roll up
-/// to the banner, but compartments and sub-compartments MAY be omitted
-/// from the banner even when present in portions. A banner showing
-/// `SAR-BP` when a portion shows `SAR-BP-J12` is therefore valid.
-///
-/// # Predicate history
-///
-/// An earlier revision of this rule flagged missing compartments and
-/// sub-compartments as violations, producing false positives on
-/// hierarchy-optional banners. T035c-19 PR-C (this change) narrowed
-/// the predicate to programs-only per the §H.5 p101
-/// provision. The prior behavior over-restricted relative to source.
-///
-/// # Fix semantics
-///
-/// - If the banner has a SAR block, emit a zero-width insertion at the
-///   end of that block at confidence 0.9 (severity `Fix`). The
-///   insertion **preserves the observed banner's existing programs
-///   with whatever hierarchy they already show** (by not touching
-///   their bytes at all) and appends each missing program as a bare
-///   program identifier (no compartments) in the form
-///   `/<PROG1>/<PROG2>…`. This minimum-change fix honors the
-///   "hierarchy is optional" rule — the user chose how much hierarchy
-///   to show for the programs that were there, and we do not override
-///   that choice for the programs that were missing. The zero-width
-///   insertion shape is also what lets E031 coexist with E028
-///   (program-order, whole-block span) and E029 (compartment-order,
-///   per-program span) under the engine's C-1 overlap guard — see
-///   the in-body comment on the `Some(_observed)` arm for the FR-016
-///   argument.
-/// - If the banner has no SAR block at all, emit at severity `Error`
-///   with no fix — inserting a new block requires byte-positioning
-///   between the SCI and AEA blocks, which the engine's single-pass
-///   architecture does not reliably support from rule-level
-///   information alone.
-struct SarBannerRollupRule;
-
-impl Rule for SarBannerRollupRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E031")
-    }
-    fn name(&self) -> &'static str {
-        "sar-banner-rollup"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::MarkingType;
-
-        // Banner / CAB markings only; portions are the input to the rollup,
-        // not the subject of it.
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
-            return vec![];
-        }
-
-        let Some(page_context) = ctx.page_context.as_ref() else {
-            return vec![];
-        };
-        let Some(expected) = page_context.expected_sar_marking() else {
-            return vec![];
-        };
-        if expected.programs.is_empty() {
-            return vec![];
-        }
-
-        // Compute the identifiers of programs missing from the
-        // observed banner. Hierarchy (compartments / sub-compartments)
-        // is deliberately NOT compared — §H.5 p101 makes
-        // banner hierarchy depth optional even when portions carry
-        // hierarchy. See the `sar_missing_programs` helper doc for
-        // the authority trail.
-        let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
-        if missing_ids.is_empty() {
-            return vec![];
-        }
-
-        const CITATION: &str = concat!(
-            "CAPCO-2016 §H.5 p101 ",
-            "(Unique SAPs contained in portion marks must always appear ",
-            "in the banner line; hierarchy depiction optional per §H.5 ",
-            "p101 + p99)",
-        );
-
-        // Sort missing identifiers per §H.5 p99 (ascending,
-        // numeric first, then alpha) so the fix output is
-        // deterministic and self-canonical for the new tail.
-        let mut sorted_missing = missing_ids.clone();
-        sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
-
-        match attrs.sar_markings.as_ref() {
-            Some(_observed) => {
-                let message = format!(
-                    "banner SAR block is missing programs present in portions: {}",
-                    sorted_missing.join(", "),
-                );
-                // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
-                // fix at the end of the block so it does not overlap
-                // with E028 (program-order, whole-block span) or E029
-                // (compartment-order, last program's span) when they
-                // fire on the same marking.
-                //
-                // Why insertion and not a whole-block rewrite: the
-                // engine's C-1 overlap guard (FR-016 + `span.end <=
-                // boundary`) drops overlapping fixes. If E031's fix
-                // were a whole-block rewrite covering the same
-                // `sar_block_span` as E028, the lexicographic rule-id
-                // tiebreaker would favor E028, silently dropping the
-                // missing-program addition. A zero-width span at the
-                // block's end byte has `span.start == block_end`, so
-                // it sorts FIRST under FR-016 (`span.start DESC`) and
-                // its `span.start` becomes the boundary; E028's
-                // subsequent `span.end == block_end` still satisfies
-                // `<= boundary` and is kept. Both fixes apply.
-                //
-                // Single-apply convergence: when E028 and E031 both
-                // fire, the first apply pass produces
-                // `<observed-sorted>/<missing-sorted>` which may not
-                // be fully canonical (the inserted missing programs
-                // are suffix-appended, not merge-sorted). A second
-                // `marque fix` pass will detect and repair that via
-                // E028 alone. Net: never loses missing programs,
-                // never overflows into E028/E029 territory, and
-                // converges in ≤2 passes. The prior whole-block
-                // fix dropped silently in the overlap case and
-                // required 2 passes anyway — this is strictly
-                // better.
-                let Some(block) = sar_block_span(attrs) else {
-                    return vec![];
-                };
-                let insertion_span = Span::new(block.end, block.end);
-                // Replacement: `/PROG1/PROG2` — leading slash separates
-                // the inserted run from the last existing program
-                // per §H.5 p100 bullet 4 (`/` between
-                // program identifiers, no interjected spaces).
-                let replacement = format!("/{}", sorted_missing.join("/"));
-
-                vec![make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::BuiltinRule,
-                    span: insertion_span,
-                    message,
-                    citation: CITATION,
-                    // Zero-width insertion: `original` is empty to match
-                    // `span.start..span.end` being a zero-length slice.
-                    original: String::new(),
-                    replacement,
-                    confidence: 0.9,
-                    migration_ref: None,
-                })]
-            }
-            None => {
-                // No SAR block in the banner at all. Byte-positioning a new
-                // block between SCI and AEA from rule context alone is
-                // unsafe — report at Error severity with no fix and let a
-                // human place the block. The message wording describes the
-                // actual shape of the violation (a whole missing block,
-                // not a partial one) so the user isn't misled into
-                // looking for a block to edit.
-                let message = format!(
-                    "banner is missing an SAR block required by portions: \
-                     {}",
-                    sorted_missing.join(", "),
-                );
-                let span = attrs
-                    .token_spans
-                    .first()
-                    .map(|t| t.span)
-                    .unwrap_or(Span::new(0, 0));
-                vec![Diagnostic::new(
-                    self.id(),
-                    Severity::Error,
-                    span,
-                    message,
-                    CITATION,
-                    None,
-                )]
-            }
-        }
-    }
-}
-
 /// Collect program identifiers that appear in `expected` but not in
 /// `observed`.
 ///
@@ -5125,221 +4625,18 @@ impl Rule for SciSystemOrderRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E033 — SCI compartment / sub-compartment sort order
+// Rule: E033 — RETIRED in PR 3b.F (T026f)
 // ---------------------------------------------------------------------------
-
-/// Within each SCI control system, compartments must be listed in
-/// ascending sort order; within each compartment, sub-compartments must
-/// also be ascending.
-///
-/// Authority (per level):
-/// - **Compartments**: CAPCO-2016 §H.4 p61 — *"Multiple
-///   compartments within an SCI control system must be listed in
-///   ascending sort order with numbered values first followed by
-///   alphabetic values separated by a hyphen."*
-/// - **Sub-compartments**: CAPCO-2016 §H.4 p61 — *"Multiple
-///   sub-compartments must be listed in ascending sort order with
-///   numbered values first followed by alphabetic values separated by
-///   a space."*
-///
-/// The general §A.6 p15 restates both in one sentence; §H.4's
-/// per-level sentences are the narrower citations.
-///
-/// Both mandates are "must." Unlike SAR (§H.5 p101, which
-/// makes banner hierarchy depiction optional), §H.4 contains NO
-/// optional carve-out for SCI ordering at any hierarchical level.
-///
-/// Emits **one diagnostic per out-of-order marking** (not one per level).
-/// The fix sorts compartments AND sub-compartments together in a single
-/// rewrite, matching SAR E029's shape. This guarantees:
-///
-///   * Comp-order and sub-order violations on the same marking don't
-///     produce overlapping fix spans that the engine's C-1 guard would
-///     have to drop (one would apply, the other would not, and the next
-///     lint would re-fire the dropped one).
-///   * When E032 (system-order) also fires on the same block, its
-///     whole-block span supersedes every per-marking E033 span under
-///     FR-016 ordering, and E032's all-levels fix fully normalizes —
-///     so dropping E033 is safe.
-///
-/// The diagnostic's citation string is chosen by level (compartment
-/// vs sub-compartment) so auditors land on the specific §H.4 p61
-/// sentence that applies.
-///
-/// Confidence 0.85.
-struct SciCompartmentOrderRule;
-
-impl Rule for SciCompartmentOrderRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E033")
-    }
-    fn name(&self) -> &'static str {
-        "sci-compartment-order"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        let mut out = Vec::new();
-
-        let comp_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::SciCompartment)
-            .collect();
-        let sub_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::SciSubCompartment)
-            .collect();
-
-        let mut comp_cursor = 0usize;
-        let mut sub_cursor = 0usize;
-
-        for marking in attrs.sci_markings.iter() {
-            let n_comps = marking.compartments.len();
-            let this_sub_count: usize = marking
-                .compartments
-                .iter()
-                .map(|c| c.sub_compartments.len())
-                .sum();
-
-            let comps_ok = n_comps < 2
-                || marking.compartments.windows(2).all(|w| {
-                    sar_sort_key(w[0].identifier.as_ref()) <= sar_sort_key(w[1].identifier.as_ref())
-                });
-            let subs_ok = marking.compartments.iter().all(|c| {
-                c.sub_compartments.len() < 2
-                    || c.sub_compartments
-                        .windows(2)
-                        .all(|w| sar_sort_key(w[0].as_ref()) <= sar_sort_key(w[1].as_ref()))
-            });
-
-            if comps_ok && subs_ok {
-                comp_cursor += n_comps;
-                sub_cursor += this_sub_count;
-                continue;
-            }
-
-            // Span covers the whole compartment+sub-compartment region
-            // for this marking: from the first compartment token through
-            // the last sub-compartment token (or the last compartment
-            // token when the marking has no sub-compartments).
-            //
-            // Use `.get()` defensively: if the token stream doesn't carry
-            // the expected number of SciCompartment / SciSubCompartment
-            // tokens (attrs built outside the parser, or future parser
-            // changes), skip the fix instead of panicking.
-            let this_comp_spans = if n_comps == 0 {
-                &[][..]
-            } else {
-                match comp_spans.get(comp_cursor..comp_cursor + n_comps) {
-                    Some(s) => s,
-                    None => {
-                        comp_cursor += n_comps;
-                        sub_cursor += this_sub_count;
-                        continue;
-                    }
-                }
-            };
-            let fix_start = this_comp_spans.first().map(|t| t.span.start).unwrap_or(0);
-            let fix_end = if this_sub_count > 0 {
-                sub_spans
-                    .get(sub_cursor + this_sub_count - 1)
-                    .map(|t| t.span.end)
-                    .unwrap_or_else(|| {
-                        this_comp_spans
-                            .last()
-                            .map(|t| t.span.end)
-                            .unwrap_or(fix_start)
-                    })
-            } else {
-                this_comp_spans
-                    .last()
-                    .map(|t| t.span.end)
-                    .unwrap_or(fix_start)
-            };
-            let fix_span = Span::new(fix_start, fix_end);
-
-            // Build the sorted marking: sort sub-compartments within
-            // each compartment, then sort compartments by identifier.
-            // Sub-comps ride along with their parent compartment.
-            let mut sorted_comps = marking.compartments.to_vec();
-            for c in sorted_comps.iter_mut() {
-                let mut subs = c.sub_compartments.to_vec();
-                subs.sort_by(|a, b| sar_sort_key(a.as_ref()).cmp(&sar_sort_key(b.as_ref())));
-                *c = marque_ism::SciCompartment::new(c.identifier.clone(), subs.into_boxed_slice());
-            }
-            sorted_comps.sort_by(|a, b| {
-                sar_sort_key(a.identifier.as_ref()).cmp(&sar_sort_key(b.identifier.as_ref()))
-            });
-
-            // Render this marking's compartment region (no system prefix —
-            // the span only covers compartments+subs, not the system head).
-            let render_comps = |comps: &[marque_ism::SciCompartment]| -> String {
-                let parts: Vec<String> = comps
-                    .iter()
-                    .map(|c| {
-                        if c.sub_compartments.is_empty() {
-                            c.identifier.as_ref().to_owned()
-                        } else {
-                            let mut s = c.identifier.as_ref().to_owned();
-                            for sub in c.sub_compartments.iter() {
-                                s.push(' ');
-                                s.push_str(sub.as_ref());
-                            }
-                            s
-                        }
-                    })
-                    .collect();
-                parts.join("-")
-            };
-            let original = render_comps(&marking.compartments);
-            let replacement = render_comps(&sorted_comps);
-
-            let (level, citation) = if !comps_ok {
-                (
-                    "compartments",
-                    concat!(
-                        "CAPCO-2016 §H.4 p61 ",
-                        "(SCI compartments: ascending, numeric first, then alpha)",
-                    ),
-                )
-            } else {
-                (
-                    "sub-compartments",
-                    concat!(
-                        "CAPCO-2016 §H.4 p61 ",
-                        "(SCI sub-compartments: ascending, numeric first, ",
-                        "then alpha)",
-                    ),
-                )
-            };
-
-            out.push(make_fix_diagnostic(FixDiagnosticParams {
-                rule: self.id(),
-                severity: self.default_severity(),
-                source: FixSource::BuiltinRule,
-                span: fix_span,
-                message: format!(
-                    "SCI {level} must be listed in ascending order (numeric first, \
-                     then alphabetic)"
-                ),
-                citation,
-                original,
-                replacement,
-                confidence: 0.85,
-                migration_ref: None,
-            }));
-
-            comp_cursor += n_comps;
-            sub_cursor += this_sub_count;
-        }
-
-        out
-    }
-}
+//
+// PR 3b.F (T026f): retired into the non-canonical input walker
+// `DeclarativeNonCanonicalInputRule` (rule ID `E060`) as catalog row
+// `non-canonical/sci-compartment-numeric-then-alpha` (§H.4 p61). The
+// walker's row preserves per-marking emit semantics (one diagnostic
+// per out-of-order marking, not per level) and the two-citation
+// parenthetical (compartment-level vs sub-compartment-level) inside
+// the row's evaluator. Diagnostic.rule is `E060`; per-row
+// identification flows via the diagnostic message text. See
+// `crate::rules_declarative::DeclarativeNonCanonicalInputRule`.
 
 // ---------------------------------------------------------------------------
 // Rule: W034 — SCI custom-control audit visibility
@@ -5416,196 +4713,28 @@ impl Rule for SciCustomControlInfoRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E035 — SCI banner rollup
-// ---------------------------------------------------------------------------
-
-/// The banner's SCI block must contain every control system,
-/// compartment, AND sub-compartment that appears in any portion marking
-/// on the same page.
-///
-/// Authority: CAPCO-2016 §H.4 per-system "Precedence Rules for Banner
-/// Line Guidance" — *"All unique SCI markings contained in the portion
-/// marks must always appear in the banner line."* This identical text
-/// appears in every §H.4 per-system template (18 instances total, e.g.,
-/// HCS p62 line 1397; HCS-O p64 line 1450; HCS-P p66 line 1506; SI p74
-/// line 1819; SI-G p80 line 2025; TK p85 line 2250). Supplemental
-/// authority: §D.2 p28 (general banner/portion consistency).
-///
-/// # SCI/SAR asymmetry — hierarchy required vs optional
-///
-/// Contrast with SAR's E031 (`sar-banner-rollup`): SAR explicitly makes
-/// banner hierarchy depiction OPTIONAL via §H.5 p101
-/// (*"Depicting the hierarchical structure of a SAP program below the
-/// program identifier is optional and dependent upon operational
-/// requirements"*) + §H.5 p99. E031 was narrowed in T035c-19
-/// PR-C to programs-only to honor that carve-out.
-///
-/// **No equivalent carve-out exists in §H.4 for SCI.** The
-/// per-system Precedence Rules use "All unique SCI markings ... must
-/// always appear" with no hierarchy-optional note anywhere in §H.4 or
-/// §A.6. For SCI, every compartment and sub-compartment that appears
-/// in a portion MUST appear in the banner. E035 correctly enforces
-/// this at every level; the asymmetry between E031 (programs-only)
-/// and E035 (full hierarchy) is a real source-level semantic
-/// distinction, not an inconsistency.
-///
-/// Compares the observed banner's `sci_markings` against
-/// `page_context.expected_sci_markings()`; fires on any missing system,
-/// compartment, or sub-compartment. Confidence 0.9 for the with-fix
-/// path; escalates to `Error` with no fix when the banner has no SCI
-/// block at all (byte-positioning a new block between classification
-/// and the next category from rule context alone is unsafe).
-struct SciBannerRollupRule;
-
-impl Rule for SciBannerRollupRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E035")
-    }
-    fn name(&self) -> &'static str {
-        "sci-banner-rollup"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::MarkingType;
-
-        // Portion candidates carry only their own SCI, not the page
-        // rollup — this rule applies only to banner / CAB candidates.
-        if ctx.marking_type == MarkingType::Portion {
-            return vec![];
-        }
-        let Some(page) = ctx.page_context.as_ref() else {
-            return vec![];
-        };
-
-        let expected = page_expected_sci_markings(page);
-        if expected.is_empty() {
-            // Either P4 has not landed yet (helper returns empty) or no
-            // portions have been accumulated. Either way, nothing to check.
-            return vec![];
-        }
-
-        let mut missing: Vec<String> = Vec::new();
-        for exp in expected.iter() {
-            let exp_key = sci_system_text(&exp.system);
-            let observed = attrs
-                .sci_markings
-                .iter()
-                .find(|m| sci_system_text(&m.system) == exp_key);
-            match observed {
-                None => {
-                    missing.push(format!("{} (system missing from banner)", exp_key));
-                }
-                Some(obs) => {
-                    // Compartment check: every expected compartment must
-                    // appear in the observed marking.
-                    for exp_comp in exp.compartments.iter() {
-                        let obs_comp = obs
-                            .compartments
-                            .iter()
-                            .find(|c| c.identifier == exp_comp.identifier);
-                        match obs_comp {
-                            None => {
-                                missing.push(format!(
-                                    "{}-{} (compartment missing from banner)",
-                                    exp_key,
-                                    exp_comp.identifier.as_ref()
-                                ));
-                            }
-                            Some(oc) => {
-                                for exp_sub in exp_comp.sub_compartments.iter() {
-                                    if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
-                                        missing.push(format!(
-                                            "{}-{} {} (sub-compartment missing from banner)",
-                                            exp_key,
-                                            exp_comp.identifier.as_ref(),
-                                            exp_sub.as_ref()
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if missing.is_empty() {
-            return vec![];
-        }
-
-        // Fix: replace the observed SCI block with the fully-rolled-up
-        // form. The fix span covers every SciControl block token in order.
-        let chunk_spans: Vec<&TokenSpan> = attrs
-            .token_spans
-            .iter()
-            .filter(|t| t.kind == TokenKind::SciControl)
-            .collect();
-
-        if chunk_spans.is_empty() {
-            // Banner has no SCI block at all. Byte-positioning a new
-            // block between classification and the next category from
-            // rule context alone is unsafe (requires knowing the
-            // separator offsets and the downstream block boundaries).
-            // Escalate severity and emit a diagnostic without a fix
-            // so the author inserts the block by hand.
-            return vec![Diagnostic::new(
-                self.id(),
-                Severity::Error,
-                Span::new(0, 0),
-                format!(
-                    "banner is missing an SCI block that portions require: {}",
-                    missing.join("; ")
-                ),
-                E035_CITATION,
-                None,
-            )];
-        }
-
-        let fix_start = chunk_spans.first().unwrap().span.start;
-        let fix_end = chunk_spans.last().unwrap().span.end;
-        let original: String = chunk_spans
-            .iter()
-            .map(|t| t.text.as_ref())
-            .collect::<Vec<_>>()
-            .join("/");
-        let fix_span = Span::new(fix_start, fix_end);
-        let replacement = render_sci_block(&expected);
-
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
-            span: fix_span,
-            message: format!(
-                "banner SCI block is missing markings present in the page's \
-                 portions (systems, compartments, and/or sub-compartments): {}",
-                missing.join("; ")
-            ),
-            citation: E035_CITATION,
-            original,
-            replacement,
-            confidence: 0.9,
-            migration_ref: None,
-        })]
-    }
-}
-
 /// Citation string for E035 — shared between the with-fix and no-fix
 /// emission paths so they cannot silently diverge. References the
 /// per-system "Precedence Rules for Banner Line Guidance" template
 /// that appears in every §H.4 entry (HCS p62 is one of 18 identical
-/// instances) plus §D.2 p28 for the general banner/portion
-/// consistency invariant.
+/// instances).
+///
+/// Per T026a D13 single-citation discipline, this string carries the
+/// **operative** banner-roll-up rule for SCI only — §H.4 per-system
+/// precedence. §D.2 p28 (CAPCO-2016 lines 577–579) restates the same
+/// banner/portion consistency invariant in general-algorithm prose;
+/// the spec wording in
+/// `specs/006-engine-rule-refactor/tasks.md` T026a explicitly directs
+/// background §-references to row documentation rather than the
+/// citation string ("§D.2 is general-algorithm prose (per-category
+/// citations are tighter and verifiable per Constitution VIII)").
+/// The §D.2 background pointer therefore lives on the SCI evaluator's
+/// doc comment, not here.
 const E035_CITATION: &str = concat!(
     "CAPCO-2016 §H.4 per-system \"Precedence Rules for Banner Line ",
-    "Guidance\" (e.g. HCS p62, SI p74, TK p85) + §D.2 p28 (general ",
-    "banner/portion consistency). All unique SCI markings in portions ",
-    "must appear in the banner line; unlike SAR, SCI has no ",
-    "hierarchy-optional carve-out.",
+    "Guidance\" (e.g. HCS p62, SI p74, TK p85). All unique SCI ",
+    "markings in portions must appear in the banner line; unlike ",
+    "SAR, SCI has no hierarchy-optional carve-out.",
 );
 
 // ---------------------------------------------------------------------------
@@ -5656,7 +4785,7 @@ fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking>
 /// Compute the byte span covering the full SAR block: from the start of
 /// its `SarIndicator` token through the end of the last SAR-constituent
 /// token (`SarProgram` / `SarCompartment` / `SarSubCompartment`).
-fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
+pub(crate) fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
     let mut start: Option<usize> = None;
     let mut end: Option<usize> = None;
     for tok in attrs.token_spans.iter() {
@@ -5733,7 +4862,7 @@ fn sar_program_span(
 /// Full form: `SPECIAL ACCESS REQUIRED-<PROG>[-<COMP>[ <SUB>...]]{/<PROG>...}`.
 /// The renderer preserves any compartments and sub-compartments
 /// attached to each program for either indicator form.
-fn render_sar_block(
+pub(crate) fn render_sar_block(
     indicator: marque_ism::SarIndicator,
     programs: &[marque_ism::SarProgram],
 ) -> String {
@@ -5903,145 +5032,518 @@ impl Rule for NodisExdisClearsBannerRelToRule {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule: E040 — Banner must roll up NODIS (or EXDIS if no NODIS anywhere)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// PR 3b Sub-move A — banner-roll-up walker (T026a)
+// ===========================================================================
+//
+// `BannerMatchesProjectedRule` collapses three literal banner-roll-up rules
+// (E031 SAR, E035 SCI, E040 Non-IC dissem) into a single generic walker
+// dispatched over a per-category catalog. Each row carries its own rule ID,
+// citation, severity, and `evaluate` fn — so emitted diagnostics keep the
+// historical rule IDs (E031 / E035 / E040) for audit-stream continuity and
+// the C-1 overlap-guard interaction with E028 / E029 is preserved byte-for-
+// byte. The walker's own `id()` is a bookkeeping ID (`E031`, the lowest of
+// the retiring trio); the rule loop tracks via the per-row IDs on each
+// emitted `Diagnostic`.
+//
+// Per `specs/006-engine-rule-refactor/tasks.md` T026a (D13 single-citation
+// discipline): each catalog row carries ONE operative banner-roll-up
+// CAPCO-§ citation. Background §-references are permitted in row
+// documentation but are not counted as the row's primary citation.
+//
+// The `evaluate_*` fns are verbatim moves of the bodies of the retiring
+// rules' `check` methods; the only structural change is that they take an
+// explicit `&PageContext` parameter (the marking-type and page_context
+// guards moved up to the walker's `check`).
 
-/// Fires when portions carry NODIS or EXDIS but the banner's Non-IC
-/// dissem category omits the required token.
-///
-/// Authority:
-/// - **CAPCO-2016 §H.9 p174** (NODIS): *"If NODIS is contained
-///   in any portion of a document, it must appear in the banner line."*
-/// - **CAPCO-2016 §H.9 p172** (EXDIS): *"If EXDIS is contained
-///   in any portion of a document that does not contain one or more
-///   NODIS portions, EXDIS must appear in the banner line."*
-/// - **Banner priority** (both §H.9 p172 + p174):
-///   *"NODIS has priority over EXDIS in the banner line if both NODIS
-///   and EXDIS portions are in the same document."*
-///
-/// # Required banner token
-///
-/// Derived from the page's portions:
-/// - Any portion has NODIS → banner must have NODIS.
-/// - No portion has NODIS AND any portion has EXDIS → banner must have
-///   EXDIS.
-///
-/// # Fix
-///
-/// When the banner already has a Non-IC dissem category block
-/// (`TokenKind::NonIcDissem` present in `attrs.token_spans`), emit a
-/// zero-width insertion at the end of that block adding `/NODIS` or
-/// `/EXDIS` — mirrors E031's insertion pattern so it coexists with
-/// other rules on the same span under the C-1 overlap guard.
-///
-/// When the banner has no Non-IC dissem block at all, emit at `Error`
-/// severity with no fix — inserting a new category requires
-/// byte-positioning between the IC dissem and declassify-on blocks,
-/// which the engine's single-pass architecture cannot reliably support
-/// from rule-level information alone. Same policy as E031's no-SAR-
-/// block arm and E035's no-SCI-block arm.
-struct NodisExdisBannerRollupRule;
+/// Walker that asserts the banner / CAB candidate matches the page's
+/// projected marking for each per-category roll-up. See the section header
+/// above for the design rationale.
+pub(crate) struct BannerMatchesProjectedRule;
 
-impl Rule for NodisExdisBannerRollupRule {
+impl Rule for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E040")
+        // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
+        // audit traceability.
+        RuleId::new("E031")
     }
+
     fn name(&self) -> &'static str {
-        "nodis-exdis-banner-rollup"
+        "banner-matches-projected"
     }
+
     fn default_severity(&self) -> Severity {
+        // Per-row severities take precedence on emitted diagnostics; the
+        // walker-level default severity is the strictest of the three
+        // catalog rows so a config that uses `BannerMatchesProjectedRule`
+        // as the override anchor cannot accidentally weaken any row below
+        // its authoring intent.
         Severity::Error
     }
 
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
-        use marque_ism::{MarkingType, NonIcDissem};
+        use marque_ism::MarkingType;
 
+        // Marking-type guard (≤3 branches per D13).
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
             return vec![];
         }
-
+        // Page-context guard.
         let Some(page) = ctx.page_context.as_ref() else {
             return vec![];
         };
-
-        let (expected_non_ic, _) = page.expected_non_ic_dissem();
-        let portions_have_nodis = expected_non_ic
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Nodis));
-        let portions_have_exdis = expected_non_ic
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Exdis));
-
-        // Determine what the banner MUST carry per §H.9. NODIS has
-        // priority over EXDIS; if any portion has NODIS, the banner
-        // must have NODIS even if other portions have EXDIS.
-        let required = if portions_have_nodis {
-            NonIcDissem::Nodis
-        } else if portions_have_exdis {
-            NonIcDissem::Exdis
-        } else {
-            return vec![];
-        };
-
-        let banner_has_required = attrs.non_ic_dissem.contains(&required);
-        if banner_has_required {
-            return vec![];
+        // Dispatch loop.
+        let mut diags = Vec::new();
+        for row in BANNER_CATEGORY_CATALOG {
+            diags.extend((row.evaluate)(attrs, page, row));
         }
+        diags
+    }
 
-        let required_str = required.banner_str();
-        let message = format!(
-            "banner is missing {required_str} required by portions \
-             (§H.9 roll-up rule: {required_str} in any portion must \
-             appear in the banner)"
-        );
-        const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
+    /// Catalog (id, name) pairs the walker emits on diagnostics beyond
+    /// its registered `id()` / `name()`. Required by the engine's
+    /// `canonicalize_rule_overrides` path so a `.marque.toml`
+    /// configuring `E035 = "warn"` (or `sci-banner-rollup = "warn"`,
+    /// the historical name from the retired `SciBannerRollupRule`) is
+    /// accepted at engine construction.
+    ///
+    /// Each pair is self-canonical: the catalog ID maps to itself, the
+    /// catalog name maps to the catalog ID. This keeps per-row override
+    /// scope independent of the walker's bookkeeping ID. The historical
+    /// names (`sar-banner-rollup`, `sci-banner-rollup`,
+    /// `nodis-exdis-banner-rollup`) match the retired rules' `name()`
+    /// values so existing configs that used the name form keep working
+    /// across the T026a refactor.
+    fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
+        &[
+            ("E031", "sar-banner-rollup"),
+            ("E035", "sci-banner-rollup"),
+            ("E040", "nodis-exdis-banner-rollup"),
+        ]
+    }
+}
 
-        // Fix: if banner has at least one Non-IC dissem token, emit a
-        // zero-width insertion at the end of that category block
-        // appending `/<required>`. Otherwise, no-fix Error.
-        let last_non_ic_span = attrs
-            .token_spans
+/// One catalog row per banner-roll-up category. Ordering of rows controls
+/// only the order of emitted diagnostics for a single banner candidate; it
+/// does not affect correctness.
+struct BannerCategoryRow {
+    /// Rule ID emitted on diagnostics from this row. Distinct from the
+    /// walker's own `RuleId`, which is bookkeeping only — the audit
+    /// stream and the FR-016 overlap-guard tiebreaker both key on the
+    /// per-row ID.
+    rule_id: RuleId,
+    /// Per-row default severity. The walker copies this onto each emitted
+    /// `Diagnostic`; the engine's severity-override layer can downgrade
+    /// or upgrade per the user's `.marque.toml`.
+    severity: Severity,
+    /// Pure function returning the diagnostics this row produces for
+    /// the given banner attributes and page projection. Implemented as a
+    /// fn pointer so the catalog can be a `const`.
+    evaluate: fn(&CanonicalAttrs, &marque_ism::PageContext, &BannerCategoryRow) -> Vec<Diagnostic>,
+}
+
+const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
+    // SAR — §H.5 p101: "Unique SAPs contained in portion marks must
+    // always appear in the banner line." Banner hierarchy depiction
+    // (compartments / sub-compartments) is optional per §H.5 p101 +
+    // p99; the walker matches by program identifier only. Severity
+    // `Fix` because the with-block case has a deterministic zero-width
+    // insertion fix; the no-block case escalates to `Error` inside the
+    // evaluator (banner-positioning a new SAR block from rule context
+    // alone is unsafe).
+    BannerCategoryRow {
+        rule_id: RuleId::new("E031"),
+        severity: Severity::Fix,
+        evaluate: evaluate_sar_banner_rollup,
+    },
+    // SCI — per-system "Precedence Rules for Banner Line Guidance" in
+    // §H.4 (e.g. HCS p62, SI p74, TK p85; one of 18 identical
+    // instances): "All unique SCI markings contained in the portion
+    // marks must always appear in the banner line." Unlike SAR, §H.4
+    // contains no hierarchy-optional carve-out, so compartments and
+    // sub-compartments are also rolled up.
+    BannerCategoryRow {
+        rule_id: RuleId::new("E035"),
+        severity: Severity::Error,
+        evaluate: evaluate_sci_banner_rollup,
+    },
+    // Non-IC dissem — §H.9 p174 (NODIS) and §H.9 p172 (EXDIS): NODIS
+    // takes priority over EXDIS, and either token, if present in any
+    // portion, must roll up to the banner. Both passages are the
+    // operative supersession-and-roll-up rule for this category.
+    BannerCategoryRow {
+        rule_id: RuleId::new("E040"),
+        severity: Severity::Error,
+        evaluate: evaluate_non_ic_dissem_banner_rollup,
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Per-row evaluators
+// ---------------------------------------------------------------------------
+
+/// SAR banner roll-up evaluator. Verbatim move of the body of
+/// `SarBannerRollupRule::check`, parameterized over the page projection
+/// and the catalog row (so the row supplies the rule ID + severity).
+///
+/// Authority: CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion
+/// marks must always appear in the banner line; hierarchy depiction
+/// optional per §H.5 p101 + p99).
+fn evaluate_sar_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page_context: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    let Some(expected) = page_context.expected_sar_marking() else {
+        return vec![];
+    };
+    if expected.programs.is_empty() {
+        return vec![];
+    }
+
+    // Compute the identifiers of programs missing from the
+    // observed banner. Hierarchy (compartments / sub-compartments)
+    // is deliberately NOT compared — §H.5 p101 makes
+    // banner hierarchy depth optional even when portions carry
+    // hierarchy. See the `sar_missing_programs` helper doc for
+    // the authority trail.
+    let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+    if missing_ids.is_empty() {
+        return vec![];
+    }
+
+    const CITATION: &str = concat!(
+        "CAPCO-2016 §H.5 p101 ",
+        "(Unique SAPs contained in portion marks must always appear ",
+        "in the banner line; hierarchy depiction optional per §H.5 ",
+        "p101 + p99)",
+    );
+
+    // Sort missing identifiers per §H.5 p99 (ascending,
+    // numeric first, then alpha) so the fix output is
+    // deterministic and self-canonical for the new tail.
+    let mut sorted_missing = missing_ids.clone();
+    sorted_missing.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
+
+    match attrs.sar_markings.as_ref() {
+        Some(_observed) => {
+            let message = format!(
+                "banner SAR block is missing programs present in portions: {}",
+                sorted_missing.join(", "),
+            );
+            // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
+            // fix at the end of the block so it does not overlap
+            // with E028 (program-order, whole-block span) or E029
+            // (compartment-order, last program's span) when they
+            // fire on the same marking.
+            //
+            // Why insertion and not a whole-block rewrite: the
+            // engine's C-1 overlap guard (FR-016 + `span.end <=
+            // boundary`) drops overlapping fixes. If E031's fix
+            // were a whole-block rewrite covering the same
+            // `sar_block_span` as E028, the lexicographic rule-id
+            // tiebreaker would favor E028, silently dropping the
+            // missing-program addition. A zero-width span at the
+            // block's end byte has `span.start == block_end`, so
+            // it sorts FIRST under FR-016 (`span.start DESC`) and
+            // its `span.start` becomes the boundary; E028's
+            // subsequent `span.end == block_end` still satisfies
+            // `<= boundary` and is kept. Both fixes apply.
+            //
+            // Single-apply convergence: when E028 and E031 both
+            // fire, the first apply pass produces
+            // `<observed-sorted>/<missing-sorted>` which may not
+            // be fully canonical (the inserted missing programs
+            // are suffix-appended, not merge-sorted). A second
+            // `marque fix` pass will detect and repair that via
+            // E028 alone. Net: never loses missing programs,
+            // never overflows into E028/E029 territory, and
+            // converges in ≤2 passes. The prior whole-block
+            // fix dropped silently in the overlap case and
+            // required 2 passes anyway — this is strictly
+            // better.
+            let Some(block) = sar_block_span(attrs) else {
+                return vec![];
+            };
+            let insertion_span = Span::new(block.end, block.end);
+            // Replacement: `/PROG1/PROG2` — leading slash separates
+            // the inserted run from the last existing program
+            // per §H.5 p100 bullet 4 (`/` between
+            // program identifiers, no interjected spaces).
+            let replacement = format!("/{}", sorted_missing.join("/"));
+
+            vec![make_fix_diagnostic(FixDiagnosticParams {
+                rule: row.rule_id.clone(),
+                severity: row.severity,
+                source: FixSource::BuiltinRule,
+                span: insertion_span,
+                message,
+                citation: CITATION,
+                // Zero-width insertion: `original` is empty to match
+                // `span.start..span.end` being a zero-length slice.
+                original: String::new(),
+                replacement,
+                confidence: 0.9,
+                migration_ref: None,
+            })]
+        }
+        None => {
+            // No SAR block in the banner at all. Byte-positioning a new
+            // block between SCI and AEA from rule context alone is
+            // unsafe — report at Error severity with no fix and let a
+            // human place the block. The message wording describes the
+            // actual shape of the violation (a whole missing block,
+            // not a partial one) so the user isn't misled into
+            // looking for a block to edit.
+            let message = format!(
+                "banner is missing an SAR block required by portions: \
+                 {}",
+                sorted_missing.join(", "),
+            );
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            vec![Diagnostic::new(
+                row.rule_id.clone(),
+                Severity::Error,
+                span,
+                message,
+                CITATION,
+                None,
+            )]
+        }
+    }
+}
+
+/// SCI banner roll-up evaluator. Verbatim move of the body of
+/// `SciBannerRollupRule::check`, parameterized over the page projection
+/// and the catalog row.
+///
+/// **Operative authority**: CAPCO-2016 §H.4 per-system "Precedence
+/// Rules for Banner Line Guidance" template (HCS p62, SI p74, TK p85,
+/// …) — *"All unique SCI markings contained in the portion marks must
+/// always appear in the banner line."* Unlike SAR (§H.5 p101), SCI
+/// has no hierarchy-optional carve-out: compartments and
+/// sub-compartments roll up too.
+///
+/// **Background**: §D.2 p28 (CAPCO-2016 lines 577–579) restates the
+/// same banner/portion consistency invariant in general-algorithm
+/// prose. Per T026a D13 single-citation discipline (and
+/// `specs/006-engine-rule-refactor/tasks.md` T026a wording — *"§D.2
+/// is general-algorithm prose (per-category citations are tighter and
+/// verifiable per Constitution VIII)"*), §D.2 is a background pointer
+/// only and is deliberately NOT included in `E035_CITATION`. The
+/// per-category §H.4 reference is the row's primary citation.
+fn evaluate_sci_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    let expected = page_expected_sci_markings(page);
+    if expected.is_empty() {
+        // Either P4 has not landed yet (helper returns empty) or no
+        // portions have been accumulated. Either way, nothing to check.
+        return vec![];
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for exp in expected.iter() {
+        let exp_key = sci_system_text(&exp.system);
+        let observed = attrs
+            .sci_markings
             .iter()
-            .filter(|t| t.kind == TokenKind::NonIcDissem)
-            .map(|t| t.span)
-            .next_back();
-
-        match last_non_ic_span {
-            Some(last_span) => {
-                let insertion = Span::new(last_span.end, last_span.end);
-                let replacement = format!("/{required_str}");
-                vec![make_fix_diagnostic(FixDiagnosticParams {
-                    rule: self.id(),
-                    severity: self.default_severity(),
-                    source: FixSource::BuiltinRule,
-                    span: insertion,
-                    message,
-                    citation: CITATION,
-                    original: String::new(),
-                    replacement,
-                    confidence: 0.9,
-                    migration_ref: None,
-                })]
-            }
+            .find(|m| sci_system_text(&m.system) == exp_key);
+        match observed {
             None => {
-                // No Non-IC dissem block in banner at all. Byte-
-                // positioning a new block requires separator offsets
-                // the rule cannot safely supply. No fix.
-                let span = attrs
-                    .token_spans
-                    .first()
-                    .map(|t| t.span)
-                    .unwrap_or(Span::new(0, 0));
-                vec![Diagnostic::new(
-                    self.id(),
-                    Severity::Error,
-                    span,
-                    message,
-                    CITATION,
-                    None,
-                )]
+                missing.push(format!("{} (system missing from banner)", exp_key));
             }
+            Some(obs) => {
+                // Compartment check: every expected compartment must
+                // appear in the observed marking.
+                for exp_comp in exp.compartments.iter() {
+                    let obs_comp = obs
+                        .compartments
+                        .iter()
+                        .find(|c| c.identifier == exp_comp.identifier);
+                    match obs_comp {
+                        None => {
+                            missing.push(format!(
+                                "{}-{} (compartment missing from banner)",
+                                exp_key,
+                                exp_comp.identifier.as_ref()
+                            ));
+                        }
+                        Some(oc) => {
+                            for exp_sub in exp_comp.sub_compartments.iter() {
+                                if !oc.sub_compartments.iter().any(|s| s == exp_sub) {
+                                    missing.push(format!(
+                                        "{}-{} {} (sub-compartment missing from banner)",
+                                        exp_key,
+                                        exp_comp.identifier.as_ref(),
+                                        exp_sub.as_ref()
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if missing.is_empty() {
+        return vec![];
+    }
+
+    // Fix: replace the observed SCI block with the fully-rolled-up
+    // form. The fix span covers every SciControl block token in order.
+    let chunk_spans: Vec<&TokenSpan> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::SciControl)
+        .collect();
+
+    if chunk_spans.is_empty() {
+        // Banner has no SCI block at all. Byte-positioning a new
+        // block between classification and the next category from
+        // rule context alone is unsafe (requires knowing the
+        // separator offsets and the downstream block boundaries).
+        // Escalate severity and emit a diagnostic without a fix
+        // so the author inserts the block by hand.
+        return vec![Diagnostic::new(
+            row.rule_id.clone(),
+            Severity::Error,
+            Span::new(0, 0),
+            format!(
+                "banner is missing an SCI block that portions require: {}",
+                missing.join("; ")
+            ),
+            E035_CITATION,
+            None,
+        )];
+    }
+
+    let fix_start = chunk_spans.first().unwrap().span.start;
+    let fix_end = chunk_spans.last().unwrap().span.end;
+    let original: String = chunk_spans
+        .iter()
+        .map(|t| t.text.as_ref())
+        .collect::<Vec<_>>()
+        .join("/");
+    let fix_span = Span::new(fix_start, fix_end);
+    let replacement = render_sci_block(&expected);
+
+    vec![make_fix_diagnostic(FixDiagnosticParams {
+        rule: row.rule_id.clone(),
+        severity: row.severity,
+        source: FixSource::BuiltinRule,
+        span: fix_span,
+        message: format!(
+            "banner SCI block is missing markings present in the page's \
+             portions (systems, compartments, and/or sub-compartments): {}",
+            missing.join("; ")
+        ),
+        citation: E035_CITATION,
+        original,
+        replacement,
+        confidence: 0.9,
+        migration_ref: None,
+    })]
+}
+
+/// Non-IC dissem banner roll-up evaluator. Verbatim move of the body of
+/// `NodisExdisBannerRollupRule::check`, parameterized over the page
+/// projection and the catalog row.
+///
+/// Authority: CAPCO-2016 §H.9 p174 (NODIS) + §H.9 p172 (EXDIS) — NODIS
+/// has priority over EXDIS in the banner; either token, if present in
+/// any portion, must roll up. The single operative supersession-and-
+/// roll-up rule.
+fn evaluate_non_ic_dissem_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::PageContext,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic> {
+    use marque_ism::NonIcDissem;
+
+    let (expected_non_ic, _) = page.expected_non_ic_dissem();
+    let portions_have_nodis = expected_non_ic
+        .iter()
+        .any(|d| matches!(d, NonIcDissem::Nodis));
+    let portions_have_exdis = expected_non_ic
+        .iter()
+        .any(|d| matches!(d, NonIcDissem::Exdis));
+
+    // Determine what the banner MUST carry per §H.9. NODIS has
+    // priority over EXDIS; if any portion has NODIS, the banner
+    // must have NODIS even if other portions have EXDIS.
+    let required = if portions_have_nodis {
+        NonIcDissem::Nodis
+    } else if portions_have_exdis {
+        NonIcDissem::Exdis
+    } else {
+        return vec![];
+    };
+
+    let banner_has_required = attrs.non_ic_dissem.contains(&required);
+    if banner_has_required {
+        return vec![];
+    }
+
+    let required_str = required.banner_str();
+    let message = format!(
+        "banner is missing {required_str} required by portions \
+         (§H.9 roll-up rule: {required_str} in any portion must \
+         appear in the banner)"
+    );
+    const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
+
+    // Fix: if banner has at least one Non-IC dissem token, emit a
+    // zero-width insertion at the end of that category block
+    // appending `/<required>`. Otherwise, no-fix Error.
+    let last_non_ic_span = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::NonIcDissem)
+        .map(|t| t.span)
+        .next_back();
+
+    match last_non_ic_span {
+        Some(last_span) => {
+            let insertion = Span::new(last_span.end, last_span.end);
+            let replacement = format!("/{required_str}");
+            vec![make_fix_diagnostic(FixDiagnosticParams {
+                rule: row.rule_id.clone(),
+                severity: row.severity,
+                source: FixSource::BuiltinRule,
+                span: insertion,
+                message,
+                citation: CITATION,
+                original: String::new(),
+                replacement,
+                confidence: 0.9,
+                migration_ref: None,
+            })]
+        }
+        None => {
+            // No Non-IC dissem block in banner at all. Byte-
+            // positioning a new block requires separator offsets
+            // the rule cannot safely supply. No fix.
+            let span = attrs
+                .token_spans
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(Span::new(0, 0));
+            vec![Diagnostic::new(
+                row.rule_id.clone(),
+                Severity::Error,
+                span,
+                message,
+                CITATION,
+                None,
+            )]
         }
     }
 }
@@ -6207,41 +5709,135 @@ mod tests {
         assert!(!ids.contains(&"E017"), "E017 retired in T035b");
         assert!(!ids.contains(&"E018"), "E018 retired in T035b");
         assert!(!ids.contains(&"E019"), "E019 retired in T035b");
-        assert!(ids.contains(&"E020"));
+        // PR 3b.F (T026f): E020 / E023 / E028 / E033 retired into the
+        // non-canonical input walker `DeclarativeNonCanonicalInputRule`
+        // (rule ID `E060`). Diagnostics emit with `Diagnostic.rule = "E060"`;
+        // per-row identification flows via the diagnostic message text.
+        assert!(
+            !ids.contains(&"E020"),
+            "E020 retired in PR 3b.F into the E060 non-canonical input walker"
+        );
         assert!(ids.contains(&"E021"));
-        assert!(ids.contains(&"E022"));
-        assert!(ids.contains(&"E023"));
+        // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), E027 (SAR
+        // classification) retired into the class-floor catalog walker
+        // `DeclarativeClassFloorRule` (rule ID `E058`). Replacement
+        // catalog row names use the walker-prefixed form
+        // (`E058/CNWDI-classification-floor`,
+        // `E058/DOD-UCNI-classification-ceiling`,
+        // `E058/DOE-UCNI-classification-ceiling`,
+        // `E058/SAR-classification-floor`); the legacy E### IDs are
+        // NOT preserved (per project memory
+        // `feedback_pre_users_no_deprecation_phasing.md`: marque is
+        // pre-users — no severity-config back-compat). All catalog
+        // diagnostics carry `Diagnostic.rule = "E058"`; per-row
+        // identification flows via the diagnostic message text.
+        // `.marque.toml` keys must use `E058` (walker-level), not the
+        // retired E022/E025/E027 IDs.
+        assert!(
+            !ids.contains(&"E022"),
+            "E022 retired in PR 3b.D into E058 catalog"
+        );
+        assert!(
+            !ids.contains(&"E023"),
+            "E023 retired in PR 3b.F into the E060 non-canonical input walker"
+        );
         assert!(ids.contains(&"E024"));
-        assert!(ids.contains(&"E025"));
+        assert!(
+            !ids.contains(&"E025"),
+            "E025 retired in PR 3b.D into E058 catalog"
+        );
         assert!(ids.contains(&"W003"));
         assert!(ids.contains(&"C001"));
         assert!(ids.contains(&"E026"));
-        assert!(ids.contains(&"E027"));
-        assert!(ids.contains(&"E028"));
+        assert!(
+            !ids.contains(&"E027"),
+            "E027 retired in PR 3b.D into E058 catalog"
+        );
+        assert!(
+            !ids.contains(&"E028"),
+            "E028 retired in PR 3b.F into the E060 non-canonical input walker"
+        );
         assert!(ids.contains(&"E029"));
         assert!(ids.contains(&"E030"));
+        // E031 is the bookkeeping ID of `BannerMatchesProjectedRule`
+        // (PR 3b Sub-move A walker, T026a). The walker emits diagnostics
+        // with per-row IDs (E031 SAR, E035 SCI, E040 Non-IC dissem) for
+        // audit-stream continuity, but registers under E031 only — the
+        // lowest-numeric of the retiring trio. E035 and E040 are therefore
+        // NOT in the registered-rule-ID set after T026a. The per-row IDs
+        // are surface-tested via the walker's emitted diagnostics (see
+        // `crates/capco/tests/banner_rollup_walker.rs`).
         assert!(ids.contains(&"E031"));
         assert!(ids.contains(&"E032"));
-        assert!(ids.contains(&"E033"));
+        assert!(
+            !ids.contains(&"E033"),
+            "E033 retired in PR 3b.F into the E060 non-canonical input walker"
+        );
         assert!(ids.contains(&"W034"));
-        assert!(ids.contains(&"E035"));
+        assert!(
+            !ids.contains(&"E035"),
+            "E035 retired as a registered rule ID by T026a; now emitted \
+             as a per-row catalog ID by BannerMatchesProjectedRule"
+        );
         assert!(ids.contains(&"E036"));
         assert!(ids.contains(&"E037"));
         assert!(ids.contains(&"E038"));
         assert!(ids.contains(&"E039"));
-        assert!(ids.contains(&"E040"));
+        assert!(
+            !ids.contains(&"E040"),
+            "E040 retired as a registered rule ID by T026a; now emitted \
+             as a per-row catalog ID by BannerMatchesProjectedRule"
+        );
         assert!(ids.contains(&"E041"));
         assert!(ids.contains(&"S003"));
-        assert!(ids.contains(&"E042"));
-        assert!(ids.contains(&"E043"));
-        assert!(ids.contains(&"E044"));
-        assert!(ids.contains(&"E045"));
-        assert!(ids.contains(&"E046"));
-        assert!(ids.contains(&"E047"));
-        assert!(ids.contains(&"E048"));
-        assert!(ids.contains(&"E049"));
-        assert!(ids.contains(&"E050"));
-        assert!(ids.contains(&"E051"));
+        // PR 3b.E (T026e): E042–E051 retired into the SCI per-system
+        // catalog walker `DeclarativeSciPerSystemRule` (rule ID E059).
+        // Per-row identification flows via the catalog row's `name`
+        // (`sci-per-system/<purpose>`) into the diagnostic message text.
+        assert!(
+            !ids.contains(&"E042"),
+            "E042 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E043"),
+            "E043 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E044"),
+            "E044 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E045"),
+            "E045 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E046"),
+            "E046 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E047"),
+            "E047 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E048"),
+            "E048 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E049"),
+            "E049 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E050"),
+            "E050 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            !ids.contains(&"E051"),
+            "E051 retired in PR 3b.E into the E059 SCI per-system walker"
+        );
+        assert!(
+            ids.contains(&"E059"),
+            "E059 added in PR 3b.E as the SCI per-system catalog walker"
+        );
         assert!(ids.contains(&"E052"));
         // T035b: retired 3 rules (E017/E018/E019), added 1 (E036).
         // Net count pre-T035c-1b: 39 - 3 + 1 = 37.
@@ -6261,8 +5857,7 @@ mod tests {
         // lists. Net: 44.
         // T035d: added 10 per-SCI-system constraint rules (E042–E051)
         // covering §H.4 class ceilings and required-companion
-        // constraints under the fix-and-warn pattern. See
-        // `rules_sci_per_system` module doc. Net: 44 + 10 = 54.
+        // constraints under the fix-and-warn pattern. Net: 44 + 10 = 54.
         // Issue #234 PR-B: added E052 (rel-to-no-duplicates) — the
         // structural sister of E020 (ordering) closing the §H.8
         // p150–151 list-grammar surface. Net: 55.
@@ -6280,8 +5875,35 @@ mod tests {
         // Issue #256: added E053 (noforn-rel-to-conflict), declarative
         // wrapper over the `capco/noforn-conflicts-rel-to` constraint
         // in CapcoScheme. §H.8 p145. Net: 59.
+        // T026a (PR 3b Sub-move A): collapsed three banner-roll-up
+        // rules (E031 SAR, E035 SCI, E040 Non-IC dissem) into a
+        // single `BannerMatchesProjectedRule` walker dispatched over a
+        // per-category catalog. Net delta: -2 (3 retired + 1 added).
+        // Post-T026a: 59 - 2 = 57.
+        // PR 3b.C (T026c): added E054/E055/E056/E057 RELIDO
+        // incompatibility declarative wrappers (§H.8 p154/p136/p140).
+        // PR 3b.D (T026d): retired E022/E025/E027 into the class-floor
+        // catalog walker `DeclarativeClassFloorRule` (rule ID E058).
+        // Net: 61 (post-3b.C) − 3 retired + 1 walker = 59.
+        // PR 3b.E (T026e): retired E042–E051 (10 rules) into the SCI
+        // per-system catalog walker `DeclarativeSciPerSystemRule`
+        // (rule ID E059). Net: 59 − 10 + 1 = 50.
         assert!(ids.contains(&"E053"));
-        assert_eq!(set.rules().len(), 59);
+        assert!(ids.contains(&"E054"));
+        assert!(ids.contains(&"E055"));
+        assert!(ids.contains(&"E056"));
+        assert!(ids.contains(&"E057"));
+        assert!(
+            ids.contains(&"E058"),
+            "E058 added in PR 3b.D as the class-floor catalog walker"
+        );
+        // PR 3b.F (T026f): added the E060 non-canonical input walker.
+        // Net: 50 - 4 retired (E020/E023/E028/E033) + 1 walker = 47.
+        assert!(
+            ids.contains(&"E060"),
+            "E060 added in PR 3b.F as the non-canonical input walker"
+        );
+        assert_eq!(set.rules().len(), 47);
     }
 
     #[test]
@@ -6491,14 +6113,15 @@ mod tests {
         assert_eq!(fixed, "USA, DEU, FRA");
 
         // Round 2: feed the canonicalized REL TO back through the linter;
-        // neither E002 nor E020 should fire on the rewritten banner.
+        // neither E002 nor the E060 walker (REL TO row) should fire on
+        // the rewritten banner.
         let round2_banner = format!("CONFIDENTIAL//REL TO {fixed}");
         let diags_round2 = lint_banner(&round2_banner);
         assert!(
             diags_round2
                 .iter()
-                .all(|d| d.rule.as_str() != "E002" && d.rule.as_str() != "E020"),
-            "E002's canonical output must not fire E002 or E020: {diags_round2:?}"
+                .all(|d| d.rule.as_str() != "E002" && d.rule.as_str() != "E060"),
+            "E002's canonical output must not fire E002 or E060: {diags_round2:?}"
         );
     }
 
@@ -7592,25 +7215,34 @@ mod tests {
     }
 
     #[test]
-    fn s003_and_e020_both_fire_when_list_is_neither_alpha_nor_usa_first() {
+    fn s003_and_e060_both_fire_when_list_is_neither_alpha_nor_usa_first() {
         // Input `GBR USA AUS`: neither pure alpha (G before A wrong,
-        // U > A) nor USA-first. Both E020 and S003 want to fire. The
-        // two fixes target the same Classification token span with
-        // different replacements. FR-016's rule-id tiebreaker (`E020`
-        // < `S003` lex) means E020 wins the overlap guard and
-        // applies. Re-linting would then see pure-alpha `AUS GBR USA`
-        // and S003 fires again.
+        // U > A) nor USA-first. Both E060 (non-canonical input
+        // walker, JOINT row) and S003 want to fire. The two fixes
+        // target the same Classification token span with different
+        // replacements. FR-016's rule-id tiebreaker (`E060` < `S003`
+        // lex, since `'E' < 'S'`) means E060 wins the overlap guard
+        // and applies. Re-linting would then see pure-alpha `AUS GBR
+        // USA` and S003 fires again.
+        //
+        // (Pre-PR-3b.F this test asserted E020 in the same role; the
+        // walker preserved the same fix shape, citation, and
+        // tiebreaker behavior, so the canonical output is byte-
+        // identical and only the rule-ID literal changed.)
         //
         // This test locks that BOTH rules fire on first-pass lint
         // (before the overlap guard) — so the user can see both the
         // alpha violation and the convention violation.
         let diags = lint_banner("//JOINT S GBR USA AUS");
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        let e060_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
+            .collect();
         let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
         assert_eq!(
-            e020.len(),
+            e060_joint.len(),
             1,
-            "E020 must fire on non-alpha JOINT: {diags:?}"
+            "E060 (JOINT row) must fire on non-alpha JOINT: {diags:?}"
         );
         assert_eq!(
             s003.len(),
@@ -9661,15 +9293,18 @@ mod tests {
         );
     }
 
-    // --- E020: Country code ordering ---
+    // --- E020 retired in PR 3b.F (T026f) → E060 walker (REL TO row +
+    // JOINT row). Tests preserved verbatim with rule-ID literal
+    // updated `E020` → `E060`; behavior + message text + fix shape
+    // are byte-identical to the retired rule. ---
 
     #[test]
     fn e020_fires_on_unordered_rel_to() {
         // GBR before AUS — should be USA, AUS, GBR.
         let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
-        assert_eq!(e020.len(), 1);
-        let fix = e020[0].fix.as_ref().expect("E020 must have fix");
+        let e060: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E060").collect();
+        assert_eq!(e060.len(), 1);
+        let fix = e060[0].fix.as_ref().expect("E060 (REL TO) must have fix");
         assert_eq!(fix.replacement.as_ref(), "USA, AUS, GBR");
         assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
     }
@@ -9678,8 +9313,8 @@ mod tests {
     fn e020_does_not_fire_on_ordered_rel_to() {
         let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E020"),
-            "E020 should not fire on correctly ordered list: {diags:?}"
+            diags.iter().all(|d| d.rule.as_str() != "E060"),
+            "E060 (REL TO row) should not fire on correctly ordered list: {diags:?}"
         );
     }
 
@@ -9687,10 +9322,13 @@ mod tests {
     fn e020_fires_on_unordered_joint_countries() {
         // GBR before AUS in JOINT list.
         let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        let e060_joint: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
+            .collect();
         assert!(
-            !e020.is_empty(),
-            "E020 should fire on unordered JOINT countries: {diags:?}"
+            !e060_joint.is_empty(),
+            "E060 (JOINT row) should fire on unordered JOINT countries: {diags:?}"
         );
     }
 
@@ -9702,40 +9340,44 @@ mod tests {
     #[test]
     fn e020_suppresses_fix_on_multiple_rel_to_blocks() {
         // USA, GBR, AUS is unordered (alphabetical after USA should be
-        // AUS, GBR). With two RelToBlocks, E020 must still report the
-        // ordering problem but MUST NOT carry a FixProposal — a single
-        // first→last splice across the two blocks would delete the
-        // intervening `//NF//` content.
+        // AUS, GBR). With two RelToBlocks, E060 (REL TO row) must
+        // still report the ordering problem but MUST NOT carry a
+        // FixProposal — a single first→last splice across the two
+        // blocks would delete the intervening `//NF//` content.
         let src = "SECRET//REL TO USA, GBR//NF//REL TO AUS";
         let diags = lint_banner(src);
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
+        let e060: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("REL TO"))
+            .collect();
         assert_eq!(
-            e020.len(),
+            e060.len(),
             1,
-            "E020 must still fire (diagnostic present): {diags:?}"
+            "E060 (REL TO row) must still fire (diagnostic present): {diags:?}"
         );
         assert!(
-            e020[0].fix.is_none(),
-            "E020 must NOT carry a fix when multiple REL TO blocks \
+            e060[0].fix.is_none(),
+            "E060 (REL TO row) must NOT carry a fix when multiple REL TO blocks \
              are present (cross-block splice would delete intervening \
-             `//NF//`): {e020:?}"
+             `//NF//`): {e060:?}"
         );
         assert!(
-            e020[0].message.contains("multiple REL TO blocks"),
+            e060[0].message.contains("multiple REL TO blocks"),
             "suppression message must explain why no fix is offered: {}",
-            e020[0].message
+            e060[0].message
         );
     }
 
     #[test]
     fn e020_silent_on_ordered_list_across_multiple_rel_to_blocks() {
-        // USA, AUS, GBR is already canonical; E020 must not fire even
-        // when the canonical list is split across two RelToBlocks.
+        // USA, AUS, GBR is already canonical; E060 (REL TO row) must
+        // not fire even when the canonical list is split across two
+        // RelToBlocks.
         let src = "SECRET//REL TO USA, AUS//NF//REL TO GBR";
         let diags = lint_banner(src);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E020"),
-            "E020 must not fire on canonically-ordered list, even \
+            diags.iter().all(|d| d.rule.as_str() != "E060"),
+            "E060 (REL TO row) must not fire on canonically-ordered list, even \
              across multiple REL TO blocks: {diags:?}"
         );
     }
@@ -9750,9 +9392,12 @@ mod tests {
         // happy path too.
         let src = "SECRET//REL TO USA, GBR, AUS";
         let diags = lint_banner(src);
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
-        assert_eq!(e020.len(), 1);
-        let fix = e020[0].fix.as_ref().expect("E020 must carry a fix");
+        let e060: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E060").collect();
+        assert_eq!(e060.len(), 1);
+        let fix = e060[0]
+            .fix
+            .as_ref()
+            .expect("E060 (REL TO) must carry a fix");
         // Span should cover exactly `USA, GBR, AUS` — the first→last
         // trigraph range — not leak outside.
         assert_eq!(
@@ -9917,30 +9562,36 @@ mod tests {
 
     #[test]
     fn e020_fix_output_dedups_when_input_has_duplicates() {
-        // Issue #234 PR-B fixup (Copilot review): E020's fix path
-        // must produce canonical output (USA-first + alphabetical +
-        // unique) so that when E020 and E052 both fire on the same
-        // REL TO span, FR-016's `rule_id ASC` tiebreaker drops E052
-        // and the surviving E020 fix is single-pass idempotent. This
-        // unit test isolates E020's replacement string (since
-        // `lint_banner` returns rule-only diagnostics, no engine
-        // overlap-guard interaction).
+        // Issue #234 PR-B fixup (Copilot review): the REL TO row's
+        // fix path must produce canonical output (USA-first +
+        // alphabetical + unique) so that when E060 (REL TO row) and
+        // E052 both fire on the same REL TO span, FR-016's
+        // `rule_id ASC` tiebreaker drops E052 (`E052 < E060` lex,
+        // post-PR-3b.F) — so the surviving rule is E052, but E060's
+        // fix output stays canonical for the cases where the
+        // tiebreaker resolves the other way (e.g., PR 3b.F R-1
+        // review case). This unit test isolates E060 (REL TO
+        // row)'s replacement string.
         //
-        // Input: misordered AND duplicated → both E020 and E052 fire.
-        // E020's `replacement` must be the fully canonical form, not
-        // the sorted-with-duplicates form that the pre-fixup code
-        // emitted.
+        // Input: misordered AND duplicated → both E060 (REL TO) and
+        // E052 fire. E060 (REL TO row)'s `replacement` must be the
+        // fully canonical form, not the sorted-with-duplicates form.
+        // The lex tiebreaker now resolves E052 < E060, so E052 wins
+        // the C-1 overlap guard at the engine level — see
+        // `tests/rel_to_invariants.rs` for the engine-level
+        // contract; this rule-only test just locks the row's fix
+        // output.
         let src = "SECRET//REL TO USA, GBR, AUS, GBR";
         let diags = lint_banner(src);
-        let e020_fix = diags
+        let e060_fix = diags
             .iter()
-            .find(|d| d.rule.as_str() == "E020")
+            .find(|d| d.rule.as_str() == "E060")
             .and_then(|d| d.fix.as_ref())
-            .expect("E020 must fire and carry a fix on misordered+duplicated REL TO");
+            .expect("E060 (REL TO row) must fire and carry a fix on misordered+duplicated REL TO");
         assert_eq!(
-            e020_fix.replacement.as_ref(),
+            e060_fix.replacement.as_ref(),
             "USA, AUS, GBR",
-            "E020 fix must dedup before sorting (canonical form, no duplicates)"
+            "E060 (REL TO row) fix must dedup before sorting (canonical form, no duplicates)"
         );
     }
 
@@ -9986,8 +9637,9 @@ mod tests {
         assert_eq!(deduped, expected);
     }
 
-    // T035c-18: E020 standalone audit — per-branch citation lockdown
-    // and JOINT fix-shape assertion.
+    // T035c-18: per-branch citation lockdown and JOINT fix-shape
+    // assertion. PR 3b.F (T026f) preserves these byte-identically
+    // under the E060 walker; rule-ID literal updated `E020` → `E060`.
 
     #[test]
     fn e020_joint_fix_produces_pure_alpha_ordering() {
@@ -9995,31 +9647,31 @@ mod tests {
         // no USA-first carve-out. Input `USA GBR AUS` sorts to
         // `AUS GBR USA`. The widespread IC practice of rendering USA
         // first in JOINT lists is style convention and will be owned
-        // by a follow-up S003 `joint-usa-first` rule, not encoded into
-        // E020's correctness fix.
+        // by a follow-up S003 `joint-usa-first` rule, not encoded
+        // into the E060 walker's correctness fix.
         //
-        // E020's JOINT fix span covers the full Classification token
-        // (`JOINT S USA GBR AUS`). The replacement must therefore
-        // include the `JOINT S` prefix byte-for-byte — replacing with
-        // just the country list would corrupt the marking. This test
-        // asserts the span, original, and replacement shapes together
-        // so a regression that reverts to country-list-only replacement
-        // fails here.
+        // The E060 walker's JOINT row fix span covers the full
+        // Classification token (`JOINT S USA GBR AUS`). The
+        // replacement must therefore include the `JOINT S` prefix
+        // byte-for-byte — replacing with just the country list would
+        // corrupt the marking. This test asserts the span, original,
+        // and replacement shapes together so a regression that
+        // reverts to country-list-only replacement fails here.
         let src = "//JOINT S USA GBR AUS//REL TO USA, AUS, GBR";
         let diags = lint_banner(src);
-        let e020_joint: Vec<_> = diags
+        let e060_joint: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
             .collect();
         assert_eq!(
-            e020_joint.len(),
+            e060_joint.len(),
             1,
-            "E020 must fire exactly once for JOINT: {diags:?}"
+            "E060 (JOINT row) must fire exactly once for JOINT: {diags:?}"
         );
-        let fix = e020_joint[0]
+        let fix = e060_joint[0]
             .fix
             .as_ref()
-            .expect("E020 JOINT must have fix");
+            .expect("E060 (JOINT row) must have fix");
 
         // Span must cover exactly the Classification token's bytes:
         // `JOINT S USA GBR AUS` (no leading `//`, no trailing `//`).
@@ -10069,10 +9721,10 @@ mod tests {
         // Message wording differs from REL TO: no "USA first when
         // present" clause.
         assert!(
-            !e020_joint[0].message.contains("USA first when present"),
+            !e060_joint[0].message.contains("USA first when present"),
             "JOINT message must NOT claim 'USA first' since §H.3 has \
              no such carve-out; got: {:?}",
-            e020_joint[0].message
+            e060_joint[0].message
         );
     }
 
@@ -10086,12 +9738,12 @@ mod tests {
         // marking.
         let src = "//JOINT S GBR AUS USA";
         let diags = lint_banner(src);
-        let e020_joint: Vec<_> = diags
+        let e060_joint: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
             .collect();
-        assert_eq!(e020_joint.len(), 1);
-        let fix = e020_joint[0].fix.as_ref().expect("fix expected");
+        assert_eq!(e060_joint.len(), 1);
+        let fix = e060_joint[0].fix.as_ref().expect("fix expected");
         assert_eq!(fix.replacement.as_ref(), "JOINT S AUS GBR USA");
         assert_eq!(fix.original.as_ref(), "JOINT S GBR AUS USA");
     }
@@ -10099,14 +9751,15 @@ mod tests {
     #[test]
     fn e020_joint_does_not_fire_on_pure_alpha_list() {
         // `AUS GBR USA` is the pure-alpha canonical JOINT order.
-        // E020 must stay silent even though USA is not first —
-        // firing here would re-introduce the style-as-correctness
-        // confusion the audit is correcting.
+        // E060 (JOINT row) must stay silent even though USA is not
+        // first — firing here would re-introduce the
+        // style-as-correctness confusion the audit is correcting.
         let diags = lint_banner("//JOINT S AUS GBR USA");
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E020"),
-            "E020 must not fire on pure-alpha JOINT even when USA is \
-             last (style guidance is a separate follow-up rule): {diags:?}"
+            diags.iter().all(|d| d.rule.as_str() != "E060"),
+            "E060 (JOINT row) must not fire on pure-alpha JOINT even \
+             when USA is last (style guidance is a separate follow-up \
+             rule): {diags:?}"
         );
     }
 
@@ -10121,7 +9774,7 @@ mod tests {
         let rel_to_diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
         let rel_to: Vec<_> = rel_to_diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E020")
+            .filter(|d| d.rule.as_str() == "E060")
             .collect();
         assert_eq!(rel_to.len(), 1);
         assert!(
@@ -10133,7 +9786,7 @@ mod tests {
         let joint_diags = lint_banner("//JOINT S USA GBR AUS");
         let joint: Vec<_> = joint_diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
             .collect();
         assert_eq!(joint.len(), 1);
         assert!(
@@ -10150,12 +9803,12 @@ mod tests {
         // Lock the tightened pointer so a regression to a whole-section
         // citation fails here rather than silently drifting.
         let diags = lint_banner("SECRET//REL TO USA, GBR, AUS");
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
-        assert_eq!(e020.len(), 1);
+        let e060: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E060").collect();
+        assert_eq!(e060.len(), 1);
         assert!(
-            e020[0].citation.contains("§H.8 p150"),
+            e060[0].citation.contains("§H.8 p150"),
             "REL TO citation must pin §H.8 p150; got: {:?}",
-            e020[0].citation
+            e060[0].citation
         );
     }
 
@@ -10166,20 +9819,20 @@ mod tests {
         // bare `§H.8`, which was source-incorrect for JOINT. Lock that
         // JOINT now cites its own section.
         let diags = lint_banner("//JOINT S USA GBR AUS//REL TO USA, AUS, GBR");
-        let e020_joint: Vec<_> = diags
+        let e060_joint: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E020" && d.message.contains("JOINT"))
+            .filter(|d| d.rule.as_str() == "E060" && d.message.contains("JOINT"))
             .collect();
-        assert_eq!(e020_joint.len(), 1);
+        assert_eq!(e060_joint.len(), 1);
         assert!(
-            e020_joint[0].citation.contains("§H.3 p56"),
+            e060_joint[0].citation.contains("§H.3 p56"),
             "JOINT citation must pin §H.3 p56; got: {:?}",
-            e020_joint[0].citation
+            e060_joint[0].citation
         );
         assert!(
-            !e020_joint[0].citation.contains("§H.8"),
+            !e060_joint[0].citation.contains("§H.8"),
             "JOINT citation must NOT reference §H.8 (REL TO template); got: {:?}",
-            e020_joint[0].citation
+            e060_joint[0].citation
         );
     }
 
@@ -10190,12 +9843,12 @@ mod tests {
         // has a separate citation-emission site that must also carry
         // the tightened §H.8 pp 150–151 pointer.
         let diags = lint_banner("SECRET//REL TO USA, GBR//NF//REL TO AUS");
-        let e020: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E020").collect();
-        assert_eq!(e020.len(), 1);
+        let e060: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E060").collect();
+        assert_eq!(e060.len(), 1);
         assert!(
-            e020[0].citation.contains("§H.8 p150"),
-            "multi-block E020 citation must pin §H.8 p150; got: {:?}",
-            e020[0].citation
+            e060[0].citation.contains("§H.8 p150"),
+            "multi-block REL TO citation must pin §H.8 p150; got: {:?}",
+            e060[0].citation
         );
     }
 
@@ -10224,30 +9877,46 @@ mod tests {
         assert_eq!(e021.len(), 1);
     }
 
-    // --- E022: CNWDI only with TS or S RD ---
+    // --- CNWDI floor (formerly E022, now E058 catalog row
+    // `E058/CNWDI-classification-floor`) ---
+    //
+    // PR 3b.D (T026d): the CNWDI floor invariant moved into the
+    // class-floor catalog. Diagnostic.rule is `E058` (walker bookkeeping
+    // ID); per-row identification flows via the diagnostic message text
+    // ("CNWDI requires classification ≥ ..."). These tests pin the
+    // observable behavior: fires below floor, doesn't fire at-or-above.
+
+    fn cnwdi_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("CNWDI"))
+            .collect()
+    }
 
     #[test]
     fn e022_fires_on_cnwdi_with_confidential() {
         let diags = lint_banner("CONFIDENTIAL//RD-CNWDI//NOFORN");
-        let e022: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E022").collect();
-        assert_eq!(e022.len(), 1);
+        let cnwdi = cnwdi_floor_diags(&diags);
+        assert_eq!(cnwdi.len(), 1);
     }
 
     #[test]
     fn e022_does_not_fire_on_cnwdi_with_secret() {
         let diags = lint_banner("SECRET//RD-CNWDI//NOFORN");
+        let cnwdi = cnwdi_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E022"),
-            "E022 should not fire with SECRET: {diags:?}"
+            cnwdi.is_empty(),
+            "CNWDI floor should not fire with SECRET: {diags:?}"
         );
     }
 
     #[test]
     fn e022_does_not_fire_on_cnwdi_with_top_secret() {
         let diags = lint_banner("TOP SECRET//RD-CNWDI//NOFORN");
+        let cnwdi = cnwdi_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E022"),
-            "E022 should not fire with TOP SECRET: {diags:?}"
+            cnwdi.is_empty(),
+            "CNWDI floor should not fire with TOP SECRET: {diags:?}"
         );
     }
 
@@ -10268,21 +9937,38 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E024"));
     }
 
-    // --- E025: UCNI only with UNCLASSIFIED ---
+    // --- UCNI ceiling (formerly E025, now E058 catalog rows
+    // `E058/DOD-UCNI-classification-ceiling` +
+    // `E058/DOE-UCNI-classification-ceiling`) ---
+    //
+    // PR 3b.D (T026d): the UCNI ceiling invariant moved into the
+    // class-floor catalog as TWO rows (DOD UCNI + DOE UCNI; split per
+    // PM decision so each carries its own §H.6 sub-page citation).
+    // Diagnostic.rule is `E058`; per-row identification flows via the
+    // diagnostic message text ("DOD UCNI may only be used with
+    // UNCLASSIFIED" / "DOE UCNI may only be used with UNCLASSIFIED").
+
+    fn ucni_ceiling_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("UCNI"))
+            .collect()
+    }
 
     #[test]
     fn e025_fires_on_ucni_with_secret() {
         let diags = lint_banner("SECRET//DOD UCNI");
-        let e025: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E025").collect();
-        assert_eq!(e025.len(), 1);
+        let ucni = ucni_ceiling_diags(&diags);
+        assert_eq!(ucni.len(), 1);
     }
 
     #[test]
     fn e025_does_not_fire_on_ucni_with_unclassified() {
         let diags = lint_banner("UNCLASSIFIED//DOD UCNI");
+        let ucni = ucni_ceiling_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E025"),
-            "E025 should not fire with UNCLASSIFIED: {diags:?}"
+            ucni.is_empty(),
+            "UCNI ceiling should not fire with UNCLASSIFIED: {diags:?}"
         );
     }
 
@@ -10396,55 +10082,99 @@ mod tests {
         );
     }
 
-    // --- E027: sar-classification ---
+    // --- SAR floor (formerly E027, now E058 catalog row
+    // `E058/SAR-classification-floor`) ---
+    //
+    // PR 3b.D (T026d): the SAR floor invariant moved into the class-floor
+    // catalog. Diagnostic.rule is `E058`; per-row identification flows
+    // via the diagnostic message text ("SAR requires classification ≥
+    // CONFIDENTIAL ...").
+
+    fn sar_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E058" && d.message.starts_with("SAR "))
+            .collect()
+    }
 
     #[test]
     fn e027_fires_on_unclassified_banner_with_sar() {
         let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
-        assert_eq!(e027.len(), 1, "E027 must fire on U//SAR-*: {diags:?}");
-        assert!(e027[0].fix.is_none(), "E027 requires human review, no fix");
+        let sar = sar_floor_diags(&diags);
+        assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
+        assert!(
+            sar[0].fix.is_none(),
+            "SAR floor requires human review, no fix"
+        );
     }
 
     #[test]
     fn e027_does_not_fire_on_secret_with_sar() {
         let diags = lint_banner("SECRET//SAR-BP//NOFORN");
+        let sar = sar_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E027"),
-            "E027 must not fire on SECRET//SAR-*: {diags:?}"
+            sar.is_empty(),
+            "SAR floor must not fire on SECRET//SAR-*: {diags:?}"
         );
     }
 
     #[test]
     fn e027_does_not_fire_on_top_secret_with_sar() {
         let diags = lint_banner("TOP SECRET//SAR-BP//NOFORN");
+        let sar = sar_floor_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E027"),
-            "E027 must not fire on TS//SAR-*: {diags:?}"
+            sar.is_empty(),
+            "SAR floor must not fire on TS//SAR-*: {diags:?}"
         );
     }
 
-    // --- E028: sar-program-order ---
+    // --- E028 retired in PR 3b.F (T026f) → E060 walker (SAR program
+    // ascending row). Tests preserved verbatim with rule-ID literal
+    // updated `E028` → `E060`; behavior + message text + fix shape
+    // are byte-identical to the retired rule. ---
+
+    fn e060_sar_program_diags(
+        diags: &[marque_rules::Diagnostic],
+    ) -> Vec<&marque_rules::Diagnostic> {
+        // Filter on E060 + the SAR-program message text so we don't
+        // pick up the unrelated REL TO / JOINT / SIGMA / SCI rows of
+        // the same walker.
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E060" && d.message.starts_with("SAR programs"))
+            .collect()
+    }
 
     #[test]
     fn e028_fires_on_out_of_order_programs() {
         let diags = lint_banner("SECRET//SAR-CD/BP//NOFORN");
-        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
-        assert_eq!(e028.len(), 1, "E028 must fire on CD/BP: {diags:?}");
-        let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
+        let e060 = e060_sar_program_diags(&diags);
+        assert_eq!(
+            e060.len(),
+            1,
+            "E060 (SAR row) must fire on CD/BP: {diags:?}"
+        );
+        let fix = e060[0]
+            .fix
+            .as_ref()
+            .expect("E060 (SAR row) must carry a FixProposal");
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD");
         assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]
     fn e028_fix_also_sorts_compartments_and_subs() {
-        // Programs out of order AND compartments out of order.  E028's fix
-        // must normalize both so that when the engine drops E029 (overlap
-        // guard), the block is fully normalized in one pass.
+        // Programs out of order AND compartments out of order. The
+        // SAR row's fix must normalize both so that when the engine
+        // drops E029 (overlap guard), the block is fully normalized
+        // in one pass.
         let diags = lint_banner("SECRET//SAR-CD-K15-J12/BP//NOFORN");
-        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
-        assert_eq!(e028.len(), 1, "E028 must fire: {diags:?}");
-        let fix = e028[0].fix.as_ref().expect("E028 must carry a FixProposal");
+        let e060 = e060_sar_program_diags(&diags);
+        assert_eq!(e060.len(), 1, "E060 (SAR row) must fire: {diags:?}");
+        let fix = e060[0]
+            .fix
+            .as_ref()
+            .expect("E060 (SAR row) must carry a FixProposal");
         // Programs sorted (BP before CD), compartments sorted (J12 before K15).
         assert_eq!(fix.replacement.as_ref(), "SAR-BP/CD-J12-K15");
     }
@@ -10452,9 +10182,10 @@ mod tests {
     #[test]
     fn e028_does_not_fire_on_sorted_programs() {
         let diags = lint_banner("SECRET//SAR-BP/CD//NOFORN");
+        let e060 = e060_sar_program_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E028"),
-            "E028 must not fire on BP/CD (sorted): {diags:?}"
+            e060.is_empty(),
+            "E060 (SAR row) must not fire on BP/CD (sorted): {diags:?}"
         );
     }
 
@@ -10467,7 +10198,21 @@ mod tests {
         );
     }
 
-    // --- E033: SCI compartment / sub-compartment order ---
+    // --- E033 retired in PR 3b.F (T026f) → E060 walker (SCI
+    // compartment + sub-compartment row). Tests preserved verbatim
+    // with rule-ID literal updated `E033` → `E060`; behavior +
+    // message text + fix shape are byte-identical to the retired
+    // rule. ---
+
+    fn e060_sci_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+        // Filter on E060 + the SCI compartment / sub-compartment
+        // message text so we don't pick up the unrelated REL TO /
+        // JOINT / SIGMA / SAR rows of the same walker.
+        diags
+            .iter()
+            .filter(|d| d.rule.as_str() == "E060" && d.message.starts_with("SCI "))
+            .collect()
+    }
 
     #[test]
     fn e033_fires_on_sub_compartment_disorder() {
@@ -10476,13 +10221,16 @@ mod tests {
         // compartment+sub-compartment region of that marking (matches
         // SAR E029 shape).
         let diags = lint_banner("SECRET//SI-G DEFG ABCD//NOFORN");
-        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
+        let e060 = e060_sci_diags(&diags);
         assert_eq!(
-            e033.len(),
+            e060.len(),
             1,
-            "E033 must fire once on the out-of-order marking: {diags:?}"
+            "E060 (SCI row) must fire once on the out-of-order marking: {diags:?}"
         );
-        let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
+        let fix = e060[0]
+            .fix
+            .as_ref()
+            .expect("E060 (SCI row) must carry a FixProposal");
         assert!((fix.confidence.combined() - 0.85).abs() < f32::EPSILON);
         assert_eq!(fix.replacement.as_ref(), "G ABCD DEFG");
     }
@@ -10490,12 +10238,16 @@ mod tests {
     #[test]
     fn e033_fix_sorts_comp_and_sub_levels_in_one_pass() {
         // Compartments AND sub-compartments both out of order in the
-        // same marking. A single E033 diagnostic must carry a fix that
-        // normalizes both levels — no second diagnostic, no overlap.
+        // same marking. A single E060 (SCI row) diagnostic must
+        // carry a fix that normalizes both levels — no second
+        // diagnostic, no overlap.
         let diags = lint_banner("SECRET//SI-NK-G DEFG ABCD//NOFORN");
-        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
-        assert_eq!(e033.len(), 1, "E033 must fire once: {diags:?}");
-        let fix = e033[0].fix.as_ref().expect("E033 must carry a FixProposal");
+        let e060 = e060_sci_diags(&diags);
+        assert_eq!(e060.len(), 1, "E060 (SCI row) must fire once: {diags:?}");
+        let fix = e060[0]
+            .fix
+            .as_ref()
+            .expect("E060 (SCI row) must carry a FixProposal");
         // Parse: SI has compartments NK (no subs) and G (subs DEFG ABCD).
         // Sort compartments: G < NK. Sort subs of G: ABCD < DEFG.
         // NK had no subs; it trails.
@@ -10518,9 +10270,10 @@ mod tests {
     #[test]
     fn e033_does_not_fire_on_sorted_sub_compartments() {
         let diags = lint_banner("SECRET//SI-G ABCD DEFG//NOFORN");
+        let e060 = e060_sci_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E033"),
-            "E033 must not fire on ABCD DEFG: {diags:?}"
+            e060.is_empty(),
+            "E060 (SCI row) must not fire on ABCD DEFG: {diags:?}"
         );
     }
 
@@ -10595,17 +10348,17 @@ mod tests {
     fn e033_compartment_arm_cites_h4_line_1344() {
         // Compartments out of order (K before G within SI).
         let diags = lint_banner("TOP SECRET//SI-K-G//NOFORN");
-        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
-        assert_eq!(e033.len(), 1);
+        let e060 = e060_sci_diags(&diags);
+        assert_eq!(e060.len(), 1);
         assert!(
-            e033[0].message.contains("compartments"),
+            e060[0].message.contains("compartments"),
             "expected compartment-level message; got: {:?}",
-            e033[0].message
+            e060[0].message
         );
         assert!(
-            e033[0].citation.contains("§H.4 p61"),
-            "E033 compartment arm must pin §H.4 p61; got: {:?}",
-            e033[0].citation
+            e060[0].citation.contains("§H.4 p61"),
+            "E060 (SCI row) compartment arm must pin §H.4 p61; got: {:?}",
+            e060[0].citation
         );
     }
 
@@ -10613,17 +10366,17 @@ mod tests {
     fn e033_sub_compartment_arm_cites_h4_line_1346() {
         // Sub-compartments out of order (DEFG before ABCD within G).
         let diags = lint_banner("TOP SECRET//SI-G DEFG ABCD//NOFORN");
-        let e033: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E033").collect();
-        assert_eq!(e033.len(), 1);
+        let e060 = e060_sci_diags(&diags);
+        assert_eq!(e060.len(), 1);
         assert!(
-            e033[0].message.contains("sub-compartments"),
+            e060[0].message.contains("sub-compartments"),
             "expected sub-compartment-level message; got: {:?}",
-            e033[0].message
+            e060[0].message
         );
         assert!(
-            e033[0].citation.contains("§H.4 p61"),
-            "E033 sub-compartment arm must pin §H.4 p61; got: {:?}",
-            e033[0].citation
+            e060[0].citation.contains("§H.4 p61"),
+            "E060 (SCI row) sub-compartment arm must pin §H.4 p61; got: {:?}",
+            e060[0].citation
         );
     }
 
@@ -10731,10 +10484,14 @@ mod tests {
         let diags = lint_banner(source);
         let e035: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E035").collect();
         assert_eq!(e035.len(), 1);
-        // Cites an example per-system Precedence Rules line (HCS p62
-        // line 1397 stands in for the 18 identical instances across
-        // §H.4) plus the general §D.2 p28 banner/portion consistency
-        // invariant.
+        // T026a D13 single-citation discipline: the citation string
+        // carries §H.4 per-system "Precedence Rules for Banner Line
+        // Guidance" only — that's the operative banner-roll-up rule
+        // for SCI per `specs/006-engine-rule-refactor/tasks.md`
+        // T026a. §D.2 p28 (CAPCO-2016 lines 577–579) restates the
+        // same invariant in general-algorithm prose; it lives as a
+        // background reference in `evaluate_sci_banner_rollup`'s doc
+        // comment, NOT in the citation string.
         assert!(
             e035[0].citation.contains("§H.4"),
             "E035 citation must reference §H.4; got: {:?}",
@@ -10748,10 +10505,17 @@ mod tests {
              template; got: {:?}",
             e035[0].citation
         );
+        // §D.2 was demoted to a background-only doc-comment reference
+        // per the M-1 review condition (citation-discipline cleanup).
+        // Pin its absence so a future change that re-adds it to the
+        // citation string trips this test instead of silently
+        // re-introducing a co-primary cross-citation.
         assert!(
-            e035[0].citation.contains("§D.2 p28"),
-            "E035 citation must reference §D.2 p28 as the general \
-             banner/portion consistency anchor; got: {:?}",
+            !e035[0].citation.contains("§D.2"),
+            "E035 citation must NOT mix §D.2 (general-algorithm prose) \
+             with §H.4 (per-category operative rule) — D13 single-\
+             citation discipline. §D.2 lives in evaluator doc comment \
+             as a background reference. got: {:?}",
             e035[0].citation
         );
     }
@@ -10773,9 +10537,10 @@ mod tests {
     #[test]
     fn e028_does_not_fire_on_single_program() {
         let diags = lint_banner("SECRET//SAR-BP//NOFORN");
+        let e060 = e060_sar_program_diags(&diags);
         assert!(
-            diags.iter().all(|d| d.rule.as_str() != "E028"),
-            "E028 must not fire on single program: {diags:?}"
+            e060.is_empty(),
+            "E060 (SAR row) must not fire on single program: {diags:?}"
         );
     }
 
@@ -10853,31 +10618,36 @@ mod tests {
 
     #[test]
     fn e027_cites_relationship_line_2456() {
+        // PR 3b.D (T026d): retired E027 → E058 catalog row
+        // `E058/SAR-classification-floor`. Per marque-applied.md §3.4.6
+        // line 801 the SAR family floor cites `§H.5` (family-level —
+        // §3.4.6 author's choice). Diagnostic.rule is `E058` (walker).
         let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let e027: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E027").collect();
-        assert_eq!(e027.len(), 1);
+        let sar = sar_floor_diags(&diags);
+        assert_eq!(sar.len(), 1);
         assert!(
-            e027[0].citation.contains("§H.5 p101"),
-            "E027 citation must pin §H.5 p101; got: {:?}",
-            e027[0].citation
+            sar[0].citation.contains("§H.5"),
+            "SAR floor citation must contain §H.5 (family-level per \
+             marque-applied.md §3.4.6); got: {:?}",
+            sar[0].citation
         );
     }
 
     #[test]
     fn e028_cites_program_ordering_line_2391() {
         let diags = lint_banner("SECRET//SAR-CD/BP//NOFORN");
-        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
-        assert_eq!(e028.len(), 1);
+        let e060 = e060_sar_program_diags(&diags);
+        assert_eq!(e060.len(), 1);
         assert!(
-            e028[0].citation.contains("§H.5 p99"),
-            "E028 citation must pin §H.5 p99; got: {:?}",
-            e028[0].citation
+            e060[0].citation.contains("§H.5 p99"),
+            "E060 (SAR row) citation must pin §H.5 p99; got: {:?}",
+            e060[0].citation
         );
         assert!(
-            !e028[0].citation.contains("§A.6"),
-            "E028 citation must NOT reference §A.6 (that is SCI's \
+            !e060[0].citation.contains("§A.6"),
+            "E060 (SAR row) citation must NOT reference §A.6 (that is SCI's \
              ordering authority, not SAR's); got: {:?}",
-            e028[0].citation
+            e060[0].citation
         );
     }
 
@@ -11232,28 +11002,32 @@ mod tests {
         // integration test suite.
         let source = "(S//SAR-BP//NF)\n(S//SAR-CD//NF)\n(S//SAR-AA//NF)\nSECRET//SAR-CD/BP//NOFORN";
         let diags = lint_banner(source);
-        let e028: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E028").collect();
+        let e060 = e060_sar_program_diags(&diags);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
-        assert_eq!(e028.len(), 1, "E028 must fire on unsorted CD/BP: {diags:?}");
+        assert_eq!(
+            e060.len(),
+            1,
+            "E060 (SAR row) must fire on unsorted CD/BP: {diags:?}"
+        );
         assert_eq!(e031.len(), 1, "E031 must fire on missing AA: {diags:?}");
 
-        // E031 is a zero-width insertion; E028 is a whole-block rewrite.
-        // Their spans must not be equal (which would re-introduce the
-        // overlap-drop hazard).
-        let e028_fix = e028[0].fix.as_ref().expect("E028 fix");
+        // E031 is a zero-width insertion; E060 (SAR row) is a
+        // whole-block rewrite. Their spans must not be equal (which
+        // would re-introduce the overlap-drop hazard).
+        let e060_fix = e060[0].fix.as_ref().expect("E060 (SAR row) fix");
         let e031_fix = e031[0].fix.as_ref().expect("E031 fix");
         assert_eq!(
             e031_fix.span.start, e031_fix.span.end,
             "E031 must emit a zero-width insertion"
         );
         assert!(
-            e028_fix.span.start < e028_fix.span.end,
-            "E028 must emit a non-empty range (whole block)"
+            e060_fix.span.start < e060_fix.span.end,
+            "E060 (SAR row) must emit a non-empty range (whole block)"
         );
         assert_eq!(
-            e031_fix.span.start, e028_fix.span.end,
-            "E031's insertion point must be exactly E028's block end \
-             so the C-1 guard keeps both"
+            e031_fix.span.start, e060_fix.span.end,
+            "E031's insertion point must be exactly E060 (SAR row)'s \
+             block end so the C-1 guard keeps both"
         );
         assert_eq!(e031_fix.replacement.as_ref(), "/AA");
     }
@@ -11300,10 +11074,10 @@ mod tests {
 /// without depending on the engine crate. This avoids a circular dependency
 /// (`marque-capco` is below `marque-engine` in the workspace graph).
 ///
-/// `pub(crate)` so sibling rule modules (`rules_sci_per_system`, any
-/// future per-cluster module) can share the same test harness rather
-/// than duplicating the parser-driving boilerplate. Gated on `cfg(test)`
-/// so it never ships in release builds.
+/// `pub(crate)` so sibling rule modules (any future per-cluster module)
+/// can share the same test harness rather than duplicating the parser-
+/// driving boilerplate. Gated on `cfg(test)` so it never ships in release
+/// builds.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod marque_capco_test_support {
