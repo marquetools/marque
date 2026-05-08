@@ -143,7 +143,7 @@
       "name": "sar_bad_program_order.txt",
       "category": "invalid",
       "input": "SECRET//SAR-CD/BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E028\",\"severity\":\"suggest\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"suggest\",\"span\":{\"start\":8,\"end\":17},\"message\":\"SAR programs must be in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.5 p99 (programs: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"SAR-BP/CD\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_banner_missing_program.txt",
@@ -185,7 +185,7 @@
       "name": "sci_compartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-NK-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":19},\"message\":\"SCI compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G-NK\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_custom_control_info.txt",
@@ -197,7 +197,7 @@
       "name": "sci_subcompartment_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI-G DEFG ABCD//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E033\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E060\",\"severity\":\"error\",\"span\":{\"start\":15,\"end\":26},\"message\":\"SCI sub-compartments must be listed in ascending order (numeric first, then alphabetic)\",\"citation\":\"CAPCO-2016 §H.4 p61 (SCI sub-compartments: ascending, numeric first, then alpha)\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"G ABCD DEFG\",\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_system_order.txt",

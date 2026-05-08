@@ -1,6 +1,6 @@
 {
-  "_note": "E033 fires on SI compartments NK and G in wrong sort order. Fixture updated for T035d: banner now TS + ORCON so §H.4 p76/p80 (SI compartments require TS; SI-G requires ORCON) are satisfied and only E033 remains as the intended diagnostic.",
+  "_note": "PR 3b.F (T026f): E033 retired into E060 non-canonical input walker (SCI compartment + sub-compartment row, §H.4 p61). Diagnostic.rule = E060; per-row identification flows via the diagnostic message text. Fires on SI compartments NK and G in wrong sort order. Fixture updated for T035d: banner now TS + ORCON so §H.4 p76/p80 (SI compartments require TS; SI-G requires ORCON) are satisfied and only E060 (SCI row) remains as the intended diagnostic.",
   "diagnostics": [
-    {"rule": "E033", "span": {"start": 15, "end": 19}}
+    {"rule": "E060", "span": {"start": 15, "end": 19}}
   ]
 }

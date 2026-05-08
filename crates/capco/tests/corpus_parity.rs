@@ -149,12 +149,28 @@ fn rule_count_reflects_registration_changes() {
     // `sci-per-system/TK-compartment-NOFORN`). Net delta: -9 rules
     // (10 retired + 1 walker added). Final: 59 - 9 = 50.
     //
+    // T026f (PR 3b Sub-move F): retired four ordering rules
+    // (E020 CountryCodeOrderingRule, E023 SigmaValidationRule,
+    // E028 SarProgramOrderRule, E033 SciCompartmentOrderRule) into
+    // the DeclarativeNonCanonicalInputRule walker (rule ID E060)
+    // dispatching over a 5-row internal catalog (NON_CANONICAL_CATALOG)
+    // covering REL TO USA-first alpha (§H.8 p150-151), JOINT alpha
+    // (§H.3 p56), AEA SIGMA numeric sort (§H.6 p108), SAR program
+    // ascending alpha (§H.5 p99), and SCI compartment + sub-
+    // compartment numeric-then-alpha (§H.4 p61). Diagnostics emit
+    // with `Diagnostic.rule = "E060"`; per-row identification flows
+    // via the diagnostic message text (which preserves the existing
+    // rule's human-readable phrasing verbatim). The walker retires
+    // when the Phase C renderer trait surface lands in PR 5+
+    // (Stage 4). Net delta: -3 rules (4 retired + 1 walker added).
+    // Final: 50 - 3 = 47.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        50,
+        47,
         "rule count: T035b (retired E017/E018/E019, added E036) + \
          T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
          (retired W001) + T035c-21 PR-A (added E037, E038) + \
@@ -170,7 +186,9 @@ fn rule_count_reflects_registration_changes() {
          declarative wrappers; net +4) + T026d PR 3b.D (retired \
          E022/E025/E027 into DeclarativeClassFloorRule walker E058; \
          net -2) + T026e PR 3b.E (retired E042–E051 into \
-         DeclarativeSciPerSystemRule walker E059; net -9). \
+         DeclarativeSciPerSystemRule walker E059; net -9) + \
+         T026f PR 3b.F (retired E020/E023/E028/E033 into \
+         DeclarativeNonCanonicalInputRule walker E060; net -3). \
          Adjust this assertion only when rule registration \
          actually changes."
     );
