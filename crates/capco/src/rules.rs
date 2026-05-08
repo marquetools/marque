@@ -2163,16 +2163,15 @@ impl Rule for BannerConsistentFormRule {
 /// convention-based style to portions is a judgment call best
 /// deferred.
 ///
-/// # Interaction with E020
+/// # Interaction with E060 (JOINT row)
 ///
-/// E020 and S003 can both fire on the same JOINT list when it is
-/// neither pure-alpha nor USA-first (e.g., `AUS USA GBR` is pure
-/// alpha? No — A < U < G is wrong; actual: `GBR USA AUS` is not
-/// alpha AND not USA-first). Both fixes target the same Classification
-/// token span:
+/// E060's JOINT row and S003 can both fire on the same JOINT list
+/// when it is neither pure-alpha nor USA-first (e.g., `GBR USA AUS`
+/// is not alpha AND not USA-first). Both fixes target the same
+/// Classification token span:
 ///
 /// - E060 (non-canonical input walker, JOINT row) fix: `AUS GBR USA`
-///   (pure alpha per §H.3).
+///   (pure alpha per §H.3 p56).
 /// - S003 fix: `USA AUS GBR` (USA first, rest alpha per convention).
 ///
 /// Under FR-016's rule-id tiebreaker ("E060" < "S003" lexically),
@@ -2183,14 +2182,16 @@ impl Rule for BannerConsistentFormRule {
 /// for JOINT (currently not configurable; would need a per-list-type
 /// severity override — follow-up).
 ///
-/// (Pre-PR-3b.F this was E020; the walker preserved the same fix
-/// shape and citation, but the rule-ID changed.)
+/// (Pre-PR-3b.F this was E020; PR 3b.F retired E020 into the E060
+/// walker, which preserved the same fix shape and citation but
+/// changed the rule-ID.)
+///
 /// Complementary rules:
-/// - **E020** (`country-code-ordering`, correctness) — pure-alpha
-///   ordering per §H.3 / §H.8 (depending on list type). For REL TO,
-///   E020 encodes USA-first by authority (§H.8 p151). For JOINT,
-///   E020 encodes pure-alpha (§H.3 p56, post-T035c-18).
-/// - **S001**/`S002` (style) — banner-abbreviation preferences.
+/// - **E060** (`non-canonical-input`, correctness) JOINT row — pure-alpha
+///   ordering per §H.3 p56 (no USA-first carve-out). The companion REL TO
+///   row of E060 encodes USA-first by authority (§H.8 p151). Both rows
+///   share the same `Rule::id()` but emit row-specific message text.
+/// - **S001** / **S002** (style) — banner-abbreviation preferences.
 struct JointUsaFirstRule;
 
 impl Rule for JointUsaFirstRule {
