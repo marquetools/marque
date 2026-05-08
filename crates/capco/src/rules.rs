@@ -285,6 +285,9 @@ pub use crate::rules_declarative::{
 #[doc(hidden)]
 pub use crate::rules_declarative::compute_relido_removal_span;
 
+#[doc(hidden)]
+pub use crate::rules_declarative::find_dissem_token_span;
+
 // ---------------------------------------------------------------------------
 // Rule: E001 — Portion mark used in banner (correctness)
 // ---------------------------------------------------------------------------

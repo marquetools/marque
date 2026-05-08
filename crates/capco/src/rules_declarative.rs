@@ -149,6 +149,34 @@ fn spans_of_kind(attrs: &CanonicalAttrs, kind: TokenKind) -> Vec<&TokenSpan> {
         .collect()
 }
 
+/// Find the first `TokenSpan` whose kind is `DissemControl` AND whose
+/// text matches any of the supplied surface forms.
+///
+/// CAPCO-2016 §H.8 specifies two surface forms per dissem control: the
+/// banner long name (e.g. `ORCON`, `ORCON-USGOV`, `DISPLAY ONLY`,
+/// `NOFORN`) and the portion-form CVE abbreviation (e.g. `OC`,
+/// `OC-USGOV`, `DISPLAYONLY`, `NF`). The parser preserves raw user
+/// input verbatim in `TokenSpan::text` (see `crates/core/src/parser.rs`
+/// — every push uses `text: trimmed.into()` with no canonicalization),
+/// so banner-form input stores the long name and portion-form input
+/// stores the abbreviation. Callers that anchor a diagnostic at a
+/// dissem-control token MUST enumerate every recognized surface form
+/// or risk missing the lookup on banner-form input — which is the
+/// canonical shape for the first/last lines of any classified document.
+///
+/// `#[doc(hidden)]` because this is an internal layout helper for the
+/// RELIDO incompatibility wrappers (E054–E057), not a stable public
+/// API. Same convention as the four wrapper structs and the
+/// `compute_relido_removal_span` helper.
+#[doc(hidden)]
+pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::DissemControl && forms.contains(&&*t.text))
+        .map(|t| t.span)
+}
+
 // ---------------------------------------------------------------------------
 // E010 — bare HCS requires compartment suffix
 // ---------------------------------------------------------------------------
@@ -1196,21 +1224,19 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 
         // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
         // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
-        // or DISPLAY ONLY."). Fall back to NOFORN/NF if RELIDO span is
+        // or DISPLAY ONLY."). Fall back to NOFORN if RELIDO span is
         // unavailable; final fallback Span::new(0, 0).
         //
-        // Token text in attrs.token_spans: "RELIDO" (DissemControl::Relido),
-        // "NOFORN" or "NF" (DissemControl::Nf).
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
-            .or_else(|| {
-                attrs.token_spans.iter().find(|t| {
-                    t.kind == TokenKind::DissemControl && (&*t.text == "NOFORN" || &*t.text == "NF")
-                })
-            })
-            .map(|t| t.span)
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage and §H.8 templates):
+        //   RELIDO: only `"RELIDO"` — the banner long name and the CVE
+        //           portion abbreviation are identical
+        //           (`DissemControl::Relido::as_str()` returns "RELIDO").
+        //   NOFORN: `"NOFORN"` (banner long name, §H.8 p145) or
+        //           `"NF"` (CVE portion abbreviation,
+        //           `DissemControl::Nf::as_str()`).
+        let span = find_dissem_token_span(attrs, &["RELIDO"])
+            .or_else(|| find_dissem_token_span(attrs, &["NOFORN", "NF"]))
             .unwrap_or_else(|| Span::new(0, 0));
 
         // Subtractive fix: remove RELIDO. NOFORN dominates per FD&R
@@ -1262,23 +1288,24 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
         // Diagnostic-anchor span — the user's cursor lands here. RELIDO is
         // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
         // or DISPLAY ONLY.").
-        // Fall back to DISPLAY ONLY span. Note: the CVE abbreviation for
-        // DISPLAY ONLY in token_spans.text is "DISPLAYONLY" (no space) —
-        // this matches `DissemControl::Displayonly::as_str()` in generated
-        // values.rs. The canonical portion form per CAPCO-2016 §H.8 p161
-        // is "DISPLAY ONLY [LIST]" in the banner, but the parser stores the
-        // CVE abbreviation in `TokenSpan::text`.
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
-            .or_else(|| {
-                attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "DISPLAYONLY")
-            })
-            .map(|t| t.span)
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage; the parser preserves user input verbatim):
+        //   RELIDO:       only `"RELIDO"` (banner and portion identical).
+        //   DISPLAY ONLY: `"DISPLAY ONLY"` (banner long name, §H.8 p163)
+        //                 or `"DISPLAYONLY"` (CVE portion abbreviation,
+        //                 `DissemControl::Displayonly::as_str()`).
+        //
+        // The DISPLAY ONLY fallback branch is unreachable in correctness
+        // terms — the rule's pre-condition (the dyadic `Conflicts`
+        // predicate) guarantees RELIDO is in `attrs.dissem_controls` and
+        // therefore in `token_spans`. The branch exists for invariant-
+        // drift safety: if a future parser change ever elides the RELIDO
+        // span on a triggering input, anchoring at DISPLAY ONLY is the
+        // least-bad fallback. Per PM Addendum II Q1, the primary anchor
+        // stays at RELIDO regardless.
+        let span = find_dissem_token_span(attrs, &["RELIDO"])
+            .or_else(|| find_dissem_token_span(attrs, &["DISPLAY ONLY", "DISPLAYONLY"]))
             .unwrap_or_else(|| Span::new(0, 0));
 
         // Subtractive fix: remove RELIDO. DISPLAY ONLY is a positive
@@ -1330,21 +1357,25 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
         // Diagnostic-anchor span — the user's cursor lands at ORCON. The
         // asserting prose lives on the ORCON template at §H.8 p136 ("May
         // not be used with RELIDO."). Anchoring at ORCON shows the user
-        // the token that contains the prohibition; the fix span (below)
-        // covers RELIDO + adjacent separator regardless of the anchor.
-        // Note: the CVE abbreviation for ORCON in token_spans.text is "OC"
-        // (DissemControl::Oc::as_str()). Fall back to RELIDO span.
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC")
-            .or_else(|| {
-                attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
-            })
-            .map(|t| t.span)
+        // the token that contains the prohibition; the fix span (built
+        // by `compute_relido_removal_span`) covers RELIDO + adjacent
+        // separator regardless of the anchor.
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage; the parser preserves user input verbatim, no
+        // canonicalization):
+        //   ORCON: `"ORCON"` (banner long name, §H.8 p136) or `"OC"`
+        //          (CVE portion abbreviation, `DissemControl::Oc::as_str()`).
+        //   RELIDO: only `"RELIDO"`.
+        //
+        // The ORCON template is the §-asserting side per PM Addendum II
+        // Q1; missing the banner-form lookup would silently fall back to
+        // the RELIDO anchor for canonical banner-shaped input
+        // (`SECRET//ORCON/RELIDO` — `/` separates same-category dissem
+        // values per §A.6 Figure 2 p17), which is the wrong cursor
+        // location.
+        let span = find_dissem_token_span(attrs, &["ORCON", "OC"])
+            .or_else(|| find_dissem_token_span(attrs, &["RELIDO"]))
             .unwrap_or_else(|| Span::new(0, 0));
 
         // Subtractive fix: remove RELIDO. §H.8 p136 explicitly asserts
@@ -1395,20 +1426,23 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
 
         // Diagnostic-anchor span — the user's cursor lands at ORCON-USGOV.
         // The asserting prose lives on the ORCON-USGOV template at §H.8
-        // p140 ("May not be used with RELIDO."). Note: the CVE abbreviation
-        // in token_spans.text is "OC-USGOV" (DissemControl::OcUsgov::as_str()).
-        // Fall back to RELIDO span.
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC-USGOV")
-            .or_else(|| {
-                attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
-            })
-            .map(|t| t.span)
+        // p140 ("May not be used with RELIDO.").
+        //
+        // Surface forms in `attrs.token_spans` (per parser raw-text
+        // storage; the parser preserves user input verbatim):
+        //   ORCON-USGOV: `"ORCON-USGOV"` (banner long name, §H.8 p140)
+        //                or `"OC-USGOV"` (CVE portion abbreviation,
+        //                `DissemControl::OcUsgov::as_str()`).
+        //   RELIDO:      only `"RELIDO"`.
+        //
+        // Same banner-form rationale as E056: missing the banner-form
+        // lookup would silently fall back to the RELIDO anchor for
+        // canonical banner-shaped input
+        // (`SECRET//ORCON-USGOV/RELIDO` — `/` separates same-category
+        // dissem values per §A.6 Figure 2 p17), which is the wrong
+        // cursor location per PM Addendum II Q1.
+        let span = find_dissem_token_span(attrs, &["ORCON-USGOV", "OC-USGOV"])
+            .or_else(|| find_dissem_token_span(attrs, &["RELIDO"]))
             .unwrap_or_else(|| Span::new(0, 0));
 
         // Subtractive fix: remove RELIDO. §H.8 p140 explicitly asserts

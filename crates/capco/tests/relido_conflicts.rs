@@ -34,18 +34,21 @@
 //! Naming conventions follow `crates/capco/tests/transmutation_rewrites.rs`
 //! (the PR 3b.B structural template).
 
+use marque_capco::CapcoRuleSet;
 use marque_capco::CapcoScheme;
 use marque_capco::rules::{
     DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
     DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
-    compute_relido_removal_span,
+    compute_relido_removal_span, find_dissem_token_span,
 };
 use marque_capco::scheme::{TOK_DISPLAY_ONLY, TOK_NOFORN, TOK_ORCON, TOK_ORCON_USGOV, TOK_RELIDO};
+use marque_config::Config;
+use marque_engine::Engine;
 use marque_ism::{
     CanonicalAttrs, Classification, DissemControl, MarkingClassification, MarkingType, Span,
     TokenKind, TokenSpan,
 };
-use marque_rules::{FixSource, Rule, RuleContext, Severity};
+use marque_rules::{Diagnostic, FixSource, Rule, RuleContext, Severity};
 use marque_scheme::{Constraint, MarkingScheme, TokenRef};
 
 // ---------------------------------------------------------------------------
@@ -1064,4 +1067,192 @@ fn relido_fix_proposals_carry_builtin_rule_source_and_no_migration_ref() {
             "{rule_id} FixProposal rule field must match the wrapper's id()"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Copilot R2 regression tests — banner-form vs portion-form anchor lookup
+// ---------------------------------------------------------------------------
+//
+// CAPCO-2016 §H.8 specifies two surface forms per dissem control: banner
+// long name (e.g. `ORCON`, `ORCON-USGOV`, `DISPLAY ONLY`) and CVE portion
+// abbreviation (`OC`, `OC-USGOV`, `DISPLAYONLY`). The parser preserves
+// raw user input verbatim in `TokenSpan::text` (per
+// `crates/core/src/parser.rs` — every push uses `text: trimmed.into()`,
+// no canonicalization). Earlier wrapper anchor lookups matched only the
+// portion abbreviation; banner-form input fell through to the secondary
+// anchor (RELIDO), which is the wrong cursor location for the two
+// asymmetric rules (E056 / E057) where ORCON / ORCON-USGOV is the
+// §-asserting side per PM Addendum II Q1.
+//
+// Within-category separator: `/` (single slash) per CAPCO-2016 §A.6
+// Figure 2 p17. `//` separates categories; the dissem block uses `/`
+// to chain multiple values. Test fixtures below use the correct
+// `//<class>//<dissem1>/<dissem2>` shape.
+
+/// Build a default-configured `Engine` for engine-path regression tests.
+fn engine() -> Engine {
+    Engine::new(
+        Config::default(),
+        vec![Box::new(CapcoRuleSet::new())],
+        CapcoScheme::new(),
+    )
+    .expect("default CAPCO scheme must construct without rewrite cycles")
+}
+
+/// Run `source` through the engine and return its diagnostics.
+fn lint(source: &str) -> Vec<Diagnostic> {
+    engine().lint(source.as_bytes()).diagnostics
+}
+
+/// Find the first diagnostic with a given rule ID, or panic with a
+/// descriptive message naming every rule that DID fire.
+fn first_diag_for_rule<'a>(diags: &'a [Diagnostic], rule_id: &str) -> &'a Diagnostic {
+    diags
+        .iter()
+        .find(|d| d.rule.as_str() == rule_id)
+        .unwrap_or_else(|| {
+            let fired: Vec<&str> = diags.iter().map(|d| d.rule.as_str()).collect();
+            panic!("{rule_id} did not fire on the test input; fired rules: {fired:?}")
+        })
+}
+
+#[test]
+fn e056_anchors_at_orcon_token_in_banner_form() {
+    // Banner form: `SECRET//ORCON/RELIDO` (per CAPCO-2016 §A.6 Figure 2 p17,
+    // `/` separates same-category dissem values; `//` separates categories).
+    // ORCON is the §-asserting token per §H.8 p136 ("May not be used with
+    // RELIDO"). The diagnostic span MUST anchor at ORCON, not at RELIDO.
+    let source = "SECRET//ORCON/RELIDO\n";
+    let diags = lint(source);
+    let d = first_diag_for_rule(&diags, "E056");
+    let anchor = &source[d.span.start..d.span.end];
+    assert_eq!(
+        anchor, "ORCON",
+        "E056 banner-form diagnostic must anchor at the ORCON token (the §H.8 \
+         p136 asserting side), got anchor={anchor:?} for span={:?}",
+        d.span
+    );
+}
+
+#[test]
+fn e056_anchors_at_oc_token_in_portion_form() {
+    // Portion form: `(S//OC/RELIDO)` (CVE abbreviations, parens, abbreviated
+    // class per §H.1 p47–51). Anchors at OC.
+    let source = "(S//OC/RELIDO)\n";
+    let diags = lint(source);
+    let d = first_diag_for_rule(&diags, "E056");
+    let anchor = &source[d.span.start..d.span.end];
+    assert_eq!(
+        anchor, "OC",
+        "E056 portion-form diagnostic must anchor at the OC token (CVE \
+         portion abbreviation for ORCON), got anchor={anchor:?} for span={:?}",
+        d.span
+    );
+}
+
+#[test]
+fn e057_anchors_at_orcon_usgov_token_in_banner_form() {
+    // Banner form: `SECRET//ORCON-USGOV/RELIDO`. ORCON-USGOV is the
+    // §-asserting token per §H.8 p140 ("May not be used with RELIDO").
+    // The diagnostic span MUST anchor at ORCON-USGOV.
+    let source = "SECRET//ORCON-USGOV/RELIDO\n";
+    let diags = lint(source);
+    let d = first_diag_for_rule(&diags, "E057");
+    let anchor = &source[d.span.start..d.span.end];
+    assert_eq!(
+        anchor, "ORCON-USGOV",
+        "E057 banner-form diagnostic must anchor at the ORCON-USGOV token \
+         (the §H.8 p140 asserting side), got anchor={anchor:?} for span={:?}",
+        d.span
+    );
+}
+
+#[test]
+fn e057_anchors_at_oc_usgov_token_in_portion_form() {
+    // Portion form: `(S//OC-USGOV/RELIDO)`. Anchors at OC-USGOV.
+    let source = "(S//OC-USGOV/RELIDO)\n";
+    let diags = lint(source);
+    let d = first_diag_for_rule(&diags, "E057");
+    let anchor = &source[d.span.start..d.span.end];
+    assert_eq!(
+        anchor, "OC-USGOV",
+        "E057 portion-form diagnostic must anchor at the OC-USGOV token (CVE \
+         portion abbreviation for ORCON-USGOV), got anchor={anchor:?} for \
+         span={:?}",
+        d.span
+    );
+}
+
+#[test]
+fn find_dissem_token_span_matches_either_surface_form() {
+    // E055 helper unit test: `find_dissem_token_span` returns the first
+    // matching `TokenKind::DissemControl` span whose text equals any
+    // supplied form. Verifies the helper-level invariant the four
+    // wrappers depend on: banner long name AND CVE portion abbreviation
+    // both resolve through one call.
+    //
+    // Three sub-cases per surface form, exercised against the same form
+    // list `["DISPLAY ONLY", "DISPLAYONLY"]` (the E055 fallback chain).
+
+    // Sub-case 1: banner long name `"DISPLAY ONLY"` present.
+    let mut a1 = CanonicalAttrs::default();
+    a1.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a1.token_spans = vec![TokenSpan {
+        kind: TokenKind::DissemControl,
+        text: "DISPLAY ONLY".to_string().into_boxed_str(),
+        span: Span::new(10, 22),
+    }]
+    .into_boxed_slice();
+    assert_eq!(
+        find_dissem_token_span(&a1, &["DISPLAY ONLY", "DISPLAYONLY"]),
+        Some(Span::new(10, 22)),
+        "banner long name `DISPLAY ONLY` must resolve through the helper"
+    );
+
+    // Sub-case 2: portion CVE abbreviation `"DISPLAYONLY"` present.
+    let mut a2 = CanonicalAttrs::default();
+    a2.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a2.token_spans = vec![TokenSpan {
+        kind: TokenKind::DissemControl,
+        text: "DISPLAYONLY".to_string().into_boxed_str(),
+        span: Span::new(5, 16),
+    }]
+    .into_boxed_slice();
+    assert_eq!(
+        find_dissem_token_span(&a2, &["DISPLAY ONLY", "DISPLAYONLY"]),
+        Some(Span::new(5, 16)),
+        "portion CVE abbreviation `DISPLAYONLY` must resolve through the helper"
+    );
+
+    // Sub-case 3: neither form present → None.
+    let mut a3 = CanonicalAttrs::default();
+    a3.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a3.token_spans = vec![TokenSpan {
+        kind: TokenKind::DissemControl,
+        text: "RELIDO".to_string().into_boxed_str(),
+        span: Span::new(0, 6),
+    }]
+    .into_boxed_slice();
+    assert_eq!(
+        find_dissem_token_span(&a3, &["DISPLAY ONLY", "DISPLAYONLY"]),
+        None,
+        "absent surface forms must produce None"
+    );
+
+    // Sub-case 4: kind discriminator — a non-DissemControl token whose
+    // text happens to match a form must NOT resolve. Pins the (kind,
+    // text) conjunction.
+    let mut a4 = CanonicalAttrs::default();
+    a4.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a4.token_spans = vec![TokenSpan {
+        kind: TokenKind::Classification,
+        text: "DISPLAYONLY".to_string().into_boxed_str(),
+        span: Span::new(0, 11),
+    }]
+    .into_boxed_slice();
+    assert_eq!(
+        find_dissem_token_span(&a4, &["DISPLAY ONLY", "DISPLAYONLY"]),
+        None,
+        "kind must be DissemControl — text-only match must NOT resolve"
+    );
 }
