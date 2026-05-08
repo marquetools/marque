@@ -17,7 +17,7 @@
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
-      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":17},\"message\":\"banner contains portion mark \\\"IMC\\\" for an IC dissem control; use banner abbreviation \\\"IMCON\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"IMCON\",\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E001\",\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":17},\"message\":\"banner contains portion mark \\\"IMC\\\" for an IC dissem control; use banner abbreviation \\\"IMCON\\\"\",\"citation\":\"CAPCO-2016 §H.8\",\"fix\":{\"source\":\"BuiltinRule\",\"replacement\":\"IMCON\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":\"IMCON requires classification ≥ SECRET (CAPCO-2016 §H.8 p144); current classification is CONFIDENTIAL\",\"citation\":\"CAPCO-2016 §H.8 p144\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_limdis.txt",
@@ -167,7 +167,7 @@
       "name": "sar_unclassified.txt",
       "category": "invalid",
       "input": "UNCLASSIFIED//SAR-BP\n",
-      "expected_lint": "{\"rule\":\"E027\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":\"SAR markings may only be used with TOP SECRET, SECRET, or CONFIDENTIAL classifications\",\"citation\":\"CAPCO-2016 §H.5 p101 (Relationship(s) to Other Markings)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":\"SAR requires classification ≥ CONFIDENTIAL (CAPCO-2016 §H.5); current classification is UNCLASSIFIED\",\"citation\":\"CAPCO-2016 §H.5\",\"fix\":null}\n"
     },
     {
       "name": "sci_banner_missing_compartment.txt",
