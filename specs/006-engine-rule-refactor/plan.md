@@ -295,22 +295,65 @@ T026a–T026f in `tasks.md`):
   re-verification found only 4 pairs with verbatim §H.8 authority;
   the broader §3.4.2 family roster defers to T108b (PR 3.7) where
   `RhsFamily(predicate)` lands — see `decisions.md D17`.
-- **3b.D** — `marque-applied.md` §3.4.6 per-token classification
-  floor catalog ships as ~25 `Constraint::Requires` rows. Closure-
-  implied requirements (`marque-applied.md` §4.7.5) stay as `Requires`
-  rows in PR 3b; the closure operator primitive (Stage 2.B in
-  `marque-applied.md` §3.11) lands in PR 3.7 and re-classifies the
-  implication-shaped entries in PR 4.
-- **3b.E** — `crates/capco/src/rules_sci_per_system.rs` (10 rules)
-  collapse to ONE `Constraint::Custom("sci-per-system", ...)` walker
-  over a per-system catalog; per-row `§H.4 row Y` citation.
+- **3b.D** — **LANDED 2026-05-08** (T026d, #324). Landed
+  `marque-applied.md` §3.4.6 per-token classification-floor catalog
+  as 27 `Constraint::Custom("class-floor/...", ...)` rows on
+  `CapcoScheme` (catalog-pin: `catalog_declares_27_class_floor_rows`;
+  the +1 vs the plan-doc's "~26" is the UCNI split) (Constitution VII §IV blocks scheme-adoption PRs
+  from adding new `Constraint` variants; the canonical-Custom
+  precedent set by `E022/CNWDI-classification-floor` was generalized
+  to the 26-row catalog). Walker `DeclarativeClassFloorRule` (rule
+  ID `E058`) dispatches over the catalog with a 3-layer hot-path
+  optimization. Closure-implied requirements (`marque-applied.md`
+  §4.7.5) stay as `Custom` floor rows in PR 3b; the closure
+  operator primitive (Stage 2.B in `marque-applied.md` §3.11) lands
+  in PR 3.7 and re-classifies the implication-shaped entries in
+  PR 4. Net rule delta: 3 retired (E022/E025/E027) + 1 walker
+  added = net −2. Running registered-rule count: 61 → 59. See
+  `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`.
+- **3b.E** — **LANDED 2026-05-08** (T026e). Collapsed the 10 rules in
+  the now-deleted `crates/capco/src/rules_sci_per_system.rs` into ONE
+  `DeclarativeSciPerSystemRule` walker (rule ID `E059`) dispatching
+  over a 5-row `Constraint::Custom("sci-per-system/...", ...)` catalog
+  at §H.4 family granularity (HCS-O companions, HCS-P NOFORN, HCS-P
+  sub-compartment companions, SI-G companions, TK compartment NOFORN);
+  per-row `CAPCO-2016 §H.4 pXX` citation. The class-floor portions of
+  the retired rules are absorbed by PR 3b.D's class-floor catalog;
+  no class-floor rows are added in 3b.E. Net rule delta: −9 (10
+  retired + 1 walker added). Running registered-rule count: 59 → 50.
+  See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`.
 - **3b.F** — non-canonical input fallback walker covering E020 /
   E023 / E028 / E033 ordering checks (REL TO leads with USA, AEA
   SIGMA numeric sort, SAR alphabetic, SCI numeric-then-alpha) as a
-  single `impl Rule` block. Retained until the Phase C renderer
-  trait surface lands in PR 5+ (Stage 4) and absorbs canonical-form
-  rendering. Per Q-Move-7-timing default; per-row §-citation
-  (§A.6 / §H.5 / §H.6 / §H.8).
+  single `impl Rule` block. **Status: LANDED 2026-05-08.**
+  `DeclarativeNonCanonicalInputRule` (rule ID `E060`) dispatches
+  over a 5-row private `NON_CANONICAL_CATALOG` inside
+  `crates/capco/src/rules_declarative.rs`. Per-row §-citations:
+  REL TO USA-first alpha (§H.8 p150-151), JOINT alpha (§H.3 p56),
+  AEA SIGMA numeric sort (§H.6 p108), SAR program ascending alpha
+  (§H.5 p99), SCI compartment + sub-compartment numeric-then-alpha
+  (§H.4 p61). Net rule delta: −3 (4 retired + 1 walker added).
+  Running registered-rule count: 50 → 47. Walker retires when the
+  Phase C renderer trait surface lands in PR 5+ (Stage 4) and
+  absorbs canonical-form rendering. See
+  `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
+- **3b umbrella — LANDED 2026-05-08** (T027 + T028 + T029,
+  closeout sub-PR #328 aggregating 3b.A #319 / 3b.B #320 /
+  3b.C #321 / 3b.D #324 / 3b.E #326 / 3b.F #327). Closeout
+  bookkeeping only — zero rule-logic edits. T027: per-sub-move
+  reviewer attestation (D13 single-§-citation discipline,
+  ≤3-branch `impl Rule` bodies, net-rule-delta math 59 → 47)
+  aggregated in the umbrella PR description. T028:
+  exact-rule-ID-set pin landed at
+  `crates/capco/tests/post_3b_registration_pin.rs`,
+  complementing the existing count pin in
+  `corpus_parity.rs:170-194` by catching rename-at-same-count
+  + delete-and-add-at-same-count drift. T029: new
+  `pr-3b-corpus-regression` CI job in `.github/workflows/ci.yml`
+  mirroring T025's body, branch-filtered to
+  `refactor-006-pr-3b*`. Constitution VII §IV-clean (no edits to
+  `crates/{engine,scheme,core,rules,ism}`). See
+  `docs/plans/2026-05-08-pr3b-closeout-T027-T028-T029-plan.md`.
 
 **Reviewer attestation requirements** (each sub-PR's PR description
 declares a–c against the sub-move it lands; the umbrella PR-3b
