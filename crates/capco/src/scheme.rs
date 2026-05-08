@@ -2631,10 +2631,34 @@ pub(crate) enum ClassFloorPolicy {
 /// One catalog row. The walker dispatches over the `&[ClassFloorRow]`
 /// table; each row owns its presence predicate, floor policy, severity,
 /// citation, and human-readable marking label for diagnostic messages.
+///
+/// # Naming-prefix invariant (PR D R3.2)
+///
+/// Every row's `name` MUST start with one of two prefixes:
+///
+///   - **`E058/<purpose>`** — for rows replacing a retired legacy rule
+///     (the four E022 / E025 / E027 successors:
+///     `E058/CNWDI-classification-floor`,
+///     `E058/SAR-classification-floor`,
+///     `E058/DOD-UCNI-classification-ceiling`,
+///     `E058/DOE-UCNI-classification-ceiling`).
+///   - **`class-floor/<marking>`** — for rows with no retired-rule
+///     predecessor (e.g., `class-floor/HCS-comp-sub`,
+///     `class-floor/SI-comp`, `class-floor/BALK`,
+///     `class-floor/passthrough-BUR`).
+///
+/// The prefix invariant is what makes the
+/// [`is_class_floor_catalog_name`] dispatch routing O(1) instead of
+/// a linear catalog scan. The
+/// `class_floor_catalog_naming_convention` test in
+/// `crates/capco/tests/class_floor_catalog.rs` enforces this at
+/// build time; adding a row whose name doesn't match either prefix
+/// will fail CI.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ClassFloorRow {
     /// Catalog row name — matches the `Constraint::Custom { name }` of
-    /// the same logical row.
+    /// the same logical row. MUST start with `E058/` or
+    /// `class-floor/` per the naming-prefix invariant above.
     pub(crate) name: &'static str,
     /// Human-readable marking name for the diagnostic message
     /// (e.g., `"CNWDI"`, `"HCS-P sub-compartment"`, `"BUR family"`).
@@ -2697,13 +2721,34 @@ pub(crate) enum ClassFloorAxis {
 }
 
 /// Returns true if `name` is a catalog row name dispatched by
-/// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs` to
-/// route on the table.
+/// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
+/// to route on the table.
+///
+/// PR D R3.2 (R3 C1): O(1) prefix check. Every catalog row's `name`
+/// follows one of two prefix conventions (see [`ClassFloorRow`]
+/// docstring):
+///
+///   - `E058/<purpose>` for rows replacing a retired legacy rule.
+///   - `class-floor/<marking>` for rows with no retired-rule
+///     predecessor.
+///
+/// New catalog rows MUST follow one of these prefixes; the
+/// `class_floor_catalog_naming_convention` test in
+/// `crates/capco/tests/class_floor_catalog.rs` enforces the
+/// invariant at build time so adding a row that doesn't follow the
+/// convention fails CI.
 fn is_class_floor_catalog_name(name: &str) -> bool {
-    CLASS_FLOOR_CATALOG.iter().any(|row| row.name == name)
+    name.starts_with("E058/") || name.starts_with("class-floor/")
 }
 
-/// Resolve a catalog row by `name`. Returns `None` for unknown names.
+/// Resolve a catalog row by `name`. Returns `None` for unknown
+/// names.
+///
+/// Walked only on the trait/validate path (29-row catalog → linear
+/// scan, ≪1 µs) — the walker hot path uses [`class_floor_catalog`]
+/// + [`class_floor_eval_row`] directly with no name lookup. A phf
+/// build-time perfect-hash lookup is deferred unless the trait path
+/// shows up as a measurable hotspot in profiling.
 pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorRow> {
     CLASS_FLOOR_CATALOG.iter().find(|row| row.name == name)
 }
@@ -2714,121 +2759,113 @@ pub(crate) fn class_floor_catalog() -> &'static [ClassFloorRow] {
     CLASS_FLOOR_CATALOG
 }
 
+/// Single source of truth for the class-floor catalog's
+/// presence-check + floor-satisfaction-check + diagnostic message
+/// shape. PR D R3.1 (R3 C2): extracted to converge the walker
+/// hot-path ([`class_floor_eval_row`]) and the trait/validate path
+/// ([`class_floor_catalog_eval`]) on one body so a citation,
+/// message-text, or floor-comparison change to one row cannot
+/// silently diverge between the two emitters.
+///
+/// Returns `None` when the row's predicate does not fire (presence
+/// false OR floor satisfied). Returns `Some(ConstraintViolation)`
+/// when the row fires; the violation carries the row's `name` as
+/// `constraint_label`, the formatted diagnostic message, and the
+/// row's `citation` verbatim — matching the
+/// `marque_scheme::constraint::evaluate` Custom-arm contract.
+///
+/// The diagnostic message uses the *effective* classification level
+/// (reciprocal-raised for NATO / FGI / JOINT classifications via
+/// [`marque_ism::MarkingClassification::effective_level`]) so a
+/// portion classified `//NATO SECRET//ATOMAL` reports `SECRET` —
+/// not `unknown` — even though `attrs.us_classification()` returns
+/// `None` for non-US classification kinds. This is the C1 fix from
+/// PR #324 R1; see [`class_floor_satisfied`] doc for the AtLeast vs
+/// EqualsU split.
+fn class_floor_emit(
+    attrs: &marque_ism::CanonicalAttrs,
+    row: &ClassFloorRow,
+) -> Option<ConstraintViolation> {
+    if !(row.presence)(attrs) {
+        return None;
+    }
+    if class_floor_satisfied(attrs, row.policy) {
+        return None;
+    }
+    let level_str = attrs
+        .classification
+        .as_ref()
+        .map(|c| c.effective_level().banner_str())
+        .unwrap_or("unknown");
+    let message = if row.passthrough {
+        format!(
+            "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
+             floor is C (classified). Verify against the current ODNI manual; current \
+             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
+            row.marking_label
+        )
+    } else {
+        match row.policy {
+            ClassFloorPolicy::AtLeast(floor) => format!(
+                "{} requires classification ≥ {} ({}); current classification is {level_str}",
+                row.marking_label,
+                floor.banner_str(),
+                row.citation
+            ),
+            ClassFloorPolicy::EqualsU => format!(
+                "{} may only be used with UNCLASSIFIED information ({}); current classification \
+                 is {level_str}",
+                row.marking_label, row.citation
+            ),
+        }
+    };
+    Some(ConstraintViolation {
+        constraint_label: row.name,
+        message,
+        citation: row.citation,
+    })
+}
+
 /// Direct catalog-row dispatch for the walker's hot path. Skips the
 /// `evaluate_custom_by_attrs` → `class_floor_catalog_eval` → name-
 /// lookup chain entirely; the walker has the row in hand and calls
 /// the predicate fields directly. PR D R2 hot-path optimization
 /// (perf-2).
 ///
-/// Returns `None` when the row's predicate does not fire (presence
-/// false OR floor satisfied). Returns `Some((message, severity))`
-/// when the row fires; the caller pairs that with the row's citation
-/// and span anchor to construct a `Diagnostic`.
-///
-/// This mirrors `class_floor_catalog_eval` semantically but skips the
-/// name-based dispatch: there are zero string comparisons on the hot
-/// path. The `class_floor_catalog_eval` helper stays as the
-/// trait-path / `validate()` entry point, and is unchanged.
+/// Returns `None` when the row's predicate does not fire. Returns
+/// `Some(message)` when the row fires; the caller pairs that with
+/// the row's severity, citation, and span anchor to construct a
+/// `Diagnostic`. The caller does not need the
+/// [`ConstraintViolation`] envelope — the walker constructs a
+/// `Diagnostic` directly from the row's static fields plus the
+/// returned message — so this thin wrapper unwraps
+/// [`class_floor_emit`]'s return to drop the `constraint_label` /
+/// `citation` fields the caller is going to overwrite anyway.
 pub(crate) fn class_floor_eval_row(
     attrs: &marque_ism::CanonicalAttrs,
     row: &ClassFloorRow,
 ) -> Option<String> {
-    if !(row.presence)(attrs) {
-        return None;
-    }
-    if class_floor_satisfied(attrs, row.policy) {
-        return None;
-    }
-    let level_str = attrs
-        .classification
-        .as_ref()
-        .map(|c| c.effective_level().banner_str())
-        .unwrap_or("unknown");
-    let message = if row.passthrough {
-        format!(
-            "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
-             floor is C (classified). Verify against the current ODNI manual; current \
-             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
-            row.marking_label
-        )
-    } else {
-        match row.policy {
-            ClassFloorPolicy::AtLeast(floor) => format!(
-                "{} requires classification ≥ {} ({}); current classification is {level_str}",
-                row.marking_label,
-                floor.banner_str(),
-                row.citation
-            ),
-            ClassFloorPolicy::EqualsU => format!(
-                "{} may only be used with UNCLASSIFIED information ({}); current classification \
-                 is {level_str}",
-                row.marking_label, row.citation
-            ),
-        }
-    };
-    Some(message)
+    class_floor_emit(attrs, row).map(|v| v.message)
 }
 
 /// Dispatch a single catalog row by name and return at most one
-/// `ConstraintViolation`. The returned violation's
-/// `constraint_label` and `citation` are taken from the matching row's
-/// `name` and `citation` fields verbatim, matching the
-/// `marque_scheme::constraint::evaluate` Custom-arm contract.
+/// `ConstraintViolation`. The trait-path entry point used by
+/// [`MarkingScheme::validate`] →
+/// [`marque_scheme::constraint::evaluate`] when the catalog row's
+/// `Constraint::Custom` arm fires.
+///
+/// PR D R3.1 (R3 C2): converges through [`class_floor_emit`] so the
+/// presence check, floor-satisfaction check, and message-format are
+/// not duplicated against the walker's [`class_floor_eval_row`]
+/// path.
 fn class_floor_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
-    let Some(row) = class_floor_row_by_name(name) else {
-        return Vec::new();
-    };
-    if !(row.presence)(attrs) {
-        return Vec::new();
-    }
-    if class_floor_satisfied(attrs, row.policy) {
-        return Vec::new();
-    }
-    // Diagnostic message uses the *effective* level (reciprocal-raised
-    // for NATO / FGI / JOINT classifications via
-    // `MarkingClassification::effective_level`) so a portion classified
-    // `//NATO SECRET//ATOMAL` reports `SECRET` — not `unknown` — even
-    // though `attrs.us_classification()` returns `None` for non-US
-    // classification kinds. This is the C1 fix from PR #324 R1: pre-fix
-    // the NATO catalog rows (BALK / BOHEMIA / ATOMAL) always reported
-    // `unknown` and always failed the floor check — guaranteed false
-    // positive on every well-formed NATO portion. See
-    // `marque-applied.md` §3.4.1 Note (i) for the reciprocal-raise rule.
-    let level_str = attrs
-        .classification
-        .as_ref()
-        .map(|c| c.effective_level().banner_str())
-        .unwrap_or("unknown");
-    let message = if row.passthrough {
-        format!(
-            "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
-             floor is C (classified). Verify against the current ODNI manual; current \
-             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
-            row.marking_label
-        )
-    } else {
-        match row.policy {
-            ClassFloorPolicy::AtLeast(floor) => format!(
-                "{} requires classification ≥ {} ({}); current classification is {level_str}",
-                row.marking_label,
-                floor.banner_str(),
-                row.citation
-            ),
-            ClassFloorPolicy::EqualsU => format!(
-                "{} may only be used with UNCLASSIFIED information ({}); current classification \
-                 is {level_str}",
-                row.marking_label, row.citation
-            ),
-        }
-    };
-    vec![ConstraintViolation {
-        constraint_label: row.name,
-        message,
-        citation: row.citation,
-    }]
+    class_floor_row_by_name(name)
+        .and_then(|row| class_floor_emit(attrs, row))
+        .map(|v| vec![v])
+        .unwrap_or_default()
 }
 
 /// Returns true when the classification axis satisfies the floor policy.
