@@ -61,6 +61,22 @@ const EXPECTED_RULE_IDS: &[&str] = &[
 #[test]
 fn post_3b_registers_exact_47_rule_ids() {
     let rule_set = CapcoRuleSet::new();
+
+    // Raw-slice cardinality — independently catches duplicate
+    // registration (`Box::new(SomeRule)` appearing twice). The
+    // BTreeSet collapses duplicates by ID, so the deduplicated
+    // assertion below cannot distinguish "47 unique IDs from 47
+    // registrations" from "47 unique IDs from 48 registrations
+    // where one ID is duplicated." Belt-and-suspenders with
+    // `corpus_parity.rs::rule_count_reflects_pr_3b`.
+    let raw_len = rule_set.rules().len();
+    assert_eq!(
+        raw_len, 47,
+        "post-3b raw rule slice length drifted from 47 \
+         (duplicate or missing registration in CapcoRuleSet::new()): \
+         raw_len={raw_len}",
+    );
+
     let actual: BTreeSet<String> = rule_set
         .rules()
         .iter()
