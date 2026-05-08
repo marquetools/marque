@@ -4254,20 +4254,6 @@ pub(crate) fn sci_per_system_catalog() -> &'static [SciPerSystemRow] {
     SCI_PER_SYSTEM_CATALOG
 }
 
-/// Test-only accessor returning every catalog row's `name` field
-/// directly from the static catalog table. Used by the catalog
-/// naming-convention test in
-/// `crates/capco/tests/sci_per_system_catalog.rs` to assert the
-/// `sci-per-system/` prefix invariant on every row WITHOUT a
-/// `contains("sci-per-system")` filter that would silently skip a
-/// typo'd-prefix row (e.g., `sai-per-system/...`). The accessor walks
-/// `SCI_PER_SYSTEM_CATALOG` so a typo at the row's authoring site is
-/// caught at CI time.
-#[doc(hidden)]
-pub fn sci_per_system_catalog_row_names() -> Vec<&'static str> {
-    SCI_PER_SYSTEM_CATALOG.iter().map(|r| r.name).collect()
-}
-
 /// Single source of truth for the SCI per-system catalog's emit logic.
 /// Both the walker hot path (`DeclarativeSciPerSystemRule::check` calls
 /// this directly per row) and the trait/validate path

@@ -297,8 +297,9 @@ T026a–T026f in `tasks.md`):
   `RhsFamily(predicate)` lands — see `decisions.md D17`.
 - **3b.D** — **LANDED 2026-05-08** (T026d, #324). Landed
   `marque-applied.md` §3.4.6 per-token classification-floor catalog
-  as 26 `Constraint::Custom("class-floor/...", ...)` rows on
-  `CapcoScheme` (Constitution VII §IV blocks scheme-adoption PRs
+  as 27 `Constraint::Custom("class-floor/...", ...)` rows on
+  `CapcoScheme` (catalog-pin: `catalog_declares_27_class_floor_rows`;
+  the +1 vs the plan-doc's "~26" is the UCNI split) (Constitution VII §IV blocks scheme-adoption PRs
   from adding new `Constraint` variants; the canonical-Custom
   precedent set by `E022/CNWDI-classification-floor` was generalized
   to the 26-row catalog). Walker `DeclarativeClassFloorRule` (rule

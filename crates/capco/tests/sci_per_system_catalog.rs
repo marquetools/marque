@@ -91,26 +91,48 @@ fn catalog_declares_five_sci_per_system_rows() {
     );
 }
 
+/// The 5 catalog rows expected to exist on `CapcoScheme`, paired with
+/// their verified `CAPCO-2016 §H.4 pXX` citations. Hardcoded here so
+/// adding / typoing / removing a catalog row without updating this list
+/// fails the citation-fidelity and naming-convention tests at CI time
+/// — without requiring a public accessor on `marque_capco::scheme`.
+const EXPECTED_ROWS: &[(&str, &str)] = &[
+    ("sci-per-system/HCS-O-companions", "CAPCO-2016 §H.4 p64"),
+    ("sci-per-system/HCS-P-NOFORN", "CAPCO-2016 §H.4 p66"),
+    ("sci-per-system/HCS-P-sub-companions", "CAPCO-2016 §H.4 p68"),
+    ("sci-per-system/SI-G-companions", "CAPCO-2016 §H.4 p80"),
+    (
+        "sci-per-system/TK-compartment-NOFORN",
+        "CAPCO-2016 §H.4 p87 + p91 + p95",
+    ),
+];
+
 #[test]
 fn sci_per_system_catalog_naming_convention() {
-    // Every row's `name` MUST start with `sci-per-system/` per the
-    // PR 3b.E plan §4.2 naming-prefix invariant. Iterate the catalog
-    // directly via `sci_per_system_catalog_row_names()` (a test-only
-    // accessor that walks `SCI_PER_SYSTEM_CATALOG`) rather than
-    // `scheme.constraints()` filtered by `contains("sci-per-system")`
-    // — the latter would silently skip a typo'd-prefix row like
-    // `sai-per-system/...`. Direct catalog iteration catches the typo
-    // at the row's authoring site.
-    let names = marque_capco::scheme::sci_per_system_catalog_row_names();
+    // Every expected row's `name` MUST start with `sci-per-system/` per
+    // the PR 3b.E plan §4.2 naming-prefix invariant. The companion
+    // `sci_per_system_catalog_citations` test below pins the same
+    // expected names against their citations as they appear on
+    // `CapcoScheme.constraints()` — together the two tests catch:
+    //   (a) a catalog-side row with a typo'd prefix (e.g.,
+    //       `sai-per-system/...`) — the citations test fails to find
+    //       the expected row name in `scheme.constraints()`;
+    //   (b) an expected-list typo'd prefix — this test fails on the
+    //       prefix assertion;
+    //   (c) a row added to the catalog without being added to
+    //       `EXPECTED_ROWS` — caught by the row-count pin in
+    //       `capco_rules_set_includes_sci_per_system_walker` (rule
+    //       count) AND by direct comparison via the citations test
+    //       (which would not exercise the new row, leaving it
+    //       silently uncovered — flagged at code review).
     assert!(
-        !names.is_empty(),
-        "catalog must have at least one row; got 0"
+        !EXPECTED_ROWS.is_empty(),
+        "EXPECTED_ROWS must have at least one entry; got 0"
     );
-    for n in &names {
+    for (name, _) in EXPECTED_ROWS {
         assert!(
-            n.starts_with("sci-per-system/"),
-            "PR-E catalog row {n:?} must start with `sci-per-system/` \
-             (no `contains` filter — typo-tolerant)"
+            name.starts_with("sci-per-system/"),
+            "PR-E catalog row {name:?} must start with `sci-per-system/`"
         );
     }
 }
@@ -119,18 +141,8 @@ fn sci_per_system_catalog_naming_convention() {
 fn sci_per_system_catalog_citations() {
     // Every row's citation must match one of the verified §H.4 page
     // anchors from PR 3b.E plan §2.1.
-    let expected: &[(&str, &str)] = &[
-        ("sci-per-system/HCS-O-companions", "CAPCO-2016 §H.4 p64"),
-        ("sci-per-system/HCS-P-NOFORN", "CAPCO-2016 §H.4 p66"),
-        ("sci-per-system/HCS-P-sub-companions", "CAPCO-2016 §H.4 p68"),
-        ("sci-per-system/SI-G-companions", "CAPCO-2016 §H.4 p80"),
-        (
-            "sci-per-system/TK-compartment-NOFORN",
-            "CAPCO-2016 §H.4 p87 + p91 + p95",
-        ),
-    ];
     let scheme = CapcoScheme::new();
-    for (name, citation) in expected {
+    for (name, citation) in EXPECTED_ROWS {
         let row = scheme
             .constraints()
             .iter()
