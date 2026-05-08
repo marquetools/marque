@@ -295,12 +295,21 @@ T026a–T026f in `tasks.md`):
   re-verification found only 4 pairs with verbatim §H.8 authority;
   the broader §3.4.2 family roster defers to T108b (PR 3.7) where
   `RhsFamily(predicate)` lands — see `decisions.md D17`.
-- **3b.D** — `marque-applied.md` §3.4.6 per-token classification
-  floor catalog ships as ~25 `Constraint::Requires` rows. Closure-
-  implied requirements (`marque-applied.md` §4.7.5) stay as `Requires`
-  rows in PR 3b; the closure operator primitive (Stage 2.B in
-  `marque-applied.md` §3.11) lands in PR 3.7 and re-classifies the
-  implication-shaped entries in PR 4.
+- **3b.D** — **LANDED 2026-05-08** (T026d, #324). Landed
+  `marque-applied.md` §3.4.6 per-token classification-floor catalog
+  as 26 `Constraint::Custom("class-floor/...", ...)` rows on
+  `CapcoScheme` (Constitution VII §IV blocks scheme-adoption PRs
+  from adding new `Constraint` variants; the canonical-Custom
+  precedent set by `E022/CNWDI-classification-floor` was generalized
+  to the 26-row catalog). Walker `DeclarativeClassFloorRule` (rule
+  ID `E058`) dispatches over the catalog with a 3-layer hot-path
+  optimization. Closure-implied requirements (`marque-applied.md`
+  §4.7.5) stay as `Custom` floor rows in PR 3b; the closure
+  operator primitive (Stage 2.B in `marque-applied.md` §3.11) lands
+  in PR 3.7 and re-classifies the implication-shaped entries in
+  PR 4. Net rule delta: 3 retired (E022/E025/E027) + 1 walker
+  added = net −2. Running registered-rule count: 61 → 59. See
+  `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`.
 - **3b.E** — **LANDED 2026-05-08** (T026e). Collapsed the 10 rules in
   the now-deleted `crates/capco/src/rules_sci_per_system.rs` into ONE
   `DeclarativeSciPerSystemRule` walker (rule ID `E059`) dispatching

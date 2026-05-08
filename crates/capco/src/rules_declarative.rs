@@ -1693,19 +1693,31 @@ fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Spa
 // The engine's severity-override layer can downgrade or upgrade per
 // `.marque.toml [rules] E059 = "off|warn|error|..."`.
 //
-// # Span anchoring
+// # Span anchoring (varies by emit-branch shape)
 //
-// PR-E rows uniformly anchor the diagnostic at the offending SCI
-// marking token. The emit helper (`emit_companion_insert` in
-// `crate::scheme`) selects the anchor via `first_sci_span(attrs)`,
-// which walks `attrs.token_spans` and returns the span of the first
-// `TokenKind::SciSystem` / `SciControl` / `SciCompartment` /
-// `SciSubCompartment` token in document order. The fix span (zero-
-// width insertion or token replacement) differs from the diagnostic
-// span: the user sees the SCI marking that triggered the requirement;
-// the edit applies at the dissem-block anchor where the insertion or
-// replacement belongs. Same diagnostic-vs-fix-span split used by
-// `SarPortionFormRule` (E026).
+// **Companion-insertion branches** (missing ORCON / missing NOFORN):
+// the diagnostic anchors at the offending SCI marking token via
+// `first_sci_span(attrs)` (which walks `attrs.token_spans` and returns
+// the span of the first `TokenKind::SciSystem` / `SciControl` /
+// `SciCompartment` / `SciSubCompartment` token in document order). The
+// fix span is a zero-width insertion at the end of the IC dissem block
+// — i.e., the diagnostic and fix span differ, and the user sees the SCI
+// marking that triggered the requirement while the edit applies at the
+// dissem-block anchor where the insertion belongs. Same diagnostic-vs-
+// fix-span split used by `SarPortionFormRule` (E026).
+//
+// **Token-replacement branches** (e.g., HCS-O / HCS-P-sub / SI-G with
+// ORCON-USGOV present → replace with ORCON): both the diagnostic and
+// the fix anchor on the offending dissem token's own span so the user
+// sees the dissem token directly. There is no SCI-vs-dissem split for
+// these branches.
+//
+// `first_sci_span` returns the lexically-first SCI token regardless of
+// which row matched — preserved verbatim from the legacy E042–E051
+// rules (a pre-existing imperfection; on a multi-marking portion like
+// `(TS//SI-G HCS-O//OC-USGOV/NF)` the row #1 (HCS-O) diagnostic anchors
+// at `SI-G`). PR 4's per-category Lattice impls + dedicated span-
+// resolution machinery are expected to address this.
 
 pub(crate) struct DeclarativeSciPerSystemRule;
 

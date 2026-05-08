@@ -3650,8 +3650,14 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
 //      helper escalates per-branch to `Error` no-fix when no IC dissem
 //      block exists)
 //   - `citation`: per-row §-citation matching `Constraint::Custom { label }`
-//   - `primary_kind`: diagnostic-span anchor token kind (uniformly
-//      `Some(TokenKind::SciSystem)` for the 5 PR-E rows)
+//
+// Diagnostic-span anchoring is NOT a row field — companion-insertion
+// branches anchor the diagnostic at the offending SCI marking token via
+// `first_sci_span(attrs)`, while token-replacement branches (e.g., the
+// OC-USGOV → OC fix in row #1 / #3 / #4) anchor both the diagnostic and
+// the fix at the dissem token's own span so the user sees the offending
+// dissem token directly. See the per-emit-fn doc comments for the
+// branch-specific anchor.
 //
 // The walker `DeclarativeSciPerSystemRule` (in `rules_declarative.rs`)
 // iterates the table and emits per-row diagnostics.
