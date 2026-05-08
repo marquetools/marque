@@ -338,7 +338,7 @@ T026a–T026f in `tasks.md`):
   absorbs canonical-form rendering. See
   `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
 - **3b umbrella — LANDED 2026-05-08** (T027 + T028 + T029,
-  closeout sub-PR #NNN aggregating 3b.A #319 / 3b.B #320 /
+  closeout sub-PR #328 aggregating 3b.A #319 / 3b.B #320 /
   3b.C #321 / 3b.D #324 / 3b.E #326 / 3b.F #327). Closeout
   bookkeeping only — zero rule-logic edits. T027: per-sub-move
   reviewer attestation (D13 single-§-citation discipline,
