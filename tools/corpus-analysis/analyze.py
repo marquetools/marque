@@ -534,7 +534,7 @@ def iter_corpus_texts(
             fpath = Path(root) / fname
             try:
                 raw = fpath.read_bytes()
-                text = extract_body(raw)
+                text = extract_body(raw, min_length=min_length)
                 if text and len(text.strip()) >= min_length:
                     doc_id = str(fpath.relative_to(corpus_path))
                     yield doc_id, text
@@ -578,13 +578,13 @@ def iter_corpus_texts_multi(
                 return
 
 
-def extract_body(raw: bytes) -> Optional[str]:
+def extract_body(raw: bytes, min_length: int = 20) -> Optional[str]:
     """
     Extract the text body from raw file bytes.
 
     Handles three formats:
     - GovInfo HTML (CREC, GAO): text wrapped in ``<pre>`` tags — stripped via
-      ``strip_html()``.
+      ``strip_html()`` and filtered with *min_length*.
     - RFC 2822 email (Enron maildir format): text/plain body extracted.
     - Plain text: returned as-is.
     """
@@ -597,7 +597,7 @@ def extract_body(raw: bytes) -> Optional[str]:
     raw_prefix = raw[:200].lower()
     if b"<html" in raw_prefix or b"<!doctype" in raw_prefix:
         stripped = strip_html(text)
-        return stripped if stripped and len(stripped.strip()) > 20 else None
+        return stripped if stripped and len(stripped.strip()) >= min_length else None
 
     # Quick heuristic: if it has email-like headers, parse as email
     if text[:200].count(":") >= 2 and any(
