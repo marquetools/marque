@@ -758,7 +758,7 @@ fn relido_conflict_rows_are_dyadic_conflicts_variant() {
 // Constraint count pin
 // ---------------------------------------------------------------------------
 //
-// Pins the absolute count of `CapcoScheme::constraints()` after PR 3b.C.
+// Pins the absolute count of `CapcoScheme::constraints()` after PR 3b.D.
 // A failure here means a constraint was added or removed without an
 // accompanying intentional documentation update. The pre-3b.C count (15)
 // was verified by inspecting `build_constraints()` before this PR added
@@ -773,7 +773,7 @@ fn relido_conflict_rows_are_dyadic_conflicts_variant() {
 // change must be documented in `specs/006-engine-rule-refactor/decisions.md`.
 
 #[test]
-fn capco_constraints_count_after_pr3b_c() {
+fn capco_constraints_count_after_pr3b_d() {
     let scheme = CapcoScheme::new();
     // Pre-3b.C baseline: 15 constraints (verified by inspection of
     // `build_constraints()` on the `origin/staging` base at 13fdc085).

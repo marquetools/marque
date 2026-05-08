@@ -27,7 +27,7 @@ The PM 2026-05-08 update corrected a citation-methodology error in pass 1 (the f
 
 Reasoning:
 1. **Constitution VII §IV.** Scheme-adoption PRs MUST NOT edit `crates/engine`, `crates/scheme`, `crates/core`, `crates/rules`, `crates/ism`. Adding a `TokenRef::ClassAtLeast(ClassLevel)` variant would touch `crates/scheme/src/constraint.rs`, violating this. PR 3.7 owns the primitive question via T108b/T108c.
-2. **Existing-pattern fit.** The catalog already contains `E022/CNWDI-classification-floor` declared as `Constraint::Custom` (`scheme.rs:1246`), with the predicate body in `e022_cnwdi_floor` (`scheme.rs:2083`). Generalizing to ~26 family-grouped rows is the natural extension. The Constraint enum's docstring at `constraint.rs:106-114` explicitly cites "CNWDI requires classification ≥ S" as the canonical Custom case.
+2. **Existing-pattern fit.** Pre-PR-D the catalog contained `E022/CNWDI-classification-floor` declared as `Constraint::Custom` (with predicate body `e022_cnwdi_floor`). Generalizing to ~26 family-grouped rows is the natural extension. The Constraint enum's docstring at `constraint.rs:106-114` explicitly cites "CNWDI requires classification ≥ S" as the canonical Custom case. Post-PR-D the legacy `E022/...` entry retires (along with `E025/...` and the hand-written E027 rule); the replacement catalog row is `E058/CNWDI-classification-floor` per the walker-prefixed naming convention (see §5.2 for the convention; R3 update — implementation diverged from this section's pre-PR-D framing of "preserved E### name").
 3. **Stage gating.** Consultation verdict §1: "PR 3b ships the declarative-catalog moves over existing primitives only." T026d's "Requires rows" phrase describes the *semantic shape* (the catalog's logical content), not a strict primitive-reuse constraint at PR 3b. Calling the entries `Custom` in PR 3b is the consultation verdict's pre-approved primitive choice.
 
 **Forward link to PR 3.7.** The planning doc carries an in-source section comment in `scheme.rs` next to the class-floor catalog block:
@@ -235,12 +235,18 @@ The PR description shows the math:
 ### 5.1 Files touched
 
 - `crates/capco/src/scheme.rs`:
-  - Add 27 `Constraint::Custom` declarations to the `CapcoScheme::new` catalog under a new section header "Class-floor catalog (§3.4.6)" with the in-source forward-link comment per §1.
-  - Per-row dispatch in a new helper `class_floor_catalog_eval(name, attrs) -> Vec<ConstraintViolation>` invoked from a single `name.starts_with("class-floor/")` arm in `evaluate_custom_by_attrs`. The helper holds a static table `[(ConstraintName, marking_predicate, ClassFloor, CitationStr)]`. Family-pattern predicates iterate the relevant axis (`attrs.sci_markings`, `attrs.aea_markings`, `attrs.dissem_controls`, etc.) looking for any token matching the family.
-  - Retired rule predicates (`e022_cnwdi_floor`, the split UCNI predicates, plus a new `e027_sar_classification` extracted from `rules.rs:4338`) become catalog table entries — no separate dispatch arms in `evaluate_custom_by_attrs` for them; their original `name` strings (`E022/CNWDI-classification-floor`, `E025/ucni-conflicts-classification`, `E027/sar-classification`) are part of the catalog under the `class-floor/` prefix, so the existing fast-path (`evaluate_named_constraint`) keeps working.
+  - Add 27 `Constraint::Custom` declarations to the `CapcoScheme::new` catalog under a new section header "Class-floor catalog (§3.4.6)" with the in-source forward-link comment per §1. Each row's `name` follows one of two prefix conventions (see §5.2 for the full naming-prefix invariant + R3.2 dispatch optimization):
+    - `E058/<purpose>` for rows that REPLACE a retired legacy rule (the four E022/E025/E027 successors).
+    - `class-floor/<marking>` for rows with no retired-rule predecessor.
+  - Per-row dispatch via a `class_floor_emit(attrs, &row) -> Option<ConstraintViolation>` helper in `scheme.rs` (R3.1: single source of truth for presence-check + floor-satisfaction-check + message-format). Two thin wrappers fan out from it:
+    - `class_floor_eval_row(attrs, &row) -> Option<String>` — used by the walker hot path; takes a `&ClassFloorRow` directly with no name lookup, returns just the message string (the walker constructs the `Diagnostic` from the row's static fields plus the message).
+    - `class_floor_catalog_eval(attrs, name) -> Vec<ConstraintViolation>` — used by the trait/validate path; resolves the row by name then forwards to `class_floor_emit`.
+    Both paths converge through `class_floor_emit` so a citation, message-text, or floor-comparison change cannot diverge between the walker and the trait/validate path. The dispatch into `class_floor_catalog_eval` from `evaluate_custom_by_attrs` is gated by an O(1) prefix check (`name.starts_with("E058/") || name.starts_with("class-floor/")`) — `is_class_floor_catalog_name`, R3.2 — not a linear catalog scan.
+    Family-pattern presence predicates (one per row) iterate the relevant axis (`attrs.sci_markings`, `attrs.aea_markings`, `attrs.dissem_controls`, etc.) looking for any token matching the family.
+  - Retired rule predicates (`e022_cnwdi_floor`, `e025_ucni_classification`, plus a new `e027_sar_classification` extracted from `rules.rs:4338`) become catalog table entries with walker-prefixed names (`E058/CNWDI-classification-floor`, `E058/DOD-UCNI-classification-ceiling`, `E058/DOE-UCNI-classification-ceiling`, `E058/SAR-classification-floor`). The legacy E### IDs are NOT preserved as severity-config aliases (per project memory `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users, no deprecation phasing). The two dead duplicate `E022/...` and `E025/...` constraint declarations that the pass-1 commit left in `build_constraints()` are removed in the same pass (R1 cleanup).
 
 - `crates/capco/src/rules_declarative.rs`:
-  - Add one new `pub(crate) struct DeclarativeClassFloorRule` + `impl Rule` block. `id() → RuleId::new("E058")`. `check` walks the catalog by name-prefix (`class-floor/`) and converts each `ConstraintViolation` into a `Diagnostic` with rule-ID `E058`. Per-row identification lives in the diagnostic message (citing the family identifier) and in the catalog row's `name` field.
+  - Add one new `pub(crate) struct DeclarativeClassFloorRule` + `impl Rule` block. `id() → RuleId::new("E058")`. `check` walks the catalog directly via `class_floor_catalog()` + `class_floor_eval_row` (R2 perf-2: zero string comparisons on the hot path; the walker has the row in hand and skips the `evaluate_custom_by_attrs` → name-lookup chain). Each row that fires produces one `Diagnostic` with rule-ID `E058`. Per-row identification lives in the diagnostic message text (which cites the row's marking label and §-citation) and in the catalog row's `name` field via `ConstraintViolation.constraint_label`.
   - Retire (delete) `DeclarativeCnwdiConstraintRule` (E022 wrapper) and `DeclarativeUcniClassificationRule` (E025 wrapper) — predicate bodies move into the catalog's static-table form.
 
 - `crates/capco/src/rules.rs`:
@@ -260,16 +266,27 @@ The PR description shows the math:
   - Update rule-inventory paragraph: E022, E025, E027 retire; E058 added (the new walker).
   - Bump rule count.
 
-### 5.2 Walker rule-ID and per-row identification (PM decision #5)
+### 5.2 Walker rule-ID and per-row identification (PM decision #5; naming-prefix invariant per R3.2)
 
 **Single walker rule-ID: `E058`.** All 27 catalog rows emit diagnostics with `Diagnostic.rule = RuleId::new("E058")`. Per-row identification is via:
-- The `Constraint::Custom { name }` field carries a stable per-row identifier (e.g., `"class-floor/HCS-comp-sub"`, `"class-floor/SI-comp"`, `"class-floor/RD-CNWDI"`, `"class-floor/E022/CNWDI-classification-floor"` for the retiring-rule preserved-name case).
-- The `Diagnostic.message` text incorporates the family identifier so a reviewer reading the diagnostic stream sees which row fired.
-- The `ConstraintViolation.constraint_label` propagates per-row for downstream audit-stream consumers.
+
+- The `Constraint::Custom { name }` field carries a stable per-row identifier under one of two prefixes:
+  - **`E058/<purpose>`** for rows that REPLACE a retired legacy rule. The four such rows are:
+    - `E058/CNWDI-classification-floor` (replaces retired E022)
+    - `E058/SAR-classification-floor` (replaces retired E027)
+    - `E058/DOD-UCNI-classification-ceiling` (replaces half of retired E025; split per PM decision #1)
+    - `E058/DOE-UCNI-classification-ceiling` (replaces the other half of retired E025)
+  - **`class-floor/<marking>`** for rows with no retired-rule predecessor (e.g., `class-floor/HCS-comp-sub`, `class-floor/SI-comp`, `class-floor/BALK`, `class-floor/passthrough-BUR`).
+- The `Diagnostic.message` text incorporates the family identifier (the row's `marking_label`) so a reviewer reading the diagnostic stream sees which row fired.
+- The `ConstraintViolation.constraint_label` propagates the catalog row name verbatim for downstream audit-stream consumers.
+
+The naming-prefix invariant (`E058/` or `class-floor/`) is what makes the dispatch route in `evaluate_custom_by_attrs` an O(1) prefix check (`is_class_floor_catalog_name`) rather than a linear scan of the catalog table on every constraint lookup. Build-time enforcement: the `class_floor_catalog_naming_convention` test in `crates/capco/tests/class_floor_catalog.rs` asserts that every catalog row's `name` starts with one of the two prefixes; adding a row that doesn't follow the convention fails CI.
 
 This matches PR 3b.A's banner walker pattern (one walker rule, per-category catalog rows differentiated by name).
 
-Severity-config: `[rules] E058 = "off"` toggles the entire walker off (FR-008-correct). Per-row severity-override is NOT supported in PR D — that would require either a per-row rule ID (rejected by PM) or a config-surface extension that isn't in scope here. If a user needs per-row override, they can suppress E058 globally and supplement with org-specific rule sets in PR 3.7+ when the primitive cleanup lands.
+**Severity-config compatibility for the legacy IDs (E022, E025, E027) is intentionally NOT preserved.** Per project memory `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users; we don't carry alias maps, retained namespaces, or phased deprecation. `.marque.toml` files keying class-floor severity overrides MUST use `E058` (walker-level) — there's no per-row severity-override surface in PR D. If a user needs per-row override, they suppress E058 globally and supplement with org-specific rule sets in PR 3.7+ when the primitive cleanup lands.
+
+`[rules] E058 = "off"` toggles the entire walker off (FR-008-correct).
 
 ### 5.3 Severity defaults (PM decisions #3 + #4)
 
@@ -316,24 +333,40 @@ Diagnostic span = the marking token's span (HCS-O token span, SI compartment spa
 
 For family rows that match multiple sub-tokens in the same portion (e.g., `SI-[comp]` family fires once for `SI-G ABCD`): the span anchors at the first matching token of the family in document order, taken from `attrs.token_spans`.
 
-### 5.6 Custom-dispatch perf
+### 5.6 Custom-dispatch perf (R2 + R3.2 hot-path optimizations)
 
-`evaluate_custom_by_attrs` adds one `name.starts_with("class-floor/")` short-circuit at the top:
+`evaluate_custom_by_attrs` gates dispatch into the class-floor catalog on an O(1) prefix check (`is_class_floor_catalog_name`):
 
 ```rust
 fn evaluate_custom_by_attrs(attrs: &CanonicalAttrs, name: &'static str) -> Vec<ConstraintViolation> {
-    if name.starts_with("class-floor/") {
+    if is_class_floor_catalog_name(name) {
         return class_floor_catalog_eval(attrs, name);
     }
     match name {
         // existing 9 entries unchanged (E010, E012, E014, E021, E024, W002, capco/joint-requires-usa, E038)
     }
 }
+
+fn is_class_floor_catalog_name(name: &str) -> bool {
+    name.starts_with("E058/") || name.starts_with("class-floor/")
+}
 ```
 
-Note: `E022/CNWDI-classification-floor`, `E025/ucni-conflicts-classification`, `E027/sar-classification` are removed from the explicit `match` arm because their predicates are now part of the catalog's static table under the `class-floor/` prefix. The catalog stores their original constraint-name strings as the per-row `name` so audit-stream rule-ID continuity is preserved (Diagnostic.rule changes to E058 — the walker — but the per-row identifier in the catalog row's name and the diagnostic message text retains "E022", "E025", "E027" markers for downstream tooling).
+The legacy `E022/CNWDI-classification-floor`, `E025/ucni-conflicts-classification`, and `E027/sar-classification` constraint declarations are **removed** from `build_constraints()` — their replacement catalog rows use the walker-prefixed names (`E058/CNWDI-classification-floor`, etc.). No severity-config back-compat (per `feedback_pre_users_no_deprecation_phasing.md`).
 
-`class_floor_catalog_eval` is a static-table lookup; one classification comparison per row that fires; one `ConstraintViolation` if violated. Linear scan over a 27-entry table — branch-prediction-friendly, ≪1µs per call at this scale.
+**Walker hot path bypasses name dispatch entirely.** `DeclarativeClassFloorRule::check` iterates `class_floor_catalog()` directly and calls `class_floor_eval_row(attrs, &row)` per row — zero string comparisons on the hot path. The walker has the `&ClassFloorRow` in hand and reads the predicate fields (`row.presence`, `row.policy`, `row.severity`, `row.citation`, `row.primary_kind`, `row.axis`) directly. The R2 perf fix layered three optimizations:
+
+- **R2 perf-1 (portion-granularity early-out)**: walker computes 5 axis-presence flags once at entry (`any_sci` / `any_aea` / `any_sar` / `any_dissem` / `any_nato_class` — all O(1)) and returns immediately when none present. On prose body text the catalog walk is skipped entirely.
+- **R2 perf-2 (direct row dispatch)**: `class_floor_eval_row(attrs, &row)` skips the `evaluate_custom_by_attrs` → `class_floor_catalog_eval` → name-lookup chain.
+- **R2 perf-3 (struct-field span anchor)**: `row.primary_kind: Option<TokenKind>` and `row.axis: ClassFloorAxis` hoisted from per-row string-match tables into struct fields.
+
+**R3.1 DRY: shared emit body.** Both the walker hot path (`class_floor_eval_row`) and the trait/validate path (`class_floor_catalog_eval`) converge through `class_floor_emit(attrs, &row) -> Option<ConstraintViolation>` so a citation, message-text, or floor-comparison change to one row cannot diverge between the two emitters.
+
+**R3.2 dispatch optimization.** `is_class_floor_catalog_name` is now an O(1) prefix check (was: linear scan of all 27 catalog row names). The `class_floor_row_by_name` linear-scan lookup remains for the trait/validate path because (a) it's not the hot path and (b) a 27-row scan there is ≪1 µs. A `phf::Map` perfect-hash is deferred unless / until profiling shows the trait path as a measurable hotspot.
+
+**Bench numbers (post-R2, verified post-R3 unchanged):**
+- `lint_10kb`: 823 µs (gate 911 µs; baseline upper CI 828 µs).
+- `decoder_10kb_one_mangled_region`: 996 µs (gate 1113 µs; baseline upper CI 1011 µs).
 
 ### 5.7 Test coverage
 
