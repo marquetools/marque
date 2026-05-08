@@ -3077,7 +3077,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
     // `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`. CTS = TS in the
     // OrdMax chain, so an at-least-TS floor is satisfied by the
     // presence itself; the row exists for the case where a portion
-    // labelled BALK/BOHEMIA is incorrectly carried with a sub-CTS
+    // labeled BALK/BOHEMIA is incorrectly carried with a sub-CTS
     // classification (data-corruption / mangled input).
     ClassFloorRow {
         name: "class-floor/BALK",
