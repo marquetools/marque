@@ -55,6 +55,10 @@
 //!   S004 = REL TO trigraph suggest-don't-fix (issue #235 / #186 PR-3)
 //!   E052 = REL TO duplicate country codes (issue #234, structural)
 //!   E053 = NOFORN conflicts with REL TO (§H.8 p145, declarative wrapper)
+//!   E054 = RELIDO conflicts with NOFORN (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E055 = RELIDO conflicts with DISPLAY ONLY (§H.8 p154, declarative wrapper — PR 3b.C)
+//!   E056 = ORCON conflicts with RELIDO (§H.8 p136, declarative wrapper — PR 3b.C)
+//!   E057 = ORCON-USGOV conflicts with RELIDO (§H.8 p140, declarative wrapper — PR 3b.C)
 //!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -87,7 +91,9 @@ impl CapcoRuleSet {
             DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
             DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
             DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
-            DeclarativeRdPrecedenceRule, DeclarativeUcniClassificationRule,
+            DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+            DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
+            DeclarativeRelidoNofornConflictRule, DeclarativeUcniClassificationRule,
         };
         Self {
             rules: vec![
@@ -230,6 +236,23 @@ impl CapcoRuleSet {
                 // `capco/noforn-conflicts-rel-to` constraint already
                 // declared in `CapcoScheme::constraints()`.
                 Box::new(DeclarativeNofornRelToConflictRule),
+                // PR 3b.C (T026c): RELIDO incompatibility declarative wrappers.
+                // Four directly-cited §H.8 conflict pairs from CAPCO-2016:
+                //   E054 — RELIDO ⊥ NOFORN        (§H.8 p154)
+                //   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154)
+                //   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; assertion on ORCON template)
+                //   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; assertion on ORCON-USGOV template)
+                // Each wraps a `Constraint::Conflicts` row in
+                // `CapcoScheme::constraints()`. The broader §3.4.2 family
+                // roster (RELIDO ⊥ {LES-NF, SBU-NF, FGI atoms, JOINT atoms,
+                // NATO atoms}) is deferred to PR 3.7 (T108b) where
+                // `Constraint::Conflicts::RhsFamily(predicate)` lands. See
+                // `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2`
+                // for the Constitution VIII rationale.
+                Box::new(DeclarativeRelidoNofornConflictRule),
+                Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
+                Box::new(DeclarativeOrconRelidoConflictRule),
+                Box::new(DeclarativeOrconUsgovRelidoConflictRule),
             ],
         }
     }

@@ -839,6 +839,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
 // ---------------------------------------------------------------------------
 // E053 — NOFORN conflicts with REL TO (§H.8 p145)
 // ---------------------------------------------------------------------------
+// (See below for E054–E057, PR 3b.C RELIDO incompatibility wrappers.)
 
 pub(crate) struct DeclarativeNofornRelToConflictRule;
 
@@ -881,6 +882,257 @@ impl Rule for DeclarativeNofornRelToConflictRule {
             "NOFORN cannot be used with REL TO (§H.8 p145); \
              remove one or the other",
             "CAPCO-2016 §H.8 p145",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PR 3b.C (T026c) — RELIDO incompatibility wrappers (E054 / E055 / E056 / E057)
+// ---------------------------------------------------------------------------
+//
+// Four directly-cited §H.8 RELIDO mutual-exclusion pairs, each wrapping
+// one `Constraint::Conflicts` row in `CapcoScheme::constraints()`:
+//
+//   E054 — RELIDO ⊥ NOFORN        (§H.8 p154; reciprocal §H.8 p145)
+//   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154; reciprocal §H.8 p163)
+//   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; asymmetric — no p154 reciprocal)
+//   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; asymmetric — no p154 reciprocal)
+//
+// Pattern: each wrapper calls `violations_for(attrs, "<catalog-name>")` as the
+// trigger check (did the named `Constraint::Conflicts` predicate fire?), then
+// selects a span from `attrs.token_spans` anchored at the LHS (asserting)
+// token per PM Q1 + Q2 resolution, and emits a single `Diagnostic` with the
+// catalog's `label` as the citation. The citation-fidelity test in
+// `tests/relido_conflicts.rs` enforces byte-identity between wrapper emission
+// and catalog label.
+//
+// Scope note: the broader §3.4.2 family roster (RELIDO ⊥ {LES-NF, SBU-NF,
+// each FGI atom, each JOINT atom, each NATO atom}) is deferred to PR 3.7
+// (T108b) where `Constraint::Conflicts::RhsFamily(predicate)` ships. See
+// `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md §2` for rationale.
+//
+// Constitution V: NO `FixProposal` from any wrapper — trailing `None`.
+// Conflicts ambiguity requires user resolution; the engine cannot determine
+// which of the two conflicting tokens to remove without policy input.
+//
+// Constitution VI: all four structs are stateless zero-size; `Send + Sync`
+// compliance is automatic (no interior mutability, no heap state).
+
+// ---------------------------------------------------------------------------
+// E054 — RELIDO conflicts with NOFORN (§H.8 p154)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeRelidoNofornConflictRule;
+
+impl Rule for DeclarativeRelidoNofornConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E054")
+    }
+
+    fn name(&self) -> &'static str {
+        "relido-noforn-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
+            return vec![];
+        }
+
+        // Prefer the RELIDO span — RELIDO is the asserting token per §H.8
+        // p154 ("Cannot be used with NOFORN or DISPLAY ONLY.").
+        // Fall back to NOFORN/NF span if RELIDO span is unavailable.
+        // Final fallback Span::new(0, 0) is always safe (Convention from
+        // every other wrapper in this module).
+        //
+        // Token text in attrs.token_spans: "RELIDO" (DissemControl::Relido),
+        // "NOFORN" or "NF" (DissemControl::Nf).
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
+            .or_else(|| {
+                attrs.token_spans.iter().find(|t| {
+                    t.kind == TokenKind::DissemControl
+                        && (&*t.text == "NOFORN" || &*t.text == "NF")
+                })
+            })
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO cannot be used with NOFORN (§H.8 p154); \
+             remove one or the other",
+            "CAPCO-2016 §H.8 p154",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E055 — RELIDO conflicts with DISPLAY ONLY (§H.8 p154)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeRelidoDisplayOnlyConflictRule;
+
+impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E055")
+    }
+
+    fn name(&self) -> &'static str {
+        "relido-display-only-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
+            return vec![];
+        }
+
+        // Prefer the RELIDO span — RELIDO is the asserting token per §H.8
+        // p154 ("Cannot be used with NOFORN or DISPLAY ONLY.").
+        // Fall back to DISPLAY ONLY span. Note: the CVE abbreviation for
+        // DISPLAY ONLY in token_spans.text is "DISPLAYONLY" (no space) —
+        // this matches `DissemControl::Displayonly::as_str()` in generated
+        // values.rs. The canonical portion form per CAPCO-2016 §H.8 p161
+        // is "DISPLAY ONLY [LIST]" in the banner, but the parser stores the
+        // CVE abbreviation in `TokenSpan::text`.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
+            .or_else(|| {
+                attrs.token_spans.iter().find(|t| {
+                    t.kind == TokenKind::DissemControl && &*t.text == "DISPLAYONLY"
+                })
+            })
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RELIDO cannot be used with DISPLAY ONLY (§H.8 p154); \
+             remove one or the other",
+            "CAPCO-2016 §H.8 p154",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E056 — ORCON conflicts with RELIDO (§H.8 p136)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeOrconRelidoConflictRule;
+
+impl Rule for DeclarativeOrconRelidoConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E056")
+    }
+
+    fn name(&self) -> &'static str {
+        "orcon-relido-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
+            return vec![];
+        }
+
+        // Prefer the ORCON span — the asserting prose lives on the ORCON
+        // template at §H.8 p136 ("May not be used with RELIDO."). Anchoring
+        // at ORCON shows the user the token that contains the prohibition.
+        // Note: the CVE abbreviation for ORCON in token_spans.text is "OC"
+        // (DissemControl::Oc::as_str()). Fall back to RELIDO span.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC")
+            .or_else(|| {
+                attrs.token_spans.iter().find(|t| {
+                    t.kind == TokenKind::DissemControl && &*t.text == "RELIDO"
+                })
+            })
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "ORCON cannot be used with RELIDO (§H.8 p136); \
+             remove one or the other",
+            "CAPCO-2016 §H.8 p136",
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E057 — ORCON-USGOV conflicts with RELIDO (§H.8 p140)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct DeclarativeOrconUsgovRelidoConflictRule;
+
+impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E057")
+    }
+
+    fn name(&self) -> &'static str {
+        "orcon-usgov-relido-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
+            return vec![];
+        }
+
+        // Prefer the ORCON-USGOV span — the asserting prose lives on the
+        // ORCON-USGOV template at §H.8 p140 ("May not be used with
+        // RELIDO."). Note: the CVE abbreviation in token_spans.text is
+        // "OC-USGOV" (DissemControl::OcUsgov::as_str()). Fall back to
+        // RELIDO span.
+        let span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC-USGOV")
+            .or_else(|| {
+                attrs.token_spans.iter().find(|t| {
+                    t.kind == TokenKind::DissemControl && &*t.text == "RELIDO"
+                })
+            })
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "ORCON-USGOV cannot be used with RELIDO (§H.8 p140); \
+             remove one or the other",
+            "CAPCO-2016 §H.8 p140",
             None,
         )]
     }
