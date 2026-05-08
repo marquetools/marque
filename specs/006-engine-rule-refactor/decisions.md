@@ -595,6 +595,46 @@ queue management.
 
 ---
 
+### D17 — PR 3b.C scope correction: RELIDO Conflicts roster
+
+**Decision**: PR 3b.C ships exactly **4** `Constraint::Conflicts` rows
+(E054–E057), not the ~15–20 rows projected in the 2026-05-07 consultation
+verdict line 82. The broader §3.4.2 family roster (RELIDO ⊥ {LES-NF,
+SBU-NF, each FGI atom, each JOINT atom, each NATO atom}) is deferred to
+**PR 3.7 (T108b)** where `Constraint::Conflicts::RhsFamily(predicate)` ships.
+
+**Rationale (Constitution VIII)**: Re-verification of CAPCO-2016 against
+the consultant's `marque-applied.md §3.4.2` roster surfaces only four pairs
+with direct, re-traceable §-passage authority:
+
+| LHS | RHS | Primary citation | CAPCO-2016.md line |
+|-----|-----|------------------|--------------------|
+| RELIDO | NOFORN | §H.8 p154 | 3808 |
+| RELIDO | DISPLAY ONLY | §H.8 p154 | 3808 |
+| ORCON | RELIDO | §H.8 p136 | 3363 |
+| ORCON-USGOV | RELIDO | §H.8 p140 | 3444 |
+
+The remaining ~11–16 pairs are structural inferences (the consultant's
+"IDO has no authority over foreign equity" argument) without a verbatim
+§-passage saying "may not be used with RELIDO." Constitution VIII §3
+prohibits embedding citations that cannot be traced to a real passage —
+fabricating fifteen specific §-citations would be a correctness defect.
+
+At PR 3.7 the `RhsFamily(predicate)` variant ships. A single
+family-predicate row (or two — one per grouping) can carry the structural
+argument with one well-documented citation chain explaining the
+IDO-vs-foreign-equity reasoning, satisfying Constitution VIII without
+fabricating per-atom citations.
+
+**Net rule delta**: 57 → 61 (+4). Net constraint delta: 15 → 19 (+4).
+
+**Verdict-line-82 amendment**: see `docs/plans/2026-05-07-pr3b-consultation-verdict.md` line 82 (amended in this PR).
+
+**Lands in**: PR 3b.C implementation, test count pin in
+`crates/capco/tests/relido_conflicts.rs:capco_constraints_count_after_pr3b_c`.
+
+---
+
 ## PR 0 absorption summary
 
 | # | Decision | PR-0 deliverable |
@@ -615,6 +655,9 @@ queue management.
 | D14 | Trait stabilization forcing function | `spec.md` Assumptions amendment |
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |
+| D17 | PR 3b.C scope correction: RELIDO Conflicts roster pruned from ~15–20 to 4 rows under Constitution VIII; broader §3.4.2 family roster deferred to PR 3.7 T108b | `crates/capco/tests/relido_conflicts.rs` count pin; verdict line 82 amended |
 
-All 16 decisions lock at PR 0. Subsequent PRs execute against this
-register; amendments require a follow-up PR editing this file.
+All 16 decisions lock at PR 0. D17 is a PR 3b.C implementation decision
+amending the consultation verdict projection; it was added post-PR-0.
+Subsequent PRs execute against this register; amendments require a
+follow-up PR editing this file.

@@ -923,7 +923,7 @@ impl Rule for DeclarativeNofornRelToConflictRule {
 // E054 — RELIDO conflicts with NOFORN (§H.8 p154)
 // ---------------------------------------------------------------------------
 
-pub(crate) struct DeclarativeRelidoNofornConflictRule;
+pub struct DeclarativeRelidoNofornConflictRule;
 
 impl Rule for DeclarativeRelidoNofornConflictRule {
     fn id(&self) -> RuleId {
@@ -957,8 +957,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
             .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
             .or_else(|| {
                 attrs.token_spans.iter().find(|t| {
-                    t.kind == TokenKind::DissemControl
-                        && (&*t.text == "NOFORN" || &*t.text == "NF")
+                    t.kind == TokenKind::DissemControl && (&*t.text == "NOFORN" || &*t.text == "NF")
                 })
             })
             .map(|t| t.span)
@@ -980,7 +979,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 // E055 — RELIDO conflicts with DISPLAY ONLY (§H.8 p154)
 // ---------------------------------------------------------------------------
 
-pub(crate) struct DeclarativeRelidoDisplayOnlyConflictRule;
+pub struct DeclarativeRelidoDisplayOnlyConflictRule;
 
 impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
     fn id(&self) -> RuleId {
@@ -1013,9 +1012,10 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
             .iter()
             .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
             .or_else(|| {
-                attrs.token_spans.iter().find(|t| {
-                    t.kind == TokenKind::DissemControl && &*t.text == "DISPLAYONLY"
-                })
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "DISPLAYONLY")
             })
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
@@ -1036,7 +1036,7 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
 // E056 — ORCON conflicts with RELIDO (§H.8 p136)
 // ---------------------------------------------------------------------------
 
-pub(crate) struct DeclarativeOrconRelidoConflictRule;
+pub struct DeclarativeOrconRelidoConflictRule;
 
 impl Rule for DeclarativeOrconRelidoConflictRule {
     fn id(&self) -> RuleId {
@@ -1066,9 +1066,10 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
             .iter()
             .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC")
             .or_else(|| {
-                attrs.token_spans.iter().find(|t| {
-                    t.kind == TokenKind::DissemControl && &*t.text == "RELIDO"
-                })
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
             })
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));
@@ -1089,7 +1090,7 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
 // E057 — ORCON-USGOV conflicts with RELIDO (§H.8 p140)
 // ---------------------------------------------------------------------------
 
-pub(crate) struct DeclarativeOrconUsgovRelidoConflictRule;
+pub struct DeclarativeOrconUsgovRelidoConflictRule;
 
 impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
     fn id(&self) -> RuleId {
@@ -1119,9 +1120,10 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
             .iter()
             .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "OC-USGOV")
             .or_else(|| {
-                attrs.token_spans.iter().find(|t| {
-                    t.kind == TokenKind::DissemControl && &*t.text == "RELIDO"
-                })
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "RELIDO")
             })
             .map(|t| t.span)
             .unwrap_or_else(|| Span::new(0, 0));

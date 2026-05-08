@@ -268,6 +268,18 @@ impl RuleSet for CapcoRuleSet {
     }
 }
 
+// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers so
+// integration tests in `crates/capco/tests/` can instantiate them directly
+// for behavior verification. `rules_declarative` is `pub(crate)` and the
+// wrapper structs are `pub(crate)`, but integration tests live outside the
+// crate boundary. Re-exporting through the `pub mod rules` surface is the
+// minimal change that preserves Constitution VII (no engine/scheme edits)
+// while enabling the citation-fidelity test pattern from plan §6.1.3.
+pub use crate::rules_declarative::{
+    DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+    DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+};
+
 // ---------------------------------------------------------------------------
 // Rule: E001 — Portion mark used in banner (correctness)
 // ---------------------------------------------------------------------------
@@ -6328,9 +6340,16 @@ mod tests {
         // rules (E031 SAR, E035 SCI, E040 Non-IC dissem) into a
         // single `BannerMatchesProjectedRule` walker dispatched over a
         // per-category catalog. Net delta: -2 (3 retired + 1 added).
-        // Final: 59 - 2 = 57.
+        // Post-T026a: 59 - 2 = 57.
+        // PR 3b.C (T026c): added E054/E055/E056/E057 RELIDO
+        // incompatibility declarative wrappers (§H.8 p154/p136/p140).
+        // Final: 57 + 4 = 61.
         assert!(ids.contains(&"E053"));
-        assert_eq!(set.rules().len(), 57);
+        assert!(ids.contains(&"E054"));
+        assert!(ids.contains(&"E055"));
+        assert!(ids.contains(&"E056"));
+        assert!(ids.contains(&"E057"));
+        assert_eq!(set.rules().len(), 61);
     }
 
     #[test]

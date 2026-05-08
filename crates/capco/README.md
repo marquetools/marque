@@ -23,7 +23,15 @@ Rule structs are zero-size and stateless. All config-dependent behavior (severit
 
 ## Rule Inventory
 
-56 rules currently implemented: errors `E001`–`E052` (core CAPCO, SAR, SCI, NODIS/EXDIS, per-SCI-system constraints, REL TO list-grammar invariants; `E017`/`E018`/`E019` retired in T035b), style `S001`–`S004` (`S004` is the first suggest-don't-fix-channel rule per issue #235 / #186 PR-3), warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info/suggest, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
+60 rules currently implemented: errors `E001`–`E057` (core CAPCO, SAR, SCI, NODIS/EXDIS, per-SCI-system constraints, REL TO list-grammar invariants, RELIDO incompatibility pairs; `E017`/`E018`/`E019` retired in T035b; `E040` emitted by the banner-roll-up walker rather than a registered rule ID), style `S001`–`S004` (`S004` is the first suggest-don't-fix-channel rule per issue #235 / #186 PR-3), warnings `W002`–`W003` (`W001` retired in T035c-14), corrections `C001`. ID prefix encodes default severity (`E` = error, `W` = warning, `S` = style/info/suggest, `C` = correction). Use `CapcoRuleSet::new()` or the `capco_rules()` entry point to obtain the full set.
+
+PR 3b.C (T026c) added four RELIDO incompatibility rules (`E054`–`E057`) as declarative wrappers over `Constraint::Conflicts` entries in `CapcoScheme::constraints()`:
+- **E054** — RELIDO ⊥ NOFORN (§H.8 p154)
+- **E055** — RELIDO ⊥ DISPLAY ONLY (§H.8 p154)
+- **E056** — ORCON ⊥ RELIDO (§H.8 p136; asserting side is the ORCON template)
+- **E057** — ORCON-USGOV ⊥ RELIDO (§H.8 p140; asserting side is the ORCON-USGOV template)
+
+The broader §3.4.2 family roster (RELIDO ⊥ {LES-NF, SBU-NF, FGI atoms, JOINT atoms, NATO atoms}) is deferred to PR 3.7 (T108b) where `Constraint::Conflicts::RhsFamily(predicate)` ships. All four citations are directly verified against the vendored `crates/capco/docs/CAPCO-2016.md` (D13 single-citation discipline, Constitution VIII).
 
 The E042–E051 cluster uses the **fix-and-warn** pattern: `Severity::Warn` paired with a `FixProposal` — the fix is applied when confidence clears threshold, AND the warn diagnostic stays in the output so the user sees exactly what was corrected and can override if the intent was actually different. See [`rules_sci_per_system`](src/rules_sci_per_system.rs) module doc for the rationale.
 

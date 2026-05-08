@@ -289,11 +289,12 @@ T026a–T026f in `tasks.md`):
   entries) + §3.4.3 cross-axis FGI rollup (1 entry) ship as 7
   declarative `PageRewrite` rows. Topological scheduler annotates
   reads/writes per entry.
-- **3b.C** — `marque-applied.md` §3.4.2 RELIDO incompatibility
-  roster as ~15–20 enumerated `Constraint::Conflicts` rows (single-
-  token RHS only). The family-predicate `RhsFamily(predicate)`
-  variant lands in PR 3.7 (Q-3.4.2-timing); these rows compact to 2
-  family rows in Stage 3 (PR 4).
+- **3b.C** — 4 directly-cited RELIDO `Constraint::Conflicts` rows
+  (E054–E057; single-token RHS only; D17 scope correction). The
+  ~15–20 projection from the consultation verdict was revised:
+  re-verification found only 4 pairs with verbatim §H.8 authority;
+  the broader §3.4.2 family roster defers to T108b (PR 3.7) where
+  `RhsFamily(predicate)` lands — see `decisions.md D17`.
 - **3b.D** — `marque-applied.md` §3.4.6 per-token classification
   floor catalog ships as ~25 `Constraint::Requires` rows. Closure-
   implied requirements (`marque-applied.md` §4.7.5) stay as `Requires`
