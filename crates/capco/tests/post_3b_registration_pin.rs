@@ -68,7 +68,7 @@ fn post_3b_registers_exact_47_rule_ids() {
     // assertion below cannot distinguish "47 unique IDs from 47
     // registrations" from "47 unique IDs from 48 registrations
     // where one ID is duplicated." Belt-and-suspenders with
-    // `corpus_parity.rs::rule_count_reflects_pr_3b`.
+    // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     let raw_len = rule_set.rules().len();
     assert_eq!(
         raw_len, 47,
