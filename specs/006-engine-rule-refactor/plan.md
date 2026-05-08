@@ -337,6 +337,23 @@ T026a–T026f in `tasks.md`):
   Phase C renderer trait surface lands in PR 5+ (Stage 4) and
   absorbs canonical-form rendering. See
   `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
+- **3b umbrella — LANDED 2026-05-08** (T027 + T028 + T029,
+  closeout sub-PR #328 aggregating 3b.A #319 / 3b.B #320 /
+  3b.C #321 / 3b.D #324 / 3b.E #326 / 3b.F #327). Closeout
+  bookkeeping only — zero rule-logic edits. T027: per-sub-move
+  reviewer attestation (D13 single-§-citation discipline,
+  ≤3-branch `impl Rule` bodies, net-rule-delta math 59 → 47)
+  aggregated in the umbrella PR description. T028:
+  exact-rule-ID-set pin landed at
+  `crates/capco/tests/post_3b_registration_pin.rs`,
+  complementing the existing count pin in
+  `corpus_parity.rs:170-194` by catching rename-at-same-count
+  + delete-and-add-at-same-count drift. T029: new
+  `pr-3b-corpus-regression` CI job in `.github/workflows/ci.yml`
+  mirroring T025's body, branch-filtered to
+  `refactor-006-pr-3b*`. Constitution VII §IV-clean (no edits to
+  `crates/{engine,scheme,core,rules,ism}`). See
+  `docs/plans/2026-05-08-pr3b-closeout-T027-T028-T029-plan.md`.
 
 **Reviewer attestation requirements** (each sub-PR's PR description
 declares a–c against the sub-move it lands; the umbrella PR-3b
