@@ -1,14 +1,14 @@
 # Implementation Plan: PR 3b.B — Eight Declarative `PageRewrite` Transmutations
 
-**Target file**: `/home/knitli/marque-pr3b-B/docs/plans/2026-05-07-pr3b-B-transmutations-plan.md`
-**Branch**: `refactor-006-pr-3b-transmutations` (worktree `/home/knitli/marque-pr3b-B/`)
+**Target file**: `docs/plans/2026-05-07-pr3b-B-transmutations-plan.md`
+**Branch**: `refactor-006-pr-3b-transmutations` (worktree ``)
 **Scope**: Sub-task T026b of PR 3b. Declarative-data-only.
 
 ---
 
 ## 1. Executive Summary
 
-PR 3b.B adds **eight new `PageRewrite` rows** to `CapcoScheme::build_page_rewrites()` (in `/home/knitli/marque-pr3b-B/crates/capco/src/scheme.rs`) to make the cross-axis "transmutation on contact" semantics from CAPCO-2016 §H.3 / §H.6 / §H.7 / §H.8 / §H.9 visible to the engine's topological scheduler. Six are from the lattice consultant's §3.4.1 transmutation roster, with consultant-Entry-6 split into 6a (SBU-NF) + 6b (LES-NF) per D13 single-citation discipline; one is the §3.4.3 cross-axis FGI rollup. All eight use `CategoryPredicate::Custom(never_fires)` triggers — they are **scheduler-visible dataflow annotations only**, not active runtime rewrites. Runtime page-rewrite execution remains in the hand-coded `PageContext` aggregator until Phase D/E.
+PR 3b.B adds **eight new `PageRewrite` rows** to `CapcoScheme::build_page_rewrites()` (in `crates/capco/src/scheme.rs`) to make the cross-axis "transmutation on contact" semantics from CAPCO-2016 §H.3 / §H.6 / §H.7 / §H.8 / §H.9 visible to the engine's topological scheduler. Six are from the lattice consultant's §3.4.1 transmutation roster, with consultant-Entry-6 split into 6a (SBU-NF) + 6b (LES-NF) per D13 single-citation discipline; one is the §3.4.3 cross-axis FGI rollup. All eight use `CategoryPredicate::Custom(never_fires)` triggers — they are **scheduler-visible dataflow annotations only**, not active runtime rewrites. Runtime page-rewrite execution remains in the hand-coded `PageContext` aggregator until Phase D/E.
 
 **Disposition of existing stubs.** Of the three existing `PageRewrite` rows, `capco/noforn-clears-rel-to` is retained verbatim (it is the only currently-active rewrite, well-grounded). The two existing Phase-3 stubs (`capco/joint-promotion`, `capco/fgi-absorption`) are **replaced** by the new entries 1–3 + 7, which model the same semantics with the consultant's §3.4 framing and a tighter source-citation chain.
 
@@ -38,7 +38,7 @@ The `noforn-clears-rel-to` row stays at the top of the rewrite vector. Entries 1
 
 - **Summary**: Bare-FGI portion contacting a US-class portion forces page-level FGI rollup (concealed → bare; acknowledged → `FGI [list]`).
 - **Citation string**: `"CAPCO-2016 §H.7 p123"`
-- **Cited passage** (verified against `/home/knitli/marque-pr3b-B/crates/capco/docs/CAPCO-2016.md` line 3099):
+- **Cited passage** (verified against `crates/capco/docs/CAPCO-2016.md` line 3099):
   > "If any document contains portions of both source-concealed FGI, e.g., '(//FGI S//REL TO USA, GBR)' and source-acknowledged FGI, e.g., '(//GBR S//REL TO USA, GBR)', then only the 'FGI' marking without the source trigraph(s)/tetragraph(s) must appear in the banner line."
 - **`reads`**: `&[CAT_CLASSIFICATION]` — narrow form. Predicate would scan `CAT_FGI_MARKER` for bare-FGI atoms; documented in doc-comment, not in `reads` to avoid mutual cycles among entries 1/2/3 per §4.
 - **`writes`**: `&[CAT_FGI_MARKER]` — single-axis write. Reciprocal-raise of class is performed at portion-parse-time per §3.4.1 Note (i), NOT as a rewrite transform; CLASS is not in `writes`.
@@ -200,7 +200,7 @@ Apply the convention per-entry:
 
 ### 6.1 New test file
 
-`/home/knitli/marque-pr3b-B/crates/capco/tests/transmutation_rewrites.rs` (~250 lines).
+`crates/capco/tests/transmutation_rewrites.rs` (~250 lines).
 
 ### 6.2 Per-entry unit tests (eight, one per entry)
 
@@ -232,10 +232,10 @@ Full workspace test suite passes. Specifically check `crates/capco/tests/corpus_
 
 | File | Change | Approx. lines |
 |---|---|---|
-| `/home/knitli/marque-pr3b-B/crates/capco/src/scheme.rs` | Add 8 `PageRewrite::custom(...)` rows (entries 1, 2, 3, 4, 5, 6a, 6b, 7) to `build_page_rewrites()`; remove `joint-promotion` and `fgi-absorption` stubs and their const slices; add `noop_action` helper alongside `never_fires` and `identity_promote`; update `build_page_rewrites()` doc comment to reflect the nine-row table | +~250 / −~50 (net +200) |
-| `/home/knitli/marque-pr3b-B/crates/capco/tests/transmutation_rewrites.rs` | New test file: 8 per-entry tests + scheduler-acyclic test + stub-retirement test + helper `lookup_rewrite()` | ~250 |
-| `/home/knitli/marque-pr3b-B/crates/capco/tests/corpus_parity.rs` | Possibly: bump `page_rewrites().len()` assertion (3 → 9) if such an assertion exists | ~1 |
-| `/home/knitli/marque-pr3b-B/crates/capco/tests/citation_fidelity.rs` | Possibly: extend to walk `scheme.page_rewrites()` if it doesn't already | ~10–20 |
+| `crates/capco/src/scheme.rs` | Add 8 `PageRewrite::custom(...)` rows (entries 1, 2, 3, 4, 5, 6a, 6b, 7) to `build_page_rewrites()`; remove `joint-promotion` and `fgi-absorption` stubs and their const slices; add `noop_action` helper alongside the existing `never_fires` (the previous `identity_promote` helper, used only by the retired stubs, is removed in this PR as dead code); update `build_page_rewrites()` doc comment to reflect the nine-row table | +~250 / −~50 (net +200) |
+| `crates/capco/tests/transmutation_rewrites.rs` | New test file: 8 per-entry tests + scheduler-acyclic test + stub-retirement test + helper `lookup_rewrite()` | ~250 |
+| `crates/capco/tests/corpus_parity.rs` | Possibly: bump `page_rewrites().len()` assertion (3 → 9) if such an assertion exists | ~1 |
+| `crates/capco/tests/citation_fidelity.rs` | Possibly: extend to walk `scheme.page_rewrites()` if it doesn't already | ~10–20 |
 
 **No changes** to: `marque-scheme/`, `marque-engine/`, `marque-core/`, `marque-rules/`, `marque-ism/`, `crates/capco/src/rules.rs`, `crates/capco/src/rules_declarative.rs`.
 
