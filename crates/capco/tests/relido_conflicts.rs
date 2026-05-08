@@ -105,9 +105,14 @@ fn attrs_with_dissem(controls: &[DissemControl]) -> CanonicalAttrs {
 
 /// Build `CanonicalAttrs` whose `token_spans` reflect the byte layout of
 /// `source` for a banner / portion shaped `(<head>//<dissem-block>)`. The
-/// dissem block is a `/`-separated list of tokens: `RELIDO`, `NOFORN`,
-/// `DISPLAYONLY`, `OC`, `OC-USGOV`, `NF` (the CVE abbreviation form per
-/// `DissemControl::as_str()` in generated values.rs).
+/// dissem block is a `/`-separated list of tokens. Examples used by the
+/// fixtures below — `RELIDO`, `NOFORN`, `OC`, `OC-USGOV`, `NF`, and
+/// `DISPLAYONLY` — are written as their ODNI ISM XML CVE attribute
+/// values (the form returned by `DissemControl::as_str()` in generated
+/// `values.rs`). For tokens where the marking surface and the CVE
+/// attribute differ (notably `DISPLAY ONLY` vs `DISPLAYONLY` per §H.8
+/// p163), see `find_dissem_token_span` doc and the engine gap (#323)
+/// for why these tests use the CVE form.
 ///
 /// `head` is a pseudo-classification token (e.g., `"S"` for SECRET) that
 /// occupies bytes `[0, head.len()]` followed by a `//` category separator
@@ -410,6 +415,21 @@ fn e054_silent_when_neither_relido_nor_noforn_present() {
 fn e055_fires_when_both_relido_and_display_only_present() {
     // Source "S//RELIDO/DISPLAYONLY" — RELIDO is FIRST in the dissem
     // block. The fix consumes the trailing `/`.
+    //
+    // Honest fixture note: this test (and other E055 fixtures in this
+    // file) uses `"DISPLAYONLY"` — the ODNI ISM XML CVE attribute value
+    // — rather than the canonical CAPCO marking-surface form
+    // `"DISPLAY ONLY"` (with space, per §H.8 p163, used in BOTH banner
+    // and portion). The fixture exercises the parser path that actually
+    // works today: `crates/ism/src/marking_forms.rs::MARKING_FORMS` has
+    // no DISPLAY ONLY entry, so the parser only recognizes the CVE form
+    // as a `DissemControl` token. Canonical marking-surface input would
+    // be `S//RELIDO/DISPLAY ONLY` per §H.8 p163. Engine gap tracked at
+    // #323; the wrapper's lookup chain already accepts both forms (see
+    // `find_dissem_token_span` doc) so this fixture will continue to
+    // pass once the parser closes the gap, and a sibling fixture using
+    // the marking-surface form can be added at that time without
+    // changing the wrapper.
     let (attrs, source) = attrs_for_dissem_block(
         "S",
         &[
@@ -1073,13 +1093,25 @@ fn relido_fix_proposals_carry_builtin_rule_source_and_no_migration_ref() {
 // Copilot R2 regression tests — banner-form vs portion-form anchor lookup
 // ---------------------------------------------------------------------------
 //
-// CAPCO-2016 §H.8 specifies two surface forms per dissem control: banner
-// long name (e.g. `ORCON`, `ORCON-USGOV`, `DISPLAY ONLY`) and CVE portion
-// abbreviation (`OC`, `OC-USGOV`, `DISPLAYONLY`). The parser preserves
-// raw user input verbatim in `TokenSpan::text` (per
-// `crates/core/src/parser.rs` — every push uses `text: trimmed.into()`,
-// no canonicalization). Earlier wrapper anchor lookups matched only the
-// portion abbreviation; banner-form input fell through to the secondary
+// CAPCO-2016 §G.1 Table 4 (p36) and §H.8 templates distinguish four
+// form-spaces per dissem control that callers anchoring at a
+// dissem-control token must accommodate: (1) Banner Line Marking Title
+// (long surface form, e.g. `ORCON`, `NOFORN`, `DISPLAY ONLY`); (2)
+// Banner Line Abbreviation (short banner form when registered, e.g.
+// `OC`, `NF` — `None` for `DISPLAY ONLY` per §H.8 p163); (3) Portion
+// Mark (typically same as the banner abbreviation, or the long form
+// when no abbreviation exists, e.g. `DISPLAY ONLY [LIST]` per §H.8
+// p163); and (4) ODNI ISM XML CVE attribute value
+// (`DissemControl::as_str()`, e.g. `"OC"`, `"OC-USGOV"`, `"NF"`,
+// `"DISPLAYONLY"` — the data shape used in
+// `ism:disseminationControls="..."`). See `find_dissem_token_span`
+// doc for the full taxonomy and the engine gap (#323).
+//
+// The parser preserves raw user input verbatim in `TokenSpan::text`
+// (per `crates/core/src/parser.rs` — every push uses
+// `text: trimmed.into()`, no canonicalization). Earlier wrapper
+// anchor lookups matched only the CVE form (`"OC"`, `"OC-USGOV"`,
+// `"DISPLAYONLY"`); banner-form input fell through to the secondary
 // anchor (RELIDO), which is the wrong cursor location for the two
 // asymmetric rules (E056 / E057) where ORCON / ORCON-USGOV is the
 // §-asserting side per PM Addendum II Q1.
@@ -1184,17 +1216,27 @@ fn e057_anchors_at_oc_usgov_token_in_portion_form() {
 }
 
 #[test]
-fn find_dissem_token_span_matches_either_surface_form() {
+fn find_dissem_token_span_matches_marking_or_cve_form() {
     // E055 helper unit test: `find_dissem_token_span` returns the first
     // matching `TokenKind::DissemControl` span whose text equals any
     // supplied form. Verifies the helper-level invariant the four
-    // wrappers depend on: banner long name AND CVE portion abbreviation
-    // both resolve through one call.
+    // wrappers depend on: the marking-surface form (banner / portion
+    // per §H.8 p163, both `"DISPLAY ONLY"` with space) AND the ODNI
+    // ISM XML CVE attribute value (`"DISPLAYONLY"`, no space — the data
+    // shape used in `ism:disseminationControls="..."`) both resolve
+    // through a single call. These are orthogonal axes — marking
+    // surface vs XML CVE — not two surface forms (per §H.8 p163,
+    // `DISPLAY ONLY` has NO abbreviation; it is the form on both
+    // banner and portion).
     //
-    // Three sub-cases per surface form, exercised against the same form
-    // list `["DISPLAY ONLY", "DISPLAYONLY"]` (the E055 fallback chain).
+    // Four sub-cases against the same form list
+    // `["DISPLAY ONLY", "DISPLAYONLY"]` (the E055 fallback chain):
+    // marking-surface present, CVE attribute value present, neither
+    // present, kind discriminator.
 
-    // Sub-case 1: banner long name `"DISPLAY ONLY"` present.
+    // Sub-case 1: marking-surface form `"DISPLAY ONLY"` present (banner
+    // long name AND portion mark per §H.8 p163; the parser sees this
+    // when a user types canonical CAPCO marking syntax).
     let mut a1 = CanonicalAttrs::default();
     a1.classification = Some(MarkingClassification::Us(Classification::Secret));
     a1.token_spans = vec![TokenSpan {
@@ -1206,10 +1248,14 @@ fn find_dissem_token_span_matches_either_surface_form() {
     assert_eq!(
         find_dissem_token_span(&a1, &["DISPLAY ONLY", "DISPLAYONLY"]),
         Some(Span::new(10, 22)),
-        "banner long name `DISPLAY ONLY` must resolve through the helper"
+        "marking-surface form `DISPLAY ONLY` (§H.8 p163, both banner and \
+         portion) must resolve through the helper"
     );
 
-    // Sub-case 2: portion CVE abbreviation `"DISPLAYONLY"` present.
+    // Sub-case 2: ODNI ISM XML CVE attribute value `"DISPLAYONLY"`
+    // present (round-trip / programmatic input — the form stored in
+    // `ism:disseminationControls=` per ODNI `CVEnumISMDissem.xml`,
+    // returned by `DissemControl::Displayonly::as_str()`).
     let mut a2 = CanonicalAttrs::default();
     a2.classification = Some(MarkingClassification::Us(Classification::Secret));
     a2.token_spans = vec![TokenSpan {
@@ -1221,7 +1267,8 @@ fn find_dissem_token_span_matches_either_surface_form() {
     assert_eq!(
         find_dissem_token_span(&a2, &["DISPLAY ONLY", "DISPLAYONLY"]),
         Some(Span::new(5, 16)),
-        "portion CVE abbreviation `DISPLAYONLY` must resolve through the helper"
+        "ODNI ISM XML CVE attribute value `DISPLAYONLY` must resolve \
+         through the helper (round-trip / programmatic input path)"
     );
 
     // Sub-case 3: neither form present → None.

@@ -150,19 +150,57 @@ fn spans_of_kind(attrs: &CanonicalAttrs, kind: TokenKind) -> Vec<&TokenSpan> {
 }
 
 /// Find the first `TokenSpan` whose kind is `DissemControl` AND whose
-/// text matches any of the supplied surface forms.
+/// text matches any of the supplied forms.
 ///
-/// CAPCO-2016 §H.8 specifies two surface forms per dissem control: the
-/// banner long name (e.g. `ORCON`, `ORCON-USGOV`, `DISPLAY ONLY`,
-/// `NOFORN`) and the portion-form CVE abbreviation (e.g. `OC`,
-/// `OC-USGOV`, `DISPLAYONLY`, `NF`). The parser preserves raw user
-/// input verbatim in `TokenSpan::text` (see `crates/core/src/parser.rs`
-/// — every push uses `text: trimmed.into()` with no canonicalization),
-/// so banner-form input stores the long name and portion-form input
-/// stores the abbreviation. Callers that anchor a diagnostic at a
-/// dissem-control token MUST enumerate every recognized surface form
-/// or risk missing the lookup on banner-form input — which is the
-/// canonical shape for the first/last lines of any classified document.
+/// # Form taxonomy
+///
+/// CAPCO-2016 §G.1 Table 4 (p36) and the §H.8 per-marking templates
+/// distinguish **three marking-surface forms** for each dissem control:
+///
+/// 1. **Authorized Banner Line Marking Title** — the long surface form
+///    that appears in banner lines. Example: `ORCON`, `ORCON-USGOV`,
+///    `NOFORN`, `DISPLAY ONLY`.
+/// 2. **Authorized Banner Line Abbreviation** — a short banner form
+///    when one is registered (Table 4 column 2). Example: `OC`,
+///    `OC-USGOV`, `NF`. For `DISPLAY ONLY` this column is **`None`**
+///    per §H.8 p163 — there is no abbreviation; banner form is the
+///    long surface string.
+/// 3. **Authorized Portion Mark** — the form rendered inside `(...)`
+///    (Table 4 column 3). Equals the banner abbreviation when one
+///    exists, otherwise equals the banner long form. For
+///    `DISPLAY ONLY` the portion mark is `DISPLAY ONLY [LIST]` per
+///    §H.8 p163.
+///
+/// Plus a fourth form-space, orthogonal to the marking surface:
+///
+/// 4. **ODNI ISM XML CVE attribute value** — the data shape used in
+///    `ism:disseminationControls="..."`. All-uppercase, no spaces.
+///    `DissemControl::as_str()` returns this form. Example: `"OC"`,
+///    `"OC-USGOV"`, `"NF"`, `"DISPLAYONLY"` (no space). The CVE form
+///    matches the marking-surface portion mark for entries where the
+///    portion is itself a short token (`OC`, `NF`), but diverges where
+///    the marking surface contains spaces or is the long form (`DISPLAY
+///    ONLY` vs `DISPLAYONLY`). Marque accepts CVE-form input on the
+///    lookup chain so that a future programmatic / re-import path
+///    feeding `ism:disseminationControls` values back through the rule
+///    engine round-trips cleanly.
+///
+/// The parser preserves raw user input verbatim in `TokenSpan::text`
+/// (see `crates/core/src/parser.rs` — every push uses `text:
+/// trimmed.into()` with no canonicalization), so callers anchoring at a
+/// dissem-control token MUST enumerate every form a user (or an XML
+/// re-import) might have written: banner long form, banner abbreviation
+/// (when distinct), portion mark, AND CVE attribute value.
+///
+/// # Engine gap (tracked at #323)
+///
+/// `crates/ism/src/marking_forms.rs::MARKING_FORMS` has no DISPLAY ONLY
+/// entry, and `DissemControl::parse` only matches the CVE string
+/// `"DISPLAYONLY"`. So today the parser cannot tokenize `DISPLAY ONLY`
+/// (with space) as a `DissemControl` — only the CVE form is recognized.
+/// The `"DISPLAY ONLY"` form in this lookup is forward-looking until
+/// that gap closes (separate `marque-ism` PR per Constitution VII
+/// Principle IV; tracked at #323).
 ///
 /// `#[doc(hidden)]` because this is an internal layout helper for the
 /// RELIDO incompatibility wrappers (E054–E057), not a stable public
@@ -1289,12 +1327,22 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
         // the asserting token per §H.8 p154 ("Cannot be used with NOFORN
         // or DISPLAY ONLY.").
         //
-        // Surface forms in `attrs.token_spans` (per parser raw-text
-        // storage; the parser preserves user input verbatim):
-        //   RELIDO:       only `"RELIDO"` (banner and portion identical).
-        //   DISPLAY ONLY: `"DISPLAY ONLY"` (banner long name, §H.8 p163)
-        //                 or `"DISPLAYONLY"` (CVE portion abbreviation,
-        //                 `DissemControl::Displayonly::as_str()`).
+        // Forms in `attrs.token_spans` (per parser raw-text storage; the
+        // parser preserves user input verbatim, no canonicalization):
+        //   RELIDO:       only `"RELIDO"` — the banner long form, the
+        //                 portion mark, AND the CVE attribute value all
+        //                 render identically.
+        //   DISPLAY ONLY: marking-surface form is `"DISPLAY ONLY"` (with
+        //                 space) — used in BOTH banner and portion per
+        //                 §H.8 p163 ("Authorized Banner Line Abbreviation:
+        //                 None"; "Authorized Portion Mark: DISPLAY ONLY
+        //                 [LIST]"). The CVE attribute value is
+        //                 `"DISPLAYONLY"` (no space, all-caps;
+        //                 `DissemControl::Displayonly::as_str()` per ODNI
+        //                 `CVEnumISMDissem.xml`). Both are accepted on
+        //                 input — see `find_dissem_token_span` doc for
+        //                 the form taxonomy and the engine gap (tracked
+        //                 at #323).
         //
         // The DISPLAY ONLY fallback branch is unreachable in correctness
         // terms — the rule's pre-condition (the dyadic `Conflicts`
