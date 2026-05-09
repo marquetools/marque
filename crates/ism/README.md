@@ -26,7 +26,7 @@ marque-ism  ←  marque-core (scanner/parser)
 
 ## Code Generation
 
-`build.rs` parses ODNI ISM specification files from `schemas/ISM-v2022-DEC/` and emits three modules into `OUT_DIR`, included via `src/generated.rs`:
+`build.rs` parses ODNI ISM specification files at compile time and emits three modules into `OUT_DIR`, included via `src/generated.rs`:
 
 | File | Contents |
 |------|----------|
@@ -34,16 +34,34 @@ marque-ism  ←  marque-core (scanner/parser)
 | `validators.rs` | Schematron-derived validation predicates |
 | `migrations.rs` | Deprecated marking → replacement mappings |
 
-Source XML/XSD files consumed:
+Source XML/XSD files consumed (resolved via build-dependencies):
 
-- `CVE_ISM/CVEnumISMClassificationAll.xml` — classification levels
-- `CVE_ISM/CVEnumISMSCIControls.xml` — SCI controls
-- `CVE_ISM/CVEnumISMDissem.xml` — dissemination controls (with deprecation markers)
-- `CVE_ISM/CVEnumISMSAR.xml` — SAR identifiers (intentionally empty in public ODNI packages; see migration note)
-- `CVE_ISM/CVEnumISMExemptFrom.xml` — declassification exemptions
-- `CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` — country trigraphs
+- From the [`ism`](https://crates.io/crates/ism) crate (`ism::package_root()`):
+  - `CVE/ISM/CVEnumISMClassificationAll.xml` — classification levels
+  - `CVE/ISM/CVEnumISMSCIControls.xml` — SCI controls
+  - `CVE/ISM/CVEnumISMDissem.xml` — dissemination controls (with deprecation markers)
+  - `CVE/ISM/CVEnumISMSAR.xml` — SAR identifiers (intentionally empty in public ODNI packages; see migration note)
+  - `CVE/ISM/CVEnumISMExemptFrom.xml` — declassification exemptions
+  - `CVE/ISM/CVEnumISM*.json` — JSON sidecars for per-token vocabulary metadata
+  - `Schematron/ISM/ISM_XML.sch` — Schematron rules
+- From the [`ism-ismcat`](https://crates.io/crates/ism-ismcat) crate (`ism_ismcat::package_root()`):
+  - `Schema/ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` — country trigraphs
+  - `Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml` — tetragraph membership
 
-The active schema version is pinned in `Cargo.toml` under `[package.metadata.marque] ism-schema-version` and re-exported as `SCHEMA_VERSION`. `build.rs` asserts the on-disk schema matches this pin. Bump intentionally when ODNI publishes a new package.
+Both crates are vendored ODNI snapshots from
+[`marquetools/ism-data`](https://github.com/marquetools/ism-data) with
+SHA-256 manifest verification at the consumer's compile time.
+
+`Cargo.toml` pins three independent versions intentionally:
+
+| Pin | Meaning |
+|-----|---------|
+| `ism-schema-version` | Upstream ODNI ISM package version label (e.g. `ISM-v2022-DEC`) |
+| `ism-data-version` | Snapshot version of the `ism-data` workspace (e.g. `20230609.0.0`) |
+| `ismcat-tetra-version` | ISMCAT Tetragraph Taxonomy revision (e.g. `2022-NOV`, independent of the ISM bundle) |
+
+`build.rs` cross-checks all three at compile time. Bump in lock-step
+when ODNI publishes updates and the ism-data workspace is re-vendored.
 
 ## Public Types
 

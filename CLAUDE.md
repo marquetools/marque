@@ -90,7 +90,7 @@ has no runtime deps on `marque-ism`/`marque-core`/`marque-rules`.
 
 | Crate | Role |
 |-------|------|
-| `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. Owns `build.rs` + ODNI schemas. |
+| `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. `build.rs` consumes ODNI schemas via the `ism` and `ism-ismcat` build-dependencies from [`marquetools/ism-data`](https://github.com/marquetools/ism-data). |
 | `marque-core` | Scanner + parser. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. Produces `IsmAttributes` from byte buffers. |
 | `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `Severity`, `AppliedFix`. No implementations. |
 | `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`/`CategoryShape`, `Constraint`, `Parsed<M>`, `Scope`, `PageRewrite`, and built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`). Zero runtime deps; no dependency on `marque-ism`. Phase B landed the recursive-lattice surface — see `docs/plans/2026-04-19-recursive-lattice-and-decoder.md`. |
@@ -117,7 +117,7 @@ Source → [marque-extract] → TextStream → [Scanner] → SpanStream
 
 ### Two-Layer Rule Architecture
 
-- **Layer 1 (generated)**: `marque-ism/build.rs` parses ODNI ISM XML schemas at build time → `OUT_DIR/{values,validators,migrations}.rs`, included via `marque-ism/src/generated.rs`. Outputs binary valid/invalid predicates only. Phase 5 added vocabulary metadata generation from the ODNI JSON sidecar — authority, owner/producer, deprecation, URN, schema version, and portion/banner forms — exposed through `Vocabulary<S>` (see Key Types).
+- **Layer 1 (generated)**: `marque-ism/build.rs` parses ODNI ISM XML schemas (consumed via the `ism` and `ism-ismcat` build-dependencies from [`marquetools/ism-data`](https://github.com/marquetools/ism-data); schemas are no longer vendored locally) at build time → `OUT_DIR/{values,validators,migrations}.rs`, included via `marque-ism/src/generated.rs`. Outputs binary valid/invalid predicates only. Phase 5 added vocabulary metadata generation from the ODNI JSON sidecar — authority, owner/producer, deprecation, URN, schema version, and portion/banner forms — exposed through `Vocabulary<S>` (see Key Types).
 - **Layer 2 (hand-written and declarative)**: `Rule` implementations in `crates/capco/src/rules.rs` consume Layer 1 predicates from `marque-ism`, classify *why* a violation occurred, determine fixes and confidence levels, and cite the CAPCO section. Phase 4+ added a *declarative* second form: dyadic invariants (conflict, requires, implies, supersedes) and page-level rewrites are declared as `Constraint` / `PageRewrite` data on `CapcoScheme` (see `crates/capco/src/scheme.rs`) rather than as procedural rule bodies. The shared evaluator in `marque-scheme` runs them; the engine's topological scheduler (`marque-engine::scheduler`) orders rewrites by their `reads` / `writes` axes and rejects cycles or unannotated `Custom` axes at `Engine::new`. See `crates/capco/README.md` for the worked example.
 
 ### SCI Compartments (Hybrid CVE + Structural)
@@ -195,32 +195,38 @@ Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `
 
 ## CAPCO Schema Code Generation
 
-`marque-ism/build.rs` reads ODNI ISM schema files from `crates/ism/schemas/ISM-v2022-DEC/` and generates code into `OUT_DIR/`, consumed via `include!()` in `crates/ism/src/generated.rs`. The schemas are present (ODNI package version `2022-DEC`, built June 2023).
+`marque-ism/build.rs` reads ODNI ISM schema files via two `[build-dependencies]` from the [`marquetools/ism-data`](https://github.com/marquetools/ism-data) workspace and generates code into `OUT_DIR/`, consumed via `include!()` in `crates/ism/src/generated.rs`. Schemas are not vendored in this repo.
 
-**Actual schema layout** (the ODNI ZIP extracts to an `ISM/` root; subdirs were remapped on copy):
-```
-ZIP root: ISM/
-  CVE/ISM/              → schemas/ISM-v2022-DEC/CVE_ISM/
-  CVE/CveSchema/ISMCAT/ → schemas/ISM-v2022-DEC/CVE_ISMCAT/
-  Schema/ISM/           → schemas/ISM-v2022-DEC/Schema/
-  Schematron/ISM/       → schemas/ISM-v2022-DEC/Schematron/
-```
+| Build-dep | Provides | `package_root()` |
+|-----------|----------|------------------|
+| [`ism`](https://crates.io/crates/ism) | The ODNI ISM-Public-Standalone.zip tree (CVE_ISM XML/JSON, IC-ISM.xsd, Schematron rules) | `data/ISM/` |
+| [`ism-ismcat`](https://crates.io/crates/ism-ismcat) | Standalone ISMCAT package (Tetragraph Taxonomy, RelTo trigraph CVE) | `data/ISMCAT/` |
 
-`CVE_ISM/` contains one XML file per CVE enumeration (classification levels, SCI controls, dissem controls, SAR identifiers, etc.). `CVE_ISMCAT/` contains XSD/RNG/RNC for country trigraphs (RelTo/FGI). `Schema/` contains `IC-ISM.xsd`, `ISM.rng`, and generated XSDs. `Schematron/` contains `ISM_XML.sch` and `Lib/*.sch`.
+Both crates carry a SHA-256 manifest of every file under `data/` and re-hash on every consumer compile (gated by their default `verify-on-build` feature). A single tampered byte in either crate refuses the build.
 
-Key files for `build.rs` to parse when implementing full code generation:
-- `CVE_ISM/CVEnumISMClassificationAll.xml` — classification levels
-- `CVE_ISM/CVEnumISMSCIControls.xml` — SCI controls
-- `CVE_ISM/CVEnumISMDissem.xml` — dissemination controls (includes deprecation markers)
-- `CVE_ISM/CVEnumISMSAR.xml` — SAR identifiers
-- `CVE_ISM/CVEnumISMExemptFrom.xml` — declassification exemptions
-- `CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` — country trigraphs for REL TO
-- `Schema/IC-ISM.xsd` — attribute structure + deprecation annotations
-- `Schematron/ISM_XML.sch` + `Schematron/Lib/*.sch` — validation predicates
+Key files marque-ism currently consumes:
 
-`build.rs` currently emits placeholder generated files so the workspace compiles. Full CVE XML and Schematron parsing is the next implementation milestone.
+- `ism::package_root().join("CVE/ISM/CVEnumISMClassificationAll.xml")` — classification levels
+- `ism::package_root().join("CVE/ISM/CVEnumISMSCIControls.xml")` — SCI controls
+- `ism::package_root().join("CVE/ISM/CVEnumISMDissem.xml")` — dissemination controls (includes deprecation markers)
+- `ism::package_root().join("CVE/ISM/CVEnumISMSAR.xml")` — SAR identifiers (intentionally empty in public ODNI packages)
+- `ism::package_root().join("CVE/ISM/CVEnumISMExemptFrom.xml")` — declassification exemptions
+- `ism::package_root().join("CVE/ISM/CVEnum*.json")` — JSON sidecars for per-token vocabulary metadata
+- `ism::package_root().join("Schematron/ISM/ISM_XML.sch")` — Schematron rules
+- `ism_ismcat::package_root().join("Schema/ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd")` — country trigraphs
+- `ism_ismcat::package_root().join("Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml")` — tetragraph membership (V2022-NOV)
 
-The active schema version is pinned in `crates/ism/Cargo.toml` under `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI publishes a new package.
+Three independent version pins live in `crates/ism/Cargo.toml` under `[package.metadata.marque]`, all cross-checked at build time:
+
+| Pin | Meaning |
+|-----|---------|
+| `ism-schema-version` | Upstream ODNI ISM package label (e.g. `ISM-v2022-DEC`) — what ODNI calls the publication |
+| `ism-data-version` | Snapshot version of the `ism-data` workspace this build uses (`YYYYMMDD.MAJOR.PATCH`, e.g. `20230609.0.0`) |
+| `ismcat-tetra-version` | ISMCAT Tetragraph Taxonomy revision (e.g. `2022-NOV`, independent of the ISM bundle) |
+
+Bump intentionally when ODNI publishes updates AND the `ism-data` workspace is re-vendored to that snapshot. The corresponding `[build-dependencies]` versions in `crates/ism/Cargo.toml` and the workspace `Cargo.toml` must move in lock-step.
+
+A monthly canary in [`marquetools/ism-data`](https://github.com/marquetools/ism-data/.github/workflows/) HEAD-checks ODNI's published ZIP URLs against the snapshot baseline; marque doesn't run its own canary anymore.
 
 ## Adding a New Rule
 
@@ -261,7 +267,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 56 CAPCO ru
 - Rust 1.85+ (edition 2024); workspace `rust-version = "1.85"` floor pinned in workspace `Cargo.toml` per Constitution Technology Stack. + `tokio` (async runtime, `BatchEngine`), `axum` + `tower` (server middleware), `memchr` 2 (Phase 1 SIMD scanner), `aho-corasick` 1 (Phase 2 token matching, native + WASM), `quick-xml` (build-time ODNI XSD/Schematron), `serde` + `serde_json` (build-time JSON sidecar), `phf` (compile-time replacement lookup), `criterion` 0.8 (benches), `static_assertions` (compile-time `Send + Sync` checks — FR-038), `blake3` (audit-record digests — FR-002/FR-004), `heed` (LMDB, planned v0.2 cache; not in scope here), `wasm-pack` (WASM target). (006-engine-rule-refactor)
 - N/A on the hot path. Build-time cache via Cargo `OUT_DIR`. The planned LMDB `LintResult` cache is out of scope for this refactor. (006-engine-rule-refactor)
 
-**Build-time inputs**: `crates/ism/schemas/ISM-v2022-DEC/` (ODNI XML, vendored), `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored), `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
+**Build-time inputs**: ODNI XML pulled from the `ism` and `ism-ismcat` build-deps (vendored in [`marquetools/ism-data`](https://github.com/marquetools/ism-data) at snapshot `20230609.0.0`, package label `ISM-v2022-DEC`); `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored); `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
 
 **Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-mvp-1", "marque-mvp-2"]`. Defaults to `"marque-mvp-2"` (Phase D, decoder + provenance). Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema (FR-014).
 

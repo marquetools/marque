@@ -15,12 +15,6 @@
 //! - sch:include not resolved (ISM_XML.sch includes ~20 library files)
 //! - document() function not supported (ISM_XML.sch loads CVE files)
 
-use std::path::Path;
-
-fn crate_root() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-}
-
 #[test]
 fn schematron_validates_simple_assertions() {
     let schema = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -48,11 +42,7 @@ fn schematron_validates_simple_assertions() {
 
 #[test]
 fn xpath_extracts_cve_dissem_values() {
-    let cve_path = crate_root().join("schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISMDissem.xml");
-    if !cve_path.exists() {
-        return; // schemas not present in CI
-    }
-
+    let cve_path = ism::package_root().join("CVE/ISM/CVEnumISMDissem.xml");
     let content = std::fs::read_to_string(&cve_path).unwrap();
     let doc = xmloxide::Document::parse_str(&content).unwrap();
     let root = doc.root_element().unwrap();
@@ -67,11 +57,7 @@ fn xpath_extracts_cve_dissem_values() {
 
 #[test]
 fn xpath_extracts_cve_sci_values() {
-    let cve_path = crate_root().join("schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISMSCIControls.xml");
-    if !cve_path.exists() {
-        return;
-    }
-
+    let cve_path = ism::package_root().join("CVE/ISM/CVEnumISMSCIControls.xml");
     let content = std::fs::read_to_string(&cve_path).unwrap();
     let doc = xmloxide::Document::parse_str(&content).unwrap();
     let root = doc.root_element().unwrap();

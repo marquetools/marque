@@ -20,8 +20,10 @@
 //!
 //! Issue #208 then swapped the backing data source from a hand-curated
 //! `BUILTIN_TETRAGRAPH_MEMBERS` slice to the ODNI ISMCAT V2022-NOV
-//! Tetragraph Taxonomy (`schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`)
-//! parsed at build time, and added [`marque_ism::is_decomposable`] —
+//! Tetragraph Taxonomy (`ism_ismcat::package_root() /
+//! Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`, vendored via the
+//! `ism-ismcat` build-dependency) parsed at build time, and added
+//! [`marque_ism::is_decomposable`] —
 //! the three-state ODNI-authoritative discriminator surfaced through
 //! [`is_decomposable_tetragraph`] below for issue #206's S005 rule.
 //! Org-specific extensions declared in `crates/ism/country_extensions.toml`
@@ -116,14 +118,15 @@ pub fn is_decomposable_tetragraph(code: &str) -> Option<bool> {
 /// every trigraph that appears in the four #186 ambiguous fixtures
 /// (USB → USA?, AUT → AUS?, ASU → AUS?, SA → USA?). This is **not** a
 /// vendored ISO 3166 dataset; expanding the table to the full
-/// CVE_ISMCAT trigraph set is a future build-time codegen step
-/// (the names live in `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/`
+/// ISMCAT trigraph set is a future build-time codegen step (the names
+/// live in `ism_ismcat::package_root() / Schema/ISMCAT/CVEGenerated/`
 /// XSD annotations) — when that lands, this hand table should be
 /// retired in favor of the generated form.
 ///
 /// Sources:
-/// - `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd`
-///   for trigraph→country-name pairs (the authoritative schema annotates
+/// - `ism_ismcat::package_root() /
+///   Schema/ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd` for
+///   trigraph→country-name pairs (the authoritative schema annotates
 ///   each entry with its `xs:annotation/xs:documentation`).
 /// - ISO 3166-1 alpha-3 spec for the codes themselves.
 ///

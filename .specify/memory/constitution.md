@@ -281,8 +281,13 @@ prohibited.
 - **Layer 1 (generated)**: `marque-ism/build.rs` MUST parse ODNI ISM schema
   files at compile time and emit only binary valid/invalid predicates
   (`values.rs`, `validators.rs`, `migrations.rs`), included via
-  `crates/ism/src/generated.rs`. No remediation logic belongs in generated
-  code.
+  `crates/ism/src/generated.rs`. The schema files are consumed via the
+  `ism` and `ism-ismcat` build-dependencies sourced from the
+  [`marquetools/ism-data`](https://github.com/marquetools/ism-data)
+  workspace; the active snapshot is pinned in `marque-ism/Cargo.toml`
+  under `[package.metadata.marque] ism-data-version` (alongside the
+  upstream ODNI label `ism-schema-version`). No remediation logic
+  belongs in generated code.
 - **Layer 2 (hand-written)**: `Rule` implementations (e.g., `marque-capco`)
   MUST consume Layer 1 predicates to detect violations, classify *why* a
   violation occurred, determine fix confidence, and cite the authoritative
@@ -307,8 +312,12 @@ prohibited.
 - `Severity::Off` is a non-firing state. A rule configured `Off` MUST be
   skipped by the engine; an `Off`-severity diagnostic is unrepresentable.
 - The active ODNI schema version MUST be pinned in
-  `[package.metadata.marque] ism-schema-version` in `marque-ism/Cargo.toml`.
-  Schema version bumps MUST be intentional, never silent. New rule crate
+  `[package.metadata.marque] ism-schema-version` (upstream ODNI package
+  label) and `[package.metadata.marque] ism-data-version` (the
+  YYYYMMDD.MAJOR.PATCH snapshot of the `ism-data` workspace whose
+  `ism` / `ism-ismcat` build-deps this crate resolves) in
+  `marque-ism/Cargo.toml`. Schema version bumps MUST be intentional,
+  never silent. New rule crate
   families (e.g., `marque-cui`, a future NATO/FGI/JOINT crate) MUST follow
   this same `build.rs` → generated-predicates pattern with an explicit
   version pin.
@@ -497,12 +506,19 @@ Don't wing it. Don't fabricate citations.
 - **Every grammar has a designated primary source.** For ISM/CAPCO today,
   the primary source is `crates/capco/docs/CAPCO-2016.md` (with the PDF
   original at `crates/capco/docs/original-refs/CAPCO-2016.pdf`), backed by
-  the ODNI ISM XML schemas in `crates/ism/schemas/ISM-v2022-DEC/`. Each
-  future grammar MUST declare its equivalent at crate creation: a NATO
-  security-policy manual, a NARA CUI registry snapshot, a partner-national
-  security framework, etc. The source MUST be versioned and vendored in
-  `crates/<grammar>/docs/` (or the equivalent); external URLs MUST NOT be
-  the primary source.
+  the ODNI ISM XML schemas vendored in the
+  [`marquetools/ism-data`](https://github.com/marquetools/ism-data)
+  workspace and consumed by `marque-ism/build.rs` via the `ism` and
+  `ism-ismcat` build-dependencies. The active snapshot of those crates
+  is pinned in `crates/ism/Cargo.toml` under
+  `[package.metadata.marque] ism-data-version` and re-vendoring is a
+  deliberate migration in `ism-data` followed by a coordinated bump
+  here. Each future grammar MUST declare its equivalent at crate
+  creation: a NATO security-policy manual, a NARA CUI registry snapshot,
+  a partner-national security framework, etc. The source MUST be
+  versioned and vendored — either in `crates/<grammar>/docs/` for
+  reference text or in a dedicated build-dep crate for machine-readable
+  schema bundles; external URLs MUST NOT be the primary source.
 - **Source-first implementation.** Anyone implementing a rule, marking
   syntax parser, rewrite, page roll-up, or fix proposal for a grammar MUST
   consult the relevant portions of the primary source first and MUST cover

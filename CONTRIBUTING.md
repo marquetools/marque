@@ -46,7 +46,11 @@ Every citation in code, docs, plans, or diagnostics MUST refer to a real
 passage in the authoritative source, accurately reflect what that
 passage says, and be re-verifiable by any reviewer with the source in
 hand. For ISM/CAPCO that source is `crates/capco/docs/CAPCO-2016.md`
-(plus the ODNI XML schemas in `crates/ism/schemas/ISM-v2022-DEC/`).
+(plus the ODNI XML schemas vendored in the
+[`marquetools/ism-data`](https://github.com/marquetools/ism-data)
+workspace and consumed via the `ism` and `ism-ismcat` build-deps; the
+active snapshot is pinned in `crates/ism/Cargo.toml` under
+`[package.metadata.marque] ism-data-version`).
 Citations use page numbers, not line numbers (`§H.8 p145`, not
 `§H.8 line 9488`).
 

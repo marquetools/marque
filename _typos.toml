@@ -7,7 +7,6 @@
 
 [files]
 extend-exclude = [
-  "crates/ism/schemas/",
   # The token_set source carries the canonical doc / regression-guard
   # narrative for every CAPCO keyword the fuzzy matcher can recover —
   # `SPCIAL`, `CCESS`, `SEPCIAL`, `NOFORON`, `SBUNOFORN`, etc. Each

@@ -4,34 +4,69 @@
 
 //! marque-ism build script.
 //!
-//! Parses ODNI ISM specification files from `schemas/ISM-v2022-DEC/` and
-//! generates Rust code into `OUT_DIR/`:
+//! Parses ODNI ISM specification files at compile time and generates Rust
+//! code into `OUT_DIR/`:
 //!
 //! - `values.rs`      — CVE enumeration types (closed Rust enums + lookup tables)
 //! - `validators.rs`  — Schematron-derived validation predicates
 //! - `migrations.rs`  — deprecated marking → replacement mappings
 //!
-//! # Schema Layout (actual ODNI package structure)
+//! # Schema source
+//!
+//! Schemas come from the [`ism-data`](https://github.com/marquetools/ism-data)
+//! workspace, consumed as `[build-dependencies]`:
+//!
+//! - The [`ism`] crate (`urn:us:gov:ic:ism` + every
+//!   `urn:us:gov:ic:cvenum:ism:*`) — `CVE/ISM/`, `Schema/ISM/`, `Schematron/ISM/`.
+//! - The [`ism_ismcat`] crate (the standalone ISMCAT package) — Tetragraph
+//!   Taxonomy and the `urn:us:gov:ic:cvenum:ismcat:*` CVE enumerations.
+//!
+//! Both crates expose a `package_root()` returning a filesystem path that
+//! resolves at the consumer's compile time to the unpacked vendored data,
+//! and a `MANIFEST_DIGEST` const that pins the SHA-256 of the manifest.
+//! Each crate's own `build.rs` re-hashes every file under `data/` against
+//! the baked manifest before this build.rs ever runs, so the integrity
+//! chain is enforced upstream.
+//!
+//! # Files consumed
 //!
 //! ```text
-//! schemas/ISM-v2022-DEC/
-//!   CVE_ISM/          CVEnumISM*.xml — ISM-specific CVE enumerations
-//!   CVE_ISMCAT/       CVEGenerated/CVEnumISMCAT*.xsd — country trigraphs etc.
-//!   Schema/           IC-ISM.xsd, ISM.rng, CVEGenerated/*.xsd
-//!   Schematron/       ISM_XML.sch, Lib/*.sch
+//! ism crate (package_root = data/ISM)
+//!   CVE/ISM/             — CVEnumISM*.xml + CVEnumISM*.json (CVE values + sidecars)
+//!   Schema/ISM/          — IC-ISM.xsd, CVEGenerated/CVEnumISM*.xsd
+//!                          (and bundled IC-ARH.xsd / IC-NTK.xsd, not consumed here)
+//!   Schematron/ISM/      — ISM_XML.sch, Lib/*.sch
+//!
+//! ism-ismcat crate (package_root = data/ISMCAT)
+//!   Schema/ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd  — country trigraphs
+//!   Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml  — tetragraph membership
 //! ```
 //!
-//! Rerun triggers: any change to schema files or this build script.
+//! Rerun triggers: any change to this build script, Cargo.toml, or the
+//! build-dep crates' versions. Cargo handles build-dep rerun automatically;
+//! we don't need a `rerun-if-changed=schemas/` since there's no local
+//! schema tree anymore.
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
 use std::{env, fs, path::Path};
 
+/// Upstream ODNI ISM package version label (the version on ODNI's
+/// publication page). Pinned here for compile-time cross-check against
+/// `[package.metadata.marque] ism-schema-version` in `Cargo.toml`.
+/// Bump intentionally when ODNI publishes an updated ISM package and
+/// the bump is reflected in `ism-data`.
 const SCHEMA_VERSION: &str = "ISM-v2022-DEC";
 
+/// Pinned `ism-data` workspace version (YYYYMMDD.MAJOR.PATCH where
+/// YYYYMMDD = ODNI snapshot date the data was vendored from). Cross-
+/// checked against `[package.metadata.marque] ism-data-version`.
+const ISM_DATA_VERSION: &str = "20230609.0.0";
+
 fn main() {
-    let schema_dir = Path::new("schemas").join(SCHEMA_VERSION);
+    let ism_root = ism::package_root();
+    let ismcat_root = ism_ismcat::package_root();
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir);
 
@@ -39,16 +74,20 @@ fn main() {
     verify_schema_version();
     // Issue #208: ISMCAT Tetragraph Taxonomy version pin.
     verify_ismcat_tetra_version();
+    // Cross-check the pinned ism-data snapshot against Cargo.toml metadata.
+    verify_ism_data_version();
 
-    // Rerun if schema files change.
-    println!("cargo:rerun-if-changed=schemas/");
+    // Cargo automatically reruns this build script when build dependencies
+    // change, so no `rerun-if-changed=schemas/` is needed (the old vendored
+    // tree is gone). Keep the build.rs / Cargo.toml triggers — those are
+    // not covered by the build-dep mechanism.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
-    generate_values(out_path, &schema_dir);
-    generate_validators(out_path, &schema_dir);
-    generate_migrations(out_path, &schema_dir);
-    generate_vocabulary(out_path, &schema_dir);
+    generate_values(out_path, &ism_root, &ismcat_root);
+    generate_validators(out_path, &ism_root);
+    generate_migrations(out_path, &ism_root);
+    generate_vocabulary(out_path, &ism_root);
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +118,37 @@ fn verify_schema_version() {
         pinned, SCHEMA_VERSION,
         "FR-011: schema version mismatch — Cargo.toml says {pinned:?} but build.rs targets \
          {SCHEMA_VERSION:?}. Update one to match the other."
+    );
+}
+
+/// Verify that the `ism-data` snapshot pinned in Cargo.toml matches the
+/// version this build.rs was written against. Constitution Principle IV —
+/// schema versions are pinned in cargo metadata and bumped intentionally.
+fn verify_ism_data_version() {
+    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
+    let table: toml::Table = cargo_toml
+        .parse()
+        .expect("failed to parse Cargo.toml as TOML");
+
+    let pinned = table
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("marque"))
+        .and_then(|m| m.get("ism-data-version"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "[package.metadata.marque] ism-data-version not found in Cargo.toml. \
+                 Add: ism-data-version = \"{ISM_DATA_VERSION}\""
+            )
+        });
+
+    assert_eq!(
+        pinned, ISM_DATA_VERSION,
+        "ism-data version mismatch — Cargo.toml says {pinned:?} but build.rs \
+         targets {ISM_DATA_VERSION:?}. Update one to match the other (and \
+         update the [build-dependencies] ism / ism-ismcat / ism-data versions \
+         in lock-step)."
     );
 }
 
@@ -362,14 +432,14 @@ fn assert_required(name: &str, entries: &[(String, String)], file: &str) {
     assert!(
         !entries.is_empty(),
         "build.rs: required CVE file {file} produced zero entries for enum {name}. \
-         This is almost always a bad schema copy — verify the ODNI ISM bundle \
-         is present at schemas/ISM-v2022-DEC/ and that the XML file parses."
+         This is almost always a bad schema copy — verify the `ism` build-dep \
+         was resolved to the pinned ism-data snapshot and that {file} parses."
     );
 }
 
-fn generate_values(out: &Path, schema_dir: &Path) {
+fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     use std::fmt::Write;
-    let cve_dir = schema_dir.join("CVE_ISM");
+    let cve_dir = ism_root.join("CVE/ISM");
     let mut content =
         String::from("// Generated by build.rs from ODNI ISM CVE XML — DO NOT EDIT.\n\n");
 
@@ -533,10 +603,12 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     );
 
     // --- T007: Trigraphs from XSD ---
+    // Source: the standalone ODNI ISMCAT package (ism-ismcat crate), not the
+    // bundled ISMCAT subset inside the ISM zip. The standalone package is the
+    // canonical home of the `urn:us:gov:ic:cvenum:ismcat:relto` namespace.
     let trigraphs = parse_xsd_trigraphs(
-        &schema_dir
-            .join("CVE_ISMCAT")
-            .join("CVEGenerated")
+        &ismcat_root
+            .join("Schema/ISMCAT/CVEGenerated")
             .join("CVEnumISMCATRelTo.xsd"),
     );
 
@@ -643,8 +715,8 @@ fn generate_values(out: &Path, schema_dir: &Path) {
     // `load_country_extensions` rejects any extension whose `code`
     // duplicates a CVE entry, and all 61 ISMCAT taxonomy codes appear
     // in `CVEnumISMCATRelTo.xsd`.
-    let taxonomy_path = Path::new(ISMCAT_TETRA_PATH);
-    let taxonomy = parse_tetragraph_taxonomy(taxonomy_path);
+    let taxonomy_path = ismcat_root.join(ISMCAT_TETRA_RELPATH);
+    let taxonomy = parse_tetragraph_taxonomy(&taxonomy_path);
     check_taxonomy_invariants(&taxonomy);
 
     // Emit the canonical tetragraph membership table consumed by
@@ -794,9 +866,9 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
 // T008: Schematron → validator predicates
 // ---------------------------------------------------------------------------
 
-fn generate_validators(out: &Path, schema_dir: &Path) {
-    let _sch = schema_dir.join("Schematron").join("ISM_XML.sch");
-    let _lib = schema_dir.join("Schematron").join("Lib");
+fn generate_validators(out: &Path, ism_root: &Path) {
+    let _sch = ism_root.join("Schematron/ISM").join("ISM_XML.sch");
+    let _lib = ism_root.join("Schematron/ISM").join("Lib");
 
     // Parse Schematron files for validation predicates.
     // Scope: fixed XPath vocabulary (attribute presence, equality, set membership).
@@ -863,7 +935,7 @@ pub fn banner_requires_full_classification(s: &str) -> bool {
 // T009: Deprecated marking migrations
 // ---------------------------------------------------------------------------
 
-fn generate_migrations(out: &Path, _schema_dir: &Path) {
+fn generate_migrations(out: &Path, _ism_root: &Path) {
     // Deterministic deprecated-marking migration table.
     // Derived from CVE XML deprecation annotations and IC policy changes.
     // Confidence >= 0.95 per FR-004a.
@@ -1296,11 +1368,11 @@ fn cve_file_const_ident(path: &Path) -> String {
     }
 }
 
-fn generate_vocabulary(out: &Path, schema_dir: &Path) {
+fn generate_vocabulary(out: &Path, ism_root: &Path) {
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
-    let cve_dir = schema_dir.join("CVE_ISM");
+    let cve_dir = ism_root.join("CVE/ISM");
     let (files, tokens) = collect_cve_metadata(&cve_dir);
 
     assert!(
@@ -1332,7 +1404,8 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
         "/// Per-CVE-file publishing metadata.\n\
          ///\n\
          /// One instance per `CVEnum*.json` file under\n\
-         /// `crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/`. Every token-level\n\
+         /// `ism::package_root().join(\"CVE/ISM\")` (vendored ISM data).\n\
+         /// Every token-level\n\
          /// metadata entry references one of these so the same authority,\n\
          /// point of contact, and schema-version provenance is shared\n\
          /// across all tokens published in that file.\n\
@@ -1480,8 +1553,8 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
 // ---------------------------------------------------------------------------
 //
 // Replaces the previous hand-curated `BUILTIN_TETRAGRAPH_MEMBERS` slice with
-// data sourced from the ODNI taxonomy at
-// `schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml`.
+// data sourced from the ODNI taxonomy in the `ism-ismcat` crate at
+// `ism_ismcat::package_root().join("Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml")`.
 // The same data drives three generated artifacts:
 //
 //   - `TETRAGRAPH_MEMBERS` / `lookup_tetragraph_members` — country lists
@@ -1500,8 +1573,9 @@ fn generate_vocabulary(out: &Path, schema_dir: &Path) {
 // the denormalized file is caught at build time by guard #4 below.
 
 const ISMCAT_TETRA_VERSION: &str = "2022-NOV";
-const ISMCAT_TETRA_PATH: &str =
-    "schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml";
+/// Relative path under `ism_ismcat::package_root()` to the denormalized
+/// ISMCAT Tetragraph Taxonomy XML.
+const ISMCAT_TETRA_RELPATH: &str = "Taxonomy/ISMCAT/TetragraphTaxonomyDenormalized.xml";
 
 /// Mirrors the XSD `DecomposableType` enumeration. Three-state, not four:
 /// `NA` is documented as "applied to deprecated tetragraphs" — every NA
