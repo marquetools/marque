@@ -63,8 +63,37 @@ mod sealed;
 /// replacements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenSource {
-    /// Closed-CVE: the canonical bytes are a known token from the
+    /// Closed-CVE: the canonical bytes name a known token from the
     /// scheme's vocabulary, identified by [`TokenId`].
+    ///
+    /// # Four-form note
+    ///
+    /// A single CAPCO token has up to **four distinct surface forms**
+    /// (CAPCO-2016 §G.1 Table 4 plus the ODNI XML CVE Value field):
+    ///
+    /// 1. **CVE Value** — what `crates/ism/schemas/ISM-v2022-DEC/CVE/`
+    ///    declares (e.g., `DISPLAYONLY`, `EYES`, `REL`). Often
+    ///    space-stripped or punctuation-stripped relative to CAPCO.
+    /// 2. **Marking Title** — the long banner-line title (e.g.,
+    ///    `DISPLAY ONLY`, `EYES ONLY`).
+    /// 3. **Banner Abbreviation** — the authorized abbreviation
+    ///    (e.g., same as title for many; differs for `FOR OFFICIAL
+    ///    USE ONLY` → `FOUO`).
+    /// 4. **Portion Mark** — the parenthesized form (e.g., `NF`,
+    ///    `OC`, `DISPLAY ONLY`).
+    ///
+    /// Many tokens have all four collapsing to the same string;
+    /// some have all four distinct (`DISPLAYONLY` / `DISPLAY ONLY` /
+    /// `DISPLAY ONLY` / `DISPLAY ONLY [LIST]`). The `TokenId` here
+    /// names the abstract token, not the form. The bytes carried by
+    /// the [`Canonical<S>`] tell auditors which form was emitted at
+    /// the render site; the `Cve` provenance tag tells them the
+    /// emission was vocabulary-bound (closed-set), not free-form.
+    ///
+    /// PR 3c.2's `MarkingScheme::render_canonical_cve(token, scope,
+    /// vocab)` is the form-selection path: it chooses one of the
+    /// four based on `scope` (and any future `RenderContext`
+    /// refinement) using the `Vocabulary<S>` accessors.
     Cve(TokenId),
 
     /// Open-vocabulary: the canonical bytes were constructed by a
@@ -158,17 +187,32 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// [`TokenSource::Cve`] is genuine — auditors reading it know
     /// a closed-vocabulary token was named.
     ///
+    /// # Four-form ambiguity (read this before reasoning about `bytes`)
+    ///
+    /// A CAPCO token has up to **four distinct surface forms**
+    /// (CAPCO-2016 §G.1 Table 4 + ODNI XML CVE Value): CVE Value,
+    /// Marking Title (long banner), Banner Abbreviation, and Portion
+    /// Mark. See [`TokenSource::Cve`] for the worked example. The
+    /// `bytes` parameter here is **whichever form the caller chose
+    /// to render** — `from_cve` does not select among the four. That
+    /// selection is the point of PR 3c.2's
+    /// `MarkingScheme::render_canonical_cve(token, scope, vocab)`,
+    /// which will use the [`Vocabulary<S>`] accessors
+    /// (`portion_form`, `banner_form`, `banner_abbreviation`, plus a
+    /// future CVE-Value-by-token accessor) to pick a form based on
+    /// `scope` and any further [`RenderContext`] refinement (e.g.,
+    /// long-title-vs-abbreviation within a `Scope::Page`).
+    ///
     /// # Caveat (PR 3c.1 transitional shape — closes in PR 3c.2)
     ///
     /// The `bytes` argument is currently caller-supplied. The
     /// `TokenId` records which token was *named*; the `bytes`
-    /// record what the caller *claimed* the rendering is. **PR 3c.1
-    /// does not validate that the bytes match the vocabulary's
-    /// canonical form for that token** — the vocabulary-side render
-    /// surface (`MarkingScheme::render_canonical_cve`) lands in
-    /// PR 3c.2 alongside the rule-emission migration, at which
-    /// point the engine fetches the canonical bytes itself and the
-    /// `bytes` parameter on this constructor is removed.
+    /// record which form the caller *rendered*. **PR 3c.1 does not
+    /// validate** that the bytes equal any of the four vocabulary
+    /// forms for that token; that validation lands at PR 3c.2 once
+    /// the form-selection question is resolved (see the design
+    /// doc's "Open question" section in
+    /// `docs/plans/2026-05-09-pr3c-foundation-plan.md`).
     ///
     /// During PR 3c.1 there are no production callers (the engine
     /// promotion path still consumes `FixProposal::replacement` and
@@ -178,11 +222,12 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     ///
     /// # Audit invariant (post-PR-3c.2)
     ///
-    /// Once PR 3c.2 lands, the `bytes` argument is removed and the
-    /// engine renders from the vocabulary. The resulting
-    /// [`Canonical::source`] is [`TokenSource::Cve(token)`] and the
-    /// bytes are guaranteed to match
-    /// `Vocabulary::<S>::canonical_form(token)`.
+    /// Once PR 3c.2 lands the form-selection design, the `bytes`
+    /// argument is removed and the engine renders from the
+    /// vocabulary. The resulting [`Canonical::source`] is
+    /// [`TokenSource::Cve(token)`] and the bytes are guaranteed to
+    /// match the vocabulary's chosen form for `(token, scope,
+    /// render_context)`.
     pub fn from_cve(token: TokenId, scope: Scope, bytes: Box<str>) -> Self {
         Self {
             bytes,

@@ -1260,6 +1260,76 @@ Suggested args: `category: CategoryId, expected_token: Option<TokenId>, actual_t
 | **R4** | **`Message::render()` interpolation channel reopens the leak.** A rule's `MessageArgs` carries `TokenId`s; `Message::render()` reads the args and emits a string. If `render()` is sloppy (e.g., calls into a token table that contains content), the rendered string could carry input-derived bytes. | Low | Critical | `Message::render()` is for CLI / IDE display only and is NOT called from the audit emitter. The audit emitter consumes `(template, args)` pairs directly per the audit-record contract `contracts/audit-record.md` (NDJSON `"message": { "template": "...", "args": { ... } }`). Add a regression-canary test at PR 3c.2 that grep-asserts no `original_bytes` substring appears in any `audit_*.ndjson` test fixture. |
 | **R5** | **`Blake3Hash` placement (in `marque-scheme`) re-exports through `marque-rules` create a confusing two-name surface.** Consumers may import either path. | Low | Low | Re-export from `marque-rules` is `pub use marque_scheme::Blake3Hash;` (no rename); both paths resolve to the same nominal type. Rust's name-resolution treats them as identical for trait selection / `impl` blocks. Document the canonical path in `marque-rules`'s crate-level doc as `marque_rules::Blake3Hash`. |
 
+### 8.1. Open question deferred to PR 3c.2 — `Canonical<S>` form selection
+
+**Surfaced 2026-05-09 (post-PR-3c.1 implementation, pre-PR-3c.2 design)**:
+the `Canonical::from_cve(token, scope, bytes)` shape carries `bytes` as
+caller-supplied. PR 3c.2 will replace this with engine-side rendering
+via `MarkingScheme::render_canonical_cve(token, scope, vocab,
+render_context) -> Canonical<S>`. **The form-selection inside that
+render method is an open architectural question** that PR 3c.2 must
+resolve explicitly.
+
+#### The four forms (per CAPCO-2016 §G.1 Table 4 + ODNI XML CVE Value)
+
+A single CAPCO token has up to **four distinct surface forms**:
+
+1. **CVE Value** — what `crates/ism/schemas/ISM-v2022-DEC/CVE/`
+   declares (e.g., `DISPLAYONLY`, `EYES`, `REL`). Often
+   space-stripped or punctuation-stripped relative to CAPCO.
+2. **Marking Title** — the long banner-line title (e.g.,
+   `DISPLAY ONLY`, `EYES ONLY`).
+3. **Banner Abbreviation** — the authorized abbreviation; same as
+   Title for many markings (`DEA SENSITIVE`); differs for some
+   (`FOR OFFICIAL USE ONLY` → `FOUO`).
+4. **Portion Mark** — the parenthesized form (`NF`, `OC`,
+   `DISPLAY ONLY`, `DISPLAY ONLY [LIST]`).
+
+`crates/ism/src/marking_forms.rs::MARKING_FORMS` is the hand-curated
+single source of truth for forms 2/3/4. The CVE Value (form 1) lives in
+ODNI XML and is currently surfaced only via `Vocabulary::lookup(bytes)
+-> Option<TokenId>` (bytes-to-token), not by-token-to-bytes.
+
+#### Why this matters
+
+The current `Vocabulary<S>` trait surfaces three by-token accessors:
+`portion_form()`, `banner_form()`, `banner_abbreviation()`. There is no
+by-token CVE-Value accessor — the CVE Value is accessible only by
+parsing it back through `Vocabulary::lookup(bytes)`. PR 3c.2's
+`render_canonical_cve` must pick which form to emit, but the trait
+surface cannot today emit form 1 by-token.
+
+#### Form-selection axes PR 3c.2 must decide
+
+| Axis | Options |
+|---|---|
+| **Scope-driven** | `Scope::Portion → portion_form` is uncontroversial. `Scope::Page` → ?: banner abbreviation OR banner title (both are valid per CAPCO-2016 §D.1 p27). `Scope::Document` → same question. |
+| **Emit-context refinement** | Even within `Scope::Page`, the rule's intent may differ: a rule fixing a portion mark in a banner (E001) wants the banner abbreviation; a rule emitting the long title (S001 reverse case) wants the title. `RenderContext` may need a `BannerForm::{Title, Abbreviation}` enum. |
+| **CVE Value emit path** | When does the engine ever need to emit form 1 (CVE Value)? Possibly only at the audit-record `bytes_digest` source — i.e., never as user-visible text. If form 1 is audit-only, no by-token accessor is needed; the digest is computed from form-2/3/4 bytes, not from form 1. **Open**: confirm this with the audit-record contract. |
+| **Vocabulary trait extension** | If form 1 needs by-token emission, add `Vocabulary::cve_value(token) -> &'static str`. If not, leave the trait unchanged. |
+
+#### Decision required by PR 3c.2 design (T048)
+
+The PR 3c.2 planner agent **MUST** read this section before designing
+`MarkingScheme::render_canonical_cve`. The decision shape:
+
+- A `RenderContext` enum that captures the form-selection axis (e.g.,
+  `RenderContext::PortionForm`, `RenderContext::BannerAbbreviation`,
+  `RenderContext::BannerTitle`).
+- The mapping from `(Scope, RenderContext)` to one of the four forms.
+- Whether `Vocabulary<S>` gains a `cve_value(token)` accessor for
+  audit-only CVE-Value emission.
+- A property test asserting that, for every CAPCO token, the four
+  forms round-trip through `Vocabulary::lookup` correctly (i.e.,
+  `lookup(form_N(token)) == Some(token)` for each form, where the
+  lookup is form-aware or form-tolerant).
+
+PR 3c.1 ships `Canonical::from_cve` with a doc-comment that flags this
+ambiguity. PR 3c.1 callers (test fixtures only) are not constrained to
+any single form — they pass arbitrary bytes for compile-fail / Send +
+Sync / phantom-type-parameter coverage. Form-selection rigor lands in
+PR 3c.2.
+
 ---
 
 ## 9. Per-task ordered checklist
