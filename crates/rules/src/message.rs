@@ -466,6 +466,20 @@ pub struct MessageArgs {
 /// use marque_rules::Message;
 /// let _ = Message::format("decoder-recognized canonical form: {}", "data");
 /// ```
+///
+/// **No `impl Display for Message`.** A `Display` impl would be a
+/// covert free-form channel — `format!("{}", msg)` would produce a
+/// `String` derived from the message that consumers could re-emit
+/// in audit records or diagnostics, defeating the closed-template
+/// closure. `Message` is rendered by the audit emitter via
+/// [`Message::template`] + [`Message::args`] direct field access,
+/// not via `Display`.
+///
+/// ```compile_fail
+/// use marque_rules::{Message, MessageTemplate, MessageArgs};
+/// let m = Message::new(MessageTemplate::DecoderRecognized, MessageArgs::default());
+/// let _ = format!("{}", m);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Message {
     template: MessageTemplate,

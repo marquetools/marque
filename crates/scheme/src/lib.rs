@@ -42,14 +42,25 @@
 //!   (Phase E).
 //! - [`codec`] — `Codec<S>` trait + `CodecError` surface — pinned
 //!   for Phase G to implement against (Phase E).
+//! - [`canonical`] — `Canonical<S>`, `TokenSource`,
+//!   `CanonicalConstructor<S>` (sealed), `EngineConstructor<S>`.
+//!   The provenance-tagged single-token replacement type with a
+//!   sealed open-vocab construction path; the engine is the only
+//!   crate that can mint open-vocab `Canonical<S>` values, via the
+//!   sealed `CanonicalConstructor<S>` trait whose lone impl is
+//!   `EngineConstructor<S>`. Closes the G13 leak channel as a type
+//!   invariant for closed-CVE tokens (PR 3c.1; rule-API surface
+//!   `FixIntent<S>` lives in `marque-rules`). See source plan §8.1.
 //!
 //! ## Status
 //!
 //! Phase E trait surface is complete. The lattice, projection,
 //! recognizer, vocabulary, and codec surfaces are pinned and
-//! consumed by `marque-capco` (the in-tree adapter). A second
-//! scheme can land in its own crate without touching this one —
-//! see `crates/scheme/tests/adoption_readiness.rs` for the
+//! consumed by `marque-capco` (the in-tree adapter). PR 3c.1 added
+//! the [`canonical`] module — the sealed-construction surface that
+//! PR 3c.2 will wire into rule emission and engine promotion. A
+//! second scheme can land in its own crate without touching this
+//! one — see `crates/scheme/tests/adoption_readiness.rs` for the
 //! SC-010 pre-verification (`StubScheme` builds against
 //! `marque_scheme::*` and `std::*` only).
 

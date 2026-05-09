@@ -154,20 +154,35 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// `TokenId` itself can only be obtained from
     /// [`crate::Vocabulary::lookup`] (PR 3c.1) or from rule-side
     /// const tables registered against the active scheme (PR 3c.2),
-    /// so there is no path from `Box<str>` to [`Canonical`] through
-    /// this constructor. The `bytes` argument is the canonical
-    /// rendering of the token in the scheme's vocabulary; the engine
-    /// is expected to fetch it from
-    /// `MarkingScheme::render_canonical_cve` (TBD in PR 3c.2). For
-    /// PR 3c.1 the `bytes` are passed in by the caller — there are
-    /// no production callers yet.
+    /// so the `TokenId` provenance tag carried in
+    /// [`TokenSource::Cve`] is genuine — auditors reading it know
+    /// a closed-vocabulary token was named.
     ///
-    /// # Audit invariant
+    /// # Caveat (PR 3c.1 transitional shape — closes in PR 3c.2)
     ///
-    /// The resulting [`Canonical::source`] is
-    /// [`TokenSource::Cve(token)`]; auditors reading this provenance
-    /// know the canonical bytes were chosen from the scheme's
-    /// closed vocabulary, NOT constructed at runtime.
+    /// The `bytes` argument is currently caller-supplied. The
+    /// `TokenId` records which token was *named*; the `bytes`
+    /// record what the caller *claimed* the rendering is. **PR 3c.1
+    /// does not validate that the bytes match the vocabulary's
+    /// canonical form for that token** — the vocabulary-side render
+    /// surface (`MarkingScheme::render_canonical_cve`) lands in
+    /// PR 3c.2 alongside the rule-emission migration, at which
+    /// point the engine fetches the canonical bytes itself and the
+    /// `bytes` parameter on this constructor is removed.
+    ///
+    /// During PR 3c.1 there are no production callers (the engine
+    /// promotion path still consumes `FixProposal::replacement` and
+    /// has not been re-wired through `Canonical<S>` yet). Test
+    /// fixtures that exercise the type may pass arbitrary bytes;
+    /// they are constructing test inputs, not minting audit records.
+    ///
+    /// # Audit invariant (post-PR-3c.2)
+    ///
+    /// Once PR 3c.2 lands, the `bytes` argument is removed and the
+    /// engine renders from the vocabulary. The resulting
+    /// [`Canonical::source`] is [`TokenSource::Cve(token)`] and the
+    /// bytes are guaranteed to match
+    /// `Vocabulary::<S>::canonical_form(token)`.
     pub fn from_cve(token: TokenId, scope: Scope, bytes: Box<str>) -> Self {
         Self {
             bytes,
