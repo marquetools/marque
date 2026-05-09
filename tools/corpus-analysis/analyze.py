@@ -1615,9 +1615,11 @@ MANGLING_CLASSES = (
 # supersession. These are NOT banner/portion-form abbreviation
 # differences — `NF` (portion) and `NOFORN` (banner) are both
 # authorized canonical forms in their respective contexts per the ODNI
-# CVE register (`crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/
-# CVEnumISMDissem.csv`). Form-mismatch mangling would need its own
-# class; this class is for tokens CAPCO explicitly retired.
+# CVE register (the `ism` build-dep crate's
+# `data/ISM/CVE/ISM/CVEnumISMDissem.csv`, vendored from
+# https://github.com/marquetools/ism-data). Form-mismatch mangling
+# would need its own class; this class is for tokens CAPCO explicitly
+# retired.
 #
 # Every entry MUST cite a passage in
 # `crates/capco/docs/CAPCO-2016.md` per Constitution VIII. An entry

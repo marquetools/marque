@@ -24,10 +24,10 @@ pub mod migrations {
 }
 
 /// Per-token metadata derived from the ODNI ISM JSON sidecars
-/// (`schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json`). Provides the
-/// publishing authority (URN, source, point of contact, schema
-/// version) and long-form description for every token in the active
-/// CVE vocabulary.
+/// (`ism::package_root() / CVE/ISM/CVEnum*.json`, vendored via the
+/// `ism` build-dependency). Provides the publishing authority (URN,
+/// source, point of contact, schema version) and long-form description
+/// for every token in the active CVE vocabulary.
 ///
 /// The composition of these raw records into the
 /// `marque-scheme::Vocabulary<S>` trait surface lives in

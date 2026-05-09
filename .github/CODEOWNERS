@@ -25,9 +25,10 @@ deny.toml                               @marquetools/maintainers
 demo/package.json                       @marquetools/maintainers
 demo/package-lock.json                  @marquetools/maintainers
 
-# ── Build-time code generation (schema + build.rs) ──────────────────
+# ── Build-time code generation (build.rs) ───────────────────────────
+# ODNI schemas now ship as build-deps from marquetools/ism-data; their
+# code-ownership lives in that repo.
 crates/ism/build.rs                     @marquetools/maintainers
-crates/ism/schemas/                     @marquetools/maintainers
 
 # ── Security policy ─────────────────────────────────────────────────
 SECURITY.md                             @marquetools/maintainers
