@@ -55,6 +55,7 @@
 
 pub mod ambiguity;
 pub mod builtins;
+pub mod canonical;
 pub mod category;
 pub mod codec;
 pub mod constraint;
@@ -68,6 +69,7 @@ pub mod template;
 pub mod vocabulary;
 
 pub use ambiguity::{Candidate, EvidenceFeature, Parsed};
+pub use canonical::{Canonical, CanonicalConstructor, EngineConstructor, TokenSource};
 pub use builtins::{
     FlatSet, IntersectSet, MaxDate, ModeSet, OptionalSingleton, OrdMax, OrdMin, Product,
     SupersessionSet,
