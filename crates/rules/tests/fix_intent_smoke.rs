@@ -106,7 +106,10 @@ fn external_crate_constructs_fix_intent_with_render_replacement() {
         },
         confidence: Confidence::strict(0.85),
         feature_ids: SmallVec::new(),
-        message: Message::new(MessageTemplate::BannerRollupMismatch, MessageArgs::default()),
+        message: Message::new(
+            MessageTemplate::BannerRollupMismatch,
+            MessageArgs::default(),
+        ),
     };
     match intent.replacement {
         ReplacementIntent::Render {

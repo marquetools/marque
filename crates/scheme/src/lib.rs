@@ -80,11 +80,11 @@ pub mod template;
 pub mod vocabulary;
 
 pub use ambiguity::{Candidate, EvidenceFeature, Parsed};
-pub use canonical::{Canonical, CanonicalConstructor, EngineConstructor, TokenSource};
 pub use builtins::{
     FlatSet, IntersectSet, MaxDate, ModeSet, OptionalSingleton, OrdMax, OrdMin, Product,
     SupersessionSet,
 };
+pub use canonical::{Canonical, CanonicalConstructor, EngineConstructor, TokenSource};
 pub use category::{
     AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
     TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,

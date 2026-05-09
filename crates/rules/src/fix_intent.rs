@@ -273,7 +273,10 @@ mod tests {
             },
             confidence: Confidence::strict(0.8),
             feature_ids: SmallVec::new(),
-            message: Message::new(MessageTemplate::BannerRollupMismatch, MessageArgs::default()),
+            message: Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs::default(),
+            ),
         };
         match &intent.replacement {
             ReplacementIntent::Render {

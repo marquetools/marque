@@ -138,7 +138,11 @@ fn engine_only_open_vocab_path_works_under_test_fixture_carve_out() {
             render_call_site,
         } => {
             assert_eq!(*category, CategoryId(7));
-            assert!(render_call_site.file().ends_with("canonical_unconstructable.rs"));
+            assert!(
+                render_call_site
+                    .file()
+                    .ends_with("canonical_unconstructable.rs")
+            );
         }
         other => panic!("expected OpenVocab source, got {other:?}"),
     }

@@ -528,30 +528,54 @@ mod tests {
         // exhaustiveness check at compile time; this test pins the
         // *labels* themselves so a rename cannot slip through silently.
         // Mirrors `confidence::tests::feature_id_as_str_matches_audit_contract`.
-        assert_eq!(MessageTemplate::DecoderRecognized.as_str(), "DecoderRecognized");
+        assert_eq!(
+            MessageTemplate::DecoderRecognized.as_str(),
+            "DecoderRecognized"
+        );
         assert_eq!(MessageTemplate::ReparseFailed.as_str(), "ReparseFailed");
-        assert_eq!(MessageTemplate::BannerRollupMismatch.as_str(), "BannerRollupMismatch");
+        assert_eq!(
+            MessageTemplate::BannerRollupMismatch.as_str(),
+            "BannerRollupMismatch"
+        );
         assert_eq!(
             MessageTemplate::ClassificationFloorViolated.as_str(),
             "ClassificationFloorViolated",
         );
-        assert_eq!(MessageTemplate::NonCanonicalOrder.as_str(), "NonCanonicalOrder");
+        assert_eq!(
+            MessageTemplate::NonCanonicalOrder.as_str(),
+            "NonCanonicalOrder"
+        );
         assert_eq!(MessageTemplate::ConflictsWith.as_str(), "ConflictsWith");
-        assert_eq!(MessageTemplate::RequiredByPresence.as_str(), "RequiredByPresence");
+        assert_eq!(
+            MessageTemplate::RequiredByPresence.as_str(),
+            "RequiredByPresence"
+        );
         assert_eq!(MessageTemplate::SupersededToken.as_str(), "SupersededToken");
         assert_eq!(MessageTemplate::WrongTokenForm.as_str(), "WrongTokenForm");
         assert_eq!(
             MessageTemplate::NonIcDissemInClassifiedBanner.as_str(),
             "NonIcDissemInClassifiedBanner",
         );
-        assert_eq!(MessageTemplate::UnrecognizedToken.as_str(), "UnrecognizedToken");
-        assert_eq!(MessageTemplate::UnpublishedSciControl.as_str(), "UnpublishedSciControl");
-        assert_eq!(MessageTemplate::CorrectionsApplied.as_str(), "CorrectionsApplied");
+        assert_eq!(
+            MessageTemplate::UnrecognizedToken.as_str(),
+            "UnrecognizedToken"
+        );
+        assert_eq!(
+            MessageTemplate::UnpublishedSciControl.as_str(),
+            "UnpublishedSciControl"
+        );
+        assert_eq!(
+            MessageTemplate::CorrectionsApplied.as_str(),
+            "CorrectionsApplied"
+        );
         assert_eq!(
             MessageTemplate::OutOfRangeNumericToken.as_str(),
             "OutOfRangeNumericToken",
         );
-        assert_eq!(MessageTemplate::SarInvariantViolated.as_str(), "SarInvariantViolated");
+        assert_eq!(
+            MessageTemplate::SarInvariantViolated.as_str(),
+            "SarInvariantViolated"
+        );
     }
 
     #[test]

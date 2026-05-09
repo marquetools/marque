@@ -24,6 +24,9 @@ fn message_new_accepts_template_and_args_from_external_crate() {
 fn message_template_as_str_is_stable_from_external_crate() {
     // Pins the on-the-wire string form. Mirrors the in-crate test in
     // `src/message.rs::tests` but exercises the external surface.
-    assert_eq!(MessageTemplate::DecoderRecognized.as_str(), "DecoderRecognized");
+    assert_eq!(
+        MessageTemplate::DecoderRecognized.as_str(),
+        "DecoderRecognized"
+    );
     assert_eq!(MessageTemplate::ReparseFailed.as_str(), "ReparseFailed");
 }
