@@ -464,6 +464,16 @@ mod tests {
         assert_eq!(banner_to_portion("LES NOFORN"), Some("LES-NF"));
         assert_eq!(banner_to_portion("DOD UCNI"), Some("DCNI"));
         assert_eq!(banner_to_portion("DOE UCNI"), Some("UCNI"));
+        // §H.7 NATO classifications — banner spells out the title, portion
+        // is the abbreviation. CAPCO-2016 §G.1 Table 4 p36.
+        assert_eq!(banner_to_portion("COSMIC TOP SECRET"), Some("CTS"));
+        assert_eq!(banner_to_portion("NATO SECRET"), Some("NS"));
+        assert_eq!(banner_to_portion("NATO CONFIDENTIAL"), Some("NC"));
+        assert_eq!(banner_to_portion("NATO RESTRICTED"), Some("NR"));
+        assert_eq!(banner_to_portion("NATO UNCLASSIFIED"), Some("NU"));
+        // §H.4 SCI compounds — CAPCO-2016 §H.4 p78, p83.
+        assert_eq!(banner_to_portion("SI-ECRU"), Some("SI-EU"));
+        assert_eq!(banner_to_portion("SI-NONBOOK"), Some("SI-NK"));
     }
 
     #[test]
@@ -482,6 +492,17 @@ mod tests {
         assert_eq!(portion_to_banner("LES-NF"), Some("LES NOFORN"));
         assert_eq!(portion_to_banner("DCNI"), Some("DOD UCNI"));
         assert_eq!(portion_to_banner("UCNI"), Some("DOE UCNI"));
+        // §H.7 NATO classifications — inverse direction.
+        // CAPCO-2016 §G.1 Table 4 p36.
+        assert_eq!(portion_to_banner("CTS"), Some("COSMIC TOP SECRET"));
+        assert_eq!(portion_to_banner("NS"), Some("NATO SECRET"));
+        assert_eq!(portion_to_banner("NC"), Some("NATO CONFIDENTIAL"));
+        assert_eq!(portion_to_banner("NR"), Some("NATO RESTRICTED"));
+        assert_eq!(portion_to_banner("NU"), Some("NATO UNCLASSIFIED"));
+        // §H.4 SCI compounds — inverse direction.
+        // CAPCO-2016 §H.4 p78, p83.
+        assert_eq!(portion_to_banner("SI-EU"), Some("SI-ECRU"));
+        assert_eq!(portion_to_banner("SI-NK"), Some("SI-NONBOOK"));
     }
 
     #[test]
@@ -680,14 +701,14 @@ mod tests {
         same_form.sort_unstable();
         let mut expected = vec![
             // §H.7 NATO classifications (banner == title, distinct portion).
-            // CAPCO-2016 §G.1 Table 4 p766–770.
+            // CAPCO-2016 §G.1 Table 4 p36.
             "COSMIC TOP SECRET",
             "NATO SECRET",
             "NATO CONFIDENTIAL",
             "NATO RESTRICTED",
             "NATO UNCLASSIFIED",
             // §H.7 NATO programs (same-form-all-three documentation rows).
-            // CAPCO-2016 §G.1 Table 4 p775–777.
+            // CAPCO-2016 §G.1 Table 4 p36.
             "ATOMAL",
             "BALK",
             "BOHEMIA",
@@ -700,7 +721,7 @@ mod tests {
             "SI-ECRU",
             "SI-NONBOOK",
             // §H.8 dissem with `None` abbreviation column.
-            // CAPCO-2016 §G.1 Table 4 p836 (DEA SENSITIVE).
+            // CAPCO-2016 §G.1 Table 4 p36 (DEA SENSITIVE).
             "DEA SENSITIVE",
         ];
         expected.sort_unstable();
