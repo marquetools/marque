@@ -7,6 +7,78 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.4.0 → 1.5.0
+
+Bump type: MINOR
+  - 
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
+
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
 Version change: 1.3.1 → 1.4.0
 
 Bump type: MINOR
@@ -565,6 +637,12 @@ Don't wing it. Don't fabricate citations.
   security framework, etc. The source MUST be versioned and vendored in
   `crates/<grammar>/docs/` (or the equivalent); external URLs MUST NOT be
   the primary source.
+- **Resolving Conflicts.** For the CAPCO grammar, the edition of the manual
+  the repo pins is not the most current version (it's the most current version
+  currently *available* to us). Consequently, we do need to accomodate
+  newer tokens we find in the ISM schemas; we can't have users trying to
+  use valid tokens and getting errors. When in doubt, request guidance
+  from the user.
 - **Source-first implementation.** Anyone implementing a rule, marking
   syntax parser, rewrite, page roll-up, or fix proposal for a grammar MUST
   consult the relevant portions of the primary source first and MUST cover
@@ -583,6 +661,8 @@ Don't wing it. Don't fabricate citations.
   citation so someone checked" cannot be allowed to carry the reviewer's
   trust forward. This applies equally to citations written by humans and
   citations written by AI assistance; neither is exempt from verification.
+  In the case of ISM/CAPCO, ISM schemas may be cited where CAPCO references
+  are unavailable, but only for markings that are truly too new to cite.
 - **Propagation requires re-verification.** When a citation moves — from
   a rule comment into a docs file, from one plan into another, from one
   diagnostic message to a restatement in another — the person (or agent)
@@ -741,4 +821,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.4.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-05
+**Version**: 1.5.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-08
