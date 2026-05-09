@@ -123,8 +123,8 @@ crates/
 │
 ├── scheme/                         # Domain-neutral trait surface (no domain vocab)
 │   └── src/
-│       ├── scheme.rs               # MarkingScheme: render_canonical(&FixIntent<S>, &RenderContext) → Canonical<S>; RenderContext { scope, emission_form, schema_version }; #[non_exhaustive] EmissionForm { Auto, Portion, Banner, BannerAbbreviated, LongTitle } (PR 3c.2, FR-052); CanonicalConstructor<S> sealed trait (PR 3c.1)
-│       ├── vocabulary.rs           # Vocabulary<S>::forms() returning &'static FormSet; per-form methods become defaults; FormSet { portion, banner, banner_abbreviation, long_title, recognized_aliases } + #[non_exhaustive] FormKind (PR 3d, FR-053); Deprecation<Token> gains valid_from/valid_until (PR 3d, FR-054); shape_admits + is_fdr_dissem (PR 2 / PR 4, FR-015 / FR-010)
+│       ├── scheme.rs               # MarkingScheme: render_canonical(&FixIntent<S>, &RenderContext) → Canonical<S>; RenderContext { scope, emission_form, schema_version }; #[non_exhaustive] EmissionForm { Auto, Portion, BannerTitle, BannerAbbreviation } per CAPCO §G.1 Table 4 (PR 3c.2, FR-052); CanonicalConstructor<S> sealed trait (PR 3c.1)
+│       ├── vocabulary.rs           # Vocabulary<S>::forms() returning &'static FormSet; per-form methods become defaults (banner_form() = banner_abbreviation.unwrap_or(banner_title)); FormSet { portion, banner_title, banner_abbreviation, recognized_aliases } + #[non_exhaustive] FormKind (PR 3d, FR-053); Deprecation<Token> gains valid_from/valid_until (PR 3d, FR-054); shape_admits + is_fdr_dissem (PR 2 / PR 4, FR-015 / FR-010)
 │       ├── lattice.rs              # Existing built-in constructors (OrdMax, OrdMin, FlatSet, IntersectSet, SupersessionSet, ModeSet, MaxDate, OptionalSingleton, Product); Phase B already shipped
 │       └── recognizer.rs           # Recognizer<S>: Send + Sync bound (PR 0, FR-038)
 │

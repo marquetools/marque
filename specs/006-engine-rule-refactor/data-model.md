@@ -418,8 +418,7 @@ pub struct RenderContext {
 
     /// NEW (FR-052) — explicit emission-form selector. Engine populates
     /// from rule context (defaulting to Auto); scheme honors it in the
-    /// closed-CVE branch by routing to the matching Vocabulary<S> form
-    /// accessor.
+    /// closed-CVE branch by routing to the matching FormSet field.
     pub emission_form: EmissionForm,
 
     /// NEW — schema version this render targets. Reserved for future
@@ -431,21 +430,28 @@ pub struct RenderContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EmissionForm {
-    /// Derive from Scope: Page → Banner, Portion → Portion. Preserves
-    /// pre-3c.2 emission behavior; every existing FixIntent emission
-    /// site uses Auto and is unaffected by 3c.2.
+    /// Derive from Scope: Page → BannerAbbreviation if present else
+    /// BannerTitle; Portion → Portion. Preserves pre-3c.2 emission
+    /// behavior — matches the existing `Vocabulary::banner_form()`
+    /// abbreviation-when-distinct semantics. Every existing FixIntent
+    /// emission site uses Auto and is unaffected by 3c.2.
     Auto,
-    /// Force portion form (e.g., "(S)", "(NF)").
+    /// Force portion form — CAPCO §G.1 Table 4 column 3 "Authorized
+    /// Portion Mark". Always present per token. Examples: "S" for
+    /// SECRET, "NF" for NOFORN.
     Portion,
-    /// Force banner abbreviation (e.g., "SECRET", "NOFORN").
-    Banner,
-    /// Force banner-line abbreviated (collapsed) form when distinct from
-    /// Banner — token-specific, reads Vocabulary::banner_abbreviation.
-    BannerAbbreviated,
-    /// Force long Marking Title (e.g., "NOT RELEASABLE TO FOREIGN
-    /// NATIONALS"). S001's prefer-banner-abbreviation fix conceptually
-    /// wants this for round-trip rendering tests.
-    LongTitle,
+    /// Force banner-title form — CAPCO §G.1 Table 4 column 1
+    /// "Authorized Banner Line Marking Title". Always present per token.
+    /// Examples: "SECRET" for SECRET (no distinct abbreviation exists),
+    /// "NOT RELEASABLE TO FOREIGN NATIONALS" for NOFORN.
+    BannerTitle,
+    /// Force banner-abbreviation form — CAPCO §G.1 Table 4 column 2
+    /// "Authorized Banner Line Abbreviation". Distinct from BannerTitle
+    /// only when one exists. Examples: "NOFORN" for NOFORN (the
+    /// abbreviation is distinct from the title); SECRET has no distinct
+    /// abbreviation, so this falls back to BannerTitle ("SECRET") per
+    /// the validation rule below.
+    BannerAbbreviation,
 }
 ```
 
@@ -456,9 +462,13 @@ pub enum EmissionForm {
   that pass `EmissionForm::Auto`. Existing rules that don't care about
   form pass `Auto` and inherit the scope-derived default forever.
 - The closed-CVE branch of `render_canonical` MUST honor every variant
-  by routing to the appropriate `Vocabulary<S>` accessor; if a token
-  has no `BannerAbbreviated` (it equals `Banner` for that token), the
-  branch returns the `Banner` form rather than panicking.
+  by routing to the matching `FormSet` field via `Vocabulary<S>::forms()`.
+  When `EmissionForm::BannerAbbreviation` is requested but
+  `forms().banner_abbreviation == None` (the token has no distinct
+  abbreviation, e.g., classifications, FISA, RELIDO), the branch MUST
+  return `forms().banner_title` rather than panicking. `BannerTitle` and
+  `Portion` are total — every token has one — so no fallback rule is
+  needed for those variants.
 - The open-vocab branch (rendering an SCI compartment, an FGI trigraph
   list, etc.) ignores `emission_form` for now — open-vocab tokens carry
   one canonical per scope. Future scheme-specific variants of
@@ -482,12 +492,12 @@ pub trait Vocabulary<S: MarkingScheme>: Send + Sync + 'static {
     /* existing Phase-5 methods: lookup, authority, owner, deprecation,
        urn, schema_version */
 
-    /// PR 3d — aggregate per-token form data. The four canonical CAPCO
-    /// forms (portion / banner / abbreviation / long-title) plus a
-    /// recognize-only alias slice for forms accepted on input but not
-    /// emitted by default. Replaces the per-form-method triple as the
-    /// authoritative accessor; existing per-form methods become default
-    /// methods over `forms()`.
+    /// PR 3d — aggregate per-token form data. The three canonical CAPCO
+    /// forms (Portion Mark, Banner Line Marking Title, Banner Line
+    /// Abbreviation per §G.1 Table 4) plus a recognize-only alias slice
+    /// for forms accepted on input but not emitted by default. Replaces
+    /// the per-form-method triple as the authoritative accessor; existing
+    /// per-form methods become default methods over `forms()`.
     fn forms(&self, token: &S::Token) -> &'static FormSet;
 
     /// PR 3d — default-method accessors over `forms()`. Existing call
@@ -496,8 +506,14 @@ pub trait Vocabulary<S: MarkingScheme>: Send + Sync + 'static {
     fn portion_form(&self, token: &S::Token) -> &'static str {
         self.forms(token).portion
     }
+    /// Returns the banner-abbreviation form when one is distinct, else
+    /// the banner-title form. Preserves the pre-3d semantics of
+    /// `banner_form()` byte-for-byte (matches the existing
+    /// `MarkingForm.banner` field's "abbreviation when distinct, else
+    /// title" convention in `crates/ism/src/marking_forms.rs`).
     fn banner_form(&self, token: &S::Token) -> &'static str {
-        self.forms(token).banner
+        let f = self.forms(token);
+        f.banner_abbreviation.unwrap_or(f.banner_title)
     }
     fn banner_abbreviation(&self, token: &S::Token) -> Option<&'static str> {
         self.forms(token).banner_abbreviation
@@ -536,19 +552,25 @@ assumption baked into the Phase 5 per-form methods. Lands in
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormSet {
-    /// Canonical portion form, e.g., "(S)", "(NF)".
+    /// CAPCO §G.1 Table 4 column 3 — "Authorized Portion Mark".
+    /// Always present per token. Examples: "S" for SECRET, "NF" for
+    /// NOFORN, "FOUO" for FOR OFFICIAL USE ONLY.
     pub portion: &'static str,
-    /// Canonical banner form, e.g., "SECRET", "NOFORN".
-    pub banner: &'static str,
-    /// Banner-line abbreviation when distinct, e.g., "S" for SECRET.
+    /// CAPCO §G.1 Table 4 column 1 — "Authorized Banner Line Marking
+    /// Title". Always present per token. Examples: "SECRET" for SECRET
+    /// (no distinct abbreviation), "NOT RELEASABLE TO FOREIGN NATIONALS"
+    /// for NOFORN (the long descriptive title; abbreviation lives in the
+    /// next field), "FOR OFFICIAL USE ONLY" for FOUO.
+    pub banner_title: &'static str,
+    /// CAPCO §G.1 Table 4 column 2 — "Authorized Banner Line
+    /// Abbreviation". `Some` only when the abbreviation is distinct from
+    /// `banner_title`. Examples: `Some("NOFORN")` for NOFORN,
+    /// `Some("FOUO")` for FOR OFFICIAL USE ONLY, `None` for SECRET (no
+    /// abbreviation form exists for any classification marking).
     pub banner_abbreviation: Option<&'static str>,
-    /// CAPCO long Marking Title (§G.1 Table 4 column 1), e.g.,
-    /// "NOT RELEASABLE TO FOREIGN NATIONALS". Some tokens have no
-    /// distinct long form (long_title == banner) — represented as None.
-    pub long_title: Option<&'static str>,
     /// Forms recognized on input but NOT emitted by default.
     /// Populated for ISM `Description.title` when it differs from
-    /// CAPCO long-title (per build-time ODNI XML harvest); also
+    /// CAPCO `banner_title` (per build-time ODNI XML harvest); also
     /// historical aliases pre-dating the current schema. Engine policy
     /// — not data shape — decides whether any alias may be promoted to
     /// emission.
@@ -559,7 +581,7 @@ pub struct FormSet {
 #[non_exhaustive]
 pub enum FormKind {
     /// ODNI ISM CVE `Description.title` form, when the published title
-    /// disagrees with CAPCO's long-title (typically the ISM form is
+    /// disagrees with CAPCO's `banner_title` (typically the ISM form is
     /// anachronistic). Recognize-only by default.
     IsmDescriptionTitle,
     /// Pre-dated alias from a prior CAPCO revision. Recognize-only.
@@ -578,14 +600,15 @@ pub enum FormKind {
   (b) extending `render_canonical`'s closed-CVE branch to dispatch on it.
   No `FormSet` shape change is required.
 - `recognized_aliases` MUST contain only forms that genuinely *do* differ
-  from the four canonical fields. The build-time generator MUST elide
-  duplicates (an ISM `Description.title` that exactly matches the CAPCO
-  `long_title` does not appear).
+  from the three canonical fields (`portion`, `banner_title`,
+  `banner_abbreviation`). The build-time generator MUST elide duplicates
+  (an ISM `Description.title` that exactly matches the CAPCO
+  `banner_title` does not appear).
 - Build-time generation rule: when ODNI ISM XML's `<Description>` text
-  carries a parseable title that differs from the CAPCO Marking Title
-  (per `crates/capco/docs/CAPCO-2016.md` §G.1 Table 4), it lands in
-  `recognized_aliases` with `FormKind::IsmDescriptionTitle`. When the
-  texts agree, the entry is omitted (no information added).
+  carries a parseable title that differs from the CAPCO `banner_title`
+  (per `crates/capco/docs/CAPCO-2016.md` §G.1 Table 4 column 1), it
+  lands in `recognized_aliases` with `FormKind::IsmDescriptionTitle`.
+  When the texts agree, the entry is omitted (no information added).
 
 **Used by**: `Vocabulary<S>::forms()` (returns `&'static FormSet`);
 `MarkingScheme::canonicalize` (consults `recognized_aliases` during
