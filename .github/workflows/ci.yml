@@ -229,19 +229,20 @@ jobs:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       # Gap register #11 / whitepaper §7.3 — SHA256 checksums on the
-      # vendored authoritative references (CAPCO PDFs, ODNI ISM schema
-      # tree) so any silent replacement trips CI. Schemas are consumed
-      # by `crates/ism/build.rs`; PDFs are the citation primary source
-      # per Principle VIII. Hash bumps are intentional edits to the
+      # vendored authoritative references (CAPCO PDFs) so any silent
+      # replacement trips CI. PDFs are the citation primary source per
+      # Principle VIII. Hash bumps are intentional edits to the
       # SHA256SUMS file.
+      #
+      # ODNI ISM schemas are no longer vendored here; they ship via the
+      # `ism` and `ism-ismcat` build-dependencies from
+      # https://github.com/marquetools/ism-data, whose own crate-level
+      # build.rs scripts re-hash every file under data/ against the
+      # baked SHA-256 manifest at every consumer compile. The integrity
+      # check fires automatically as part of `cargo check` above.
       - name: Verify CAPCO original references
         run: |
           cd crates/capco/docs/original-refs
-          sha256sum -c SHA256SUMS
-
-      - name: Verify ISM-v2022-DEC schemas
-        run: |
-          cd crates/ism/schemas/ISM-v2022-DEC
           sha256sum -c SHA256SUMS
 
   coverage:

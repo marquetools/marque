@@ -11,14 +11,10 @@ description = "ISM vocabulary types, generated CVE enums, and Span for marque"
 repository.workspace = true
 license-file = "LICENSE.md"
 
-# Published tarball contents — keep tight. `build.rs` only reads the CVE XML
-# files in CVE_ISM/ and the RelTo trigraph XSD in CVE_ISMCAT/CVEGenerated/.
-# Everything else under schemas/ (Schematron/*.sch and *.xsl stylesheets,
-# Schema/*.xsd/.rng, ISM-Rollup-v2021-NOV/, Documents/, XSPEC/) and the entire
-# registers/ directory (CAPCO reference PDFs and presentations) is repo-only
-# reference material — excluded because it pushes the crate past crates.io's
-# 10 MiB upload limit. Expand this list when build.rs starts consuming new
-# schema files.
+# Published tarball contents — keep tight. ODNI schemas live in the
+# `ism` and `ism-ismcat` crates from github.com/marquetools/ism-data,
+# consumed as build-dependencies. Nothing under schemas/ ships in the
+# tarball anymore.
 include = [
   "Cargo.toml",
   "LICENSE.md*",
@@ -29,28 +25,18 @@ include = [
   # publishing this is a no-op for upstream consumers; org forks edit
   # the file and rebuild.
   "country_extensions.toml",
-  # NTK files included alongside ISM so build.rs sees the same JSON set
-  # at crates.io as in the repo (build.rs reads every `*.json` under
-  # CVE_ISM/ — a narrower include glob would silently drop NTK metadata
-  # from the generated vocabulary tables in published builds).
-  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnum*.json",
-  "schemas/ISM-v2022-DEC/CVE_ISM/CVEnumISM*.xml",
-  "schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd",
-  # Issue #208: ISMCAT Tetragraph Taxonomy V2022-NOV. build.rs parses
-  # only TetragraphTaxonomyDenormalized.xml; the canonical hierarchical
-  # form is shipped alongside so a published-crate consumer can verify
-  # ODNI's denormalization stayed in sync. The Documents/ISMCAT/*.pdf
-  # human-readable reference is deliberately excluded — repo-only.
-  "schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/*.xml",
   "src/**/*.rs",
 ]
 
 # Schema versions pinned here — bump intentionally when ODNI publishes updates.
-# Schemas live in schemas/ISM-v<version>/. ISMCAT Tetragraph Taxonomy is
-# versioned independently of the ISM bundle (TESVersion="202211" in the XML
-# root) and lives at schemas/ISM-v2022-DEC/Taxonomy/ISMCAT/.
+# `ism-schema-version` is the upstream ODNI label (the package version on the
+# ODNI publication page); `ism-data-version` is the version of the ism-data
+# workspace crates this build pulls schemas from (YYYYMMDD.MAJOR.PATCH where
+# YYYYMMDD = ODNI snapshot date). build.rs cross-checks both against the
+# vendored data at compile time.
 [package.metadata.marque]
 ism-schema-version = "ISM-v2022-DEC"
+ism-data-version = "20230609.0.0"
 ismcat-tetra-version = "2022-NOV"
 
 [dependencies]
@@ -59,11 +45,15 @@ jiff = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+ism = { workspace = true }
+ism-ismcat = { workspace = true }
 proptest = { workspace = true }
 xmloxide = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
+ism = { workspace = true }
+ism-ismcat = { workspace = true }
 memchr = { workspace = true }
 quick-xml = { workspace = true }
 serde = { workspace = true }

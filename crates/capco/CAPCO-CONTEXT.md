@@ -402,6 +402,8 @@ and §4.3.
 
 Per Constitution Principle IV, ODNI ISM schema package version is
 pinned in `crates/ism/Cargo.toml [package.metadata.marque]
-ism-schema-version`. The package version and the CAPCO-2016 manual
-version are tracked separately because ODNI ships them on different
-cadences.
+ism-schema-version` (upstream label) and `ism-data-version` (the
+[`marquetools/ism-data`](https://github.com/marquetools/ism-data)
+snapshot the `ism` / `ism-ismcat` build-deps resolve to). The
+package version and the CAPCO-2016 manual version are tracked
+separately because ODNI ships them on different cadences.

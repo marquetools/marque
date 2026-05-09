@@ -25,7 +25,7 @@ fn cve_files_table_is_nonempty() {
         !CVE_FILES.is_empty(),
         "CVE_FILES is empty — build.rs collected zero CveFileMetadata records. \
          Almost always a missing-or-broken JSON sidecar set under \
-         crates/ism/schemas/ISM-v2022-DEC/CVE_ISM/."
+         `ism::package_root() / CVE/ISM/` (vendored via the `ism` build-dep)."
     );
 }
 

@@ -14,8 +14,12 @@
 //!
 //! # Schema Versioning
 //! The active schema version is pinned in `marque-ism/Cargo.toml` under
-//! `[package.metadata.marque] ism-schema-version`. Bump intentionally when ODNI
-//! publishes spec updates.
+//! `[package.metadata.marque]` — `ism-schema-version` for the upstream
+//! ODNI label, `ism-data-version` for the [`marquetools/ism-data`](https://github.com/marquetools/ism-data)
+//! workspace snapshot whose `ism` / `ism-ismcat` build-deps marque-ism
+//! resolves, and `ismcat-tetra-version` for the Tetragraph Taxonomy
+//! revision. Bump in lock-step when ODNI publishes spec updates and
+//! `ism-data` is re-vendored.
 
 pub mod lattice;
 pub mod priors;
